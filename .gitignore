@@ -20,3 +20,12 @@ yarn-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+node_modules/
+.pnpm-store/
+dist/
+.next/
+.vite/
+.DS_Store
+*.log
+GIT
