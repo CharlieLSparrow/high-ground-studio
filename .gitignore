@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+.pnpm-store/
+.pnp.*
+.yarn/
+
+# builds
+dist/
+.next/
+out/
+.vite/
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+*.log
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
