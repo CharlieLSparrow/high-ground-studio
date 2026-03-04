@@ -1,0 +1,1 @@
+Put your local pro renders here. Then copy web-friendly files into apps/web/public/renders/episode-001/
