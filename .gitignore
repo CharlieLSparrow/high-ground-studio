@@ -28,4 +28,15 @@ dist/
 .vite/
 .DS_Store
 *.log
+
+node_modules/
+apps/**/node_modules/
+packages/**/node_modules/
+apps/**/.vite/
+.vite/
+.next/
+dist/
+.pnpm-store/
+*.log
+.DS_Store
 GIT
