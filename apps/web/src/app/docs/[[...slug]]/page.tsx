@@ -63,7 +63,7 @@ export default async function Page({
               marginBottom: 18,
             }}
           >
-            High Ground Odyssey Docs
+            High Ground Odyssey
           </div>
 
           <h1
@@ -99,7 +99,7 @@ export default async function Page({
             background: "#fffdf8",
             color: "#2a2926",
             borderRadius: 28,
-            padding: "36px 28px",
+            padding: "40px 30px",
             boxShadow: "0 24px 70px rgba(0,0,0,0.16)",
             border: "1px solid rgba(32,32,32,0.06)",
           }}
@@ -107,9 +107,72 @@ export default async function Page({
           <div
             style={{
               fontSize: "1.08rem",
-              lineHeight: 1.85,
+              lineHeight: 1.9,
             }}
           >
+            <style>{`
+              article h1,
+              article h2,
+              article h3,
+              article h4 {
+                color: #17363d;
+                line-height: 1.15;
+                margin-top: 2.2rem;
+                margin-bottom: 0.8rem;
+                letter-spacing: -0.02em;
+              }
+
+              article h1 { font-size: 2.3rem; }
+              article h2 { font-size: 1.8rem; }
+              article h3 { font-size: 1.35rem; }
+
+              article p {
+                margin: 1rem 0;
+              }
+
+              article ul,
+              article ol {
+                margin: 1rem 0 1.25rem 1.2rem;
+                padding: 0;
+              }
+
+              article li {
+                margin: 0.45rem 0;
+              }
+
+              article a {
+                color: #1f5f66;
+                text-decoration-thickness: 2px;
+                text-underline-offset: 3px;
+              }
+
+              article blockquote {
+                margin: 1.8rem 0;
+                padding: 0.4rem 0 0.4rem 1rem;
+                border-left: 4px solid #c79654;
+                color: #5b5147;
+                font-style: italic;
+                background: rgba(199, 150, 84, 0.08);
+                border-radius: 0 12px 12px 0;
+              }
+
+              article hr {
+                border: none;
+                border-top: 1px solid rgba(32,32,32,0.12);
+                margin: 2rem 0;
+              }
+
+              article strong {
+                color: #1d1b18;
+              }
+
+              article code {
+                background: rgba(23, 54, 61, 0.08);
+                padding: 0.15rem 0.35rem;
+                border-radius: 6px;
+                font-size: 0.95em;
+              }
+            `}</style>
             <MDX />
           </div>
         </article>
