@@ -21,6 +21,7 @@ export default async function Page({
       description={
         "description" in page.data ? page.data.description : undefined
       }
+      youtubeId={"youtube" in page.data ? page.data.youtube : undefined}
     >
       <MDX />
     </DocsPageShell>

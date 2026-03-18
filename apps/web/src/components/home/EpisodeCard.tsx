@@ -1,9 +1,4 @@
-type Episode = {
-  title: string;
-  href: string;
-  youtubeId: string;
-  description: string;
-};
+import type { Episode } from "@/lib/site";
 
 export default function EpisodeCard({
   episode,

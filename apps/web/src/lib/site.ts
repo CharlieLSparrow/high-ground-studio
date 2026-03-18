@@ -9,7 +9,15 @@ export const site = {
   },
 };
 
-export const episodes = [
+export type Episode = {
+  title: string;
+  href: string;
+  youtubeId: string;
+  description: string;
+  featured: boolean;
+};
+
+export const episodes: Episode[] = [
   {
     title: "Preface Pilot Episode",
     href: "/docs/episode-001",
@@ -24,6 +32,7 @@ export const episodes = [
     youtubeId: "7Rn4rV2cLy4",
     description:
       "Finding life lessons in ordinary things, and learning to make good meaning.",
+    featured: false,
   },
   {
     title: "In the Beginning",
@@ -31,5 +40,6 @@ export const episodes = [
     youtubeId: "rf3L1xki_Nk",
     description:
       "Family history, legacy, and the power of knowing where you came from.",
+    featured: false,
   },
-] as const;
+];
