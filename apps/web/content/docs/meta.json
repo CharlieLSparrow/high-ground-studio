@@ -1,4 +1,12 @@
 {
-  "title": "Docs",
-  "pages": ["preface"]
+  "title": "High Ground Odyssey",
+  "pages": [
+    "index",
+    "preface",
+    "episode-001",
+    "introduction",
+    "episode-002",
+    "chapter-zero-in-the-beginning",
+    "episode-003"
+  ]
 }
