@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 const featuredEpisodes = [
   {
     title: "Preface Pilot Episode",
@@ -33,104 +37,206 @@ const readingLinks = [
 ];
 
 export default function Home() {
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    const onScroll = () => setScrollY(window.scrollY);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const heroImageTranslate = Math.min(scrollY * 0.18, 120);
+  const heroGlowTranslate = Math.min(scrollY * 0.3, 180);
+  const heroTextTranslate = Math.min(scrollY * 0.08, 60);
+
   return (
     <main
       style={{
         minHeight: "100vh",
-        background:
-          "linear-gradient(180deg, #0d2328 0%, #16353a 22%, #2b4a43 48%, #7d5b34 76%, #f3eadb 100%)",
-        color: "#f5efe6",
+        background: "#f3eadb",
+        color: "#1f1b17",
       }}
     >
       {/* HERO */}
       <section
         style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "32px 20px 60px",
+          position: "relative",
+          minHeight: "100vh",
+          overflow: "hidden",
+          background:
+            "linear-gradient(180deg, #0f252a 0%, #18363d 28%, #35554b 60%, #8f6337 100%)",
         }}
       >
-        <nav
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
-            marginBottom: 32,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 800,
-              letterSpacing: "-0.03em",
-              fontSize: 20,
-            }}
-          >
-            High Ground Odyssey
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 18,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <a
-              href="/docs"
-              style={{
-                color: "rgba(245,239,230,0.92)",
-                textDecoration: "none",
-                fontSize: 14,
-              }}
-            >
-              Articles
-            </a>
-            <a
-              href="#episodes"
-              style={{
-                color: "rgba(245,239,230,0.92)",
-                textDecoration: "none",
-                fontSize: 14,
-              }}
-            >
-              Episodes
-            </a>
-            <a
-              href="#start-reading"
-              style={{
-                color: "rgba(245,239,230,0.92)",
-                textDecoration: "none",
-                fontSize: 14,
-              }}
-            >
-              Start Reading
-            </a>
-          </div>
-        </nav>
-
+        {/* Background image */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
-            gap: 28,
-            alignItems: "center",
+            position: "absolute",
+            inset: 0,
+            transform: `translateY(${heroImageTranslate}px) scale(1.08)`,
+            transformOrigin: "center top",
+            transition: "transform 0.08s linear",
+            willChange: "transform",
           }}
         >
-          <div>
+          <img
+            src="/images/hero.jpg"
+            alt="High Ground Odyssey hero"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center 28%",
+              display: "block",
+              filter: "saturate(1.05) contrast(1.02)",
+            }}
+          />
+        </div>
+
+        {/* Dark teal wash */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, rgba(8,20,22,0.35) 0%, rgba(11,24,27,0.20) 24%, rgba(14,28,28,0.22) 56%, rgba(12,14,16,0.58) 100%)",
+          }}
+        />
+
+        {/* Orange sunset glow */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            transform: `translateY(${heroGlowTranslate}px)`,
+            transition: "transform 0.08s linear",
+            background:
+              "radial-gradient(circle at 78% 24%, rgba(255,122,24,0.34) 0%, rgba(255,154,61,0.18) 20%, rgba(255,154,61,0.00) 42%)",
+            pointerEvents: "none",
+            willChange: "transform",
+          }}
+        />
+
+        {/* Bottom fade into page */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0) 58%, rgba(8,13,15,0.28) 72%, rgba(243,234,219,1) 100%)",
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* Nav */}
+        <div
+          style={{
+            position: "relative",
+            zIndex: 5,
+            maxWidth: 1240,
+            margin: "0 auto",
+            padding: "24px 24px 0",
+          }}
+        >
+          <nav
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            <a
+              href="/"
+              style={{
+                color: "#f8f2e8",
+                textDecoration: "none",
+                fontWeight: 800,
+                fontSize: 20,
+                letterSpacing: "-0.03em",
+              }}
+            >
+              High Ground Odyssey
+            </a>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 18,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <a
+                href="#episodes"
+                style={{
+                  color: "rgba(248,242,232,0.9)",
+                  textDecoration: "none",
+                  fontSize: 14,
+                }}
+              >
+                Episodes
+              </a>
+              <a
+                href="#reading"
+                style={{
+                  color: "rgba(248,242,232,0.9)",
+                  textDecoration: "none",
+                  fontSize: 14,
+                }}
+              >
+                Reading
+              </a>
+              <a
+                href="/docs"
+                style={{
+                  color: "#ff9a3d",
+                  textDecoration: "none",
+                  fontWeight: 700,
+                  fontSize: 14,
+                }}
+              >
+                Docs
+              </a>
+            </div>
+          </nav>
+        </div>
+
+        {/* Hero content */}
+        <div
+          style={{
+            position: "relative",
+            zIndex: 5,
+            maxWidth: 1240,
+            margin: "0 auto",
+            minHeight: "calc(100vh - 88px)",
+            display: "flex",
+            alignItems: "flex-end",
+            padding: "24px 24px 90px",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 760,
+              transform: `translateY(${heroTextTranslate}px)`,
+              transition: "transform 0.08s linear",
+              willChange: "transform",
+            }}
+          >
             <div
               style={{
                 display: "inline-block",
                 padding: "8px 14px",
                 borderRadius: 999,
                 background: "rgba(255,255,255,0.10)",
-                border: "1px solid rgba(255,255,255,0.12)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                color: "#fff2df",
                 fontSize: 12,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
                 marginBottom: 18,
+                backdropFilter: "blur(10px)",
               }}
             >
               Summer Blockbuster at Sunset
@@ -139,30 +245,36 @@ export default function Home() {
             <h1
               style={{
                 margin: 0,
-                fontSize: "clamp(3rem, 7vw, 6rem)",
-                lineHeight: 0.94,
-                letterSpacing: "-0.05em",
+                color: "#fff4e8",
+                fontSize: "clamp(3.2rem, 8vw, 7rem)",
+                lineHeight: 0.92,
+                letterSpacing: "-0.06em",
                 textWrap: "balance",
+                textShadow: "0 8px 40px rgba(0,0,0,0.28)",
               }}
             >
-              Stories of leadership,
+              Leadership,
               <br />
-              legacy, and the climb.
+              legacy,
+              <br />
+              and the climb.
             </h1>
 
             <p
               style={{
-                maxWidth: 720,
                 marginTop: 20,
                 marginBottom: 0,
-                fontSize: "clamp(1.05rem, 2vw, 1.2rem)",
+                maxWidth: 680,
+                color: "rgba(255,244,232,0.92)",
+                fontSize: "clamp(1.05rem, 2vw, 1.24rem)",
                 lineHeight: 1.75,
-                color: "rgba(245,239,230,0.90)",
+                textShadow: "0 6px 20px rgba(0,0,0,0.22)",
               }}
             >
               High Ground Odyssey is a storytelling project about family,
-              courage, memory, faith, and the lessons hidden inside ordinary
-              life. Part podcast, part book, part campfire conversation.
+              courage, faith, memory, and the lessons hidden inside ordinary
+              life. A podcast, a book, and a growing archive of stories worth
+              carrying forward.
             </p>
 
             <div
@@ -170,19 +282,19 @@ export default function Home() {
                 display: "flex",
                 gap: 14,
                 flexWrap: "wrap",
-                marginTop: 30,
+                marginTop: 28,
               }}
             >
               <a
                 href="/docs/preface"
                 style={{
                   background: "#ff7a18",
-                  color: "#fffaf4",
+                  color: "#fffaf3",
                   textDecoration: "none",
                   fontWeight: 800,
-                  padding: "14px 22px",
+                  padding: "15px 22px",
                   borderRadius: 16,
-                  boxShadow: "0 10px 30px rgba(255, 122, 24, 0.30)",
+                  boxShadow: "0 14px 34px rgba(255,122,24,0.30)",
                 }}
               >
                 Start Here
@@ -192,128 +304,78 @@ export default function Home() {
                 href="#episodes"
                 style={{
                   background: "rgba(255,255,255,0.10)",
-                  color: "#f5efe6",
+                  color: "#fff4e8",
                   textDecoration: "none",
                   fontWeight: 700,
-                  padding: "14px 22px",
+                  padding: "15px 22px",
                   borderRadius: 16,
-                  border: "1px solid rgba(255,255,255,0.14)",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  backdropFilter: "blur(10px)",
                 }}
               >
                 Watch Episodes
               </a>
             </div>
           </div>
-
-          <div>
-            <div
-              style={{
-                position: "relative",
-                borderRadius: 30,
-                overflow: "hidden",
-                boxShadow: "0 28px 70px rgba(0,0,0,0.28)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.04)",
-              }}
-            >
-              <img
-                src="/images/hero.jpg"
-                alt="High Ground Odyssey hero"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  height: "auto",
-                  aspectRatio: "1 / 1",
-                  objectFit: "cover",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    "linear-gradient(180deg, rgba(255,122,24,0.05) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.18) 100%)",
-                  pointerEvents: "none",
-                }}
-              />
-            </div>
-          </div>
         </div>
       </section>
 
-      {/* FEATURED EPISODES */}
+      {/* EPISODES */}
       <section
         id="episodes"
         style={{
-          maxWidth: 1200,
+          maxWidth: 1240,
           margin: "0 auto",
-          padding: "0 20px 56px",
+          padding: "30px 24px 70px",
         }}
       >
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "end",
-            gap: 20,
-            flexWrap: "wrap",
-            marginBottom: 24,
+            marginBottom: 26,
           }}
         >
-          <div>
-            <div
-              style={{
-                color: "#ff9a3d",
-                fontSize: 13,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: 10,
-                fontWeight: 700,
-              }}
-            >
-              Featured Episodes
-            </div>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "clamp(2rem, 4vw, 3rem)",
-                lineHeight: 1,
-                letterSpacing: "-0.04em",
-              }}
-            >
-              Watch the opening run
-            </h2>
-          </div>
-
-          <a
-            href="/docs"
+          <div
             style={{
-              color: "#f5efe6",
-              textDecoration: "none",
-              fontWeight: 700,
+              color: "#c55e0c",
+              fontSize: 13,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              fontWeight: 800,
+              marginBottom: 10,
             }}
           >
-            Browse all published pages →
-          </a>
+            Featured Episodes
+          </div>
+
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "clamp(2.1rem, 4vw, 3.5rem)",
+              lineHeight: 0.98,
+              letterSpacing: "-0.05em",
+              color: "#17363d",
+            }}
+          >
+            Watch the opening run
+          </h2>
         </div>
 
         <div
           style={{
             display: "grid",
-            gap: 22,
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 24,
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           }}
         >
           {featuredEpisodes.map((episode) => (
             <article
               key={episode.href}
               style={{
-                background: "rgba(10, 21, 24, 0.35)",
-                border: "1px solid rgba(255,255,255,0.10)",
+                background: "#fffaf4",
+                border: "1px solid rgba(23,54,61,0.08)",
                 borderRadius: 26,
                 overflow: "hidden",
-                backdropFilter: "blur(10px)",
-                boxShadow: "0 18px 40px rgba(0,0,0,0.18)",
+                boxShadow: "0 16px 34px rgba(0,0,0,0.08)",
               }}
             >
               <div
@@ -343,8 +405,9 @@ export default function Home() {
                   style={{
                     marginTop: 0,
                     marginBottom: 10,
-                    fontSize: 22,
-                    lineHeight: 1.15,
+                    color: "#17363d",
+                    fontSize: 24,
+                    lineHeight: 1.1,
                     letterSpacing: "-0.03em",
                   }}
                 >
@@ -355,8 +418,8 @@ export default function Home() {
                   style={{
                     marginTop: 0,
                     marginBottom: 18,
-                    color: "rgba(245,239,230,0.86)",
                     lineHeight: 1.7,
+                    color: "#52483f",
                   }}
                 >
                   {episode.description}
@@ -365,7 +428,7 @@ export default function Home() {
                 <a
                   href={episode.href}
                   style={{
-                    color: "#ff9a3d",
+                    color: "#ff7a18",
                     textDecoration: "none",
                     fontWeight: 800,
                   }}
@@ -378,34 +441,33 @@ export default function Home() {
         </div>
       </section>
 
-      {/* READING PATH */}
+      {/* READING */}
       <section
-        id="start-reading"
+        id="reading"
         style={{
-          background: "#f3eadb",
-          color: "#241f1a",
-          padding: "70px 20px 90px",
+          background:
+            "linear-gradient(180deg, #f1e8da 0%, #f7f0e6 100%)",
+          padding: "24px 24px 90px",
         }}
       >
         <div
           style={{
-            maxWidth: 1200,
+            maxWidth: 1240,
             margin: "0 auto",
             display: "grid",
-            gridTemplateColumns: "0.95fr 1.05fr",
-            gap: 26,
-            alignItems: "start",
+            gap: 28,
+            gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.05fr)",
           }}
         >
           <div>
             <div
               style={{
-                color: "#c45f0d",
+                color: "#c55e0c",
                 fontSize: 13,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                marginBottom: 12,
                 fontWeight: 800,
+                marginBottom: 12,
               }}
             >
               Reading Path
@@ -415,26 +477,27 @@ export default function Home() {
               style={{
                 marginTop: 0,
                 marginBottom: 16,
-                fontSize: "clamp(2rem, 4vw, 3.2rem)",
-                lineHeight: 0.98,
+                fontSize: "clamp(2rem, 4vw, 3.4rem)",
+                lineHeight: 0.96,
                 letterSpacing: "-0.05em",
-                color: "#16353a",
+                color: "#17363d",
               }}
             >
-              Read the published sections
+              Read the opening sections
             </h2>
 
             <p
               style={{
                 marginTop: 0,
-                lineHeight: 1.8,
-                color: "#4e463f",
                 maxWidth: 620,
+                color: "#554a41",
+                lineHeight: 1.8,
+                fontSize: "1.02rem",
               }}
             >
-              These are the first published pages from the book and podcast
-              project. Start with the preface, then move into the opening
-              reflections on metaphor, ancestry, and legacy.
+              Start with the preface, move into the introduction, then into
+              Chapter Zero. These are the first trail markers of the larger
+              story.
             </p>
           </div>
 
@@ -451,13 +514,13 @@ export default function Home() {
                 style={{
                   display: "block",
                   textDecoration: "none",
-                  color: "#1d1b18",
+                  color: "#1d1a17",
                   background: "#fffaf4",
-                  border: "1px solid rgba(22,53,58,0.08)",
+                  border: "1px solid rgba(23,54,61,0.08)",
                   borderRadius: 22,
                   padding: "20px 22px",
-                  boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
-                  fontWeight: 700,
+                  boxShadow: "0 10px 24px rgba(0,0,0,0.05)",
+                  fontWeight: 800,
                 }}
               >
                 {link.label}
