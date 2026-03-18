@@ -1,7 +1,6 @@
 import Link from "next/link";
 import SocialLinks from "./SocialLinks";
 import AuthButtons from "./AuthButtons";
-import LoginButton from "@/components/auth/LoginButton";
 
 export default function SiteHeader() {
   return (
@@ -18,9 +17,6 @@ export default function SiteHeader() {
           <SocialLinks />
           <AuthButtons />
         </div>
-        <div className="flex items-center gap-4">
-      <LoginButton />
-      </div>
       </div>
     </header>
   );

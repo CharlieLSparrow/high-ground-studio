@@ -1,8 +1,6 @@
-"use client";
-
-import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 import SiteHeader from "@/components/site/SiteHeader";
+import Providers from "@/components/providers/Providers";
 
 export const metadata = {
   title: "High Ground Odyssey",
@@ -17,11 +15,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SessionProvider>
+        <Providers>
           <SiteHeader />
-        {children}
-        </SessionProvider>
-        
+          {children}
+        </Providers>
       </body>
     </html>
   );
