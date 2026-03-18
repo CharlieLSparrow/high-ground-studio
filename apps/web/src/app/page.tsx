@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-const featuredEpisodes = [
+const episodes = [
   {
     title: "Preface Pilot Episode",
     href: "/docs/episode-001",
@@ -26,317 +24,180 @@ const featuredEpisodes = [
   },
 ];
 
-const readingLinks = [
-  { href: "/docs/preface", label: "Read the Preface" },
-  { href: "/docs/introduction", label: "Read the Introduction" },
-  {
-    href: "/docs/chapter-zero-in-the-beginning",
-    label: "Read Chapter Zero",
-  },
-  { href: "/docs", label: "Browse All Published Pages" },
-];
-
 export default function Home() {
-  const [scrollY, setScrollY] = useState(0);
-
-  useEffect(() => {
-    const onScroll = () => setScrollY(window.scrollY);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const heroImageTranslate = Math.min(scrollY * 0.18, 120);
-  const heroGlowTranslate = Math.min(scrollY * 0.3, 180);
-  const heroTextTranslate = Math.min(scrollY * 0.08, 60);
-
   return (
     <main
       style={{
         minHeight: "100vh",
-        background: "#f3eadb",
-        color: "#1f1b17",
+        background:
+          "linear-gradient(180deg, #0d2328 0%, #16353a 20%, #2b4a43 42%, #7d5b34 72%, #f3eadb 100%)",
+        color: "#f5efe6",
       }}
     >
-      {/* HERO */}
+      {/* HERO INTRO */}
       <section
         style={{
-          position: "relative",
-          minHeight: "100vh",
-          overflow: "hidden",
-          background:
-            "linear-gradient(180deg, #0f252a 0%, #18363d 28%, #35554b 60%, #8f6337 100%)",
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "42px 24px 40px",
         }}
       >
-        {/* Background image */}
         <div
           style={{
-            position: "absolute",
-            inset: 0,
-            transform: `translateY(${heroImageTranslate}px) scale(1.08)`,
-            transformOrigin: "center top",
-            transition: "transform 0.08s linear",
-            willChange: "transform",
-          }}
-        >
-          <img
-            src="/images/hero.jpg"
-            alt="High Ground Odyssey hero"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "center 28%",
-              display: "block",
-              filter: "saturate(1.05) contrast(1.02)",
-            }}
-          />
-        </div>
-
-        {/* Dark teal wash */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(180deg, rgba(8,20,22,0.35) 0%, rgba(11,24,27,0.20) 24%, rgba(14,28,28,0.22) 56%, rgba(12,14,16,0.58) 100%)",
-          }}
-        />
-
-        {/* Orange sunset glow */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            transform: `translateY(${heroGlowTranslate}px)`,
-            transition: "transform 0.08s linear",
-            background:
-              "radial-gradient(circle at 78% 24%, rgba(255,122,24,0.34) 0%, rgba(255,154,61,0.18) 20%, rgba(255,154,61,0.00) 42%)",
-            pointerEvents: "none",
-            willChange: "transform",
-          }}
-        />
-
-        {/* Bottom fade into page */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(180deg, rgba(0,0,0,0) 58%, rgba(8,13,15,0.28) 72%, rgba(243,234,219,1) 100%)",
-            pointerEvents: "none",
-          }}
-        />
-
-        {/* Nav */}
-        <div
-          style={{
-            position: "relative",
-            zIndex: 5,
-            maxWidth: 1240,
-            margin: "0 auto",
-            padding: "24px 24px 0",
-          }}
-        >
-          <nav
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 20,
-              flexWrap: "wrap",
-            }}
-          >
-            <a
-              href="/"
-              style={{
-                color: "#f8f2e8",
-                textDecoration: "none",
-                fontWeight: 800,
-                fontSize: 20,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              High Ground Odyssey
-            </a>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 18,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              <a
-                href="#episodes"
-                style={{
-                  color: "rgba(248,242,232,0.9)",
-                  textDecoration: "none",
-                  fontSize: 14,
-                }}
-              >
-                Episodes
-              </a>
-              <a
-                href="#reading"
-                style={{
-                  color: "rgba(248,242,232,0.9)",
-                  textDecoration: "none",
-                  fontSize: 14,
-                }}
-              >
-                Reading
-              </a>
-              <a
-                href="/docs"
-                style={{
-                  color: "#ff9a3d",
-                  textDecoration: "none",
-                  fontWeight: 700,
-                  fontSize: 14,
-                }}
-              >
-                Docs
-              </a>
-            </div>
-          </nav>
-        </div>
-
-        {/* Hero content */}
-        <div
-          style={{
-            position: "relative",
-            zIndex: 5,
-            maxWidth: 1240,
-            margin: "0 auto",
-            minHeight: "calc(100vh - 88px)",
-            display: "flex",
-            alignItems: "flex-end",
-            padding: "24px 24px 90px",
+            maxWidth: 780,
           }}
         >
           <div
             style={{
-              maxWidth: 760,
-              transform: `translateY(${heroTextTranslate}px)`,
-              transition: "transform 0.08s linear",
-              willChange: "transform",
+              display: "inline-block",
+              padding: "8px 14px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              fontSize: 12,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 18,
             }}
           >
-            <div
-              style={{
-                display: "inline-block",
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.10)",
-                border: "1px solid rgba(255,255,255,0.14)",
-                color: "#fff2df",
-                fontSize: 12,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: 18,
-                backdropFilter: "blur(10px)",
-              }}
-            >
-              Summer Blockbuster at Sunset
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                color: "#fff4e8",
-                fontSize: "clamp(3.2rem, 8vw, 7rem)",
-                lineHeight: 0.92,
-                letterSpacing: "-0.06em",
-                textWrap: "balance",
-                textShadow: "0 8px 40px rgba(0,0,0,0.28)",
-              }}
-            >
-              Leadership,
-              <br />
-              legacy,
-              <br />
-              and the climb.
-            </h1>
-
-            <p
-              style={{
-                marginTop: 20,
-                marginBottom: 0,
-                maxWidth: 680,
-                color: "rgba(255,244,232,0.92)",
-                fontSize: "clamp(1.05rem, 2vw, 1.24rem)",
-                lineHeight: 1.75,
-                textShadow: "0 6px 20px rgba(0,0,0,0.22)",
-              }}
-            >
-              High Ground Odyssey is a storytelling project about family,
-              courage, faith, memory, and the lessons hidden inside ordinary
-              life. A podcast, a book, and a growing archive of stories worth
-              carrying forward.
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 14,
-                flexWrap: "wrap",
-                marginTop: 28,
-              }}
-            >
-              <a
-                href="/docs/preface"
-                style={{
-                  background: "#ff7a18",
-                  color: "#fffaf3",
-                  textDecoration: "none",
-                  fontWeight: 800,
-                  padding: "15px 22px",
-                  borderRadius: 16,
-                  boxShadow: "0 14px 34px rgba(255,122,24,0.30)",
-                }}
-              >
-                Start Here
-              </a>
-
-              <a
-                href="#episodes"
-                style={{
-                  background: "rgba(255,255,255,0.10)",
-                  color: "#fff4e8",
-                  textDecoration: "none",
-                  fontWeight: 700,
-                  padding: "15px 22px",
-                  borderRadius: 16,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  backdropFilter: "blur(10px)",
-                }}
-              >
-                Watch Episodes
-              </a>
-            </div>
+            High Ground Odyssey
           </div>
+
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "clamp(3rem, 7vw, 6rem)",
+              lineHeight: 0.92,
+              letterSpacing: "-0.06em",
+              textWrap: "balance",
+              color: "#fff4e8",
+            }}
+          >
+            Stories worth
+            <br />
+            climbing for.
+          </h1>
+
+          <p
+            style={{
+              marginTop: 20,
+              marginBottom: 0,
+              maxWidth: 700,
+              color: "rgba(245,239,230,0.92)",
+              fontSize: "clamp(1.04rem, 2vw, 1.18rem)",
+              lineHeight: 1.8,
+            }}
+          >
+            High Ground Odyssey is a podcast and storytelling project about
+            leadership, legacy, family, and the lessons hidden inside ordinary
+            life. Start with the opening episodes below.
+          </p>
         </div>
       </section>
 
-      {/* EPISODES */}
+      {/* FEATURED VIDEO HERO */}
       <section
-        id="episodes"
         style={{
-          maxWidth: 1240,
+          maxWidth: 1200,
           margin: "0 auto",
-          padding: "30px 24px 70px",
+          padding: "0 24px 36px",
         }}
       >
-        <div
+        <article
           style={{
-            marginBottom: 26,
+            background: "rgba(10, 21, 24, 0.34)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderRadius: 30,
+            overflow: "hidden",
+            backdropFilter: "blur(10px)",
+            boxShadow: "0 28px 60px rgba(0,0,0,0.22)",
           }}
         >
           <div
             style={{
-              color: "#c55e0c",
+              position: "relative",
+              paddingTop: "56.25%",
+              background: "#111",
+            }}
+          >
+            <iframe
+              src={`https://www.youtube.com/embed/${episodes[0].youtubeId}`}
+              title={episodes[0].title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                border: 0,
+              }}
+            />
+          </div>
+
+          <div style={{ padding: "26px 26px 28px" }}>
+            <div
+              style={{
+                color: "#ff9a3d",
+                fontSize: 13,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                fontWeight: 800,
+                marginBottom: 12,
+              }}
+            >
+              Featured Episode
+            </div>
+
+            <h2
+              style={{
+                marginTop: 0,
+                marginBottom: 12,
+                fontSize: "clamp(2rem, 4vw, 3rem)",
+                lineHeight: 1,
+                letterSpacing: "-0.05em",
+                color: "#fff4e8",
+              }}
+            >
+              {episodes[0].title}
+            </h2>
+
+            <p
+              style={{
+                marginTop: 0,
+                marginBottom: 18,
+                maxWidth: 760,
+                color: "rgba(245,239,230,0.88)",
+                lineHeight: 1.8,
+                fontSize: "1.04rem",
+              }}
+            >
+              {episodes[0].description}
+            </p>
+
+            <OrangeLink href={episodes[0].href}>
+              Read companion article →
+            </OrangeLink>
+          </div>
+        </article>
+      </section>
+
+      {/* EPISODE FEED */}
+      <section
+        style={{
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "0 24px 90px",
+        }}
+      >
+        <div
+          style={{
+            marginBottom: 22,
+          }}
+        >
+          <div
+            style={{
+              color: "#ff9a3d",
               fontSize: 13,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -344,19 +205,19 @@ export default function Home() {
               marginBottom: 10,
             }}
           >
-            Featured Episodes
+            Episode Feed
           </div>
 
           <h2
             style={{
               margin: 0,
-              fontSize: "clamp(2.1rem, 4vw, 3.5rem)",
+              fontSize: "clamp(2rem, 4vw, 3.2rem)",
               lineHeight: 0.98,
               letterSpacing: "-0.05em",
-              color: "#17363d",
+              color: "#fff4e8",
             }}
           >
-            Watch the opening run
+            Start with the opening run
           </h2>
         </div>
 
@@ -364,24 +225,66 @@ export default function Home() {
           style={{
             display: "grid",
             gap: 24,
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           }}
         >
-          {featuredEpisodes.map((episode) => (
+          {episodes.slice(1).map((episode) => (
             <article
               key={episode.href}
               style={{
-                background: "#fffaf4",
-                border: "1px solid rgba(23,54,61,0.08)",
-                borderRadius: 26,
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)",
+                gap: 0,
+                background: "rgba(10, 21, 24, 0.30)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: 28,
                 overflow: "hidden",
-                boxShadow: "0 16px 34px rgba(0,0,0,0.08)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 18px 38px rgba(0,0,0,0.18)",
               }}
             >
               <div
                 style={{
+                  padding: "28px 28px 30px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                }}
+              >
+                <h3
+                  style={{
+                    marginTop: 0,
+                    marginBottom: 12,
+                    fontSize: "clamp(1.8rem, 3vw, 2.5rem)",
+                    lineHeight: 1,
+                    letterSpacing: "-0.05em",
+                    color: "#fff4e8",
+                  }}
+                >
+                  {episode.title}
+                </h3>
+
+                <p
+                  style={{
+                    marginTop: 0,
+                    marginBottom: 18,
+                    color: "rgba(245,239,230,0.88)",
+                    lineHeight: 1.8,
+                    fontSize: "1.02rem",
+                    maxWidth: 620,
+                  }}
+                >
+                  {episode.description}
+                </p>
+
+                <OrangeLink href={episode.href}>
+                  Read companion article →
+                </OrangeLink>
+              </div>
+
+              <div
+                style={{
                   position: "relative",
-                  paddingTop: "56.25%",
+                  minHeight: 280,
                   background: "#111",
                 }}
               >
@@ -399,136 +302,41 @@ export default function Home() {
                   }}
                 />
               </div>
-
-              <div style={{ padding: 22 }}>
-                <h3
-                  style={{
-                    marginTop: 0,
-                    marginBottom: 10,
-                    color: "#17363d",
-                    fontSize: 24,
-                    lineHeight: 1.1,
-                    letterSpacing: "-0.03em",
-                  }}
-                >
-                  {episode.title}
-                </h3>
-
-                <p
-                  style={{
-                    marginTop: 0,
-                    marginBottom: 18,
-                    lineHeight: 1.7,
-                    color: "#52483f",
-                  }}
-                >
-                  {episode.description}
-                </p>
-
-                <a
-                  href={episode.href}
-                  style={{
-                    color: "#ff7a18",
-                    textDecoration: "none",
-                    fontWeight: 800,
-                  }}
-                >
-                  Read companion page →
-                </a>
-              </div>
             </article>
           ))}
         </div>
       </section>
-
-      {/* READING */}
-      <section
-        id="reading"
-        style={{
-          background:
-            "linear-gradient(180deg, #f1e8da 0%, #f7f0e6 100%)",
-          padding: "24px 24px 90px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1240,
-            margin: "0 auto",
-            display: "grid",
-            gap: 28,
-            gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.05fr)",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                color: "#c55e0c",
-                fontSize: 13,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                fontWeight: 800,
-                marginBottom: 12,
-              }}
-            >
-              Reading Path
-            </div>
-
-            <h2
-              style={{
-                marginTop: 0,
-                marginBottom: 16,
-                fontSize: "clamp(2rem, 4vw, 3.4rem)",
-                lineHeight: 0.96,
-                letterSpacing: "-0.05em",
-                color: "#17363d",
-              }}
-            >
-              Read the opening sections
-            </h2>
-
-            <p
-              style={{
-                marginTop: 0,
-                maxWidth: 620,
-                color: "#554a41",
-                lineHeight: 1.8,
-                fontSize: "1.02rem",
-              }}
-            >
-              Start with the preface, move into the introduction, then into
-              Chapter Zero. These are the first trail markers of the larger
-              story.
-            </p>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gap: 16,
-            }}
-          >
-            {readingLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                style={{
-                  display: "block",
-                  textDecoration: "none",
-                  color: "#1d1a17",
-                  background: "#fffaf4",
-                  border: "1px solid rgba(23,54,61,0.08)",
-                  borderRadius: 22,
-                  padding: "20px 22px",
-                  boxShadow: "0 10px 24px rgba(0,0,0,0.05)",
-                  fontWeight: 800,
-                }}
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
-        </div>
-      </section>
     </main>
+  );
+}
+
+function OrangeLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      style={{
+        color: "#f5efe6",
+        textDecoration: "none",
+        fontWeight: 800,
+        fontSize: 15,
+        transition: "color 160ms ease, text-shadow 160ms ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.color = "#ff7a18";
+        e.currentTarget.style.textShadow = "0 0 18px rgba(255,122,24,0.28)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = "#f5efe6";
+        e.currentTarget.style.textShadow = "none";
+      }}
+    >
+      {children}
+    </a>
   );
 }
