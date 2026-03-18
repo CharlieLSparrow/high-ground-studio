@@ -8,8 +8,15 @@
     "start": "next start"
   },
   "dependencies": {
+    "@types/mdx": "^2.0.13",
+    "fumadocs-core": "^16.6.9",
+    "fumadocs-mdx": "^14.2.9",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "25.3.3",
+    "@types/react": "19.2.14"
   }
 }
