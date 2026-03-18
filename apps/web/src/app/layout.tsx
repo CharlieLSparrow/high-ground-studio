@@ -1,3 +1,6 @@
+"use client";
+
+import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 import SiteHeader from "@/components/site/SiteHeader";
 
@@ -14,8 +17,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SiteHeader />
+        <SessionProvider>
+          <SiteHeader />
         {children}
+        </SessionProvider>
+        
       </body>
     </html>
   );
