@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #0d2328;
+  --bg-mid: #16353a;
+  --bg-forest: #2b4a43;
+  --bg-sunset: #7d5b34;
+
+  --paper: #f3eadb;
+  --paper-strong: #fffaf4;
+
+  --text-dark: #241f1a;
+  --text-soft: #5b5147;
+  --text-light: #f5efe6;
+
+  --accent: #ff7a18;
+  --accent-soft: #ff9a3d;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--text-dark);
+  font-family:
+    Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+a {
+  transition:
+    color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease,
+    text-shadow 160ms ease;
+}
+
+.prose-hgo {
+  font-size: 1.08rem;
+  line-height: 1.9;
+  color: var(--text-dark);
+}
+
+.prose-hgo h1,
+.prose-hgo h2,
+.prose-hgo h3,
+.prose-hgo h4 {
+  color: var(--bg-mid);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-top: 2.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.prose-hgo h1 {
+  font-size: 2.3rem;
+}
+
+.prose-hgo h2 {
+  font-size: 1.8rem;
+}
+
+.prose-hgo h3 {
+  font-size: 1.35rem;
+}
+
+.prose-hgo p {
+  margin: 1rem 0;
+}
+
+.prose-hgo ul,
+.prose-hgo ol {
+  margin: 1rem 0 1.25rem 1.2rem;
+  padding: 0;
+}
+
+.prose-hgo li {
+  margin: 0.45rem 0;
+}
+
+.prose-hgo a {
+  color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.prose-hgo a:hover {
+  color: var(--accent-soft);
+}
+
+.prose-hgo blockquote {
+  margin: 1.8rem 0;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-left: 4px solid var(--accent);
+  background: rgba(255, 122, 24, 0.08);
+  color: var(--text-soft);
+  font-style: italic;
+  border-radius: 0 12px 12px 0;
+}
+
+.prose-hgo hr {
+  border: none;
+  border-top: 1px solid rgba(32, 32, 32, 0.12);
+  margin: 2rem 0;
+}
+
+.prose-hgo strong {
+  color: #1d1b18;
+}
+
+.prose-hgo code {
+  background: rgba(23, 54, 61, 0.08);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  font-size: 0.95em;
+}
