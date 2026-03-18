@@ -6,7 +6,7 @@ export default function DocsVideoEmbed({
   title: string;
 }) {
   return (
-    <div className="mb-8 overflow-hidden rounded-[24px] border border-white/10 bg-black shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
+    <div className="overflow-hidden bg-black">
       <div className="relative pt-[56.25%]">
         <iframe
           src={`https://www.youtube.com/embed/${youtubeId}`}

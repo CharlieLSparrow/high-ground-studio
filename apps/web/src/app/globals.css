@@ -116,3 +116,11 @@ a {
   border-radius: 6px;
   font-size: 0.95em;
 }
+
+.prose-hgo h2:first-child {
+  margin-top: 0;
+}
+
+.prose-hgo > *:first-child {
+  margin-top: 0;
+}

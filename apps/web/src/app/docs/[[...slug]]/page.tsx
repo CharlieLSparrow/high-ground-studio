@@ -1,4 +1,5 @@
 import DocsPageShell from "@/components/docs/DocsPageShell";
+import EpisodePageShell from "@/components/docs/EpisodePageShell";
 import { source } from "@/lib/source";
 import { notFound } from "next/navigation";
 
@@ -15,14 +16,31 @@ export default async function Page({
 
   const MDX = page.data.body;
 
+  const title = typeof page.data.title === "string" ? page.data.title : "";
+  const description =
+    "description" in page.data && typeof page.data.description === "string"
+      ? page.data.description
+      : undefined;
+
+  const youtubeId =
+    "youtube" in page.data && typeof page.data.youtube === "string"
+      ? page.data.youtube
+      : undefined;
+
+  if (youtubeId) {
+    return (
+      <EpisodePageShell
+        title={title}
+        description={description}
+        youtubeId={youtubeId}
+      >
+        <MDX />
+      </EpisodePageShell>
+    );
+  }
+
   return (
-    <DocsPageShell
-      title={page.data.title}
-      description={
-        "description" in page.data ? page.data.description : undefined
-      }
-      youtubeId={"youtube" in page.data ? page.data.youtube : undefined}
-    >
+    <DocsPageShell title={title} description={description}>
       <MDX />
     </DocsPageShell>
   );
