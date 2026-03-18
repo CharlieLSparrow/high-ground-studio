@@ -13,17 +13,7 @@ function SocialLink({ href, label, children }: SocialLinkProps) {
       target="_blank"
       rel="noopener noreferrer"
       aria-label={label}
-      className="inline-flex items-center justify-center text-[var(--text-light)] opacity-85 transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--accent)]"
-      style={{
-        filter: "none",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.filter =
-          "drop-shadow(0 0 10px rgba(255,122,24,0.6))";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.filter = "none";
-      }}
+      className="inline-flex items-center justify-center text-[var(--text-light)] opacity-85 transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--accent)] hover:opacity-100 hover:drop-shadow-[0_0_10px_rgba(255,122,24,0.6)]"
     >
       {children}
     </a>

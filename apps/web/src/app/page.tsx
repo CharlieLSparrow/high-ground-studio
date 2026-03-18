@@ -1,30 +1,9 @@
 import EpisodeCard from "@/components/home/EpisodeCard";
-
-const episodes = [
-  {
-    title: "Preface Pilot Episode",
-    href: "/docs/episode-001",
-    youtubeId: "96LN__TA-T8",
-    description:
-      "The opening preface to Learning to Lead — why this story exists, and why it matters.",
-  },
-  {
-    title: "It’s a Metaphor!",
-    href: "/docs/episode-002",
-    youtubeId: "7Rn4rV2cLy4",
-    description:
-      "Finding life lessons in ordinary things, and learning to make good meaning.",
-  },
-  {
-    title: "In the Beginning",
-    href: "/docs/episode-003",
-    youtubeId: "rf3L1xki_Nk",
-    description:
-      "Family history, legacy, and the power of knowing where you came from.",
-  },
-];
+import { episodes } from "@/lib/site";
 
 export default function HomePage() {
+  const [featured, ...feed] = episodes;
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#0d2328_0%,#16353a_20%,#2b4a43_42%,#7d5b34_72%,#f3eadb_100%)] text-[var(--text-light)]">
       <section className="mx-auto max-w-[1200px] px-6 pb-10 pt-10">
@@ -48,7 +27,7 @@ export default function HomePage() {
       </section>
 
       <section className="mx-auto max-w-[1200px] px-6 pb-9">
-        <EpisodeCard episode={episodes[0]} featured />
+        <EpisodeCard episode={featured} featured />
       </section>
 
       <section className="mx-auto max-w-[1200px] px-6 pb-[90px]">
@@ -63,7 +42,7 @@ export default function HomePage() {
         </div>
 
         <div className="grid gap-6">
-          {episodes.slice(1).map((episode) => (
+          {feed.map((episode) => (
             <EpisodeCard key={episode.href} episode={episode} />
           ))}
         </div>
