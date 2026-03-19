@@ -1,4 +1,6 @@
 import type { Episode } from "@/lib/site";
+import GlassPanel from "@/components/ui/GlassPanel";
+import VideoFrame from "@/components/ui/VideoFrame";
 
 export default function EpisodeCard({
   episode,
@@ -9,16 +11,11 @@ export default function EpisodeCard({
 }) {
   if (featured) {
     return (
-      <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[rgba(10,21,24,0.34)] shadow-[0_28px_60px_rgba(0,0,0,0.22)] backdrop-blur-[10px] transition-all duration-200 hover:-translate-y-1 hover:border-[rgba(255,122,24,0.30)] hover:shadow-[0_34px_70px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,122,24,0.22),0_0_32px_rgba(255,122,24,0.16)]">
-        <div className="relative bg-black pt-[56.25%]">
-          <iframe
-            src={`https://www.youtube.com/embed/${episode.youtubeId}`}
-            title={episode.title}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            className="absolute inset-0 h-full w-full border-0"
-          />
-        </div>
+      <GlassPanel
+        glow
+        className="overflow-hidden rounded-[30px] transition-all duration-200 hover:-translate-y-1 hover:border-[rgba(255,122,24,0.30)] hover:shadow-[0_34px_70px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,122,24,0.22),0_0_32px_rgba(255,122,24,0.16)]"
+      >
+        <VideoFrame youtubeId={episode.youtubeId} title={episode.title} />
 
         <div className="px-6 py-7">
           <div className="mb-3 text-[13px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
@@ -40,12 +37,12 @@ export default function EpisodeCard({
             Read companion article →
           </a>
         </div>
-      </article>
+      </GlassPanel>
     );
   }
 
   return (
-    <article className="grid overflow-hidden rounded-[28px] border border-white/10 bg-[rgba(10,21,24,0.30)] shadow-[0_18px_38px_rgba(0,0,0,0.18)] backdrop-blur-[10px] transition-all duration-200 hover:-translate-y-1 hover:border-[rgba(255,122,24,0.30)] hover:shadow-[0_24px_50px_rgba(0,0,0,0.22),0_0_0_1px_rgba(255,122,24,0.18),0_0_28px_rgba(255,122,24,0.14)] md:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+    <GlassPanel className="grid overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:border-[rgba(255,122,24,0.30)] hover:shadow-[0_24px_50px_rgba(0,0,0,0.22),0_0_0_1px_rgba(255,122,24,0.18),0_0_28px_rgba(255,122,24,0.14)] md:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
       <div className="relative flex flex-col justify-center px-7 py-8">
         <div className="absolute bottom-6 left-0 top-6 w-1 rounded-full bg-gradient-to-b from-[rgba(255,122,24,0.95)] to-[rgba(255,154,61,0.55)]" />
 
@@ -71,15 +68,14 @@ export default function EpisodeCard({
         </div>
       </div>
 
-      <div className="relative min-h-[280px] bg-black">
-        <iframe
-          src={`https://www.youtube.com/embed/${episode.youtubeId}`}
+      <div className="relative min-h-[280px]">
+        <VideoFrame
+          youtubeId={episode.youtubeId}
           title={episode.title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="absolute inset-0 h-full w-full border-0"
+          className="h-full"
+          aspectClassName="h-full min-h-[280px]"
         />
       </div>
-    </article>
+    </GlassPanel>
   );
 }
