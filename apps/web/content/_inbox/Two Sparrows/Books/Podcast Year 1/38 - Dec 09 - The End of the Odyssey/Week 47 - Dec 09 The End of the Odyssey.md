@@ -1,0 +1,9 @@
+**Week 47 - Dec 09: The End of the Odyssey**  
+_Theme: Sacrifice & Legacy_  
+[Chapter Twelve: Part 3]  
+It is my grand hope that whomever reads these words will recognize that I have done little right, to the contrary, maybe the only thing I have done right is having a growth mindset and continuing to learn and preserver. I aspire to be a great leader, in truth I'm barley a mediocre father and probably just squeak past lousy to be an average husband. Even my own lessons, I forget. I fail, and return like a dog to it's vomit again and again. I see others who are stronger, smarter, and much more capable than I, but I warn that, envy, pride, self loathing, and bitterness are enemies to happiness. In contrast, gratitude, humility, acknowledgement, and learning are seeds to fulfillment and joy.  
+Before I close, one point I want to make: Getting to where I am took hard work and sacrifice. Sometimes at the expense of the family I love more than any awards or recognition or accomplishments I have made. Don’t forget the sacrifices your people make. Sacrifice to be a leader. I also make this last point so as not to bury it deep inside some forgettable monolog or story. Please never forget that there are people behind the people who work for you. They are all different, but don’t forget the families.  
+I am amazed everyday by how much difference leadership, or lack of leadership, makes in organizations and in the lives of people. Leadership Matters!  
+So we end where we began. Learn who you are. Learn your history. Use your talents and experiences to leave a legacy. Be the leader you want to see.  
+The book has to end at some point. And here is as good a place as any. Life will keep going and when I die others will follow and carry on the story. I believe that in some other state we to will carry on to new experiences and more learning.  
+“If you want a happy ending, that depends, of course, on where you stop your story.” - Orson Welles
