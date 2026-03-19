@@ -41,3 +41,9 @@ dist/
 .DS_Store
 .obsidian
 GIT
+
+.env.local
+.env
+.env.*
+!.env.example
+apps/web/.env.local
