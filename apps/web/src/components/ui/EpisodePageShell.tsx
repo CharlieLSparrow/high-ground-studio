@@ -1,5 +1,5 @@
 import Link from "next/link";
-import DocsVideoEmbed from "./DocsVideoEmbed";
+import DocsVideoEmbed from "@/components/docs/DocsVideoEmbed";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
