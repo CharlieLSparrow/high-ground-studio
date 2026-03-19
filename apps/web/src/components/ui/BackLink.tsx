@@ -8,7 +8,7 @@ type VideoFrameProps = {
 export default function VideoFrame({
   youtubeId,
   title,
-  className = "",
+  className="text-[14px] tracking-[0.04em] text-[rgba(255,255,255,0.82)] no-underline transition hover:text-[var(--accent)]",
   aspectClassName = "pt-[56.25%]",
 }: VideoFrameProps) {
   return (
