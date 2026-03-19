@@ -124,3 +124,21 @@ a {
 .prose-hgo > *:first-child {
   margin-top: 0;
 }
+
+.prose-hgo > *:first-child {
+  margin-top: 0;
+}
+
+.prose-hgo h2:first-child {
+  margin-top: 0;
+}
+
+.prose-hgo blockquote strong {
+  color: inherit;
+}
+
+.prose-hgo img,
+.prose-hgo iframe {
+  max-width: 100%;
+  border-radius: 16px;
+}
