@@ -1,0 +1,21 @@
+{
+  "type": "worth-the-risk",
+  "section": "2LT Sparrow",
+  "slug": "2lt-sparrow",
+  "files": [
+    {
+      "file": "2LT Sparrow.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/2lt-sparrow/main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "From Others Perspectives.md",
+      "category": "perspectives",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/2lt-sparrow/perspectives/from-others-perspectives.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

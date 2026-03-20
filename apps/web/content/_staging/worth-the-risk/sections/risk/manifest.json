@@ -1,0 +1,27 @@
+{
+  "type": "worth-the-risk",
+  "section": "Risk",
+  "slug": "risk",
+  "files": [
+    {
+      "file": "Didn't make the cut and ref.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/risk/alternates/didnt-make-the-cut-and-ref.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Risk - Ink.svg",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/risk/assets/risk-ink.svg",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Risk.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/risk/main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

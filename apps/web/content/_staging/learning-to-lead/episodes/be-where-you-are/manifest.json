@@ -1,0 +1,59 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 9,
+    "title": "Be Where You Are",
+    "slug": "be-where-you-are",
+    "plannedReleaseDate": "2026-05-20T00:00:00",
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Old 1.md",
+      "category": "junk",
+      "skipped": true
+    },
+    {
+      "file": "Old 2.md",
+      "category": "junk",
+      "skipped": true
+    },
+    {
+      "file": "Old.md",
+      "category": "junk",
+      "skipped": true
+    },
+    {
+      "file": "Research 1.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/be-where-you-are/research/research-1.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research 2.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/be-where-you-are/research/research-2.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/be-where-you-are/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "The Shower Strategy.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/be-where-you-are/scott_main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

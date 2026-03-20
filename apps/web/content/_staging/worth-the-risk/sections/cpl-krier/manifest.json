@@ -1,0 +1,17 @@
+{
+  "type": "worth-the-risk",
+  "section": "CPL Krier",
+  "slug": "cpl-krier",
+  "files": [
+    {
+      "file": "Draft.md",
+      "category": "draft",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/cpl-krier/alternates/draft.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [
+    "No main file confidently identified"
+  ],
+  "confidence": "medium"
+}

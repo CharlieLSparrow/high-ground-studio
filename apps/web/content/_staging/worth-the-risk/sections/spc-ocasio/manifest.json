@@ -1,0 +1,15 @@
+{
+  "type": "worth-the-risk",
+  "section": "SPC Ocasio",
+  "slug": "spc-ocasio",
+  "files": [
+    {
+      "file": "Gummy bears.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/spc-ocasio/main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

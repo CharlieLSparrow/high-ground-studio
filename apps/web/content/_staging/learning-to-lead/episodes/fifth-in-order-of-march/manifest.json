@@ -1,0 +1,32 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 28,
+    "title": "Fifth in Order of March",
+    "slug": "fifth-in-order-of-march",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "PHASE 9 THE SURGE (The Grind).md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/fifth-in-order-of-march/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/fifth-in-order-of-march/research/research.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

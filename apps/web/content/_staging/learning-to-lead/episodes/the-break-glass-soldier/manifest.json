@@ -1,0 +1,32 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 15,
+    "title": "The Break-Glass Soldier",
+    "slug": "the-break-glass-soldier",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "PHASE 6 THE TEAM (The Misfits).md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-break-glass-soldier/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-break-glass-soldier/research/research.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

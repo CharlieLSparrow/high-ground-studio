@@ -1,0 +1,32 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 22,
+    "title": "Gunners Up vs. Down",
+    "slug": "gunners-up-vs-down",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/gunners-up-vs-down/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Week 31 - Aug 19 Gunners Up vs. Down.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/gunners-up-vs-down/scott_main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

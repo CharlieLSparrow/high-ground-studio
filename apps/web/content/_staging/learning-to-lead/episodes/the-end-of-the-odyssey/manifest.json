@@ -1,0 +1,32 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 38,
+    "title": "The End of the Odyssey",
+    "slug": "the-end-of-the-odyssey",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-end-of-the-odyssey/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Week 47 - Dec 09 The End of the Odyssey.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-end-of-the-odyssey/scott_main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

@@ -1,0 +1,38 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 7,
+    "title": "Don't Shush the Shusher",
+    "slug": "dont-shush-the-shusher",
+    "plannedReleaseDate": "2026-05-06T00:00:00",
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Research 1.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/dont-shush-the-shusher/research/research-1.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/dont-shush-the-shusher/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "WRESTLING THE GIANT (Text Chapter Three - Part 3).md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/dont-shush-the-shusher/scott_main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

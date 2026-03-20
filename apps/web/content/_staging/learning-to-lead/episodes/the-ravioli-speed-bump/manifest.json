@@ -1,0 +1,32 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 21,
+    "title": "The Ravioli Speed Bump",
+    "slug": "the-ravioli-speed-bump",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "HIGH GROUND ODYSSEY SEASON 1 (PART 3).md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-ravioli-speed-bump/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-ravioli-speed-bump/research/research.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

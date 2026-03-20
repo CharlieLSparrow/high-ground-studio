@@ -1,0 +1,55 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 4,
+    "title": "Early Life Lessons",
+    "slug": "early-life-lessons",
+    "plannedReleaseDate": "2026-04-15T00:00:00",
+    "needsReview": true
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/charlie.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Full Chapter With Charlie Sidebars.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/extras/full-chapter-with-charlie-sidebars.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Homer New Formatting.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/extras/homer-new-formatting.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Homer Unformatted.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/extras/homer-unformatted.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "The Early Days.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Untitled-20260319140959.md",
+      "category": "junk",
+      "skipped": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

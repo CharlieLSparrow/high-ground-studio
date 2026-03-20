@@ -1,0 +1,38 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 32,
+    "title": "The Ghost Truck",
+    "slug": "the-ghost-truck",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Research 1.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-ghost-truck/research/research-1.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-ghost-truck/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "The Ghost Truck.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-ghost-truck/scott_main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

@@ -1,0 +1,38 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 5,
+    "title": "Values",
+    "slug": "values",
+    "plannedReleaseDate": "2026-04-22T00:00:00",
+    "needsReview": true
+  },
+  "files": [
+    {
+      "file": "Charlie Sidebars.md",
+      "category": "charlie",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/values/extras/charlie-sidebars.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/values/charlie.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Homer.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/values/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/values/research/research.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

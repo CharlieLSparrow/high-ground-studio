@@ -1,0 +1,39 @@
+{
+  "type": "worth-the-risk",
+  "section": "Others",
+  "slug": "others",
+  "files": [
+    {
+      "file": "1LT Loos.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/others/profiles/1lt-loos.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "1LT Pete.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/others/profiles/1lt-pete.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Chief Moleski, consistency manic.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/others/profiles/chief-moleski-consistency-manic.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "SGT Shope.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/others/profiles/sgt-shope.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "SPC Hill.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/others/profiles/spc-hill.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

@@ -1,0 +1,6 @@
+In 2006 it was "all hands" deploying to support wars in Iraq and Afghanistan. The 321st Engineer Battalion was tagged to provide three companies with three route clearance platoons each to Al Ambar Province in Iraq. Though the Guide-on had not officially deployed, many of the Soldiers in the Battalion had deployed earlier to augment other units. As it stood, each of A, B, and C companies contained enough Soldiers to fill about two platoons each. In order to fill the ranks, A Co received one of C Co's platoons and B Co received the other. C Co would be filled with three platoons by an entire different company from the 397th EN BN in Wisconsin. As such, the majority of 2nd Platoon, B Company Soldiers came from C company, headquartered in Ogden, Utah. The remainder were mostly Soldiers from within B Company, headquartered in Hayden Lake, Idaho, nearly 700 miles from Ogden. LT Sparrow was identified as the platoon leader even before he had completed his basic officer training. SSG Brummett served as the initial Platoon Sergeant.
+ 
+SFC Johnson  
+Wolf Pack  
+CPT Johnson  
+MAJ Trofinoff

@@ -1,0 +1,38 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 13,
+    "title": "The Hummingbird",
+    "slug": "the-hummingbird",
+    "plannedReleaseDate": null,
+    "needsReview": false
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Research 1.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-hummingbird/research/research-1.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-hummingbird/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Week 21 - Jun 10 The Hummingbird.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/the-hummingbird/scott_main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "high"
+}

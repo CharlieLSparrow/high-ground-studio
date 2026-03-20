@@ -1,0 +1,32 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 3,
+    "title": "Chub and Jack",
+    "slug": "chub-and-jack",
+    "plannedReleaseDate": "2026-04-08T00:00:00",
+    "needsReview": true
+  },
+  "files": [
+    {
+      "file": "Chapter Zero In The Beginning My great grandfather\u2019s father immigrated to the United States from Australia in the late 1800s. His father migrated to Australia from England in an era when most people from England associated Australia with criminals. I c.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/chub-and-jack/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/chub-and-jack/charlie.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/chub-and-jack/research/research.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

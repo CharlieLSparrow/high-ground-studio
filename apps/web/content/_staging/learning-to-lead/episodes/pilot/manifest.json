@@ -1,0 +1,38 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 1,
+    "title": "Pilot",
+    "slug": "pilot",
+    "plannedReleaseDate": "2026-03-25T00:00:00",
+    "needsReview": true
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "empty": true,
+      "skipped": true
+    },
+    {
+      "file": "Preface Pilot Episode.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/pilot/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/pilot/research/research.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Title Sequence.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/pilot/extras/title-sequence.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

@@ -1,0 +1,38 @@
+{
+  "type": "episode",
+  "meta": {
+    "episodeNumber": 2,
+    "title": "It's a Metaphor!",
+    "slug": "its-a-metaphor",
+    "plannedReleaseDate": "2026-04-01T00:00:00",
+    "needsReview": true
+  },
+  "files": [
+    {
+      "file": "Charlie.md",
+      "category": "charlie",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/its-a-metaphor/charlie.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Intro Song.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/its-a-metaphor/extras/intro-song.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "It's a metaphor!.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/its-a-metaphor/scott_main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "Research.md",
+      "category": "research",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/learning-to-lead/episodes/its-a-metaphor/research/research.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

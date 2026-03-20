@@ -1,0 +1,21 @@
+{
+  "type": "worth-the-risk",
+  "section": "SFC Hartman",
+  "slug": "sfc-hartman",
+  "files": [
+    {
+      "file": "From Others Perspectives.md",
+      "category": "perspectives",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/sfc-hartman/perspectives/from-others-perspectives.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "SFC Hartman.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/sfc-hartman/main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

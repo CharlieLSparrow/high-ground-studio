@@ -1,0 +1,15 @@
+{
+  "type": "worth-the-risk",
+  "section": "Misfit orphans",
+  "slug": "misfit-orphans",
+  "files": [
+    {
+      "file": "How Did We Get Here.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/misfit-orphans/main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

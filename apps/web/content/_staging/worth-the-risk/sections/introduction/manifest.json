@@ -1,0 +1,21 @@
+{
+  "type": "worth-the-risk",
+  "section": "Introduction",
+  "slug": "introduction",
+  "files": [
+    {
+      "file": "Introduction.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/introduction/main.md",
+      "selectedAsMain": true
+    },
+    {
+      "file": "The preamble to the introduction Keep it or Leave it.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/introduction/alternates/the-preamble-to-the-introduction-keep-it-or-leave-it.md",
+      "selectedAsMain": false
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

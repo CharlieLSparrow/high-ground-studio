@@ -1,0 +1,21 @@
+{
+  "type": "worth-the-risk",
+  "section": "PVT Hansen",
+  "slug": "pvt-hansen",
+  "files": [
+    {
+      "file": "Draft.md",
+      "category": "draft",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/pvt-hansen/alternates/draft.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "Maybe.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/pvt-hansen/main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}

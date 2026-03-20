@@ -1,0 +1,21 @@
+{
+  "type": "worth-the-risk",
+  "section": "SSG Hale",
+  "slug": "ssg-hale",
+  "files": [
+    {
+      "file": "From Others Perspectives.md",
+      "category": "perspectives",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/ssg-hale/perspectives/from-others-perspectives.md",
+      "selectedAsMain": false
+    },
+    {
+      "file": "SSG Hale.md",
+      "category": "main",
+      "target": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_staging/worth-the-risk/sections/ssg-hale/main.md",
+      "selectedAsMain": true
+    }
+  ],
+  "issues": [],
+  "confidence": "medium"
+}
