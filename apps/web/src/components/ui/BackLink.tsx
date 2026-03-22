@@ -1,27 +1,27 @@
-type VideoFrameProps = {
-  youtubeId: string;
-  title: string;
+import Link from "next/link";
+
+type BackLinkProps = {
+  href: string;
+  children: React.ReactNode;
   className?: string;
-  aspectClassName?: string;
 };
 
-export default function VideoFrame({
-  youtubeId,
-  title,
-  className="text-[14px] tracking-[0.04em] text-[rgba(255,255,255,0.82)] no-underline transition hover:text-[var(--accent)]",
-  aspectClassName = "pt-[56.25%]",
-}: VideoFrameProps) {
+export default function BackLink({
+  href,
+  children,
+  className = "",
+}: BackLinkProps) {
   return (
-    <div className={["overflow-hidden bg-black", className].join(" ")}>
-      <div className={["relative", aspectClassName].join(" ")}>
-        <iframe
-          src={`https://www.youtube.com/embed/${youtubeId}`}
-          title={title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="absolute inset-0 h-full w-full border-0"
-        />
-      </div>
-    </div>
+    <Link
+      href={href}
+      className={[
+        "inline-flex items-center gap-2 text-[14px] tracking-[0.04em]",
+        "text-[rgba(255,255,255,0.82)] no-underline transition",
+        "hover:text-[var(--accent)]",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </Link>
   );
 }

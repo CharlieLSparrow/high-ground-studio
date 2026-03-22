@@ -11,35 +11,55 @@ export const site = {
 
 export type Episode = {
   title: string;
+  subtitle?: string;
   href: string;
   youtubeId: string;
   description: string;
   featured: boolean;
+  pairingId: string;
+  access?: "public" | "team" | "private" | "members";
+  status?: string;
+  views?: string[];
 };
 
 export const episodes: Episode[] = [
   {
-    title: "Preface Pilot Episode",
-    href: "/docs/episode-001",
+    title: "Write It Down",
+    subtitle: "Preface Pilot",
+    href: "/docs/episodes/write-it-down",
     youtubeId: "96LN__TA-T8",
     description:
-      "The opening preface to Learning to Lead — why this story exists, and why it matters.",
+      "Scott and Charlie open the journey by explaining why a life is worth writing down, and why legacy begins with telling the truth about your own story.",
     featured: true,
+    pairingId: "l2l-preface",
+    access: "public",
+    status: "published",
+    views: ["skippy", "editor", "charlie"],
   },
   {
-    title: "It’s a Metaphor!",
-    href: "/docs/episode-002",
+    title: "Look for Lessons",
+    subtitle: "It's a Metaphor!",
+    href: "/docs/episodes/look-for-lessons",
     youtubeId: "7Rn4rV2cLy4",
     description:
-      "Finding life lessons in ordinary things, and learning to make good meaning.",
+      "A first lesson in meaning, metaphor, and the discipline of testing the stories we tell against what is actually true.",
     featured: false,
+    pairingId: "l2l-lessons",
+    access: "public",
+    status: "published",
+    views: ["skippy", "editor", "charlie"],
   },
   {
-    title: "In the Beginning",
-    href: "/docs/episode-003",
+    title: "Know Where You Came From",
+    subtitle: "Chub and Jack",
+    href: "/docs/episodes/know-where-you-came-from",
     youtubeId: "rf3L1xki_Nk",
     description:
-      "Family history, legacy, and the power of knowing where you came from.",
+      "An episode about ancestry, inherited stories, and the strength that comes from knowing where you came from.",
     featured: false,
+    pairingId: "l2l-origins",
+    access: "public",
+    status: "published",
+    views: ["skippy", "editor", "charlie"],
   },
 ];
