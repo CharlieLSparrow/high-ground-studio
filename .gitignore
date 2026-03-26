@@ -47,3 +47,4 @@ GIT
 .env.*
 !.env.example
 apps/web/.env.local
+.aider*
