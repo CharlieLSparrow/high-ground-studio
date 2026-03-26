@@ -1,6 +1,8 @@
 import "./globals.css";
 import SiteHeader from "@/components/site/SiteHeader";
 import Providers from "@/components/providers/Providers";
+import { CartProvider } from "@/components/cart/CartContext";
+import Cart from "@/components/cart/Cart";
 
 export const metadata = {
   title: "High Ground Odyssey",
@@ -17,7 +19,8 @@ export default function RootLayout({
       <body>
         <Providers>
           <SiteHeader />
-          {children}
+          <CartProvider>{children}</CartProvider>
+          <Cart /> {/* Floating cart component */}
         </Providers>
       </body>
     </html>

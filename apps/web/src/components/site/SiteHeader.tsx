@@ -2,6 +2,7 @@ import Link from "next/link";
 import SocialLinks from "./SocialLinks";
 import AuthButtons from "./AuthButtons";
 import ModeSwitcher from "./ModeSwitcher";
+import { useCart } from "@/components/cart/CartContext";
 
 export default function SiteHeader() {
   return (
@@ -29,6 +30,13 @@ export default function SiteHeader() {
           <ModeSwitcher />
           <SocialLinks />
           <AuthButtons />
+          
+          <button
+            onClick={() => console.log("Show cart")}
+            className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20"
+          >
+            Cart ({cart.length})
+          </button>
         </div>
       </div>
     </header>
