@@ -18,11 +18,10 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
-          {/* Move CartProvider to wrap SiteHeader */}
           <CartProvider>
             <SiteHeader />
             {children}
-            <Cart />
+            <Cart /> {/* Floating cart component */}
           </CartProvider>
         </Providers>
       </body>

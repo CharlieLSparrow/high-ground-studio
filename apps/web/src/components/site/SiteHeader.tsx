@@ -2,7 +2,7 @@ import Link from "next/link";
 import SocialLinks from "./SocialLinks";
 import AuthButtons from "./AuthButtons";
 import ModeSwitcher from "./ModeSwitcher";
-import { useCart } from "@/components/cart/CartContext";
+import { useCart } from "@/components/cart/CartContext"; 
 
 export default function SiteHeader() {
   return (
