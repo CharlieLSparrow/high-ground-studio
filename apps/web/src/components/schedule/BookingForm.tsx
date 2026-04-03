@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import DatePicker from "react-datepicker";
+import { createAppointment } from "@/actions/scheduleAction";
 import "react-datepicker/dist/react-datepicker.css";
 
 const timeOptions = {

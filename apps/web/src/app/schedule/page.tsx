@@ -1,5 +1,6 @@
 import { useSession } from "next-auth/react";
 import BookingForm from "@/components/schedule/BookingForm";
+import AuthButtons from "@/components/site/AuthButtons";
 
 export default async function SchedulePage() {
   const session = await useSession();
