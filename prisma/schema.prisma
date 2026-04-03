@@ -1,0 +1,22 @@
+// First, ensure we have a basic User model (if not already present)
+model User {
+  id       String @id @default(uuid())
+  email    String @unique
+  name     String?
+  image    String?
+  created  DateTime @default(now())
+  updated  DateTime @updatedAt
+}
+
+// Add the new Appointment model
+model Appointment {
+  id              String   @id @default(uuid())
+  userId          String
+  clientName      String
+  appointmentDate DateTime
+  status          String   @default("PENDING")
+  googleEventId   String?
+
+  // Establish relation to User
+  user User @relation(fields: [userId], references: [id])
+}
