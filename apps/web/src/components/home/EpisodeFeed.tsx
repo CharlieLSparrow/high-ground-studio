@@ -3,6 +3,12 @@ import { episodes } from "@/lib/site";
 
 export default function EpisodeFeed() {
   const feed = episodes.filter((episode) => !episode.featured);
+  
+  // Update the href for each episode to use /episodes instead of /docs
+  const updatedFeed = feed.map(episode => ({
+    ...episode,
+    href: episode.href.replace("/docs/", "/episodes/"),
+  }));
 
   return (
     <section className="mx-auto max-w-[1200px] px-6 pb-[90px]">
