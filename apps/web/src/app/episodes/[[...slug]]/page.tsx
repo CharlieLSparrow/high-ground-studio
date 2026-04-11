@@ -28,7 +28,7 @@ function readStringArray(
 }
 
 function hrefToSegments(href?: string): string[] | null {
-  // Updated to look for /episodes/ instead of /docs/
+  // Syncing with your "episodes" rename
   if (!href || !href.startsWith("/episodes/")) return null;
 
   const trimmed = href.replace(/^\/episodes\//, "");
@@ -60,7 +60,7 @@ function resolveRelatedContent(
     };
   }
 
-  // FIX: The "Double Cast" to satisfy strict TypeScript builds
+  // FIX 1: Double cast to bypass the Fumadocs type mismatch
   const linkedData = linkedPage.data as unknown as Record<string, unknown>;
 
   return {
@@ -82,7 +82,7 @@ export default async function Page({
   const page = source.getPage(segments);
   if (!page) return notFound();
 
-  // FIX: Double Cast here as well for consistency
+  // FIX 2: Double cast here as well
   const pageData = page.data as unknown as Record<string, unknown>;
   const pathname = `/episodes/${segments.join("/")}`;
 
@@ -180,4 +180,4 @@ export default async function Page({
       <MDX />
     </DocsPageShell>
   );
-} 
+}
