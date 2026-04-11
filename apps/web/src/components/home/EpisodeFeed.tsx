@@ -3,7 +3,18 @@ import { episodes } from "@/lib/site";
 
 export default function EpisodeFeed() {
   const feed = episodes.filter((episode) => !episode.featured);
-  
+
+  // Handle empty state
+  if (!feed.length) {
+    return (
+      <section className="mx-auto max-w-[1200px] px-6 pb-[90px]">
+        <div className="text-center text-gray-400 p-8">
+          No episodes found. Check back soon!
+        </div>
+      </section>
+    );
+  }
+
   // Update the href for each episode to use /episodes instead of /docs
   const updatedFeed = feed.map(episode => ({
     ...episode,

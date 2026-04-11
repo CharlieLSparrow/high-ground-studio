@@ -14,17 +14,17 @@ model User {
   image    String?
   created  DateTime @default(now())
   updated  DateTime @updatedAt
+
+  @@index([email], { unique: true })
 }
 
-// Add the new Appointment model
 model Appointment {
   id              String   @id @default(uuid())
-  userId          String
+  userId          String    @ref("User.id")
   clientName      String
   appointmentDate DateTime
-  status          String   @default("PENDING")
-  googleEventId   String?
+  status          String   @default("PENDING") @enum(["PENDING", "COMPLETED", "CANCELLED"])
+  googleEventId   String?   @unique
 
-  // Establish relation to User
-  user User @relation(fields: [userId], references: [id])
+  @@index([userId])
 }
