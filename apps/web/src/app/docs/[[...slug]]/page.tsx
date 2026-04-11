@@ -180,4 +180,4 @@ export default async function Page({
       <MDX />
     </DocsPageShell>
   );
-}
+} 
