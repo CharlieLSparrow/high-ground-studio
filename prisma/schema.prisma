@@ -14,8 +14,6 @@ model User {
   image    String?
   created  DateTime @default(now())
   updated  DateTime @updatedAt
-
-  @@index([email], { unique: true })
 }
 
 model Appointment {
