@@ -2,22 +2,14 @@ import { site } from "@/lib/site";
 
 export default function HeroSection() {
   return (
-    <section className="mx-auto max-w-[1200px] px-6 pb-10 pt-10">
-      <div className="max-w-[780px]">
-        <div className="mb-[18px] inline-block rounded-full border border-white/12 bg-white/10 px-[14px] py-[8px] text-[12px] uppercase tracking-[0.08em]">
-          {site.title}
-        </div>
+    <section className="h-screen w-full bg-black/30 backdrop-blur-sm">
+      <video className="w-full h-full object-cover" autoPlay muted loop>
+        <source src="/bg-video.mp4" type="video/mp4" />
+      </video>
 
-        <h1 className="m-0 text-[clamp(3rem,7vw,6rem)] leading-[0.92] tracking-[-0.06em] text-[var(--text-light)]">
-          Stories worth
-          <br />
-          climbing for.
-        </h1>
-
+      <div className="max-w-[780px] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6">
         <p className="mb-0 mt-5 max-w-[700px] text-[clamp(1.04rem,2vw,1.18rem)] leading-8 text-[rgba(245,239,230,0.92)]">
-          High Ground Odyssey is a podcast and storytelling project about
-          leadership, legacy, family, and the lessons hidden inside ordinary
-          life. Start with the opening episodes below.
+          High Ground Odyssey is a podcast and storytelling project about leadership, legacy, family, and the lessons hidden inside ordinary life. Start with the opening episodes below.
         </p>
       </div>
     </section>
