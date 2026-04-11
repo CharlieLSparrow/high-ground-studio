@@ -1,5 +1,5 @@
 import EpisodeCard from "@/components/home/EpisodeCard";
-import { episodes } from "@/lib/site";
+import { episodes } from "@/lib/episodes";
 
 export default function EpisodeFeed() {
   const feed = episodes.filter((episode) => !episode.featured);
