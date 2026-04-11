@@ -28,9 +28,10 @@ function readStringArray(
 }
 
 function hrefToSegments(href?: string): string[] | null {
-  if (!href || !href.startsWith("/docs/")) return null;
+  // Updated to look for /episodes/ instead of /docs/
+  if (!href || !href.startsWith("/episodes/")) return null;
 
-  const trimmed = href.replace(/^\/docs\//, "");
+  const trimmed = href.replace(/^\/episodes\//, "");
   const segments = trimmed.split("/").filter(Boolean);
 
   return segments.length ? segments : null;
@@ -59,7 +60,8 @@ function resolveRelatedContent(
     };
   }
 
-  const linkedData = linkedPage.data as Record<string, unknown>;
+  // FIX: The "Double Cast" to satisfy strict TypeScript builds
+  const linkedData = linkedPage.data as unknown as Record<string, unknown>;
 
   return {
     eyebrow,
@@ -80,8 +82,9 @@ export default async function Page({
   const page = source.getPage(segments);
   if (!page) return notFound();
 
-  const pageData = page.data as Record<string, unknown>;
-  const pathname = `/docs/${segments.join("/")}`;
+  // FIX: Double Cast here as well for consistency
+  const pageData = page.data as unknown as Record<string, unknown>;
+  const pathname = `/episodes/${segments.join("/")}`;
 
   const access = readString(pageData, "access");
   const accessState = await resolveContentAccess(access);
