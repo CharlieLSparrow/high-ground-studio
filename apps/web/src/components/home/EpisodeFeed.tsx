@@ -7,7 +7,7 @@ export default function EpisodeFeed() {
   // Update the href for each episode to use /episodes instead of /docs
   const updatedFeed = feed.map(episode => ({
     ...episode,
-    href: episode.href.replace("/docs/", "/episodes/"),
+    href: `/episodes/${episode.href.split('/').pop()}` || `/episodes/${episode.title.toLowerCase().replace(/\s+/g, '-')}`,
   }));
 
   return (
