@@ -61,7 +61,7 @@ function resolveRelatedContent(
   }
 
   // FIX 1: Double cast to bypass the Fumadocs type mismatch
-  const linkedData = linkedPage.data as unknown as Record<string, unknown>;
+  const linkedData = linkedPage.data as unknown as unknown as Record<string, unknown>;
 
   return {
     eyebrow,
@@ -83,7 +83,7 @@ export default async function Page({
   if (!page) return notFound();
 
   // FIX 2: Double cast here as well
-  const pageData = page.data as unknown as Record<string, unknown>;
+  const pageData = page.data as unknown as unknown as Record<string, unknown>;
   const pathname = `/episodes/${segments.join("/")}`;
 
   const access = readString(pageData, "access");

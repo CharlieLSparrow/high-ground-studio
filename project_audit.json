@@ -1,0 +1,139 @@
+{
+  "structure": {
+    "apps/web/src/app": [
+      "apps/web/src/app/.DS_Store",
+      "apps/web/src/app/layout.tsx",
+      "apps/web/src/app/page.tsx",
+      "apps/web/src/app/globals.css",
+      "apps/web/src/app/schedule/page.backup.tsx",
+      "apps/web/src/app/episodes/.DS_Store",
+      "apps/web/src/app/library/page.tsx",
+      "apps/web/src/app/api/auth/[...nextauth]/route.ts",
+      "apps/web/src/app/episodes/[[...slug]]/page.tsx"
+    ],
+    "apps/web/src/components": [
+      "apps/web/src/components/.DS_Store",
+      "apps/web/src/components/mdx/CharlieAside.tsx",
+      "apps/web/src/components/mdx/QuoteBlock.tsx",
+      "apps/web/src/components/ui/PageEyebrow.tsx",
+      "apps/web/src/components/ui/VideoFrame.tsx",
+      "apps/web/src/components/ui/PageContainer.tsx",
+      "apps/web/src/components/ui/PaperCard.tsx",
+      "apps/web/src/components/ui/GlassPanel.tsx",
+      "apps/web/src/components/ui/BackLink.tsx",
+      "apps/web/src/components/home/EpisodeCard.tsx",
+      "apps/web/src/components/home/EpisodeFeed.tsx",
+      "apps/web/src/components/home/FeaturedEpisode.tsx",
+      "apps/web/src/components/home/HeroSection.tsx",
+      "apps/web/src/components/schedule/BookingForm.tsx",
+      "apps/web/src/components/auth/LoginButton.tsx",
+      "apps/web/src/components/providers/Providers.tsx",
+      "apps/web/src/components/docs/FeaturedQuoteCard.tsx",
+      "apps/web/src/components/docs/EpisodePageShell.tsx",
+      "apps/web/src/components/docs/DocsVideoEmbed.tsx",
+      "apps/web/src/components/docs/DocsPageShell.tsx",
+      "apps/web/src/components/docs/InternalViewNotice.tsx",
+      "apps/web/src/components/docs/PairedReadingCard.tsx",
+      "apps/web/src/components/cart/Cart.tsx",
+      "apps/web/src/components/cart/CartContext.tsx",
+      "apps/web/src/components/site/SocialLinks.tsx",
+      "apps/web/src/components/site/SiteHeader.tsx",
+      "apps/web/src/components/site/ModeSwitcher.tsx",
+      "apps/web/src/components/site/AuthButtons.tsx",
+      "apps/web/src/components/site/ModeSwitcherClient.tsx",
+      "apps/web/src/components/site/AuthButtonsClient.tsx"
+    ],
+    "prisma": [
+      "prisma/schema.prisma"
+    ]
+  },
+  "configs": {
+    "package.json": {
+      "name": "high-ground-studio",
+      "private": true,
+      "workspaces": [
+        "apps/*",
+        "packages/*"
+      ],
+      "scripts": {
+        "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
+        "web": "pnpm --filter web dev",
+        "engine:build": "pnpm --filter @high-ground/motion-engine build"
+      }
+    },
+    "apps/web/package.json": {
+      "name": "web",
+      "private": true,
+      "type": "module",
+      "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start"
+      },
+      "dependencies": {
+        "@types/mdx": "^2.0.13",
+        "fumadocs-core": "^16.6.9",
+        "fumadocs-mdx": "^14.2.9",
+        "lucide-react": "^0.577.0",
+        "next": "latest",
+        "next-auth": "5.0.0-beta.30",
+        "react": "latest",
+        "react-dom": "latest"
+      },
+      "devDependencies": {
+        "@tailwindcss/postcss": "^4.2.2",
+        "@types/node": "25.3.3",
+        "@types/react": "19.2.14",
+        "tailwindcss": "^4.2.2"
+      }
+    },
+    "apps/web/tsconfig.json": {
+      "compilerOptions": {
+        "target": "ES2022",
+        "lib": [
+          "dom",
+          "dom.iterable",
+          "esnext"
+        ],
+        "allowJs": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "jsx": "react-jsx",
+        "incremental": true,
+        "baseUrl": ".",
+        "paths": {
+          "@/*": [
+            "src/*"
+          ],
+          "fumadocs-mdx:collections/*": [
+            ".source/*"
+          ]
+        },
+        "plugins": [
+          {
+            "name": "next"
+          }
+        ]
+      },
+      "include": [
+        "next-env.d.ts",
+        "**/*.ts",
+        "**/*.tsx",
+        ".next/types/**/*.ts",
+        ".next/dev/types/**/*.ts"
+      ],
+      "exclude": [
+        "node_modules"
+      ]
+    },
+    "apps/web/next.config.mjs": "Error reading file"
+  },
+  "env_check": [],
+  "prisma_check": "generator client {\n  provider = \"prisma-client-js\"\n}\n\ndatasource db {\n  provider = \"sqlite\"\n}\n\n// First, ensure we have a basic User model (if not already present)\nmodel User {\n  id       String @id @default(uuid())\n  email    String @unique\n  name     String?\n  image    String?\n  created  DateTime @default(now())\n  updated  DateTime @updatedAt\n}\n\nmodel Appointment {\n  id              String   @id @default(uuid())\n  userId          String    @ref(\"User.id\")\n  clientName      String\n  appointmentDate DateTime\n  status          String   @default(\"PENDING\") @enum([\"PENDING\", \"COMPLETED\", \"CANCELLED\"])\n  googleEventId   String?   @unique\n\n  @@index([userId])\n}\n"
+}

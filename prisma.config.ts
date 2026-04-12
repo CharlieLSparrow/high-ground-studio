@@ -1,8 +1,7 @@
-import { Prisma } from '@prisma/client'
+import { defineConfig } from '@prisma/config';
 
-const config: Prisma.PrismaConfig = {
-  datasourceUrl: 'file:./dev.db',
-  autoGenerate: true,
-}
-
-export default config
+export default defineConfig({
+  datasource: {
+    url: 'file:./dev.db',
+  },
+});
