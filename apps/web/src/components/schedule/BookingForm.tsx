@@ -70,7 +70,7 @@ export default function BookingForm() {
             </label>
             <DatePicker
               selected={selectedDate}
-              onChange={(date: Date) => setSelectedDate(date)}
+              onChange={(date: Date | null) => setSelectedDate(date)}
               minDate={new Date()}
               className="w-full px-3 py-2 border rounded-md"
             />
