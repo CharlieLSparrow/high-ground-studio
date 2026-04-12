@@ -15,7 +15,7 @@ function readString(
   const value = data[key];
   return typeof value === "string" ? value : undefined;
 }
-
+ 
 function readStringArray(
   data: Record<string, unknown>,
   key: string,
