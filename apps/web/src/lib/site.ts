@@ -1,7 +1,6 @@
 export const site = {
   title: "High Ground Odyssey",
-  description:
-    "Leadership, legacy, family, and the stories that shape us.",
+  description: "Leadership, legacy, family, and the stories that shape us.",
   social: {
     facebook: "https://www.facebook.com/HighGroundOdyssey",
     instagram: "https://www.instagram.com/highgroundodyssey/",
@@ -26,10 +25,9 @@ export const episodes: Episode[] = [
   {
     title: "Write It Down",
     subtitle: "Preface Pilot",
-    href: "/docs/episodes/write-it-down",
+    href: "/episodes/write-it-down", // <-- Fixed
     youtubeId: "96LN__TA-T8",
-    description:
-      "Scott and Charlie open the journey by explaining why a life is worth writing down, and why legacy begins with telling the truth about your own story.",
+    description: "Scott and Charlie open the journey by explaining why a life is worth writing down, and why legacy begins with telling the truth about your own story.",
     featured: true,
     pairingId: "l2l-preface",
     access: "public",
@@ -39,10 +37,9 @@ export const episodes: Episode[] = [
   {
     title: "Look for Lessons",
     subtitle: "It's a Metaphor!",
-    href: "/docs/episodes/look-for-lessons",
+    href: "/episodes/look-for-lessons", // <-- Fixed
     youtubeId: "7Rn4rV2cLy4",
-    description:
-      "A first lesson in meaning, metaphor, and the discipline of testing the stories we tell against what is actually true.",
+    description: "A first lesson in meaning, metaphor, and the discipline of testing the stories we tell against what is actually true.",
     featured: false,
     pairingId: "l2l-lessons",
     access: "public",
@@ -52,10 +49,9 @@ export const episodes: Episode[] = [
   {
     title: "Know Where You Came From",
     subtitle: "Chub and Jack",
-    href: "/docs/episodes/know-where-you-came-from",
+    href: "/episodes/know-where-you-came-from", // <-- Fixed
     youtubeId: "rf3L1xki_Nk",
-    description:
-      "An episode about ancestry, inherited stories, and the strength that comes from knowing where you came from.",
+    description: "An episode about ancestry, inherited stories, and the strength that comes from knowing where you came from.",
     featured: false,
     pairingId: "l2l-origins",
     access: "public",
