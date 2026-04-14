@@ -8,6 +8,13 @@ import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
 import { source } from "@/lib/source";
 
+// 👈 [Skippy Detail 1]: The Manifest Spell
+// We must explicitly tell Next.js what pages exist at build time. 
+// Without this, the Next.js cache often assumes dynamic routes are 404s.
+export function generateStaticParams() {
+  return source.generateParams();
+}
+
 function readString(
   data: Record<string, unknown>,
   key: string,
@@ -21,19 +28,14 @@ function readStringArray(
   key: string,
 ): string[] {
   const value = data[key];
-
   if (!Array.isArray(value)) return [];
-
   return value.filter((item): item is string => typeof item === "string");
 }
 
 function hrefToSegments(href?: string): string[] | null {
-  // Syncing with your "episodes" rename
   if (!href || !href.startsWith("/episodes/")) return null;
-
   const trimmed = href.replace(/^\/episodes\//, "");
   const segments = trimmed.split("/").filter(Boolean);
-
   return segments.length ? segments : null;
 }
 
@@ -60,7 +62,6 @@ function resolveRelatedContent(
     };
   }
 
-  // FIX 1: Double cast to bypass the Fumadocs type mismatch
   const linkedData = linkedPage.data as unknown as unknown as Record<string, unknown>;
 
   return {
@@ -80,9 +81,42 @@ export default async function Page({
   const segments = slug ?? [];
 
   const page = source.getPage(segments);
-  if (!page) return notFound();
 
-  // FIX 2: Double cast here as well
+  // 🚨 THE HEX DIAGNOSTIC HUD
+  // If the page is missing, we don't fail silently anymore. 
+  // We force Hex to dump its memory banks to the screen.
+  if (!page) {
+    const availablePages = source.getPages().map((p) => p.slugs.join("/"));
+    
+    return (
+      <div className="min-h-screen bg-void p-10 font-mono text-subject">
+        <div className="mx-auto max-w-3xl">
+          <h1 className="mb-4 text-3xl font-bold text-flare">++?????++ Hex Diagnostics</h1>
+          <p className="mb-4 text-xl">The Bouncer could not find the requested file in the archives.</p>
+          <p className="mb-8 text-flare-glow">
+            Requested URL Segments: <span className="font-bold">[{segments.join(", ")}]</span>
+          </p>
+          
+          <div className="rounded-xl border border-white/10 bg-white/5 p-6 shadow-glass">
+            <p className="mb-4 font-bold text-subject-muted">Files currently loaded in Hex's memory:</p>
+            <ul className="space-y-2 pl-5">
+              {availablePages.length === 0 && (
+                <li className="font-bold text-red-400">
+                  (Zero files loaded. The ants inside Fumadocs are on strike. Check source.config.ts)
+                </li>
+              )}
+              {availablePages.map(p => (
+                <li key={p} className="text-subject">
+                  👉 {p || "(root index)"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const pageData = page.data as unknown as unknown as Record<string, unknown>;
   const pathname = `/episodes/${segments.join("/")}`;
 
@@ -93,7 +127,6 @@ export default async function Page({
     if (!accessState.isSignedIn) {
       redirect(buildSignInHref(pathname));
     }
-
     return notFound();
   }
 
