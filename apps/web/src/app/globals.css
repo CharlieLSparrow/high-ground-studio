@@ -1,73 +1,76 @@
 @import "tailwindcss";
 
-:root {
-  --bg-deep: #0d2328;
-  --bg-mid: #16353a;
-  --bg-forest: #2b4a43;
-  --bg-sunset: #7d5b34;
+/* * 🎬 THE CINEMATIC DESIGN SYSTEM 
+ * This creates the native Tailwind classes we will use in Phase 3.
+ */
+@theme {
+  /* 1. The Void (Deep Backgrounds) */
+  --color-void: #051014;
+  --color-void-light: #0A1A20;
 
-  --paper: #f3eadb;
-  --paper-strong: #fffaf4;
+  /* 2. The Flora (Mid-tone Greens for depth) */
+  --color-flora: #16353a;
+  --color-flora-light: #2b4a43;
 
-  --text-dark: #241f1a;
-  --text-soft: #5b5147;
-  --text-light: #f5efe6;
+  /* 3. The Subject (Warm skin-tones / parchment for text & reading) */
+  --color-subject: #F5EFE6;
+  --color-subject-muted: #c8bdae;
+  --color-paper: #EAE0D3;
 
-  --accent: #ff7a18;
-  --accent-soft: #ff9a3d;
+  /* 4. The Flare (Punchy action orange) */
+  --color-flare: #FF7A18;
+  --color-flare-glow: #FF9A3D;
+
+  /* 5. Cinematic Glassmorphism Shadows */
+  --shadow-glass: 0 18px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-glass-glow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 122, 24, 0.2), 0 0 24px rgba(255, 122, 24, 0.15);
 }
 
+/* * 🛠️ CORE RESET & TYPOGRAPHY 
+ */
 html {
   scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  background: var(--paper);
-  color: var(--text-dark);
-  font-family:
-    Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* We ground the entire site in the deep teal void */
+  background-color: var(--color-void);
+  color: var(--color-subject);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  transition:
-    color 160ms ease,
-    opacity 160ms ease,
-    transform 160ms ease,
-    text-shadow 160ms ease;
+  transition: all 160ms ease;
 }
 
+/* * 📜 THE READING LAYER (.prose-hgo) 
+ * Highly legible, warm typography for articles.
+ */
 .prose-hgo {
-  font-size: 1.08rem;
-  line-height: 1.9;
-  color: var(--text-dark);
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--color-subject-muted);
 }
 
 .prose-hgo h1,
 .prose-hgo h2,
 .prose-hgo h3,
 .prose-hgo h4 {
-  color: var(--bg-mid);
+  color: var(--color-subject);
   line-height: 1.1;
   letter-spacing: -0.03em;
   margin-top: 2.2rem;
   margin-bottom: 0.8rem;
 }
 
-.prose-hgo h1 {
-  font-size: 2.3rem;
-}
-
-.prose-hgo h2 {
-  font-size: 1.8rem;
-}
-
-.prose-hgo h3 {
-  font-size: 1.35rem;
-}
+.prose-hgo h1 { font-size: 2.5rem; }
+.prose-hgo h2 { font-size: 1.8rem; }
+.prose-hgo h3 { font-size: 1.35rem; }
 
 .prose-hgo p {
-  margin: 1rem 0;
+  margin: 1.2rem 0;
 }
 
 .prose-hgo ul,
@@ -80,65 +83,49 @@ a {
   margin: 0.45rem 0;
 }
 
+/* The Flare is applied to links to make them pop against the dark reading surfaces */
 .prose-hgo a {
-  color: var(--accent);
+  color: var(--color-flare);
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
 
 .prose-hgo a:hover {
-  color: var(--accent-soft);
+  color: var(--color-flare-glow);
 }
 
 .prose-hgo blockquote {
-  margin: 1.8rem 0;
-  padding: 0.5rem 0 0.5rem 1rem;
-  border-left: 4px solid var(--accent);
-  background: rgba(255, 122, 24, 0.08);
-  color: var(--text-soft);
+  margin: 2rem 0;
+  padding: 0.75rem 0 0.75rem 1.2rem;
+  border-left: 3px solid var(--color-flare);
+  background: color-mix(in srgb, var(--color-flare) 8%, transparent);
+  color: var(--color-subject);
   font-style: italic;
   border-radius: 0 12px 12px 0;
 }
 
 .prose-hgo hr {
   border: none;
-  border-top: 1px solid rgba(32, 32, 32, 0.12);
-  margin: 2rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-subject) 10%, transparent);
+  margin: 2.5rem 0;
 }
 
 .prose-hgo strong {
-  color: #1d1b18;
+  color: var(--color-subject);
+  font-weight: 700;
 }
 
 .prose-hgo code {
-  background: rgba(23, 54, 61, 0.08);
-  padding: 0.15rem 0.35rem;
+  background: color-mix(in srgb, var(--color-void-light) 50%, transparent);
+  padding: 0.2rem 0.4rem;
   border-radius: 6px;
-  font-size: 0.95em;
-}
-
-.prose-hgo h2:first-child {
-  margin-top: 0;
-}
-
-.prose-hgo > *:first-child {
-  margin-top: 0;
-}
-
-.prose-hgo > *:first-child {
-  margin-top: 0;
-}
-
-.prose-hgo h2:first-child {
-  margin-top: 0;
-}
-
-.prose-hgo blockquote strong {
-  color: inherit;
+  font-size: 0.9em;
+  color: var(--color-flare-glow);
 }
 
 .prose-hgo img,
 .prose-hgo iframe {
   max-width: 100%;
   border-radius: 16px;
+  box-shadow: var(--shadow-glass);
 }
