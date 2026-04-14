@@ -1,10 +1,8 @@
-// source.config.ts
 import { defineDocs, defineConfig } from "fumadocs-mdx/config";
-var docs = defineDocs({
-  dir: "content/episodes"
+
+export const docs = defineDocs({
+  // Pointing the engine to the freshly aligned physical folder
+  dir: "content/publish",
 });
-var source_config_default = defineConfig();
-export {
-  source_config_default as default,
-  docs
-};
+
+export default defineConfig();
