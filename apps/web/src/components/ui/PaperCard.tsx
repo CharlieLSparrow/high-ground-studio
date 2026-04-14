@@ -7,7 +7,7 @@ export default function PaperCard({
 }) {
   return (
     <div
-      className={`rounded-[28px] border border-[rgba(32,32,32,0.06)] bg-[var(--paper-strong)] px-[30px] py-10 text-[var(--text-dark)] shadow-[0_24px_70px_rgba(0,0,0,0.16)] ${className}`}
+      className={`rounded-[28px] border border-void/5 bg-paper px-[30px] py-10 text-void shadow-glass ${className}`}
     >
       {children}
     </div>

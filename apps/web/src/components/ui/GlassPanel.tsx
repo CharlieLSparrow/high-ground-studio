@@ -12,11 +12,13 @@ export default function GlassPanel({
   return (
     <div
       className={[
-        "rounded-[28px] border border-white/10 bg-[rgba(10,21,24,0.34)]",
-        "backdrop-blur-[10px]",
-        glow
-          ? "shadow-[0_28px_60px_rgba(0,0,0,0.22)]"
-          : "shadow-[0_18px_40px_rgba(0,0,0,0.18)]",
+        // Deep cinematic background with a blur. 
+        // We use void-light mixed with transparency for that premium lens feel.
+        "rounded-[28px] border bg-void-light/40 backdrop-blur-[12px] transition-all duration-300",
+        // The glow prop toggles between our two standard cinematic shadows
+        glow 
+          ? "border-flare/20 shadow-glass-glow" 
+          : "border-white/5 shadow-glass",
         className,
       ].join(" ")}
     >
