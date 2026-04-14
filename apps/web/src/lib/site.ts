@@ -25,7 +25,7 @@ export const episodes: Episode[] = [
   {
     title: "Write It Down",
     subtitle: "Preface Pilot",
-    href: "/episodes/episodes/write-it-down", // <-- Added the subfolder back
+    href: "/episodes/write-it-down", // <-- Added the subfolder back
     youtubeId: "96LN__TA-T8",
     description: "Scott and Charlie open the journey by explaining why a life is worth writing down, and why legacy begins with telling the truth about your own story.",
     featured: true,
@@ -37,7 +37,7 @@ export const episodes: Episode[] = [
   {
     title: "Look for Lessons",
     subtitle: "It's a Metaphor!",
-    href: "/episodes/episodes/look-for-lessons", // <-- Added the subfolder back
+    href: "/episodes/look-for-lessons", // <-- Added the subfolder back
     youtubeId: "7Rn4rV2cLy4",
     description: "A first lesson in meaning, metaphor, and the discipline of testing the stories we tell against what is actually true.",
     featured: false,
@@ -49,7 +49,7 @@ export const episodes: Episode[] = [
   {
     title: "Know Where You Came From",
     subtitle: "Chub and Jack",
-    href: "/episodes/episodes/know-where-you-came-from", // <-- Added the subfolder back
+    href: "/episodes/know-where-you-came-from", // <-- Added the subfolder back
     youtubeId: "rf3L1xki_Nk",
     description: "An episode about ancestry, inherited stories, and the strength that comes from knowing where you came from.",
     featured: false,
