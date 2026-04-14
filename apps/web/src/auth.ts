@@ -2,7 +2,8 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: process.env.AUTH_SECRET,
+  // 👈 [Skippy Detail]: We explicitly tell it to look at BOTH possible env names.
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET, 
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
