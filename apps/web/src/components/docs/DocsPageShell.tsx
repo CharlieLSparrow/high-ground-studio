@@ -60,7 +60,7 @@ export default function DocsPageShell({
     visibleMetaGroups.length > 0;
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#10282d_0%,#17363d_24%,#284840_60%,#f3eadb_60%,#f3eadb_100%)]">
+    <main className="min-h-screen bg-gradient-to-b from-void via-void-light to-flora-light/20 pb-20 pt-7">
       <PageContainer className="pb-20 pt-7">
         <div className="mb-6">
           <BackLink href="/">
