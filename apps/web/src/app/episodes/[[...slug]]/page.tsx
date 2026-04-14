@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-
 import DocsPageShell from "@/components/docs/DocsPageShell";
 import EpisodePageShell from "@/components/docs/EpisodePageShell";
 import InternalViewNotice from "@/components/docs/InternalViewNotice";
@@ -8,204 +7,50 @@ import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
 import { source } from "@/lib/source";
 
-// 👈 [Skippy Detail 1]: Force Dynamic
-// We rip out generateStaticParams and replace it with this. 
-// This tells Next.js: "Stop trying to cache this! Check the cookies and render it LIVE."
+// Force fresh rendering to pick up new Env Vars and Cookies
 export const dynamic = "force-dynamic";
 
-function readString(
-  data: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = data[key];
-  return typeof value === "string" ? value : undefined;
-}
- 
-function readStringArray(
-  data: Record<string, unknown>,
-  key: string,
-): string[] {
-  const value = data[key];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
-function hrefToSegments(href?: string): string[] | null {
-  if (!href || !href.startsWith("/episodes/")) return null;
-  const trimmed = href.replace(/^\/episodes\//, "");
-  const segments = trimmed.split("/").filter(Boolean);
-  return segments.length ? segments : null;
-}
-
-function resolveRelatedContent(
-  href: string | undefined,
-  eyebrow: string,
-): { eyebrow: string; href: string; title: string; description?: string } | undefined {
-  const segments = hrefToSegments(href);
-  if (!segments || !href) return undefined;
-
-  const linkedPage = source.getPage(segments);
-
-  if (!linkedPage) {
-    const fallbackTitle =
-      segments[segments.length - 1]
-        ?.split("-")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ") ?? "Companion";
-
-    return {
-      eyebrow,
-      href,
-      title: fallbackTitle,
-    };
-  }
-
-  const linkedData = linkedPage.data as unknown as unknown as Record<string, unknown>;
-
-  return {
-    eyebrow,
-    href,
-    title: readString(linkedData, "title") ?? "Companion",
-    description: readString(linkedData, "description"),
-  };
-}
-
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ slug?: string[] }>;
-}) {
+export default async function Page({ params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug } = await params;
   const segments = slug ?? [];
-
   const page = source.getPage(segments);
 
-  // 🚨 THE HEX DIAGNOSTIC HUD (Kept intact just in case)
+  // DIAGNOSTIC HUD: If this appears, the folder path in source.config.ts is wrong
   if (!page) {
-    const availablePages = source.getPages().map((p) => p.slugs.join("/"));
-    
+    const available = source.getPages().map((p) => p.slugs.join("/"));
     return (
       <div className="min-h-screen bg-void p-10 font-mono text-subject">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="mb-4 text-3xl font-bold text-flare">++?????++ Hex Diagnostics</h1>
-          <p className="mb-4 text-xl">The Bouncer could not find the requested file in the archives.</p>
-          <p className="mb-8 text-flare-glow">
-            Requested URL Segments: <span className="font-bold">[{segments.join(", ")}]</span>
-          </p>
-          
-          <div className="rounded-xl border border-white/10 bg-white/5 p-6 shadow-glass">
-            <p className="mb-4 font-bold text-subject-muted">Files currently loaded in Hex's memory:</p>
-            <ul className="space-y-2 pl-5">
-              {availablePages.length === 0 && (
-                <li className="font-bold text-red-400">
-                  (Zero files loaded. The ants inside Fumadocs are on strike. Check source.config.ts)
-                </li>
-              )}
-              {availablePages.map(p => (
-                <li key={p} className="text-subject">
-                  👉 {p || "(root index)"}
-                </li>
-              ))}
-            </ul>
-          </div>
+        <h1 className="text-flare text-2xl font-bold">++?????++ Hex Diagnostic</h1>
+        <p className="mt-4">Hex is looking for: <span className="text-flare-glow">[{segments.join(", ")}]</span></p>
+        <div className="mt-6 border border-white/10 bg-white/5 p-4 rounded-lg">
+          <p className="text-subject-muted mb-2">Files actually found in memory:</p>
+          {available.length === 0 ? <p className="text-red-400">ZERO FILES. Check source.config.ts dir path.</p> : 
+          <ul className="list-disc pl-5">{available.map(s => <li key={s}>{s || "index"}</li>)}</ul>}
         </div>
       </div>
     );
   }
 
-  const pageData = page.data as unknown as unknown as Record<string, unknown>;
-  const pathname = `/episodes/${segments.join("/")}`;
-
-  const access = readString(pageData, "access");
-  const accessState = await resolveContentAccess(access);
-
+  const pageData = page.data as any;
+  const accessState = await resolveContentAccess(pageData.access);
   if (!accessState.allowed) {
-    if (!accessState.isSignedIn) {
-      redirect(buildSignInHref(pathname));
-    }
+    if (!accessState.isSignedIn) redirect(buildSignInHref(`/episodes/${segments.join("/")}`));
     return notFound();
   }
 
-  const cookieStore = await cookies();
-  const mode = accessState.isTeam ? getModeFromCookieStore(cookieStore) : "public";
-
   const MDX = page.data.body;
+  const isEpisode = pageData.youtube || pageData.contentType === "episode";
 
-  const title = readString(pageData, "title") ?? "";
-  const subtitle = readString(pageData, "subtitle");
-  const description = readString(pageData, "description");
-  const contentType = readString(pageData, "contentType");
-  const youtubeId = readString(pageData, "youtube");
-  const featuredQuote = readString(pageData, "featuredQuote");
-  const status = readString(pageData, "status");
-  const views = readStringArray(pageData, "views");
-
-  const pairedReading = resolveRelatedContent(
-    readString(pageData, "pairedReading"),
-    "Paired Reading",
-  );
-
-  const pairedEpisode = resolveRelatedContent(
-    readString(pageData, "pairedEpisode"),
-    "Companion Episode",
-  );
-
-  const themes = readStringArray(pageData, "themes");
-  const motifs = readStringArray(pageData, "motifs");
-  const people = readStringArray(pageData, "people");
-
-  const metaGroups = [
-    { label: "Themes", items: themes },
-    { label: "Motifs", items: motifs },
-    { label: "People", items: people },
-  ];
-
-  const accessLabel = access && access !== "public" ? access : undefined;
-  const statusLabel = status && status !== "published" ? status : undefined;
-
-  const internalNotice = accessState.isTeam ? (
-    <InternalViewNotice
-      mode={mode}
-      access={access}
-      status={status}
-      views={views}
-    />
-  ) : null;
-
-  if (youtubeId || contentType === "episode") {
-    if (!youtubeId) return notFound();
-
+  if (isEpisode) {
     return (
-      <EpisodePageShell
-        title={title}
-        subtitle={subtitle}
-        description={description}
-        youtubeId={youtubeId}
-        featuredQuote={featuredQuote}
-        pairedContent={pairedReading}
-        metaGroups={metaGroups}
-        accessLabel={accessLabel}
-        statusLabel={statusLabel}
-        internalNotice={internalNotice}
-      >
+      <EpisodePageShell title={pageData.title} youtubeId={pageData.youtube} {...pageData}>
         <MDX />
       </EpisodePageShell>
     );
   }
 
   return (
-    <DocsPageShell
-      title={title}
-      subtitle={subtitle}
-      description={description}
-      eyebrow={contentType === "book-section" ? "Book Section" : "Reading"}
-      featuredQuote={featuredQuote}
-      pairedContent={pairedEpisode}
-      metaGroups={metaGroups}
-      accessLabel={accessLabel}
-      statusLabel={statusLabel}
-      internalNotice={internalNotice}
-    >
+    <DocsPageShell title={pageData.title} {...pageData}>
       <MDX />
     </DocsPageShell>
   );

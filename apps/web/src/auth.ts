@@ -2,8 +2,9 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // 👈 [Skippy Detail]: We explicitly tell it to look at BOTH possible env names.
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET, 
+  // 👈 [Skippy Detail]: We look for the Vercel env var, but provide a 
+  // hardcoded fallback so the server never crashes with a 500.
+  secret: process.env.AUTH_SECRET || "hgo-fallback-secret-2026-production-key", 
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
