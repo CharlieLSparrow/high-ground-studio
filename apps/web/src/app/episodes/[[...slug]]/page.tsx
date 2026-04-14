@@ -8,12 +8,10 @@ import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
 import { source } from "@/lib/source";
 
-// 👈 [Skippy Detail 1]: The Manifest Spell
-// We must explicitly tell Next.js what pages exist at build time. 
-// Without this, the Next.js cache often assumes dynamic routes are 404s.
-export function generateStaticParams() {
-  return source.generateParams();
-}
+// 👈 [Skippy Detail 1]: Force Dynamic
+// We rip out generateStaticParams and replace it with this. 
+// This tells Next.js: "Stop trying to cache this! Check the cookies and render it LIVE."
+export const dynamic = "force-dynamic";
 
 function readString(
   data: Record<string, unknown>,
@@ -82,9 +80,7 @@ export default async function Page({
 
   const page = source.getPage(segments);
 
-  // 🚨 THE HEX DIAGNOSTIC HUD
-  // If the page is missing, we don't fail silently anymore. 
-  // We force Hex to dump its memory banks to the screen.
+  // 🚨 THE HEX DIAGNOSTIC HUD (Kept intact just in case)
   if (!page) {
     const availablePages = source.getPages().map((p) => p.slugs.join("/"));
     
