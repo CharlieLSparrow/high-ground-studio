@@ -1,8 +1,11 @@
+// source.config.ts
 import { defineDocs, defineConfig } from "fumadocs-mdx/config";
-
-export const docs = defineDocs({
-  // Pointing the engine to the freshly aligned physical folder
-  dir: "content/publish",
+var docs = defineDocs({
+  // This MUST match the folder name you see in your VS Code sidebar
+  dir: "content/publish"
 });
-
-export default defineConfig();
+var source_config_default = defineConfig();
+export {
+  source_config_default as default,
+  docs
+};
