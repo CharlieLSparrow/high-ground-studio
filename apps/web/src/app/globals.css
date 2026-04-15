@@ -130,16 +130,6 @@ a {
   box-shadow: var(--shadow-glass);
 }
 
-@keyframes slow-pan {
-  0% { transform: scale(1) translate(0, 0); }
-  50% { transform: scale(1.1) translate(-1%, -1%); }
-  100% { transform: scale(1) translate(0, 0); }
-}
-
-.animate-slow-pan {
-  animation: slow-pan 20s ease-in-out infinite;
-}
-
 @keyframes breathe {
   0%, 100% { opacity: 0.3; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.03); }
@@ -147,4 +137,15 @@ a {
 
 .animate-breathe {
   animation: breathe 10s ease-in-out infinite;
+}
+
+@keyframes slow-pan {
+  0% { transform: scale(1) translate(0, 0); }
+  50% { transform: scale(1.1) translate(-1%, -1%); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+
+.animate-slow-pan {
+  /* 20 seconds for a full cycle makes it feel cinematic, not dizzying */
+  animation: slow-pan 20s ease-in-out infinite;
 }
