@@ -8,13 +8,17 @@
     "start": "next start"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.7.0",
+    "@prisma/client": "^7.7.0",
     "@types/mdx": "^2.0.13",
     "fumadocs-core": "^16.6.9",
     "fumadocs-mdx": "^14.2.9",
     "lucide-react": "^0.577.0",
     "next": "latest",
     "next-auth": "5.0.0-beta.30",
+    "pg": "^8.20.0",
     "react": "latest",
+    "react-datepicker": "^9.1.0",
     "react-dom": "latest"
   },
   "devDependencies": {

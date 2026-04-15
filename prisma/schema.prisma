@@ -3,27 +3,156 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+}
+
+enum AppRole {
+  OWNER
+  STAFF_SCHEDULER
+  COACH
+  CLIENT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  PAUSED
+  CANCELED
+  EXPIRED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+enum AppointmentLocationType {
+  VIDEO
+  PHONE
+  IN_PERSON
+  OTHER
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String?
-  image        String?
-  created      DateTime      @default(now())
-  updated      DateTime      @updatedAt
-  appointments Appointment[]
+  id                  String        @id @default(cuid())
+  primaryEmail        String        @unique
+  name                String?
+  image               String?
+  newsletterOptIn     Boolean       @default(false)
+  announcementsOptIn  Boolean       @default(false)
+  isActive            Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  aliases             UserEmail[]
+  roles               UserRole[]
+  clientProfile       ClientProfile?
+  memberships         Membership[]  @relation("MembershipUser")
+
+  clientAppointments  Appointment[] @relation("AppointmentClient")
+  coachAppointments   Appointment[] @relation("AppointmentCoach")
+  appointmentsCreated Appointment[] @relation("AppointmentCreatedBy")
+  appointmentsUpdated Appointment[] @relation("AppointmentUpdatedBy")
+
+  membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
+}
+
+model UserEmail {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  role      AppRole
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([role])
+}
+
+model ClientProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  displayName String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MembershipPlan {
+  id                    String       @id @default(cuid())
+  name                  String
+  slug                  String       @unique
+  description           String?
+  priceCents            Int?
+  billingIntervalMonths Int?
+  isActive              Boolean      @default(true)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  memberships           Membership[]
+}
+
+model Membership {
+  id              String           @id @default(cuid())
+  userId          String
+  planId          String
+  status          MembershipStatus @default(ACTIVE)
+  startsAt        DateTime         @default(now())
+  endsAt          DateTime?
+  grantedByUserId String?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  user            User             @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  plan            MembershipPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  grantedBy       User?            @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([planId])
 }
 
 model Appointment {
-  id              String   @id @default(uuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  clientName      String
-  appointmentDate DateTime
-  status          String   @default("PENDING")
-  googleEventId   String?  @unique
+  id              String                  @id @default(cuid())
+  clientUserId    String
+  coachUserId     String?
+  createdByUserId String
+  updatedByUserId String?
+  scheduledStart  DateTime
+  scheduledEnd    DateTime
+  timezone        String                  @default("America/Denver")
+  status          AppointmentStatus       @default(SCHEDULED)
+  locationType    AppointmentLocationType @default(VIDEO)
+  locationDetails String?
+  notes           String?
+  clientNotes     String?
+  googleEventId   String?                 @unique
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
-  @@index([userId])
+  clientUser      User                    @relation("AppointmentClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  coachUser       User?                   @relation("AppointmentCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
+  createdByUser   User                    @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUser   User?                   @relation("AppointmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientUserId, scheduledStart])
+  @@index([coachUserId, scheduledStart])
+  @@index([status, scheduledStart])
 }

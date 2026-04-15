@@ -1,9 +1,7 @@
 import { auth } from "@/auth";
-import type { Session } from "next-auth"; // 👈 [Skippy Detail 1]: We bring in the explicit type here.
-
-// ------------------------------------------------------------------
-// 1. Core Types
-// ------------------------------------------------------------------
+import { canAccessInternalContent } from "@/lib/authz";
+import type { AppRole } from "@prisma/client";
+import type { Session } from "next-auth";
 
 export type AccessLevel = "public" | "team" | "private" | "members";
 
@@ -11,20 +9,14 @@ export type TeamAccessState = {
   isSignedIn: boolean;
   isTeam: boolean;
   email: string | null;
-  // 👈 [Skippy Detail 2]: We drop the "ReturnType" gymnastics and explicitly declare this as a Session.
-  // This completely vaporizes the "NextMiddleware" build error.
-  session: Session | null; 
+  roles: AppRole[];
+  session: Session | null;
 };
 
 type AccessResolution = TeamAccessState & {
   access: AccessLevel;
   allowed: boolean;
 };
-
-// ------------------------------------------------------------------
-// 2. Pure Utility Functions 
-// (These are great because they don't rely on async/await or databases)
-// ------------------------------------------------------------------
 
 function normalizeAccess(access?: string): AccessLevel {
   const value = access?.toLowerCase();
@@ -36,41 +28,19 @@ function normalizeAccess(access?: string): AccessLevel {
   return "public";
 }
 
-function normalizeCsvList(value?: string): string[] {
-  // 👈 [Skippy Detail 3]: Filtering by `Boolean` at the end removes empty strings 
-  // in case your .env variable has trailing commas (e.g., "joe@test.com,,"). Smart move.
-  return (value ?? "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-export function getAllowedTeamEmails(): string[] {
-  // Pulls the list of VIPs from the environment variables.
-  return normalizeCsvList(process.env.SKIPPY_ALLOWED_EMAILS);
-}
-
-// ------------------------------------------------------------------
-// 3. Core Async Logic
-// ------------------------------------------------------------------
-
 export async function resolveTeamAccess(): Promise<TeamAccessState> {
-  // Call the chimera function. Because we are in an async server context, 
-  // we know this actually returns a Session (or null).
-  const session = await auth(); 
-  
-  // Safely extract the email. The `?.` (optional chaining) ensures it doesn't crash if user is null.
+  const session = await auth();
   const email = session?.user?.email?.toLowerCase() ?? null;
+  const roles = Array.isArray(session?.user?.roles) ? session.user.roles : [];
   const isSignedIn = Boolean(session?.user);
-  
-  // Check if the current user's email is in the VIP list
-  const isTeam = email ? getAllowedTeamEmails().includes(email) : false;
+  const isTeam = canAccessInternalContent(roles);
 
   return {
     isSignedIn,
     isTeam,
     email,
-    session, // This maps perfectly to `Session | null` now.
+    roles,
+    session,
   };
 }
 
@@ -79,7 +49,6 @@ export async function resolveContentAccess(
 ): Promise<AccessResolution> {
   const normalizedAccess = normalizeAccess(access);
 
-  // Fast-path out if it's public. No need to query the auth server.
   if (normalizedAccess === "public") {
     return {
       access: normalizedAccess,
@@ -87,24 +56,22 @@ export async function resolveContentAccess(
       isSignedIn: false,
       isTeam: false,
       email: null,
+      roles: [],
       session: null,
     };
   }
 
-  // If it's not public, we hit the auth server to get their credentials.
   const teamAccess = await resolveTeamAccess();
 
   let allowed = false;
 
-  // 👈 [Skippy Detail 4]: This switch statement is incredibly clean. 
-  // It handles the cascading permission levels perfectly.
   switch (normalizedAccess) {
     case "members":
-      allowed = teamAccess.isSignedIn; // Any logged-in user
+      allowed = teamAccess.isSignedIn;
       break;
     case "team":
     case "private":
-      allowed = teamAccess.isTeam; // Only VIPs listed in the .env
+      allowed = teamAccess.isTeam;
       break;
     default:
       allowed = false;
@@ -122,6 +89,5 @@ export function buildSignInHref(callbackPath: string): string {
     ? callbackPath
     : `/${callbackPath}`;
 
-  // Ensures users are redirected exactly back to the page they hit a wall on.
   return `/api/auth/signin?callbackUrl=${encodeURIComponent(normalized)}`;
 }
