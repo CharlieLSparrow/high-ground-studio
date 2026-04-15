@@ -13,10 +13,13 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set.");
 }
 
+// 👈 SHADOW DIRECTOR TWEAK: Adding connection limits for Serverless stability
 const pool =
   globalForPrisma.pgPool ??
   new Pool({
     connectionString,
+    max: 20, // Max number of connections in the pool
+    idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
   });
 
 const adapter = new PrismaPg(pool);

@@ -1,8 +1,8 @@
 import type { AppRole } from "@prisma/client";
 
-export const STAFF_ROLES: readonly AppRole[] = [
+export const TEAM_ROLES: readonly AppRole[] = [
   "OWNER",
-  "STAFF_SCHEDULER",
+  "TEAM_SCHEDULER",
   "COACH",
 ];
 
@@ -23,23 +23,23 @@ export function hasAnyRole(
 export function canAccessInternalContent(
   roles: AppRole[] | undefined | null,
 ): boolean {
-  return hasAnyRole(roles, STAFF_ROLES);
+  return hasAnyRole(roles, TEAM_ROLES);
 }
 
 export function canManageClients(
   roles: AppRole[] | undefined | null,
 ): boolean {
-  return hasAnyRole(roles, STAFF_ROLES);
+  return hasAnyRole(roles, TEAM_ROLES);
 }
 
 export function canManageAppointments(
   roles: AppRole[] | undefined | null,
 ): boolean {
-  return hasAnyRole(roles, STAFF_ROLES);
+  return hasAnyRole(roles, TEAM_ROLES);
 }
 
 export function canManageMemberships(
   roles: AppRole[] | undefined | null,
 ): boolean {
-  return hasAnyRole(roles, ["OWNER", "STAFF_SCHEDULER"]);
+  return hasAnyRole(roles, ["OWNER", "TEAM_SCHEDULER"]);
 }

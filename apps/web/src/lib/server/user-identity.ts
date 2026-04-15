@@ -63,11 +63,11 @@ function getBootstrapRolesForEmail(email: string): AppRole[] {
   }
 
   if (
-    parseEmailList(process.env.HGO_STAFF_SCHEDULER_EMAILS).includes(
+    parseEmailList(process.env.HGO_TEAM_SCHEDULER_EMAILS).includes(
       normalizedEmail,
     )
   ) {
-    roles.add("STAFF_SCHEDULER");
+    roles.add("TEAM_SCHEDULER");
   }
 
   if (parseEmailList(process.env.HGO_COACH_EMAILS).includes(normalizedEmail)) {
