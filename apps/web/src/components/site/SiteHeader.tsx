@@ -11,6 +11,7 @@ export default async function SiteHeader() {
   const session = await auth();
   const roles = Array.isArray(session?.user?.roles) ? session.user.roles : [];
   const showTeamLink = canAccessInternalContent(roles);
+  const showDashboardLink = Boolean(session?.user);
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[rgba(10,21,24,0.55)] backdrop-blur-[14px]">
@@ -30,6 +31,15 @@ export default async function SiteHeader() {
             >
               Library
             </Link>
+
+            {showDashboardLink ? (
+              <Link
+                href="/dashboard"
+                className="text-sm font-semibold text-[rgba(245,239,230,0.84)] no-underline transition hover:text-[var(--accent)]"
+              >
+                Dashboard
+              </Link>
+            ) : null}
 
             {showTeamLink ? (
               <Link
