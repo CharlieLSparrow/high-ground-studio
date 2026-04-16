@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "prisma generate",
     "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
     "web": "pnpm --filter web dev",
     "engine:build": "pnpm --filter @high-ground/motion-engine build",
