@@ -90,28 +90,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async session({ session, token }) {
-      if (!session.user) {
-        session.user = {
-          name: null,
-          email: null,
-          image: null,
-        };
-      }
+      const baseUser = session.user ?? {
+        name: null,
+        email: "",
+        image: null,
+      };
 
-      session.user.id =
-        typeof token.appUserId === "string" ? token.appUserId : "";
-      session.user.email =
-        typeof token.email === "string" ? token.email : session.user.email;
-      session.user.primaryEmail =
-        typeof token.primaryEmail === "string"
-          ? token.primaryEmail
-          : typeof token.email === "string"
+      session.user = {
+        ...baseUser,
+        emailVerified: null,
+        email:
+          typeof token.email === "string"
             ? token.email
-            : "";
-      session.user.roles = Array.isArray(token.roles) ? token.roles : [];
-      session.user.isStaff = Boolean(token.isStaff);
-      session.user.newsletterOptIn = Boolean(token.newsletterOptIn);
-      session.user.announcementsOptIn = Boolean(token.announcementsOptIn);
+            : typeof baseUser.email === "string"
+              ? baseUser.email
+              : "",
+        id: typeof token.appUserId === "string" ? token.appUserId : "",
+        primaryEmail:
+          typeof token.primaryEmail === "string"
+            ? token.primaryEmail
+            : typeof token.email === "string"
+              ? token.email
+              : "",
+        roles: Array.isArray(token.roles) ? token.roles : [],
+        isStaff: Boolean(token.isStaff),
+        newsletterOptIn: Boolean(token.newsletterOptIn),
+        announcementsOptIn: Boolean(token.announcementsOptIn),
+      };
 
       return session;
     },
