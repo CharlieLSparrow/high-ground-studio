@@ -75,8 +75,10 @@ export default async function TeamClientsPage({
   });
 
   type ClientProfileItem = (typeof clientProfiles)[number];
-  type RoleLabel = ClientProfileItem["user"]["roles"][number]["role"];
-  type AliasEmail = ClientProfileItem["user"]["aliases"][number]["email"];
+  type AliasItem = ClientProfileItem["user"]["aliases"][number];
+  type RoleItem = ClientProfileItem["user"]["roles"][number];
+  type RoleLabel = RoleItem["role"];
+  type AliasEmail = AliasItem["email"];
 
   return (
     <section className="grid gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
@@ -215,10 +217,10 @@ export default async function TeamClientsPage({
                 const user = profile.user;
                 const activeMembership = user.memberships[0] ?? null;
                 const aliasEmails = user.aliases.map(
-                  (alias): AliasEmail => alias.email,
+                  (alias: AliasItem): AliasEmail => alias.email,
                 );
                 const roleLabels = user.roles.map(
-                  (role): RoleLabel => role.role,
+                  (role: RoleItem): RoleLabel => role.role,
                 );
 
                 return (
