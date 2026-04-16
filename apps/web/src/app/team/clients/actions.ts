@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { canManageClients } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
 import { upsertPreprovisionedUser } from "@/lib/server/user-identity";
 
 function parseAliasEmails(rawValue: string): string[] {
@@ -19,7 +20,7 @@ function buildClientsRedirect(params: Record<string, string>) {
   return `/team/clients?${search.toString()}`;
 }
 
-export async function createClientAction(formData: FormData) {
+async function requireTeamClientAccess() {
   const session = await auth();
 
   if (!session?.user) {
@@ -31,6 +32,12 @@ export async function createClientAction(formData: FormData) {
   if (!canManageClients(roles)) {
     redirect("/");
   }
+
+  return session;
+}
+
+export async function createClientAction(formData: FormData) {
+  await requireTeamClientAccess();
 
   const primaryEmail = String(formData.get("primaryEmail") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -69,6 +76,77 @@ export async function createClientAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to save client.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
+export async function promoteUserToClientAction(formData: FormData) {
+  await requireTeamClientAccess();
+
+  const userId = String(formData.get("userId") ?? "").trim();
+
+  if (!userId) {
+    redirect(
+      buildClientsRedirect({
+        error: "Missing user id.",
+      }),
+    );
+  }
+
+  try {
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roles: true,
+        clientProfile: true,
+      },
+    });
+
+    if (!existingUser) {
+      redirect(
+        buildClientsRedirect({
+          error: "User not found.",
+        }),
+      );
+    }
+
+    const hasClientRole = existingUser.roles.some((role) => role.role === "CLIENT");
+
+    await prisma.$transaction(async (tx) => {
+      if (!hasClientRole) {
+        await tx.userRole.create({
+          data: {
+            userId: existingUser.id,
+            role: "CLIENT",
+          },
+        });
+      }
+
+      if (!existingUser.clientProfile) {
+        await tx.clientProfile.create({
+          data: {
+            userId: existingUser.id,
+            displayName: existingUser.name || existingUser.primaryEmail,
+          },
+        });
+      }
+    });
+
+    revalidatePath("/team/clients");
+
+    redirect(
+      buildClientsRedirect({
+        success: `Promoted ${existingUser.primaryEmail} to client.`,
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to promote user.";
 
     redirect(
       buildClientsRedirect({
