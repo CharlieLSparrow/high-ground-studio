@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
-import { canManageClients } from "@/lib/authz";
+import { canManageClients, canManageMemberships } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { upsertPreprovisionedUser } from "@/lib/server/user-identity";
 
@@ -30,6 +30,22 @@ async function requireTeamClientAccess() {
   const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
 
   if (!canManageClients(roles)) {
+    redirect("/");
+  }
+
+  return session;
+}
+
+async function requireMembershipAccess() {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/api/auth/signin?callbackUrl=%2Fteam%2Fclients");
+  }
+
+  const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
+
+  if (!canManageMemberships(roles)) {
     redirect("/");
   }
 
@@ -147,6 +163,178 @@ export async function promoteUserToClientAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to promote user.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
+export async function seedMembershipPlansAction() {
+  await requireMembershipAccess();
+
+  try {
+    const existingCount = await prisma.membershipPlan.count();
+
+    if (existingCount === 0) {
+      await prisma.membershipPlan.createMany({
+        data: [
+          {
+            name: "Coaching Monthly",
+            slug: "coaching-monthly",
+            description: "Standard monthly coaching membership",
+            priceCents: 15000,
+            billingIntervalMonths: 1,
+            isActive: true,
+          },
+          {
+            name: "Coaching Quarterly",
+            slug: "coaching-quarterly",
+            description: "Quarterly coaching membership",
+            priceCents: 42000,
+            billingIntervalMonths: 3,
+            isActive: true,
+          },
+        ],
+      });
+    }
+
+    revalidatePath("/team/clients");
+
+    redirect(
+      buildClientsRedirect({
+        success: "Membership plans are ready.",
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to seed plans.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
+export async function grantMembershipAction(formData: FormData) {
+  const session = await requireMembershipAccess();
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  const planId = String(formData.get("planId") ?? "").trim();
+  const startsAtRaw = String(formData.get("startsAt") ?? "").trim();
+  const endsAtRaw = String(formData.get("endsAt") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!userId || !planId) {
+    redirect(
+      buildClientsRedirect({
+        error: "Missing membership data.",
+      }),
+    );
+  }
+
+  const startsAt = startsAtRaw ? new Date(startsAtRaw) : new Date();
+  const endsAt = endsAtRaw ? new Date(endsAtRaw) : null;
+
+  if (Number.isNaN(startsAt.getTime())) {
+    redirect(
+      buildClientsRedirect({
+        error: "Invalid membership start date.",
+      }),
+    );
+  }
+
+  if (endsAt && Number.isNaN(endsAt.getTime())) {
+    redirect(
+      buildClientsRedirect({
+        error: "Invalid membership end date.",
+      }),
+    );
+  }
+
+  try {
+    await prisma.membership.create({
+      data: {
+        userId,
+        planId,
+        status: "ACTIVE",
+        startsAt,
+        endsAt,
+        grantedByUserId: session.user.id,
+        notes: notes || null,
+      },
+    });
+
+    revalidatePath("/team/clients");
+
+    redirect(
+      buildClientsRedirect({
+        success: "Membership granted.",
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to grant membership.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
+export async function updateMembershipStatusAction(formData: FormData) {
+  await requireMembershipAccess();
+
+  const membershipId = String(formData.get("membershipId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+
+  if (!membershipId) {
+    redirect(
+      buildClientsRedirect({
+        error: "Missing membership id.",
+      }),
+    );
+  }
+
+  if (
+    status !== "ACTIVE" &&
+    status !== "PAUSED" &&
+    status !== "CANCELED" &&
+    status !== "EXPIRED"
+  ) {
+    redirect(
+      buildClientsRedirect({
+        error: "Invalid membership status.",
+      }),
+    );
+  }
+
+  try {
+    await prisma.membership.update({
+      where: {
+        id: membershipId,
+      },
+      data: {
+        status,
+      },
+    });
+
+    revalidatePath("/team/clients");
+
+    redirect(
+      buildClientsRedirect({
+        success: `Membership marked ${status.toLowerCase()}.`,
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update membership.";
 
     redirect(
       buildClientsRedirect({

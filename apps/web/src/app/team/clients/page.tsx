@@ -2,7 +2,13 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { prisma } from "@/lib/prisma";
 
-import { createClientAction, promoteUserToClientAction } from "./actions";
+import {
+  createClientAction,
+  grantMembershipAction,
+  promoteUserToClientAction,
+  seedMembershipPlansAction,
+  updateMembershipStatusAction,
+} from "./actions";
 
 type SearchParams = Promise<{
   success?: string;
@@ -37,6 +43,13 @@ function StatusMessage({
   );
 }
 
+function formatDateInput(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default async function TeamClientsPage({
   searchParams,
 }: {
@@ -44,7 +57,7 @@ export default async function TeamClientsPage({
 }) {
   const { success, error } = await searchParams;
 
-  const [clientProfiles, signedInUsers] = await Promise.all([
+  const [clientProfiles, signedInUsers, membershipPlans] = await Promise.all([
     prisma.clientProfile.findMany({
       orderBy: [{ updatedAt: "desc" }],
       include: {
@@ -57,9 +70,6 @@ export default async function TeamClientsPage({
               orderBy: [{ role: "asc" }],
             },
             memberships: {
-              where: {
-                status: "ACTIVE",
-              },
               include: {
                 plan: true,
               },
@@ -88,17 +98,26 @@ export default async function TeamClientsPage({
         },
       },
     }),
+    prisma.membershipPlan.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: [{ name: "asc" }],
+    }),
   ]);
 
   type ClientProfileItem = (typeof clientProfiles)[number];
   type AliasItem = ClientProfileItem["user"]["aliases"][number];
   type RoleItem = ClientProfileItem["user"]["roles"][number];
+  type MembershipItem = ClientProfileItem["user"]["memberships"][number];
   type RoleLabel = RoleItem["role"];
   type AliasEmail = AliasItem["email"];
 
   type SignedInUserItem = (typeof signedInUsers)[number];
   type SignedInRoleItem = SignedInUserItem["roles"][number];
   type SignedInAliasItem = SignedInUserItem["aliases"][number];
+
+  const today = formatDateInput(new Date());
 
   return (
     <section className="space-y-8">
@@ -213,6 +232,56 @@ export default async function TeamClientsPage({
         <div>
           <StatusMessage success={success} error={error} />
 
+          <GlassPanel className="mb-8 p-6 text-[var(--text-light)]">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <PageEyebrow>Plans</PageEyebrow>
+                <h2 className="m-0 text-[1.3rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                  Membership plans
+                </h2>
+              </div>
+
+              <div className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-[rgba(245,239,230,0.88)]">
+                {membershipPlans.length} active
+              </div>
+            </div>
+
+            {membershipPlans.length === 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-dashed border-white/10 bg-white/4 px-5 py-6 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">
+                  No active membership plans yet. Seed a couple sensible defaults
+                  so the team can start assigning access without inventing plan
+                  names from memory every time.
+                </div>
+
+                <form action={seedMembershipPlansAction}>
+                  <button
+                    type="submit"
+                    className="rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
+                  >
+                    Create default plans
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {membershipPlans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-[rgba(245,239,230,0.9)]"
+                  >
+                    <strong>{plan.name}</strong>
+                    <div className="mt-1 text-[rgba(245,239,230,0.75)]">
+                      {plan.billingIntervalMonths
+                        ? `Every ${plan.billingIntervalMonths} month(s)`
+                        : "No interval set"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassPanel>
+
           <GlassPanel className="p-6 text-[var(--text-light)]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -236,13 +305,13 @@ export default async function TeamClientsPage({
               <div className="space-y-4">
                 {clientProfiles.map((profile: ClientProfileItem) => {
                   const user = profile.user;
-                  const activeMembership = user.memberships[0] ?? null;
                   const aliasEmails = user.aliases.map(
                     (alias: AliasItem): AliasEmail => alias.email,
                   );
                   const roleLabels = user.roles.map(
                     (role: RoleItem): RoleLabel => role.role,
                   );
+                  const latestMembership = user.memberships[0] ?? null;
 
                   return (
                     <div
@@ -294,7 +363,7 @@ export default async function TeamClientsPage({
                         </div>
                       ) : null}
 
-                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div className="mt-4 grid gap-4 xl:grid-cols-3">
                         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                           <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
                             Marketing
@@ -318,29 +387,146 @@ export default async function TeamClientsPage({
 
                         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                           <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                            Membership
+                            Current membership
                           </div>
 
                           <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
-                            {activeMembership ? (
+                            {latestMembership ? (
                               <>
                                 <div>
-                                  Active plan:{" "}
-                                  <strong>{activeMembership.plan.name}</strong>
+                                  Plan: <strong>{latestMembership.plan.name}</strong>
+                                </div>
+                                <div>
+                                  Status:{" "}
+                                  <strong>{latestMembership.status}</strong>
                                 </div>
                                 <div>
                                   Started:{" "}
                                   <strong>
-                                    {activeMembership.startsAt.toLocaleDateString()}
+                                    {latestMembership.startsAt.toLocaleDateString()}
                                   </strong>
                                 </div>
                               </>
                             ) : (
-                              <div>No active membership yet</div>
+                              <div>No membership yet</div>
                             )}
                           </div>
                         </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                            Grant membership
+                          </div>
+
+                          {membershipPlans.length === 0 ? (
+                            <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                              Create plans first.
+                            </div>
+                          ) : (
+                            <form action={grantMembershipAction} className="space-y-3">
+                              <input type="hidden" name="userId" value={user.id} />
+
+                              <select
+                                name="planId"
+                                required
+                                defaultValue=""
+                                className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                              >
+                                <option value="" disabled className="text-black">
+                                  Select a plan
+                                </option>
+                                {membershipPlans.map((plan) => (
+                                  <option key={plan.id} value={plan.id} className="text-black">
+                                    {plan.name}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <input
+                                name="startsAt"
+                                type="date"
+                                defaultValue={today}
+                                className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                              />
+
+                              <input
+                                name="endsAt"
+                                type="date"
+                                className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                              />
+
+                              <textarea
+                                name="notes"
+                                rows={2}
+                                placeholder="Optional membership notes"
+                                className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                              />
+
+                              <button
+                                type="submit"
+                                className="rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
+                              >
+                                Grant
+                              </button>
+                            </form>
+                          )}
+                        </div>
                       </div>
+
+                      {latestMembership ? (
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          {latestMembership.status !== "ACTIVE" ? (
+                            <form action={updateMembershipStatusAction}>
+                              <input
+                                type="hidden"
+                                name="membershipId"
+                                value={latestMembership.id}
+                              />
+                              <input type="hidden" name="status" value="ACTIVE" />
+                              <button
+                                type="submit"
+                                className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-emerald-100 transition hover:bg-emerald-400/20"
+                              >
+                                Mark active
+                              </button>
+                            </form>
+                          ) : null}
+
+                          {latestMembership.status !== "PAUSED" ? (
+                            <form action={updateMembershipStatusAction}>
+                              <input
+                                type="hidden"
+                                name="membershipId"
+                                value={latestMembership.id}
+                              />
+                              <input type="hidden" name="status" value="PAUSED" />
+                              <button
+                                type="submit"
+                                className="rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-amber-100 transition hover:bg-amber-400/20"
+                              >
+                                Pause
+                              </button>
+                            </form>
+                          ) : null}
+
+                          {latestMembership.status !== "CANCELED" ? (
+                            <form action={updateMembershipStatusAction}>
+                              <input
+                                type="hidden"
+                                name="membershipId"
+                                value={latestMembership.id}
+                              />
+                              <input type="hidden" name="status" value="CANCELED" />
+                              <button
+                                type="submit"
+                                className="rounded-full border border-red-400/30 bg-red-400/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-red-100 transition hover:bg-red-400/20"
+                              >
+                                Cancel
+                              </button>
+                            </form>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       {profile.notes ? (
                         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -349,6 +535,24 @@ export default async function TeamClientsPage({
                           </div>
                           <div className="text-sm leading-7 text-[rgba(245,239,230,0.88)]">
                             {profile.notes}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {user.memberships.length > 1 ? (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                            Membership history
+                          </div>
+
+                          <div className="space-y-2 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                            {user.memberships.map((membership: MembershipItem) => (
+                              <div key={membership.id}>
+                                <strong>{membership.plan.name}</strong> —{" "}
+                                {membership.status} —{" "}
+                                {membership.startsAt.toLocaleDateString()}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       ) : null}
