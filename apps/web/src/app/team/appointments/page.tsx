@@ -2,7 +2,12 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { prisma } from "@/lib/prisma";
 
-import { createAppointmentAction } from "./actions";
+import {
+  cancelAppointmentAction,
+  completeAppointmentAction,
+  createAppointmentAction,
+  updateAppointmentAction,
+} from "./actions";
 
 type SearchParams = Promise<{
   success?: string;
@@ -73,7 +78,7 @@ export default async function TeamAppointmentsPage({
     }),
     prisma.appointment.findMany({
       orderBy: [{ scheduledStart: "asc" }],
-      take: 25,
+      take: 50,
       include: {
         clientUser: true,
         coachUser: true,
@@ -321,50 +326,221 @@ export default async function TeamAppointmentsPage({
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                        Coach
-                      </div>
-                      <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
-                        {appointment.coachUser?.name ||
-                          appointment.coachUser?.primaryEmail ||
-                          "Unassigned"}
-                      </div>
-                    </div>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    <form action={updateAppointmentAction} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                      <input type="hidden" name="appointmentId" value={appointment.id} />
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                        Created by
+                      <div className="text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                        Edit appointment
                       </div>
-                      <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
-                        {appointment.createdByUser.name ||
-                          appointment.createdByUser.primaryEmail}
+
+                      <div>
+                        <label
+                          htmlFor={`coach-${appointment.id}`}
+                          className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                        >
+                          Coach
+                        </label>
+                        <select
+                          id={`coach-${appointment.id}`}
+                          name="coachUserId"
+                          defaultValue={appointment.coachUserId ?? ""}
+                          className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                        >
+                          <option value="" className="text-black">
+                            Unassigned
+                          </option>
+                          {coaches.map((coach) => (
+                            <option key={coach.id} value={coach.id} className="text-black">
+                              {coach.name || coach.primaryEmail}
+                            </option>
+                          ))}
+                        </select>
                       </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <label
+                            htmlFor={`start-${appointment.id}`}
+                            className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                          >
+                            Start
+                          </label>
+                          <input
+                            id={`start-${appointment.id}`}
+                            name="scheduledStart"
+                            type="datetime-local"
+                            required
+                            defaultValue={formatLocalDateTime(appointment.scheduledStart)}
+                            className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label
+                            htmlFor={`end-${appointment.id}`}
+                            className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                          >
+                            End
+                          </label>
+                          <input
+                            id={`end-${appointment.id}`}
+                            name="scheduledEnd"
+                            type="datetime-local"
+                            required
+                            defaultValue={formatLocalDateTime(appointment.scheduledEnd)}
+                            className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`timezone-${appointment.id}`}
+                          className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                        >
+                          Time zone
+                        </label>
+                        <input
+                          id={`timezone-${appointment.id}`}
+                          name="timezone"
+                          type="text"
+                          defaultValue={appointment.timezone}
+                          className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`location-type-${appointment.id}`}
+                          className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                        >
+                          Location type
+                        </label>
+                        <select
+                          id={`location-type-${appointment.id}`}
+                          name="locationType"
+                          defaultValue={appointment.locationType}
+                          className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                        >
+                          <option value="VIDEO" className="text-black">Video</option>
+                          <option value="PHONE" className="text-black">Phone</option>
+                          <option value="IN_PERSON" className="text-black">In person</option>
+                          <option value="OTHER" className="text-black">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`location-details-${appointment.id}`}
+                          className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                        >
+                          Location details
+                        </label>
+                        <input
+                          id={`location-details-${appointment.id}`}
+                          name="locationDetails"
+                          type="text"
+                          defaultValue={appointment.locationDetails ?? ""}
+                          className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor={`notes-${appointment.id}`}
+                          className="mb-1 block text-xs font-semibold text-[rgba(245,239,230,0.82)]"
+                        >
+                          Notes
+                        </label>
+                        <textarea
+                          id={`notes-${appointment.id}`}
+                          name="notes"
+                          rows={3}
+                          defaultValue={appointment.notes ?? ""}
+                          className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
+                      >
+                        Save changes
+                      </button>
+                    </form>
+
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                          Coach
+                        </div>
+                        <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                          {appointment.coachUser?.name ||
+                            appointment.coachUser?.primaryEmail ||
+                            "Unassigned"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                          Created by
+                        </div>
+                        <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                          {appointment.createdByUser.name ||
+                            appointment.createdByUser.primaryEmail}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        {appointment.status !== "CANCELED" ? (
+                          <form action={cancelAppointmentAction}>
+                            <input type="hidden" name="appointmentId" value={appointment.id} />
+                            <button
+                              type="submit"
+                              className="rounded-full border border-red-400/30 bg-red-400/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-red-100 transition hover:bg-red-400/20"
+                            >
+                              Cancel
+                            </button>
+                          </form>
+                        ) : null}
+
+                        {appointment.status !== "COMPLETED" ? (
+                          <form action={completeAppointmentAction}>
+                            <input type="hidden" name="appointmentId" value={appointment.id} />
+                            <button
+                              type="submit"
+                              className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-emerald-100 transition hover:bg-emerald-400/20"
+                            >
+                              Mark completed
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
+
+                      {appointment.locationDetails ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                            Location details
+                          </div>
+                          <div className="text-sm leading-7 text-[rgba(245,239,230,0.88)]">
+                            {appointment.locationDetails}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {appointment.notes ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                            Notes
+                          </div>
+                          <div className="text-sm leading-7 text-[rgba(245,239,230,0.88)]">
+                            {appointment.notes}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-
-                  {appointment.locationDetails ? (
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                        Location details
-                      </div>
-                      <div className="text-sm leading-7 text-[rgba(245,239,230,0.88)]">
-                        {appointment.locationDetails}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {appointment.notes ? (
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                        Notes
-                      </div>
-                      <div className="text-sm leading-7 text-[rgba(245,239,230,0.88)]">
-                        {appointment.notes}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               ))}
             </div>
