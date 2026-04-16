@@ -1,5 +1,3 @@
-import type { Prisma } from "@prisma/client";
-
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { prisma } from "@/lib/prisma";
@@ -9,27 +7,6 @@ import { createClientAction } from "./actions";
 type SearchParams = Promise<{
   success?: string;
   error?: string;
-}>;
-
-type ClientProfileWithUser = Prisma.ClientProfileGetPayload<{
-  include: {
-    user: {
-      include: {
-        aliases: true;
-        roles: true;
-        memberships: {
-          include: {
-            plan: true;
-          };
-        };
-        _count: {
-          select: {
-            clientAppointments: true;
-          };
-        };
-      };
-    };
-  };
 }>;
 
 function StatusMessage({
@@ -67,36 +44,35 @@ export default async function TeamClientsPage({
 }) {
   const { success, error } = await searchParams;
 
-  const clientProfiles: ClientProfileWithUser[] =
-    await prisma.clientProfile.findMany({
-      orderBy: [{ updatedAt: "desc" }],
-      include: {
-        user: {
-          include: {
-            aliases: {
-              orderBy: [{ email: "asc" }],
+  const clientProfiles = await prisma.clientProfile.findMany({
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      user: {
+        include: {
+          aliases: {
+            orderBy: [{ email: "asc" }],
+          },
+          roles: {
+            orderBy: [{ role: "asc" }],
+          },
+          memberships: {
+            where: {
+              status: "ACTIVE",
             },
-            roles: {
-              orderBy: [{ role: "asc" }],
+            include: {
+              plan: true,
             },
-            memberships: {
-              where: {
-                status: "ACTIVE",
-              },
-              include: {
-                plan: true,
-              },
-              orderBy: [{ startsAt: "desc" }],
-            },
-            _count: {
-              select: {
-                clientAppointments: true,
-              },
+            orderBy: [{ startsAt: "desc" }],
+          },
+          _count: {
+            select: {
+              clientAppointments: true,
             },
           },
         },
       },
-    });
+    },
+  });
 
   return (
     <section className="grid gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
@@ -231,7 +207,7 @@ export default async function TeamClientsPage({
             </div>
           ) : (
             <div className="space-y-4">
-              {clientProfiles.map((profile: ClientProfileWithUser) => {
+              {clientProfiles.map((profile: (typeof clientProfiles)[number]) => {
                 const user = profile.user;
                 const activeMembership = user.memberships[0] ?? null;
                 const aliasEmails = user.aliases.map((alias) => alias.email);
