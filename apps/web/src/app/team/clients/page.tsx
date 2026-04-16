@@ -230,7 +230,7 @@ export default async function TeamClientsPage({
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {roleLabels.map((role) => (
+                        {roleLabels.map((role: string) => (
                           <span
                             key={role}
                             className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]"
@@ -251,7 +251,7 @@ export default async function TeamClientsPage({
                           Alias emails
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {aliasEmails.map((email) => (
+                          {aliasEmails.map((email: string) => (
                             <span
                               key={email}
                               className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[0.82rem] text-[rgba(245,239,230,0.9)]"
