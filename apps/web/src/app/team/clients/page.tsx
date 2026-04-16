@@ -210,8 +210,8 @@ export default async function TeamClientsPage({
               {clientProfiles.map((profile: (typeof clientProfiles)[number]) => {
                 const user = profile.user;
                 const activeMembership = user.memberships[0] ?? null;
-                const aliasEmails = user.aliases.map((alias) => alias.email);
-                const roleLabels = user.roles.map((role) => role.role);
+                const aliasEmails = user.aliases.map((alias: { email: string }) => alias.email);
+                const roleLabels = user.roles.map((role: { role: string }) => role.role);
 
                 return (
                   <div
