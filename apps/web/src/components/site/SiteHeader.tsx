@@ -32,6 +32,13 @@ export default async function SiteHeader() {
               Library
             </Link>
 
+            <Link
+              href="/coaching"
+              className="text-sm font-semibold text-[rgba(245,239,230,0.84)] no-underline transition hover:text-[var(--accent)]"
+            >
+              Coaching
+            </Link>
+
             {showDashboardLink ? (
               <Link
                 href="/dashboard"
