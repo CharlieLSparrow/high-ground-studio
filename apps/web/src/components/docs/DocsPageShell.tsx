@@ -5,6 +5,7 @@ import PageEyebrow from "@/components/ui/PageEyebrow";
 import PaperCard from "@/components/ui/PaperCard";
 import PairedReadingCard from "@/components/docs/PairedReadingCard";
 import FeaturedQuoteCard from "@/components/docs/FeaturedQuoteCard";
+import type { LayoutVariant } from "@/lib/layout-variant";
 
 type RelatedContent = {
   eyebrow: string;
@@ -28,6 +29,7 @@ type DocsPageShellProps = {
   metaGroups?: MetaGroup[];
   accessLabel?: string;
   statusLabel?: string;
+  layoutVariant?: LayoutVariant;
   internalNotice?: React.ReactNode;
   children: React.ReactNode;
 };
@@ -50,6 +52,7 @@ export default function DocsPageShell({
   metaGroups = [],
   accessLabel,
   statusLabel,
+  layoutVariant = "cinematic",
   internalNotice,
   children,
 }: DocsPageShellProps) {
@@ -60,7 +63,16 @@ export default function DocsPageShell({
     visibleMetaGroups.length > 0;
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-void via-void-light to-flora-light/20 pb-20 pt-7">
+    <main
+      className={[
+        "min-h-screen pb-20 pt-7",
+        layoutVariant === "editorial"
+          ? "bg-[linear-gradient(180deg,#1a1410_0%,#433024_24%,#76563a_60%,#efe3cf_100%)]"
+          : layoutVariant === "signal"
+            ? "bg-[linear-gradient(180deg,#0d1519_0%,#15242b_28%,#22343d_54%,#dbe3e5_100%)]"
+            : "bg-gradient-to-b from-void via-void-light to-flora-light/20",
+      ].join(" ")}
+    >
       <PageContainer className="pb-20 pt-7">
         <div className="mb-6">
           <BackLink href="/">

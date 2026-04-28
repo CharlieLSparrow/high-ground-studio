@@ -6,6 +6,7 @@ import EpisodePageShell from "@/components/docs/EpisodePageShell";
 import InternalViewNotice from "@/components/docs/InternalViewNotice";
 import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
+import { getLayoutVariantFromCookieStore } from "@/lib/layout-variant";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 import { getEpisodeSource, isEpisodeLoaderEnabled } from "@/lib/source";
 
@@ -87,6 +88,10 @@ export default async function Page({
 
   const cookieStore = await cookies();
   const mode = accessState.isTeam ? getModeFromCookieStore(cookieStore) : "public";
+  const layoutVariant = getLayoutVariantFromCookieStore(
+    cookieStore,
+    accessState.isTeam,
+  );
   const MDX = episodePage.body ?? pageData.body;
   const title = typeof pageData.title === "string" ? pageData.title : "Untitled";
   const youtubeId = typeof pageData.youtube === "string" ? pageData.youtube : "";
@@ -100,6 +105,7 @@ export default async function Page({
       <EpisodePageShell
         title={title}
         youtubeId={youtubeId}
+        layoutVariant={layoutVariant}
         internalNotice={
           accessState.isTeam ? <InternalViewNotice mode={mode} {...pageData} /> : null
         }
@@ -113,6 +119,7 @@ export default async function Page({
   return (
     <DocsPageShell
       title={title}
+      layoutVariant={layoutVariant}
       internalNotice={
         accessState.isTeam ? <InternalViewNotice mode={mode} {...pageData} /> : null
       }

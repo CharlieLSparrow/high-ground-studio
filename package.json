@@ -12,7 +12,7 @@
     "engine:build": "pnpm --filter @high-ground/motion-engine build",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed:membership-plans": "node scripts/seed-membership-plans.mjs",
+    "db:seed:membership-plans": "node --env-file=apps/web/.env.local scripts/seed-membership-plans.mjs",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"
   },

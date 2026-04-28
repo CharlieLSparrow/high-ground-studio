@@ -5,6 +5,7 @@ import { canAccessInternalContent } from "@/lib/authz";
 
 import SocialLinks from "./SocialLinks";
 import AuthButtons from "./AuthButtons";
+import LayoutVariantSwitcher from "./LayoutVariantSwitcher";
 import ModeSwitcher from "./ModeSwitcher";
 
 export default async function SiteHeader() {
@@ -60,6 +61,7 @@ export default async function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-3">
+          <LayoutVariantSwitcher isTeam={showTeamLink} />
           <ModeSwitcher />
           <SocialLinks />
           <AuthButtons />

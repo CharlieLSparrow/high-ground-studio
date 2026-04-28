@@ -5,6 +5,7 @@ import BackLink from "@/components/ui/BackLink";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
+import { canAccessInternalContent } from "@/lib/authz";
 import { resolveTeamAccess } from "@/lib/content-access";
 import {
   formatContentModeLabel,
@@ -12,6 +13,7 @@ import {
   isContentVisibleInMode,
 } from "@/lib/content-mode";
 import { auth } from "@/auth";
+import { getLayoutVariantFromCookieStore, type LayoutVariant } from "@/lib/layout-variant";
 import { bookSections } from "@/lib/reading";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 import { episodes } from "@/lib/site";
@@ -38,9 +40,26 @@ function filterEntries(entries: Entry[], mode: ReturnType<typeof getModeFromCook
   );
 }
 
-function EntryCard({ entry, eyebrow }: { entry: Entry; eyebrow: string }) {
+function EntryCard({
+  entry,
+  eyebrow,
+  variant,
+}: {
+  entry: Entry;
+  eyebrow: string;
+  variant: LayoutVariant;
+}) {
   return (
-    <GlassPanel className="p-6 text-[var(--text-light)]">
+    <GlassPanel
+      className={[
+        "p-6 text-[var(--text-light)]",
+        variant === "editorial"
+          ? "border-[rgba(255,244,225,0.16)] bg-[rgba(74,54,37,0.42)]"
+          : variant === "signal"
+            ? "border-white/8 bg-[rgba(255,255,255,0.035)]"
+            : "",
+      ].join(" ")}
+    >
       <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
         {eyebrow}
       </div>
@@ -74,16 +93,31 @@ function EntryCard({ entry, eyebrow }: { entry: Entry; eyebrow: string }) {
 export default async function LibraryPage() {
   const session = await auth();
   redirectToWelcomeIfNeeded(session, "/library");
+  const roles = Array.isArray(session?.user?.roles) ? session.user.roles : [];
+  const isTeamSession = canAccessInternalContent(roles);
 
   const teamAccess = await resolveTeamAccess();
   const cookieStore = await cookies();
   const mode = teamAccess.isTeam ? getModeFromCookieStore(cookieStore) : "public";
+  const layoutVariant = getLayoutVariantFromCookieStore(
+    cookieStore,
+    isTeamSession,
+  );
 
   const visibleEpisodes = filterEntries(episodes, mode, teamAccess.isTeam);
   const visibleBookSections = filterEntries(bookSections, mode, teamAccess.isTeam);
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#0d2328_0%,#16353a_20%,#2b4a43_42%,#7d5b34_72%,#f3eadb_100%)]">
+    <main
+      className={[
+        "min-h-screen",
+        layoutVariant === "editorial"
+          ? "bg-[linear-gradient(180deg,#1b140f_0%,#453124_24%,#745336_64%,#f1e5d2_100%)]"
+          : layoutVariant === "signal"
+            ? "bg-[linear-gradient(180deg,#0c1418_0%,#152228_22%,#23343d_55%,#dbe3e5_100%)]"
+            : "bg-[linear-gradient(180deg,#0d2328_0%,#16353a_20%,#2b4a43_42%,#7d5b34_72%,#f3eadb_100%)]",
+      ].join(" ")}
+    >
       <PageContainer className="pb-24 pt-8">
         <div className="mb-8">
           <BackLink href="/">
@@ -122,6 +156,7 @@ export default async function LibraryPage() {
                 key={episode.href}
                 entry={episode}
                 eyebrow="Episode"
+                variant={layoutVariant}
               />
             ))}
           </div>
@@ -138,6 +173,7 @@ export default async function LibraryPage() {
                 key={section.href}
                 entry={section}
                 eyebrow="Book Section"
+                variant={layoutVariant}
               />
             ))}
           </div>
