@@ -13,6 +13,7 @@ declare module "next-auth" {
       isStaff: boolean;
       newsletterOptIn: boolean;
       announcementsOptIn: boolean;
+      welcomeCompletedAt: string | null;
     };
   }
 }
@@ -25,5 +26,6 @@ declare module "next-auth/jwt" {
     isStaff?: boolean;
     newsletterOptIn?: boolean;
     announcementsOptIn?: boolean;
+    welcomeCompletedAt?: string | null;
   }
 }

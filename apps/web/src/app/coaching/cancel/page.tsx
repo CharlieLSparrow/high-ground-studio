@@ -1,10 +1,16 @@
 import Link from "next/link";
 
+import { auth } from "@/auth";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
+import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 
-export default function CoachingCancelPage() {
+export default async function CoachingCancelPage() {
+  const session = await auth();
+
+  redirectToWelcomeIfNeeded(session, "/coaching/cancel");
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#08171b_0%,#10272d_16%,#18383d_40%,#6f5636_78%,#f3eadb_100%)] pb-20">
       <PageContainer className="pt-10">

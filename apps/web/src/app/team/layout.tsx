@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canAccessInternalContent } from "@/lib/authz";
 import { buildSignInHref } from "@/lib/content-access";
+import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 import BackLink from "@/components/ui/BackLink";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
@@ -20,6 +21,8 @@ export default async function TeamLayout({
   if (!session?.user) {
     redirect(buildSignInHref("/team/clients"));
   }
+
+  redirectToWelcomeIfNeeded(session, "/team/clients");
 
   if (!canAccessInternalContent(roles)) {
     notFound();

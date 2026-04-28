@@ -85,6 +85,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       token.isStaff = identity.isStaff;
       token.newsletterOptIn = identity.newsletterOptIn;
       token.announcementsOptIn = identity.announcementsOptIn;
+      token.welcomeCompletedAt = identity.welcomeCompletedAt
+        ? identity.welcomeCompletedAt.toISOString()
+        : null;
 
       return token;
     },
@@ -116,6 +119,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         isStaff: Boolean(token.isStaff),
         newsletterOptIn: Boolean(token.newsletterOptIn),
         announcementsOptIn: Boolean(token.announcementsOptIn),
+        welcomeCompletedAt:
+          typeof token.welcomeCompletedAt === "string"
+            ? token.welcomeCompletedAt
+            : null,
       };
 
       return session;

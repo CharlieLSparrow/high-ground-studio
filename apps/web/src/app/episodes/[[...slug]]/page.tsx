@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { auth } from "@/auth";
 import DocsPageShell from "@/components/docs/DocsPageShell";
 import EpisodePageShell from "@/components/docs/EpisodePageShell";
 import InternalViewNotice from "@/components/docs/InternalViewNotice";
 import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
+import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 import { getEpisodeSource, isEpisodeLoaderEnabled } from "@/lib/source";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,10 @@ export default async function Page({
 }) {
   const { slug } = await params;
   const segments = slug ?? [];
+  const session = await auth();
+
+  redirectToWelcomeIfNeeded(session, `/episodes/${segments.join("/")}`);
+
   const source = await getEpisodeSource();
 
   const page = source.getPage(segments);

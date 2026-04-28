@@ -5,6 +5,7 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { buildSignInHref } from "@/lib/content-access";
+import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 
 function PricingCard({
   title,
@@ -79,6 +80,8 @@ function PricingCard({
 
 export default async function CoachingPage() {
   const session = await auth();
+
+  redirectToWelcomeIfNeeded(session, "/coaching");
 
   const primaryCtaHref = session?.user
     ? "/dashboard"

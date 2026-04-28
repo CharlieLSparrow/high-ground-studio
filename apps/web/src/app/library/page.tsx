@@ -11,7 +11,9 @@ import {
   getModeFromCookieStore,
   isContentVisibleInMode,
 } from "@/lib/content-mode";
+import { auth } from "@/auth";
 import { bookSections } from "@/lib/reading";
+import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 import { episodes } from "@/lib/site";
 
 type Entry = {
@@ -70,6 +72,9 @@ function EntryCard({ entry, eyebrow }: { entry: Entry; eyebrow: string }) {
 }
 
 export default async function LibraryPage() {
+  const session = await auth();
+  redirectToWelcomeIfNeeded(session, "/library");
+
   const teamAccess = await resolveTeamAccess();
   const cookieStore = await cookies();
   const mode = teamAccess.isTeam ? getModeFromCookieStore(cookieStore) : "public";

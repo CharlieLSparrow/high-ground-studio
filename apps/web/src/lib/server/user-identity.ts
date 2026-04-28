@@ -23,6 +23,7 @@ export type AppUserIdentity = {
   isStaff: boolean;
   newsletterOptIn: boolean;
   announcementsOptIn: boolean;
+  welcomeCompletedAt: Date | null;
 };
 
 export type PreprovisionedUserInput = {
@@ -89,6 +90,7 @@ function mapIdentity(user: UserIdentityRecord): AppUserIdentity {
     isStaff: canAccessInternalContent(roles),
     newsletterOptIn: user.newsletterOptIn,
     announcementsOptIn: user.announcementsOptIn,
+    welcomeCompletedAt: user.welcomeCompletedAt,
   };
 }
 

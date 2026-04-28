@@ -6,6 +6,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { buildSignInHref } from "@/lib/content-access";
 import { prisma } from "@/lib/prisma";
+import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -13,6 +14,8 @@ export default async function DashboardPage() {
   if (!session?.user) {
     redirect(buildSignInHref("/dashboard"));
   }
+
+  redirectToWelcomeIfNeeded(session, "/dashboard");
 
   const user = await prisma.user.findUnique({
     where: {
