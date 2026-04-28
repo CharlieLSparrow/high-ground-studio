@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -74,6 +75,15 @@ export default async function DashboardPage() {
               richer coaching portal, but for now it gives you the essentials:
               membership status and upcoming appointments, all in one sane place.
             </p>
+
+            <div className="mt-6">
+              <Link
+                href="/dashboard/settings"
+                className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+              >
+                Email preferences
+              </Link>
+            </div>
           </GlassPanel>
 
           <section className="grid gap-8 lg:grid-cols-2">
