@@ -19,14 +19,17 @@ Derived from source usage:
 - `DATABASE_URL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `AUTH_SECRET` or `NEXTAUTH_SECRET`
+- `AUTH_SECRET`
+- `NEXTAUTH_SECRET`
 - `HGO_OWNER_EMAILS`
 - `HGO_TEAM_SCHEDULER_EMAILS`
 - `HGO_COACH_EMAILS`
 - `ENABLE_EPISODES_FUMADOCS`
 
 Notes:
-- there is currently no checked-in `.env.example`
+- use the checked-in `.env.example` as the starting point
+- current code prefers `AUTH_SECRET`
+- `NEXTAUTH_SECRET` is a legacy fallback and is only read when `AUTH_SECRET` is unset
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
 
 ## Install
@@ -106,6 +109,31 @@ If you need the alternate builder explicitly:
 ```bash
 pnpm --filter web exec next build --webpack
 ```
+
+## Content Verification
+
+Published/discovery alignment check from repo root:
+
+```bash
+node scripts/verify-published-discovery.mjs
+```
+
+What it checks:
+- canonical published episode pages in `apps/web/content/publish`
+- canonical published reading pages in `apps/web/content/publish/book`
+- discovery hrefs in `apps/web/src/lib/site.ts`
+- discovery hrefs in `apps/web/src/lib/reading.ts`
+
+What it reports:
+- published pages missing discovery entries
+- discovery hrefs missing published pages
+- pairingId mismatches
+- additional published files that are outside the current canonical comparison set
+
+Use it when changing:
+- `content/publish`
+- `src/lib/site.ts`
+- `src/lib/reading.ts`
 
 ## High-Signal Files For Setup Problems
 
