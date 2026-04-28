@@ -19,8 +19,7 @@
     "pg": "^8.20.0",
     "react": "latest",
     "react-datepicker": "^9.1.0",
-    "react-dom": "latest",
-    "stripe": "^22.0.1"
+    "react-dom": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
