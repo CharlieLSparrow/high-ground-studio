@@ -8,6 +8,11 @@ import PageEyebrow from "@/components/ui/PageEyebrow";
 import { canAccessInternalContent } from "@/lib/authz";
 import { buildSignInHref } from "@/lib/content-access";
 import { getLayoutVariantFromCookieStore, type LayoutVariant } from "@/lib/layout-variant";
+import {
+  getLayoutGlowEnabled,
+  getLayoutPanelTreatment,
+  getLayoutSurfaceBackground,
+} from "@/lib/layout-variant-styles";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 
 function PricingCard({
@@ -33,16 +38,10 @@ function PricingCard({
 }) {
   return (
     <GlassPanel
-      glow={featured && layoutVariant !== "signal"}
+      glow={featured && getLayoutGlowEnabled(layoutVariant)}
       className={[
         "flex h-full flex-col p-6 text-[var(--text-light)]",
-        featured
-          ? layoutVariant === "editorial"
-            ? "border-[rgba(255,244,225,0.25)] bg-[rgba(84,61,42,0.45)]"
-            : layoutVariant === "signal"
-              ? "border-white/12 bg-[rgba(255,255,255,0.04)]"
-              : "border-[rgba(255,122,24,0.28)]"
-          : "",
+        featured ? getLayoutPanelTreatment(layoutVariant, "featured") : "",
       ].join(" ")}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -51,11 +50,7 @@ function PricingCard({
           <span
             className={[
               "rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.08em]",
-              layoutVariant === "editorial"
-                ? "border border-[rgba(255,244,225,0.22)] bg-[rgba(255,244,225,0.08)] text-[rgba(255,244,225,0.9)]"
-                : layoutVariant === "signal"
-                  ? "border border-white/14 bg-white/6 text-[rgba(230,236,238,0.92)]"
-                  : "border border-flare/30 bg-flare/15 text-flare",
+              getLayoutPanelTreatment(layoutVariant, "featuredBadge"),
             ].join(" ")}
           >
             Most Popular
@@ -117,11 +112,7 @@ export default async function CoachingPage() {
     <main
       className={[
         "min-h-screen pb-20",
-        layoutVariant === "editorial"
-          ? "bg-[linear-gradient(180deg,#17110d_0%,#3a2a21_24%,#765438_62%,#f1e5d2_100%)]"
-          : layoutVariant === "signal"
-            ? "bg-[linear-gradient(180deg,#0b1216_0%,#131f26_20%,#1f2f37_48%,#dbe3e5_100%)]"
-            : "bg-[linear-gradient(180deg,#08171b_0%,#10272d_16%,#18383d_40%,#6f5636_78%,#f3eadb_100%)]",
+        getLayoutSurfaceBackground(layoutVariant, "coaching"),
       ].join(" ")}
     >
       <PageContainer className="pt-10">

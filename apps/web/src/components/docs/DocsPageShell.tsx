@@ -6,6 +6,7 @@ import PaperCard from "@/components/ui/PaperCard";
 import PairedReadingCard from "@/components/docs/PairedReadingCard";
 import FeaturedQuoteCard from "@/components/docs/FeaturedQuoteCard";
 import type { LayoutVariant } from "@/lib/layout-variant";
+import { getLayoutSurfaceBackground } from "@/lib/layout-variant-styles";
 
 type RelatedContent = {
   eyebrow: string;
@@ -66,11 +67,7 @@ export default function DocsPageShell({
     <main
       className={[
         "min-h-screen pb-20 pt-7",
-        layoutVariant === "editorial"
-          ? "bg-[linear-gradient(180deg,#1a1410_0%,#433024_24%,#76563a_60%,#efe3cf_100%)]"
-          : layoutVariant === "signal"
-            ? "bg-[linear-gradient(180deg,#0d1519_0%,#15242b_28%,#22343d_54%,#dbe3e5_100%)]"
-            : "bg-gradient-to-b from-void via-void-light to-flora-light/20",
+        getLayoutSurfaceBackground(layoutVariant, "docs"),
       ].join(" ")}
     >
       <PageContainer className="pb-20 pt-7">

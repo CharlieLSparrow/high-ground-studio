@@ -1,6 +1,11 @@
 import type { Episode } from "@/lib/site";
 import type { LayoutVariant } from "@/lib/layout-variant";
 import GlassPanel from "@/components/ui/GlassPanel";
+import {
+  getLayoutGlowEnabled,
+  getLayoutPanelTreatment,
+  getLayoutTextTreatment,
+} from "@/lib/layout-variant-styles";
 import VideoFrame from "@/components/ui/VideoFrame";
 
 export default function EpisodeCard({
@@ -14,26 +19,25 @@ export default function EpisodeCard({
   variant?: "wide" | "poster";
   layoutVariant?: LayoutVariant;
 }) {
-  const featuredPanelClass =
-    layoutVariant === "editorial"
-      ? "overflow-hidden border-[rgba(255,244,225,0.18)] bg-[rgba(77,57,39,0.45)] transition-all hover:border-[rgba(255,244,225,0.28)]"
-      : layoutVariant === "signal"
-        ? "overflow-hidden border-white/8 bg-[rgba(255,255,255,0.035)] transition-all hover:border-[rgba(255,255,255,0.16)]"
-        : "overflow-hidden transition-all hover:border-flare/40";
+  const featuredPanelClass = [
+    "overflow-hidden transition-all",
+    layoutVariant === "cinematic"
+      ? "hover:border-flare/40"
+      : layoutVariant === "editorial"
+        ? "hover:border-[rgba(255,244,225,0.28)]"
+        : "hover:border-[rgba(255,255,255,0.16)]",
+    getLayoutPanelTreatment(layoutVariant, "featured"),
+  ].join(" ");
 
   if (featured) {
     return (
-      <GlassPanel glow={layoutVariant !== "signal"} className={featuredPanelClass}>
+      <GlassPanel glow={getLayoutGlowEnabled(layoutVariant)} className={featuredPanelClass}>
         <VideoFrame youtubeId={episode.youtubeId} title={episode.title} />
         <div className="px-6 py-7">
           <div
             className={[
               "mb-3 text-[13px] font-extrabold uppercase tracking-[0.08em]",
-              layoutVariant === "editorial"
-                ? "text-[rgba(255,244,225,0.78)]"
-                : layoutVariant === "signal"
-                  ? "text-[rgba(230,236,238,0.72)]"
-                  : "text-flare",
+              getLayoutTextTreatment(layoutVariant, "featureLabel"),
             ].join(" ")}
           >
             {layoutVariant === "signal" ? "Lead Story" : "Featured Episode"}
@@ -41,7 +45,7 @@ export default function EpisodeCard({
           <h2
             className={[
               "mb-3 text-[clamp(2rem,4vw,3rem)] font-black leading-none tracking-tight",
-              layoutVariant === "signal" ? "text-[var(--text-light)]" : "text-subject",
+              getLayoutTextTreatment(layoutVariant, "title"),
             ].join(" ")}
           >
             {episode.title}
@@ -49,9 +53,7 @@ export default function EpisodeCard({
           <p
             className={[
               "mb-5 max-w-[760px] leading-relaxed",
-              layoutVariant === "signal"
-                ? "text-[rgba(230,236,238,0.78)]"
-                : "text-subject-muted",
+              getLayoutTextTreatment(layoutVariant, "body"),
             ].join(" ")}
           >
             {episode.description}
@@ -60,9 +62,7 @@ export default function EpisodeCard({
             href={episode.href}
             className={[
               "font-bold",
-              layoutVariant === "signal"
-                ? "text-[var(--text-light)] hover:text-white"
-                : "text-subject hover:text-flare",
+              getLayoutTextTreatment(layoutVariant, "link"),
             ].join(" ")}
           >
             {layoutVariant === "editorial"
@@ -97,11 +97,12 @@ export default function EpisodeCard({
     <GlassPanel
       className={[
         "grid overflow-hidden transition-all md:grid-cols-[1.15fr_0.85fr]",
-        layoutVariant === "editorial"
-          ? "border-[rgba(255,244,225,0.18)] bg-[rgba(77,57,39,0.42)] hover:border-[rgba(255,244,225,0.28)]"
-          : layoutVariant === "signal"
-            ? "border-white/8 bg-[rgba(255,255,255,0.035)] hover:border-[rgba(255,255,255,0.16)]"
-            : "hover:border-flare/30",
+        layoutVariant === "cinematic"
+          ? "hover:border-flare/30"
+          : layoutVariant === "editorial"
+            ? "hover:border-[rgba(255,244,225,0.28)]"
+            : "hover:border-[rgba(255,255,255,0.16)]",
+        getLayoutPanelTreatment(layoutVariant, "standard"),
       ].join(" ")}
     >
       <div className="relative flex flex-col justify-center px-7 py-8">
@@ -118,11 +119,7 @@ export default function EpisodeCard({
         <div
           className={[
             "mb-2 pl-4 text-[12px] font-extrabold uppercase tracking-[0.08em]",
-            layoutVariant === "editorial"
-              ? "text-[rgba(255,244,225,0.72)]"
-              : layoutVariant === "signal"
-                ? "text-[rgba(230,236,238,0.7)]"
-                : "text-flare-glow",
+            getLayoutTextTreatment(layoutVariant, "rail"),
           ].join(" ")}
         >
           Episode
@@ -130,7 +127,7 @@ export default function EpisodeCard({
         <h3
           className={[
             "mb-3 pl-4 text-[clamp(1.8rem,3vw,2.5rem)] leading-none tracking-[-0.05em]",
-            layoutVariant === "signal" ? "text-[var(--text-light)]" : "text-subject",
+            getLayoutTextTreatment(layoutVariant, "title"),
           ].join(" ")}
         >
           {episode.title}
@@ -138,9 +135,7 @@ export default function EpisodeCard({
         <p
           className={[
             "mb-5 max-w-[620px] pl-4 text-[1.02rem] leading-8",
-            layoutVariant === "signal"
-              ? "text-[rgba(230,236,238,0.78)]"
-              : "text-subject-muted",
+            getLayoutTextTreatment(layoutVariant, "body"),
           ].join(" ")}
         >
           {episode.description}
@@ -150,9 +145,7 @@ export default function EpisodeCard({
             href={episode.href}
             className={[
               "text-[15px] font-extrabold no-underline transition-colors",
-              layoutVariant === "signal"
-                ? "text-[var(--text-light)] hover:text-white"
-                : "text-subject hover:text-flare",
+              getLayoutTextTreatment(layoutVariant, "link"),
             ].join(" ")}
           >
             {layoutVariant === "editorial"

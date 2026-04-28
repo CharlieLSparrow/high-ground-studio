@@ -7,6 +7,10 @@ import DocsVideoEmbed from "./DocsVideoEmbed";
 import PairedReadingCard from "@/components/docs/PairedReadingCard";
 import FeaturedQuoteCard from "@/components/docs/FeaturedQuoteCard";
 import type { LayoutVariant } from "@/lib/layout-variant";
+import {
+  getLayoutGlowEnabled,
+  getLayoutSurfaceBackground,
+} from "@/lib/layout-variant-styles";
 
 type RelatedContent = {
   eyebrow: string;
@@ -63,11 +67,7 @@ export default function EpisodePageShell({
     <main
       className={[
         "min-h-screen",
-        layoutVariant === "editorial"
-          ? "bg-[linear-gradient(180deg,#1a130f_0%,#402e23_24%,#735338_64%,#f0e4d0_100%)]"
-          : layoutVariant === "signal"
-            ? "bg-[linear-gradient(180deg,#0c1519_0%,#14252d_22%,#243640_52%,#dce4e6_100%)]"
-            : "bg-[linear-gradient(180deg,#0b2025_0%,#133238_16%,#22443f_38%,#6f5636_72%,#f3eadb_100%)]",
+        getLayoutSurfaceBackground(layoutVariant, "episode"),
       ].join(" ")}
     >
       <PageContainer className="pb-24 pt-8">
@@ -106,7 +106,7 @@ export default function EpisodePageShell({
           </div>
 
           <GlassPanel
-            glow={layoutVariant !== "signal"}
+            glow={getLayoutGlowEnabled(layoutVariant)}
             className="h-fit p-6 text-[var(--text-light)] lg:self-start"
           >
             <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">

@@ -14,6 +14,10 @@ import {
 } from "@/lib/content-mode";
 import { auth } from "@/auth";
 import { getLayoutVariantFromCookieStore, type LayoutVariant } from "@/lib/layout-variant";
+import {
+  getLayoutPanelTreatment,
+  getLayoutSurfaceBackground,
+} from "@/lib/layout-variant-styles";
 import { bookSections } from "@/lib/reading";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 import { episodes } from "@/lib/site";
@@ -53,11 +57,7 @@ function EntryCard({
     <GlassPanel
       className={[
         "p-6 text-[var(--text-light)]",
-        variant === "editorial"
-          ? "border-[rgba(255,244,225,0.16)] bg-[rgba(74,54,37,0.42)]"
-          : variant === "signal"
-            ? "border-white/8 bg-[rgba(255,255,255,0.035)]"
-            : "",
+        getLayoutPanelTreatment(variant, "standard"),
       ].join(" ")}
     >
       <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
@@ -111,11 +111,7 @@ export default async function LibraryPage() {
     <main
       className={[
         "min-h-screen",
-        layoutVariant === "editorial"
-          ? "bg-[linear-gradient(180deg,#1b140f_0%,#453124_24%,#745336_64%,#f1e5d2_100%)]"
-          : layoutVariant === "signal"
-            ? "bg-[linear-gradient(180deg,#0c1418_0%,#152228_22%,#23343d_55%,#dbe3e5_100%)]"
-            : "bg-[linear-gradient(180deg,#0d2328_0%,#16353a_20%,#2b4a43_42%,#7d5b34_72%,#f3eadb_100%)]",
+        getLayoutSurfaceBackground(layoutVariant, "library"),
       ].join(" ")}
     >
       <PageContainer className="pb-24 pt-8">

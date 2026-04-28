@@ -1,11 +1,8 @@
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../apps/web/src/lib/prisma.ts";
 import {
   membershipPlanCatalog,
   syncMembershipPlans,
 } from "../apps/web/src/lib/server/membership-plan-catalog.js";
-
-const prisma = new PrismaClient();
 
 async function main() {
   await syncMembershipPlans(prisma);

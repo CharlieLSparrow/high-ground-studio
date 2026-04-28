@@ -1,5 +1,6 @@
 import AuthButtons from "@/components/site/AuthButtons";
 import type { LayoutVariant } from "@/lib/layout-variant";
+import { getLayoutTextTreatment } from "@/lib/layout-variant-styles";
 
 export default function HeroSection({
   variant = "cinematic",
@@ -13,7 +14,12 @@ export default function HeroSection({
         <div className="absolute inset-0 opacity-[0.12] [background-image:linear-gradient(rgba(255,255,255,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:32px_32px]" />
 
         <div className="relative z-10 max-w-[840px]">
-          <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.2em] text-[rgba(245,239,230,0.68)]">
+          <div
+            className={[
+              "mb-4 text-[12px] font-extrabold uppercase tracking-[0.2em]",
+              getLayoutTextTreatment("editorial", "heroKicker"),
+            ].join(" ")}
+          >
             A Story, A Library, A Long Climb
           </div>
 
@@ -43,7 +49,12 @@ export default function HeroSection({
 
         <div className="relative z-10 mx-auto grid w-full max-w-[1200px] gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
           <div>
-            <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.2em] text-flare/80">
+            <div
+              className={[
+                "mb-4 text-[12px] font-extrabold uppercase tracking-[0.2em]",
+                getLayoutTextTreatment("signal", "heroKicker"),
+              ].join(" ")}
+            >
               Signal Preview
             </div>
 

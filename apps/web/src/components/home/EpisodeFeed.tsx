@@ -1,5 +1,6 @@
 import EpisodeCard from "@/components/home/EpisodeCard";
 import type { LayoutVariant } from "@/lib/layout-variant";
+import { getLayoutTextTreatment } from "@/lib/layout-variant-styles";
 import { episodes } from "@/lib/site";
 
 export default function EpisodeFeed({
@@ -18,11 +19,7 @@ export default function EpisodeFeed({
         <div
           className={[
             "mb-2 text-[13px] font-extrabold uppercase tracking-[0.08em]",
-            variant === "editorial"
-              ? "text-[rgba(245,239,230,0.68)]"
-              : variant === "signal"
-                ? "text-[rgba(230,236,238,0.68)]"
-                : "text-flare/60",
+            getLayoutTextTreatment(variant, "collectionKicker"),
           ].join(" ")}
         >
           {variant === "signal" ? "Queue" : "Archives"}
@@ -30,11 +27,7 @@ export default function EpisodeFeed({
         <h2
           className={[
             "text-[clamp(2rem,4vw,3.2rem)] font-black leading-tight tracking-[-0.05em]",
-            variant === "editorial"
-              ? "text-[var(--text-light)]"
-              : variant === "signal"
-                ? "text-[rgba(230,236,238,0.96)]"
-                : "text-subject",
+            getLayoutTextTreatment(variant, "title"),
           ].join(" ")}
         >
           {variant === "editorial"
