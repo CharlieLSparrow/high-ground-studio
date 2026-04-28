@@ -70,13 +70,21 @@ Documented from source usage:
 - `DATABASE_URL`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `AUTH_SECRET` or `NEXTAUTH_SECRET`
+- `AUTH_SECRET`
+- `NEXTAUTH_SECRET`
 - `HGO_OWNER_EMAILS`
 - `HGO_TEAM_SCHEDULER_EMAILS`
 - `HGO_COACH_EMAILS`
 - `ENABLE_EPISODES_FUMADOCS`
 
-There is no checked-in `.env.example` yet. If you add one later, keep it synchronized with `docs/runbooks/local-dev.md`.
+Current auth-secret reality:
+- the code prefers `AUTH_SECRET`
+- `NEXTAUTH_SECRET` is only a fallback if `AUTH_SECRET` is unset
+
+Checked-in setup example:
+- `.env.example`
+
+Keep `.env.example` synchronized with `docs/runbooks/local-dev.md` if env usage changes.
 
 ## Agent Working Style For This Repo
 

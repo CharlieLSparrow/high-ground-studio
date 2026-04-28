@@ -103,10 +103,9 @@ export default async function CoachingPage() {
 
             <p className="mb-0 mt-5 max-w-[840px] text-[1.05rem] leading-8 text-[rgba(245,239,230,0.9)]">
               This is practical coaching rooted in leadership, reflection,
-              resilience, and the stories that shape who we become. Whether you
-              want one focused conversation or an ongoing rhythm of support,
-              this gives you a place to step back, get perspective, and move
-              forward with intention.
+              resilience, and the stories that shape who we become. The public
+              front door is centered on two recurring coaching rhythms so you
+              can step back, get perspective, and move forward with intention.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -126,21 +125,7 @@ export default async function CoachingPage() {
             </div>
           </GlassPanel>
 
-          <section className="grid gap-8 lg:grid-cols-3">
-            <PricingCard
-              title="Single Session"
-              price="$65"
-              subtitle="One-time"
-              description="A focused one-off coaching session for clarity, direction, or a specific challenge you want to work through."
-              bullets={[
-                "One coaching session",
-                "Best for a specific question or decision",
-                "Simple entry point if you want to try it first",
-              ]}
-              ctaHref={primaryCtaHref}
-              ctaLabel="Book a single session"
-            />
-
+          <section className="grid gap-8 lg:grid-cols-2">
             <PricingCard
               title="1 Session / Month"
               price="$57"
@@ -148,7 +133,7 @@ export default async function CoachingPage() {
               description="A steady monthly rhythm for people who want ongoing support without overcomplicating their calendar or budget."
               bullets={[
                 "One coaching session each month",
-                "Lower monthly rate than a one-off session",
+                "Predictable monthly cadence and pricing",
                 "Great for steady progress and reflection",
               ]}
               ctaHref={primaryCtaHref}
@@ -197,9 +182,9 @@ export default async function CoachingPage() {
 
               <div className="mt-5 space-y-4 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
                 <p className="m-0">
-                  Right now, the cleanest flow is to sign in, choose your coaching
-                  path, and let the team finalize scheduling and membership on the
-                  back end.
+                  Right now, the cleanest flow is to sign in, choose the
+                  recurring coaching rhythm that fits, and let the team finalize
+                  scheduling and membership on the back end.
                 </p>
 
                 <p className="m-0">

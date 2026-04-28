@@ -1,1 +1,138 @@
-[1m[7m%[27m[1m[0m                                                                                                                           [0m[27m[24m[J(base) wall-e@Mac high-ground-studio % [K[?2004h
+[1m[7m%[27m[1m[0m                                                                                                                           [0m[27m[24m[J(base) wall-e@Mac high-ground-studio % [K[?2004h[7m# sanity check[27m
+[7mgit status --short[27m[K
+[K
+[7m# stage the verification-tooling pass[27m[K
+[7mgit add scripts/verify-published-discovery.mjs[27m[K
+[7mgit add docs/sessions/published-discovery-verification-plan.md[27m[K
+[7mgit add docs/sessions/published-discovery-verification-result.md[27m[K
+[7mgit add docs/runbooks/local-dev.md[27m[K
+[K
+[7m# review staged files[27m[K
+[7mgit diff --cached --stat[27m[K
+[K
+[7m# commit[27m[K
+[7mgit commit -m "chore: add published discovery verification script"[27m[K
+[K
+[7m# push[27m[K
+[7mgit push[27m[K[16A[31C[27m#[27m [27ms[27ma[27mn[27mi[27mt[27my[27m [27mc[27mh[27me[27mc[27mk[1B[27mg[27mi[27mt[27m [27ms[27mt[27ma[27mt[27mu[27ms[27m [27m-[27m-[27ms[27mh[27mo[27mr[27mt[2B[27m#[27m [27ms[27mt[27ma[27mg[27me[27m [27mt[27mh[27me[27m [27mv[27me[27mr[27mi[27mf[27mi[27mc[27ma[27mt[27mi[27mo[27mn[27m-[27mt[27mo[27mo[27ml[27mi[27mn[27mg[27m [27mp[27ma[27ms[27ms[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27ms[27mc[27mr[27mi[27mp[27mt[27ms[27m/[27mv[27me[27mr[27mi[27mf[27my[27m-[27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m-[27md[27mi[27ms[27mc[27mo[27mv[27me[27mr[27my[27m.[27mm[27mj[27ms[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27md[27mo[27mc[27ms[27m/[27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m/[27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m-[27md[27mi[27ms[27mc[27mo[27mv[27me[27mr[27my[27m-[27mv[27me[27mr[27mi[27mf[27mi[27mc[27ma[27mt[27mi[27mo[27mn[27m-[27mp[27ml[27ma[27mn[27m.[27mm[27md[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27md[27mo[27mc[27ms[27m/[27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m/[27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m-[27md[27mi[27ms[27mc[27mo[27mv[27me[27mr[27my[27m-[27mv[27me[27mr[27mi[27mf[27mi[27mc[27ma[27mt[27mi[27mo[27mn[27m-[27mr[27me[27ms[27mu[27ml[27mt[27m.[27mm[27md[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27md[27mo[27mc[27ms[27m/[27mr[27mu[27mn[27mb[27mo[27mo[27mk[27ms[27m/[27ml[27mo[27mc[27ma[27ml[27m-[27md[27me[27mv[27m.[27mm[27md[2B[27m#[27m [27mr[27me[27mv[27mi[27me[27mw[27m [27ms[27mt[27ma[27mg[27me[27md[27m [27mf[27mi[27ml[27me[27ms[1B[27mg[27mi[27mt[27m [27md[27mi[27mf[27mf[27m [27m-[27m-[27mc[27ma[27mc[27mh[27me[27md[27m [27m-[27m-[27ms[27mt[27ma[27mt[2B[27m#[27m [27mc[27mo[27mm[27mm[27mi[27mt[1B[27mg[27mi[27mt[27m [27mc[27mo[27mm[27mm[27mi[27mt[27m [27m-[27mm[27m [27m"[27mc[27mh[27mo[27mr[27me[27m:[27m [27ma[27md[27md[27m [27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m [27md[27mi[27ms[27mc[27mo[27mv[27me[27mr[27my[27m [27mv[27me[27mr[27mi[27mf[27mi[27mc[27ma[27mt[27mi[27mo[27mn[27m [27ms[27mc[27mr[27mi[27mp[27mt[27m"[2B[27m#[27m [27mp[27mu[27ms[27mh[1B[27mg[27mi[27mt[27m [27mp[27mu[27ms[27mh[?2004l
+zsh: command not found: #
+
+ [31mM[m AGENTS.md
+ [31mM[m docs/runbooks/local-dev.md
+[31m??[m .env.example
+[31m??[m docs/sessions/env-example-plan.md
+[31m??[m docs/sessions/env-example-result.md
+[31m??[m docs/sessions/published-discovery-verification-plan.md
+[31m??[m docs/sessions/published-discovery-verification-result.md
+[31m??[m scripts/verify-published-discovery.mjs
+zsh: command not found: #
+zsh: command not found: #
+[?1h= docs/runbooks/local-dev.md                               |  32 [32m+++++++[m[31m-[m[m
+ docs/sessions/published-discovery-verification-plan.md   |  20 [32m+++++[m[m
+ docs/sessions/published-discovery-verification-result.md |  36 [32m+++++++++[m[m
+ scripts/verify-published-discovery.mjs                   | 247 [32m++++++++++++++++++++++++++++++++++++++++++++++++++++++++++[m[m
+ 4 files changed, 333 insertions(+), 2 deletions(-)[m
+[K[?1l>zsh: command not found: #
+[main ded6dc5] chore: add published discovery verification script
+ 4 files changed, 333 insertions(+), 2 deletions(-)
+ create mode 100644 docs/sessions/published-discovery-verification-plan.md
+ create mode 100644 docs/sessions/published-discovery-verification-result.md
+ create mode 100644 scripts/verify-published-discovery.mjs
+zsh: command not found: #
+Enumerating objects: 16, done.
+Counting objects:   6% (1/16)Counting objects:  12% (2/16)Counting objects:  18% (3/16)Counting objects:  25% (4/16)Counting objects:  31% (5/16)Counting objects:  37% (6/16)Counting objects:  43% (7/16)Counting objects:  50% (8/16)Counting objects:  56% (9/16)Counting objects:  62% (10/16)Counting objects:  68% (11/16)Counting objects:  75% (12/16)Counting objects:  81% (13/16)Counting objects:  87% (14/16)Counting objects:  93% (15/16)Counting objects: 100% (16/16)Counting objects: 100% (16/16), done.
+Delta compression using up to 14 threads
+Compressing objects:  11% (1/9)Compressing objects:  22% (2/9)Compressing objects:  33% (3/9)Compressing objects:  44% (4/9)Compressing objects:  55% (5/9)Compressing objects:  66% (6/9)Compressing objects:  77% (7/9)Compressing objects:  88% (8/9)Compressing objects: 100% (9/9)Compressing objects: 100% (9/9), done.
+Writing objects:  10% (1/10)Writing objects:  20% (2/10)Writing objects:  30% (3/10)Writing objects:  40% (4/10)Writing objects:  50% (5/10)Writing objects:  60% (6/10)Writing objects:  70% (7/10)Writing objects:  80% (8/10)Writing objects:  90% (9/10)Writing objects: 100% (10/10)Writing objects: 100% (10/10), 4.34 KiB | 4.34 MiB/s, done.
+Total 10 (delta 5), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas:   0% (0/5)[Kremote: Resolving deltas:  20% (1/5)[Kremote: Resolving deltas:  40% (2/5)[Kremote: Resolving deltas:  60% (3/5)[Kremote: Resolving deltas:  80% (4/5)[Kremote: Resolving deltas: 100% (5/5)[Kremote: Resolving deltas: 100% (5/5), completed with 5 local objects.[K
+To https://github.com/CharlieLSparrow/high-ground-studio.git
+   6b66f0e..ded6dc5  main -> main
+[1m[7m%[27m[1m[0m                                                                                                                           [0m[27m[24m[J(base) wall-e@Mac high-ground-studio % [K[?2004h[7m# sanity check[27m
+[7mgit status --short[27m[K
+[K
+[7m# stage the reachability audit docs[27m[K
+[7mgit add docs/architecture/published-route-reachability.md[27m[K
+[7mgit add docs/sessions/published-route-reachability-plan.md[27m[K
+[7mgit add docs/sessions/published-route-reachability-result.md[27m[K
+[K
+[7m# review staged files[27m[K
+[7mgit diff --cached --stat[27m[K
+[K
+[7m# commit[27m[K
+[7mgit commit -m "docs: audit published route reachability"[27m[K
+[K
+[7m# push[27m[K
+[7mgit push[27m[K[15A[31C[27m#[27m [27ms[27ma[27mn[27mi[27mt[27my[27m [27mc[27mh[27me[27mc[27mk[1B[27mg[27mi[27mt[27m [27ms[27mt[27ma[27mt[27mu[27ms[27m [27m-[27m-[27ms[27mh[27mo[27mr[27mt[2B[27m#[27m [27ms[27mt[27ma[27mg[27me[27m [27mt[27mh[27me[27m [27mr[27me[27ma[27mc[27mh[27ma[27mb[27mi[27ml[27mi[27mt[27my[27m [27ma[27mu[27md[27mi[27mt[27m [27md[27mo[27mc[27ms[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27md[27mo[27mc[27ms[27m/[27ma[27mr[27mc[27mh[27mi[27mt[27me[27mc[27mt[27mu[27mr[27me[27m/[27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m-[27mr[27mo[27mu[27mt[27me[27m-[27mr[27me[27ma[27mc[27mh[27ma[27mb[27mi[27ml[27mi[27mt[27my[27m.[27mm[27md[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27md[27mo[27mc[27ms[27m/[27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m/[27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m-[27mr[27mo[27mu[27mt[27me[27m-[27mr[27me[27ma[27mc[27mh[27ma[27mb[27mi[27ml[27mi[27mt[27my[27m-[27mp[27ml[27ma[27mn[27m.[27mm[27md[1B[27mg[27mi[27mt[27m [27ma[27md[27md[27m [27md[27mo[27mc[27ms[27m/[27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m/[27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m-[27mr[27mo[27mu[27mt[27me[27m-[27mr[27me[27ma[27mc[27mh[27ma[27mb[27mi[27ml[27mi[27mt[27my[27m-[27mr[27me[27ms[27mu[27ml[27mt[27m.[27mm[27md[2B[27m#[27m [27mr[27me[27mv[27mi[27me[27mw[27m [27ms[27mt[27ma[27mg[27me[27md[27m [27mf[27mi[27ml[27me[27ms[1B[27mg[27mi[27mt[27m [27md[27mi[27mf[27mf[27m [27m-[27m-[27mc[27ma[27mc[27mh[27me[27md[27m [27m-[27m-[27ms[27mt[27ma[27mt[2B[27m#[27m [27mc[27mo[27mm[27mm[27mi[27mt[1B[27mg[27mi[27mt[27m [27mc[27mo[27mm[27mm[27mi[27mt[27m [27m-[27mm[27m [27m"[27md[27mo[27mc[27ms[27m:[27m [27ma[27mu[27md[27mi[27mt[27m [27mp[27mu[27mb[27ml[27mi[27ms[27mh[27me[27md[27m [27mr[27mo[27mu[27mt[27me[27m [27mr[27me[27ma[27mc[27mh[27ma[27mb[27mi[27ml[27mi[27mt[27my[27m"[2B[27m#[27m [27mp[27mu[27ms[27mh[1B[27mg[27mi[27mt[27m [27mp[27mu[27ms[27mh[?2004l
+zsh: command not found: #
+ [31mM[m AGENTS.md
+ [31mM[m logs/transcripts/codex-2026-04-27-2321.txt
+[31m??[m .env.example
+[31m??[m docs/architecture/published-content-classification.md
+[31m??[m docs/architecture/published-route-reachability.md
+[31m??[m docs/sessions/env-example-plan.md
+[31m??[m docs/sessions/env-example-result.md
+[31m??[m docs/sessions/published-content-classification-plan.md
+[31m??[m docs/sessions/published-content-classification-result.md
+[31m??[m docs/sessions/published-route-reachability-plan.md
+[31m??[m docs/sessions/published-route-reachability-result.md
+zsh: command not found: #
+zsh: command not found: #
+[?1h= docs/architecture/published-route-reachability.md    | 130 [32m++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++[m[m
+ docs/sessions/published-route-reachability-plan.md   |  33 [32m++++++++++++++++[m[m
+ docs/sessions/published-route-reachability-result.md |  33 [32m++++++++++++++++[m[m
+ 3 files changed, 196 insertions(+)[m
+[K[?1l>zsh: command not found: #
+[main 6e3989d] docs: audit published route reachability
+ 3 files changed, 196 insertions(+)
+ create mode 100644 docs/architecture/published-route-reachability.md
+ create mode 100644 docs/sessions/published-route-reachability-plan.md
+ create mode 100644 docs/sessions/published-route-reachability-result.md
+zsh: command not found: #
+Enumerating objects: 12, done.
+Counting objects:   8% (1/12)Counting objects:  16% (2/12)Counting objects:  25% (3/12)Counting objects:  33% (4/12)Counting objects:  41% (5/12)Counting objects:  50% (6/12)Counting objects:  58% (7/12)Counting objects:  66% (8/12)Counting objects:  75% (9/12)Counting objects:  83% (10/12)Counting objects:  91% (11/12)Counting objects: 100% (12/12)Counting objects: 100% (12/12), done.
+Delta compression using up to 14 threads
+Compressing objects:  12% (1/8)Compressing objects:  25% (2/8)Compressing objects:  37% (3/8)Compressing objects:  50% (4/8)Compressing objects:  62% (5/8)Compressing objects:  75% (6/8)Compressing objects:  87% (7/8)Compressing objects: 100% (8/8)Compressing objects: 100% (8/8), done.
+Writing objects:  12% (1/8)Writing objects:  25% (2/8)Writing objects:  37% (3/8)Writing objects:  50% (4/8)Writing objects:  62% (5/8)Writing objects:  75% (6/8)Writing objects:  87% (7/8)Writing objects: 100% (8/8)Writing objects: 100% (8/8), 4.06 KiB | 4.06 MiB/s, done.
+Total 8 (delta 4), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas:   0% (0/4)[Kremote: Resolving deltas:  25% (1/4)[Kremote: Resolving deltas:  50% (2/4)[Kremote: Resolving deltas:  75% (3/4)[Kremote: Resolving deltas: 100% (4/4)[Kremote: Resolving deltas: 100% (4/4), completed with 4 local objects.[K
+To https://github.com/CharlieLSparrow/high-ground-studio.git
+   ded6dc5..6e3989d  main -> main
+[1m[7m%[27m[1m[0m                                                                                                                           [0m[27m[24m[J(base) wall-e@Mac high-ground-studio % [K[?2004h>....                                                                               
+[K
+[7mThis is a narrow coaching-page product copy/UI task.[27m[K
+[K
+[7mCurrent state:[27m[K
+[7m- The public /coaching page is a front-door offer page, not a completed Stripe checkout flow.[27m[K
+[7m- Product direction has changed:[27m[K
+[7m  - the public landing page should show only the two subscription options[27m[K
+[7m  - 1 Session / Month[27m[K
+[7m  - 2 Sessions / Month[27m[K
+[7m- Single-session coaching should remain an internal/manual offering for now and should not appear on the public landing pag[7me[7m.[27m[K
+[K
+[7mYour assignment:[27m[K
+[7mUpdate the public coaching page so it presents only the two subscription options and removes the single-session option from[7m [7mthe landing-page experience.[27m[K
+[K
+[7mScope:[27m[K
+[7m1. Inspect the current /coaching page and any directly related UI components.[27m[K
+[7m2. Update only the public-facing coaching page content/UI needed to remove the single-session offer.[27m[K
+[7m3. Do not implement Stripe checkout in this pass.[27m[K
+[7m4. Do not change internal membership tables or appointment logic in this pass unless required by the page copy.[27m[K
+[7m5. Do not revisit unrelated systems.[27m[K
+[K
+[7mBefore editing, write:[27m[K
+[7m- docs/sessions/coaching-page-subscription-focus-plan.md[27m[K
+[K
+[7mAfter editing, write:[27m[K
+[7m- docs/sessions/coaching-page-subscription-focus-result.md[27m[K
+[K
+[7mRequirements:[27m[K
+[7m- keep the page aligned with the current repo truth: front door, not live checkout[27m[K
+[7m- present only the two recurring subscription options[27m[K
+[7m- avoid mentioning single-session purchase on the landing page[27m[K
+[7m- preserve a clean path toward future internal/manual handling of single sessions[27m[K
+[K
+[7mAt the end:[27m[K
+[7m- summarize what you changed[27m[K
+[7m- show the final scoped diff[27m[K
+[7m- propose the next 3 best Codex tasks after this pass[27m[K[37A[27mT[27mh[27mi[27ms[27m [27mi[27ms[27m [27ma[27m [27mn[27ma[27mr[27mr[27mo[27mw[27m [27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m-[27mp[27ma[27mg[27me[27m [27mp[27mr[27mo[27md[27mu[27mc[27mt[27m [27mc[27mo[27mp[27my[27m/[27mU[27mI[27m [27mt[27ma[27ms[27mk[27m.[2B[27mC[27mu[27mr[27mr[27me[27mn[27mt[27m [27ms[27mt[27ma[27mt[27me[27m:[1B[27m-[27m [27mT[27mh[27me[27m [27mp[27mu[27mb[27ml[27mi[27mc[27m [27m/[27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m [27mp[27ma[27mg[27me[27m [27mi[27ms[27m [27ma[27m [27mf[27mr[27mo[27mn[27mt[27m-[27md[27mo[27mo[27mr[27m [27mo[27mf[27mf[27me[27mr[27m [27mp[27ma[27mg[27me[27m,[27m [27mn[27mo[27mt[27m [27ma[27m [27mc[27mo[27mm[27mp[27ml[27me[27mt[27me[27md[27m [27mS[27mt[27mr[27mi[27mp[27me[27m [27mc[27mh[27me[27mc[27mk[27mo[27mu[27mt[27m [27mf[27ml[27mo[27mw[27m.[1B[27m-[27m [27mP[27mr[27mo[27md[27mu[27mc[27mt[27m [27md[27mi[27mr[27me[27mc[27mt[27mi[27mo[27mn[27m [27mh[27ma[27ms[27m [27mc[27mh[27ma[27mn[27mg[27me[27md[27m:[1B[27m [27m [27m-[27m [27mt[27mh[27me[27m [27mp[27mu[27mb[27ml[27mi[27mc[27m [27ml[27ma[27mn[27md[27mi[27mn[27mg[27m [27mp[27ma[27mg[27me[27m [27ms[27mh[27mo[27mu[27ml[27md[27m [27ms[27mh[27mo[27mw[27m [27mo[27mn[27ml[27my[27m [27mt[27mh[27me[27m [27mt[27mw[27mo[27m [27ms[27mu[27mb[27ms[27mc[27mr[27mi[27mp[27mt[27mi[27mo[27mn[27m [27mo[27mp[27mt[27mi[27mo[27mn[27ms[1B[27m [27m [27m-[27m [27m1[27m [27mS[27me[27ms[27ms[27mi[27mo[27mn[27m [27m/[27m [27mM[27mo[27mn[27mt[27mh[1B[27m [27m [27m-[27m [27m2[27m [27mS[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m [27m/[27m [27mM[27mo[27mn[27mt[27mh[1B[27m-[27m [27mS[27mi[27mn[27mg[27ml[27me[27m-[27ms[27me[27ms[27ms[27mi[27mo[27mn[27m [27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m [27ms[27mh[27mo[27mu[27ml[27md[27m [27mr[27me[27mm[27ma[27mi[27mn[27m [27ma[27mn[27m [27mi[27mn[27mt[27me[27mr[27mn[27ma[27ml[27m/[27mm[27ma[27mn[27mu[27ma[27ml[27m [27mo[27mf[27mf[27me[27mr[27mi[27mn[27mg[27m [27mf[27mo[27mr[27m [27mn[27mo[27mw[27m [27ma[27mn[27md[27m [27ms[27mh[27mo[27mu[27ml[27md[27m [27mn[27mo[27mt[27m [27ma[27mp[27mp[27me[27ma[27mr[27m [27mo[27mn[27m [27mt[27mh[27me[27m [27mp[27mu[27mb[27ml[27mi[27mc[27m [27ml[27ma[27mn[27md[27mi[27mn[27mg[27m [27mp[27ma[27mge[27m.[2B[27mY[27mo[27mu[27mr[27m [27ma[27ms[27ms[27mi[27mg[27mn[27mm[27me[27mn[27mt[27m:[1B[27mU[27mp[27md[27ma[27mt[27me[27m [27mt[27mh[27me[27m [27mp[27mu[27mb[27ml[27mi[27mc[27m [27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m [27mp[27ma[27mg[27me[27m [27ms[27mo[27m [27mi[27mt[27m [27mp[27mr[27me[27ms[27me[27mn[27mt[27ms[27m [27mo[27mn[27ml[27my[27m [27mt[27mh[27me[27m [27mt[27mw[27mo[27m [27ms[27mu[27mb[27ms[27mc[27mr[27mi[27mp[27mt[27mi[27mo[27mn[27m [27mo[27mp[27mt[27mi[27mo[27mn[27ms[27m [27ma[27mn[27md[27m [27mr[27me[27mm[27mo[27mv[27me[27ms[27m [27mt[27mh[27me[27m [27ms[27mi[27mn[27mg[27ml[27me[27m-[27ms[27me[27ms[27ms[27mi[27mo[27mn[27m [27mo[27mp[27mt[27mi[27mo[27mn[27m [27mf[27mr[27mo[27mm [27mt[27mh[27me[27m [27ml[27ma[27mn[27md[27mi[27mn[27mg[27m-[27mp[27ma[27mg[27me[27m [27me[27mx[27mp[27me[27mr[27mi[27me[27mn[27mc[27me[27m.[2B[27mS[27mc[27mo[27mp[27me[27m:[1B[27m1[27m.[27m [27mI[27mn[27ms[27mp[27me[27mc[27mt[27m [27mt[27mh[27me[27m [27mc[27mu[27mr[27mr[27me[27mn[27mt[27m [27m/[27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m [27mp[27ma[27mg[27me[27m [27ma[27mn[27md[27m [27ma[27mn[27my[27m [27md[27mi[27mr[27me[27mc[27mt[27ml[27my[27m [27mr[27me[27ml[27ma[27mt[27me[27md[27m [27mU[27mI[27m [27mc[27mo[27mm[27mp[27mo[27mn[27me[27mn[27mt[27ms[27m.[1B[27m2[27m.[27m [27mU[27mp[27md[27ma[27mt[27me[27m [27mo[27mn[27ml[27my[27m [27mt[27mh[27me[27m [27mp[27mu[27mb[27ml[27mi[27mc[27m-[27mf[27ma[27mc[27mi[27mn[27mg[27m [27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m [27mp[27ma[27mg[27me[27m [27mc[27mo[27mn[27mt[27me[27mn[27mt[27m/[27mU[27mI[27m [27mn[27me[27me[27md[27me[27md[27m [27mt[27mo[27m [27mr[27me[27mm[27mo[27mv[27me[27m [27mt[27mh[27me[27m [27ms[27mi[27mn[27mg[27ml[27me[27m-[27ms[27me[27ms[27ms[27mi[27mo[27mn[27m [27mo[27mf[27mf[27me[27mr[27m.[1B[27m3[27m.[27m [27mD[27mo[27m [27mn[27mo[27mt[27m [27mi[27mm[27mp[27ml[27me[27mm[27me[27mn[27mt[27m [27mS[27mt[27mr[27mi[27mp[27me[27m [27mc[27mh[27me[27mc[27mk[27mo[27mu[27mt[27m [27mi[27mn[27m [27mt[27mh[27mi[27ms[27m [27mp[27ma[27ms[27ms[27m.[1B[27m4[27m.[27m [27mD[27mo[27m [27mn[27mo[27mt[27m [27mc[27mh[27ma[27mn[27mg[27me[27m [27mi[27mn[27mt[27me[27mr[27mn[27ma[27ml[27m [27mm[27me[27mm[27mb[27me[27mr[27ms[27mh[27mi[27mp[27m [27mt[27ma[27mb[27ml[27me[27ms[27m [27mo[27mr[27m [27ma[27mp[27mp[27mo[27mi[27mn[27mt[27mm[27me[27mn[27mt[27m [27ml[27mo[27mg[27mi[27mc[27m [27mi[27mn[27m [27mt[27mh[27mi[27ms[27m [27mp[27ma[27ms[27ms[27m [27mu[27mn[27ml[27me[27ms[27ms[27m [27mr[27me[27mq[27mu[27mi[27mr[27me[27md[27m [27mb[27my[27m [27mt[27mh[27me[27m [27mp[27ma[27mg[27me[27m [27mc[27mo[27mp[27my[27m.[1B[27m5[27m.[27m [27mD[27mo[27m [27mn[27mo[27mt[27m [27mr[27me[27mv[27mi[27ms[27mi[27mt[27m [27mu[27mn[27mr[27me[27ml[27ma[27mt[27me[27md[27m [27ms[27my[27ms[27mt[27me[27mm[27ms[27m.[2B[27mB[27me[27mf[27mo[27mr[27me[27m [27me[27md[27mi[27mt[27mi[27mn[27mg[27m,[27m [27mw[27mr[27mi[27mt[27me[27m:[1B[27m-[27m [27md[27mo[27mc[27ms[27m/[27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m/[27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m-[27mp[27ma[27mg[27me[27m-[27ms[27mu[27mb[27ms[27mc[27mr[27mi[27mp[27mt[27mi[27mo[27mn[27m-[27mf[27mo[27mc[27mu[27ms[27m-[27mp[27ml[27ma[27mn[27m.[27mm[27md[2B[27mA[27mf[27mt[27me[27mr[27m [27me[27md[27mi[27mt[27mi[27mn[27mg[27m,[27m [27mw[27mr[27mi[27mt[27me[27m:[1B[27m-[27m [27md[27mo[27mc[27ms[27m/[27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[27m/[27mc[27mo[27ma[27mc[27mh[27mi[27mn[27mg[27m-[27mp[27ma[27mg[27me[27m-[27ms[27mu[27mb[27ms[27mc[27mr[27mi[27mp[27mt[27mi[27mo[27mn[27m-[27mf[27mo[27mc[27mu[27ms[27m-[27mr[27me[27ms[27mu[27ml[27mt[27m.[27mm[27md[2B[27mR[27me[27mq[27mu[27mi[27mr[27me[27mm[27me[27mn[27mt[27ms[27m:[1B[27m-[27m [27mk[27me[27me[27mp[27m [27mt[27mh[27me[27m [27mp[27ma[27mg[27me[27m [27ma[27ml[27mi[27mg[27mn[27me[27md[27m [27mw[27mi[27mt[27mh[27m [27mt[27mh[27me[27m [27mc[27mu[27mr[27mr[27me[27mn[27mt[27m [27mr[27me[27mp[27mo[27m [27mt[27mr[27mu[27mt[27mh[27m:[27m [27mf[27mr[27mo[27mn[27mt[27m [27md[27mo[27mo[27mr[27m,[27m [27mn[27mo[27mt[27m [27ml[27mi[27mv[27me[27m [27mc[27mh[27me[27mc[27mk[27mo[27mu[27mt[1B[27m-[27m [27mp[27mr[27me[27ms[27me[27mn[27mt[27m [27mo[27mn[27ml[27my[27m [27mt[27mh[27me[27m [27mt[27mw[27mo[27m [27mr[27me[27mc[27mu[27mr[27mr[27mi[27mn[27mg[27m [27ms[27mu[27mb[27ms[27mc[27mr[27mi[27mp[27mt[27mi[27mo[27mn[27m [27mo[27mp[27mt[27mi[27mo[27mn[27ms[1B[27m-[27m [27ma[27mv[27mo[27mi[27md[27m [27mm[27me[27mn[27mt[27mi[27mo[27mn[27mi[27mn[27mg[27m [27ms[27mi[27mn[27mg[27ml[27me[27m-[27ms[27me[27ms[27ms[27mi[27mo[27mn[27m [27mp[27mu[27mr[27mc[27mh[27ma[27ms[27me[27m [27mo[27mn[27m [27mt[27mh[27me[27m [27ml[27ma[27mn[27md[27mi[27mn[27mg[27m [27mp[27ma[27mg[27me[1B[27m-[27m [27mp[27mr[27me[27ms[27me[27mr[27mv[27me[27m [27ma[27m [27mc[27ml[27me[27ma[27mn[27m [27mp[27ma[27mt[27mh[27m [27mt[27mo[27mw[27ma[27mr[27md[27m [27mf[27mu[27mt[27mu[27mr[27me[27m [27mi[27mn[27mt[27me[27mr[27mn[27ma[27ml[27m/[27mm[27ma[27mn[27mu[27ma[27ml[27m [27mh[27ma[27mn[27md[27ml[27mi[27mn[27mg[27m [27mo[27mf[27m [27ms[27mi[27mn[27mg[27ml[27me[27m [27ms[27me[27ms[27ms[27mi[27mo[27mn[27ms[2B[27mA[27mt[27m [27mt[27mh[27me[27m [27me[27mn[27md[27m:[1B[27m-[27m [27ms[27mu[27mm[27mm[27ma[27mr[27mi[27mz[27me[27m [27mw[27mh[27ma[27mt[27m [27my[27mo[27mu[27m [27mc[27mh[27ma[27mn[27mg[27me[27md[1B[27m-[27m [27ms[27mh[27mo[27mw[27m [27mt[27mh[27me[27m [27mf[27mi[27mn[27ma[27ml[27m [27ms[27mc[27mo[27mp[27me[27md[27m [27md[27mi[27mf[27mf[1B[27m-[27m [27mp[27mr[27mo[27mp[27mo[27ms[27me[27m [27mt[27mh[27me[27m [27mn[27me[27mx[27mt[27m [27m3[27m [27mb[27me[27ms[27mt[27m [27mC[27mo[27md[27me[27mx[27m [27mt[27ma[27ms[27mk[27ms[27m [27ma[27mf[27mt[27me[27mr[27m [27mt[27mh[27mi[27ms[27m [27mp[27ma[27ms[K               [A[A[A[17D[A[A[34C[A[1B[1B[1B[11C[1B[17C[1B[1B[6C;2B
