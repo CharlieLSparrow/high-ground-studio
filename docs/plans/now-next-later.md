@@ -11,12 +11,8 @@ Date: 2026-04-27
 
 ## Next
 
-- Add `.env.example` from the actual env surface used in code.
 - Keep the durable build-history note current if later sessions introduce new temporary failures or workarounds.
-- Write a small content-pipeline map for:
-  - `content/publish`
-  - `content/_staging`
-  - `content/_inbox`
+- Keep the content-pipeline and published-discovery alignment docs current as the content system evolves.
 - Add a narrow verification layer for auth and team server actions.
 
 ## Later

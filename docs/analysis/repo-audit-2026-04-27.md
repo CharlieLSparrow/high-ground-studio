@@ -59,7 +59,8 @@ This audit is grounded in the repo as it exists now, plus the recent stabilizati
    - cart UI remains present but not integrated into the coaching path
 
 4. Local setup knowledge is still mostly implicit.
-   - required env vars are discoverable from code, but no `.env.example` exists
+   - `.env.example` now exists
+   - but local setup still depends on durable docs staying aligned with source usage
 
 5. Repo hygiene is uneven.
    - `page.backup.tsx`
@@ -100,7 +101,8 @@ This knowledge should now be treated as durable repo memory:
 ## Top 10 Next Steps
 
 1. Add a checked-in `.env.example`.
-   - Rationale: local setup is currently inferred from code, which slows every fresh machine and every agent turn.
+   - Status: done.
+   - Follow-through: keep it synchronized with source usage and local setup docs.
 
 2. Keep the new build-history distinction current as future sessions add more stabilization notes.
    - Rationale: future agents should not mistake old session failures for current repo truth.
@@ -108,8 +110,9 @@ This knowledge should now be treated as durable repo memory:
 3. Decide the near-term strategy for the episodes route.
    - Rationale: the current loader guard is stabilizing, not final architecture.
 
-4. Add a short content-pipeline map for `_inbox`, `_staging`, and `publish`.
-   - Rationale: content source-of-truth confusion is one of the biggest future-agent risks.
+4. Add a published-discovery alignment note that explains the split between `content/publish` and `src/lib/site.ts` / `src/lib/reading.ts`.
+   - Status: done.
+   - Follow-through: use it whenever published content or discovery surfaces change.
 
 5. Remove or quarantine obvious backup/scratch artifacts after review.
    - Rationale: `page.backup.tsx` and config backups increase accidental-change risk.

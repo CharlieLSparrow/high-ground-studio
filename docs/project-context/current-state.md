@@ -66,8 +66,8 @@ Interpretation:
 
 ## Known Repo Friction
 
-- No checked-in `.env.example`.
 - The durable docs layer is new and should be kept current as repo memory evolves.
+- Published MDX page source and curated discovery metadata are split across different files and must currently be kept aligned by convention.
 - There are backup/scratch artifacts in the repo, including:
   - `apps/web/src/app/schedule/page.backup.tsx`
   - `pnpm-workspace.yaml.save`
