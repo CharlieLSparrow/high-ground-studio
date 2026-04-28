@@ -5,17 +5,21 @@ const guardedImport = new Function(
   "return import(specifier)",
 ) as (specifier: string) => Promise<unknown>;
 
-type EpisodeSource = ReturnType<typeof loader>;
 type LoaderSourceArg = Parameters<typeof loader>[0]["source"];
 
-const emptyEpisodeSource = {
+type EpisodeSource = {
+  getPage: (segments: string[]) => unknown | null;
+  getPages: () => Array<{ slugs: string[] }>;
+};
+
+const emptyEpisodeSource: EpisodeSource = {
   getPage() {
     return null;
   },
   getPages() {
     return [];
   },
-} as EpisodeSource;
+};
 
 export const isEpisodeLoaderEnabled =
   process.env.ENABLE_EPISODES_FUMADOCS === "1";
@@ -36,5 +40,5 @@ export async function getEpisodeSource(): Promise<EpisodeSource> {
   return loader({
     baseUrl: "/episodes",
     source: module.docs.toFumadocsSource(),
-  });
+  }) as EpisodeSource;
 }
