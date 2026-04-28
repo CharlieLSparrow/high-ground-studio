@@ -7,8 +7,20 @@ import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
 import { getEpisodeSource, isEpisodeLoaderEnabled } from "@/lib/source";
 
-// 👈 THE KILl-SWITCH FOR 500 ERRORS
 export const dynamic = "force-dynamic";
+
+type MdxComponent = React.ComponentType<Record<string, never>>;
+
+type EpisodePageRecord = {
+  data: Record<string, unknown> & {
+    title?: string;
+    access?: string;
+    youtube?: string;
+    contentType?: string;
+    body?: MdxComponent;
+  };
+  body?: MdxComponent;
+};
 
 export default async function Page({
   params,
@@ -19,10 +31,8 @@ export default async function Page({
   const segments = slug ?? [];
   const source = await getEpisodeSource();
 
-  // Try to find the page in the Fumadocs library [cite: 185]
   const page = source.getPage(segments);
 
-  // 🚨 THE HEX DIAGNOSTIC HUD
   if (!page) {
     const availablePages = source.getPages().map((p) => p.slugs.join("/"));
     return (
@@ -33,15 +43,20 @@ export default async function Page({
           <p className="mb-4 font-bold text-subject-muted">Files loaded in memory:</p>
           {!isEpisodeLoaderEnabled ? (
             <p className="mb-4 font-bold text-amber-300">
-              Episodes content loader guard is active. Set
-              `ENABLE_EPISODES_FUMADOCS=1` to re-enable the Fumadocs source.
+              Episodes content loader guard is active. Set{" "}
+              <code>ENABLE_EPISODES_FUMADOCS=1</code> to re-enable the Fumadocs
+              source.
             </p>
           ) : null}
           <ul className="space-y-2 pl-5">
             {availablePages.length === 0 ? (
               <li className="font-bold text-red-400">(Zero files. Check source.config.ts)</li>
             ) : (
-              availablePages.map(p => <li key={p} className="text-subject">👉 {p || "index"}</li>)
+              availablePages.map((p) => (
+                <li key={p} className="text-subject">
+                  👉 {p || "index"}
+                </li>
+              ))
             )}
           </ul>
         </div>
@@ -49,31 +64,40 @@ export default async function Page({
     );
   }
 
-  const pageData = page.data as any;
+  const episodePage = page as unknown as EpisodePageRecord;
+  const pageData = episodePage.data;
   const pathname = `/episodes/${segments.join("/")}`;
 
-  // Check if the user has clearance [cite: 200]
-  const accessState = await resolveContentAccess(pageData.access);
+  const accessState = await resolveContentAccess(
+    typeof pageData.access === "string" ? pageData.access : undefined,
+  );
 
   if (!accessState.allowed) {
     if (!accessState.isSignedIn) {
-      redirect(buildSignInHref(pathname)); // [cite: 201]
+      redirect(buildSignInHref(pathname));
     }
     return notFound();
   }
 
   const cookieStore = await cookies();
   const mode = accessState.isTeam ? getModeFromCookieStore(cookieStore) : "public";
-  const MDX = page.data.body;
+  const MDX = episodePage.body ?? pageData.body;
+  const title = typeof pageData.title === "string" ? pageData.title : "Untitled";
+  const youtubeId = typeof pageData.youtube === "string" ? pageData.youtube : "";
 
-  // Determine if we use the Cinematic Episode shell or the Reading shell [cite: 213]
+  if (!MDX) {
+    return notFound();
+  }
+
   if (pageData.youtube || pageData.contentType === "episode") {
     return (
-      <EpisodePageShell 
-        title={pageData.title} 
-        youtubeId={pageData.youtube} 
-        internalNotice={accessState.isTeam ? <InternalViewNotice mode={mode} {...pageData} /> : null}
-        {...pageData} 
+      <EpisodePageShell
+        title={title}
+        youtubeId={youtubeId}
+        internalNotice={
+          accessState.isTeam ? <InternalViewNotice mode={mode} {...pageData} /> : null
+        }
+        {...pageData}
       >
         <MDX />
       </EpisodePageShell>
@@ -81,9 +105,11 @@ export default async function Page({
   }
 
   return (
-    <DocsPageShell 
-      title={pageData.title} 
-      internalNotice={accessState.isTeam ? <InternalViewNotice mode={mode} {...pageData} /> : null}
+    <DocsPageShell
+      title={title}
+      internalNotice={
+        accessState.isTeam ? <InternalViewNotice mode={mode} {...pageData} /> : null
+      }
       {...pageData}
     >
       <MDX />
