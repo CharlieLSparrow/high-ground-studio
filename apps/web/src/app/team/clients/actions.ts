@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canManageClients, canManageMemberships } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { syncMembershipPlans } from "@/lib/server/membership-plan-catalog.js";
 import { upsertPreprovisionedUser } from "@/lib/server/user-identity";
 
 function parseAliasEmails(rawValue: string): string[] {
@@ -176,36 +177,13 @@ export async function seedMembershipPlansAction() {
   await requireMembershipAccess();
 
   try {
-    const existingCount = await prisma.membershipPlan.count();
-
-    if (existingCount === 0) {
-      await prisma.membershipPlan.createMany({
-        data: [
-          {
-            name: "Coaching Monthly",
-            slug: "coaching-monthly",
-            description: "Standard monthly coaching membership",
-            priceCents: 15000,
-            billingIntervalMonths: 1,
-            isActive: true,
-          },
-          {
-            name: "Coaching Quarterly",
-            slug: "coaching-quarterly",
-            description: "Quarterly coaching membership",
-            priceCents: 42000,
-            billingIntervalMonths: 3,
-            isActive: true,
-          },
-        ],
-      });
-    }
+    await syncMembershipPlans(prisma);
 
     revalidatePath("/team/clients");
 
     redirect(
       buildClientsRedirect({
-        success: "Membership plans are ready.",
+        success: "Membership plans synced.",
       }),
     );
   } catch (error) {

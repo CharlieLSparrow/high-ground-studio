@@ -249,9 +249,10 @@ export default async function TeamClientsPage({
             {membershipPlans.length === 0 ? (
               <div className="space-y-4">
                 <div className="rounded-2xl border border-dashed border-white/10 bg-white/4 px-5 py-6 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">
-                  No active membership plans yet. Seed a couple sensible defaults
-                  so the team can start assigning access without inventing plan
-                  names from memory every time.
+                  No active membership plans yet. Sync the current internal
+                  catalog so the team can assign the live monthly offers plus
+                  the manual single-session option without inventing product
+                  names from memory.
                 </div>
 
                 <form action={seedMembershipPlansAction}>
@@ -259,7 +260,7 @@ export default async function TeamClientsPage({
                     type="submit"
                     className="rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
                   >
-                    Create default plans
+                    Sync membership plans
                   </button>
                 </form>
               </div>
@@ -274,8 +275,13 @@ export default async function TeamClientsPage({
                     <div className="mt-1 text-[rgba(245,239,230,0.75)]">
                       {plan.billingIntervalMonths
                         ? `Every ${plan.billingIntervalMonths} month(s)`
-                        : "No interval set"}
+                        : "Manual / one-time"}
                     </div>
+                    {plan.description ? (
+                      <div className="mt-2 text-[0.8rem] leading-6 text-[rgba(245,239,230,0.7)]">
+                        {plan.description}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
