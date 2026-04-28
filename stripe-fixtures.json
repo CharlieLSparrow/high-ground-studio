@@ -1,0 +1,42 @@
+{
+  "products": [
+    {
+      "name": "High Ground Coaching — Single Session",
+      "id": "prod_single_session"
+    },
+    {
+      "name": "High Ground Coaching — 1 Session / Month",
+      "id": "prod_monthly_1"
+    },
+    {
+      "name": "High Ground Coaching — 2 Sessions / Month",
+      "id": "prod_monthly_2"
+    }
+  ],
+  "prices": [
+    {
+      "id": "price_single_session",
+      "product": "prod_single_session",
+      "unit_amount": 6500,
+      "currency": "usd"
+    },
+    {
+      "id": "price_monthly_1",
+      "product": "prod_monthly_1",
+      "unit_amount": 5700,
+      "currency": "usd",
+      "recurring": {
+        "interval": "month"
+      }
+    },
+    {
+      "id": "price_monthly_2",
+      "product": "prod_monthly_2",
+      "unit_amount": 9700,
+      "currency": "usd",
+      "recurring": {
+        "interval": "month"
+      }
+    }
+  ]
+}
