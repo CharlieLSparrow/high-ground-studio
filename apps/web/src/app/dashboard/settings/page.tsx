@@ -11,12 +11,51 @@ import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 
 import { updateMarketingPreferencesAction } from "./actions";
 
-export default async function DashboardSettingsPage() {
+type SearchParams = Promise<{
+  success?: string;
+  error?: string;
+}>;
+
+function StatusMessage({
+  success,
+  error,
+}: {
+  success?: string;
+  error?: string;
+}) {
+  if (!success && !error) {
+    return null;
+  }
+
+  const isError = Boolean(error);
+  const message = error ?? success ?? "";
+
+  return (
+    <div
+      className={[
+        "rounded-2xl border px-4 py-3 text-sm font-medium",
+        isError
+          ? "border-red-400/25 bg-red-400/10 text-red-100"
+          : "border-emerald-400/25 bg-emerald-400/10 text-emerald-100",
+      ].join(" ")}
+    >
+      {message}
+    </div>
+  );
+}
+
+export default async function DashboardSettingsPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const session = await auth();
 
   if (!session?.user) {
     redirect(buildSignInHref("/dashboard/settings"));
   }
+
+  const { success, error } = await searchParams;
 
   redirectToWelcomeIfNeeded(session, "/dashboard/settings");
 
@@ -68,6 +107,8 @@ export default async function DashboardSettingsPage() {
               </Link>
             </div>
           </GlassPanel>
+
+          <StatusMessage success={success} error={error} />
 
           <GlassPanel className="p-6 text-[var(--text-light)]">
             <PageEyebrow>Notifications</PageEyebrow>
