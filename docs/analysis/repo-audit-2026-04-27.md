@@ -70,7 +70,8 @@ This audit is grounded in the repo as it exists now, plus the recent stabilizati
 6. Content inventory is much larger than the active published surface.
    - `_inbox` and `_staging` are large
    - `content/publish` is comparatively small
-   - future agents could easily mistake raw content for live content
+   - future agents could easily mistake raw or staged content for live content
+   - published route content and curated discovery metadata are also split across different source files
 
 7. The new durable docs layer exists, but it is still fresh and needs upkeep to stay useful.
 

@@ -59,9 +59,10 @@ Interpretation:
 
 ## Content Reality
 
-- `apps/web/content/publish` is the current published MDX surface.
-- `apps/web/content/_staging` is much larger and appears to be the working area for future content pipeline work.
-- `apps/web/content/_inbox` contains raw source material and research, not just ready-to-publish content.
+- `apps/web/content/publish` is the current published MDX surface and the only content directory explicitly wired into `apps/web/source.config.ts`.
+- `apps/web/content/_staging` is a structured working/staging area and is not currently consumed directly by the live app code.
+- `apps/web/content/_inbox` contains raw source material and research, not just ready-to-publish content, and is not part of the live content source path.
+- `/library` and other curated discovery surfaces currently depend on hand-maintained metadata in `src/lib/site.ts` and `src/lib/reading.ts`, not dynamic enumeration of the content tree.
 
 ## Known Repo Friction
 
