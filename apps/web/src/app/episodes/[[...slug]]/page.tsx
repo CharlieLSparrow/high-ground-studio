@@ -5,7 +5,7 @@ import EpisodePageShell from "@/components/docs/EpisodePageShell";
 import InternalViewNotice from "@/components/docs/InternalViewNotice";
 import { resolveContentAccess, buildSignInHref } from "@/lib/content-access";
 import { getModeFromCookieStore } from "@/lib/content-mode";
-import { source } from "@/lib/source";
+import { getEpisodeSource, isEpisodeLoaderEnabled } from "@/lib/source";
 
 // 👈 THE KILl-SWITCH FOR 500 ERRORS
 export const dynamic = "force-dynamic";
@@ -17,6 +17,7 @@ export default async function Page({
 }) {
   const { slug } = await params;
   const segments = slug ?? [];
+  const source = await getEpisodeSource();
 
   // Try to find the page in the Fumadocs library [cite: 185]
   const page = source.getPage(segments);
@@ -30,6 +31,12 @@ export default async function Page({
         <p className="mb-8 text-flare-glow">Looking for: [{segments.join(", ")}]</p>
         <div className="rounded-xl border border-white/10 bg-white/5 p-6 shadow-glass">
           <p className="mb-4 font-bold text-subject-muted">Files loaded in memory:</p>
+          {!isEpisodeLoaderEnabled ? (
+            <p className="mb-4 font-bold text-amber-300">
+              Episodes content loader guard is active. Set
+              `ENABLE_EPISODES_FUMADOCS=1` to re-enable the Fumadocs source.
+            </p>
+          ) : null}
           <ul className="space-y-2 pl-5">
             {availablePages.length === 0 ? (
               <li className="font-bold text-red-400">(Zero files. Check source.config.ts)</li>
