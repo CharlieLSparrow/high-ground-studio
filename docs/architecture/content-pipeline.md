@@ -40,9 +40,14 @@ Purpose:
 
 Observed shape:
 
-- `learning-to-lead/write-it-down/packet.mdx`
-- `learning-to-lead/look-for-lessons/packet.mdx`
-- `learning-to-lead/know-where-you-came-from/packet.mdx`
+- validated creative packets:
+  - `learning-to-lead/pilot/packet.mdx`
+  - `learning-to-lead/its-a-metaphor/packet.mdx`
+  - `learning-to-lead/chub-and-jack/packet.mdx`
+- preserved first-pass bridge packets:
+  - `learning-to-lead/write-it-down/packet.mdx`
+  - `learning-to-lead/look-for-lessons/packet.mdx`
+  - `learning-to-lead/know-where-you-came-from/packet.mdx`
 - `_templates/episode-packet.mdx`
 
 Direct code evidence:
@@ -55,6 +60,8 @@ How future agents should treat it:
 - canonical for episode packet authoring
 - the first place to edit when the task is about episode content itself
 - safe to treat as the long-term episode source of truth even though the current website still reads `publish`
+- for the first three episodes, prefer the validated creative packets that follow the upstream editorial slugs
+- do not mistake the preserved first-pass bridge packets for the final creative canonical paths
 
 ### `apps/web/content/publish`
 

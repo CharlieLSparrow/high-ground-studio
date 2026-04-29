@@ -91,13 +91,31 @@ This is valuable source material, but it is not a good canonical working surface
 
 The canonical episode working path is now:
 
-- `apps/web/content/episodes/<project>/<semantic-slug>/packet.mdx`
+- `apps/web/content/episodes/<project>/<creative-slug>/packet.mdx`
 
-For the current Learning to Lead / High Ground Odyssey episodes, the starter canonical packet files are:
+For the current Learning to Lead / High Ground Odyssey episodes, the validated creative packet files are:
 
-- `apps/web/content/episodes/learning-to-lead/write-it-down/packet.mdx`
-- `apps/web/content/episodes/learning-to-lead/look-for-lessons/packet.mdx`
-- `apps/web/content/episodes/learning-to-lead/know-where-you-came-from/packet.mdx`
+- `apps/web/content/episodes/learning-to-lead/pilot/packet.mdx`
+- `apps/web/content/episodes/learning-to-lead/its-a-metaphor/packet.mdx`
+- `apps/web/content/episodes/learning-to-lead/chub-and-jack/packet.mdx`
+
+Important clarification:
+
+- the creative packet slug can differ from the public website slug
+- for the first three episodes, the creative packets follow the upstream editorial titles
+- the current public derivative files still use the semantic public slugs:
+  - `write-it-down`
+  - `look-for-lessons`
+  - `know-where-you-came-from`
+
+Also note:
+
+- the earlier first-pass packet files under:
+  - `apps/web/content/episodes/learning-to-lead/write-it-down/packet.mdx`
+  - `apps/web/content/episodes/learning-to-lead/look-for-lessons/packet.mdx`
+  - `apps/web/content/episodes/learning-to-lead/know-where-you-came-from/packet.mdx`
+- are preserved as provisional bridge packets from the first architecture pass
+- they should not be treated as the validated creative canonical paths going forward
 
 Why this is the canonical choice:
 
@@ -117,11 +135,11 @@ apps/web/content/
     _templates/
       episode-packet.mdx
     learning-to-lead/
-      write-it-down/
+      pilot/
         packet.mdx
-      look-for-lessons/
+      its-a-metaphor/
         packet.mdx
-      know-where-you-came-from/
+      chub-and-jack/
         packet.mdx
 ```
 
@@ -150,9 +168,9 @@ Use semantic kebab-case slugs.
 
 Good:
 
-- `write-it-down`
-- `look-for-lessons`
-- `know-where-you-came-from`
+- `pilot`
+- `its-a-metaphor`
+- `chub-and-jack`
 
 Do not use numbered canonical folder names such as:
 
@@ -161,6 +179,12 @@ Do not use numbered canonical folder names such as:
 - `episode-003`
 
 Episode numbering still matters, but it belongs in frontmatter metadata, not in the canonical working filename.
+
+Creative-packet rule:
+
+- prefer the strongest upstream editorial slug for the packet folder
+- keep the current website-facing slug in frontmatter via `publishSlug`
+- do not force the packet slug to match the public slug when the repo evidence says the creative material has a different long-standing title
 
 ### File names
 
@@ -224,16 +248,16 @@ Recommended example:
 ```yaml
 ---
 title: "Write It Down"
-slug: "write-it-down"
+slug: "pilot"
 project: "learning-to-lead"
 series: "high-ground-odyssey"
 episodeNumber: 1
 workflowStatus: "draft"
 publicationStatus: "published"
+publicTitle: "Write It Down"
 publishSlug: "write-it-down"
 legacySlugs:
   - "episode-001"
-  - "pilot"
 pairedReadingSlug: "preface"
 pairedReadingTitle: "Preface"
 youtube: "96LN__TA-T8"
@@ -378,9 +402,9 @@ For the current repo, that means:
 
 ## Example: One Canonical Episode Packet
 
-For episode 1, the canonical packet is:
+For episode 1, the validated creative packet is:
 
-- `apps/web/content/episodes/learning-to-lead/write-it-down/packet.mdx`
+- `apps/web/content/episodes/learning-to-lead/pilot/packet.mdx`
 
 That packet currently holds:
 
