@@ -1,0 +1,203 @@
+{
+  "updatedAt": "2026-04-29T04:14:19.000Z",
+  "cards": [
+    {
+      "id": "complete-first-three-sync-proofs",
+      "title": "Complete first three packet-to-public sync proofs",
+      "status": "done",
+      "type": "workflow-proof",
+      "area": "episodes",
+      "priority": "high",
+      "owner": "codex",
+      "summary": "The first proof set is complete: pilot -> write-it-down, its-a-metaphor -> look-for-lessons, and chub-and-jack -> know-where-you-came-from have all been selectively synced from canonical packets into the public episode layer.",
+      "nextStep": "Use this three-episode set as the baseline reference when later packet-to-public sync work needs an example.",
+      "links": [
+        {
+          "label": "pilot sync note",
+          "href": "docs/architecture/pilot-packet-to-public-sync.md"
+        },
+        {
+          "label": "its-a-metaphor sync note",
+          "href": "docs/architecture/its-a-metaphor-packet-to-public-sync.md"
+        },
+        {
+          "label": "chub-and-jack sync note",
+          "href": "docs/architecture/chub-and-jack-packet-to-public-sync.md"
+        }
+      ],
+      "tags": [
+        "proof-set",
+        "public-sync",
+        "proved"
+      ],
+      "updatedAt": "2026-04-28T20:01:00.000Z"
+    },
+    {
+      "id": "migrate-early-life-lessons-packet",
+      "title": "Migrate early-life-lessons into canonical packet",
+      "status": "done",
+      "type": "packet-migration",
+      "area": "episodes",
+      "priority": "high",
+      "owner": "codex",
+      "summary": "The canonical packet exists with real Scott text, real Charlie material in two shapes, research notes, clip notes, provenance, and ambiguity captured. No public derivative exists yet.",
+      "nextStep": "Keep this at the packet layer until public packaging and Charlie-shape decisions are settled.",
+      "links": [
+        {
+          "label": "early-life-lessons packet",
+          "href": "apps/web/content/episodes/learning-to-lead/early-life-lessons/packet.mdx"
+        },
+        {
+          "label": "migration status map",
+          "href": "docs/architecture/episode-migration-status.md"
+        }
+      ],
+      "tags": [
+        "packet-ready",
+        "packet-only",
+        "blocked-by-decision"
+      ],
+      "updatedAt": "2026-04-28T20:02:00.000Z"
+    },
+    {
+      "id": "choose-next-packet-after-early-life-lessons",
+      "title": "Migrate values into canonical packet",
+      "status": "done",
+      "type": "packet-migration",
+      "area": "episodes",
+      "priority": "high",
+      "owner": "codex",
+      "summary": "The canonical values packet now exists with real Scott core, the stronger Charlie sidebars carried forward, the partial standalone Charlie source preserved in provenance, and the research dossier summarized without touching publish.",
+      "nextStep": "Keep values at the packet layer until a later public packaging decision settles title direction and Charlie’s eventual public shape.",
+      "links": [
+        {
+          "label": "values packet",
+          "href": "apps/web/content/episodes/learning-to-lead/values/packet.mdx"
+        },
+        {
+          "label": "migration status map",
+          "href": "docs/architecture/episode-migration-status.md"
+        },
+        {
+          "label": "values learning note",
+          "href": "docs/learning/values-packet-migration.md"
+        }
+      ],
+      "tags": [
+        "packet",
+        "values",
+        "packet-only",
+        "migrated"
+      ],
+      "updatedAt": "2026-04-29T04:14:19.000Z"
+    },
+    {
+      "id": "decide-early-life-lessons-public-title-and-slug",
+      "title": "Decide public packaging for early-life-lessons",
+      "status": "todo",
+      "type": "decision",
+      "area": "episodes",
+      "priority": "high",
+      "owner": "charlie",
+      "summary": "The packet is stable, but the public packaging is not settled. The open questions are title, slug, paired-reading target, and which Scott lesson cluster should lead the eventual public page.",
+      "nextStep": "Choose the eventual public title and paired-reading target, and decide whether the public page leads with effort and joy, kindness, not wasting time, simple solutions, or listening.",
+      "links": [
+        {
+          "label": "early-life-lessons packet",
+          "href": "apps/web/content/episodes/learning-to-lead/early-life-lessons/packet.mdx"
+        },
+        {
+          "label": "migration status map",
+          "href": "docs/architecture/episode-migration-status.md"
+        }
+      ],
+      "tags": [
+        "public-packaging",
+        "title",
+        "paired-reading"
+      ],
+      "updatedAt": "2026-04-28T20:05:20.000Z"
+    },
+    {
+      "id": "shape-charlie-public-section-for-early-life-lessons",
+      "title": "Shape Charlie contribution for early-life-lessons public sync",
+      "status": "todo",
+      "type": "editorial",
+      "area": "episodes",
+      "priority": "high",
+      "owner": "charlie",
+      "summary": "Charlie material exists as integrated sidebars plus a shorter closing reflection. The packet preserves both, but the future public derivative needs one deliberate Charlie shape instead of carrying both by accident.",
+      "nextStep": "Choose sidebars, one response section, or a hybrid, then mark the packet ready for a public sync pass.",
+      "links": [
+        {
+          "label": "early-life-lessons packet",
+          "href": "apps/web/content/episodes/learning-to-lead/early-life-lessons/packet.mdx"
+        },
+        {
+          "label": "full chapter with Charlie sidebars",
+          "href": "apps/web/content/_staging/learning-to-lead/episodes/early-life-lessons/extras/full-chapter-with-charlie-sidebars.md"
+        }
+      ],
+      "tags": [
+        "charlie",
+        "editorial",
+        "public-sync-candidate"
+      ],
+      "updatedAt": "2026-04-28T20:05:10.000Z"
+    },
+    {
+      "id": "sync-early-life-lessons-to-public-when-ready",
+      "title": "Create the first public derivative for early-life-lessons",
+      "status": "todo",
+      "type": "public-sync",
+      "area": "episodes",
+      "priority": "medium",
+      "owner": "codex",
+      "summary": "The packet is stable enough for a future public derivative, but no publish file exists yet. This sync should wait until public packaging and Charlie-shape decisions are settled.",
+      "nextStep": "After the packaging and Charlie decisions are made, create the first selective public derivative and keep the creative/public mapping explicit.",
+      "links": [
+        {
+          "label": "early-life-lessons packet",
+          "href": "apps/web/content/episodes/learning-to-lead/early-life-lessons/packet.mdx"
+        },
+        {
+          "label": "migration status map",
+          "href": "docs/architecture/episode-migration-status.md"
+        }
+      ],
+      "tags": [
+        "public-sync",
+        "blocked-by-decision",
+        "packet-ready"
+      ],
+      "updatedAt": "2026-04-28T20:05:00.000Z"
+    },
+    {
+      "id": "decide-bridge-packet-cleanup-policy",
+      "title": "Decide long-term bridge packet cleanup policy",
+      "status": "backlog",
+      "type": "cleanup-decision",
+      "area": "content-system",
+      "priority": "low",
+      "owner": "charlie",
+      "summary": "The first-pass bridge packets are still preserved on disk and are not blocking current packet work. Their long-term retention policy is unresolved, but that decision can wait.",
+      "nextStep": "Leave bridge packets untouched until more packet migrations are complete, then decide whether they stay as permanent references or move into an explicit legacy location.",
+      "links": [
+        {
+          "label": "migration status map",
+          "href": "docs/architecture/episode-migration-status.md"
+        },
+        {
+          "label": "look-for-lessons bridge packet",
+          "href": "apps/web/content/episodes/learning-to-lead/look-for-lessons/packet.mdx"
+        }
+      ],
+      "tags": [
+        "bridge-packets",
+        "legacy",
+        "not-blocking"
+      ],
+      "updatedAt": "2026-04-28T20:05:00.000Z"
+    }
+  ]
+}
