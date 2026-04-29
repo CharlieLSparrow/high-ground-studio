@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-04-29T04:14:19.000Z",
+  "updatedAt": "2026-04-29T04:33:16.000Z",
   "cards": [
     {
       "id": "complete-first-three-sync-proofs",
@@ -198,6 +198,39 @@
         "not-blocking"
       ],
       "updatedAt": "2026-04-28T20:05:00.000Z"
+    },
+    {
+      "id": "migrate-be-where-you-are-packet",
+      "title": "Migrate be-where-you-are into canonical packet",
+      "status": "done",
+      "type": "packet-migration",
+      "area": "episodes",
+      "priority": "high",
+      "owner": "codex",
+      "summary": "The canonical be-where-you-are packet now exists with the selected Scott main draft, the full research stack preserved, Charlie absence recorded honestly, and no publish layer changes.",
+      "nextStep": "Keep this packet-only until Charlie exists and the public package decision settles whether Be Where You Are stays whole or breaks toward stronger sub-arcs.",
+      "links": [
+        {
+          "label": "be-where-you-are packet",
+          "href": "apps/web/content/episodes/learning-to-lead/be-where-you-are/packet.mdx"
+        },
+        {
+          "label": "migration status map",
+          "href": "docs/architecture/episode-migration-status.md"
+        },
+        {
+          "label": "learning note",
+          "href": "docs/learning/be-where-you-are-packet-migration.md"
+        }
+      ],
+      "tags": [
+        "packet",
+        "packet-only",
+        "migrated",
+        "be-where-you-are",
+        "missing-charlie"
+      ],
+      "updatedAt": "2026-04-29T04:33:16.000Z"
     }
   ]
 }
