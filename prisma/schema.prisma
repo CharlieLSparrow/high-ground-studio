@@ -1,3 +1,61 @@
+// What this file does:
+// This schema is the formal ledger of the app's durable state: who exists,
+// which roles they carry, how memberships are granted, and how appointments
+// are tracked.
+//
+// Why this matters:
+// Application code is the bustling city above ground. The Prisma schema is the
+// municipal registry underneath it all, where the laws of identity and
+// relationship are written down so the rest of the town cannot "just wing it."
+//
+// Best practice (the "textbook" version):
+// Model distinct concepts as distinct tables as soon as their lifecycle,
+// constraints, or audit needs diverge.
+//
+// What we are doing instead (and why):
+// A compact schema with a few well-chosen separations. The app is mature enough
+// to deserve real relational structure, but not so mature that every possible
+// future noun needs its own chapel and pension plan today.
+//
+// Tradeoff:
+// We gain clarity and room to grow.
+// We sacrifice some future specialization until pressure justifies it.
+//
+// Question for Future Charlie:
+// When is a nullable column a gift, and when is it a warning?
+//
+// Answer:
+// It is a gift when it represents optional data for the same species of thing.
+// It is a warning when it tries to hide that two different species are living
+// in the same table wearing one coat.
+//
+// First assumption that breaks:
+// "One user table can gracefully stand in for every identity-adjacent concept."
+//
+// Future Chuck note:
+// Read this file as a map of nouns and relationships, not as an arcane spell.
+// Models are entities. Fields are facts about them. Relations are the bridges.
+// Indexes and uniqueness rules are the town guards preventing certain classes
+// of nonsense from entering the square.
+//
+// What it looks like now:
+// A compact product schema centered on users, roles, memberships, appointments,
+// and a few internal workflow helpers in application code.
+//
+// What it turns into later:
+// More explicit identity siblings (human auth methods, email-only contacts,
+// service accounts, consent ledgers) once the app needs to separate "person,"
+// "login method," "marketing contact," and "machine actor."
+//
+// Signal to evolve it:
+// The second you catch yourself trying to make one table pretend to be two
+// species by adding "just one more nullable column," the fake mustache is on
+// and the schema is asking for a new model instead.
+//
+// Footnote:
+// If TypeScript files are wandering adventurers, this schema is the census
+// office that eventually learns all their names, bloodlines, entitlements, and
+// regrettable scheduling decisions.
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,6 +64,12 @@ datasource db {
   provider = "postgresql"
 }
 
+// Roles are stored separately from auth provider details. That is deliberate.
+// A person may prove identity one way (today, Google), while the app still
+// needs its own notion of what official badges that person carries.
+//
+// Best practice (the "textbook" version):
+// Keep authentication method and authorization grant separate.
 enum AppRole {
   OWNER
   TEAM_SCHEDULER
@@ -13,6 +77,8 @@ enum AppRole {
   CLIENT
 }
 
+// Membership lifecycle inside the app. This is product state, not billing
+// plumbing, which is why it can exist cleanly even while Stripe is quarantined.
 enum MembershipStatus {
   ACTIVE
   PAUSED
@@ -20,6 +86,7 @@ enum MembershipStatus {
   EXPIRED
 }
 
+// Appointment state tracks the life of the scheduled event itself.
 enum AppointmentStatus {
   SCHEDULED
   CONFIRMED
@@ -28,6 +95,8 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+// Location type tells us how the appointment happens; details live separately
+// because "video" and "123 Main St." are not the same kind of fact.
 enum AppointmentLocationType {
   VIDEO
   PHONE
@@ -35,6 +104,45 @@ enum AppointmentLocationType {
   OTHER
 }
 
+// The canonical human/app identity record.
+//
+// Source of truth:
+// This is the main "person in our system" row. It is not a provider-specific
+// account table, and it is not a newsletter-only contact ledger. It is the
+// app's primary human record.
+//
+// Best practice (the "textbook" version):
+// One canonical person record, with adjacent tables for concerns that have
+// different lifecycles.
+//
+// What we are doing instead (and why):
+// Precisely that, but in a still-compact way. User is the human. UserEmail and
+// UserRole absorb the first obvious splits. More identity siblings can arrive
+// later when they earn their keep.
+//
+// Why the related tables exist:
+// - aliases let one human have multiple emails without duplicate users
+// - roles let one human carry multiple badges
+// - clientProfile separates coaching/client metadata from core identity
+//
+// Future complexity wearing a fake mustache:
+// "I am sure User can also directly be newsletter contact, auth method store,
+// and machine principal if we just add enough columns." That way lies a very
+// tired table and many haunted nulls.
+//
+// Signal to evolve it:
+// When the same email address must exist as a human account, newsletter-only
+// contact, or service-account owner with different lifecycle rules, the schema
+// wants adjacent models, not a larger bucket.
+//
+// If ignored:
+// The User table turns into a wagon piled with nullable flags, and one morning
+// everyone discovers they have built a very advanced machine for being vaguely
+// wrong.
+//
+// If you poke this with a stick:
+// Changing primary email rules or collapsing aliases/roles into columns looks
+// simple for about six minutes, after which the family tree catches fire.
 model User {
   id                  String        @id @default(cuid())
   primaryEmail        String        @unique
@@ -60,6 +168,9 @@ model User {
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
 }
 
+// Alternate or secondary email addresses linked to the same human.
+// This keeps "same person, different address" from turning into "two users who
+// now require a summit meeting."
 model UserEmail {
   id        String   @id @default(cuid())
   userId    String
@@ -73,6 +184,15 @@ model UserEmail {
   @@index([userId])
 }
 
+// Separate role rows mean a user can hold several badges at once without
+// encoding that fact into brittle booleans like `isCoachAndMaybeScheduler`.
+//
+// Best practice (the "textbook" version):
+// Model many-to-many-ish grants as rows, not boolean confetti.
+// Signal to evolve it:
+// If roles start needing scopes, grant reasons, expirations, or audit history,
+// the disguise comes off and this simple join table grows into a richer grant
+// model.
 model UserRole {
   id        String   @id @default(cuid())
   userId    String
@@ -85,6 +205,8 @@ model UserRole {
   @@index([role])
 }
 
+// Client-specific domain data hangs off User rather than bloating the base
+// identity record. Not every human in the system is necessarily a client.
 model ClientProfile {
   id          String   @id @default(cuid())
   userId      String   @unique
@@ -96,6 +218,14 @@ model ClientProfile {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// MembershipPlan is the product catalog layer: what kinds of memberships exist
+// in principle, independent of which user currently has one.
+//
+// Right now, this is a small internal product catalog.
+// In a more mature system, plans might gain external billing identifiers,
+// archival states, or country/currency rules.
+// We are NOT doing that yet because memberships are still manual/internal and
+// Stripe is intentionally quarantined.
 model MembershipPlan {
   id                    String       @id @default(cuid())
   name                  String
@@ -110,6 +240,19 @@ model MembershipPlan {
   memberships           Membership[]
 }
 
+// Membership is the actual grant of a plan to a user.
+//
+// Why separate plan vs membership:
+// One table describes the offer. The other records who has it, when it starts,
+// when it ends, and who granted it. Catalog vs instance. Menu vs meal.
+//
+// Best practice (the "textbook" version):
+// Separate product definition from user entitlement. Always.
+//
+// Future complexity wearing a fake mustache:
+// "I am just a status field." Later someone wants pause reasons, billing
+// handoff state, change history, and entitlement windows. That is where you
+// decide whether membership state deserves a richer event trail.
 model Membership {
   id              String           @id @default(cuid())
   userId          String
@@ -130,6 +273,23 @@ model Membership {
   @@index([planId])
 }
 
+// Appointment is the scheduling ledger tying client, coach, and creator roles
+// together around one time-bounded event.
+//
+// Interview lens:
+// Notice how this model encodes distinct relationships to User with named
+// relations. One human table, many contextual roles in the same record. That is
+// very common in real systems and much less scary once you see it written down.
+//
+// Best practice (the "textbook" version):
+// Name relations explicitly whenever one table points to the same target table
+// in more than one role. Otherwise future you will meet the Minotaur.
+//
+// Signal to evolve it:
+// If appointments accumulate reminders, attendance artifacts, external sync
+// metadata, or multi-party participants beyond client/coach/creator/updater,
+// a separate companion model set may be cleaner than endlessly inflating this
+// one municipal form.
 model Appointment {
   id              String                  @id @default(cuid())
   clientUserId    String
