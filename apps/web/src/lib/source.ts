@@ -1,9 +1,5 @@
 import { loader } from "fumadocs-core/source";
-
-const guardedImport = new Function(
-  "specifier",
-  "return import(specifier)",
-) as (specifier: string) => Promise<unknown>;
+import { docs } from "../../.source/server";
 
 type LoaderSourceArg = Parameters<typeof loader>[0]["source"];
 
@@ -21,24 +17,30 @@ const emptyEpisodeSource: EpisodeSource = {
   },
 };
 
+// What this does:
+// Published episode MDX is enabled by default. The explicit opt-out is here so
+// we can still kill the loader quickly if it misbehaves in production, but the
+// normal public path should not depend on a secret env flag being remembered.
+//
+// Future complexity wearing a fake mustache:
+// "It's just one environment variable" usually arrives dressed as safety and
+// quietly turns into "why is production serving the fallback instead of the real
+// content?" Default-on plus explicit opt-out is the less surprising contract for
+// published material.
 export const isEpisodeLoaderEnabled =
-  process.env.ENABLE_EPISODES_FUMADOCS === "1";
+  process.env.ENABLE_EPISODES_FUMADOCS !== "0";
 
 export async function getEpisodeSource(): Promise<EpisodeSource> {
   if (!isEpisodeLoaderEnabled) {
     return emptyEpisodeSource;
   }
 
-  const module = (await guardedImport(
-    "fumadocs-mdx:collections/server",
-  )) as {
-    docs: {
-      toFumadocsSource: () => LoaderSourceArg;
-    };
-  };
-
-  return loader({
-    baseUrl: "/episodes",
-    source: module.docs.toFumadocsSource(),
-  }) as EpisodeSource;
+  try {
+    return loader({
+      baseUrl: "/episodes",
+      source: docs.toFumadocsSource() as LoaderSourceArg,
+    }) as EpisodeSource;
+  } catch {
+    return emptyEpisodeSource;
+  }
 }
