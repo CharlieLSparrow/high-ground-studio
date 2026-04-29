@@ -45,24 +45,25 @@ export default async function SiteHeader() {
                 href="/dashboard"
                 className="text-sm font-semibold text-[rgba(245,239,230,0.84)] no-underline transition hover:text-[var(--accent)]"
               >
-                Dashboard
-              </Link>
-            ) : null}
-
-            {showTeamLink ? (
-              <Link
-                href="/team/clients"
-                className="text-sm font-semibold text-[rgba(245,239,230,0.84)] no-underline transition hover:text-[var(--accent)]"
-              >
-                Team
+                Member Home
               </Link>
             ) : null}
           </nav>
         </div>
 
         <div className="flex items-center gap-3">
-          <LayoutVariantSwitcher isTeam={showTeamLink} />
-          <ModeSwitcher />
+          {showTeamLink ? (
+            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-[rgba(255,255,255,0.05)] px-2 py-1 md:flex">
+              <Link
+                href="/team/clients"
+                className="rounded-full px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)] no-underline transition hover:text-[var(--accent)]"
+              >
+                Studio
+              </Link>
+              <LayoutVariantSwitcher isTeam={showTeamLink} />
+              <ModeSwitcher />
+            </div>
+          ) : null}
           <SocialLinks />
           <AuthButtons />
         </div>

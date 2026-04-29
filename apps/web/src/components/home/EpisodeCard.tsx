@@ -40,7 +40,7 @@ export default function EpisodeCard({
               getLayoutTextTreatment(layoutVariant, "featureLabel"),
             ].join(" ")}
           >
-            {layoutVariant === "signal" ? "Lead Story" : "Featured Episode"}
+            {layoutVariant === "signal" ? "Start Here" : "Featured Episode"}
           </div>
           <h2
             className={[
@@ -66,8 +66,8 @@ export default function EpisodeCard({
             ].join(" ")}
           >
             {layoutVariant === "editorial"
-              ? "Open reading →"
-              : "Read companion article →"}
+              ? "Read and watch →"
+              : "Open episode page →"}
           </a>
         </div>
       </GlassPanel>
@@ -149,8 +149,8 @@ export default function EpisodeCard({
             ].join(" ")}
           >
             {layoutVariant === "editorial"
-              ? "Open reading →"
-              : "Read companion article →"}
+              ? "Read and watch →"
+              : "Open episode page →"}
           </a>
         </div>
       </div>

@@ -62,7 +62,7 @@ export default async function DashboardPage() {
         <div className="space-y-8">
           <GlassPanel className="p-6 text-[var(--text-light)]">
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <PageEyebrow>Dashboard</PageEyebrow>
+              <PageEyebrow>Member Home</PageEyebrow>
               {activeMembership ? <PageEyebrow>Active Member</PageEyebrow> : null}
             </div>
 
@@ -71,9 +71,9 @@ export default async function DashboardPage() {
             </h1>
 
             <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
-              This is your client home base. Over time this can grow into a
-              richer coaching portal, but for now it gives you the essentials:
-              membership status and upcoming appointments, all in one sane place.
+              This is your member home for coaching details, upcoming sessions,
+              and the essentials that keep the relationship clear and easy to
+              navigate.
             </p>
 
             <div className="mt-6">
@@ -120,9 +120,9 @@ export default async function DashboardPage() {
                   </div>
                 ) : (
                   <div className="text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">
-                    You do not currently have an active membership on file. If
-                    that seems wrong, your team probably needs one click and one
-                    less distraction.
+                    You do not currently have an active coaching rhythm on file.
+                    If you are already in conversation with us, we will confirm
+                    the right next step directly.
                   </div>
                 )}
               </div>

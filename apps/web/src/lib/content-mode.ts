@@ -31,13 +31,13 @@ export function normalizeContentMode(value?: string | null): ContentMode {
 export function formatContentModeLabel(mode: ContentMode): string {
   switch (mode) {
     case "editor":
-      return "Editor Mode";
+      return "Editorial Review";
     case "charlie":
-      return "Charlie Mode";
+      return "Charlie Review";
     case "skippy":
-      return "Skippy Mode";
+      return "Internal Review";
     default:
-      return "Public View";
+      return "Published Site";
   }
 }
 

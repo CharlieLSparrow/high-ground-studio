@@ -135,9 +135,9 @@ export default async function LibraryPage() {
           </h1>
 
           <p className="mb-0 mt-5 max-w-[760px] text-[1.08rem] leading-8 text-[rgba(245,239,230,0.9)]">
-            A curated front door into the project — companion episodes, paired
-            readings, and eventually the broader library of quotes, stories,
-            reflections, and collected meaning.
+            A curated front door into the project: companion episodes, paired
+            readings, and the growing body of stories, reflections, and lessons
+            gathered along the way.
           </p>
         </header>
 

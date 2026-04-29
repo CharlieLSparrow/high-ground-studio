@@ -22,7 +22,7 @@ export default function EpisodeFeed({
             getLayoutTextTreatment(variant, "collectionKicker"),
           ].join(" ")}
         >
-          {variant === "signal" ? "Queue" : "Archives"}
+          {variant === "signal" ? "More to Explore" : "Episode Library"}
         </div>
         <h2
           className={[
@@ -31,11 +31,20 @@ export default function EpisodeFeed({
           ].join(" ")}
         >
           {variant === "editorial"
-            ? "The Opening Essays and Episodes"
+            ? "The opening conversations"
             : variant === "signal"
-              ? "Current public episode set"
-              : "The Opening Run"}
+              ? "Public episodes available now"
+              : "Start with the published episodes"}
         </h2>
+        <p
+          className={[
+            "mb-0 mt-3 max-w-[720px] text-[1rem] leading-7",
+            getLayoutTextTreatment(variant, "body"),
+          ].join(" ")}
+        >
+          Each episode opens a story, a lesson, and a companion reading path
+          through the larger High Ground Odyssey project.
+        </p>
       </div>
 
       <div className={layout === "poster" 

@@ -106,7 +106,7 @@ export default async function CoachingPage() {
     ? "/dashboard"
     : buildSignInHref("/coaching");
 
-  const primaryCtaLabel = session?.user ? "Go to dashboard" : "Sign in to begin";
+  const primaryCtaLabel = session?.user ? "Open member home" : "Join / sign in to begin";
 
   return (
     <main
@@ -125,14 +125,14 @@ export default async function CoachingPage() {
             </div>
 
             <h1 className="m-0 max-w-[920px] text-[clamp(2.6rem,6vw,5rem)] leading-[0.96] tracking-[-0.05em] text-[var(--text-light)]">
-              Coaching for people trying to lead better, think better, and live a little more on purpose.
+              Coaching for people trying to lead with more clarity, steadiness, and intention.
             </h1>
 
             <p className="mb-0 mt-5 max-w-[840px] text-[1.05rem] leading-8 text-[rgba(245,239,230,0.9)]">
               This is practical coaching rooted in leadership, reflection,
-              resilience, and the stories that shape who we become. The public
-              front door is centered on two recurring coaching rhythms so you
-              can step back, get perspective, and move forward with intention.
+              resilience, and the stories that shape who we become. Choose the
+              coaching rhythm that fits your season, and we will follow up
+              directly to confirm fit, scheduling, and next steps.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
@@ -143,12 +143,21 @@ export default async function CoachingPage() {
                 {primaryCtaLabel}
               </Link>
 
-              <Link
-                href="/team/appointments"
-                className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
-              >
-                Team booking console
-              </Link>
+              {isTeam ? (
+                <Link
+                  href="/team/appointments"
+                  className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+                >
+                  Open studio scheduling
+                </Link>
+              ) : (
+                <Link
+                  href="/library"
+                  className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+                >
+                  Explore the library
+                </Link>
+              )}
             </div>
           </GlassPanel>
 
@@ -157,14 +166,14 @@ export default async function CoachingPage() {
               title="1 Session / Month"
               price="$57"
               subtitle="Per month"
-              description="A steady monthly rhythm for people who want ongoing support without overcomplicating their calendar or budget."
+              description="A steady monthly rhythm for leaders who want regular support, honest reflection, and practical momentum without crowding the calendar."
               bullets={[
                 "One coaching session each month",
                 "Predictable monthly cadence and pricing",
                 "Great for steady progress and reflection",
               ]}
               ctaHref={primaryCtaHref}
-              ctaLabel="Start monthly coaching"
+              ctaLabel="Choose this rhythm"
               featured
               layoutVariant={layoutVariant}
             />
@@ -173,14 +182,14 @@ export default async function CoachingPage() {
               title="2 Sessions / Month"
               price="$97"
               subtitle="Per month"
-              description="For people who want more accountability, more momentum, and a tighter cadence of coaching conversations."
+              description="For seasons that need closer support, more accountability, and a tighter coaching cadence."
               bullets={[
                 "Two coaching sessions each month",
                 "Best for active growth seasons",
                 "More support, more check-ins, more momentum",
               ]}
               ctaHref={primaryCtaHref}
-              ctaLabel="Start twice-monthly coaching"
+              ctaLabel="Choose this rhythm"
               layoutVariant={layoutVariant}
             />
           </section>
@@ -198,7 +207,7 @@ export default async function CoachingPage() {
                 <li>Decision-making under pressure or uncertainty</li>
                 <li>Personal direction, motivation, and accountability</li>
                 <li>Reflection around identity, purpose, and next steps</li>
-                <li>Honest conversations with practical momentum afterward</li>
+                <li>Honest conversations that turn into practical next steps</li>
               </ul>
             </GlassPanel>
 
@@ -206,26 +215,26 @@ export default async function CoachingPage() {
               <PageEyebrow>How it works</PageEyebrow>
 
               <h2 className="m-0 mt-3 text-[1.7rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-                A simple path in, then a real client portal later
+                A direct start, with real human follow-through
               </h2>
 
               <div className="mt-5 space-y-4 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
                 <p className="m-0">
-                  Right now, the cleanest flow is to sign in, choose the
-                  recurring coaching rhythm that fits, and let the team finalize
-                  scheduling and membership on the back end.
+                  Coaching enrollment currently begins with a direct
+                  conversation so we can match the right rhythm, confirm fit,
+                  and coordinate scheduling well.
                 </p>
 
                 <p className="m-0">
-                  This page is the public offer layer. The internal team console
-                  already supports clients, memberships, and appointments, and
-                  the client dashboard is in place for viewing what’s active.
+                  After you choose a coaching rhythm, we will follow up directly
+                  to confirm timing, expectations, and the best next step for
+                  your situation.
                 </p>
 
                 <p className="m-0">
-                  Checkout automation is the next major layer. Until then, this
-                  gives you a real and presentable coaching front door without
-                  pretending the payment system is done before it actually is.
+                  Once you are inside, your member home keeps the essentials in
+                  one place so the coaching relationship stays clear, calm, and
+                  easy to navigate.
                 </p>
               </div>
             </GlassPanel>

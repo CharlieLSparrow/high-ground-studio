@@ -13,7 +13,7 @@ export default function AuthButtonsClient({
         onClick={() => signIn("google")}
         className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-[var(--text-light)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
       >
-        Sign in
+        Join / Sign in
       </button>
     );
   }

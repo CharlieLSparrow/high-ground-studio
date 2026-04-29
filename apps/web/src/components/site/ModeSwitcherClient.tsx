@@ -30,7 +30,9 @@ export default function ModeSwitcherClient({
 
   return (
     <label className="hidden md:flex items-center gap-2">
-      <span className="sr-only">Content mode</span>
+      <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+        View
+      </span>
 
       <select
         value={currentMode}

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import AuthButtons from "@/components/site/AuthButtons";
 import type { LayoutVariant } from "@/lib/layout-variant";
 import { getLayoutTextTreatment } from "@/lib/layout-variant-styles";
@@ -20,22 +22,39 @@ export default function HeroSection({
               getLayoutTextTreatment("editorial", "heroKicker"),
             ].join(" ")}
           >
-            A Story, A Library, A Long Climb
+            High Ground Odyssey
           </div>
 
           <h1 className="mb-6 text-[clamp(3.2rem,8vw,6rem)] font-black leading-[0.92] tracking-[-0.05em] text-[var(--text-light)]">
-            Join the Odyssey
+            Leadership, legacy, and the stories we pass on.
           </h1>
 
           <p className="mx-auto mb-10 max-w-[660px] text-[clamp(1.05rem,2vw,1.28rem)] leading-8 text-[rgba(245,239,230,0.88)]">
-            A warmer, more literary front door into leadership, family,
-            reflection, and the work of turning a life into something worth
-            passing on.
+            Episodes, paired reading, and thoughtful coaching for people trying
+            to lead with more steadiness, more courage, and more honesty about
+            the road they are actually walking.
           </p>
 
-          <div className="flex justify-center">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <AuthButtons />
+            <Link
+              href="/library"
+              className="rounded-full border border-white/15 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/35 hover:text-[var(--accent)]"
+            >
+              Explore the library
+            </Link>
+            <Link
+              href="/coaching"
+              className="rounded-full border border-white/15 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/35 hover:text-[var(--accent)]"
+            >
+              Explore coaching
+            </Link>
           </div>
+
+          <p className="mx-auto mb-0 mt-6 max-w-[640px] text-[0.98rem] leading-7 text-[rgba(245,239,230,0.76)]">
+            Sign in to save your place, follow the project as it grows, and
+            access member resources as new episodes and tools are released.
+          </p>
         </div>
       </section>
     );
@@ -55,29 +74,36 @@ export default function HeroSection({
                 getLayoutTextTreatment("signal", "heroKicker"),
               ].join(" ")}
             >
-              Signal Preview
+              High Ground Odyssey
             </div>
 
             <h1 className="mb-6 max-w-[760px] text-[clamp(3rem,7vw,5.4rem)] font-black leading-[0.9] tracking-[-0.055em] text-[var(--text-light)]">
-              Join the Odyssey
+              Stories and coaching for the long work of becoming.
             </h1>
 
             <p className="max-w-[620px] text-[clamp(1rem,1.8vw,1.22rem)] leading-8 text-[rgba(230,236,238,0.82)]">
-              A sharper front door for discovering episodes, paired reading,
-              and practical coaching without changing the underlying story or
-              business logic.
+              Start with the public library, step into coaching when the timing
+              is right, and sign in when you want your own place in the journey.
             </p>
           </div>
 
           <div className="rounded-[28px] border border-white/10 bg-[rgba(255,255,255,0.04)] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.18)] backdrop-blur-[10px]">
             <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(230,236,238,0.72)]">
-              Access
+              Member access
             </div>
             <p className="mb-6 text-[0.98rem] leading-7 text-[rgba(230,236,238,0.82)]">
-              Sign in to save progress, move through the content library, and
-              step into the coaching side when the internal workflow is ready.
+              Sign in to save your place, track what is open to you, and stay
+              connected as new resources and conversations are released.
             </p>
-            <AuthButtons />
+            <div className="flex flex-wrap gap-3">
+              <AuthButtons />
+              <Link
+                href="/library"
+                className="rounded-full border border-white/15 bg-white/6 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                Browse episodes
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -87,7 +113,7 @@ export default function HeroSection({
   return (
     <section className="relative flex min-h-[90vh] w-full flex-col items-center justify-center overflow-hidden bg-void px-6 text-center">
       <div className="absolute inset-0 z-0">
-        <div 
+        <div
           className="h-full w-full animate-slow-pan bg-[url('/hero-bg.jpg')] bg-cover bg-center opacity-30 mix-blend-luminosity"
           aria-hidden="true"
         />
@@ -95,20 +121,43 @@ export default function HeroSection({
         <div className="absolute inset-0 bg-gradient-to-b from-void/40 via-transparent to-void" />
       </div>
 
-      <div className="relative z-10 max-w-[900px]">
+      <div className="relative z-10 max-w-[960px]">
+        <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.2em] text-[rgba(245,239,230,0.72)]">
+          High Ground Odyssey
+        </div>
+
         <h1 className="mb-6 text-[clamp(3.5rem,9vw,7rem)] font-black leading-[0.88] tracking-[-0.06em] text-subject drop-shadow-2xl">
-          JOIN THE <br/>
-          <span className="text-flare">ODYSSEY</span>
+          LEADERSHIP, LEGACY, <br />
+          <span className="text-flare">AND THE STORIES THAT SHAPE US</span>
         </h1>
-        
-        <p className="mx-auto mb-10 max-w-[620px] text-[clamp(1.1rem,2.2vw,1.4rem)] font-medium leading-relaxed text-subject-muted">
-          Sign in to join the community, save your progress, and get early access to 
-          new episodes and Homer's coaching scheduler.
+
+        <p className="mx-auto mb-10 max-w-[680px] text-[clamp(1.1rem,2.2vw,1.4rem)] font-medium leading-relaxed text-subject-muted">
+          A home for episodes, paired reading, and coaching built for people
+          trying to lead with more clarity, steadiness, and courage.
         </p>
 
-        <div className="flex justify-center scale-125">
-          <AuthButtons />
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <div className="scale-110">
+            <AuthButtons />
+          </div>
+          <Link
+            href="/library"
+            className="rounded-full border border-white/15 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/35 hover:text-[var(--accent)]"
+          >
+            Explore the library
+          </Link>
+          <Link
+            href="/coaching"
+            className="rounded-full border border-white/15 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/35 hover:text-[var(--accent)]"
+          >
+            Explore coaching
+          </Link>
         </div>
+
+        <p className="mx-auto mb-0 mt-6 max-w-[640px] text-[0.98rem] leading-7 text-[rgba(245,239,230,0.76)]">
+          Sign in to save your place, access member resources, and follow the
+          journey as new episodes, reflections, and coaching tools are released.
+        </p>
       </div>
       <div className="absolute bottom-12 h-1 w-12 rounded-full bg-flare/30 blur-sm" />
     </section>

@@ -15,16 +15,16 @@ export default async function CoachingCancelPage() {
     <main className="min-h-screen bg-[linear-gradient(180deg,#08171b_0%,#10272d_16%,#18383d_40%,#6f5636_78%,#f3eadb_100%)] pb-20">
       <PageContainer className="pt-10">
         <GlassPanel className="p-6 text-[var(--text-light)]">
-          <PageEyebrow>Checkout canceled</PageEyebrow>
+          <PageEyebrow>Paused</PageEyebrow>
 
           <h1 className="m-0 mt-3 text-[clamp(2.2rem,5vw,4rem)] leading-[0.98] tracking-[-0.04em] text-[var(--text-light)]">
-            No worries, nothing was charged here
+            No problem, you can come back when the timing is right
           </h1>
 
           <p className="mb-0 mt-5 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
-            You canceled checkout before completing the purchase. You can head
-            back to the coaching page anytime and choose the plan that fits your
-            season best.
+            If you stepped away before finishing, nothing is committed here.
+            Coaching enrollment begins with a direct conversation, and you can
+            return whenever you want to pick the rhythm that fits your season.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">

@@ -31,7 +31,9 @@ export default function LayoutVariantSwitcherClient({
 
   return (
     <label className="hidden md:flex items-center gap-2">
-      <span className="sr-only">Layout variant</span>
+      <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+        Layout
+      </span>
 
       <select
         value={currentVariant}
