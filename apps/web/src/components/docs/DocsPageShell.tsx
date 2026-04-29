@@ -92,13 +92,13 @@ export default function DocsPageShell({
           </h1>
 
           {subtitle ? (
-            <p className="mb-0 mt-4 text-[0.95rem] font-semibold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+            <p className="mb-0 mt-4 text-[0.98rem] font-bold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
               {subtitle}
             </p>
           ) : null}
 
           {description ? (
-            <p className="mb-0 mt-4 max-w-[760px] text-[1.08rem] leading-7 text-[rgba(245,239,230,0.88)]">
+            <p className="mb-0 mt-4 max-w-[760px] text-[1.12rem] leading-8 text-[rgba(245,239,230,0.95)]">
               {description}
             </p>
           ) : null}
@@ -124,15 +124,15 @@ export default function DocsPageShell({
               {featuredQuote ? <FeaturedQuoteCard quote={featuredQuote} /> : null}
 
               {visibleMetaGroups.length ? (
-                <GlassPanel className="p-6 text-[var(--text-light)]">
-                  <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+                <GlassPanel className="border-white/12 bg-[rgba(8,18,22,0.62)] p-6 text-[var(--text-light)]">
+                  <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
                     Reading Map
                   </div>
 
                   <div className="space-y-5">
                     {visibleMetaGroups.map((group) => (
                       <div key={group.label}>
-                        <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                        <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.84)]">
                           {group.label}
                         </div>
 
@@ -140,7 +140,7 @@ export default function DocsPageShell({
                           {group.items.map((item) => (
                             <span
                               key={`${group.label}-${item}`}
-                              className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[0.82rem] text-[rgba(245,239,230,0.9)]"
+                              className="rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[0.82rem] font-medium text-[rgba(245,239,230,0.94)]"
                             >
                               {formatMetaValue(item)}
                             </span>

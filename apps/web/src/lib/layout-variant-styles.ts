@@ -85,11 +85,16 @@ const layoutPanelTreatments: Record<LayoutPanelTreatment, VariantClassMap> = {
   },
 };
 
+// What this does:
+// These text tiers deliberately bias toward public readability over ultra-subtle
+// mood. In screenshots, "slightly cinematic" survives; "beautiful but faint"
+// does not. If the site later gets a more formal token system, this table is the
+// seam to evolve instead of scattering contrast tweaks through page components.
 const layoutTextTreatments: Record<LayoutTextTreatment, VariantClassMap> = {
   collectionKicker: {
-    cinematic: "text-flare/60",
-    editorial: "text-[rgba(245,239,230,0.68)]",
-    signal: "text-[rgba(230,236,238,0.68)]",
+    cinematic: "text-flare/78",
+    editorial: "text-[rgba(245,239,230,0.8)]",
+    signal: "text-[rgba(230,236,238,0.78)]",
   },
   featureLabel: {
     cinematic: "text-flare",
@@ -97,14 +102,14 @@ const layoutTextTreatments: Record<LayoutTextTreatment, VariantClassMap> = {
     signal: "text-[rgba(230,236,238,0.72)]",
   },
   body: {
-    cinematic: "text-subject-muted",
-    editorial: "text-subject-muted",
-    signal: "text-[rgba(230,236,238,0.78)]",
+    cinematic: "text-[rgba(245,239,230,0.9)]",
+    editorial: "text-[rgba(245,239,230,0.9)]",
+    signal: "text-[rgba(230,236,238,0.88)]",
   },
   bodyStrong: {
-    cinematic: "text-[rgba(245,239,230,0.88)]",
-    editorial: "text-[rgba(245,239,230,0.88)]",
-    signal: "text-[rgba(230,236,238,0.82)]",
+    cinematic: "text-[rgba(245,239,230,0.96)]",
+    editorial: "text-[rgba(245,239,230,0.96)]",
+    signal: "text-[rgba(230,236,238,0.92)]",
   },
   title: {
     cinematic: "text-subject",
@@ -117,14 +122,14 @@ const layoutTextTreatments: Record<LayoutTextTreatment, VariantClassMap> = {
     signal: "text-[var(--text-light)] hover:text-white",
   },
   rail: {
-    cinematic: "text-flare-glow",
-    editorial: "text-[rgba(255,244,225,0.72)]",
-    signal: "text-[rgba(230,236,238,0.7)]",
+    cinematic: "text-[rgba(255,184,112,0.94)]",
+    editorial: "text-[rgba(255,244,225,0.84)]",
+    signal: "text-[rgba(230,236,238,0.84)]",
   },
   heroKicker: {
-    cinematic: "text-flare/80",
-    editorial: "text-[rgba(245,239,230,0.68)]",
-    signal: "text-flare/80",
+    cinematic: "text-flare/88",
+    editorial: "text-[rgba(245,239,230,0.82)]",
+    signal: "text-flare/88",
   },
 };
 

@@ -93,13 +93,13 @@ export default function EpisodePageShell({
             </h1>
 
             {subtitle ? (
-              <p className="mb-0 mt-4 text-[0.95rem] font-semibold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+              <p className="mb-0 mt-4 text-[0.98rem] font-bold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
                 {subtitle}
               </p>
             ) : null}
 
             {description ? (
-              <p className="mb-0 mt-5 max-w-[760px] text-[1.08rem] leading-8 text-[rgba(245,239,230,0.9)]">
+              <p className="mb-0 mt-5 max-w-[760px] text-[1.12rem] leading-8 text-[rgba(245,239,230,0.96)]">
                 {description}
               </p>
             ) : null}
@@ -107,13 +107,13 @@ export default function EpisodePageShell({
 
           <GlassPanel
             glow={getLayoutGlowEnabled(layoutVariant)}
-            className="h-fit p-6 text-[var(--text-light)] lg:self-start"
+            className="h-fit border-white/12 bg-[rgba(8,18,22,0.64)] p-6 text-[var(--text-light)] lg:self-start"
           >
-            <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+            <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
               Episode Companion
             </div>
 
-            <p className="m-0 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
+            <p className="m-0 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
               This page is the cinematic companion layer: the video, the curated
               context, and the paired reading that anchors the episode to the
               deeper written work.
@@ -121,18 +121,18 @@ export default function EpisodePageShell({
           </GlassPanel>
         </section>
 
-        <section className="mb-12 overflow-hidden rounded-[32px] border border-white/10 bg-[rgba(10,21,24,0.38)] shadow-[0_30px_70px_rgba(0,0,0,0.24)] backdrop-blur-[10px]">
+        <section className="mb-12 overflow-hidden rounded-[32px] border border-white/14 bg-[rgba(10,21,24,0.52)] shadow-[0_30px_70px_rgba(0,0,0,0.28)] backdrop-blur-[10px]">
           <DocsVideoEmbed youtubeId={youtubeId} title={title} />
         </section>
 
         <section className="grid gap-8 lg:grid-cols-[minmax(0,860px)_minmax(260px,1fr)]">
           <PaperCard className="min-w-0 sm:px-10">
-            <div className="mb-8 border-b border-[rgba(0,0,0,0.08)] pb-6">
-              <div className="mb-2 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(125,91,52,0.85)]">
+            <div className="mb-8 border-b border-[rgba(29,23,18,0.1)] pb-6">
+              <div className="mb-2 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(112,73,35,0.96)]">
                 Companion Article
               </div>
 
-              <p className="m-0 max-w-[720px] text-[1rem] leading-7 text-[rgba(35,35,35,0.78)]">
+              <p className="m-0 max-w-[720px] text-[1.04rem] leading-7 text-[rgba(38,30,24,0.88)]">
                 This is the editorial reading layer for the episode — the part
                 that slows the moment down, names the through-line, and helps
                 the story land.
@@ -156,15 +156,15 @@ export default function EpisodePageShell({
             {featuredQuote ? <FeaturedQuoteCard quote={featuredQuote} /> : null}
 
             {visibleMetaGroups.length ? (
-              <GlassPanel className="p-6 text-[var(--text-light)]">
-                <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+              <GlassPanel className="border-white/12 bg-[rgba(8,18,22,0.62)] p-6 text-[var(--text-light)]">
+                <div className="mb-4 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
                   Story Map
                 </div>
 
                 <div className="space-y-5">
                   {visibleMetaGroups.map((group) => (
                     <div key={group.label}>
-                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.84)]">
                         {group.label}
                       </div>
 
@@ -172,7 +172,7 @@ export default function EpisodePageShell({
                         {group.items.map((item) => (
                           <span
                             key={`${group.label}-${item}`}
-                            className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[0.82rem] text-[rgba(245,239,230,0.9)]"
+                            className="rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[0.82rem] font-medium text-[rgba(245,239,230,0.94)]"
                           >
                             {formatMetaValue(item)}
                           </span>
@@ -184,12 +184,12 @@ export default function EpisodePageShell({
               </GlassPanel>
             ) : null}
 
-            <GlassPanel className="p-6 text-[var(--text-light)]">
-              <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+            <GlassPanel className="border-white/12 bg-[rgba(8,18,22,0.62)] p-6 text-[var(--text-light)]">
+              <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
                 High Ground Odyssey
               </div>
 
-              <p className="m-0 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
+              <p className="m-0 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
                 Stories about leadership, legacy, family, risk, and the long
                 climb toward becoming the kind of person who can carry
                 something worthwhile uphill.

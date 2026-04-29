@@ -62,15 +62,15 @@ function PricingCard({
         {price}
       </div>
 
-      <div className="mt-1 text-sm font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+      <div className="mt-1 text-sm font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.84)]">
         {subtitle}
       </div>
 
-      <p className="mb-0 mt-4 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
+      <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
         {description}
       </p>
 
-      <ul className="mb-0 mt-5 space-y-3 pl-5 text-[0.95rem] leading-7 text-[rgba(245,239,230,0.88)]">
+      <ul className="mb-0 mt-5 space-y-3 pl-5 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.94)]">
         {bullets.map((bullet) => (
           <li key={bullet}>{bullet}</li>
         ))}
@@ -128,7 +128,7 @@ export default async function CoachingPage() {
               Coaching for people trying to lead with more clarity, steadiness, and intention.
             </h1>
 
-            <p className="mb-0 mt-5 max-w-[840px] text-[1.05rem] leading-8 text-[rgba(245,239,230,0.9)]">
+            <p className="mb-0 mt-5 max-w-[840px] text-[1.08rem] leading-8 text-[rgba(245,239,230,0.96)]">
               This is practical coaching rooted in leadership, reflection,
               resilience, and the stories that shape who we become. Choose the
               coaching rhythm that fits your season, and we will follow up
@@ -202,7 +202,7 @@ export default async function CoachingPage() {
                 Coaching that helps you step back and see clearly
               </h2>
 
-              <ul className="mb-0 mt-5 space-y-3 pl-5 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
+              <ul className="mb-0 mt-5 space-y-3 pl-5 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
                 <li>Leadership growth and self-awareness</li>
                 <li>Decision-making under pressure or uncertainty</li>
                 <li>Personal direction, motivation, and accountability</li>
@@ -218,7 +218,7 @@ export default async function CoachingPage() {
                 A direct start, with real human follow-through
               </h2>
 
-              <div className="mt-5 space-y-4 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
+              <div className="mt-5 space-y-4 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
                 <p className="m-0">
                   Coaching enrollment currently begins with a direct
                   conversation so we can match the right rhythm, confirm fit,

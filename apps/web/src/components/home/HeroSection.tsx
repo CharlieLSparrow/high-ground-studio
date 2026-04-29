@@ -29,7 +29,7 @@ export default function HeroSection({
             Leadership, legacy, and the stories we pass on.
           </h1>
 
-          <p className="mx-auto mb-10 max-w-[660px] text-[clamp(1.05rem,2vw,1.28rem)] leading-8 text-[rgba(245,239,230,0.88)]">
+          <p className="mx-auto mb-10 max-w-[660px] text-[clamp(1.08rem,2vw,1.3rem)] leading-8 text-[rgba(245,239,230,0.94)]">
             Episodes, paired reading, and thoughtful coaching for people trying
             to lead with more steadiness, more courage, and more honesty about
             the road they are actually walking.
@@ -51,7 +51,7 @@ export default function HeroSection({
             </Link>
           </div>
 
-          <p className="mx-auto mb-0 mt-6 max-w-[640px] text-[0.98rem] leading-7 text-[rgba(245,239,230,0.76)]">
+          <p className="mx-auto mb-0 mt-6 max-w-[640px] text-[1rem] leading-7 text-[rgba(245,239,230,0.84)]">
             Sign in to save your place, follow the project as it grows, and
             access member resources as new episodes and tools are released.
           </p>
@@ -81,7 +81,7 @@ export default function HeroSection({
               Stories and coaching for the long work of becoming.
             </h1>
 
-            <p className="max-w-[620px] text-[clamp(1rem,1.8vw,1.22rem)] leading-8 text-[rgba(230,236,238,0.82)]">
+            <p className="max-w-[620px] text-[clamp(1.03rem,1.8vw,1.24rem)] leading-8 text-[rgba(230,236,238,0.9)]">
               Start with the public library, step into coaching when the timing
               is right, and sign in when you want your own place in the journey.
             </p>
@@ -91,7 +91,7 @@ export default function HeroSection({
             <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(230,236,238,0.72)]">
               Member access
             </div>
-            <p className="mb-6 text-[0.98rem] leading-7 text-[rgba(230,236,238,0.82)]">
+            <p className="mb-6 text-[1rem] leading-7 text-[rgba(230,236,238,0.9)]">
               Sign in to save your place, track what is open to you, and stay
               connected as new resources and conversations are released.
             </p>
@@ -131,7 +131,7 @@ export default function HeroSection({
           <span className="text-flare">AND THE STORIES THAT SHAPE US</span>
         </h1>
 
-        <p className="mx-auto mb-10 max-w-[680px] text-[clamp(1.1rem,2.2vw,1.4rem)] font-medium leading-relaxed text-subject-muted">
+        <p className="mx-auto mb-10 max-w-[680px] text-[clamp(1.1rem,2.2vw,1.4rem)] font-medium leading-relaxed text-[rgba(245,239,230,0.92)]">
           A home for episodes, paired reading, and coaching built for people
           trying to lead with more clarity, steadiness, and courage.
         </p>
@@ -154,7 +154,7 @@ export default function HeroSection({
           </Link>
         </div>
 
-        <p className="mx-auto mb-0 mt-6 max-w-[640px] text-[0.98rem] leading-7 text-[rgba(245,239,230,0.76)]">
+        <p className="mx-auto mb-0 mt-6 max-w-[640px] text-[1rem] leading-7 text-[rgba(245,239,230,0.84)]">
           Sign in to save your place, access member resources, and follow the
           journey as new episodes, reflections, and coaching tools are released.
         </p>

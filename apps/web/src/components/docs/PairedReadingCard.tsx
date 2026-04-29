@@ -17,8 +17,8 @@ export default function PairedReadingCard({
   ctaLabel = "Open companion →",
 }: PairedReadingCardProps) {
   return (
-    <GlassPanel className="p-6 text-[var(--text-light)]">
-      <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[var(--accent-soft)]">
+    <GlassPanel className="border-white/12 bg-[rgba(8,18,22,0.62)] p-6 text-[var(--text-light)]">
+      <div className="mb-3 text-[12px] font-extrabold uppercase tracking-[0.08em] text-[rgba(255,186,120,0.96)]">
         {eyebrow}
       </div>
 
@@ -27,7 +27,7 @@ export default function PairedReadingCard({
       </h3>
 
       {description ? (
-        <p className="mb-0 mt-3 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.88)]">
+        <p className="mb-0 mt-3 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
           {description}
         </p>
       ) : null}

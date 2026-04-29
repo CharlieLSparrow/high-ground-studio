@@ -29,16 +29,17 @@ export default function ModeSwitcherClient({
   }
 
   return (
-    <label className="hidden md:flex items-center gap-2">
-      <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+    <label className="hidden items-center gap-1.5 lg:flex">
+      <span className="sr-only">
         View
       </span>
 
       <select
+        aria-label="Published site mode"
         value={currentMode}
         disabled={isPending}
         onChange={(event) => updateMode(event.target.value as ContentMode)}
-        className="rounded-full border border-white/12 bg-[rgba(255,255,255,0.06)] px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--text-light)] outline-none transition hover:border-[rgba(255,122,24,0.35)]"
+        className="rounded-full border border-white/10 bg-[rgba(255,255,255,0.04)] px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.82)] outline-none transition hover:border-[rgba(255,122,24,0.35)]"
       >
         {allowedModes.map((mode) => (
           <option key={mode} value={mode} className="text-black">

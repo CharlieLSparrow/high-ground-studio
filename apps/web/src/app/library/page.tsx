@@ -69,12 +69,12 @@ function EntryCard({
       </h2>
 
       {entry.subtitle ? (
-        <p className="mb-0 mt-2 text-[0.9rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+        <p className="mb-0 mt-2 text-[0.92rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.84)]">
           {entry.subtitle}
         </p>
       ) : null}
 
-      <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
+      <p className="mb-0 mt-4 text-[1.02rem] leading-7 text-[rgba(245,239,230,0.94)]">
         {entry.description}
       </p>
 

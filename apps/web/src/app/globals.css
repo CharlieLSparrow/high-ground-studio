@@ -14,7 +14,7 @@
 
   /* 3. The Subject (Warm skin-tones / parchment for text & reading) */
   --color-subject: #F5EFE6;
-  --color-subject-muted: #c8bdae;
+  --color-subject-muted: #ddd2c4;
   --color-paper: #EAE0D3;
 
   /* 4. The Flare (Punchy action orange) */
@@ -51,14 +51,14 @@ a {
 .prose-hgo {
   font-size: 1.1rem;
   line-height: 1.8;
-  color: var(--color-subject-muted);
+  color: #3d3025;
 }
 
 .prose-hgo h1,
 .prose-hgo h2,
 .prose-hgo h3,
 .prose-hgo h4 {
-  color: var(--color-subject);
+  color: #1d1712;
   line-height: 1.1;
   letter-spacing: -0.03em;
   margin-top: 2.2rem;
@@ -81,6 +81,7 @@ a {
 
 .prose-hgo li {
   margin: 0.45rem 0;
+  color: #3d3025;
 }
 
 /* The Flare is applied to links to make them pop against the dark reading surfaces */
@@ -99,7 +100,7 @@ a {
   padding: 0.75rem 0 0.75rem 1.2rem;
   border-left: 3px solid var(--color-flare);
   background: color-mix(in srgb, var(--color-flare) 8%, transparent);
-  color: var(--color-subject);
+  color: #241c15;
   font-style: italic;
   border-radius: 0 12px 12px 0;
 }
@@ -111,7 +112,7 @@ a {
 }
 
 .prose-hgo strong {
-  color: var(--color-subject);
+  color: #1d1712;
   font-weight: 700;
 }
 
