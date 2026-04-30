@@ -358,7 +358,7 @@ export default function ShowPrepFiltersClient({
   return (
     <div className="grid gap-8 xl:grid-cols-[320px_minmax(0,1fr)] xl:items-start">
       <aside className="xl:self-start">
-        <GlassPanel className="text-[var(--text-light)] xl:sticky xl:top-28 xl:flex xl:max-h-[calc(100vh-8rem)] xl:flex-col xl:overflow-hidden">
+        <GlassPanel className="text-[var(--text-light)] xl:sticky xl:top-32 xl:flex xl:h-[calc(100vh-10rem)] xl:flex-col xl:overflow-hidden">
           <div className="border-b border-white/10 p-5">
             <div className="mb-4 flex flex-wrap gap-3">
               <PageEyebrow>Filter Panel</PageEyebrow>
