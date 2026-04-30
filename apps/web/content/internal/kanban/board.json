@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-04-29T04:33:16.000Z",
+  "updatedAt": "2026-04-30T18:12:00.000Z",
   "cards": [
     {
       "id": "complete-first-three-sync-proofs",
@@ -231,6 +231,34 @@
         "missing-charlie"
       ],
       "updatedAt": "2026-04-29T04:33:16.000Z"
+    },
+    {
+      "id": "build-internal-show-prep-room",
+      "title": "Build internal show prep room",
+      "status": "done",
+      "type": "internal-tool",
+      "area": "team-tools",
+      "priority": "high",
+      "owner": "codex",
+      "summary": "The team-only Show Prep Room now reads canonical episode packets directly from disk and gives Homer and Charlie a read-only cockpit over Scott core, Charlie material, research, clip notes, open decisions, and provenance.",
+      "nextStep": "Use the prep room with the current packet set and note any missing sections or packet-shape inconsistencies before adding editing or comments later.",
+      "links": [
+        {
+          "label": "show prep index route",
+          "href": "apps/web/src/app/team/show-prep/page.tsx"
+        },
+        {
+          "label": "show prep loader",
+          "href": "apps/web/src/lib/server/show-prep.ts"
+        }
+      ],
+      "tags": [
+        "show-prep",
+        "team-tool",
+        "packet-reader",
+        "done"
+      ],
+      "updatedAt": "2026-04-30T18:12:00.000Z"
     }
   ]
 }

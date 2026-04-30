@@ -57,10 +57,10 @@ export default async function TeamLayout({
               </h1>
 
               <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
-                This is the internal operations layer for coaching support:
-                client setup, appointment management, and later membership
-                controls. We are building the sane version first so no one has
-                to fight a haunted spreadsheet.
+                This is the internal operations layer for coaching support and
+                show preparation: client setup, appointment management, prep
+                review, and later membership controls. We are building the sane
+                version first so no one has to fight a haunted spreadsheet.
               </p>
             </div>
 
@@ -82,6 +82,13 @@ export default async function TeamLayout({
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
             >
               Appointments
+            </Link>
+
+            <Link
+              href="/team/show-prep"
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+            >
+              Show Prep
             </Link>
 
             <Link
