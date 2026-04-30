@@ -509,71 +509,72 @@ export default function ShowPrepFiltersClient({
           {visiblePackets.length ? (
             <div className="grid gap-6 xl:grid-cols-2">
               {visiblePackets.map((packet) => (
-                <GlassPanel key={packet.slug} className="p-6 text-[var(--text-light)]">
-                  <div className="mb-4 flex flex-wrap gap-3">
-                    <PageEyebrow>
-                      {packet.episodeNumber ? `Episode ${packet.episodeNumber}` : "Packet"}
-                    </PageEyebrow>
-                    <PageEyebrow>{formatLabel(packet.workflowStatus)}</PageEyebrow>
-                    <PageEyebrow>{formatLabel(packet.publicationStatus)}</PageEyebrow>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <h3 className="m-0 text-[1.55rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-                        {packet.title}
-                      </h3>
-                      <div className="mt-2 text-sm font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                        {packet.slug}
-                      </div>
+                <Link
+                  key={packet.slug}
+                  href={`/team/show-prep/${packet.slug}`}
+                  className="group block no-underline focus:outline-none"
+                >
+                  <GlassPanel className="p-6 text-[var(--text-light)] transition duration-200 group-hover:border-flare/25 group-hover:bg-white/7 group-focus-visible:border-flare/40 group-focus-visible:ring-2 group-focus-visible:ring-flare/35">
+                    <div className="mb-4 flex flex-wrap gap-3">
+                      <PageEyebrow>
+                        {packet.episodeNumber ? `Episode ${packet.episodeNumber}` : "Packet"}
+                      </PageEyebrow>
+                      <PageEyebrow>{formatLabel(packet.workflowStatus)}</PageEyebrow>
+                      <PageEyebrow>{formatLabel(packet.publicationStatus)}</PageEyebrow>
                     </div>
 
-                    {packet.description ? (
-                      <p className="m-0 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.9)]">
-                        {packet.description}
-                      </p>
-                    ) : null}
-
-                    {packet.publicTitle || packet.publishSlug ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
-                        <strong className="text-[var(--text-light)]">Public mapping:</strong>{" "}
-                        {packet.publicTitle || "Untitled public derivative"}
-                        {packet.publishSlug ? ` (${packet.publishSlug})` : ""}
-                      </div>
-                    ) : null}
-
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <SectionStatus label="Scott Core" value={packet.hasScottCore ? "Present" : "Missing"} />
-                      <SectionStatus label="Charlie" value={packet.hasCharlieMaterial ? "Present" : "Missing"} />
-                      <SectionStatus label="Research" value={packet.hasResearchNotes ? "Present" : "Missing"} />
-                      <SectionStatus label="Clip Notes" value={packet.hasClipNotes ? "Present" : "Missing"} />
-                      <SectionStatus label="YouTube" value={packet.hasYouTube ? "Attached" : "Not yet"} />
-                      <SectionStatus label="Open Questions" value={String(packet.unresolvedQuestionCount)} />
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
+                    <div className="space-y-3">
                       <div>
-                        <strong className="text-[var(--text-light)]">Packet file:</strong>{" "}
-                        <code>{packet.packetPath}</code>
+                        <h3 className="m-0 text-[1.55rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                          {packet.title}
+                        </h3>
+                        <div className="mt-2 text-sm font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                          {packet.slug}
+                        </div>
                       </div>
-                      {packet.confidence ? (
-                        <div>
-                          <strong className="text-[var(--text-light)]">Confidence:</strong>{" "}
-                          {formatLabel(packet.confidence)}
+
+                      {packet.description ? (
+                        <p className="m-0 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.9)]">
+                          {packet.description}
+                        </p>
+                      ) : null}
+
+                      {packet.publicTitle || packet.publishSlug ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                          <strong className="text-[var(--text-light)]">Public mapping:</strong>{" "}
+                          {packet.publicTitle || "Untitled public derivative"}
+                          {packet.publishSlug ? ` (${packet.publishSlug})` : ""}
                         </div>
                       ) : null}
-                    </div>
 
-                    <div className="pt-2">
-                      <Link
-                        href={`/team/show-prep/${packet.slug}`}
-                        className="inline-flex items-center justify-center rounded-full border border-flare/30 bg-flare/14 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/45 hover:bg-flare/20"
-                      >
-                        Open Prep Room
-                      </Link>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        <SectionStatus label="Scott Core" value={packet.hasScottCore ? "Present" : "Missing"} />
+                        <SectionStatus label="Charlie" value={packet.hasCharlieMaterial ? "Present" : "Missing"} />
+                        <SectionStatus label="Research" value={packet.hasResearchNotes ? "Present" : "Missing"} />
+                        <SectionStatus label="Clip Notes" value={packet.hasClipNotes ? "Present" : "Missing"} />
+                        <SectionStatus label="YouTube" value={packet.hasYouTube ? "Attached" : "Not yet"} />
+                        <SectionStatus label="Open Questions" value={String(packet.unresolvedQuestionCount)} />
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
+                        <div>
+                          <strong className="text-[var(--text-light)]">Packet file:</strong>{" "}
+                          <code>{packet.packetPath}</code>
+                        </div>
+                        {packet.confidence ? (
+                          <div>
+                            <strong className="text-[var(--text-light)]">Confidence:</strong>{" "}
+                            {formatLabel(packet.confidence)}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="pt-2 text-sm font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.88)] transition group-hover:text-[var(--accent)] group-focus-visible:text-[var(--accent)]">
+                        Open Prep Room →
+                      </div>
                     </div>
-                  </div>
-                </GlassPanel>
+                  </GlassPanel>
+                </Link>
               ))}
             </div>
           ) : (
@@ -603,81 +604,72 @@ export default function ShowPrepFiltersClient({
           {visibleCandidates.length ? (
             <div className="grid gap-6 xl:grid-cols-2">
               {visibleCandidates.map((candidate) => (
-                <GlassPanel
+                <Link
                   key={candidate.slug}
-                  className={`p-6 text-[var(--text-light)] ${candidate.hasCanonicalPacket ? "opacity-[0.78]" : ""}`}
+                  href={`/team/show-prep/candidates/${candidate.slug}`}
+                  className="group block no-underline focus:outline-none"
                 >
-                  <div className="mb-4 flex flex-wrap gap-3">
-                    <PageEyebrow>
-                      {candidate.episodeNumber ? `Episode ${candidate.episodeNumber}` : "Candidate"}
-                    </PageEyebrow>
-                    {candidate.confidence ? <PageEyebrow>{formatLabel(candidate.confidence)}</PageEyebrow> : null}
-                    {candidate.needsReview ? <PageEyebrow>Needs Review</PageEyebrow> : null}
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="m-0 text-[1.45rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-                          {candidate.title}
-                        </h3>
-                        <div className="mt-2 text-sm font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
-                          {candidate.slug}
-                        </div>
-                      </div>
-
-                      <RecommendedActionChip action={candidate.recommendedNextAction} />
+                  <GlassPanel
+                    className={`p-6 text-[var(--text-light)] transition duration-200 group-hover:border-flare/25 group-hover:bg-white/7 group-focus-visible:border-flare/40 group-focus-visible:ring-2 group-focus-visible:ring-flare/35 ${candidate.hasCanonicalPacket ? "opacity-[0.78]" : ""}`}
+                  >
+                    <div className="mb-4 flex flex-wrap gap-3">
+                      <PageEyebrow>
+                        {candidate.episodeNumber ? `Episode ${candidate.episodeNumber}` : "Candidate"}
+                      </PageEyebrow>
+                      {candidate.confidence ? <PageEyebrow>{formatLabel(candidate.confidence)}</PageEyebrow> : null}
+                      {candidate.needsReview ? <PageEyebrow>Needs Review</PageEyebrow> : null}
                     </div>
 
-                    {candidate.hasCanonicalPacket ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
-                        <strong className="text-[var(--text-light)]">Canonical packet:</strong>{" "}
-                        {candidate.packetTitle || candidate.packetSlug}
-                        {candidate.packetSlug ? ` (${candidate.packetSlug})` : ""}
-                      </div>
-                    ) : null}
-
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <SectionStatus label="Staging" value={candidate.hasStaging ? "Source found" : "Missing"} />
-                      <SectionStatus label="Inbox" value={candidate.hasInbox ? "Source found" : "Missing"} />
-                      <SectionStatus label="Scott" value={sourceStatusLabel(candidate.scottStatus)} />
-                      <SectionStatus label="Charlie" value={charlieCandidateLabel(candidate)} />
-                      <SectionStatus label="Research" value={sourceStatusLabel(candidate.researchStatus)} />
-                      <SectionStatus label="Extras / Drafts" value={sourceStatusLabel(candidate.extrasStatus)} />
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
-                      <div>
-                        <strong className="text-[var(--text-light)]">Source paths:</strong>{" "}
-                        {candidate.sourcePaths.length ? candidate.sourcePaths.join(" • ") : "None found"}
-                      </div>
-                      {candidate.manifestPath ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <strong className="text-[var(--text-light)]">Manifest:</strong>{" "}
-                          <code>{candidate.manifestPath}</code>
+                          <h3 className="m-0 text-[1.45rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                            {candidate.title}
+                          </h3>
+                          <div className="mt-2 text-sm font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                            {candidate.slug}
+                          </div>
                         </div>
-                      ) : null}
-                    </div>
 
-                    <div className="flex flex-wrap gap-3 pt-2">
-                      <Link
-                        href={`/team/show-prep/candidates/${candidate.slug}`}
-                        className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/35 hover:text-[var(--accent)]"
-                      >
-                        Review Sources
-                      </Link>
+                        <RecommendedActionChip action={candidate.recommendedNextAction} />
+                      </div>
 
                       {candidate.hasCanonicalPacket ? (
-                        <Link
-                          href={`/team/show-prep/${candidate.packetSlug || candidate.slug}`}
-                          className="inline-flex items-center justify-center rounded-full border border-flare/30 bg-flare/14 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/45 hover:bg-flare/20"
-                        >
-                          Open Packet Prep Room
-                        </Link>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                          <strong className="text-[var(--text-light)]">Canonical packet:</strong>{" "}
+                          {candidate.packetTitle || candidate.packetSlug}
+                          {candidate.packetSlug ? ` (${candidate.packetSlug})` : ""}
+                        </div>
                       ) : null}
+
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        <SectionStatus label="Staging" value={candidate.hasStaging ? "Source found" : "Missing"} />
+                        <SectionStatus label="Inbox" value={candidate.hasInbox ? "Source found" : "Missing"} />
+                        <SectionStatus label="Scott" value={sourceStatusLabel(candidate.scottStatus)} />
+                        <SectionStatus label="Charlie" value={charlieCandidateLabel(candidate)} />
+                        <SectionStatus label="Research" value={sourceStatusLabel(candidate.researchStatus)} />
+                        <SectionStatus label="Extras / Drafts" value={sourceStatusLabel(candidate.extrasStatus)} />
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
+                        <div>
+                          <strong className="text-[var(--text-light)]">Source paths:</strong>{" "}
+                          {candidate.sourcePaths.length ? candidate.sourcePaths.join(" • ") : "None found"}
+                        </div>
+                        {candidate.manifestPath ? (
+                          <div>
+                            <strong className="text-[var(--text-light)]">Manifest:</strong>{" "}
+                            <code>{candidate.manifestPath}</code>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="pt-2 text-sm font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.88)] transition group-hover:text-[var(--accent)] group-focus-visible:text-[var(--accent)]">
+                        Review Sources →
+                      </div>
                     </div>
-                  </div>
-                </GlassPanel>
+                  </GlassPanel>
+                </Link>
               ))}
             </div>
           ) : (
