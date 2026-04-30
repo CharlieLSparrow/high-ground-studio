@@ -41,6 +41,10 @@ export type ShowPrepPacket = {
   hasClipNotes: boolean;
   hasYouTube: boolean;
   unresolvedQuestionCount: number;
+  prepTags: string[];
+  themeTags: string[];
+  systemTags: string[];
+  allTags: string[];
 };
 
 export type ShowPrepPacketSummary = {
@@ -60,6 +64,10 @@ export type ShowPrepPacketSummary = {
   hasClipNotes: boolean;
   hasYouTube: boolean;
   unresolvedQuestionCount: number;
+  prepTags: string[];
+  themeTags: string[];
+  systemTags: string[];
+  allTags: string[];
 };
 
 export type ShowPrepSourceStatus = "missing" | "empty" | "present";
@@ -103,6 +111,8 @@ export type ShowPrepCandidate = {
     | "Review source material"
     | "Needs source cleanup";
   sourcePaths: string[];
+  systemTags: string[];
+  allTags: string[];
   scottSource: ShowPrepSourcePreview | null;
   charlieSources: ShowPrepSourcePreview[];
   researchSources: ShowPrepSourcePreview[];
@@ -138,6 +148,8 @@ export type ShowPrepCandidateSummary = {
     | "Review source material"
     | "Needs source cleanup";
   sourcePaths: string[];
+  systemTags: string[];
+  allTags: string[];
 };
 
 type StagingManifest = {
@@ -291,6 +303,30 @@ function parseScalar(rawValue: string): unknown {
   }
 
   return value;
+}
+
+function normalizeTagValue(value: string) {
+  return normalizeForMatch(value).trim();
+}
+
+function readStringTagArray(value: unknown) {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .filter((item): item is string => typeof item === "string")
+          .map(normalizeTagValue)
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const normalized = normalizeTagValue(value);
+    return normalized ? [normalized] : [];
+  }
+
+  return [];
 }
 
 function parseFrontmatter(frontmatterBlock: string) {
@@ -465,6 +501,33 @@ function buildPacketRecord(packetDirName: string, raw: string): ShowPrepPacket {
   const youtube = String(frontmatter.youtube || "");
   const description = String(frontmatter.description || "");
   const confidence = String(frontmatter.confidence || "");
+  const prepTags = readStringTagArray(frontmatter.prepTags);
+  const themeTags = readStringTagArray(frontmatter.themeTags);
+  const hasScottCore = Boolean(sections.scottCore?.trim());
+  const hasCharlieMaterial = hasRealCharlieMaterial(sections.charlieSection || "");
+  const hasResearchNotes = Boolean(
+    sections.researchNotes?.trim() || sections.episodeNotes?.trim(),
+  );
+  const hasClipNotes = Boolean(
+    sections.clipNotes?.trim() || sections.clipIdeas?.trim(),
+  );
+  const hasYouTube = Boolean(youtube.trim());
+  const unresolvedQuestionCount = countBulletItems(sections.openDecisions || "");
+  const systemTags = Array.from(
+    new Set(
+      [
+        "prep-ready",
+        "already-packeted",
+        hasScottCore ? "has-scott-core" : "missing-scott-core",
+        hasCharlieMaterial ? "has-charlie-material" : "missing-charlie-material",
+        hasResearchNotes ? "has-research" : "",
+        hasClipNotes ? "has-clip-notes" : "",
+        hasYouTube ? "has-youtube" : "missing-youtube",
+        unresolvedQuestionCount > 0 ? "has-open-questions" : "",
+      ].filter(Boolean),
+    ),
+  );
+  const allTags = Array.from(new Set([...prepTags, ...themeTags, ...systemTags]));
 
   return {
     title: String(frontmatter.title || slug),
@@ -485,14 +548,16 @@ function buildPacketRecord(packetDirName: string, raw: string): ShowPrepPacket {
     sectionHeadings,
     sections,
     additionalSections,
-    hasScottCore: Boolean(sections.scottCore?.trim()),
-    hasCharlieMaterial: hasRealCharlieMaterial(sections.charlieSection || ""),
-    hasResearchNotes: Boolean(
-      sections.researchNotes?.trim() || sections.episodeNotes?.trim(),
-    ),
-    hasClipNotes: Boolean(sections.clipNotes?.trim() || sections.clipIdeas?.trim()),
-    hasYouTube: Boolean(youtube.trim()),
-    unresolvedQuestionCount: countBulletItems(sections.openDecisions || ""),
+    hasScottCore,
+    hasCharlieMaterial,
+    hasResearchNotes,
+    hasClipNotes,
+    hasYouTube,
+    unresolvedQuestionCount,
+    prepTags,
+    themeTags,
+    systemTags,
+    allTags,
   };
 }
 
@@ -912,6 +977,30 @@ function recommendNextAction(input: {
   return "Review source material" as const;
 }
 
+function buildCandidateSystemTags(input: {
+  hasCanonicalPacket: boolean;
+  hasScottSource: boolean;
+  hasCharlieContent: boolean;
+  hasResearch: boolean;
+  hasExtras: boolean;
+  recommendedNextAction: ShowPrepCandidate["recommendedNextAction"];
+}) {
+  return Array.from(
+    new Set(
+      [
+        input.hasCanonicalPacket ? "already-packeted" : "needs-packet",
+        input.hasScottSource ? "has-scott-source" : "missing-scott-source",
+        input.hasCharlieContent
+          ? "has-charlie-material"
+          : "missing-charlie-material",
+        input.hasResearch ? "has-research" : "",
+        input.hasExtras ? "has-extras" : "",
+        normalizeTagValue(input.recommendedNextAction),
+      ].filter(Boolean),
+    ),
+  );
+}
+
 async function buildShowPrepCandidates() {
   const [packets, stagingCandidates, inboxCandidates] = await Promise.all([
     getShowPrepPackets(),
@@ -952,6 +1041,26 @@ async function buildShowPrepCandidates() {
     );
     const hasResearch = researchStatus === "present";
     const hasExtras = extrasStatus !== "missing" || candidate.inboxMainSources.length > 1;
+    const recommendedNextAction = recommendNextAction({
+      hasCanonicalPacket: Boolean(matchedPacket),
+      scottStatus,
+      charlieStatus,
+      researchStatus,
+      extrasStatus,
+      issues: candidate.issues,
+      hasStaging: Boolean(candidate.stagingPath),
+      hasInbox: Boolean(candidate.inboxPath),
+      hasResearch,
+      hasExtras,
+    });
+    const systemTags = buildCandidateSystemTags({
+      hasCanonicalPacket: Boolean(matchedPacket),
+      hasScottSource,
+      hasCharlieContent,
+      hasResearch,
+      hasExtras,
+      recommendedNextAction,
+    });
 
     return {
       slug: candidate.slug,
@@ -979,21 +1088,12 @@ async function buildShowPrepCandidates() {
       hasCharlieContent,
       hasResearch,
       hasExtras,
-      recommendedNextAction: recommendNextAction({
-        hasCanonicalPacket: Boolean(matchedPacket),
-        scottStatus,
-        charlieStatus,
-        researchStatus,
-        extrasStatus,
-        issues: candidate.issues,
-        hasStaging: Boolean(candidate.stagingPath),
-        hasInbox: Boolean(candidate.inboxPath),
-        hasResearch,
-        hasExtras,
-      }),
+      recommendedNextAction,
       sourcePaths: [candidate.stagingPath, candidate.inboxPath].filter(
         (value): value is string => Boolean(value),
       ),
+      systemTags,
+      allTags: [...systemTags],
       scottSource:
         candidate.scottSource?.status !== "missing"
           ? candidate.scottSource
@@ -1056,6 +1156,10 @@ export function toShowPrepPacketSummary(
     hasClipNotes: packet.hasClipNotes,
     hasYouTube: packet.hasYouTube,
     unresolvedQuestionCount: packet.unresolvedQuestionCount,
+    prepTags: [...packet.prepTags],
+    themeTags: [...packet.themeTags],
+    systemTags: [...packet.systemTags],
+    allTags: [...packet.allTags],
   };
 }
 
@@ -1100,5 +1204,7 @@ export function toShowPrepCandidateSummary(
     hasExtras: candidate.hasExtras,
     recommendedNextAction: candidate.recommendedNextAction,
     sourcePaths: [...candidate.sourcePaths],
+    systemTags: [...candidate.systemTags],
+    allTags: [...candidate.allTags],
   };
 }

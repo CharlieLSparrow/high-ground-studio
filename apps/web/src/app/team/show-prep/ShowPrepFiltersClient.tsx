@@ -23,6 +23,10 @@ type PacketView = {
   hasClipNotes: boolean;
   hasYouTube: boolean;
   unresolvedQuestionCount: number;
+  prepTags: string[];
+  themeTags: string[];
+  systemTags: string[];
+  allTags: string[];
 };
 
 type SourceStatus = "missing" | "empty" | "present";
@@ -55,6 +59,8 @@ type CandidateView = {
     | "Review source material"
     | "Needs source cleanup";
   sourcePaths: string[];
+  systemTags: string[];
+  allTags: string[];
 };
 
 type PrepStateFilter =
@@ -201,12 +207,34 @@ function FilterCheckbox({
   );
 }
 
+function TagChip({
+  label,
+  tone = "system",
+}: {
+  label: string;
+  tone?: "system" | "manual";
+}) {
+  const className =
+    tone === "manual"
+      ? "border-flare/25 bg-flare/12 text-[rgba(255,242,214,0.96)]"
+      : "border-white/12 bg-white/6 text-[rgba(245,239,230,0.82)]";
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${className}`}
+    >
+      {formatLabel(label)}
+    </span>
+  );
+}
+
 function filterPackets(
   packets: PacketView[],
   search: string,
   prepStates: PrepStateFilter[],
   sourceFilters: SourceAvailabilityFilter[],
   recommendedActions: RecommendedActionFilter[],
+  selectedTags: string[],
 ) {
   return packets.filter((packet) => {
     const packetSearchBase = [
@@ -241,6 +269,13 @@ function filterPackets(
       if (filter === "has-clip-or-extras" && !packet.hasClipNotes) return false;
     }
 
+    if (
+      selectedTags.length > 0 &&
+      !selectedTags.some((tag) => packet.allTags.includes(tag))
+    ) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -251,6 +286,7 @@ function filterCandidates(
   prepStates: PrepStateFilter[],
   sourceFilters: SourceAvailabilityFilter[],
   recommendedActions: RecommendedActionFilter[],
+  selectedTags: string[],
 ) {
   return candidates.filter((candidate) => {
     const candidateSearchBase = [
@@ -291,6 +327,13 @@ function filterCandidates(
       if (filter === "has-clip-or-extras" && !candidate.hasExtras) return false;
     }
 
+    if (
+      selectedTags.length > 0 &&
+      !selectedTags.some((tag) => candidate.allTags.includes(tag))
+    ) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -308,6 +351,7 @@ export default function ShowPrepFiltersClient({
   const [recommendedActions, setRecommendedActions] = useState<
     RecommendedActionFilter[]
   >([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const normalizedSearch = normalizeSearch(search);
 
@@ -316,7 +360,7 @@ export default function ShowPrepFiltersClient({
   // public catalog. Client-side filtering keeps the interaction immediate
   // without promoting filter state into routing or a database before the tool
   // has earned that complexity.
-  const visiblePackets = useMemo(
+  const baseVisiblePackets = useMemo(
     () =>
       filterPackets(
         packets,
@@ -324,11 +368,12 @@ export default function ShowPrepFiltersClient({
         prepStates,
         sourceFilters,
         recommendedActions,
+        [],
       ),
     [packets, normalizedSearch, prepStates, sourceFilters, recommendedActions],
   );
 
-  const visibleCandidates = useMemo(
+  const baseVisibleCandidates = useMemo(
     () =>
       filterCandidates(
         candidates,
@@ -336,8 +381,71 @@ export default function ShowPrepFiltersClient({
         prepStates,
         sourceFilters,
         recommendedActions,
+        [],
       ),
     [candidates, normalizedSearch, prepStates, sourceFilters, recommendedActions],
+  );
+
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>(selectedTags);
+
+    for (const packet of baseVisiblePackets) {
+      for (const tag of packet.allTags) {
+        tagSet.add(tag);
+      }
+    }
+
+    for (const candidate of baseVisibleCandidates) {
+      for (const tag of candidate.allTags) {
+        tagSet.add(tag);
+      }
+    }
+
+    return Array.from(tagSet).sort((left, right) => left.localeCompare(right));
+  }, [baseVisiblePackets, baseVisibleCandidates, selectedTags]);
+
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const packet of baseVisiblePackets) {
+      for (const tag of packet.allTags) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+
+    for (const candidate of baseVisibleCandidates) {
+      for (const tag of candidate.allTags) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+
+    return counts;
+  }, [baseVisiblePackets, baseVisibleCandidates]);
+
+  const visiblePackets = useMemo(
+    () =>
+      filterPackets(
+        baseVisiblePackets,
+        "",
+        [],
+        [],
+        [],
+        selectedTags,
+      ),
+    [baseVisiblePackets, selectedTags],
+  );
+
+  const visibleCandidates = useMemo(
+    () =>
+      filterCandidates(
+        baseVisibleCandidates,
+        "",
+        [],
+        [],
+        [],
+        selectedTags,
+      ),
+    [baseVisibleCandidates, selectedTags],
   );
 
   const totalVisible = visiblePackets.length + visibleCandidates.length;
@@ -346,13 +454,15 @@ export default function ShowPrepFiltersClient({
     Boolean(search.trim()) ||
     prepStates.length > 0 ||
     sourceFilters.length > 0 ||
-    recommendedActions.length > 0;
+    recommendedActions.length > 0 ||
+    selectedTags.length > 0;
 
   function clearFilters() {
     setSearch("");
     setPrepStates([]);
     setSourceFilters([]);
     setRecommendedActions([]);
+    setSelectedTags([]);
   }
 
   return (
@@ -468,6 +578,30 @@ export default function ShowPrepFiltersClient({
                   ))}
                 </div>
               </div>
+
+              <div>
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+                  Tag Filter
+                </div>
+                {availableTags.length ? (
+                  <div className="space-y-3">
+                    {availableTags.map((tag) => (
+                      <FilterCheckbox
+                        key={tag}
+                        label={`${formatLabel(tag)} (${tagCounts.get(tag) ?? 0})`}
+                        checked={selectedTags.includes(tag)}
+                        onChange={() =>
+                          setSelectedTags((current) => toggleValue(current, tag))
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm leading-6 text-[rgba(245,239,230,0.72)]">
+                    No tags available for the current results.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </GlassPanel>
@@ -555,6 +689,20 @@ export default function ShowPrepFiltersClient({
                         <SectionStatus label="YouTube" value={packet.hasYouTube ? "Attached" : "Not yet"} />
                         <SectionStatus label="Open Questions" value={String(packet.unresolvedQuestionCount)} />
                       </div>
+
+                      {packet.prepTags.length || packet.themeTags.length || packet.systemTags.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {packet.prepTags.map((tag) => (
+                            <TagChip key={`prep-${packet.slug}-${tag}`} label={tag} tone="manual" />
+                          ))}
+                          {packet.themeTags.map((tag) => (
+                            <TagChip key={`theme-${packet.slug}-${tag}`} label={tag} tone="manual" />
+                          ))}
+                          {packet.systemTags.map((tag) => (
+                            <TagChip key={`system-${packet.slug}-${tag}`} label={tag} />
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
                         <div>
@@ -650,6 +798,14 @@ export default function ShowPrepFiltersClient({
                         <SectionStatus label="Research" value={sourceStatusLabel(candidate.researchStatus)} />
                         <SectionStatus label="Extras / Drafts" value={sourceStatusLabel(candidate.extrasStatus)} />
                       </div>
+
+                      {candidate.systemTags.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {candidate.systemTags.map((tag) => (
+                            <TagChip key={`${candidate.slug}-${tag}`} label={tag} />
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
                         <div>
