@@ -1,6 +1,11 @@
 import ShowPrepFiltersClient from "./ShowPrepFiltersClient";
 
-import { getShowPrepCandidates, getShowPrepPackets } from "@/lib/server/show-prep";
+import {
+  getShowPrepCandidates,
+  getShowPrepPackets,
+  toShowPrepCandidateSummary,
+  toShowPrepPacketSummary,
+} from "@/lib/server/show-prep";
 
 export default async function ShowPrepIndexPage() {
   const [packets, candidates] = await Promise.all([
@@ -8,5 +13,10 @@ export default async function ShowPrepIndexPage() {
     getShowPrepCandidates(),
   ]);
 
-  return <ShowPrepFiltersClient packets={packets} candidates={candidates} />;
+  return (
+    <ShowPrepFiltersClient
+      packets={packets.map(toShowPrepPacketSummary)}
+      candidates={candidates.map(toShowPrepCandidateSummary)}
+    />
+  );
 }

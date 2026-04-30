@@ -43,6 +43,25 @@ export type ShowPrepPacket = {
   unresolvedQuestionCount: number;
 };
 
+export type ShowPrepPacketSummary = {
+  title: string;
+  slug: string;
+  episodeNumber: number | null;
+  workflowStatus: string;
+  publicationStatus: string;
+  publicTitle: string;
+  publishSlug: string;
+  description: string;
+  confidence: string;
+  packetPath: string;
+  hasScottCore: boolean;
+  hasCharlieMaterial: boolean;
+  hasResearchNotes: boolean;
+  hasClipNotes: boolean;
+  hasYouTube: boolean;
+  unresolvedQuestionCount: number;
+};
+
 export type ShowPrepSourceStatus = "missing" | "empty" | "present";
 
 export type ShowPrepSourcePreview = {
@@ -89,6 +108,36 @@ export type ShowPrepCandidate = {
   researchSources: ShowPrepSourcePreview[];
   extraSources: ShowPrepSourcePreview[];
   inboxMainSources: ShowPrepSourcePreview[];
+};
+
+export type ShowPrepCandidateSummary = {
+  slug: string;
+  title: string;
+  episodeNumber: number | null;
+  stagingPath: string | null;
+  inboxPath: string | null;
+  manifestPath: string | null;
+  packetSlug: string | null;
+  hasCanonicalPacket: boolean;
+  packetTitle: string;
+  confidence: string;
+  needsReview: boolean | null;
+  scottStatus: ShowPrepSourceStatus;
+  charlieStatus: ShowPrepSourceStatus;
+  researchStatus: ShowPrepSourceStatus;
+  extrasStatus: ShowPrepSourceStatus;
+  hasStaging: boolean;
+  hasInbox: boolean;
+  hasScottSource: boolean;
+  hasCharlieContent: boolean;
+  hasResearch: boolean;
+  hasExtras: boolean;
+  recommendedNextAction:
+    | "Already packeted"
+    | "Create canonical packet"
+    | "Review source material"
+    | "Needs source cleanup";
+  sourcePaths: string[];
 };
 
 type StagingManifest = {
@@ -384,7 +433,7 @@ function readSourceStatus(sources: ShowPrepSourcePreview[]) {
 function buildPacketRecord(packetDirName: string, raw: string): ShowPrepPacket {
   const { frontmatter, body } = splitFrontmatter(raw);
   const parsedSections = parseSections(body);
-  const sections = Object.create(null) as Record<ShowPrepSectionKey, string>;
+  const sections = {} as Record<ShowPrepSectionKey, string>;
   const additionalSections: Array<{ heading: string; body: string }> = [];
   const sectionHeadings = Array.from(parsedSections.keys());
 
@@ -987,6 +1036,29 @@ export async function getShowPrepPacket(slug: string) {
   return packets.find((packet) => packet.slug === slug) ?? null;
 }
 
+export function toShowPrepPacketSummary(
+  packet: ShowPrepPacket,
+): ShowPrepPacketSummary {
+  return {
+    title: packet.title,
+    slug: packet.slug,
+    episodeNumber: packet.episodeNumber,
+    workflowStatus: packet.workflowStatus,
+    publicationStatus: packet.publicationStatus,
+    publicTitle: packet.publicTitle,
+    publishSlug: packet.publishSlug,
+    description: packet.description,
+    confidence: packet.confidence,
+    packetPath: packet.packetPath,
+    hasScottCore: packet.hasScottCore,
+    hasCharlieMaterial: packet.hasCharlieMaterial,
+    hasResearchNotes: packet.hasResearchNotes,
+    hasClipNotes: packet.hasClipNotes,
+    hasYouTube: packet.hasYouTube,
+    unresolvedQuestionCount: packet.unresolvedQuestionCount,
+  };
+}
+
 // What this does:
 // Potential episodes are inventory. Canonical packets are still the working
 // source of truth. This helper scans staging and inbox so the team can see the
@@ -999,4 +1071,34 @@ export async function getShowPrepCandidates() {
 export async function getShowPrepCandidate(slug: string) {
   const candidates = await getShowPrepCandidates();
   return candidates.find((candidate) => candidate.slug === slug) ?? null;
+}
+
+export function toShowPrepCandidateSummary(
+  candidate: ShowPrepCandidate,
+): ShowPrepCandidateSummary {
+  return {
+    slug: candidate.slug,
+    title: candidate.title,
+    episodeNumber: candidate.episodeNumber,
+    stagingPath: candidate.stagingPath,
+    inboxPath: candidate.inboxPath,
+    manifestPath: candidate.manifestPath,
+    packetSlug: candidate.packetSlug,
+    hasCanonicalPacket: candidate.hasCanonicalPacket,
+    packetTitle: candidate.packetTitle,
+    confidence: candidate.confidence,
+    needsReview: candidate.needsReview,
+    scottStatus: candidate.scottStatus,
+    charlieStatus: candidate.charlieStatus,
+    researchStatus: candidate.researchStatus,
+    extrasStatus: candidate.extrasStatus,
+    hasStaging: candidate.hasStaging,
+    hasInbox: candidate.hasInbox,
+    hasScottSource: candidate.hasScottSource,
+    hasCharlieContent: candidate.hasCharlieContent,
+    hasResearch: candidate.hasResearch,
+    hasExtras: candidate.hasExtras,
+    recommendedNextAction: candidate.recommendedNextAction,
+    sourcePaths: [...candidate.sourcePaths],
+  };
 }
