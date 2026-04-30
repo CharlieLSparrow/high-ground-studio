@@ -356,114 +356,116 @@ export default function ShowPrepFiltersClient({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[320px_minmax(0,1fr)] xl:items-start">
-      <aside className="space-y-6 xl:sticky xl:top-24">
-        <GlassPanel className="p-5 text-[var(--text-light)]">
-          <div className="mb-4 flex flex-wrap gap-3">
-            <PageEyebrow>Filter Panel</PageEyebrow>
-            <PageEyebrow>{totalVisible} Showing</PageEyebrow>
-          </div>
+    <div className="grid gap-8 xl:grid-cols-[300px_minmax(0,1fr)] xl:items-start">
+      <aside className="xl:self-start">
+        <div className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-2.5rem)] xl:overflow-y-auto xl:pr-2">
+          <GlassPanel className="p-5 text-[var(--text-light)]">
+            <div className="mb-4 flex flex-wrap gap-3">
+              <PageEyebrow>Filter Panel</PageEyebrow>
+              <PageEyebrow>{totalVisible} Showing</PageEyebrow>
+            </div>
 
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="show-prep-search"
-                className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]"
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="show-prep-search"
+                  className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]"
+                >
+                  Search
+                </label>
+                <input
+                  id="show-prep-search"
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Title, slug, or episode number"
+                  className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm text-[var(--text-light)] placeholder:text-[rgba(245,239,230,0.45)] outline-none transition focus:border-flare/40"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                <div>
+                  <strong className="text-[var(--text-light)]">Results:</strong> {totalVisible} of {totalAvailable}
+                </div>
+                <div>
+                  <strong className="text-[var(--text-light)]">Packets:</strong> {visiblePackets.length} of {packets.length}
+                </div>
+                <div>
+                  <strong className="text-[var(--text-light)]">Candidates:</strong> {visibleCandidates.length} of {candidates.length}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={!hasActiveFilters}
+                className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] transition hover:border-flare/35 hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Search
-              </label>
-              <input
-                id="show-prep-search"
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Title, slug, or episode number"
-                className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm text-[var(--text-light)] placeholder:text-[rgba(245,239,230,0.45)] outline-none transition focus:border-flare/40"
-              />
+                Clear filters
+              </button>
             </div>
+          </GlassPanel>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+          <GlassPanel className="p-5 text-[var(--text-light)]">
+            <div className="space-y-5">
               <div>
-                <strong className="text-[var(--text-light)]">Results:</strong> {totalVisible} of {totalAvailable}
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+                  Prep State
+                </div>
+                <div className="space-y-3">
+                  {PREP_STATE_OPTIONS.map((option) => (
+                    <FilterCheckbox
+                      key={option.value}
+                      label={option.label}
+                      checked={prepStates.includes(option.value)}
+                      onChange={() =>
+                        setPrepStates((current) => toggleValue(current, option.value))
+                      }
+                    />
+                  ))}
+                </div>
               </div>
+
               <div>
-                <strong className="text-[var(--text-light)]">Packets:</strong> {visiblePackets.length} of {packets.length}
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+                  Source Availability
+                </div>
+                <div className="space-y-3">
+                  {SOURCE_OPTIONS.map((option) => (
+                    <FilterCheckbox
+                      key={option.value}
+                      label={option.label}
+                      checked={sourceFilters.includes(option.value)}
+                      onChange={() =>
+                        setSourceFilters((current) => toggleValue(current, option.value))
+                      }
+                    />
+                  ))}
+                </div>
               </div>
+
               <div>
-                <strong className="text-[var(--text-light)]">Candidates:</strong> {visibleCandidates.length} of {candidates.length}
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+                  Recommended Action
+                </div>
+                <div className="space-y-3">
+                  {RECOMMENDED_ACTION_OPTIONS.map((option) => (
+                    <FilterCheckbox
+                      key={option.value}
+                      label={option.label}
+                      checked={recommendedActions.includes(option.value)}
+                      onChange={() =>
+                        setRecommendedActions((current) =>
+                          toggleValue(current, option.value)
+                        )
+                      }
+                    />
+                  ))}
+                </div>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={clearFilters}
-              disabled={!hasActiveFilters}
-              className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] transition hover:border-flare/35 hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Clear filters
-            </button>
-          </div>
-        </GlassPanel>
-
-        <GlassPanel className="p-5 text-[var(--text-light)]">
-          <div className="space-y-5">
-            <div>
-              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
-                Prep State
-              </div>
-              <div className="space-y-3">
-                {PREP_STATE_OPTIONS.map((option) => (
-                  <FilterCheckbox
-                    key={option.value}
-                    label={option.label}
-                    checked={prepStates.includes(option.value)}
-                    onChange={() =>
-                      setPrepStates((current) => toggleValue(current, option.value))
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
-                Source Availability
-              </div>
-              <div className="space-y-3">
-                {SOURCE_OPTIONS.map((option) => (
-                  <FilterCheckbox
-                    key={option.value}
-                    label={option.label}
-                    checked={sourceFilters.includes(option.value)}
-                    onChange={() =>
-                      setSourceFilters((current) => toggleValue(current, option.value))
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
-                Recommended Action
-              </div>
-              <div className="space-y-3">
-                {RECOMMENDED_ACTION_OPTIONS.map((option) => (
-                  <FilterCheckbox
-                    key={option.value}
-                    label={option.label}
-                    checked={recommendedActions.includes(option.value)}
-                    onChange={() =>
-                      setRecommendedActions((current) =>
-                        toggleValue(current, option.value)
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </GlassPanel>
+          </GlassPanel>
+        </div>
       </aside>
 
       <div className="space-y-8">
