@@ -356,10 +356,10 @@ export default function ShowPrepFiltersClient({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[300px_minmax(0,1fr)] xl:items-start">
+    <div className="grid gap-8 xl:grid-cols-[320px_minmax(0,1fr)] xl:items-start">
       <aside className="xl:self-start">
-        <div className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-2.5rem)] xl:overflow-y-auto xl:pr-2">
-          <GlassPanel className="p-5 text-[var(--text-light)]">
+        <GlassPanel className="text-[var(--text-light)] xl:sticky xl:top-28 xl:flex xl:max-h-[calc(100vh-8rem)] xl:flex-col xl:overflow-hidden">
+          <div className="border-b border-white/10 p-5">
             <div className="mb-4 flex flex-wrap gap-3">
               <PageEyebrow>Filter Panel</PageEyebrow>
               <PageEyebrow>{totalVisible} Showing</PageEyebrow>
@@ -404,9 +404,9 @@ export default function ShowPrepFiltersClient({
                 Clear filters
               </button>
             </div>
-          </GlassPanel>
+          </div>
 
-          <GlassPanel className="p-5 text-[var(--text-light)]">
+          <div className="p-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
             <div className="space-y-5">
               <div>
                 <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
@@ -464,8 +464,8 @@ export default function ShowPrepFiltersClient({
                 </div>
               </div>
             </div>
-          </GlassPanel>
-        </div>
+          </div>
+        </GlassPanel>
       </aside>
 
       <div className="space-y-8">
