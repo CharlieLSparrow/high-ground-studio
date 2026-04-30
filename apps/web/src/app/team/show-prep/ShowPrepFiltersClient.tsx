@@ -356,9 +356,14 @@ export default function ShowPrepFiltersClient({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[320px_minmax(0,1fr)] xl:items-start">
-      <aside className="xl:self-start">
-        <GlassPanel className="text-[var(--text-light)] xl:sticky xl:top-32 xl:flex xl:h-[calc(100vh-10rem)] xl:flex-col xl:overflow-hidden">
+    // Why the split-pane exists:
+    // Sticky kept fighting the normal document flow once the results list got long.
+    // A bounded desktop workspace is simpler: the filter rail owns one scroll area,
+    // the results column owns another, and the page stops pretending one panel can
+    // stay pinned inside a layout that was never designed for it.
+    <div className="space-y-8 xl:grid xl:h-[calc(100vh-10rem)] xl:min-h-0 xl:grid-cols-[320px_minmax(0,1fr)] xl:gap-8 xl:space-y-0 xl:overflow-hidden">
+      <aside className="xl:h-full xl:min-h-0">
+        <GlassPanel className="text-[var(--text-light)] xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:overflow-hidden">
           <div className="border-b border-white/10 p-5">
             <div className="mb-4 flex flex-wrap gap-3">
               <PageEyebrow>Filter Panel</PageEyebrow>
@@ -468,7 +473,7 @@ export default function ShowPrepFiltersClient({
         </GlassPanel>
       </aside>
 
-      <div className="space-y-8">
+      <div className="space-y-8 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-2 xl:pb-10">
         <GlassPanel className="p-6 text-[var(--text-light)]">
           <div className="mb-4 flex flex-wrap gap-3">
             <PageEyebrow>Show Prep</PageEyebrow>
