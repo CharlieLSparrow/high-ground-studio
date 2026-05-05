@@ -1579,18 +1579,18 @@ export default function LivingManuscriptViewerClient({
           </GlassPanel>
 
           <GlassPanel className="p-5 text-[var(--text-light)]">
-            <PageEyebrow>{viewMode === "book" ? "Chapters" : "Episodes"}</PageEyebrow>
+            <PageEyebrow>{viewMode === "story" ? "Chapters" : "Episodes"}</PageEyebrow>
             <h2 className="m-0 text-[1.3rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-              {viewMode === "book" ? "Chapter Groups" : "Podcast Episode Groups"}
+              {viewMode === "story" ? "Chapter Groups" : "Podcast Episode Groups"}
             </h2>
             <p className="mb-0 mt-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
-              {viewMode === "book"
+              {viewMode === "story"
                 ? "Chapter groups show visible manuscript blocks against each chapter total."
                 : "Episode groups show arranged production order with visible block counts, warnings, and cross-chapter composition."}
             </p>
 
             <div className="mt-5 space-y-3">
-              {viewMode === "book"
+              {viewMode === "story"
                 ? chapterGroups.map((group) => {
                     const collapsed = collapsedGroups.includes(group.key);
 
