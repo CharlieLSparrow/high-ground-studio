@@ -2,7 +2,10 @@ import BackLink from "@/components/ui/BackLink";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import LivingManuscriptViewerClient from "./LivingManuscriptViewerClient";
-import { getLearningToLeadManuscript } from "@/lib/server/living-manuscript";
+import {
+  getLearningToLeadManuscript,
+  getLearningToLeadPodcastArrangement,
+} from "@/lib/server/living-manuscript";
 
 function formatLabel(value: string) {
   return value
@@ -14,6 +17,7 @@ function formatLabel(value: string) {
 
 export default async function LearningToLeadBookPage() {
   const manuscript = await getLearningToLeadManuscript();
+  const podcastArrangement = await getLearningToLeadPodcastArrangement(manuscript);
   const chapterCount = new Set(manuscript.blocks.map((block) => block.chapter)).size;
   const workflowStatus =
     typeof manuscript.frontmatter.workflowStatus === "string"
@@ -52,7 +56,7 @@ export default async function LearningToLeadBookPage() {
 
             <p className="mb-0 mt-4 max-w-[780px] text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
               This page reads the living manuscript file directly from disk and renders it as structured source text.
-              It is an internal editorial viewer, not a public MDX route and not a generated output.
+              Book View follows manuscript order. Episode View uses the podcast arrangement as a read-only production map over the same source blocks.
             </p>
 
             {manuscript.introNote ? (
@@ -100,14 +104,17 @@ export default async function LearningToLeadBookPage() {
                 Viewer Summary
               </div>
               <div className="mt-1 font-semibold text-[var(--text-light)]">
-                {manuscript.blocks.length} blocks across {chapterCount} chapters
+                {manuscript.blocks.length} blocks · {chapterCount} chapters · {podcastArrangement.episodes.length} podcast episodes
               </div>
             </div>
           </div>
         </div>
       </GlassPanel>
 
-      <LivingManuscriptViewerClient manuscript={manuscript} />
+      <LivingManuscriptViewerClient
+        manuscript={manuscript}
+        podcastArrangement={podcastArrangement}
+      />
     </section>
   );
 }

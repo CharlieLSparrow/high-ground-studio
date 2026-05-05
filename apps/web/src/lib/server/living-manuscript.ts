@@ -38,12 +38,38 @@ export type LivingManuscriptDocument = {
   blocks: LivingManuscriptBlock[];
 };
 
+export type LivingManuscriptPodcastEpisode = {
+  key: string;
+  title: string;
+  status: string;
+  blockIds: string[];
+  blocks: LivingManuscriptBlock[];
+  missingBlockIds: string[];
+  warnings: string[];
+  primaryChapter: string | null;
+  totalWordCount: number;
+};
+
+export type LivingManuscriptPodcastArrangement = {
+  sourcePath: string | null;
+  episodes: LivingManuscriptPodcastEpisode[];
+  warnings: string[];
+};
+
 const MANUSCRIPT_RELATIVE_PATH = [
   "content",
   "books",
   "learning-to-lead",
   "manuscript",
   "learning-to-lead.living.mdx",
+] as const;
+
+const PODCAST_ARRANGEMENT_RELATIVE_PATH = [
+  "content",
+  "books",
+  "learning-to-lead",
+  "arrangements",
+  "podcast-season-1.yml",
 ] as const;
 
 const FRONTMATTER_BOUNDARY = "---";
@@ -186,10 +212,7 @@ function extractIntroNote(value: string) {
 }
 
 function readStringProp(openingTag: string, prop: string) {
-  const match = openingTag.match(
-    new RegExp(`${prop}\\s*=\\s*"([^"]*)"`, "m"),
-  );
-
+  const match = openingTag.match(new RegExp(`${prop}\\s*=\\s*"([^"]*)"`, "m"));
   return match?.[1]?.trim() ?? "";
 }
 
@@ -344,9 +367,11 @@ function parseBlocks(body: string) {
   return blocks;
 }
 
-async function resolveManuscriptPath() {
-  const directPath = path.join(process.cwd(), ...MANUSCRIPT_RELATIVE_PATH);
-  const repoPath = path.join(process.cwd(), "apps", "web", ...MANUSCRIPT_RELATIVE_PATH);
+async function resolveRepoRelativePath(
+  relativePath: readonly string[],
+): Promise<string | null> {
+  const directPath = path.join(process.cwd(), ...relativePath);
+  const repoPath = path.join(process.cwd(), "apps", "web", ...relativePath);
 
   for (const candidate of [directPath, repoPath]) {
     try {
@@ -357,11 +382,138 @@ async function resolveManuscriptPath() {
     }
   }
 
-  throw new Error("Unable to locate learning-to-lead.living.mdx.");
+  return null;
+}
+
+function derivePrimaryChapter(blocks: LivingManuscriptBlock[]) {
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  const counts = new Map<string, number>();
+  const firstSeen = new Map<string, number>();
+
+  blocks.forEach((block, index) => {
+    counts.set(block.chapter, (counts.get(block.chapter) ?? 0) + 1);
+    if (!firstSeen.has(block.chapter)) {
+      firstSeen.set(block.chapter, index);
+    }
+  });
+
+  return Array.from(counts.entries()).sort((left, right) => {
+    if (right[1] !== left[1]) {
+      return right[1] - left[1];
+    }
+
+    return (firstSeen.get(left[0]) ?? 0) - (firstSeen.get(right[0]) ?? 0);
+  })[0]?.[0] ?? null;
+}
+
+type RawPodcastEpisode = {
+  key: string;
+  title: string;
+  status: string;
+  blockIds: string[];
+};
+
+function parsePodcastArrangement(source: string) {
+  const lines = source.split(/\r?\n/);
+  const episodes: RawPodcastEpisode[] = [];
+  let inEpisodes = false;
+  let currentEpisode: RawPodcastEpisode | null = null;
+  let readingBlocks = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    if (!inEpisodes) {
+      if (trimmed === "episodes:") {
+        inEpisodes = true;
+      }
+      continue;
+    }
+
+    const episodeMatch = line.match(/^  ([A-Za-z0-9-]+):\s*$/);
+    if (episodeMatch) {
+      if (currentEpisode) {
+        episodes.push(currentEpisode);
+      }
+
+      currentEpisode = {
+        key: episodeMatch[1],
+        title: formatScalarString(episodeMatch[1]),
+        status: "unknown",
+        blockIds: [],
+      };
+      readingBlocks = false;
+      continue;
+    }
+
+    if (!currentEpisode) {
+      continue;
+    }
+
+    const titleMatch = line.match(/^    title:\s*(.+)$/);
+    if (titleMatch) {
+      currentEpisode.title = formatScalarString(titleMatch[1]);
+      readingBlocks = false;
+      continue;
+    }
+
+    const statusMatch = line.match(/^    status:\s*(.+)$/);
+    if (statusMatch) {
+      currentEpisode.status = formatScalarString(statusMatch[1]);
+      readingBlocks = false;
+      continue;
+    }
+
+    if (/^    blocks:\s*$/.test(line)) {
+      readingBlocks = true;
+      continue;
+    }
+
+    const blockMatch = line.match(/^      -\s+([A-Za-z0-9-]+)\s*$/);
+    if (readingBlocks && blockMatch) {
+      currentEpisode.blockIds.push(blockMatch[1]);
+      continue;
+    }
+
+    if (/^    [A-Za-z0-9_-]+:/.test(line)) {
+      readingBlocks = false;
+    }
+  }
+
+  if (currentEpisode) {
+    episodes.push(currentEpisode);
+  }
+
+  return episodes;
+}
+
+function formatScalarString(value: string) {
+  const parsed = parseScalarValue(value);
+  if (typeof parsed === "string") {
+    return parsed;
+  }
+
+  if (typeof parsed === "number" || typeof parsed === "boolean") {
+    return String(parsed);
+  }
+
+  return "";
 }
 
 export async function getLearningToLeadManuscript(): Promise<LivingManuscriptDocument> {
-  const sourcePath = await resolveManuscriptPath();
+  const sourcePath = await resolveRepoRelativePath(MANUSCRIPT_RELATIVE_PATH);
+
+  if (!sourcePath) {
+    throw new Error("Unable to locate learning-to-lead.living.mdx.");
+  }
+
   const rawSource = await readFile(sourcePath, "utf8");
   const { frontmatter, body } = parseFrontmatter(rawSource);
   const firstBlockIndex = body.indexOf(BLOCK_OPEN_TOKEN);
@@ -374,5 +526,70 @@ export async function getLearningToLeadManuscript(): Promise<LivingManuscriptDoc
     title: typeof frontmatter.title === "string" ? frontmatter.title : null,
     introNote: extractIntroNote(leadingContent),
     blocks,
+  };
+}
+
+export async function getLearningToLeadPodcastArrangement(
+  manuscript?: LivingManuscriptDocument,
+): Promise<LivingManuscriptPodcastArrangement> {
+  const sourcePath = await resolveRepoRelativePath(PODCAST_ARRANGEMENT_RELATIVE_PATH);
+
+  if (!sourcePath) {
+    return {
+      sourcePath: null,
+      episodes: [],
+      warnings: [
+        "Podcast arrangement file not found at content/books/learning-to-lead/arrangements/podcast-season-1.yml.",
+      ],
+    };
+  }
+
+  const document = manuscript ?? (await getLearningToLeadManuscript());
+  const blockMap = new Map(document.blocks.map((block) => [block.id, block]));
+  const rawArrangement = await readFile(sourcePath, "utf8");
+  const rawEpisodes = parsePodcastArrangement(rawArrangement);
+  const warnings: string[] = [];
+
+  const episodes = rawEpisodes.map((episode) => {
+    const missingBlockIds: string[] = [];
+    const resolvedBlocks: LivingManuscriptBlock[] = [];
+
+    for (const blockId of episode.blockIds) {
+      const block = blockMap.get(blockId);
+
+      if (!block) {
+        missingBlockIds.push(blockId);
+        continue;
+      }
+
+      resolvedBlocks.push(block);
+    }
+
+    const episodeWarnings = missingBlockIds.map(
+      (blockId) =>
+        `Episode ${episode.key} references missing manuscript block id: ${blockId}`,
+    );
+    warnings.push(...episodeWarnings);
+
+    return {
+      key: episode.key,
+      title: episode.title,
+      status: episode.status,
+      blockIds: episode.blockIds,
+      blocks: resolvedBlocks,
+      missingBlockIds,
+      warnings: episodeWarnings,
+      primaryChapter: derivePrimaryChapter(resolvedBlocks),
+      totalWordCount: resolvedBlocks.reduce(
+        (total, block) => total + block.wordCount,
+        0,
+      ),
+    } satisfies LivingManuscriptPodcastEpisode;
+  });
+
+  return {
+    sourcePath,
+    episodes,
+    warnings,
   };
 }
