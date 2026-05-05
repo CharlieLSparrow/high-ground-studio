@@ -17,6 +17,7 @@ function formatLabel(value: string) {
 
 export default async function LearningToLeadBookPage() {
   const manuscript = await getLearningToLeadManuscript();
+  const bookArrangement = await getLearningToLeadBookArrangement(manuscript);
   const podcastArrangement = await getLearningToLeadPodcastArrangement(manuscript);
   const chapterCount = new Set(manuscript.blocks.map((block) => block.chapter)).size;
   const workflowStatus =
@@ -113,6 +114,7 @@ export default async function LearningToLeadBookPage() {
 
       <LivingManuscriptViewerClient
         manuscript={manuscript}
+        bookArrangement={bookArrangement}
         podcastArrangement={podcastArrangement}
       />
     </section>

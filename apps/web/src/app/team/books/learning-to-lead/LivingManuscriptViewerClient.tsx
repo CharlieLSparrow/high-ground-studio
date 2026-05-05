@@ -7,21 +7,11 @@ import PageEyebrow from "@/components/ui/PageEyebrow";
 import PaperCard from "@/components/ui/PaperCard";
 import type {
   LivingManuscriptBlock,
+  LivingManuscriptBookArrangement,
+  LivingManuscriptBookChapter,
   LivingManuscriptDocument,
   LivingManuscriptPodcastArrangement,
 } from "@/lib/server/living-manuscript";
-
-type LivingManuscriptBookChapter = {
-  key: string;
-  title: string;
-  status: string;
-  blocks: LivingManuscriptBlock[];
-};
-
-type LivingManuscriptBookArrangement = {
-  chapters: LivingManuscriptBookChapter[];
-  warnings: string[];
-};
 
 type ViewerProps = {
   manuscript: LivingManuscriptDocument;
