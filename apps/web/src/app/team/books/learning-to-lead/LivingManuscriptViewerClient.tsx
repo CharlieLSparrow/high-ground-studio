@@ -78,6 +78,105 @@ function toggleValue(items: string[], value: string) {
     : [...items, value];
 }
 
+function getCharlieBlockLabel(block: LivingManuscriptBlock) {
+  if (block.voice !== "charlie") {
+    return null;
+  }
+
+  switch (block.type) {
+    case "research-bridge":
+      return "Research Bridge";
+    case "charlie-reflection":
+      return "Charlie Reflection";
+    case "pop-culture-bridge":
+      return "Pop Culture Bridge";
+    case "clip-candidate":
+      return "Clip Candidate";
+    default:
+      return "Charlie Sidebar";
+  }
+}
+
+function getBlockPresentation(block: LivingManuscriptBlock) {
+  const charlieLabel = getCharlieBlockLabel(block);
+
+  if (block.voice !== "charlie") {
+    return {
+      charlieLabel,
+      cardClassName: "min-w-0 px-6 py-8 sm:px-8 sm:py-10",
+      metadataClassName:
+        "rounded-3xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-4 sm:px-5",
+      wordCountClassName:
+        "rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.45)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.7)]",
+      calloutClassName: "",
+      calloutLabelClassName: "",
+      calloutDescription:
+        "Homer baseline manuscript block preserved from source.",
+      stampClassName:
+        "rounded-[28px] border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.42)] p-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]",
+      stampChipClassName:
+        "inline-flex rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.76)]",
+      sidebarLinkClassName:
+        "block rounded-2xl border border-transparent px-3 py-2 text-sm text-[rgba(245,239,230,0.88)] no-underline transition hover:border-white/10 hover:bg-white/6 hover:text-[var(--text-light)]",
+      sidebarMetaClassName:
+        "mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]",
+      sourceTextTone: "homer" as const,
+    };
+  }
+
+  if (block.type === "charlie-reflection") {
+    return {
+      charlieLabel,
+      cardClassName:
+        "min-w-0 border-[rgba(126,78,52,0.16)] bg-[linear-gradient(180deg,rgba(247,236,230,0.98),rgba(240,228,220,0.98))] px-6 py-8 sm:px-8 sm:py-10",
+      metadataClassName:
+        "rounded-3xl border border-[rgba(126,78,52,0.14)] bg-[rgba(255,247,242,0.65)] px-4 py-4 sm:px-5",
+      wordCountClassName:
+        "rounded-full border border-[rgba(126,78,52,0.16)] bg-[rgba(255,246,239,0.78)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#7a4024]",
+      calloutClassName:
+        "rounded-[24px] border border-[rgba(126,78,52,0.12)] bg-[rgba(255,247,242,0.72)] px-4 py-4",
+      calloutLabelClassName:
+        "inline-flex rounded-full border border-[rgba(126,78,52,0.16)] bg-[rgba(210,124,84,0.12)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#8a4528]",
+      calloutDescription:
+        "Charlie voice layered into the manuscript as a warm, personal close.",
+      stampClassName:
+        "rounded-[28px] border border-[rgba(126,78,52,0.16)] bg-[linear-gradient(180deg,rgba(247,236,230,0.96),rgba(240,228,220,0.98))] p-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]",
+      stampChipClassName:
+        "inline-flex rounded-full border border-[rgba(126,78,52,0.16)] bg-[rgba(210,124,84,0.12)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a4528]",
+      sidebarLinkClassName:
+        "block rounded-2xl border border-[rgba(210,124,84,0.14)] bg-[rgba(210,124,84,0.08)] px-3 py-2 text-sm text-[rgba(245,239,230,0.92)] no-underline transition hover:border-[rgba(210,124,84,0.28)] hover:bg-[rgba(210,124,84,0.12)] hover:text-[var(--text-light)]",
+      sidebarMetaClassName:
+        "mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(255,223,204,0.72)]",
+      sourceTextTone: "charlie" as const,
+    };
+  }
+
+  return {
+    charlieLabel,
+    cardClassName:
+      "min-w-0 border-[rgba(111,80,42,0.16)] bg-[linear-gradient(180deg,rgba(246,240,229,0.98),rgba(236,228,216,0.98))] px-6 py-8 sm:px-8 sm:py-10",
+    metadataClassName:
+      "rounded-3xl border border-[rgba(111,80,42,0.12)] bg-[rgba(255,250,242,0.62)] px-4 py-4 sm:px-5",
+    wordCountClassName:
+      "rounded-full border border-[rgba(111,80,42,0.16)] bg-[rgba(255,248,237,0.78)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#7b4b12]",
+    calloutClassName:
+      "rounded-[24px] border border-[rgba(111,80,42,0.12)] bg-[rgba(255,250,242,0.72)] px-4 py-4",
+    calloutLabelClassName:
+      "inline-flex rounded-full border border-[rgba(111,80,42,0.16)] bg-[rgba(179,138,70,0.12)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#7b4b12]",
+    calloutDescription:
+      "Charlie field notes layered into the manuscript as research and framing.",
+    stampClassName:
+      "rounded-[28px] border border-[rgba(111,80,42,0.16)] bg-[linear-gradient(180deg,rgba(246,240,229,0.96),rgba(236,228,216,0.98))] p-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]",
+    stampChipClassName:
+      "inline-flex rounded-full border border-[rgba(111,80,42,0.16)] bg-[rgba(179,138,70,0.12)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#7b4b12]",
+    sidebarLinkClassName:
+      "block rounded-2xl border border-[rgba(179,138,70,0.12)] bg-[rgba(179,138,70,0.08)] px-3 py-2 text-sm text-[rgba(245,239,230,0.92)] no-underline transition hover:border-[rgba(179,138,70,0.24)] hover:bg-[rgba(179,138,70,0.12)] hover:text-[var(--text-light)]",
+    sidebarMetaClassName:
+      "mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(255,230,194,0.72)]",
+    sourceTextTone: "charlie" as const,
+  };
+}
+
 function matchesPreset(preset: ViewerPreset, filters: FilterState, search: string) {
   if (search) {
     return false;
@@ -130,21 +229,41 @@ function matchesPreset(preset: ViewerPreset, filters: FilterState, search: strin
   }
 }
 
-function SourceText({ body }: { body: string }) {
+function SourceText({
+  body,
+  tone = "homer",
+}: {
+  body: string;
+  tone?: "homer" | "charlie";
+}) {
   const paragraphs = body
     .split(/\n\s*\n/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
+  const textClassName =
+    tone === "charlie"
+      ? "space-y-5 text-[1rem] leading-7 text-[rgba(43,33,26,0.92)]"
+      : "space-y-5 text-[1rem] leading-7 text-[rgba(38,30,24,0.92)]";
+
   return (
-    <div className="space-y-5 text-[1rem] leading-7 text-[rgba(38,30,24,0.92)]">
+    <div className={textClassName}>
       {paragraphs.map((paragraph, index) => (
-        <p
-          key={`${index}-${paragraph.slice(0, 18)}`}
-          className="m-0 whitespace-pre-line"
-        >
-          {paragraph}
-        </p>
+        /^###\s+/.test(paragraph) ? (
+          <h3
+            key={`${index}-${paragraph.slice(0, 18)}`}
+            className="m-0 text-[0.98rem] font-bold uppercase tracking-[0.08em] text-[rgba(111,80,42,0.82)]"
+          >
+            {paragraph.replace(/^###\s+/, "")}
+          </h3>
+        ) : (
+          <p
+            key={`${index}-${paragraph.slice(0, 18)}`}
+            className="m-0 whitespace-pre-line"
+          >
+            {paragraph}
+          </p>
+        )
       ))}
     </div>
   );
@@ -335,9 +454,11 @@ function BlockCard({
   block: LivingManuscriptBlock;
   showMetadata: boolean;
 }) {
+  const presentation = getBlockPresentation(block);
+
   return (
     <article id={block.id} className="scroll-mt-6">
-      <PaperCard className="min-w-0 px-6 py-8 sm:px-8 sm:py-10">
+      <PaperCard className={presentation.cardClassName}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap gap-2">
@@ -357,17 +478,28 @@ function BlockCard({
             </h2>
           </div>
 
-          <div className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.45)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.7)]">
+          <div className={presentation.wordCountClassName}>
             {block.wordCount} words
           </div>
         </div>
+
+        {presentation.charlieLabel ? (
+          <div className={`mt-5 ${presentation.calloutClassName}`}>
+            <div className={presentation.calloutLabelClassName}>
+              {presentation.charlieLabel}
+            </div>
+            <div className="mt-2 max-w-[58ch] text-sm leading-6 text-[rgba(43,33,26,0.78)]">
+              {presentation.calloutDescription}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4">
           <CopyControls blockId={block.id} anchorId={block.id} title={block.title} />
         </div>
 
         {showMetadata ? (
-          <div className="mt-5 rounded-3xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-4 sm:px-5">
+          <div className={`mt-5 ${presentation.metadataClassName}`}>
             <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
               Block Metadata
             </div>
@@ -417,7 +549,7 @@ function BlockCard({
         ) : null}
 
         <div className="mt-6">
-          <SourceText body={block.body} />
+          <SourceText body={block.body} tone={presentation.sourceTextTone} />
         </div>
       </PaperCard>
     </article>
@@ -439,15 +571,18 @@ function EpisodeBlockStamp({
 }) {
   const anchorId = `episode-${episodeKey}-${block.id}`;
   const needsCitation = block.tags.includes("needs-citation");
+  const presentation = getBlockPresentation(block);
 
   return (
-    <article
-      id={anchorId}
-      className="rounded-[28px] border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.42)] p-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]"
-    >
+    <article id={anchorId} className={presentation.stampClassName}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
-          Block {position}
+        <div className="flex flex-wrap gap-2">
+          <div className={presentation.stampChipClassName}>Block {position}</div>
+          {presentation.charlieLabel ? (
+            <div className={presentation.stampChipClassName}>
+              {presentation.charlieLabel}
+            </div>
+          ) : null}
         </div>
 
         <CopyControls
@@ -468,19 +603,19 @@ function EpisodeBlockStamp({
       </h3>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <span className="inline-flex rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.76)]">
+        <span className={presentation.stampChipClassName}>
           {formatLabel(block.voice)}
         </span>
-        <span className="inline-flex rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.76)]">
+        <span className={presentation.stampChipClassName}>
           {formatLabel(block.type)}
         </span>
-        <span className="inline-flex rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.76)]">
+        <span className={presentation.stampChipClassName}>
           {formatLabel(block.chapter)}
         </span>
-        <span className="inline-flex rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.76)]">
+        <span className={presentation.stampChipClassName}>
           {formatLabel(block.status)}
         </span>
-        <span className="inline-flex rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.76)]">
+        <span className={presentation.stampChipClassName}>
           {block.wordCount} words
         </span>
         {crossChapter ? (
@@ -509,7 +644,7 @@ function EpisodeBlockStamp({
       </div>
 
       {showMetadata ? (
-        <div className="mt-4 rounded-3xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.38)] px-4 py-4">
+        <div className={`mt-4 ${presentation.metadataClassName}`}>
           <div className="space-y-3">
             <MetadataRow label="Source" value={block.source} />
             <MetadataRow
@@ -1092,10 +1227,12 @@ export default function LivingManuscriptViewerClient({
                                 <a
                                   key={block.id}
                                   href={`#${block.id}`}
-                                  className="block rounded-2xl border border-transparent px-3 py-2 text-sm text-[rgba(245,239,230,0.88)] no-underline transition hover:border-white/10 hover:bg-white/6 hover:text-[var(--text-light)]"
+                                  className={getBlockPresentation(block).sidebarLinkClassName}
                                 >
                                   <div className="font-semibold">{block.title}</div>
-                                  <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
+                                  <div
+                                    className={getBlockPresentation(block).sidebarMetaClassName}
+                                  >
                                     {formatLabel(block.type)} · {formatLabel(block.voice)}
                                   </div>
                                 </a>
@@ -1149,10 +1286,12 @@ export default function LivingManuscriptViewerClient({
                                 <a
                                   key={`${episode.key}-${block.id}`}
                                   href={`#episode-${episode.key}-${block.id}`}
-                                  className="block rounded-2xl border border-transparent px-3 py-2 text-sm text-[rgba(245,239,230,0.88)] no-underline transition hover:border-white/10 hover:bg-white/6 hover:text-[var(--text-light)]"
+                                  className={getBlockPresentation(block).sidebarLinkClassName}
                                 >
                                   <div className="font-semibold">{block.title}</div>
-                                  <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
+                                  <div
+                                    className={getBlockPresentation(block).sidebarMetaClassName}
+                                  >
                                     {formatLabel(block.chapter)} · {formatLabel(block.voice)}
                                   </div>
                                 </a>
