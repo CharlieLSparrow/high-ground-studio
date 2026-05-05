@@ -18,10 +18,24 @@ episodes:
     blocks:
       - homer-chapter-zero-in-the-beginning
   early-life-lessons:
-    title: "Early Life Lessons"
+    title: "The Early Days"
     status: "candidate"
     blocks:
-      - homer-chapter-one-early-days
+      - homer-early-days-preschool-memories
+      - charlie-early-days-effort-and-joy-sidebar
+      - homer-early-days-first-grade-name-calling
+      - charlie-early-days-psychological-safety-sidebar
+      - homer-early-days-second-grade-quiet-time
+      - charlie-early-days-incentives-sidebar
+      - homer-early-days-third-grade-busy-work
+      - charlie-early-days-autonomy-and-purpose-sidebar
+      - homer-early-days-seventh-grade-keyboarding
+      - charlie-early-days-start-with-why-sidebar
+      - homer-early-days-farm-years
+      - charlie-early-days-meaning-and-endurance-sidebar
+      - homer-values-simple-solutions
+      - charlie-early-days-listening-culture-sidebar
+      - charlie-early-days-warmth-and-attention-close
   values:
     title: "Values"
     status: "candidate"

@@ -26,7 +26,12 @@ book:
     title: "The Early Days"
     status: "baseline"
     blocks:
-      - homer-chapter-one-early-days
+      - homer-early-days-preschool-memories
+      - homer-early-days-first-grade-name-calling
+      - homer-early-days-second-grade-quiet-time
+      - homer-early-days-third-grade-busy-work
+      - homer-early-days-seventh-grade-keyboarding
+      - homer-early-days-farm-years
   chapter-two:
     title: "Values: Get Some"
     status: "baseline"
