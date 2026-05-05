@@ -25,6 +25,7 @@ Working rules:
 - arrangement YAML remains the formal output map once decisions are incorporated
 - breakdown files may stay messy, partial, and unresolved while intake is in progress
 - future Codex passes should read these breakdowns first, then update living MDX and arrangement YAML deliberately
+- if a prompt references episode material but the actual pasted payload is missing, preserve that fact explicitly in the intake file instead of inventing structure or prose
 
 In short:
 
