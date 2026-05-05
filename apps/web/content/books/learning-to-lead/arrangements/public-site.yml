@@ -1,0 +1,19 @@
+# Conservative public-site arrangement.
+# Keep this tied to obviously public-ready top-level source slices only.
+
+pages:
+  homepage-feature:
+    title: "Homepage Feature"
+    status: "candidate"
+    blocks:
+      - homer-preface-write-it-down
+  learning-journey-overview:
+    title: "Learning Journey Overview"
+    status: "candidate"
+    blocks:
+      - homer-introduction-look-for-lessons
+  ancestry-origin-story:
+    title: "Ancestry and Origin Story"
+    status: "candidate"
+    blocks:
+      - homer-chapter-zero-in-the-beginning

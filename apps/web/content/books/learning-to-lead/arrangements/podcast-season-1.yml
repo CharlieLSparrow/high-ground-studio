@@ -1,0 +1,29 @@
+# First-pass podcast arrangement seeded only with obvious top-level candidates.
+# These are coarse block references, not final episode edits.
+
+episodes:
+  write-it-down:
+    title: "Write It Down"
+    status: "candidate"
+    blocks:
+      - homer-preface-write-it-down
+  look-for-lessons:
+    title: "Look for Lessons"
+    status: "candidate"
+    blocks:
+      - homer-introduction-look-for-lessons
+  know-where-you-came-from:
+    title: "Know Where You Came From"
+    status: "candidate"
+    blocks:
+      - homer-chapter-zero-in-the-beginning
+  early-life-lessons:
+    title: "Early Life Lessons"
+    status: "candidate"
+    blocks:
+      - homer-chapter-one-early-days
+  values:
+    title: "Values"
+    status: "candidate"
+    blocks:
+      - homer-chapter-two-values-get-some
