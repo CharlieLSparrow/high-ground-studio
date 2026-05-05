@@ -1,0 +1,14 @@
+Dad's ability to pull wisdom from the mundane has always amazed me, and like my brother over time it worked its way into how I process and view the world. I even categorize metaphors in my head as I go about life as Red Tailed Hawks. Except where Scott was painfully aware of his analogies falling short, I fancied every vague connection I came across an allegorical tapestry of wisdom. I'm not even sure if the sentence before this is the proper use of all those words, but if not all the better to illustrate my point.  
+It's possible this is a personality flaw, but it's not something I'm alone in. German psychiatrist, Klaus Conrad, called it _apophenia which is the_ ability to perceive meaningful connections in random data or it's friendly cousin _pareidolia which is things like_ seeing faces in clouds, animals in wood grain, or an even sadder version of Marvin the depressed robot from Hitchhikers guide to the galaxy in the back of a family SUV. No seriously, now that I've put that in your head keep an eye out and you'll see the one I'm referring to.  
+What's really cool is you can actually see those ah ha moments on a brain scan as the brain lights up as connections are made and we feel that sense of elation.  
+I've spent most of my life since I was old enough to contribute anything chasing that feeling primarily as a troubleshooter and team lead, and evolving over time also into becoming a data analyst which is either the perfect job for a soft hearted pattern-hunter or a deeply ironic form of poetic meanness. Because data does not care about my feelings.  
+One of the ways this shows up is in the ole correlation not equaling causation. In other words, you can have a true pattern and a false explanation at the same time. The line on the chart can be real, and the story you tell about it can be nonsense. In business this often means entire meetings are basically professional storytelling with charts.  
+Am I making that sound like a bad thing? It's not! We're storytelling machines, It's how we're wired. But it's important that the patterns we're looking for don't just track logically, they have to contain useful truths that make us better in some way.  
+Here is our invitation, in the spirit of Dad’s challenge:  
+Look for lessons in everyday things.  
+Then, when you find one, hold it up to the light.  
+Ask if it makes you kinder.  
+Ask if it makes you more honest.  
+Ask if it makes you more capable.  
+Ask if it actually matches reality, or if it just happens to rhyme with a fear you already had.  
+Stories can save us. They can also trap us. The difference is not whether we make meaning. The difference is whether we make good meaning.
