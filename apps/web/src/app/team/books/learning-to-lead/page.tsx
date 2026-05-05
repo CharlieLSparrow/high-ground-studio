@@ -3,6 +3,7 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import LivingManuscriptViewerClient from "./LivingManuscriptViewerClient";
 import {
+  getLearningToLeadBookArrangement,
   getLearningToLeadManuscript,
   getLearningToLeadPodcastArrangement,
 } from "@/lib/server/living-manuscript";

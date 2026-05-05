@@ -50,6 +50,18 @@ export type LivingManuscriptPodcastEpisode = {
   totalWordCount: number;
 };
 
+export type LivingManuscriptBookChapter = {
+  key: string;
+  title: string;
+  status: string;
+  blocks: LivingManuscriptBlock[];
+};
+
+export type LivingManuscriptBookArrangement = {
+  chapters: LivingManuscriptBookChapter[];
+  warnings: string[];
+};
+
 export type LivingManuscriptPodcastArrangement = {
   sourcePath: string | null;
   episodes: LivingManuscriptPodcastEpisode[];
@@ -70,6 +82,14 @@ const PODCAST_ARRANGEMENT_RELATIVE_PATH = [
   "learning-to-lead",
   "arrangements",
   "podcast-season-1.yml",
+] as const;
+
+const BOOK_ARRANGEMENT_RELATIVE_PATH = [
+  "content",
+  "books",
+  "learning-to-lead",
+  "arrangements",
+  "book-v1.yml",
 ] as const;
 
 const FRONTMATTER_BOUNDARY = "---";
@@ -409,12 +429,97 @@ function derivePrimaryChapter(blocks: LivingManuscriptBlock[]) {
   })[0]?.[0] ?? null;
 }
 
+type RawBookChapter = {
+  key: string;
+  title: string;
+  status: string;
+  blockIds: string[];
+};
+
 type RawPodcastEpisode = {
   key: string;
   title: string;
   status: string;
   blockIds: string[];
 };
+
+function parseBookArrangement(source: string) {
+  const lines = source.split(/\r?\n/);
+  const chapters: RawBookChapter[] = [];
+  let inBook = false;
+  let currentChapter: RawBookChapter | null = null;
+  let readingBlocks = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    if (!inBook) {
+      if (trimmed === "book:") {
+        inBook = true;
+      }
+      continue;
+    }
+
+    const chapterMatch = line.match(/^  ([A-Za-z0-9-]+):\s*$/);
+    if (chapterMatch) {
+      if (currentChapter) {
+        chapters.push(currentChapter);
+      }
+
+      currentChapter = {
+        key: chapterMatch[1],
+        title: formatScalarString(chapterMatch[1]),
+        status: "unknown",
+        blockIds: [],
+      };
+      readingBlocks = false;
+      continue;
+    }
+
+    if (!currentChapter) {
+      continue;
+    }
+
+    const titleMatch = line.match(/^    title:\s*(.+)$/);
+    if (titleMatch) {
+      currentChapter.title = formatScalarString(titleMatch[1]);
+      readingBlocks = false;
+      continue;
+    }
+
+    const statusMatch = line.match(/^    status:\s*(.+)$/);
+    if (statusMatch) {
+      currentChapter.status = formatScalarString(statusMatch[1]);
+      readingBlocks = false;
+      continue;
+    }
+
+    if (/^    blocks:\s*$/.test(line)) {
+      readingBlocks = true;
+      continue;
+    }
+
+    const blockMatch = line.match(/^      -\s+([A-Za-z0-9-]+)\s*$/);
+    if (readingBlocks && blockMatch) {
+      currentChapter.blockIds.push(blockMatch[1]);
+      continue;
+    }
+
+    if (/^    [A-Za-z0-9_-]+:/.test(line)) {
+      readingBlocks = false;
+    }
+  }
+
+  if (currentChapter) {
+    chapters.push(currentChapter);
+  }
+
+  return chapters;
+}
 
 function parsePodcastArrangement(source: string) {
   const lines = source.split(/\r?\n/);
@@ -526,6 +631,61 @@ export async function getLearningToLeadManuscript(): Promise<LivingManuscriptDoc
     title: typeof frontmatter.title === "string" ? frontmatter.title : null,
     introNote: extractIntroNote(leadingContent),
     blocks,
+  };
+}
+
+export async function getLearningToLeadBookArrangement(
+  manuscript?: LivingManuscriptDocument,
+): Promise<LivingManuscriptBookArrangement> {
+  const sourcePath = await resolveRepoRelativePath(BOOK_ARRANGEMENT_RELATIVE_PATH);
+
+  if (!sourcePath) {
+    return {
+      chapters: [],
+      warnings: [
+        "Book arrangement file not found at content/books/learning-to-lead/arrangements/book-v1.yml.",
+      ],
+    };
+  }
+
+  const document = manuscript ?? (await getLearningToLeadManuscript());
+  const blockMap = new Map(document.blocks.map((block) => [block.id, block]));
+  const rawArrangement = await readFile(sourcePath, "utf8");
+  const rawChapters = parseBookArrangement(rawArrangement);
+  const warnings: string[] = [];
+
+  const chapters = rawChapters.map((chapter) => {
+    const missingBlockIds: string[] = [];
+    const resolvedBlocks: LivingManuscriptBlock[] = [];
+
+    for (const blockId of chapter.blockIds) {
+      const block = blockMap.get(blockId);
+
+      if (!block) {
+        missingBlockIds.push(blockId);
+        continue;
+      }
+
+      resolvedBlocks.push(block);
+    }
+
+    const chapterWarnings = missingBlockIds.map(
+      (blockId) =>
+        `Chapter ${chapter.key} references missing manuscript block id: ${blockId}`,
+    );
+    warnings.push(...chapterWarnings);
+
+    return {
+      key: chapter.key,
+      title: chapter.title,
+      status: chapter.status,
+      blocks: resolvedBlocks,
+    } satisfies LivingManuscriptBookChapter;
+  });
+
+  return {
+    chapters,
+    warnings,
   };
 }
 
