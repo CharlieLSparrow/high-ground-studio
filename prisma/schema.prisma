@@ -104,6 +104,20 @@ enum AppointmentLocationType {
   OTHER
 }
 
+enum ContactPreference {
+  EMAIL
+  PHONE_CALL
+  TEXT
+}
+
+enum CoachingRequestStatus {
+  NEW
+  CONTACTED
+  SCHEDULED
+  CLOSED
+  DECLINED
+}
+
 // The canonical human/app identity record.
 //
 // Source of truth:
@@ -164,6 +178,8 @@ model User {
   coachAppointments   Appointment[] @relation("AppointmentCoach")
   appointmentsCreated Appointment[] @relation("AppointmentCreatedBy")
   appointmentsUpdated Appointment[] @relation("AppointmentUpdatedBy")
+  coachingRequests    CoachingRequest[] @relation("CoachingRequestClient")
+  assignedCoachingRequests CoachingRequest[] @relation("CoachingRequestCoach")
 
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
 }
@@ -312,8 +328,34 @@ model Appointment {
   coachUser       User?                   @relation("AppointmentCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
   createdByUser   User                    @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedByUser   User?                   @relation("AppointmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  coachingRequestConversion CoachingRequest?
 
   @@index([clientUserId, scheduledStart])
   @@index([coachUserId, scheduledStart])
   @@index([status, scheduledStart])
+}
+
+model CoachingRequest {
+  id                    String                @id @default(cuid())
+  clientUserId          String
+  preferredContactMethod ContactPreference
+  email                 String
+  phone                 String?
+  availabilityNotes     String?
+  coachingGoals         String
+  contactConsent        Boolean
+  status                CoachingRequestStatus @default(NEW)
+  assignedCoachUserId   String?
+  convertedAppointmentId String?             @unique
+  internalNotes         String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  clientUser            User                  @relation("CoachingRequestClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  assignedCoachUser     User?                 @relation("CoachingRequestCoach", fields: [assignedCoachUserId], references: [id], onDelete: SetNull)
+  convertedAppointment  Appointment?          @relation(fields: [convertedAppointmentId], references: [id], onDelete: SetNull)
+
+  @@index([clientUserId, createdAt])
+  @@index([status, createdAt])
+  @@index([assignedCoachUserId, status])
 }

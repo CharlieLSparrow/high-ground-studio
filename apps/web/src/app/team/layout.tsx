@@ -85,6 +85,13 @@ export default async function TeamLayout({
             </Link>
 
             <Link
+              href="/team/coaching-requests"
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+            >
+              Coaching Requests
+            </Link>
+
+            <Link
               href="/team/show-prep"
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
             >
