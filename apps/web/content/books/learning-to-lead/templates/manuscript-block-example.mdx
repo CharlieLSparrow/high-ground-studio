@@ -1,0 +1,31 @@
+---
+title: "Manuscript Block Example"
+status: "template"
+---
+
+# Manuscript Block Example
+
+Use this as a reference when seeding real blocks into the living manuscript.
+
+```mdx
+<ManuscriptBlock
+  id="preface-write-it-down"
+  type="story"
+  voice="homer"
+  status="baseline"
+  chapter="preface"
+  tags={["legacy", "writing", "story"]}
+  source="Leadership My Story 24MAR19.docx"
+  pairsWith={["charlie-preface-reflection"]}
+  notes="Baseline block created from the original manuscript conversion."
+>
+This is where the source text will go later.
+</ManuscriptBlock>
+```
+
+Suggested conventions:
+
+- keep `id` stable once referenced by an arrangement
+- use `voice` to separate Homer, Charlie, research, and editorial material
+- use `status` to show maturity instead of hiding draft state
+- use `source` and `notes` to preserve provenance

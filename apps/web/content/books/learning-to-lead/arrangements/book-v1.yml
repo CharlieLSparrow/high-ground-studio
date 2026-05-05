@@ -1,0 +1,107 @@
+# First-pass book arrangement seeded from the living manuscript baseline.
+# These are coarse whole-section blocks, not final fine-grained editorial slices.
+
+book:
+  acknowledgments:
+    title: "Acknowledgments"
+    status: "baseline"
+    blocks:
+      - homer-acknowledgments
+  preface:
+    title: "Preface"
+    status: "baseline"
+    blocks:
+      - homer-preface-write-it-down
+  introduction:
+    title: "Introduction"
+    status: "baseline"
+    blocks:
+      - homer-introduction-look-for-lessons
+  chapter-zero:
+    title: "In The Beginning"
+    status: "baseline"
+    blocks:
+      - homer-chapter-zero-in-the-beginning
+  chapter-one:
+    title: "The Early Days"
+    status: "baseline"
+    blocks:
+      - homer-early-days-preschool-memories
+      - homer-early-days-first-grade-name-calling
+      - homer-early-days-second-grade-quiet-time
+      - homer-early-days-third-grade-busy-work
+      - homer-early-days-seventh-grade-keyboarding
+      - homer-early-days-farm-years
+  chapter-two:
+    title: "Values: Get Some"
+    status: "baseline"
+    blocks:
+      - homer-values-definition-and-relative-worth
+      - homer-values-army-leadership-and-integrity
+      - homer-values-tip-nevada-promise
+      - homer-values-milk-down-the-drain
+      - homer-values-mundane-greatness
+      - homer-values-grudges-and-listening
+      - homer-values-simple-solutions
+      - homer-values-autonomy-and-army-choice
+      - homer-values-basic-training-arrival-and-humor
+      - homer-values-basic-training-wrestling-and-proving-yourself
+      - homer-values-basic-training-egos-and-direction
+      - homer-values-basic-training-cs-gas-and-preparation
+      - homer-values-language-discipline-and-reputation
+      - homer-values-icon-health-and-early-leadership
+  chapter-three:
+    title: "None of it Works Unless You Do"
+    status: "baseline"
+    blocks:
+      - homer-chapter-three-none-of-it-works-unless-you-do
+  chapter-four:
+    title: "It doesn’t hurt to get lucky"
+    status: "baseline"
+    blocks:
+      - homer-chapter-four-it-doesnt-hurt-to-get-lucky
+  chapter-five:
+    title: "Leaders Make It Happen"
+    status: "baseline"
+    blocks:
+      - homer-chapter-five-leaders-make-it-happen
+  chapter-six:
+    title: "Individuals make a team"
+    status: "baseline"
+    blocks:
+      - homer-chapter-six-individuals-make-a-team
+  chapter-seven:
+    title: "Clear task, purpose, and end state"
+    status: "baseline"
+    blocks:
+      - homer-chapter-seven-clear-task-purpose-end-state
+  chapter-eight:
+    title: "Learn"
+    status: "baseline"
+    blocks:
+      - homer-chapter-eight-learn
+  chapter-nine:
+    title: "Leadership Philosophy"
+    status: "baseline"
+    blocks:
+      - homer-chapter-nine-leadership-philosophy
+  chapter-ten:
+    title: "Risk assessment and risk reduction"
+    status: "baseline"
+    blocks:
+      - homer-chapter-ten-risk-assessment-risk-reduction
+  chapter-eleven:
+    title: "What is Important"
+    status: "baseline"
+    blocks:
+      - homer-chapter-eleven-what-is-important
+  chapter-twelve:
+    title: "Don’t Forget to Enjoy It"
+    status: "baseline"
+    blocks:
+      - homer-chapter-twelve-dont-forget-to-enjoy-it
+  ending:
+    title: "Ending and Extra Material"
+    status: "baseline"
+    blocks:
+      - homer-ending-and-extra-material

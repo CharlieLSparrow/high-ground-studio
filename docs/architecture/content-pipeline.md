@@ -163,6 +163,14 @@ How future agents should treat it:
 - currently useful for the public derivative page shape via `episode-template.mdx`
 - not authoritative for live route behavior or canonical episode packet truth
 
+## Related Architecture
+
+For the preserved whole-manuscript layer for `Learning to Lead`, see:
+
+- `docs/architecture/living-manuscript-system.md`
+
+That document defines the new `apps/web/content/books/learning-to-lead` structure and how it relates to `publish`, episode packets, and upstream source material.
+
 ## Current Split To Keep Straight
 
 There are now three different roles that matter:

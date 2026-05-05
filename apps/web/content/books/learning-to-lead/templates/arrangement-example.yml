@@ -1,0 +1,11 @@
+# Arrangement example.
+# An arrangement is a playlist of block IDs, not a copy of manuscript text.
+
+outputs:
+  example-output:
+    title: "Example Output"
+    status: "draft"
+    blocks:
+      - preface-origin-of-book
+      - preface-write-it-down
+      - charlie-preface-reflection
