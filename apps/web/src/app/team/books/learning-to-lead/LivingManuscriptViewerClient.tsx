@@ -22,6 +22,27 @@ type FilterState = {
   tags: string[];
 };
 
+type ViewerPreset =
+  | "show-all"
+  | "homer-only"
+  | "charlie-only"
+  | "needs-citation"
+  | "episode-4";
+
+type ChapterGroup = {
+  chapter: string;
+  totalBlocks: LivingManuscriptBlock[];
+  visibleBlocks: LivingManuscriptBlock[];
+};
+
+const EMPTY_FILTERS: FilterState = {
+  chapters: [],
+  voices: [],
+  statuses: [],
+  types: [],
+  tags: [],
+};
+
 function formatLabel(value: string) {
   return value
     .split(/[-_]/g)
@@ -30,10 +51,66 @@ function formatLabel(value: string) {
     .join(" ");
 }
 
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function toggleValue(items: string[], value: string) {
   return items.includes(value)
     ? items.filter((item) => item !== value)
     : [...items, value];
+}
+
+function matchesPreset(preset: ViewerPreset, filters: FilterState, search: string) {
+  if (search) {
+    return false;
+  }
+
+  const noOtherFilters =
+    filters.chapters.length === 0 &&
+    filters.statuses.length === 0 &&
+    filters.types.length === 0;
+
+  switch (preset) {
+    case "show-all":
+      return (
+        filters.chapters.length === 0 &&
+        filters.voices.length === 0 &&
+        filters.statuses.length === 0 &&
+        filters.types.length === 0 &&
+        filters.tags.length === 0
+      );
+    case "homer-only":
+      return (
+        noOtherFilters &&
+        filters.tags.length === 0 &&
+        filters.voices.length === 1 &&
+        filters.voices[0] === "homer"
+      );
+    case "charlie-only":
+      return (
+        noOtherFilters &&
+        filters.tags.length === 0 &&
+        filters.voices.length === 1 &&
+        filters.voices[0] === "charlie"
+      );
+    case "needs-citation":
+      return (
+        noOtherFilters &&
+        filters.voices.length === 0 &&
+        filters.tags.length === 1 &&
+        filters.tags[0] === "needs-citation"
+      );
+    case "episode-4":
+      return (
+        noOtherFilters &&
+        filters.voices.length === 0 &&
+        filters.tags.length === 1 &&
+        filters.tags[0] === "episode-04"
+      );
+    default:
+      return false;
+  }
 }
 
 function SourceText({ body }: { body: string }) {
@@ -75,13 +152,38 @@ function FilterCheckbox({
   );
 }
 
+function PresetButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full border px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] transition",
+        active
+          ? "border-flare/40 bg-flare/16 text-[var(--text-light)]"
+          : "border-white/12 bg-white/8 text-[rgba(245,239,230,0.88)] hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
 function MetadataRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid gap-1 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-4">
+    <div className="grid gap-1 lg:grid-cols-[140px_minmax(0,1fr)] lg:gap-4">
       <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
         {label}
       </div>
-      <div className="min-w-0 text-sm text-[rgba(38,30,24,0.82)]">{value}</div>
+      <div className="min-w-0 text-sm leading-6 text-[rgba(38,30,24,0.84)]">{value}</div>
     </div>
   );
 }
@@ -105,6 +207,56 @@ function MetadataTagList({ values }: { values: string[] }) {
   );
 }
 
+function BlockToolbar({ blockId, title }: { blockId: string; title: string }) {
+  const [copiedState, setCopiedState] = useState<"id" | "link" | null>(null);
+
+  async function copyValue(kind: "id" | "link") {
+    const value =
+      kind === "id"
+        ? blockId
+        : typeof window !== "undefined"
+          ? `${window.location.origin}${window.location.pathname}#${blockId}`
+          : `#${blockId}`;
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        setCopiedState(kind);
+        window.setTimeout(() => setCopiedState(null), 1400);
+      }
+    } catch {
+      setCopiedState(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.45)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+        <span>ID</span>
+        <code className="normal-case tracking-normal text-[rgba(38,30,24,0.88)]">{blockId}</code>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => copyValue("id")}
+        className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.45)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+        aria-label={`Copy block id for ${title}`}
+      >
+        {copiedState === "id" ? "Copied ID" : "Copy ID"}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => copyValue("link")}
+        className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.45)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+        aria-label={`Copy anchor link for ${title}`}
+      >
+        {copiedState === "link" ? "Copied Link" : "Copy Link"}
+      </button>
+    </div>
+  );
+}
+
 function BlockCard({
   block,
   showMetadata,
@@ -116,14 +268,21 @@ function BlockCard({
     <article id={block.id} className="scroll-mt-6">
       <PaperCard className="min-w-0 px-6 py-8 sm:px-8 sm:py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap gap-2">
               <PageEyebrow>{formatLabel(block.chapter)}</PageEyebrow>
               <PageEyebrow>{formatLabel(block.type)}</PageEyebrow>
+              <PageEyebrow>{formatLabel(block.voice)}</PageEyebrow>
+              <PageEyebrow>{formatLabel(block.status)}</PageEyebrow>
             </div>
 
             <h2 className="m-0 mt-2 text-[1.7rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
-              {block.title}
+              <a
+                href={`#${block.id}`}
+                className="text-inherit no-underline transition hover:text-[#8f3a00]"
+              >
+                {block.title}
+              </a>
             </h2>
           </div>
 
@@ -132,10 +291,19 @@ function BlockCard({
           </div>
         </div>
 
+        <div className="mt-4">
+          <BlockToolbar blockId={block.id} title={block.title} />
+        </div>
+
         {showMetadata ? (
           <div className="mt-5 rounded-3xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-4 sm:px-5">
+            <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+              Block Metadata
+            </div>
+
             <div className="space-y-3">
               <MetadataRow label="ID" value={<code>{block.id}</code>} />
+              <MetadataRow label="Title" value={block.title} />
               <MetadataRow label="Type" value={formatLabel(block.type)} />
               <MetadataRow label="Voice" value={formatLabel(block.voice)} />
               <MetadataRow label="Status" value={formatLabel(block.status)} />
@@ -186,13 +354,8 @@ function BlockCard({
 }
 
 export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps) {
-  const [filters, setFilters] = useState<FilterState>({
-    chapters: [],
-    voices: [],
-    statuses: [],
-    types: [],
-    tags: [],
-  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [showMetadata, setShowMetadata] = useState(false);
   const [collapsedChapters, setCollapsedChapters] = useState<string[]>([]);
 
@@ -222,6 +385,16 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
     };
   }, [manuscript.blocks]);
 
+  const normalizedSearch = useMemo(() => normalizeSearch(searchQuery), [searchQuery]);
+
+  const chapterGroups = useMemo<ChapterGroup[]>(() => {
+    return filterOptions.chapters.map((chapter) => ({
+      chapter,
+      totalBlocks: manuscript.blocks.filter((block) => block.chapter === chapter),
+      visibleBlocks: [],
+    }));
+  }, [filterOptions.chapters, manuscript.blocks]);
+
   const filteredBlocks = useMemo(() => {
     return manuscript.blocks.filter((block) => {
       if (filters.chapters.length > 0 && !filters.chapters.includes(block.chapter)) {
@@ -247,45 +420,85 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
         return false;
       }
 
+      if (normalizedSearch) {
+        const searchTarget = [
+          block.id,
+          block.title,
+          block.body,
+          block.tags.join(" "),
+          block.type,
+          block.voice,
+          block.status,
+          block.chapter,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        if (!searchTarget.includes(normalizedSearch)) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [filters, manuscript.blocks]);
+  }, [filters, manuscript.blocks, normalizedSearch]);
 
-  const visibleGroups = useMemo(() => {
-    const groups = new Map<string, LivingManuscriptBlock[]>();
+  const groupedResults = useMemo(() => {
+    const visibleMap = new Map<string, LivingManuscriptBlock[]>();
 
     for (const block of filteredBlocks) {
-      const existing = groups.get(block.chapter) ?? [];
+      const existing = visibleMap.get(block.chapter) ?? [];
       existing.push(block);
-      groups.set(block.chapter, existing);
+      visibleMap.set(block.chapter, existing);
     }
 
-    return Array.from(groups.entries());
-  }, [filteredBlocks]);
+    return chapterGroups.map((group) => ({
+      ...group,
+      visibleBlocks: visibleMap.get(group.chapter) ?? [],
+    }));
+  }, [chapterGroups, filteredBlocks]);
 
   const activeFilterCount =
     filters.chapters.length +
     filters.voices.length +
     filters.statuses.length +
     filters.types.length +
-    filters.tags.length;
+    filters.tags.length +
+    (normalizedSearch ? 1 : 0);
 
   function resetFilters() {
-    setFilters({
-      chapters: [],
-      voices: [],
-      statuses: [],
-      types: [],
-      tags: [],
-    });
+    setSearchQuery("");
+    setFilters(EMPTY_FILTERS);
   }
 
   function toggleChapterGroup(chapter: string) {
     setCollapsedChapters((current) => toggleValue(current, chapter));
   }
 
+  function applyPreset(preset: ViewerPreset) {
+    setSearchQuery("");
+
+    switch (preset) {
+      case "show-all":
+        setFilters(EMPTY_FILTERS);
+        break;
+      case "homer-only":
+        setFilters({ ...EMPTY_FILTERS, voices: ["homer"] });
+        break;
+      case "charlie-only":
+        setFilters({ ...EMPTY_FILTERS, voices: ["charlie"] });
+        break;
+      case "needs-citation":
+        setFilters({ ...EMPTY_FILTERS, tags: ["needs-citation"] });
+        break;
+      case "episode-4":
+        setFilters({ ...EMPTY_FILTERS, tags: ["episode-04"] });
+        break;
+    }
+  }
+
   return (
-    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
       <aside className="space-y-6 xl:self-start">
         <GlassPanel className="p-5 text-[var(--text-light)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -313,14 +526,20 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
               <div className="mt-1 text-lg font-semibold text-[rgba(245,239,230,0.96)]">
                 {filteredBlocks.length}
               </div>
+              <div className="mt-1 text-xs text-[rgba(245,239,230,0.62)]">
+                of {manuscript.blocks.length} total
+              </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
               <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
-                Total Blocks
+                Search
               </div>
               <div className="mt-1 text-lg font-semibold text-[rgba(245,239,230,0.96)]">
-                {manuscript.blocks.length}
+                {normalizedSearch ? "Active" : "Off"}
+              </div>
+              <div className="mt-1 text-xs text-[rgba(245,239,230,0.62)]">
+                {normalizedSearch ? `“${searchQuery.trim()}”` : "No text filter"}
               </div>
             </div>
 
@@ -331,6 +550,57 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
               <div className="mt-1 text-lg font-semibold text-[rgba(245,239,230,0.96)]">
                 {activeFilterCount}
               </div>
+              <div className="mt-1 text-xs text-[rgba(245,239,230,0.62)]">
+                search + metadata filters
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 px-4 py-4">
+            <label className="block">
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+                Search Manuscript
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search title, id, tags, or body text"
+                className="mt-3 w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.45)] focus:border-[rgba(255,122,24,0.35)]"
+              />
+            </label>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 px-4 py-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+              Quick Presets
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <PresetButton
+                label="Show all"
+                active={matchesPreset("show-all", filters, normalizedSearch)}
+                onClick={() => applyPreset("show-all")}
+              />
+              <PresetButton
+                label="Homer only"
+                active={matchesPreset("homer-only", filters, normalizedSearch)}
+                onClick={() => applyPreset("homer-only")}
+              />
+              <PresetButton
+                label="Charlie only"
+                active={matchesPreset("charlie-only", filters, normalizedSearch)}
+                onClick={() => applyPreset("charlie-only")}
+              />
+              <PresetButton
+                label="Needs citation"
+                active={matchesPreset("needs-citation", filters, normalizedSearch)}
+                onClick={() => applyPreset("needs-citation")}
+              />
+              <PresetButton
+                label="Episode 4"
+                active={matchesPreset("episode-4", filters, normalizedSearch)}
+                onClick={() => applyPreset("episode-4")}
+              />
             </div>
           </div>
 
@@ -340,7 +610,9 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
                 Metadata
               </div>
               <div className="mt-1 text-sm text-[rgba(245,239,230,0.9)]">
-                {showMetadata ? "Showing block metadata" : "Showing prose only"}
+                {showMetadata
+                  ? "Showing id, source, pairings, tags, notes, and word counts"
+                  : "Showing prose-first view with compact block headers"}
               </div>
             </div>
 
@@ -466,38 +738,52 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
           <h2 className="m-0 text-[1.3rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
             Chapter Groups
           </h2>
+          <p className="mb-0 mt-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
+            Each group shows visible blocks against the chapter total so search and filters are easier to reason about.
+          </p>
 
           <div className="mt-5 space-y-3">
-            {visibleGroups.map(([chapter, blocks]) => {
-              const collapsed = collapsedChapters.includes(chapter);
+            {groupedResults.map((group) => {
+              const collapsed = collapsedChapters.includes(group.chapter);
 
               return (
-                <div key={chapter} className="rounded-2xl border border-white/10 bg-white/6 p-3">
+                <div
+                  key={group.chapter}
+                  className="rounded-2xl border border-white/10 bg-white/6 p-3"
+                >
                   <button
                     type="button"
-                    onClick={() => toggleChapterGroup(chapter)}
+                    onClick={() => toggleChapterGroup(group.chapter)}
                     className="flex w-full items-center justify-between gap-3 text-left text-[rgba(245,239,230,0.96)]"
                   >
-                    <span className="text-sm font-semibold">{formatLabel(chapter)}</span>
+                    <span className="text-sm font-semibold">
+                      {formatLabel(group.chapter)}
+                    </span>
                     <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
-                      {blocks.length} {blocks.length === 1 ? "block" : "blocks"}
+                      {group.visibleBlocks.length}/{group.totalBlocks.length}
                     </span>
                   </button>
 
                   {!collapsed ? (
                     <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
-                      {blocks.map((block) => (
-                        <a
-                          key={block.id}
-                          href={`#${block.id}`}
-                          className="block rounded-2xl border border-transparent px-3 py-2 text-sm text-[rgba(245,239,230,0.88)] no-underline transition hover:border-white/10 hover:bg-white/6 hover:text-[var(--text-light)]"
-                        >
-                          <div className="font-semibold">{block.title}</div>
-                          <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
-                            {formatLabel(block.type)} · {formatLabel(block.voice)}
-                          </div>
-                        </a>
-                      ))}
+                      {group.visibleBlocks.length === 0 ? (
+                        <div className="rounded-2xl border border-white/8 bg-white/4 px-3 py-2 text-sm text-[rgba(245,239,230,0.66)]">
+                          No visible blocks in this chapter.
+                        </div>
+                      ) : (
+                        group.visibleBlocks.map((block) => (
+                          <a
+                            key={block.id}
+                            href={`#${block.id}`}
+                            className="block rounded-2xl border border-transparent px-3 py-2 text-sm text-[rgba(245,239,230,0.88)] no-underline transition hover:border-white/10 hover:bg-white/6 hover:text-[var(--text-light)]"
+                          >
+                            <div className="font-semibold">{block.title}</div>
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
+                              {formatLabel(block.type)} · {formatLabel(block.voice)}
+                            </div>
+                          </a>
+                        ))
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -511,11 +797,20 @@ export default function LivingManuscriptViewerClient({ manuscript }: ViewerProps
         {filteredBlocks.length === 0 ? (
           <PaperCard>
             <h2 className="m-0 text-[1.8rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
-              No manuscript blocks match the current filters.
+              No blocks match the current search and filters.
             </h2>
             <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
-              Clear the current filters or widen one of the metadata categories to bring sections back into view.
+              Nothing is wrong with the manuscript. The current search text or metadata filters are simply narrowing the view to zero blocks.
             </p>
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.45)] px-4 py-2 text-sm font-semibold text-[rgba(38,30,24,0.82)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+              >
+                Clear filters and search
+              </button>
+            </div>
           </PaperCard>
         ) : (
           filteredBlocks.map((block) => (
