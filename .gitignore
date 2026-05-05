@@ -18,6 +18,7 @@ yarn-debug.log*
 
 # OS/editor
 .DS_Store
+**/.DS_Store
 .idea/
 .vscode/
 
