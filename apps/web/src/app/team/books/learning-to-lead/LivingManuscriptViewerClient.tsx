@@ -11,8 +11,21 @@ import type {
   LivingManuscriptPodcastArrangement,
 } from "@/lib/server/living-manuscript";
 
+type LivingManuscriptBookChapter = {
+  key: string;
+  title: string;
+  status: string;
+  blocks: LivingManuscriptBlock[];
+};
+
+type LivingManuscriptBookArrangement = {
+  chapters: LivingManuscriptBookChapter[];
+  warnings: string[];
+};
+
 type ViewerProps = {
   manuscript: LivingManuscriptDocument;
+  bookArrangement: LivingManuscriptBookArrangement;
   podcastArrangement: LivingManuscriptPodcastArrangement;
 };
 
@@ -31,7 +44,7 @@ type ViewerPreset =
   | "needs-citation"
   | "episode-4";
 
-type ViewMode = "book" | "episode";
+type ViewMode = "book" | "story" | "episode";
 type EpisodeViewMode = "board" | "reading";
 
 type ChapterGroup = {
@@ -915,6 +928,81 @@ function ReadingBlock({
   );
 }
 
+function CharlieBookBlock({ block }: { block: LivingManuscriptBlock }) {
+  const presentation = getBlockPresentation(block);
+  const quoteClassName = `${presentation.cardClassName.replace(
+    "px-6 py-8 sm:px-8 sm:py-10",
+    "px-5 py-5 my-8",
+  )} border-l-4`;
+
+  return (
+    <blockquote className={quoteClassName}>
+      <div className={presentation.calloutLabelClassName}>
+        {presentation.charlieLabel}
+      </div>
+      <h3 className="m-0 mt-3 text-[1.1rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+        {block.title}
+      </h3>
+      <div className="mt-4">
+        <SourceText body={block.body} tone="charlie" />
+      </div>
+    </blockquote>
+  );
+}
+
+function BookChapterView({ chapter }: { chapter: LivingManuscriptBookChapter }) {
+  return (
+    <section id={`chapter-${chapter.key}`} className="scroll-mt-6">
+      <PaperCard className="px-6 py-8 sm:px-8 sm:py-10">
+        <PageEyebrow>{formatLabel(chapter.key)}</PageEyebrow>
+        <h2 className="m-0 mt-2 text-4xl font-semibold leading-tight tracking-[-0.03em] text-[#1d1712]">
+          {chapter.title}
+        </h2>
+        <div className="mt-8">
+          {chapter.blocks.map((block) =>
+            block.voice === "homer" ? (
+              <SourceText key={block.id} body={block.body} tone="homer" />
+            ) : (
+              <CharlieBookBlock key={block.id} block={block} />
+            ),
+          )}
+        </div>
+      </PaperCard>
+    </section>
+  );
+}
+
+function BookView({ arrangement }: { arrangement: LivingManuscriptBookArrangement }) {
+  if (arrangement.chapters.length === 0) {
+    return (
+      <PaperCard>
+        <h2 className="m-0 text-[1.8rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+          No book arrangement data is available.
+        </h2>
+        <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
+          Book View depends on `book-v1.yml`. The viewer did not find a usable
+          arrangement file for this project.
+        </p>
+        {arrangement.warnings.length > 0 ? (
+          <ul className="mb-0 mt-5 space-y-2 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+            {arrangement.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+      </PaperCard>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {arrangement.chapters.map((chapter) => (
+        <BookChapterView key={chapter.key} chapter={chapter} />
+      ))}
+    </div>
+  );
+}
+
 function EpisodeReadingView({
   episode,
   showMetadata,
@@ -1039,6 +1127,7 @@ function EpisodeReadingView({
 
 export default function LivingManuscriptViewerClient({
   manuscript,
+  bookArrangement,
   podcastArrangement,
 }: ViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("book");
@@ -1198,10 +1287,11 @@ export default function LivingManuscriptViewerClient({
           <div>
             <PageEyebrow>Viewer Mode</PageEyebrow>
             <h2 className="m-0 text-[1.4rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-              Book View and Episode View
+              Book, Story, and Episode Views
             </h2>
             <p className="mb-0 mt-3 max-w-[760px] text-sm leading-6 text-[rgba(245,239,230,0.82)]">
-              Book View keeps manuscript order by chapter. Episode View arranges the same blocks using `podcast-season-1.yml` so cross-chapter episode construction is visible without changing source prose.
+              Book View provides a seamless reading experience. Story View shows modular
+              manuscript blocks. Episode View arranges blocks by podcast episode.
             </p>
           </div>
 
@@ -1210,6 +1300,11 @@ export default function LivingManuscriptViewerClient({
               label="Book View"
               active={viewMode === "book"}
               onClick={() => setViewMode("book")}
+            />
+            <ViewModeButton
+              label="Story View"
+              active={viewMode === "story"}
+              onClick={() => setViewMode("story")}
             />
             <ViewModeButton
               label="Episode View"
@@ -1239,18 +1334,25 @@ export default function LivingManuscriptViewerClient({
         ) : null}
       </GlassPanel>
 
-      <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <aside className="space-y-6 xl:self-start">
-          <GlassPanel className="p-5 text-[var(--text-light)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <PageEyebrow>Viewer Controls</PageEyebrow>
-                <h2 className="m-0 text-[1.4rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-                  {viewMode === "book"
-                    ? "Living Manuscript Filters"
-                    : "Episode Arrangement Filters"}
-                </h2>
-              </div>
+      <div
+        className={
+          viewMode === "book"
+            ? "grid gap-6"
+            : "grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]"
+        }
+      >
+        {viewMode !== "book" ? (
+          <aside className="space-y-6 xl:self-start">
+            <GlassPanel className="p-5 text-[var(--text-light)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <PageEyebrow>Viewer Controls</PageEyebrow>
+                  <h2 className="m-0 text-[1.4rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                    {viewMode === "episode"
+                      ? "Episode Arrangement Filters"
+                      : "Manuscript Filters"}
+                  </h2>
+                </div>
 
               <button
                 type="button"
@@ -1597,16 +1699,20 @@ export default function LivingManuscriptViewerClient({
             </div>
           </GlassPanel>
         </aside>
+      ) : null}
 
-        <div className="space-y-6">
+      <div className="space-y-6">
           {viewMode === "book" ? (
+            <BookView arrangement={bookArrangement} />
+          ) : viewMode === "story" ? (
             filteredBlocks.length === 0 ? (
               <PaperCard>
                 <h2 className="m-0 text-[1.8rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
                   No blocks match the current search and filters.
                 </h2>
                 <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
-                  Nothing is wrong with the manuscript. The current search text or metadata filters are simply narrowing the view to zero blocks.
+                  Nothing is wrong with the manuscript. The current search text or
+                  metadata filters are simply narrowing the view to zero blocks.
                 </p>
                 <div className="mt-5">
                   <button
