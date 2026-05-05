@@ -4,6 +4,8 @@ Date: 2026-05-05
 
 This document defines the first preserved folder and file layout for the `Learning to Lead` living manuscript system.
 
+Working rules for block metadata, IDs, splitting, tags, and arrangement updates live in [Living Manuscript Conventions](/Users/wall-e/Dev/high-ground-studio/docs/architecture/living-manuscript-conventions.md).
+
 ## Why this exists
 
 The manuscript is the asset.
