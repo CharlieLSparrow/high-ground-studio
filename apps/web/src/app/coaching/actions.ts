@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { upsertPreprovisionedUser } from "@/lib/server/user-identity";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
 function buildCoachingRedirect(params: Record<string, string>) {
@@ -17,8 +17,12 @@ function parsePreferredContactMethod(value: string) {
     : null;
 }
 
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+function getSessionEmail(session: Awaited<ReturnType<typeof auth>>) {
+  return (
+    session?.user?.primaryEmail?.trim().toLowerCase() ||
+    session?.user?.email?.trim().toLowerCase() ||
+    ""
+  );
 }
 
 export async function submitCoachingRequestAction(formData: FormData) {
@@ -28,22 +32,31 @@ export async function submitCoachingRequestAction(formData: FormData) {
     redirect("/coaching/requested");
   }
 
-  const name = String(formData.get("name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    redirect("/api/auth/signin?callbackUrl=%2Fcoaching");
+  }
+
+  const email = getSessionEmail(session);
+  const displayName =
+    session.user.name?.trim() ||
+    email ||
+    "Coaching Friend";
+
   const phone = String(formData.get("phone") ?? "").trim();
   const preferredContactMethod = parsePreferredContactMethod(
     String(formData.get("preferredContactMethod") ?? "").trim(),
   );
-  const availabilityNotes = String(formData.get("availabilityNotes") ?? "").trim();
-  const coachingGoals = String(formData.get("coachingGoals") ?? "").trim();
-  const contactConsent = formData.get("contactConsent") === "on";
+  const note = String(formData.get("note") ?? "").trim();
 
-  if (!name) {
-    redirect(buildCoachingRedirect({ error: "Please share your name." }));
-  }
-
-  if (!isValidEmail(email)) {
-    redirect(buildCoachingRedirect({ error: "Please provide a valid email address." }));
+  if (!email) {
+    redirect(
+      buildCoachingRedirect({
+        error:
+          "We could not find an email address on your signed-in account. Please sign in with an account that has an email address.",
+      }),
+    );
   }
 
   if (!preferredContactMethod) {
@@ -54,52 +67,65 @@ export async function submitCoachingRequestAction(formData: FormData) {
     );
   }
 
-  if ((preferredContactMethod === "PHONE_CALL" || preferredContactMethod === "TEXT") && !phone) {
+  if (phone.length > 80) {
     redirect(
       buildCoachingRedirect({
-        error: "Please include a phone number for calls or texts.",
+        error: "That phone number looks longer than expected. Please shorten it and try again.",
       }),
     );
   }
 
-  if (coachingGoals.length < 12) {
+  if (note.length > 1600) {
     redirect(
       buildCoachingRedirect({
-        error: "Please share a little more about what you would like help with.",
-      }),
-    );
-  }
-
-  if (!contactConsent) {
-    redirect(
-      buildCoachingRedirect({
-        error: "Please confirm that we may contact you about this request.",
+        error: "That note is a little long for the request form. Please trim it down and try again.",
       }),
     );
   }
 
   try {
-    const user = await upsertPreprovisionedUser({
-      primaryEmail: email,
-      name,
-      roles: ["CLIENT"],
-      createClientProfile: true,
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.userRole.createMany({
+        data: [
+          {
+            userId: session.user.id,
+            role: "CLIENT",
+          },
+        ],
+        skipDuplicates: true,
+      });
 
-    await prisma.coachingRequest.create({
-      data: {
-        clientUserId: user.id,
-        preferredContactMethod,
-        email,
-        phone: phone || null,
-        availabilityNotes: availabilityNotes || null,
-        coachingGoals,
-        contactConsent,
-      },
+      await tx.clientProfile.upsert({
+        where: {
+          userId: session.user.id,
+        },
+        create: {
+          userId: session.user.id,
+          displayName,
+        },
+        update: {
+          displayName,
+        },
+      });
+
+      await tx.coachingRequest.create({
+        data: {
+          clientUserId: session.user.id,
+          preferredContactMethod,
+          email,
+          phone: phone || null,
+          availabilityNotes: null,
+          coachingGoals:
+            note ||
+            "Requested a coaching conversation from the simplified coaching call-to-action page.",
+          contactConsent: true,
+        },
+      });
     });
 
     revalidatePath("/team/coaching-requests");
     revalidatePath("/team/clients");
+    revalidatePath("/dashboard");
 
     redirect("/coaching/requested");
   } catch (error) {
