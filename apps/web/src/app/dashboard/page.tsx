@@ -460,6 +460,16 @@ export default async function DashboardPage({
                   />
                 </div>
 
+                <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
+                  If you choose Text and provide a phone number, you agree to receive text messages from High Ground Odyssey about your coaching request, scheduling, and related follow-up. Standard message and data rates may apply. Reply STOP to opt out. Reply HELP for help. Carriers are not liable for delayed or undelivered messages. {" "}
+                  <Link
+                    href="/sms-opt-in"
+                    className="font-semibold text-[var(--accent)] underline decoration-[rgba(245,239,230,0.35)] underline-offset-4 transition hover:text-[var(--text-light)]"
+                  >
+                    Text Message Opt-In Terms
+                  </Link>
+                </div>
+
                 <div>
                   <label
                     htmlFor="note"
