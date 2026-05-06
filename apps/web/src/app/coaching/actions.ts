@@ -20,6 +20,11 @@ function buildCoachingRedirect(params: Record<string, string>) {
   return `/coaching?${search.toString()}`;
 }
 
+function buildDashboardRedirect(params: Record<string, string>) {
+  const search = new URLSearchParams(params);
+  return `/dashboard?${search.toString()}`;
+}
+
 function parsePreferredContactMethod(value: string) {
   return value === "EMAIL" || value === "PHONE_CALL" || value === "TEXT"
     ? value
@@ -36,23 +41,21 @@ function getSessionEmail(session: CoachingRequestSession) {
 
 export async function submitCoachingRequestAction(formData: FormData) {
   const trap = String(formData.get("company") ?? "").trim();
+  const source = String(formData.get("source") ?? "").trim();
 
   if (trap) {
-    redirect("/coaching/requested");
+    redirect(source === "dashboard" ? "/dashboard?coaching=requested" : "/coaching/requested");
   }
 
   const session = (await auth()) as CoachingRequestSession;
   const userId = session?.user?.id;
 
   if (!userId) {
-    redirect("/api/auth/signin?callbackUrl=%2Fcoaching");
+    redirect("/api/auth/signin?callbackUrl=%2Fdashboard%3Fintent%3Dcoaching");
   }
 
   const email = getSessionEmail(session);
-  const displayName =
-    session?.user?.name?.trim() ||
-    email ||
-    "Coaching Friend";
+  const displayName = session?.user?.name?.trim() || email || "Coaching Friend";
 
   const phone = String(formData.get("phone") ?? "").trim();
   const preferredContactMethod = parsePreferredContactMethod(
@@ -62,33 +65,39 @@ export async function submitCoachingRequestAction(formData: FormData) {
 
   if (!email) {
     redirect(
-      buildCoachingRedirect({
+      (source === "dashboard" ? buildDashboardRedirect : buildCoachingRedirect)({
         error:
           "We could not find an email address on your signed-in account. Please sign in with an account that has an email address.",
+        ...(source === "dashboard" ? { intent: "coaching" } : {}),
       }),
     );
   }
 
   if (!preferredContactMethod) {
     redirect(
-      buildCoachingRedirect({
+      (source === "dashboard" ? buildDashboardRedirect : buildCoachingRedirect)({
         error: "Please choose how you would prefer us to contact you.",
+        ...(source === "dashboard" ? { intent: "coaching" } : {}),
       }),
     );
   }
 
   if (phone.length > 80) {
     redirect(
-      buildCoachingRedirect({
-        error: "That phone number looks longer than expected. Please shorten it and try again.",
+      (source === "dashboard" ? buildDashboardRedirect : buildCoachingRedirect)({
+        error:
+          "That phone number looks longer than expected. Please shorten it and try again.",
+        ...(source === "dashboard" ? { intent: "coaching" } : {}),
       }),
     );
   }
 
   if (note.length > 1600) {
     redirect(
-      buildCoachingRedirect({
-        error: "That note is a little long for the request form. Please trim it down and try again.",
+      (source === "dashboard" ? buildDashboardRedirect : buildCoachingRedirect)({
+        error:
+          "That note is a little long for the request form. Please trim it down and try again.",
+        ...(source === "dashboard" ? { intent: "coaching" } : {}),
       }),
     );
   }
@@ -137,13 +146,18 @@ export async function submitCoachingRequestAction(formData: FormData) {
     revalidatePath("/team/clients");
     revalidatePath("/dashboard");
 
-    redirect("/coaching/requested");
+    redirect(source === "dashboard" ? "/dashboard?coaching=requested" : "/coaching/requested");
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
         : "We could not save your request right now. Please try again.";
 
-    redirect(buildCoachingRedirect({ error: message }));
+    redirect(
+      (source === "dashboard" ? buildDashboardRedirect : buildCoachingRedirect)({
+        error: message,
+        ...(source === "dashboard" ? { intent: "coaching" } : {}),
+      }),
+    );
   }
 }

@@ -8,13 +8,54 @@ import PageEyebrow from "@/components/ui/PageEyebrow";
 import { buildSignInHref } from "@/lib/content-access";
 import { prisma } from "@/lib/prisma";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
+import { submitCoachingRequestAction } from "@/app/coaching/actions";
 
-export default async function DashboardPage() {
+type SearchParams = Promise<{
+  intent?: string;
+  coaching?: string;
+  error?: string;
+}>;
+
+function StatusMessage({
+  success,
+  error,
+}: {
+  success?: string;
+  error?: string;
+}) {
+  if (!success && !error) {
+    return null;
+  }
+
+  const isError = Boolean(error);
+  const message = error ?? success ?? "";
+
+  return (
+    <div
+      className={[
+        "rounded-2xl border px-4 py-3 text-sm font-medium",
+        isError
+          ? "border-red-400/25 bg-red-400/10 text-red-100"
+          : "border-emerald-400/25 bg-emerald-400/10 text-emerald-100",
+      ].join(" ")}
+    >
+      {message}
+    </div>
+  );
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const session = await auth();
 
   if (!session?.user) {
     redirect(buildSignInHref("/dashboard"));
   }
+
+  const { intent, coaching, error } = await searchParams;
 
   redirectToWelcomeIfNeeded(session, "/dashboard");
 
@@ -55,6 +96,11 @@ export default async function DashboardPage() {
   const upcomingAppointments = user.clientAppointments.filter(
     (appointment) => appointment.status !== "CANCELED",
   );
+  const showCoachingPanel = intent === "coaching" || coaching === "requested";
+  const coachingSuccess =
+    coaching === "requested"
+      ? "Your coaching request is in. Scott will follow up personally about fit, scheduling, and next steps."
+      : undefined;
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#08171b_0%,#10272d_16%,#18383d_40%,#6f5636_78%,#f3eadb_100%)] pb-20">
@@ -85,6 +131,113 @@ export default async function DashboardPage() {
               </Link>
             </div>
           </GlassPanel>
+
+          {showCoachingPanel ? (
+            <div className="space-y-4">
+              <StatusMessage success={coachingSuccess} error={error} />
+
+              <GlassPanel className="p-6 text-[var(--text-light)]">
+                <PageEyebrow>Coaching</PageEyebrow>
+
+                <h2 className="m-0 mt-3 text-[1.8rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                  Book a Coaching Session
+                </h2>
+
+                <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.9)]">
+                  Tell us how you would like Scott to reach out. Once you send the request, he will follow up personally about fit, scheduling, and next steps.
+                </p>
+
+                <form action={submitCoachingRequestAction} className="mt-6 space-y-4">
+                  <input
+                    type="hidden"
+                    name="source"
+                    value="dashboard"
+                  />
+                  <input
+                    type="text"
+                    name="company"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    className="hidden"
+                    aria-hidden="true"
+                  />
+
+                  <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.9)]">
+                    Signed in as <strong>{displayName}</strong>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="preferredContactMethod"
+                      className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                    >
+                      Preferred contact method
+                    </label>
+                    <select
+                      id="preferredContactMethod"
+                      name="preferredContactMethod"
+                      required
+                      defaultValue="EMAIL"
+                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none"
+                    >
+                      <option value="EMAIL" className="text-black">
+                        Email
+                      </option>
+                      <option value="PHONE_CALL" className="text-black">
+                        Phone call
+                      </option>
+                      <option value="TEXT" className="text-black">
+                        Text
+                      </option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="phone"
+                      className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                    >
+                      Phone number <span className="font-normal text-[rgba(245,239,230,0.68)]">optional</span>
+                    </label>
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                      placeholder="Only if you want a call or text"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="note"
+                      className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                    >
+                      Optional note
+                    </label>
+                    <textarea
+                      id="note"
+                      name="note"
+                      rows={5}
+                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                      placeholder="Anything you want Scott to know before he reaches out, or leave it blank and keep things simple."
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
+                    Coaching is donation-supported during this credentialing season. There is no fixed fee up front. If the session is helpful, you can donate afterward in whatever amount feels appropriate and sustainable for you.
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="rounded-full border border-flare/35 bg-flare/18 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/50 hover:bg-flare/24"
+                  >
+                    Send Coaching Request
+                  </button>
+                </form>
+              </GlassPanel>
+            </div>
+          ) : null}
 
           <section className="grid gap-8 lg:grid-cols-2">
             <GlassPanel className="p-6 text-[var(--text-light)]">
