@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { notifyNewCoachingRequest } from "@/lib/server/coaching-notifications";
+import { notifyTeamOfNewCoachingRequest } from "@/lib/server/coaching-notifications";
 
 type CoachingRequestSession = {
   user?: {
@@ -103,7 +103,11 @@ export async function submitCoachingRequestAction(formData: FormData) {
     );
   }
 
-  let createdRequestId = "";
+  let createdRequestDetails: {
+    id: string;
+    coachingGoals: string;
+    createdAt: Date;
+  } | null = null;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -144,11 +148,13 @@ export async function submitCoachingRequestAction(formData: FormData) {
         },
         select: {
           id: true,
+          coachingGoals: true,
+          createdAt: true,
         },
       });
     });
 
-    createdRequestId = result.id;
+    createdRequestDetails = result;
   } catch (error) {
     const message =
       error instanceof Error
@@ -163,19 +169,28 @@ export async function submitCoachingRequestAction(formData: FormData) {
     );
   }
 
-  const notificationResult = await notifyNewCoachingRequest({
-    requestId: createdRequestId,
-    clientDisplayName: displayName,
-    preferredContactMethod,
-    phone: phone || null,
-    email,
-  });
-
-  if (!notificationResult.ok) {
-    console.error("Failed to send coaching request SMS notification:", {
-      requestId: createdRequestId,
-      error: notificationResult.error,
+  if (createdRequestDetails) {
+    const notificationResult = await notifyTeamOfNewCoachingRequest({
+      requestId: createdRequestDetails.id,
+      clientDisplayName: displayName,
+      clientEmail: email,
+      preferredContactMethod,
+      phone: phone || null,
+      note:
+        note ||
+        (createdRequestDetails.coachingGoals ===
+        "Requested a coaching conversation from the simplified coaching call-to-action page."
+          ? null
+          : createdRequestDetails.coachingGoals),
+      createdAt: createdRequestDetails.createdAt,
     });
+
+    if (!notificationResult.ok) {
+      console.error("Failed to send coaching request email notification:", {
+        requestId: createdRequestDetails.id,
+        error: notificationResult.error,
+      });
+    }
   }
 
   revalidatePath("/team/coaching-requests");
