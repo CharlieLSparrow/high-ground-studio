@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { notifyNewCoachingRequest } from "@/lib/server/coaching-notifications";
 
 type CoachingRequestSession = {
   user?: {
@@ -102,8 +103,10 @@ export async function submitCoachingRequestAction(formData: FormData) {
     );
   }
 
+  let createdRequestId = "";
+
   try {
-    await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await tx.userRole.createMany({
         data: [
           {
@@ -127,7 +130,7 @@ export async function submitCoachingRequestAction(formData: FormData) {
         },
       });
 
-      await tx.coachingRequest.create({
+      return tx.coachingRequest.create({
         data: {
           clientUserId: userId,
           preferredContactMethod,
@@ -139,8 +142,13 @@ export async function submitCoachingRequestAction(formData: FormData) {
             "Requested a coaching conversation from the simplified coaching call-to-action page.",
           contactConsent: true,
         },
+        select: {
+          id: true,
+        },
       });
     });
+
+    createdRequestId = result.id;
   } catch (error) {
     const message =
       error instanceof Error
@@ -153,6 +161,21 @@ export async function submitCoachingRequestAction(formData: FormData) {
         ...(source === "dashboard" ? { intent: "coaching" } : {}),
       }),
     );
+  }
+
+  const notificationResult = await notifyNewCoachingRequest({
+    requestId: createdRequestId,
+    clientDisplayName: displayName,
+    preferredContactMethod,
+    phone: phone || null,
+    email,
+  });
+
+  if (!notificationResult.ok) {
+    console.error("Failed to send coaching request SMS notification:", {
+      requestId: createdRequestId,
+      error: notificationResult.error,
+    });
   }
 
   revalidatePath("/team/coaching-requests");
