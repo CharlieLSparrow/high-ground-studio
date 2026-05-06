@@ -276,6 +276,53 @@ Current recommendation:
 - prefer clarity over taxonomy purity
 - do not refactor all existing tags into prefixes until there is real search or generation pressure
 
+## Reaction Cue Rules
+
+Reaction cues are draft and production notes, not final prose by default.
+They exist to preserve the intended function of a moment without polluting finished manuscript copy.
+
+Use them to capture:
+
+- GIF references
+- meme beats
+- clip ideas
+- emotional beats
+- social asset ideas
+- comedic timing or tonal intent that may later need translation into prose
+
+They are especially useful for:
+
+- podcast planning
+- social clip ideation
+- show prep
+- translating Charlie's intended comedic or emotional beat into a cleaner written form later
+
+Important rules:
+
+- reaction cues should be clearly marked so generated book or public prose can exclude them unless intentionally included
+- actual GIFs, clips, screenshots, or references may require rights or usage review before public use
+- do not treat reaction cues as citation-ready, rights-cleared, or publication-ready by default
+- preserve the function of the moment, not just the pop-culture reference
+
+Recommended inline convention:
+
+`[[REACTION: <reference> | beat: <emotion/joke function> | use: <draft-only/social/show-note/clip-candidate>]]`
+
+Examples:
+
+- `[[REACTION: Captain Holt deadpan blink | beat: polite disbelief | use: draft-only]]`
+- `[[REACTION: Kermit typing furiously | beat: frantic productivity | use: social]]`
+- `[[REACTION: Samwise “I can't carry it for you” | beat: loyal support | use: clip-candidate]]`
+- `[[REACTION: Michael Scott “No God please no” | beat: comic dread | use: draft-only]]`
+
+Usage guidance:
+
+- use `draft-only` when the cue is only helping the writing pass find energy, timing, or tone
+- use `clip-candidate` when the reference may become a podcast or show clip
+- use `social` when the cue may become a short-form social asset
+- use `show-note` when the cue should surface in production prep or episode breakdown work
+- if converting a reaction cue into final prose, translate the beat rather than mechanically naming the GIF or meme
+
 ## Arrangement Map Rules
 
 Arrangement maps decide output order.

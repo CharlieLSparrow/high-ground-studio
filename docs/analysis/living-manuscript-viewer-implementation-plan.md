@@ -410,6 +410,16 @@ Recommended implementation order:
    - better chip styling
    - team nav entry
 
+## Future Viewer Note
+
+The viewer should eventually detect inline reaction cues using the `[[REACTION: ...]]` convention and expose them as optional production metadata rather than normal prose.
+
+Recommended future behavior:
+
+- show reaction cues as collapsible production notes
+- allow filtering for reaction or clip-candidate cues
+- keep them excluded from default clean-reading views unless explicitly enabled
+
 ## Risks
 
 ### Regex parser fragility
