@@ -6,6 +6,15 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
+type CoachingRequestSession = {
+  user?: {
+    id?: string | null;
+    name?: string | null;
+    primaryEmail?: string | null;
+    email?: string | null;
+  } | null;
+} | null;
+
 function buildCoachingRedirect(params: Record<string, string>) {
   const search = new URLSearchParams(params);
   return `/coaching?${search.toString()}`;
@@ -17,7 +26,7 @@ function parsePreferredContactMethod(value: string) {
     : null;
 }
 
-function getSessionEmail(session: Awaited<ReturnType<typeof auth>>) {
+function getSessionEmail(session: CoachingRequestSession) {
   return (
     session?.user?.primaryEmail?.trim().toLowerCase() ||
     session?.user?.email?.trim().toLowerCase() ||
@@ -32,15 +41,16 @@ export async function submitCoachingRequestAction(formData: FormData) {
     redirect("/coaching/requested");
   }
 
-  const session = await auth();
+  const session = (await auth()) as CoachingRequestSession;
+  const userId = session?.user?.id;
 
-  if (!session?.user?.id) {
+  if (!userId) {
     redirect("/api/auth/signin?callbackUrl=%2Fcoaching");
   }
 
   const email = getSessionEmail(session);
   const displayName =
-    session.user.name?.trim() ||
+    session?.user?.name?.trim() ||
     email ||
     "Coaching Friend";
 
@@ -88,7 +98,7 @@ export async function submitCoachingRequestAction(formData: FormData) {
       await tx.userRole.createMany({
         data: [
           {
-            userId: session.user.id,
+            userId,
             role: "CLIENT",
           },
         ],
@@ -97,10 +107,10 @@ export async function submitCoachingRequestAction(formData: FormData) {
 
       await tx.clientProfile.upsert({
         where: {
-          userId: session.user.id,
+          userId,
         },
         create: {
-          userId: session.user.id,
+          userId,
           displayName,
         },
         update: {
@@ -110,7 +120,7 @@ export async function submitCoachingRequestAction(formData: FormData) {
 
       await tx.coachingRequest.create({
         data: {
-          clientUserId: session.user.id,
+          clientUserId: userId,
           preferredContactMethod,
           email,
           phone: phone || null,
