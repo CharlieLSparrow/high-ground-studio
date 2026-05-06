@@ -9,7 +9,6 @@ import { canAccessInternalContent } from "@/lib/authz";
 import { buildSignInHref } from "@/lib/content-access";
 import { getLayoutVariantFromCookieStore } from "@/lib/layout-variant";
 import {
-  getLayoutGlowEnabled,
   getLayoutPanelTreatment,
   getLayoutSurfaceBackground,
 } from "@/lib/layout-variant-styles";
@@ -18,24 +17,12 @@ import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 function DetailCard({
   title,
   body,
-  featured = false,
-  glow = false,
-  panelTreatment = "",
 }: {
   title: string;
   body: string;
-  featured?: boolean;
-  glow?: boolean;
-  panelTreatment?: string;
 }) {
   return (
-    <GlassPanel
-      glow={glow}
-      className={[
-        "p-6 text-[var(--text-light)]",
-        featured ? panelTreatment : "",
-      ].join(" ")}
-    >
+    <GlassPanel className="h-full p-6 text-[var(--text-light)]">
       <PageEyebrow>{title}</PageEyebrow>
       <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(245,239,230,0.92)]">
         {body}
@@ -66,94 +53,107 @@ export default async function CoachingPage() {
     >
       <PageContainer className="pt-10">
         <div className="space-y-8">
-          <GlassPanel
-            glow={getLayoutGlowEnabled(layoutVariant)}
+          <section
             className={[
-              "overflow-hidden p-6 text-[var(--text-light)] md:p-8",
+              "relative overflow-hidden rounded-[40px] border border-white/10 text-[var(--text-light)] shadow-[0_30px_90px_rgba(0,0,0,0.28)]",
               getLayoutPanelTreatment(layoutVariant, "featured"),
             ].join(" ")}
           >
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] lg:items-center">
-              <div>
-                <div className="mb-5 flex flex-wrap items-center gap-3">
-                  <PageEyebrow>Coaching with Scott Sparrow</PageEyebrow>
-                  <PageEyebrow>Donation Supported</PageEyebrow>
-                </div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,122,24,0.28),rgba(7,20,24,0.12)_28%,rgba(7,20,24,0.72)_68%,rgba(7,20,24,0.94)_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(118deg,rgba(4,10,12,0.94)_0%,rgba(4,10,12,0.78)_35%,rgba(4,10,12,0.34)_62%,rgba(4,10,12,0.72)_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_20%,rgba(0,0,0,0.24)_100%)]" />
 
-                <h1 className="m-0 max-w-[860px] text-[clamp(2.9rem,7vw,6.1rem)] leading-[0.9] tracking-[-0.06em] text-[var(--text-light)]">
-                  Calm, practical coaching for people trying to lead well.
-                </h1>
+            <div className="relative min-h-[560px]">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex h-full w-full flex-col justify-between border-y border-dashed border-white/14 px-6 py-8 md:px-10 lg:px-14">
+                  <div className="flex justify-end">
+                    <div className="rounded-full border border-white/12 bg-black/18 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(245,239,230,0.72)]">
+                      Hero image placeholder
+                    </div>
+                  </div>
 
-                <p className="mb-0 mt-6 max-w-[760px] text-[1.1rem] leading-8 text-[rgba(245,239,230,0.96)]">
-                  Leadership gets noisy fast. Coaching gives you a place to slow down, name what matters, and take the next step with more clarity, steadiness, and intention.
-                </p>
+                  <div className="mx-auto max-w-[440px] rounded-[30px] border border-white/10 bg-[rgba(7,20,24,0.38)] px-6 py-8 text-center backdrop-blur-sm">
+                    <p className="mb-0 text-base font-medium leading-7 text-[rgba(245,239,230,0.9)] md:text-lg">
+                      Replace with Scott coaching photo / portrait / scene
+                    </p>
+                  </div>
 
-                <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-8 text-[rgba(245,239,230,0.84)]">
-                  Scott is currently completing paid coaching hours for credentialing. During this season there is no fixed fee. After a session, you are invited to give whatever amount feels appropriate and sustainable for you.
-                </p>
-
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Link
-                    href={ctaHref}
-                    className="rounded-full border border-flare/35 bg-flare/18 px-6 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/50 hover:bg-flare/24"
-                  >
-                    Book a Session
-                  </Link>
-
-                  <Link
-                    href="/dashboard"
-                    className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
-                  >
-                    Member Home
-                  </Link>
-
-                  {isTeam ? (
-                    <Link
-                      href="/team/coaching-requests"
-                      className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
-                    >
-                      View Requests
-                    </Link>
-                  ) : null}
+                  <div />
                 </div>
               </div>
 
-              <div className="rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(255,122,24,0.2),rgba(255,255,255,0.07)_36%,rgba(255,255,255,0.04)_100%)] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
-                <div className="flex min-h-[420px] flex-col justify-between rounded-[30px] border border-dashed border-white/14 bg-[#08171b]/55 p-6">
-                  <div>
-                    <PageEyebrow>Hero image placeholder</PageEyebrow>
-                    <h2 className="m-0 mt-4 text-[1.7rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-                      Replace with Scott coaching photo / portrait / scene
-                    </h2>
-                  </div>
+              <div className="relative z-10 flex min-h-[560px] items-end">
+                <div className="w-full p-7 md:p-10 lg:max-w-[820px] lg:p-14">
+                  <PageEyebrow>Coaching with Scott Sparrow</PageEyebrow>
 
-                  <div className="rounded-[24px] border border-white/10 bg-white/6 p-5 text-sm leading-7 text-[rgba(245,239,230,0.82)]">
-                    Use this space later for a real coaching image that feels human, grounded, and trustworthy. For now it holds the shape and emphasis of the hero visual without pretending the asset already exists.
+                  <h1 className="m-0 mt-5 max-w-[720px] text-[clamp(3.1rem,8vw,6.8rem)] leading-[0.88] tracking-[-0.065em] text-[var(--text-light)]">
+                    Talk through the next right step.
+                  </h1>
+
+                  <p className="mb-0 mt-6 max-w-[700px] text-[1.12rem] leading-8 text-[rgba(245,239,230,0.96)] md:text-[1.18rem]">
+                    Leadership gets noisy. Coaching gives you a place to slow down, name what matters, and move forward with more clarity, steadiness, and courage.
+                  </p>
+
+                  <p className="mb-0 mt-4 max-w-[700px] text-[1rem] leading-8 text-[rgba(245,239,230,0.84)]">
+                    For now, sessions are pay-what-you-can while Scott completes his coaching credentialing hours. No fixed rate. After your session, give whatever feels right and sustainable.
+                  </p>
+
+                  <div className="mt-8">
+                    <Link
+                      href={ctaHref}
+                      className="inline-flex rounded-full border border-flare/40 bg-flare/20 px-7 py-3.5 text-sm font-bold uppercase tracking-[0.1em] text-[var(--text-light)] no-underline transition hover:border-flare/55 hover:bg-flare/28"
+                    >
+                      Book a Session
+                    </Link>
                   </div>
                 </div>
               </div>
             </div>
-          </GlassPanel>
+          </section>
 
           <section className="grid gap-8 lg:grid-cols-3">
             <DetailCard
               title="What coaching is for"
-              body="Leadership decisions, personal direction, accountability, transitions, steadiness under pressure, and sorting the next right move when everything feels louder than it should."
+              body="Hard decisions, personal direction, leadership pressure, accountability, transitions, and the next step you keep circling but not quite taking."
             />
 
             <DetailCard
               title="How booking works"
-              body="Click Book a Session, sign in if needed, and send a short request from your dashboard. Scott follows up personally about fit, scheduling, and the best next step."
-              featured
-              glow={getLayoutGlowEnabled(layoutVariant)}
-              panelTreatment={getLayoutPanelTreatment(layoutVariant, "featured")}
+              body="Click Book a Session, sign in if needed, and send a short request from your member home. Scott will follow up personally about fit, scheduling, and next steps."
             />
 
             <DetailCard
-              title="Why donation supported"
-              body="This credentialing season is designed to keep the first step open and honest. If the session is helpful, you may donate afterward in whatever amount feels fair and sustainable for you."
+              title="Why pay-what-you-can"
+              body="Scott needs paid coaching hours for credentialing, but the amount does not need to be fixed. If the session helps, give what fits your situation."
             />
           </section>
+
+          <GlassPanel className="p-8 text-center text-[var(--text-light)] md:p-10">
+            <PageEyebrow>Next Step</PageEyebrow>
+            <h2 className="m-0 mt-4 text-[clamp(2rem,4vw,3rem)] leading-[0.95] tracking-[-0.05em] text-[var(--text-light)]">
+              Ready to talk it through?
+            </h2>
+
+            <div className="mt-7">
+              <Link
+                href={ctaHref}
+                className="inline-flex rounded-full border border-flare/35 bg-flare/18 px-7 py-3.5 text-sm font-bold uppercase tracking-[0.1em] text-[var(--text-light)] no-underline transition hover:border-flare/50 hover:bg-flare/24"
+              >
+                Book a Session
+              </Link>
+            </div>
+          </GlassPanel>
+
+          {isTeam ? (
+            <div className="flex justify-end">
+              <Link
+                href="/team/coaching-requests"
+                className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+              >
+                Team: View Coaching Requests
+              </Link>
+            </div>
+          ) : null}
         </div>
       </PageContainer>
     </main>
