@@ -33,7 +33,31 @@ function StatusMessage({ error }: { error?: string }) {
   );
 }
 
-function DetailCard({
+function VisualStep({
+  number,
+  title,
+  body,
+}: {
+  number: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/10 bg-white/6 p-5 text-[var(--text-light)]">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-flare/25 bg-flare/15 text-sm font-black text-[var(--accent)]">
+        {number}
+      </div>
+      <h3 className="mb-0 mt-4 text-[1.18rem] leading-tight tracking-[-0.02em] text-[var(--text-light)]">
+        {title}
+      </h3>
+      <p className="mb-0 mt-3 text-[0.96rem] leading-7 text-[rgba(245,239,230,0.84)]">
+        {body}
+      </p>
+    </div>
+  );
+}
+
+function PromiseCard({
   title,
   body,
   layoutVariant,
@@ -74,9 +98,6 @@ export default async function CoachingPage({
 
   redirectToWelcomeIfNeeded(session, "/coaching");
 
-  const defaultName = session?.user?.name ?? "";
-  const defaultEmail = session?.user?.primaryEmail ?? session?.user?.email ?? "";
-
   return (
     <main
       className={[
@@ -86,140 +107,156 @@ export default async function CoachingPage({
     >
       <PageContainer className="pt-10">
         <div className="space-y-8">
-          <GlassPanel className="p-6 text-[var(--text-light)]">
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <PageEyebrow>Coaching</PageEyebrow>
-              <PageEyebrow>Credentialing Season</PageEyebrow>
-              <PageEyebrow>Donation Supported</PageEyebrow>
-            </div>
+          <GlassPanel
+            glow={getLayoutGlowEnabled(layoutVariant)}
+            className={[
+              "overflow-hidden p-6 text-[var(--text-light)] md:p-8",
+              getLayoutPanelTreatment(layoutVariant, "featured"),
+            ].join(" ")}
+          >
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)] lg:items-center">
+              <div>
+                <div className="mb-5 flex flex-wrap items-center gap-3">
+                  <PageEyebrow>Coaching</PageEyebrow>
+                  <PageEyebrow>Scott Sparrow</PageEyebrow>
+                  <PageEyebrow>Pay What You Can</PageEyebrow>
+                </div>
 
-            <h1 className="m-0 max-w-[920px] text-[clamp(2.6rem,6vw,5rem)] leading-[0.96] tracking-[-0.05em] text-[var(--text-light)]">
-              Coaching support during a credentialing season.
-            </h1>
+                <h1 className="m-0 max-w-[940px] text-[clamp(2.9rem,7vw,6.5rem)] leading-[0.9] tracking-[-0.06em] text-[var(--text-light)]">
+                  Need a steadier next step?
+                </h1>
 
-            <p className="mb-0 mt-5 max-w-[860px] text-[1.08rem] leading-8 text-[rgba(245,239,230,0.96)]">
-              Scott is currently completing paid coaching hours as part of his coaching credentialing process. During this phase, there is no fixed fee. After a session, you are invited to give whatever amount feels appropriate and sustainable for you.
-            </p>
+                <p className="mb-0 mt-6 max-w-[790px] text-[1.15rem] leading-8 text-[rgba(245,239,230,0.96)]">
+                  Sometimes leadership is strategy. Sometimes it is courage.
+                  Sometimes it is just having someone calm, experienced, and
+                  honest help you sort the next right move from the noise.
+                </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              {session?.user ? (
-                <Link
-                  href="/dashboard"
-                  className="rounded-full border border-flare/35 bg-flare/18 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/50 hover:bg-flare/24"
-                >
-                  Open member home
-                </Link>
-              ) : (
-                <Link
-                  href={buildSignInHref("/dashboard")}
-                  className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
-                >
-                  Sign in later to view your member home
-                </Link>
-              )}
+                <p className="mb-0 mt-4 max-w-[760px] text-[1.02rem] leading-8 text-[rgba(245,239,230,0.86)]">
+                  Scott is currently completing paid coaching hours for his
+                  credentialing process. During this season, there is no fixed
+                  rate. After a session, you can give whatever amount feels
+                  right and sustainable for you.
+                </p>
 
-              {isTeam ? (
-                <Link
-                  href="/team/coaching-requests"
-                  className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
-                >
-                  Open coaching requests
-                </Link>
-              ) : (
-                <Link
-                  href="/library"
-                  className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
-                >
-                  Explore the library
-                </Link>
-              )}
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <a
+                    href="#request-coaching"
+                    className="rounded-full border border-flare/35 bg-flare/18 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/50 hover:bg-flare/24"
+                  >
+                    Request a session
+                  </a>
+
+                  {session?.user ? (
+                    <Link
+                      href="/dashboard"
+                      className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+                    >
+                      Open member home
+                    </Link>
+                  ) : (
+                    <Link
+                      href={buildSignInHref("/coaching")}
+                      className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+                    >
+                      Sign in to request
+                    </Link>
+                  )}
+
+                  {isTeam ? (
+                    <Link
+                      href="/team/coaching-requests"
+                      className="rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+                    >
+                      View requests
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(255,122,24,0.22),rgba(255,255,255,0.06)_34%,rgba(255,255,255,0.04)_100%)] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.2)]">
+                <div className="rounded-[30px] border border-white/10 bg-[#08171b]/55 p-6">
+                  <PageEyebrow>The simple version</PageEyebrow>
+                  <div className="mt-5 space-y-4">
+                    <VisualStep
+                      number="1"
+                      title="Raise your hand"
+                      body="Tell us how you would like Scott to reach out. Keep the note short, long, or blank."
+                    />
+                    <VisualStep
+                      number="2"
+                      title="We follow up personally"
+                      body="No automated coaching maze. A real human reads the request and coordinates the next step."
+                    />
+                    <VisualStep
+                      number="3"
+                      title="Donate afterward if helpful"
+                      body="No fixed rate during this credentialing season. Give what feels right after the session."
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </GlassPanel>
 
-          <section className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+          <section className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
             <div className="space-y-6">
+              <PromiseCard
+                title="What this is"
+                body="A focused coaching conversation with Scott Sparrow: leadership, direction, hard decisions, steadiness under pressure, or the next step you keep circling but not quite taking."
+                layoutVariant={layoutVariant}
+                featured
+              />
+
+              <PromiseCard
+                title="What this is not"
+                body="Not a funnel into a giant program. Not a fixed-price package. Not a pressure campaign wearing a headset. Just a real request for a real conversation."
+                layoutVariant={layoutVariant}
+              />
+
+              <PromiseCard
+                title="Why donation-supported?"
+                body="Scott needs paid coaching hours for credentialing, but the amount does not need to be fixed. If the session helps, give what fits your situation. That keeps the door open without turning the first step into a toll booth."
+                layoutVariant={layoutVariant}
+              />
+            </div>
+
+            <div id="request-coaching" className="scroll-mt-8 space-y-6">
               <StatusMessage error={error} />
 
               <GlassPanel
                 glow={getLayoutGlowEnabled(layoutVariant)}
                 className={[
-                  "p-6 text-[var(--text-light)]",
+                  "p-6 text-[var(--text-light)] md:p-7",
                   getLayoutPanelTreatment(layoutVariant, "featured"),
                 ].join(" ")}
               >
-                <PageEyebrow>Request Coaching</PageEyebrow>
+                <PageEyebrow>Request a Session</PageEyebrow>
 
-                <h2 className="m-0 mt-3 text-[1.9rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-                  Start with a direct conversation.
+                <h2 className="m-0 mt-3 text-[2rem] leading-tight tracking-[-0.04em] text-[var(--text-light)]">
+                  Want Scott to reach out?
                 </h2>
 
-                <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(245,239,230,0.94)]">
-                  If you would like to begin a coaching conversation, tell us a little about what you are navigating and how you would prefer to be contacted. We will follow up personally about fit, scheduling, and next steps.
+                <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(245,239,230,0.92)]">
+                  Sign in so we know where to find you, then choose the best way
+                  for Scott to follow up. The note is optional. The courage to
+                  ask is enough for step one.
                 </p>
 
-                <form action={submitCoachingRequestAction} className="mt-6 space-y-4">
-                  <input
-                    type="text"
-                    name="company"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    className="hidden"
-                    aria-hidden="true"
-                  />
+                {session?.user ? (
+                  <form action={submitCoachingRequestAction} className="mt-6 space-y-4">
+                    <input
+                      type="text"
+                      name="company"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      className="hidden"
+                      aria-hidden="true"
+                    />
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label
-                        htmlFor="name"
-                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
-                      >
-                        Name
-                      </label>
-                      <input
-                        id="name"
-                        name="name"
-                        type="text"
-                        required
-                        defaultValue={defaultName}
-                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
-                        placeholder="Your name"
-                      />
-                    </div>
-
-                    <div>
-                      <label
-                        htmlFor="email"
-                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
-                      >
-                        Email
-                      </label>
-                      <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        required
-                        defaultValue={defaultEmail}
-                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
-                        placeholder="you@example.com"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label
-                        htmlFor="phone"
-                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
-                      >
-                        Phone
-                      </label>
-                      <input
-                        id="phone"
-                        name="phone"
-                        type="tel"
-                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
-                        placeholder="Optional unless you prefer calls or texts"
-                      />
+                    <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.9)]">
+                      Signed in as{" "}
+                      <strong>{session.user.name || session.user.primaryEmail || session.user.email}</strong>
                     </div>
 
                     <div>
@@ -247,77 +284,67 @@ export default async function CoachingPage({
                         </option>
                       </select>
                     </div>
-                  </div>
 
-                  <div>
-                    <label
-                      htmlFor="availabilityNotes"
-                      className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                    <div>
+                      <label
+                        htmlFor="phone"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Phone number <span className="font-normal text-[rgba(245,239,230,0.68)]">optional</span>
+                      </label>
+                      <input
+                        id="phone"
+                        name="phone"
+                        type="tel"
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="Only if you want a call or text"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="note"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Optional note
+                      </label>
+                      <textarea
+                        id="note"
+                        name="note"
+                        rows={5}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="A sentence or two about what you want to talk through, or leave it blank and start simple."
+                      />
+                    </div>
+
+                    <p className="mb-0 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
+                      By sending this request, you agree that High Ground Odyssey may contact you about coaching using the method you selected.
+                    </p>
+
+                    <button
+                      type="submit"
+                      className="w-full rounded-2xl border border-flare/25 bg-flare/15 px-4 py-4 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
                     >
-                      Availability notes
-                    </label>
-                    <textarea
-                      id="availabilityNotes"
-                      name="availabilityNotes"
-                      rows={4}
-                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
-                      placeholder="Days, times, time zone, or anything else helpful about your availability"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="coachingGoals"
-                      className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      Ask Scott to reach out
+                    </button>
+                  </form>
+                ) : (
+                  <div className="mt-6 rounded-[28px] border border-white/10 bg-white/6 p-5">
+                    <h3 className="m-0 text-[1.25rem] leading-tight tracking-[-0.02em] text-[var(--text-light)]">
+                      First, sign in.
+                    </h3>
+                    <p className="mb-0 mt-3 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.86)]">
+                      This keeps the request tiny. We will use the email on your account, then you only need to choose how you prefer to be contacted.
+                    </p>
+                    <Link
+                      href={buildSignInHref("/coaching")}
+                      className="mt-5 inline-flex rounded-full border border-flare/35 bg-flare/18 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/50 hover:bg-flare/24"
                     >
-                      What would you like help with?
-                    </label>
-                    <textarea
-                      id="coachingGoals"
-                      name="coachingGoals"
-                      rows={6}
-                      required
-                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
-                      placeholder="Share what you are navigating, what kind of support would be useful, and what you hope coaching might help you work through."
-                    />
+                      Sign in and request coaching
+                    </Link>
                   </div>
-
-                  <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
-                    <input type="checkbox" name="contactConsent" className="mt-1" />
-                    <span className="text-sm leading-6 text-[rgba(245,239,230,0.92)]">
-                      I agree that High Ground Odyssey may contact me about this coaching request using the method I selected above.
-                    </span>
-                  </label>
-
-                  <button
-                    type="submit"
-                    className="w-full rounded-2xl border border-flare/25 bg-flare/15 px-4 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
-                  >
-                    Send coaching request
-                  </button>
-                </form>
+                )}
               </GlassPanel>
-            </div>
-
-            <div className="space-y-6">
-              <DetailCard
-                title="How this works"
-                body="During this phase, coaching is donation-supported rather than fixed-rate. If a session is helpful, you may donate afterward in whatever amount feels fair and manageable. That allows the session to count toward paid coaching hours without forcing a rigid price before the work begins."
-                layoutVariant={layoutVariant}
-                featured
-              />
-
-              <DetailCard
-                title="What happens next"
-                body="Once your request is in, we review it personally and follow up directly about fit, scheduling, and the best next step. Nothing about this is automated theater. A real person will read what you send."
-                layoutVariant={layoutVariant}
-              />
-
-              <DetailCard
-                title="What coaching can be for"
-                body="Leadership growth, steadiness under pressure, personal direction, accountability, hard decisions, and practical next steps. The goal is honest support that helps you move with more clarity and intention."
-                layoutVariant={layoutVariant}
-              />
             </div>
           </section>
         </div>
