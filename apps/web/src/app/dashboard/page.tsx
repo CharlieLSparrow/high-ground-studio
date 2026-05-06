@@ -19,6 +19,30 @@ type SearchParams = Promise<{
 const FALLBACK_COACHING_GOALS =
   "Requested a coaching conversation from the simplified coaching call-to-action page.";
 
+// Temporary High Ground default until user-specific time zones are collected.
+const DASHBOARD_TIME_ZONE = "America/Denver";
+
+function formatDashboardDate(value: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: DASHBOARD_TIME_ZONE,
+    timeZoneName: "short",
+  }).format(value);
+}
+
+function formatDashboardDateOnly(value: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: DASHBOARD_TIME_ZONE,
+  }).format(value);
+}
+
 function StatusMessage({
   success,
   error,
@@ -244,10 +268,10 @@ export default async function DashboardPage({
                         </div>
 
                         <p className="mb-0 mt-4 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
-                          Requested {latestCoachingRequest.createdAt.toLocaleString()}
+                          Requested {formatDashboardDate(latestCoachingRequest.createdAt)}
                         </p>
                         <p className="mb-0 mt-2 text-sm leading-6 text-[rgba(245,239,230,0.72)]">
-                          Last updated {latestCoachingRequest.updatedAt.toLocaleString()}
+                          Last updated {formatDashboardDate(latestCoachingRequest.updatedAt)}
                         </p>
                       </div>
 
@@ -307,7 +331,7 @@ export default async function DashboardPage({
                         <div className="space-y-1 text-sm leading-6 text-sky-50/90">
                           <div>
                             Scheduled for{" "}
-                            {latestCoachingRequest.convertedAppointment.scheduledStart.toLocaleString()}
+                            {formatDashboardDate(latestCoachingRequest.convertedAppointment.scheduledStart)}
                           </div>
                           <div>
                             Coach:{" "}
@@ -344,13 +368,13 @@ export default async function DashboardPage({
                                 {formatFriendlyCoachingStatus(request.status)}
                               </div>
                               <div className="mt-1 text-sm leading-6 text-[rgba(245,239,230,0.72)]">
-                                {request.createdAt.toLocaleDateString()} · {formatContactMethod(request.preferredContactMethod)}
+                                {formatDashboardDateOnly(request.createdAt)} · {formatContactMethod(request.preferredContactMethod)}
                               </div>
                             </div>
 
                             {request.convertedAppointment ? (
                               <div className="text-sm leading-6 text-[rgba(245,239,230,0.82)]">
-                                Appointment on {request.convertedAppointment.scheduledStart.toLocaleDateString()}
+                                Appointment on {formatDashboardDateOnly(request.convertedAppointment.scheduledStart)}
                               </div>
                             ) : null}
                           </div>

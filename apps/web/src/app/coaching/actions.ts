@@ -141,12 +141,6 @@ export async function submitCoachingRequestAction(formData: FormData) {
         },
       });
     });
-
-    revalidatePath("/team/coaching-requests");
-    revalidatePath("/team/clients");
-    revalidatePath("/dashboard");
-
-    redirect(source === "dashboard" ? "/dashboard?coaching=requested" : "/coaching/requested");
   } catch (error) {
     const message =
       error instanceof Error
@@ -160,4 +154,10 @@ export async function submitCoachingRequestAction(formData: FormData) {
       }),
     );
   }
+
+  revalidatePath("/team/coaching-requests");
+  revalidatePath("/team/clients");
+  revalidatePath("/dashboard");
+
+  redirect(source === "dashboard" ? "/dashboard?coaching=requested" : "/coaching/requested");
 }
