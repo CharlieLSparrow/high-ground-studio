@@ -88,7 +88,7 @@ export default async function CoachingPage() {
                   </p>
 
                   <p className="mb-0 mt-4 max-w-[700px] text-[1rem] leading-8 text-[rgba(245,239,230,0.84)]">
-                    For now, sessions are pay-what-you-can while Scott completes his coaching credentialing hours. No fixed rate. After your session, give whatever feels right and sustainable.
+                    For now, sessions are pay-what-you-can while Scott completes his coaching credentialing hours. No fixed rate. After your session, contribute what you can in a way that feels right and sustainable.
                   </p>
 
                   <div className="mt-8">
@@ -117,7 +117,7 @@ export default async function CoachingPage() {
 
             <DetailCard
               title="Why pay-what-you-can"
-              body="Scott needs paid coaching hours for credentialing, but the amount does not need to be fixed. If the session helps, give what fits your situation."
+              body="Scott needs paid coaching hours for credentialing, but the amount does not need to be fixed. After your session, contribute what you can in a way that fits your situation."
             />
           </section>
 
