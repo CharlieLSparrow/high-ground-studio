@@ -68,6 +68,8 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode View now has a documented production-cockpit design: Everything View for all candidates, Draft View for curated episode drafts, and lifecycle stages from Brainstorm through Live.
+- This is Book & Episodes architecture work that supports episode prep and publishing. It is not a substitute for actual writing, recording, editing, or Episode 5 normalization.
 - The latest raw OneNote exports for Episodes 1-6 are now inventoried as tracked staging truth under `_inbox`.
 - Episode 5 and Episode 6 have structured intake classification files that separate Homer baseline candidates, Charlie material, research/field notes, clip candidates, production notes, and unresolved decisions.
 - Episode 5 is now the next clean living-manuscript normalization candidate if Homer/Charlie accept the classification; Episode 6 should be reviewed after recording before final normalization.

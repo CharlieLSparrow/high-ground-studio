@@ -31,6 +31,17 @@ Episode 5 and Episode 6 have now been classified into structured intake files un
 
 This does not mean the living manuscript has been normalized. It means the raw OneNote material has been separated into likely Homer baseline, Charlie material, research/field notes, clip candidates, production notes, and unresolved decisions.
 
+## Episode View Design Direction
+
+Episode View should become a production cockpit with two subviews:
+
+- Everything View: all candidate material, including raw/intake references, classified candidates, production notes, clip candidates, reaction cues, and unresolved decisions.
+- Draft View: the current curated episode draft, including selected Homer material, selected Charlie contributions, recording notes, show notes, and public-safe material when ready.
+
+Everything View must never publish directly. Draft View can become the source for public episode output only when the episode lifecycle status is `Live`.
+
+Lifecycle status belongs in a separate episode production/draft state layer, not in raw `_inbox` files, structured intake files, living manuscript block status, or public publish status.
+
 ## Status Types
 
 - Recording status: whether the episode has been recorded or is planned for recording.
@@ -40,6 +51,7 @@ This does not mean the living manuscript has been normalized. It means the raw O
 - Living manuscript status: whether the material has been normalized into `learning-to-lead.living.mdx`.
 - Arrangement status: whether a book or podcast arrangement references the relevant blocks.
 - Public publish status: whether public website episode/publish content reflects the episode.
+- Episode lifecycle status: production-stage status for an episode, such as Brainstorm, Rough Draft, Ready to Record, Recorded, Edited, or Live.
 
 ## Episode Table
 
