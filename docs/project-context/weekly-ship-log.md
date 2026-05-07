@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode 5 normalization dry run created so the next manuscript edit can be scoped and reviewed before canonical changes.
 - Episode 5 review packet created from the hardened cockpit and structured intake; it prepares the next manuscript normalization pass without changing canonical manuscript truth yet.
 - The internal Learning to Lead viewer now has the first read-only Episode production cockpit slice: file-backed Season One state, lifecycle badges, episode selection, Everything/Draft subviews, source/intake references, unresolved decisions, warnings, and YAML-selected draft items.
 - Episode 5 is the first full fixture because it is recorded and classified; Episode 6 is visible as pre-recording/pending post-recording review rather than being treated as final.
