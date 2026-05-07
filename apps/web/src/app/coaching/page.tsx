@@ -15,6 +15,12 @@ import {
 } from "@/lib/layout-variant-styles";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
 
+const COACHING_STEPS = [
+  "Request a session",
+  "Homer follows up personally",
+  "Talk it through and find your footing",
+];
+
 function DetailCard({
   title,
   body,
@@ -63,7 +69,7 @@ export default async function CoachingPage() {
             <div className="absolute inset-0">
               <Image
                 src="/images/CoachingHero0.png"
-                alt="Scott Sparrow coaching portrait"
+                alt="Homer coaching portrait"
                 fill
                 priority
                 className="object-cover object-center"
@@ -77,18 +83,23 @@ export default async function CoachingPage() {
             <div className="relative min-h-[560px]">
               <div className="relative z-10 flex min-h-[560px] items-end">
                 <div className="w-full p-7 md:p-10 lg:max-w-[820px] lg:p-14">
-                  <PageEyebrow>Coaching with Scott Sparrow</PageEyebrow>
+                  <PageEyebrow>Coaching with Homer</PageEyebrow>
 
                   <h1 className="m-0 mt-5 max-w-[720px] text-[clamp(3.1rem,8vw,6.8rem)] leading-[0.88] tracking-[-0.065em] text-[var(--text-light)]">
-                    Talk through the next right step.
+                    Find your footing.
                   </h1>
 
                   <p className="mb-0 mt-6 max-w-[700px] text-[1.12rem] leading-8 text-[rgba(245,239,230,0.96)] md:text-[1.18rem]">
-                    Leadership gets noisy. Coaching gives you a place to slow down, name what matters, and move forward with more clarity, steadiness, and courage.
+                    When decisions get noisy, coaching with Homer gives you a
+                    steady place to slow down, sort what matters, and choose a
+                    next move you can actually stand on.
                   </p>
 
                   <p className="mb-0 mt-4 max-w-[700px] text-[1rem] leading-8 text-[rgba(245,239,230,0.84)]">
-                    For now, sessions are pay-what-you-can while Scott completes his coaching credentialing hours. No fixed rate. After your session, contribute what you can in a way that feels right and sustainable.
+                    Donation-supported while Homer completes his coaching
+                    credentialing hours. No fixed rate. After your session,
+                    contribute what you can in a way that feels right and
+                    sustainable.
                   </p>
 
                   <div className="mt-8">
@@ -104,27 +115,43 @@ export default async function CoachingPage() {
             </div>
           </section>
 
+          <section className="grid gap-3 md:grid-cols-3">
+            {COACHING_STEPS.map((step, index) => (
+              <GlassPanel
+                key={step}
+                className="px-5 py-4 text-[var(--text-light)]"
+              >
+                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[rgba(245,239,230,0.62)]">
+                  Step {index + 1}
+                </div>
+                <div className="mt-2 text-sm font-medium leading-6 text-[rgba(245,239,230,0.9)]">
+                  {step}
+                </div>
+              </GlassPanel>
+            ))}
+          </section>
+
           <section className="grid gap-8 lg:grid-cols-3">
             <DetailCard
-              title="What coaching is for"
-              body="Hard decisions, personal direction, leadership pressure, accountability, transitions, and the next step you keep circling but not quite taking."
+              title="What to bring"
+              body="A decision, a transition, a leadership question, a hard conversation, or even just the sense that something important needs a little more light."
             />
 
             <DetailCard
-              title="How booking works"
-              body="Click Book a Session, sign in if needed, and send a short request from your member home. Scott will follow up personally about fit, scheduling, and next steps."
+              title="What happens next"
+              body="Click Book a Session, sign in if needed, and send a short request from your member home. Homer will follow up personally about fit, timing, and the best next step."
             />
 
             <DetailCard
-              title="Why pay-what-you-can"
-              body="Scott needs paid coaching hours for credentialing, but the amount does not need to be fixed. After your session, contribute what you can in a way that fits your situation."
+              title="Donation-supported"
+              body="During this credentialing season, sessions do not have a fixed fee. After your session, contribute what you can in a way that fits your situation."
             />
           </section>
 
           <GlassPanel className="p-8 text-center text-[var(--text-light)] md:p-10">
-            <PageEyebrow>Next Step</PageEyebrow>
+            <PageEyebrow>Ready when you are</PageEyebrow>
             <h2 className="m-0 mt-4 text-[clamp(2rem,4vw,3rem)] leading-[0.95] tracking-[-0.05em] text-[var(--text-light)]">
-              Ready to talk it through?
+              Start with a simple conversation.
             </h2>
 
             <div className="mt-7">
