@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Production truth was corrected again using the real Season One state: Episodes 1-5 are recorded, and Episode 6 is prepped for recording on 2026-05-08.
+- Repo state now needs OneNote reconciliation for Episodes 5-6, plus an Episode 4 review to confirm recorded/prepped cues did not drift beyond the incorporated living-manuscript blocks.
+- This prevents the content engine from optimizing against stale production data or polishing future episode splits that may need to be rebuilt.
 - No direct book-writing or podcast episode-prep artifact shipped in this slice.
 - That is the important warning from this addendum: coaching and infrastructure made progress, but next week should show visible Book & Episodes movement unless a true emergency blocks it.
 - Likely next move: choose the next book or episode production artifact and make one concrete writing/prep commit before pulling more infrastructure work.
