@@ -184,7 +184,7 @@ episodes:
     episodeNumber: 6
     title: "Trust Through Consistency"
     lifecycleStatus: "Ready to Record"
-    recordingStatus: "prepped / pending recording and post-recording review"
+    recordingStatus: "recording started / paused mid-session for camera battery / completion pending"
     publicSlug: "TBD"
     sourceConfidence: "medium"
     intakeFiles:
@@ -221,6 +221,7 @@ episodes:
         notes: "Sidekick/service leadership, Toyota andon, habit formation, and duplicate/alternate draft material."
     recordingNotes:
       - "Use as prep visibility only until recording and post-recording review confirm the arc."
+      - "Recording began but paused when Scott's camera battery died; capture final recorded shape after session resumes."
     showNotes:
       - "No public-safe show notes have been selected yet."
     unresolvedDecisions:
@@ -232,7 +233,7 @@ episodes:
       - "Final normalization waits for post-recording review."
       - "Current podcast arrangement key values is broad and overlaps Episode 5."
       - "Raw file includes table fragments, duplicate drafts, and unresolved questions."
-    nextAction: "After recording, compare the recorded shape against structured intake before normalizing or rebuilding the Episode 5/6 split."
+    nextAction: "Resume and complete recording, then compare the recorded shape against structured intake before normalizing or rebuilding the Episode 5/6 split."
 
   episode-07:
     episodeNumber: 7
