@@ -1,5 +1,6 @@
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
+import { buildGoogleCalendarEventUrl } from "@/lib/calendar-links";
 import { prisma } from "@/lib/prisma";
 
 import {
@@ -52,6 +53,10 @@ function formatLocalDateTime(value: Date) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function formatLabel(value: string) {
+  return value === "IN_PERSON" ? "In person" : value.replace(/_/g, " ");
+}
+
 export default async function TeamAppointmentsPage({
   searchParams,
 }: {
@@ -91,6 +96,8 @@ export default async function TeamAppointmentsPage({
   const defaultStart = new Date(now.getTime() + 60 * 60 * 1000);
   defaultStart.setMinutes(0, 0, 0);
   const defaultEnd = new Date(defaultStart.getTime() + 60 * 60 * 1000);
+  const coachingDonationUrl =
+    process.env.HGO_COACHING_DONATION_URL?.trim() || null;
 
   return (
     <section className="grid gap-8 lg:grid-cols-[minmax(0,430px)_minmax(0,1fr)]">
@@ -299,34 +306,84 @@ export default async function TeamAppointmentsPage({
             </div>
           ) : (
             <div className="space-y-4">
-              {appointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="rounded-[24px] border border-white/10 bg-white/6 p-5"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <h3 className="m-0 text-[1.1rem] font-bold text-[var(--text-light)]">
-                        {appointment.clientUser.name || appointment.clientUser.primaryEmail}
-                      </h3>
+              {appointments.map((appointment) => {
+                const calendarUrl = buildGoogleCalendarEventUrl({
+                  title: "High Ground Coaching Session",
+                  start: appointment.scheduledStart,
+                  end: appointment.scheduledEnd,
+                  details: [
+                    "Scheduled through High Ground Odyssey.",
+                    `Coach: ${appointment.coachUser?.name || "Unassigned coach"}`,
+                    appointment.coachUser?.primaryEmail
+                      ? `Coach email: ${appointment.coachUser.primaryEmail}`
+                      : null,
+                    `Appointment status: ${appointment.status.replace(/_/g, " ")}`,
+                    appointment.locationDetails
+                      ? `Location details: ${appointment.locationDetails}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                  location:
+                    appointment.locationDetails ||
+                    formatLabel(appointment.locationType),
+                  guestEmail: appointment.clientUser.primaryEmail,
+                });
 
-                      <p className="mb-0 mt-2 text-[0.95rem] leading-7 text-[rgba(245,239,230,0.88)]">
-                        {appointment.scheduledStart.toLocaleString()} →{" "}
-                        {appointment.scheduledEnd.toLocaleString()}
-                      </p>
+                return (
+                  <div
+                    key={appointment.id}
+                    className="rounded-[24px] border border-white/10 bg-white/6 p-5"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h3 className="m-0 text-[1.1rem] font-bold text-[var(--text-light)]">
+                          {appointment.clientUser.name || appointment.clientUser.primaryEmail}
+                        </h3>
+
+                        <p className="mb-0 mt-2 text-[0.95rem] leading-7 text-[rgba(245,239,230,0.88)]">
+                          {appointment.scheduledStart.toLocaleString()} →{" "}
+                          {appointment.scheduledEnd.toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
+                          {appointment.status.replace(/_/g, " ")}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
+                          {formatLabel(appointment.locationType)}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
-                        {appointment.status.replace(/_/g, " ")}
-                      </span>
-                      <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
-                        {appointment.locationType.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                  </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <a
+                        href={calendarUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex rounded-full border border-sky-200/20 bg-sky-200/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-sky-50 no-underline transition hover:bg-sky-200/20"
+                      >
+                        Add to Google Calendar
+                      </a>
 
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      {coachingDonationUrl ? (
+                        <a
+                          href={coachingDonationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/40 hover:bg-flare/20"
+                        >
+                          Donation Link Ready
+                        </a>
+                      ) : (
+                        <span className="inline-flex rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                          Donation Link Missing
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
                     <form action={updateAppointmentAction} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
                       <input type="hidden" name="appointmentId" value={appointment.id} />
 
@@ -540,9 +597,10 @@ export default async function TeamAppointmentsPage({
                         </div>
                       ) : null}
                     </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </GlassPanel>

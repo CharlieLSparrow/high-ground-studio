@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
+import { buildGoogleCalendarEventUrl } from "@/lib/calendar-links";
 import { prisma } from "@/lib/prisma";
 
 import {
@@ -45,6 +46,10 @@ function StatusMessage({
 
 function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ");
+}
+
+function formatLocationLabel(value: string) {
+  return value === "IN_PERSON" ? "In person" : formatStatusLabel(value);
 }
 
 function formatLocalDateTime(value: Date) {
@@ -106,6 +111,8 @@ export default async function TeamCoachingRequestsPage({
   const defaultStart = new Date(now.getTime() + 60 * 60 * 1000);
   defaultStart.setMinutes(0, 0, 0);
   const defaultEnd = new Date(defaultStart.getTime() + 60 * 60 * 1000);
+  const coachingDonationUrl =
+    process.env.HGO_COACHING_DONATION_URL?.trim() || null;
 
   return (
     <section className="space-y-8">
@@ -166,6 +173,37 @@ export default async function TeamCoachingRequestsPage({
               !request.convertedAppointment &&
               request.status !== "CLOSED" &&
               request.status !== "DECLINED";
+            const calendarUrl = request.convertedAppointment
+              ? buildGoogleCalendarEventUrl({
+                  title: "High Ground Coaching Session",
+                  start: request.convertedAppointment.scheduledStart,
+                  end: request.convertedAppointment.scheduledEnd,
+                  details: [
+                    "Scheduled through High Ground Odyssey.",
+                    `Coach: ${
+                      request.convertedAppointment.coachUser?.name ||
+                      "Unassigned coach"
+                    }`,
+                    request.convertedAppointment.coachUser?.primaryEmail
+                      ? `Coach email: ${request.convertedAppointment.coachUser.primaryEmail}`
+                      : null,
+                    `Appointment status: ${formatStatusLabel(
+                      request.convertedAppointment.status,
+                    )}`,
+                    request.convertedAppointment.locationDetails
+                      ? `Location details: ${request.convertedAppointment.locationDetails}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                  location:
+                    request.convertedAppointment.locationDetails ||
+                    formatLocationLabel(
+                      request.convertedAppointment.locationType,
+                    ),
+                  guestEmail: request.clientUser.primaryEmail,
+                })
+              : null;
 
             return (
               <GlassPanel key={request.id} className="p-5 text-[var(--text-light)]">
@@ -317,7 +355,7 @@ export default async function TeamCoachingRequestsPage({
                           </div>
                           <div>
                             Location:{" "}
-                            {formatStatusLabel(request.convertedAppointment.locationType)}
+                            {formatLocationLabel(request.convertedAppointment.locationType)}
                           </div>
                           <div>Time zone: {request.convertedAppointment.timezone}</div>
                           {request.convertedAppointment.locationDetails ? (
@@ -326,12 +364,29 @@ export default async function TeamCoachingRequestsPage({
                             </div>
                           ) : null}
                         </div>
-                        <Link
-                          href="/team/appointments"
-                          className="mt-4 inline-flex rounded-full border border-sky-200/25 bg-sky-200/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-sky-50 no-underline transition hover:bg-sky-200/20"
-                        >
-                          Open appointments
-                        </Link>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          {calendarUrl ? (
+                            <a
+                              href={calendarUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex rounded-full border border-sky-200/25 bg-sky-200/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-sky-50 no-underline transition hover:bg-sky-200/20"
+                            >
+                              Add to Google Calendar
+                            </a>
+                          ) : null}
+                          <Link
+                            href="/team/appointments"
+                            className="inline-flex rounded-full border border-sky-200/25 bg-sky-200/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-sky-50 no-underline transition hover:bg-sky-200/20"
+                          >
+                            Open appointments
+                          </Link>
+                        </div>
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-sky-50/90">
+                          {coachingDonationUrl
+                            ? "Donation link configured for client follow-up."
+                            : "Donation link not configured. Set HGO_COACHING_DONATION_URL to enable the client CTA."}
+                        </div>
                       </div>
                     ) : null}
 

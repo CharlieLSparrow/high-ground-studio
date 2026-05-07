@@ -6,6 +6,7 @@ import { submitCoachingRequestAction } from "@/app/coaching/actions";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
+import { buildGoogleCalendarEventUrl } from "@/lib/calendar-links";
 import { buildSignInHref } from "@/lib/content-access";
 import { prisma } from "@/lib/prisma";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
@@ -99,6 +100,41 @@ function formatContactMethod(value: string) {
     default:
       return value.replace(/_/g, " ");
   }
+}
+
+function formatAppointmentStatus(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function formatAppointmentLocation(value: string) {
+  switch (value) {
+    case "IN_PERSON":
+      return "In person";
+    default:
+      return formatAppointmentStatus(value);
+  }
+}
+
+function buildAppointmentCalendarDetails({
+  coachName,
+  coachEmail,
+  status,
+  locationDetails,
+}: {
+  coachName: string;
+  coachEmail?: string | null;
+  status: string;
+  locationDetails?: string | null;
+}) {
+  const lines = [
+    "Scheduled through High Ground Odyssey.",
+    `Coach: ${coachName}`,
+    coachEmail ? `Coach email: ${coachEmail}` : null,
+    `Appointment status: ${formatAppointmentStatus(status)}`,
+    locationDetails ? `Location details: ${locationDetails}` : null,
+  ].filter(Boolean);
+
+  return lines.join("\n");
 }
 
 function StatusChip({ status }: { status: string }) {
@@ -197,6 +233,42 @@ export default async function DashboardPage({
   const coachingRequests = user.coachingRequests;
   const latestCoachingRequest = coachingRequests[0] ?? null;
   const olderCoachingRequests = coachingRequests.slice(1);
+  const coachingDonationUrl =
+    process.env.HGO_COACHING_DONATION_URL?.trim() || null;
+  const featuredDonationAppointment =
+    latestCoachingRequest?.convertedAppointment ??
+    user.clientAppointments.find((appointment) =>
+      appointment.status === "SCHEDULED" ||
+      appointment.status === "CONFIRMED" ||
+      appointment.status === "COMPLETED",
+    ) ??
+    null;
+  const showDonationCallout = Boolean(
+    coachingDonationUrl && featuredDonationAppointment,
+  );
+  const latestCoachingCalendarUrl = latestCoachingRequest?.convertedAppointment
+    ? buildGoogleCalendarEventUrl({
+        title: "High Ground Coaching Session",
+        start: latestCoachingRequest.convertedAppointment.scheduledStart,
+        end: latestCoachingRequest.convertedAppointment.scheduledEnd,
+        details: buildAppointmentCalendarDetails({
+          coachName:
+            latestCoachingRequest.convertedAppointment.coachUser?.name ||
+            "Unassigned coach",
+          coachEmail:
+            latestCoachingRequest.convertedAppointment.coachUser?.primaryEmail,
+          status: latestCoachingRequest.convertedAppointment.status,
+          locationDetails:
+            latestCoachingRequest.convertedAppointment.locationDetails,
+        }),
+        location:
+          latestCoachingRequest.convertedAppointment.locationDetails ||
+          formatAppointmentLocation(
+            latestCoachingRequest.convertedAppointment.locationType,
+          ),
+        guestEmail: user.primaryEmail,
+      })
+    : null;
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#08171b_0%,#10272d_16%,#18383d_40%,#6f5636_78%,#f3eadb_100%)] pb-20">
@@ -342,12 +414,47 @@ export default async function DashboardPage({
                           </div>
                           <div>
                             Status:{" "}
-                            {latestCoachingRequest.convertedAppointment.status.replace(
-                              /_/g,
-                              " ",
+                            {formatAppointmentStatus(
+                              latestCoachingRequest.convertedAppointment.status,
                             )}
                           </div>
                         </div>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          {latestCoachingCalendarUrl ? (
+                            <a
+                              href={latestCoachingCalendarUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex rounded-full border border-sky-200/25 bg-sky-200/10 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-sky-50 no-underline transition hover:bg-sky-200/20"
+                            >
+                              Add to Google Calendar
+                            </a>
+                          ) : null}
+
+                          {showDonationCallout && coachingDonationUrl ? (
+                            <a
+                              href={coachingDonationUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex rounded-full border border-flare/35 bg-flare/18 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/50 hover:bg-flare/24"
+                            >
+                              Make a Pay-What-You-Can Contribution
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {showDonationCallout && coachingDonationUrl ? (
+                      <div className="mt-4 rounded-2xl border border-flare/25 bg-flare/12 p-4">
+                        <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">
+                          Donation-supported coaching
+                        </div>
+                        <p className="mb-0 text-sm leading-7 text-[rgba(245,239,230,0.9)]">
+                          During Scott&apos;s credentialing season, sessions do
+                          not have a fixed fee. If this session was helpful, you
+                          can contribute whatever feels right and sustainable.
+                        </p>
                       </div>
                     ) : null}
                   </div>
@@ -555,11 +662,29 @@ export default async function DashboardPage({
                 </div>
               ) : (
                 <div className="mt-5 space-y-4">
-                  {upcomingAppointments.map((appointment) => (
-                    <div
-                      key={appointment.id}
-                      className="rounded-2xl border border-white/10 bg-white/6 p-5"
-                    >
+                  {upcomingAppointments.map((appointment) => {
+                    const calendarUrl = buildGoogleCalendarEventUrl({
+                      title: "High Ground Coaching Session",
+                      start: appointment.scheduledStart,
+                      end: appointment.scheduledEnd,
+                      details: buildAppointmentCalendarDetails({
+                        coachName:
+                          appointment.coachUser?.name || "Unassigned coach",
+                        coachEmail: appointment.coachUser?.primaryEmail,
+                        status: appointment.status,
+                        locationDetails: appointment.locationDetails,
+                      }),
+                      location:
+                        appointment.locationDetails ||
+                        formatAppointmentLocation(appointment.locationType),
+                      guestEmail: user.primaryEmail,
+                    });
+
+                    return (
+                      <div
+                        key={appointment.id}
+                        className="rounded-2xl border border-white/10 bg-white/6 p-5"
+                      >
                       <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                           <div className="text-[1rem] font-bold text-[var(--text-light)]">
@@ -572,12 +697,37 @@ export default async function DashboardPage({
 
                         <div className="flex flex-wrap gap-2">
                           <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
-                            {appointment.status.replace(/_/g, " ")}
+                            {formatAppointmentStatus(appointment.status)}
                           </span>
                           <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
-                            {appointment.locationType.replace(/_/g, " ")}
+                            {formatAppointmentLocation(appointment.locationType)}
                           </span>
                         </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <a
+                          href={calendarUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex rounded-full border border-sky-200/20 bg-sky-200/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-sky-50 no-underline transition hover:bg-sky-200/20"
+                        >
+                          Add to Google Calendar
+                        </a>
+
+                        {coachingDonationUrl &&
+                        (appointment.status === "SCHEDULED" ||
+                          appointment.status === "CONFIRMED" ||
+                          appointment.status === "COMPLETED") ? (
+                          <a
+                            href={coachingDonationUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/40 hover:bg-flare/20"
+                          >
+                            Make a Pay-What-You-Can Contribution
+                          </a>
+                        ) : null}
                       </div>
 
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -612,8 +762,9 @@ export default async function DashboardPage({
                           </div>
                         </div>
                       ) : null}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </GlassPanel>
