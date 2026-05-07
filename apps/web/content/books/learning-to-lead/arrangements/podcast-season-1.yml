@@ -54,3 +54,13 @@ episodes:
       - homer-values-basic-training-cs-gas-and-preparation
       - homer-values-language-discipline-and-reputation
       - homer-values-icon-health-and-early-leadership
+  values-toolkit:
+    title: "The Values Toolkit"
+    status: "candidate"
+    blocks:
+      - homer-values-tip-nevada-promise
+      - charlie-values-winnemucca-promise-reaction
+      - charlie-values-trust-through-dependability-bridge
+      - homer-values-milk-down-the-drain
+      - charlie-values-forgive-and-fire-standards-reflection
+      - charlie-values-roy-coaching-before-removal-reflection

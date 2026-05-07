@@ -8,6 +8,8 @@ This is a planning document only.
 
 It decides the next likely arrangement edit after the narrow Episode 5 Charlie-reflection normalization. It does not modify `podcast-season-1.yml`, `season-one.yml`, the living manuscript, publish files, episode packets, or raw intake files.
 
+Status note: the `values-toolkit` arrangement key and Episode 5 production-state reference were added on 2026-05-07. The broad `values` arrangement remains for Episode 6 and later Chapter Two candidate work.
+
 ## Current Arrangement State
 
 `apps/web/content/books/learning-to-lead/arrangements/podcast-season-1.yml` currently has a broad `values` arrangement key:

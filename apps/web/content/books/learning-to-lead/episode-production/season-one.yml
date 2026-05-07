@@ -130,7 +130,7 @@ episodes:
       - "_inbox/Episode 5 - Chapter 2.md"
       - "episode-breakdowns/episode-05-values-toolkit.md"
     arrangementKeys:
-      - "values"
+      - "values-toolkit"
     draftStatus: "first-full-structured-intake-fixture"
     draftSelectedItems:
       - label: "Samwise Clip / Tip And The Winnemucca Promise"
@@ -170,8 +170,8 @@ episodes:
     warnings:
       - "Recorded does not mean normalized into the living manuscript."
       - "Clip candidates are production anchors, not cleared public material."
-      - "Current podcast arrangement key values is broad and overlaps Episode 6."
-    nextAction: "Review Episode 5 structured intake with Homer/Charlie, then run a narrow living-manuscript normalization pass if accepted."
+      - "The values-toolkit arrangement is an internal candidate sequence, not public publish truth."
+    nextAction: "Review the values-toolkit candidate sequence with Homer/Charlie before any publish or Episode 5/6 boundary work."
 
   episode-06:
     episodeNumber: 6
