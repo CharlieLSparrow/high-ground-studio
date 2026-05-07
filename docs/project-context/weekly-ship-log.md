@@ -68,6 +68,10 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode cards and Playground now show readable Homer/book text previews so arranging starts from the book instead of metadata.
+- Oversized block cues added so large Homer sections are easier to identify before splitting.
+- Episode 7 / Chapter Three virtual split plan created without changing manuscript prose.
+- Future episode seed map created to flag oversized Homer blocks and guide Playground/manual split work.
 - Episode 7+ brainstorm cards seeded from Homer chapter/ending blocks so future Episode Playground work starts from book text instead of stale low-confidence splits.
 - Episode View now includes a non-canonical Playground subview so Chuck can test and copy possible episode sequences without writing manuscript, arrangement, production-state, publish, or public page files.
 - Episode 5 recorded-draft review created from the clean `values-toolkit` Draft View.

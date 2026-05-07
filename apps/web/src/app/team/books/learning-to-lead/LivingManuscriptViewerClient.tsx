@@ -286,6 +286,167 @@ function SourceText({
   );
 }
 
+function getPreviewBody(body: string, maxCharacters = 720, maxParagraphs = 3) {
+  const paragraphs = body
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const selected: string[] = [];
+  let characterCount = 0;
+
+  for (const paragraph of paragraphs) {
+    if (selected.length >= maxParagraphs) {
+      break;
+    }
+
+    const nextLength = characterCount + paragraph.length;
+
+    if (selected.length > 0 && nextLength > maxCharacters) {
+      break;
+    }
+
+    if (paragraph.length > maxCharacters && selected.length === 0) {
+      selected.push(`${paragraph.slice(0, maxCharacters).trim()}...`);
+      characterCount = maxCharacters;
+      break;
+    }
+
+    selected.push(paragraph);
+    characterCount = nextLength;
+  }
+
+  const preview = selected.join("\n\n");
+  const normalizedBody = body.trim();
+  const truncated =
+    preview.length < normalizedBody.length || paragraphs.length > selected.length;
+
+  return {
+    body: truncated && !preview.endsWith("...") ? `${preview}...` : preview,
+    truncated,
+  };
+}
+
+function getBlockSourceLabel(block: LivingManuscriptBlock) {
+  if (block.voice === "homer") {
+    return "Homer text";
+  }
+
+  if (block.type === "charlie-reflection") {
+    return "Charlie reflection";
+  }
+
+  return "Charlie support";
+}
+
+function getBlockSizeCue(block: LivingManuscriptBlock) {
+  if (block.wordCount > 1800) {
+    return "Likely too large";
+  }
+
+  if (block.wordCount > 700) {
+    return "Maybe split";
+  }
+
+  return null;
+}
+
+function BlockSizeCue({ block }: { block: LivingManuscriptBlock }) {
+  const cue = getBlockSizeCue(block);
+
+  if (!cue) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex rounded-full border border-[rgba(179,42,42,0.18)] bg-[rgba(179,42,42,0.08)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(94,26,26,0.86)]">
+      {cue}
+    </span>
+  );
+}
+
+function BookTextSnippet({ block }: { block: LivingManuscriptBlock }) {
+  const preview = getPreviewBody(block.body, 260, 1);
+
+  return (
+    <div
+      className={[
+        "mt-2 rounded-2xl border px-3 py-3 text-xs leading-5",
+        block.voice === "homer"
+          ? "border-[rgba(255,215,160,0.18)] bg-[rgba(255,248,232,0.08)] text-[rgba(245,239,230,0.84)]"
+          : "border-[rgba(210,124,84,0.16)] bg-[rgba(210,124,84,0.08)] text-[rgba(245,239,230,0.74)]",
+      ].join(" ")}
+    >
+      <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
+        {getBlockSourceLabel(block)}
+      </div>
+      <div>{preview.body.replace(/\s+/g, " ")}</div>
+    </div>
+  );
+}
+
+function BookTextPreview({
+  block,
+  compact = false,
+}: {
+  block: LivingManuscriptBlock;
+  compact?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const preview = getPreviewBody(block.body, compact ? 560 : 760, compact ? 2 : 3);
+  const tone = block.voice === "charlie" ? "charlie" : "homer";
+
+  return (
+    <div
+      className={[
+        "rounded-[26px] border px-4 py-4",
+        block.voice === "homer"
+          ? "border-[rgba(96,62,28,0.16)] bg-[linear-gradient(180deg,rgba(255,249,236,0.78),rgba(250,239,217,0.66))]"
+          : "border-[rgba(126,78,52,0.14)] bg-[rgba(255,247,242,0.62)]",
+      ].join(" ")}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={[
+              "rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]",
+              block.voice === "homer"
+                ? "border-[rgba(96,62,28,0.18)] bg-[rgba(255,255,255,0.5)] text-[#6f3f16]"
+                : "border-[rgba(126,78,52,0.16)] bg-[rgba(210,124,84,0.1)] text-[#8a4528]",
+            ].join(" ")}
+          >
+            {getBlockSourceLabel(block)}
+          </span>
+          <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.48)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+            {block.wordCount} words
+          </span>
+          <BlockSizeCue block={block} />
+        </div>
+
+        {preview.truncated ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        ) : null}
+      </div>
+
+      <div
+        className={[
+          "mt-3",
+          compact
+            ? "text-[0.94rem] leading-6"
+            : "text-[1rem] leading-7",
+        ].join(" ")}
+      >
+        <SourceText body={expanded ? block.body : preview.body} tone={tone} />
+      </div>
+    </div>
+  );
+}
+
 function FilterCheckbox({
   label,
   checked,
@@ -645,6 +806,7 @@ function EpisodeBlockStamp({
             Needs citation
           </span>
         ) : null}
+        <BlockSizeCue block={block} />
       </div>
 
       <div className="mt-4">
@@ -658,6 +820,10 @@ function EpisodeBlockStamp({
 
       <div className="mt-4">
         <MetadataTagList values={block.tags} />
+      </div>
+
+      <div className="mt-4">
+        <BookTextPreview block={block} compact />
       </div>
 
       {showMetadata ? (
@@ -708,6 +874,10 @@ function EpisodeCard({
   episode: EpisodeGroup;
   showMetadata: boolean;
 }) {
+  const homerBlocks = episode.totalBlocks.filter((block) => block.voice === "homer");
+  const firstHomerBlock = homerBlocks[0] ?? null;
+  const brainstormScaffold = episode.status === "brainstorm";
+
   return (
     <section id={`episode-${episode.key}`} className="scroll-mt-6">
       <PaperCard className="min-w-0 px-6 py-8 sm:px-8 sm:py-10">
@@ -752,6 +922,32 @@ function EpisodeCard({
             </div>
             <div className="mt-2 text-sm leading-6">
               {episode.missingBlockIds.join(", ")}
+            </div>
+          </div>
+        ) : null}
+
+        {firstHomerBlock ? (
+          <div className="mt-5 rounded-[30px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,248,232,0.52)] px-4 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <PageEyebrow>Book Backbone</PageEyebrow>
+              <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                Book seed
+              </span>
+              <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                Homer chapter block
+              </span>
+              {brainstormScaffold ? (
+                <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                  Brainstorm scaffold
+                </span>
+              ) : null}
+              <BlockSizeCue block={firstHomerBlock} />
+            </div>
+            <h3 className="m-0 mt-3 text-[1.25rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+              {firstHomerBlock.title}
+            </h3>
+            <div className="mt-4">
+              <BookTextPreview block={firstHomerBlock} />
             </div>
           </div>
         ) : null}
@@ -1176,9 +1372,16 @@ function EpisodeProductionEverythingView({
 
 function EpisodeProductionDraftView({
   episode,
+  blocks,
 }: {
   episode: EpisodeProductionEpisode;
+  blocks: LivingManuscriptBlock[];
 }) {
+  const blockById = useMemo(
+    () => new Map(blocks.map((block) => [block.id, block])),
+    [blocks],
+  );
+
   return (
     <div className="space-y-5">
       <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-4">
@@ -1209,39 +1412,49 @@ function EpisodeProductionDraftView({
         </PaperCard>
       ) : (
         <div className="space-y-4">
-          {episode.draftSelectedItems.map((item, index) => (
-            <article
-              key={`${item.label}-${index}`}
-              className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.46)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
-                  Draft {index + 1}
-                </span>
-                <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
-                  {formatLabel(item.kind)}
-                </span>
-              </div>
-              <h3 className="m-0 mt-3 text-[1.25rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
-                {item.label}
-              </h3>
-              {item.classification ? (
-                <div className="mt-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
-                  <strong>Classification:</strong> {item.classification}
+          {episode.draftSelectedItems.map((item, index) => {
+            const sourceBlock = item.source ? blockById.get(item.source) : null;
+
+            return (
+              <article
+                key={`${item.label}-${index}`}
+                className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.46)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                    Draft {index + 1}
+                  </span>
+                  <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                    {formatLabel(item.kind)}
+                  </span>
+                  {sourceBlock ? <BlockSizeCue block={sourceBlock} /> : null}
                 </div>
-              ) : null}
-              {item.source ? (
-                <div className="mt-3 break-all font-mono text-xs text-[rgba(38,30,24,0.66)]">
-                  {item.source}
-                </div>
-              ) : null}
-              {item.notes ? (
-                <div className="mt-3 rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.45)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
-                  {item.notes}
-                </div>
-              ) : null}
-            </article>
-          ))}
+                <h3 className="m-0 mt-3 text-[1.25rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+                  {item.label}
+                </h3>
+                {item.classification ? (
+                  <div className="mt-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                    <strong>Classification:</strong> {item.classification}
+                  </div>
+                ) : null}
+                {item.source ? (
+                  <div className="mt-3 break-all font-mono text-xs text-[rgba(38,30,24,0.66)]">
+                    {item.source}
+                  </div>
+                ) : null}
+                {sourceBlock ? (
+                  <div className="mt-4">
+                    <BookTextPreview block={sourceBlock} compact />
+                  </div>
+                ) : null}
+                {item.notes ? (
+                  <div className="mt-3 rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.45)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                    {item.notes}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       )}
 
@@ -1365,10 +1578,10 @@ function EpisodeProductionPlaygroundView({
               Try the shape before committing the shape.
             </h3>
             <p className="mb-0 mt-3 max-w-[760px] text-sm leading-6 text-[rgba(38,30,24,0.78)]">
-              Playground starts from the selected episode draft sequence and lets
-              you test block order in the browser only. It does not write
-              manuscript, arrangement, production-state, publish, or public page
-              files.
+              Book text is the backbone. Arrange Homer first, then layer Charlie
+              support, clips, and discussion. Playground lets you test block order
+              in the browser only; it does not save canonical files. Split large
+              Homer sections only after review.
             </p>
           </div>
 
@@ -1459,14 +1672,32 @@ function EpisodeProductionPlaygroundView({
             <div className="space-y-3">
               {candidatePool.map((block) => {
                 const alreadyAdded = sequenceIdSet.has(block.id);
+                const primaryMaterial = block.voice === "homer";
 
                 return (
                   <article
                     key={block.id}
-                    className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.46)] px-4 py-4"
+                    className={[
+                      "rounded-[28px] border px-4 py-4",
+                      primaryMaterial
+                        ? "border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.56)] shadow-[0_16px_40px_rgba(96,62,28,0.08)]"
+                        : "border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.46)]",
+                    ].join(" ")}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {primaryMaterial ? (
+                            <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                              Book backbone
+                            </span>
+                          ) : (
+                            <span className="rounded-full border border-[rgba(126,78,52,0.16)] bg-[rgba(210,124,84,0.1)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a4528]">
+                              Support layer
+                            </span>
+                          )}
+                          <BlockSizeCue block={block} />
+                        </div>
                         <h4 className="m-0 text-[1.05rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
                           {block.title}
                         </h4>
@@ -1502,6 +1733,10 @@ function EpisodeProductionPlaygroundView({
                     <div className="mt-3">
                       <MetadataTagList values={block.tags} />
                     </div>
+
+                    <div className="mt-4">
+                      <BookTextPreview block={block} compact />
+                    </div>
                   </article>
                 );
               })}
@@ -1531,7 +1766,12 @@ function EpisodeProductionPlaygroundView({
               {sequenceBlocks.map((block, index) => (
                 <article
                   key={`${block.id}-${index}`}
-                  className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.52)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]"
+                  className={[
+                    "rounded-[28px] border px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]",
+                    block.voice === "homer"
+                      ? "border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.6)]"
+                      : "border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.52)]",
+                  ].join(" ")}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -1574,6 +1814,15 @@ function EpisodeProductionPlaygroundView({
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {block.voice === "homer" ? (
+                      <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                        Book backbone
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-[rgba(126,78,52,0.16)] bg-[rgba(210,124,84,0.1)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#8a4528]">
+                        Support layer
+                      </span>
+                    )}
                     <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
                       {formatLabel(block.voice)}
                     </span>
@@ -1583,6 +1832,11 @@ function EpisodeProductionPlaygroundView({
                     <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
                       {block.wordCount} words
                     </span>
+                    <BlockSizeCue block={block} />
+                  </div>
+
+                  <div className="mt-4">
+                    <BookTextPreview block={block} compact />
                   </div>
                 </article>
               ))}
@@ -1606,6 +1860,8 @@ function EpisodeProductionCockpit({
   blocks: LivingManuscriptBlock[];
 }) {
   const { production, arrangement } = panel;
+  const homerAnchor =
+    arrangement?.totalBlocks.find((block) => block.voice === "homer") ?? null;
 
   return (
     <PaperCard className="px-6 py-8 sm:px-8 sm:py-10">
@@ -1646,6 +1902,29 @@ function EpisodeProductionCockpit({
         </div>
       </div>
 
+      {homerAnchor ? (
+        <div className="mt-6 rounded-[30px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,248,232,0.52)] px-4 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <PageEyebrow>Book Backbone</PageEyebrow>
+            <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+              Arrange Homer first
+            </span>
+            {production.lifecycleStatus === "Brainstorm" ? (
+              <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                Brainstorm scaffold
+              </span>
+            ) : null}
+            <BlockSizeCue block={homerAnchor} />
+          </div>
+          <h3 className="m-0 mt-3 text-[1.35rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+            {homerAnchor.title}
+          </h3>
+          <div className="mt-4">
+            <BookTextPreview block={homerAnchor} />
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-6">
         {viewMode === "everything" ? (
           <EpisodeProductionEverythingView
@@ -1654,7 +1933,7 @@ function EpisodeProductionCockpit({
             showMetadata={showMetadata}
           />
         ) : viewMode === "draft" ? (
-          <EpisodeProductionDraftView episode={production} />
+          <EpisodeProductionDraftView episode={production} blocks={blocks} />
         ) : (
           <EpisodeProductionPlaygroundView
             key={production.key}
@@ -2227,6 +2506,9 @@ export default function LivingManuscriptViewerClient({
                       selectedProductionPanel?.production.key === production.key;
                     const warningCount =
                       production.warnings.length + production.sourceWarnings.length;
+                    const homerAnchor =
+                      arrangement?.totalBlocks.find((block) => block.voice === "homer") ??
+                      null;
 
                     return (
                       <button
@@ -2275,6 +2557,29 @@ export default function LivingManuscriptViewerClient({
                             {warningCount} warnings
                           </div>
                         </div>
+
+                        {homerAnchor ? (
+                          <div className="mt-3 border-t border-white/8 pt-3">
+                            <div className="flex flex-wrap gap-2">
+                              <span className="rounded-full border border-white/10 bg-white/8 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                                Book seed
+                              </span>
+                              {production.lifecycleStatus === "Brainstorm" ? (
+                                <span className="rounded-full border border-white/10 bg-white/8 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                                  Needs split review
+                                </span>
+                              ) : null}
+                              <BlockSizeCue block={homerAnchor} />
+                            </div>
+                            <div className="mt-2 text-sm font-semibold leading-5 text-[rgba(245,239,230,0.94)]">
+                              {homerAnchor.title}
+                            </div>
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
+                              {homerAnchor.wordCount} words · Homer chapter block
+                            </div>
+                            <BookTextSnippet block={homerAnchor} />
+                          </div>
+                        ) : null}
                       </button>
                     );
                   })}
