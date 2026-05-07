@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode 7+ brainstorm cards seeded from Homer chapter/ending blocks so future Episode Playground work starts from book text instead of stale low-confidence splits.
 - Episode View now includes a non-canonical Playground subview so Chuck can test and copy possible episode sequences without writing manuscript, arrangement, production-state, publish, or public page files.
 - Episode 5 recorded-draft review created from the clean `values-toolkit` Draft View.
 - Episode 5 show-note prep packet created without publishing or promoting parked research/clips.

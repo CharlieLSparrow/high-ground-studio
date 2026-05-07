@@ -33,10 +33,11 @@ This does not mean the living manuscript has been normalized. It means the raw O
 
 ## Episode View Design Direction
 
-Episode View should become a production cockpit with two subviews:
+Episode View should become a production cockpit with three subviews:
 
 - Everything View: all candidate material, including raw/intake references, classified candidates, production notes, clip candidates, reaction cues, and unresolved decisions.
 - Draft View: the current curated episode draft, including selected Homer material, selected Charlie contributions, recording notes, show notes, and public-safe material when ready.
+- Playground View: a non-canonical browser-only workbench for trying and copying possible episode sequences before committing anything to manuscript, arrangement, production-state, publish, or public page files.
 
 Everything View must never publish directly. Draft View can become the source for public episode output only when the episode lifecycle status is `Live`.
 
@@ -48,7 +49,9 @@ The first read-only cockpit state now lives at:
 
 - `apps/web/content/books/learning-to-lead/episode-production/season-one.yml`
 
-This file carries Season One lifecycle status, recording status, intake references, arrangement keys, draft selected items, unresolved decisions, warnings, and next actions for Episodes 1-6.
+This file carries Season One lifecycle status, recording status, intake references, arrangement keys, draft selected items, unresolved decisions, warnings, and next actions.
+
+It now preserves Episodes 1-6 as the current recorded/prepped truth and adds low-confidence Episode 7+ brainstorm cards seeded from Homer chapter blocks. Those future cards exist to make Playground useful for arranging from book text first; they are not final future episode splits.
 
 Current boundaries:
 
@@ -85,6 +88,13 @@ Current boundaries:
 
 Any episode splits after Episode 6 should be treated as low-confidence placeholders. Do not optimize viewer code, manuscript structure, or arrangement strategy around those splits until the real production map is rebuilt from the actual book/episode plan.
 
+Current repo scaffold:
+
+- Episode 7 through Episode 17 are brainstorm cards only.
+- Their arrangements use `chapter-*-base` keys and one coarse Homer chapter/ending block each.
+- They intentionally exclude Charlie additions, research, clips, production notes, public publish files, and manuscript splitting.
+- They may be split, merged, renamed, reordered, or rebuilt after Homer/Charlie review.
+
 ## Next Action
 
-Review the Episode 5 structured intake with Homer/Charlie, then run a narrow Episode 5 living-manuscript normalization pass if the classification is accepted. Keep Episode 6 classified but pending post-recording review.
+Use Episode 5 Playground for sequence review, reconcile Episode 6 after recording confirmation, and use the Episode 7+ brainstorm cards only as book-text scaffolds for future planning.

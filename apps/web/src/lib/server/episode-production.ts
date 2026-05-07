@@ -416,6 +416,7 @@ function getSeasonOneProductionStateShapeWarnings(
 ) {
   const warnings: string[] = [];
   const seenKeys = new Set<string>();
+  const seenEpisodeNumbers = new Map<number, string>();
 
   for (const episode of episodes) {
     if (seenKeys.has(episode.key)) {
@@ -424,28 +425,45 @@ function getSeasonOneProductionStateShapeWarnings(
     }
 
     seenKeys.add(episode.key);
+
+    if (episode.episodeNumber !== null) {
+      const existingKey = seenEpisodeNumbers.get(episode.episodeNumber);
+
+      if (existingKey) {
+        warnings.push(
+          `Duplicate episodeNumber ${episode.episodeNumber} found on ${existingKey} and ${episode.key}.`,
+        );
+      } else {
+        seenEpisodeNumbers.set(episode.episodeNumber, episode.key);
+      }
+    }
   }
 
-  if (episodes.length !== 6) {
-    warnings.push(
-      `Season One production state expected 6 episodes but parsed ${episodes.length}.`,
-    );
+  const requiredBaseEpisodeKeys = [
+    "episode-01",
+    "episode-02",
+    "episode-03",
+    "episode-04",
+    "episode-05",
+    "episode-06",
+  ];
+
+  for (const key of requiredBaseEpisodeKeys) {
+    if (!seenKeys.has(key)) {
+      warnings.push(`Season One production state is missing ${key}.`);
+    }
   }
 
   const episodeFive = episodes.find((episode) => episode.key === "episode-05");
   const episodeSix = episodes.find((episode) => episode.key === "episode-06");
 
-  if (!episodeFive) {
-    warnings.push("Season One production state is missing episode-05.");
-  } else if (episodeFive.draftSelectedItems.length !== 6) {
+  if (episodeFive && episodeFive.draftSelectedItems.length !== 6) {
     warnings.push(
       `Episode 5 expected 6 draft selected items but parsed ${episodeFive.draftSelectedItems.length}.`,
     );
   }
 
-  if (!episodeSix) {
-    warnings.push("Season One production state is missing episode-06.");
-  } else if (episodeSix.draftSelectedItems.length !== 5) {
+  if (episodeSix && episodeSix.draftSelectedItems.length !== 5) {
     warnings.push(
       `Episode 6 expected 5 draft selected items but parsed ${episodeSix.draftSelectedItems.length}.`,
     );

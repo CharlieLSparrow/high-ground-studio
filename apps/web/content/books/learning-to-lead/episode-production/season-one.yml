@@ -233,3 +233,333 @@ episodes:
       - "Current podcast arrangement key values is broad and overlaps Episode 5."
       - "Raw file includes table fragments, duplicate drafts, and unresolved questions."
     nextAction: "After recording, compare the recorded shape against structured intake before normalizing or rebuilding the Episode 5/6 split."
+
+  episode-07:
+    episodeNumber: 7
+    title: "Chapter Three Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-three-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Three: None of it Works Unless You Do"
+        kind: "manuscript-block"
+        source: "homer-chapter-three-none-of-it-works-unless-you-do"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-three-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-08:
+    episodeNumber: 8
+    title: "Chapter Four Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-four-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Four: It Doesn't Hurt To Get Lucky"
+        kind: "manuscript-block"
+        source: "homer-chapter-four-it-doesnt-hurt-to-get-lucky"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-four-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-09:
+    episodeNumber: 9
+    title: "Chapter Five Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-five-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Five: Leaders Make It Happen"
+        kind: "manuscript-block"
+        source: "homer-chapter-five-leaders-make-it-happen"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-five-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-10:
+    episodeNumber: 10
+    title: "Chapter Six Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-six-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Six: Individuals Make A Team"
+        kind: "manuscript-block"
+        source: "homer-chapter-six-individuals-make-a-team"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-six-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-11:
+    episodeNumber: 11
+    title: "Chapter Seven Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-seven-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Seven: Clear Task, Purpose, And End State"
+        kind: "manuscript-block"
+        source: "homer-chapter-seven-clear-task-purpose-end-state"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-seven-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-12:
+    episodeNumber: 12
+    title: "Chapter Eight Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-eight-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Eight: Learn"
+        kind: "manuscript-block"
+        source: "homer-chapter-eight-learn"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-eight-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-13:
+    episodeNumber: 13
+    title: "Chapter Nine Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-nine-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Nine: Leadership Philosophy"
+        kind: "manuscript-block"
+        source: "homer-chapter-nine-leadership-philosophy"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-nine-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-14:
+    episodeNumber: 14
+    title: "Chapter Ten Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-ten-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Ten: Risk Assessment And Risk Reduction"
+        kind: "manuscript-block"
+        source: "homer-chapter-ten-risk-assessment-risk-reduction"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-ten-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-15:
+    episodeNumber: 15
+    title: "Chapter Eleven Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-eleven-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Eleven: What Is Important"
+        kind: "manuscript-block"
+        source: "homer-chapter-eleven-what-is-important"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-eleven-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-16:
+    episodeNumber: 16
+    title: "Chapter Twelve Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "chapter-twelve-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Chapter Twelve: Don't Forget To Enjoy It"
+        kind: "manuscript-block"
+        source: "homer-chapter-twelve-dont-forget-to-enjoy-it"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this chapter is one episode or needs smaller story/lesson splits."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test chapter-twelve-base from Homer book text before any canonical split or arrangement revision."
+
+  episode-17:
+    episodeNumber: 17
+    title: "Ending Base"
+    lifecycleStatus: "Brainstorm"
+    recordingStatus: "not recorded / chapter-seeded scaffold"
+    publicSlug: "TBD"
+    sourceConfidence: "low"
+    intakeFiles: []
+    arrangementKeys:
+      - "ending-base"
+    draftStatus: "chapter-seeded-book-text"
+    draftSelectedItems:
+      - label: "Ending And Extra Material"
+        kind: "manuscript-block"
+        source: "homer-ending-and-extra-material"
+        classification: "Homer baseline seed"
+        notes: "Chapter-seeded scaffold from canonical book text; split and sequence later."
+    recordingNotes:
+      - "Not recorded; future split is low-confidence."
+    showNotes:
+      - "No show-note prep has been selected yet."
+    unresolvedDecisions:
+      - "Decide whether this ending material is one episode, bonus material, or part of a closing episode."
+      - "Decide where Charlie interjections, clips, and references belong after the Homer spine is reviewed."
+    warnings:
+      - "Future Episode 7+ scaffolds are brainstorm cards and may be rebuilt from scratch."
+      - "Seed uses coarse Homer chapter block without splitting manuscript prose."
+      - "No research, clip, or production-note material has been promoted."
+    nextAction: "Use Playground to test ending-base from Homer book text before any canonical split or arrangement revision."

@@ -64,3 +64,58 @@ episodes:
       - homer-values-milk-down-the-drain
       - charlie-values-forgive-and-fire-standards-reflection
       - charlie-values-roy-coaching-before-removal-reflection
+  chapter-three-base:
+    title: "Chapter Three Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-three-none-of-it-works-unless-you-do
+  chapter-four-base:
+    title: "Chapter Four Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-four-it-doesnt-hurt-to-get-lucky
+  chapter-five-base:
+    title: "Chapter Five Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-five-leaders-make-it-happen
+  chapter-six-base:
+    title: "Chapter Six Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-six-individuals-make-a-team
+  chapter-seven-base:
+    title: "Chapter Seven Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-seven-clear-task-purpose-end-state
+  chapter-eight-base:
+    title: "Chapter Eight Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-eight-learn
+  chapter-nine-base:
+    title: "Chapter Nine Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-nine-leadership-philosophy
+  chapter-ten-base:
+    title: "Chapter Ten Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-ten-risk-assessment-risk-reduction
+  chapter-eleven-base:
+    title: "Chapter Eleven Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-eleven-what-is-important
+  chapter-twelve-base:
+    title: "Chapter Twelve Base"
+    status: "brainstorm"
+    blocks:
+      - homer-chapter-twelve-dont-forget-to-enjoy-it
+  ending-base:
+    title: "Ending Base"
+    status: "brainstorm"
+    blocks:
+      - homer-ending-and-extra-material
