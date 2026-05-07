@@ -58,6 +58,8 @@ export type SeasonOneEpisodeProductionState = {
   warnings: string[];
 };
 
+// Story Candidate planning still uses the original virtual-split parser names
+// internally so the first non-canonical planning layer stays stable.
 export type EpisodeVirtualSplitChunk = {
   id: string;
   title: string;
@@ -495,7 +497,7 @@ function normalizeVirtualSplitPlan(
   for (const chunk of chunks) {
     if (!manuscriptBlockIds.has(chunk.sourceBlockId)) {
       sourceWarnings.push(
-        `Virtual chunk ${chunk.id} references missing source block ${chunk.sourceBlockId}.`,
+        `Story Candidate ${chunk.id} references missing source block ${chunk.sourceBlockId}.`,
       );
     }
   }
@@ -710,7 +712,7 @@ export async function getLearningToLeadEpisodeVirtualSplitState(
       sourceLabel: null,
       episodes: [],
       warnings: [
-        "Episode virtual split file not found at content/books/learning-to-lead/episode-production/virtual-splits.yml.",
+        "Episode Story Candidate planning file not found at content/books/learning-to-lead/episode-production/virtual-splits.yml.",
       ],
     };
   }

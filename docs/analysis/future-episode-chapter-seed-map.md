@@ -18,7 +18,7 @@ This is planning state only. It does not split manuscript blocks, create public 
 
 | Episode | Arrangement key | Source block ID | Source word count | Split risk | Cue | Next action |
 | --- | --- | --- | ---: | --- | --- | --- |
-| 7 | `chapter-three-base` | `homer-chapter-three-none-of-it-works-unless-you-do` | 1800 | medium | maybe split | Active target: review the virtual split plan and decide whether Chapter Three is one episode or two. |
+| 7 | `chapter-three-base` | `homer-chapter-three-none-of-it-works-unless-you-do` | 1800 | medium | maybe split | Active target: review the Story Candidate plan and decide whether Chapter Three is one episode or two. |
 | 8 | `chapter-four-base` | `homer-chapter-four-it-doesnt-hurt-to-get-lucky` | 3440 | high | likely more than one episode | Treat as a future major split target; do not record from the coarse block without review. |
 | 9 | `chapter-five-base` | `homer-chapter-five-leaders-make-it-happen` | 2011 | high | likely more than one episode | Review for natural story/lesson seams before Charlie support or clips are added. |
 | 10 | `chapter-six-base` | `homer-chapter-six-individuals-make-a-team` | 3243 | high | likely more than one episode | Likely needs multiple episode cards or child manuscript blocks. |

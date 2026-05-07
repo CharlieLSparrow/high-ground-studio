@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Story Candidate layer defined as the natural unit between chapters and episodes.
+- Playground language updated so virtual chunks appear as Story Candidates, not canonical blocks.
+- Book-wide Story Candidate map created to guide future episode splits from Homer's manuscript.
 - Episode 7 virtual chunk cards added to Playground so Chapter Three can be planned before splitting manuscript prose.
 - Episode cards and Playground now show readable Homer/book text previews so arranging starts from the book instead of metadata.
 - Oversized block cues added so large Homer sections are easier to identify before splitting.

@@ -72,7 +72,7 @@ type EpisodeProductionPanel = {
   virtualSplitPlan: EpisodeVirtualSplitPlan | null;
 };
 
-type PlaygroundCopyKind = "arrangement" | "draft" | "virtual-checklist" | `stub:${string}`;
+type PlaygroundCopyKind = "arrangement" | "draft" | "story-checklist" | `stub:${string}`;
 
 const EMPTY_FILTERS: FilterState = {
   chapters: [],
@@ -1255,7 +1255,7 @@ function buildDraftSelectedItemsYaml({
 
 function buildVirtualSplitChecklist(plan: EpisodeVirtualSplitPlan) {
   if (plan.chunks.length === 0) {
-    return `# ${plan.episodeKey} virtual split checklist\n\nNo virtual chunks recorded yet.\n`;
+    return `# ${plan.episodeKey} story candidate checklist\n\nNo Story Candidates recorded yet.\n`;
   }
 
   const lines = plan.chunks.flatMap((chunk, index) => [
@@ -1268,14 +1268,14 @@ function buildVirtualSplitChecklist(plan: EpisodeVirtualSplitPlan) {
   ]);
 
   return [
-    `# ${plan.episodeKey} virtual split checklist`,
+    `# ${plan.episodeKey} story candidate checklist`,
     "",
     `Source block: \`${plan.sourceBlockId}\``,
     `Status: ${plan.status}`,
     "",
     ...lines,
     "",
-    "Planning only. These are not ManuscriptBlock IDs yet.",
+    "Planning only. These Story Candidates are not ManuscriptBlock IDs yet.",
   ].join("\n");
 }
 
@@ -1292,7 +1292,7 @@ function buildVirtualChunkStub(chunk: EpisodeVirtualSplitChunk) {
     `Charlie support opportunity: ${chunk.charlieSupportOpportunity}`,
     `Notes: ${chunk.notes}`,
     "",
-    "Warning: this is a virtual planning stub only. No ManuscriptBlock has been created yet.",
+    "Warning: this is a Story Candidate planning stub only. No ManuscriptBlock has been created yet.",
   ].join("\n");
 }
 
@@ -1703,13 +1703,13 @@ function EpisodeProductionPlaygroundView({
             <button
               type="button"
               onClick={() =>
-                copyPlaygroundText("virtual-checklist", virtualSplitChecklist)
+                copyPlaygroundText("story-checklist", virtualSplitChecklist)
               }
               className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
             >
-              {copiedKind === "virtual-checklist"
-                ? "Copied Virtual Checklist"
-                : "Copy virtual split checklist"}
+              {copiedKind === "story-checklist"
+                ? "Copied Story Checklist"
+                : "Copy story checklist"}
             </button>
           ) : null}
         </div>
@@ -1719,14 +1719,14 @@ function EpisodeProductionPlaygroundView({
         <section className="space-y-4 rounded-[32px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,248,232,0.5)] px-4 py-5">
           <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
             <div>
-              <PageEyebrow>Virtual Chunk Plan</PageEyebrow>
+              <PageEyebrow>Story Candidate Plan</PageEyebrow>
               <h3 className="m-0 mt-2 text-[1.35rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
-                Internal splits to test before touching the manuscript.
+                Movable story units to test before touching the manuscript.
               </h3>
               <p className="mb-0 mt-2 max-w-[760px] text-sm leading-6 text-[rgba(38,30,24,0.76)]">
-                These cards are not manuscript blocks and cannot be added to the
-                canonical sequence. Use them to review the shape, then copy a
-                checklist or future block stub for a later approved split pass.
+                Story Candidates sit between giant chapter blocks and tiny
+                paragraphs. They are not manuscript blocks and cannot be added
+                to the canonical sequence until a later approved split pass.
               </p>
             </div>
 
@@ -1738,7 +1738,7 @@ function EpisodeProductionPlaygroundView({
                 {virtualSplitPlan.sourceBlockId}
               </div>
               <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
-                {virtualSplitPlan.chunks.length} virtual chunks ·{" "}
+                {virtualSplitPlan.chunks.length} story candidates ·{" "}
                 {formatLabel(virtualSplitPlan.status)}
               </div>
             </div>
@@ -1763,7 +1763,7 @@ function EpisodeProductionPlaygroundView({
                     <div className="min-w-0">
                       <div className="flex flex-wrap gap-2">
                         <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.7)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
-                          Virtual chunk
+                          Story candidate
                         </span>
                         <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.7)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
                           Not a manuscript block
@@ -1789,7 +1789,7 @@ function EpisodeProductionPlaygroundView({
                     >
                       {copiedKind === stubKind
                         ? "Copied Stub"
-                        : "Copy future block stub"}
+                        : "Copy future story block stub"}
                     </button>
                   </div>
 

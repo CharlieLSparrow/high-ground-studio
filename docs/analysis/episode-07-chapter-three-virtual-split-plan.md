@@ -6,7 +6,7 @@ This is a proposed internal split plan for Episode 7 / Chapter Three. It does no
 
 The goal is to help Chuck test Chapter Three in Playground and decide whether the current coarse Homer chapter block should later become smaller reusable book/story/episode units.
 
-Status note: the six virtual chunks from this plan are now represented in the Episode Playground as non-canonical planning cards. They are still not real `ManuscriptBlock` IDs and should not be used in arrangement YAML.
+Status note: the six Story Candidates from this plan are now represented in the Episode Playground as non-canonical planning cards. They are still not real `ManuscriptBlock` IDs and should not be used in arrangement YAML.
 
 ## Current Episode 7 State
 
@@ -34,7 +34,7 @@ This makes Episode 7 useful in Playground, but it is not yet a final episode str
 
 Chapter Three follows Homer's mission experience as a working lesson: goals matter, but discipline, preparation, rule-following, language practice, listening, direct feedback, and hard companions only become useful when someone does the work.
 
-The current block mixes polished story material, leadership lessons, and rough source fragments. That is why this should be treated as a virtual split plan first, not a manuscript edit.
+The current block mixes polished story material, leadership lessons, and rough source fragments. That is why this should be treated as a Story Candidate plan first, not a manuscript edit.
 
 ## Proposed Virtual Chunks
 
@@ -123,4 +123,4 @@ Do not split the manuscript until Homer/Charlie choose the shape. The source blo
 
 ## Recommended Next Action
 
-Open Episode 7 in Playground, use this virtual split as the review guide, and decide whether to create real child `ManuscriptBlock` entries for chunks 1 through 5 while parking chunk 6 for human review.
+Open Episode 7 in Playground, use the Story Candidate cards as the review guide, and decide whether to create real child `ManuscriptBlock` entries for candidates 1 through 5 while parking candidate 6 for human review.
