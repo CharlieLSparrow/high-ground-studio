@@ -180,6 +180,7 @@ model User {
   appointmentsUpdated Appointment[] @relation("AppointmentUpdatedBy")
   coachingRequests    CoachingRequest[] @relation("CoachingRequestClient")
   assignedCoachingRequests CoachingRequest[] @relation("CoachingRequestCoach")
+  companySupportRequests CompanySupportRequest[]
 
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
 }
@@ -358,4 +359,23 @@ model CoachingRequest {
   @@index([clientUserId, createdAt])
   @@index([status, createdAt])
   @@index([assignedCoachUserId, status])
+}
+
+model CompanySupportRequest {
+  id                     String   @id @default(cuid())
+  name                   String
+  email                  String
+  phone                  String?
+  preferredContactMethod ContactPreference
+  supportType            String
+  note                   String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  userId                 String?
+
+  user                   User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([supportType, createdAt])
+  @@index([userId, createdAt])
 }
