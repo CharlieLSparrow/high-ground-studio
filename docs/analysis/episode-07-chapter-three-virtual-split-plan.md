@@ -6,6 +6,8 @@ This is a proposed internal split plan for Episode 7 / Chapter Three. It does no
 
 The goal is to help Chuck test Chapter Three in Playground and decide whether the current coarse Homer chapter block should later become smaller reusable book/story/episode units.
 
+Status note: the six virtual chunks from this plan are now represented in the Episode Playground as non-canonical planning cards. They are still not real `ManuscriptBlock` IDs and should not be used in arrangement YAML.
+
 ## Current Episode 7 State
 
 - Production key: `episode-07`

@@ -3,6 +3,8 @@ import "server-only";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
+import type { LivingManuscriptBlock } from "@/lib/server/living-manuscript";
+
 export const EPISODE_LIFECYCLE_STATUSES = [
   "Brainstorm",
   "Rough Draft",
@@ -56,8 +58,39 @@ export type SeasonOneEpisodeProductionState = {
   warnings: string[];
 };
 
+export type EpisodeVirtualSplitChunk = {
+  id: string;
+  title: string;
+  sourceBlockId: string;
+  sourceRangeSummary: string;
+  role: string;
+  recommendedPlacement: string;
+  splitRecommendation: string;
+  charlieSupportOpportunity: string;
+  notes: string;
+};
+
+export type EpisodeVirtualSplitPlan = {
+  episodeKey: string;
+  sourceBlockId: string;
+  status: string;
+  chunks: EpisodeVirtualSplitChunk[];
+  sourceWarnings: string[];
+};
+
+export type EpisodeVirtualSplitState = {
+  sourceLabel: string | null;
+  episodes: EpisodeVirtualSplitPlan[];
+  warnings: string[];
+};
+
 type RawEpisodeProductionEpisode = {
   key: string;
+  values: Record<string, unknown>;
+};
+
+type RawEpisodeVirtualSplitPlan = {
+  episodeKey: string;
   values: Record<string, unknown>;
 };
 
@@ -69,8 +102,19 @@ const EPISODE_PRODUCTION_RELATIVE_PATH = [
   "season-one.yml",
 ] as const;
 
+const EPISODE_VIRTUAL_SPLITS_RELATIVE_PATH = [
+  "content",
+  "books",
+  "learning-to-lead",
+  "episode-production",
+  "virtual-splits.yml",
+] as const;
+
 export const EPISODE_PRODUCTION_SOURCE_LABEL =
   EPISODE_PRODUCTION_RELATIVE_PATH.join("/");
+
+export const EPISODE_VIRTUAL_SPLITS_SOURCE_LABEL =
+  EPISODE_VIRTUAL_SPLITS_RELATIVE_PATH.join("/");
 
 const CONTENT_ROOT_RELATIVE_PATH = ["content"] as const;
 
@@ -91,6 +135,8 @@ const ARRAY_FIELDS = new Set([
 ]);
 
 const OBJECT_ARRAY_FIELDS = new Set(["draftSelectedItems"]);
+
+const VIRTUAL_SPLIT_ARRAY_FIELDS = new Set(["chunks"]);
 
 async function resolveRepoRelativePath(
   relativePath: readonly string[],
@@ -311,6 +357,158 @@ function parseSeasonOneProductionYaml(source: string) {
   return rawEpisodes;
 }
 
+function parseEpisodeVirtualSplitsYaml(source: string) {
+  const lines = source.split(/\r?\n/);
+  const plans: RawEpisodeVirtualSplitPlan[] = [];
+  let inVirtualSplits = false;
+  let currentPlan: RawEpisodeVirtualSplitPlan | null = null;
+  let currentArrayField: string | null = null;
+  let currentChunk: Record<string, unknown> | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    if (!inVirtualSplits) {
+      if (trimmed === "virtualSplits:") {
+        inVirtualSplits = true;
+      }
+
+      continue;
+    }
+
+    const episodeMatch = line.match(/^  ([A-Za-z0-9-]+):\s*$/);
+    if (episodeMatch) {
+      currentPlan = {
+        episodeKey: episodeMatch[1],
+        values: {},
+      };
+      plans.push(currentPlan);
+      currentArrayField = null;
+      currentChunk = null;
+      continue;
+    }
+
+    if (!currentPlan) {
+      continue;
+    }
+
+    const chunkItemMatch = line.match(/^      -\s+([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (
+      currentArrayField &&
+      VIRTUAL_SPLIT_ARRAY_FIELDS.has(currentArrayField) &&
+      chunkItemMatch
+    ) {
+      currentChunk = {
+        [chunkItemMatch[1]]: parseScalarValue(chunkItemMatch[2]),
+      };
+      const existingValue = currentPlan.values[currentArrayField];
+      const items = Array.isArray(existingValue) ? existingValue : [];
+      items.push(currentChunk);
+      currentPlan.values[currentArrayField] = items;
+      continue;
+    }
+
+    const chunkFieldMatch = line.match(/^        ([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (currentChunk && chunkFieldMatch) {
+      currentChunk[chunkFieldMatch[1]] = parseScalarValue(chunkFieldMatch[2]);
+      continue;
+    }
+
+    const fieldMatch = line.match(/^    ([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (fieldMatch) {
+      const [, key, rawValue] = fieldMatch;
+      const trimmedValue = rawValue.trim();
+      currentChunk = null;
+
+      if (!trimmedValue && VIRTUAL_SPLIT_ARRAY_FIELDS.has(key)) {
+        currentPlan.values[key] = [];
+        currentArrayField = key;
+        continue;
+      }
+
+      currentPlan.values[key] = parseScalarValue(rawValue);
+      currentArrayField = null;
+    }
+  }
+
+  return plans;
+}
+
+function readVirtualSplitChunks(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const record = entry as Record<string, unknown>;
+      const id = readString(record.id);
+      const title = readString(record.title);
+      const sourceBlockId = readString(record.sourceBlockId);
+
+      if (!id || !title || !sourceBlockId) {
+        return null;
+      }
+
+      return {
+        id,
+        title,
+        sourceBlockId,
+        sourceRangeSummary: readString(record.sourceRangeSummary),
+        role: readString(record.role),
+        recommendedPlacement: readString(record.recommendedPlacement),
+        splitRecommendation: readString(record.splitRecommendation),
+        charlieSupportOpportunity: readString(record.charlieSupportOpportunity),
+        notes: readString(record.notes),
+      } satisfies EpisodeVirtualSplitChunk;
+    })
+    .filter((entry): entry is EpisodeVirtualSplitChunk => Boolean(entry));
+}
+
+function normalizeVirtualSplitPlan(
+  rawPlan: RawEpisodeVirtualSplitPlan,
+  manuscriptBlockIds: Set<string>,
+) {
+  const sourceWarnings: string[] = [];
+  const values = rawPlan.values;
+  const sourceBlockId = readString(values.sourceBlockId);
+  const chunks = readVirtualSplitChunks(values.chunks);
+
+  if (!sourceBlockId) {
+    sourceWarnings.push(
+      `Virtual split plan ${rawPlan.episodeKey} is missing sourceBlockId.`,
+    );
+  } else if (!manuscriptBlockIds.has(sourceBlockId)) {
+    sourceWarnings.push(
+      `Virtual split plan ${rawPlan.episodeKey} references missing source block ${sourceBlockId}.`,
+    );
+  }
+
+  for (const chunk of chunks) {
+    if (!manuscriptBlockIds.has(chunk.sourceBlockId)) {
+      sourceWarnings.push(
+        `Virtual chunk ${chunk.id} references missing source block ${chunk.sourceBlockId}.`,
+      );
+    }
+  }
+
+  return {
+    episodeKey: rawPlan.episodeKey,
+    sourceBlockId,
+    status: readString(values.status) || "unknown",
+    chunks,
+    sourceWarnings,
+  } satisfies EpisodeVirtualSplitPlan;
+}
+
 async function resolveProductionReferencePath(reference: string) {
   const contentRoot = await resolveRepoRelativePath(CONTENT_ROOT_RELATIVE_PATH);
   const bookRoot = await resolveRepoRelativePath(BOOK_ROOT_RELATIVE_PATH);
@@ -497,5 +695,37 @@ export async function getLearningToLeadEpisodeProductionState(): Promise<SeasonO
     sourceLabel: EPISODE_PRODUCTION_SOURCE_LABEL,
     episodes,
     warnings: parserWarnings,
+  };
+}
+
+export async function getLearningToLeadEpisodeVirtualSplitState(
+  manuscriptBlocks: Pick<LivingManuscriptBlock, "id">[],
+): Promise<EpisodeVirtualSplitState> {
+  const sourcePath = await resolveRepoRelativePath(
+    EPISODE_VIRTUAL_SPLITS_RELATIVE_PATH,
+  );
+
+  if (!sourcePath) {
+    return {
+      sourceLabel: null,
+      episodes: [],
+      warnings: [
+        "Episode virtual split file not found at content/books/learning-to-lead/episode-production/virtual-splits.yml.",
+      ],
+    };
+  }
+
+  const manuscriptBlockIds = new Set(manuscriptBlocks.map((block) => block.id));
+  const rawSource = await readFile(sourcePath, "utf8");
+  const rawPlans = parseEpisodeVirtualSplitsYaml(rawSource);
+  const episodes = rawPlans.map((plan) =>
+    normalizeVirtualSplitPlan(plan, manuscriptBlockIds),
+  );
+  const warnings = episodes.flatMap((episode) => episode.sourceWarnings);
+
+  return {
+    sourceLabel: EPISODE_VIRTUAL_SPLITS_SOURCE_LABEL,
+    episodes,
+    warnings,
   };
 }

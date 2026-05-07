@@ -7,6 +7,9 @@ import PageEyebrow from "@/components/ui/PageEyebrow";
 import PaperCard from "@/components/ui/PaperCard";
 import type {
   EpisodeProductionEpisode,
+  EpisodeVirtualSplitChunk,
+  EpisodeVirtualSplitPlan,
+  EpisodeVirtualSplitState,
   SeasonOneEpisodeProductionState,
 } from "@/lib/server/episode-production";
 import type {
@@ -22,6 +25,7 @@ type ViewerProps = {
   bookArrangement: LivingManuscriptBookArrangement;
   podcastArrangement: LivingManuscriptPodcastArrangement;
   episodeProductionState: SeasonOneEpisodeProductionState;
+  episodeVirtualSplitState: EpisodeVirtualSplitState;
 };
 
 type FilterState = {
@@ -65,9 +69,10 @@ type EpisodeGroup = {
 type EpisodeProductionPanel = {
   production: EpisodeProductionEpisode;
   arrangement: EpisodeGroup | null;
+  virtualSplitPlan: EpisodeVirtualSplitPlan | null;
 };
 
-type PlaygroundCopyKind = "arrangement" | "draft";
+type PlaygroundCopyKind = "arrangement" | "draft" | "virtual-checklist" | `stub:${string}`;
 
 const EMPTY_FILTERS: FilterState = {
   chapters: [],
@@ -1248,6 +1253,49 @@ function buildDraftSelectedItemsYaml({
   return `draftSelectedItems:\n${lines.join("\n")}\n`;
 }
 
+function buildVirtualSplitChecklist(plan: EpisodeVirtualSplitPlan) {
+  if (plan.chunks.length === 0) {
+    return `# ${plan.episodeKey} virtual split checklist\n\nNo virtual chunks recorded yet.\n`;
+  }
+
+  const lines = plan.chunks.flatMap((chunk, index) => [
+    `- [ ] ${index + 1}. ${chunk.title}`,
+    `  - future block ID: \`${chunk.id}\``,
+    `  - source block: \`${chunk.sourceBlockId}\``,
+    `  - placement: ${chunk.recommendedPlacement}`,
+    `  - recommendation: ${chunk.splitRecommendation}`,
+    `  - summary: ${chunk.sourceRangeSummary}`,
+  ]);
+
+  return [
+    `# ${plan.episodeKey} virtual split checklist`,
+    "",
+    `Source block: \`${plan.sourceBlockId}\``,
+    `Status: ${plan.status}`,
+    "",
+    ...lines,
+    "",
+    "Planning only. These are not ManuscriptBlock IDs yet.",
+  ].join("\n");
+}
+
+function buildVirtualChunkStub(chunk: EpisodeVirtualSplitChunk) {
+  return [
+    `Proposed future block ID: ${chunk.id}`,
+    `Title: ${chunk.title}`,
+    `Source block ID: ${chunk.sourceBlockId}`,
+    "",
+    `Summary: ${chunk.sourceRangeSummary}`,
+    `Role: ${chunk.role}`,
+    `Recommended placement: ${chunk.recommendedPlacement}`,
+    `Split recommendation: ${chunk.splitRecommendation}`,
+    `Charlie support opportunity: ${chunk.charlieSupportOpportunity}`,
+    `Notes: ${chunk.notes}`,
+    "",
+    "Warning: this is a virtual planning stub only. No ManuscriptBlock has been created yet.",
+  ].join("\n");
+}
+
 async function copyText(value: string) {
   if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
     return false;
@@ -1480,10 +1528,12 @@ function EpisodeProductionPlaygroundView({
   episode,
   arrangement,
   blocks,
+  virtualSplitPlan,
 }: {
   episode: EpisodeProductionEpisode;
   arrangement: EpisodeGroup | null;
   blocks: LivingManuscriptBlock[];
+  virtualSplitPlan: EpisodeVirtualSplitPlan | null;
 }) {
   const blockById = useMemo(
     () => new Map(blocks.map((block) => [block.id, block])),
@@ -1528,6 +1578,9 @@ function EpisodeProductionPlaygroundView({
   const draftSelectedItemsYaml = buildDraftSelectedItemsYaml({
     sequence: sequenceBlocks,
   });
+  const virtualSplitChecklist = virtualSplitPlan
+    ? buildVirtualSplitChecklist(virtualSplitPlan)
+    : "";
 
   function addBlock(blockId: string) {
     setSequenceIds((current) =>
@@ -1555,10 +1608,8 @@ function EpisodeProductionPlaygroundView({
     });
   }
 
-  async function copyYaml(kind: PlaygroundCopyKind) {
-    const copied = await copyText(
-      kind === "arrangement" ? arrangementYaml : draftSelectedItemsYaml,
-    );
+  async function copyPlaygroundText(kind: PlaygroundCopyKind, value: string) {
+    const copied = await copyText(value);
 
     if (copied) {
       setCopiedKind(kind);
@@ -1632,7 +1683,7 @@ function EpisodeProductionPlaygroundView({
           </button>
           <button
             type="button"
-            onClick={() => copyYaml("arrangement")}
+            onClick={() => copyPlaygroundText("arrangement", arrangementYaml)}
             className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
           >
             {copiedKind === "arrangement"
@@ -1641,15 +1692,128 @@ function EpisodeProductionPlaygroundView({
           </button>
           <button
             type="button"
-            onClick={() => copyYaml("draft")}
+            onClick={() => copyPlaygroundText("draft", draftSelectedItemsYaml)}
             className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
           >
             {copiedKind === "draft"
               ? "Copied Draft Items"
               : "Copy draftSelectedItems YAML"}
           </button>
+          {virtualSplitPlan ? (
+            <button
+              type="button"
+              onClick={() =>
+                copyPlaygroundText("virtual-checklist", virtualSplitChecklist)
+              }
+              className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+            >
+              {copiedKind === "virtual-checklist"
+                ? "Copied Virtual Checklist"
+                : "Copy virtual split checklist"}
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {virtualSplitPlan ? (
+        <section className="space-y-4 rounded-[32px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,248,232,0.5)] px-4 py-5">
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+            <div>
+              <PageEyebrow>Virtual Chunk Plan</PageEyebrow>
+              <h3 className="m-0 mt-2 text-[1.35rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+                Internal splits to test before touching the manuscript.
+              </h3>
+              <p className="mb-0 mt-2 max-w-[760px] text-sm leading-6 text-[rgba(38,30,24,0.76)]">
+                These cards are not manuscript blocks and cannot be added to the
+                canonical sequence. Use them to review the shape, then copy a
+                checklist or future block stub for a later approved split pass.
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-[rgba(96,62,28,0.14)] bg-[rgba(255,255,255,0.5)] px-4 py-3 text-sm text-[rgba(38,30,24,0.8)]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+                Source Block
+              </div>
+              <div className="mt-1 break-all font-mono text-xs">
+                {virtualSplitPlan.sourceBlockId}
+              </div>
+              <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+                {virtualSplitPlan.chunks.length} virtual chunks ·{" "}
+                {formatLabel(virtualSplitPlan.status)}
+              </div>
+            </div>
+          </div>
+
+          {virtualSplitPlan.sourceWarnings.length > 0 ? (
+            <div className="rounded-[24px] border border-[rgba(179,42,42,0.2)] bg-[rgba(179,42,42,0.08)] px-4 py-4 text-sm leading-6 text-[rgba(94,26,26,0.9)]">
+              {virtualSplitPlan.sourceWarnings.join(" ")}
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 xl:grid-cols-2">
+            {virtualSplitPlan.chunks.map((chunk, index) => {
+              const stubKind: PlaygroundCopyKind = `stub:${chunk.id}`;
+
+              return (
+                <article
+                  key={chunk.id}
+                  className="rounded-[28px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,255,255,0.55)] px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.7)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                          Virtual chunk
+                        </span>
+                        <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.7)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                          Not a manuscript block
+                        </span>
+                        <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.7)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                          Planning only
+                        </span>
+                      </div>
+                      <h4 className="m-0 mt-3 text-[1.12rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+                        {index + 1}. {chunk.title}
+                      </h4>
+                      <div className="mt-2 break-all font-mono text-xs text-[rgba(38,30,24,0.62)]">
+                        {chunk.id}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyPlaygroundText(stubKind, buildVirtualChunkStub(chunk))
+                      }
+                      className="shrink-0 rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.6)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+                    >
+                      {copiedKind === stubKind
+                        ? "Copied Stub"
+                        : "Copy future block stub"}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                    <MetadataRow label="Source" value={<code>{chunk.sourceBlockId}</code>} />
+                    <MetadataRow label="Range" value={chunk.sourceRangeSummary} />
+                    <MetadataRow label="Role" value={chunk.role} />
+                    <MetadataRow label="Placement" value={chunk.recommendedPlacement} />
+                    <MetadataRow
+                      label="Split"
+                      value={formatLabel(chunk.splitRecommendation)}
+                    />
+                    <MetadataRow
+                      label="Charlie Fit"
+                      value={chunk.charlieSupportOpportunity}
+                    />
+                    <MetadataRow label="Notes" value={chunk.notes} />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-2">
         <div className="space-y-4">
@@ -1940,6 +2104,7 @@ function EpisodeProductionCockpit({
             episode={production}
             arrangement={arrangement}
             blocks={blocks}
+            virtualSplitPlan={panel.virtualSplitPlan}
           />
         )}
       </div>
@@ -1952,6 +2117,7 @@ export default function LivingManuscriptViewerClient({
   bookArrangement,
   podcastArrangement,
   episodeProductionState,
+  episodeVirtualSplitState,
 }: ViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("book");
   const [episodeViewMode, setEpisodeViewMode] =
@@ -2075,6 +2241,12 @@ export default function LivingManuscriptViewerClient({
     const arrangementByKey = new Map(
       episodeGroups.map((episode) => [episode.arrangementKey, episode]),
     );
+    const virtualSplitByEpisodeKey = new Map(
+      episodeVirtualSplitState.episodes.map((episode) => [
+        episode.episodeKey,
+        episode,
+      ]),
+    );
 
     return episodeProductionState.episodes.map((production) => {
       const arrangement =
@@ -2085,9 +2257,10 @@ export default function LivingManuscriptViewerClient({
       return {
         production,
         arrangement,
+        virtualSplitPlan: virtualSplitByEpisodeKey.get(production.key) ?? null,
       };
     });
-  }, [episodeGroups, episodeProductionState.episodes]);
+  }, [episodeGroups, episodeProductionState.episodes, episodeVirtualSplitState.episodes]);
 
   const selectedProductionPanel =
     productionEpisodePanels.find(

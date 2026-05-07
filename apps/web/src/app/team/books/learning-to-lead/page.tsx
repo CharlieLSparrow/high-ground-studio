@@ -2,7 +2,10 @@ import BackLink from "@/components/ui/BackLink";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import LivingManuscriptViewerClient from "./LivingManuscriptViewerClient";
-import { getLearningToLeadEpisodeProductionState } from "@/lib/server/episode-production";
+import {
+  getLearningToLeadEpisodeProductionState,
+  getLearningToLeadEpisodeVirtualSplitState,
+} from "@/lib/server/episode-production";
 import {
   getLearningToLeadBookArrangement,
   getLearningToLeadManuscript,
@@ -27,6 +30,9 @@ export default async function LearningToLeadBookPage() {
   const bookArrangement = await getLearningToLeadBookArrangement(manuscript);
   const podcastArrangement = await getLearningToLeadPodcastArrangement(manuscript);
   const episodeProductionState = await getLearningToLeadEpisodeProductionState();
+  const episodeVirtualSplitState = await getLearningToLeadEpisodeVirtualSplitState(
+    manuscript.blocks,
+  );
   const clientManuscript = {
     ...manuscript,
     sourcePath: MANUSCRIPT_SOURCE_LABEL,
@@ -135,6 +141,7 @@ export default async function LearningToLeadBookPage() {
         bookArrangement={bookArrangement}
         podcastArrangement={clientPodcastArrangement}
         episodeProductionState={episodeProductionState}
+        episodeVirtualSplitState={episodeVirtualSplitState}
       />
     </section>
   );
