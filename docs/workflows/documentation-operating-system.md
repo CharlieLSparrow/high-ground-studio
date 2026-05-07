@@ -6,6 +6,19 @@ This repo treats documentation as product infrastructure. Docs should help a per
 
 The rule is simple: if a conclusion will matter next turn, it belongs somewhere under `docs/`.
 
+## Operating Priority
+
+Documentation should keep the project pointed at production, not paperwork.
+
+Priority order:
+1. Book writing and podcast episode prep.
+2. Revenue from the website.
+3. Content engine work that serves writing, episode prep, publishing, recording, or revenue.
+4. Infrastructure and repo health.
+5. Parked experiments.
+
+Docs should make it obvious when a week has moved the books and episodes forward. If content-engine work cannot say how it helps production or revenue, it belongs in Parked until that connection is clear.
+
 ## Audiences
 
 ### Public Docs
@@ -202,6 +215,7 @@ Where they live:
 What belongs here:
 - now/next/later decisions
 - kanban operating model
+- priority lanes for Book & Episodes, Revenue, Content Engine, Infrastructure / Repo Health, and Parked Experiments
 - scoped future work
 - parked questions
 - decision points
@@ -214,6 +228,7 @@ What does not belong here:
 Tone:
 - clear, honest, and lightweight
 - enough structure to choose the next move
+- practical about the priority order: books and episodes first, revenue second, content engine third
 
 Update cadence:
 - update weekly or when priorities change

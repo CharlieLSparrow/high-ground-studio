@@ -38,6 +38,20 @@ Date: 2026-05-07
 - A public-facing draft field guide titled `Welcome To High Ground Odyssey`.
 - A weekly ship log template plus an initial entry for the week of 2026-05-04.
 
+## Priority Addendum
+
+The operating model now makes the priority order explicit:
+1. Book writing and podcast episode prep.
+2. Website revenue.
+3. Content engine work that serves production or revenue.
+4. Infrastructure / repo health.
+5. Parked experiments.
+
+Added rules:
+- every week should show visible movement in Book & Episodes unless a true emergency blocks it
+- content-engine work must explain how it helps writing, episode prep, publishing, recording, or revenue
+- weekly ship logs should lead with Book / Episode Progress, Revenue Progress, Content Engine Progress, and Decisions Needed From Homer before listing shipped work
+
 ## Intentionally Not Changed
 
 - No product code was changed.
@@ -57,6 +71,7 @@ Date: 2026-05-07
 - `git log --oneline -n 10`
 - `git diff --check`
 - `git status --short --branch`
+- Addendum validation also used `git diff --check` and `git status --short --branch`.
 
 ## Known Limitations
 

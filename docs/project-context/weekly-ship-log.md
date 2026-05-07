@@ -5,13 +5,17 @@ This is a lightweight proof-of-progress artifact Chuck can show Homer.
 It should make the week visible without turning progress into a parade float.
 
 Use it to answer:
-- what shipped
-- what changed
-- what is safer now
-- what remains manual
-- what is blocked
-- what help or decision is needed from Homer
-- what next week is for
+- Book / Episode Progress
+- Revenue Progress
+- Content Engine Progress
+- Decisions Needed From Homer
+- What Shipped
+- What Remains Manual
+- Next Week's Focus
+
+Priority rule:
+- Every week should show visible movement in Book & Episodes unless a true emergency blocks it.
+- Content-engine work must explain how it helps writing, episode prep, publishing, recording, or revenue.
 
 ## Weekly Template
 
@@ -22,17 +26,26 @@ Use it to answer:
 
 One plain sentence about the week.
 
-### Shipped
+### Book / Episode Progress
+
+- What moved in book writing, episode prep, recording, publishing, or story decisions.
+- If nothing moved, say why and name the blocker.
+
+### Revenue Progress
+
+- Coaching, offers, donation, merch, memberships, paid content, or audience-to-revenue progress.
+
+### Content Engine Progress
+
+- Tooling or workflow work, with one sentence explaining how it serves writing, episode prep, publishing, recording, or revenue.
+
+### Decisions Needed From Homer
+
+- One to three decisions or reviews.
+
+### What Shipped
 
 - Thing shipped: why it matters. Commit: `<hash or link>`
-
-### What Changed
-
-- Product, docs, workflow, or operational changes that are now true.
-
-### What Is Safer Now
-
-- Build stability, clearer docs, reduced ambiguity, better fallback behavior, or safer handoff.
 
 ### What Remains Manual
 
@@ -41,10 +54,6 @@ One plain sentence about the week.
 ### Blocked Or Waiting
 
 - Decisions, credentials, production setup, review, or content approval.
-
-### Help Needed From Homer
-
-- One to three decisions or reviews.
 
 ### Next Week Focus
 
@@ -57,7 +66,31 @@ One plain sentence about the week.
 
 The coaching path moved from "promising front door" to a clearer, documented operating workflow with manual scheduling, contribution links, and safer handoffs.
 
-### Shipped
+### Book / Episode Progress
+
+- No direct book-writing or podcast episode-prep artifact shipped in this slice.
+- That is the important warning from this addendum: coaching and infrastructure made progress, but next week should show visible Book & Episodes movement unless a true emergency blocks it.
+- Likely next move: choose the next book or episode production artifact and make one concrete writing/prep commit before pulling more infrastructure work.
+
+### Revenue Progress
+
+- Coaching now has a clearer request-to-appointment operating path.
+- Donation-supported coaching has an external contribution-link path via `HGO_COACHING_DONATION_URL`.
+- Company family support now has a public request/contribution surface.
+- Internal Resend notifications help the team respond to revenue-adjacent requests without blocking the user path.
+
+### Content Engine Progress
+
+- The coaching/docs sync made the repo memory safer, but this is supporting work, not the main event.
+- Future content-engine work should be justified by how it helps write books, prepare episodes, publish/record, or create revenue.
+
+### Decisions Needed From Homer
+
+- Review whether the public coaching language feels like Homer.
+- Decide whether the next integration priority is email delivery logging, Google Calendar sync, or SMS/Twilio.
+- Pick the next Book & Episodes slice that should visibly move next week.
+
+### What Shipped
 
 - Synced coaching workflow docs to match current code truth: request flow, dashboard status, internal queue, appointment conversion, donation links, calendar links, Resend email, dormant SMS, and inactive Stripe Checkout. Commit: [`85d6f88`](https://github.com/CharlieLSparrow/high-ground-studio/commit/85d6f885d9652feaf1db64c657ffc2d6dbdde1d2)
 - Added the company family support page with request capture and best-effort internal email notification. Commit: [`bf18acf`](https://github.com/CharlieLSparrow/high-ground-studio/commit/bf18acfe32f637ccd99bb4ac1bcff50d07d15803)
@@ -100,12 +133,6 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 - SMS/Twilio needs an explicit operational decision before wiring.
 - Public field-guide docs need review before any website route is created.
 
-### Help Needed From Homer
-
-- Review whether the public coaching language feels like Homer.
-- Decide whether the next integration priority is email delivery logging, Google Calendar sync, or SMS/Twilio.
-- Confirm whether the donation-supported wording is clear enough for real visitors.
-
 ### Next Week Focus
 
-- Turn the documentation and kanban model into a practical weekly rhythm, then choose one narrow integration slice to make the coaching workflow safer.
+- Move one concrete Book & Episodes artifact first, then choose one narrow revenue-supporting integration slice only if the writing/episode lane is not being starved.

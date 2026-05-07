@@ -6,6 +6,33 @@ This model makes progress visible without turning the board into a second job.
 
 The current app already has a lightweight internal kanban surface at `/team/kanban`, with source data at `apps/web/content/internal/kanban/board.json`. This document defines the operating model around that board. It does not change product code.
 
+## Priority Order
+
+The board exists to keep the real project moving, not to reward tidy infrastructure.
+
+Priority order:
+1. Book writing and podcast episode prep are highest priority. If books are not being written, episodes are not being prepared, and recording/publishing is not moving, the project is stuck.
+2. Revenue from the website is second priority. This includes coaching, merch, donation-supported sessions, memberships, Patreon-like subscriptions, paid content, or other monetization paths.
+3. The content engine is third priority. It matters deeply, but it exists to serve writing, episode prep, publishing, recording, and revenue.
+4. Infrastructure and repo health support the first three priorities.
+5. Parked experiments stay visible without stealing the week.
+
+Weekly rule:
+- Every week should show visible movement in Book & Episodes unless a true emergency blocks it.
+
+Content-engine rule:
+- Content-engine work must say how it helps writing, episode prep, publishing, recording, or revenue. If it cannot answer that, park it.
+
+## Workstreams
+
+Use workstreams as lanes across the board. They answer "what kind of progress is this?"
+
+- Book & Episodes: book writing, manuscript shaping, episode prep, recording prep, publishing readiness, story decisions, guest/research prep.
+- Revenue: coaching, merch, donation-supported sessions, memberships, subscriptions, paid content, offers, checkout/payment decisions.
+- Content Engine: content tooling, packet/public sync, metadata, manuscript cockpit, publishing workflow support.
+- Infrastructure / Repo Health: builds, auth, Prisma, deployment, cleanup, docs safety, validation, backup artifacts.
+- Parked Experiments: good ideas not yet allowed to consume weekly focus.
+
 ## Board Columns
 
 ### Inbox
@@ -112,6 +139,7 @@ Do not change `board.json` during a docs-only pass unless explicitly asked.
 ## Card Title
 
 - Status:
+- Workstream:
 - Owner:
 - Area:
 - Priority:
@@ -129,6 +157,11 @@ Do not change `board.json` during a docs-only pass unless explicitly asked.
 ## Labels And Tags
 
 Recommended tags:
+- `workstream:book-episodes`
+- `workstream:revenue`
+- `workstream:content-engine`
+- `workstream:infra`
+- `workstream:parked-experiment`
 - `area:coaching`
 - `area:calendar`
 - `area:payments`
@@ -169,6 +202,11 @@ Good acceptance:
 - known limitations captured
 
 If a Codex task discovers three new tasks, finish the current task and add the new tasks as cards. Do not secretly start the next refactor.
+
+Priority check:
+- Before pulling a Codex card, ask whether Book & Episodes moved this week.
+- If the card is content-engine work, write the sentence: "This helps writing, episode prep, publishing, recording, or revenue by..."
+- If that sentence is weak, clarify or park the card.
 
 ## Keeping Cards Small Without Trapping Architecture
 
@@ -214,14 +252,14 @@ https://github.com/CharlieLSparrow/high-ground-studio/commit/<commit-hash>
 
 Each week, copy the shipped and validated cards into `docs/project-context/weekly-ship-log.md`.
 
-The update should answer:
-- What shipped?
-- What changed for users or the team?
-- What is safer now?
-- What remains manual?
-- What is blocked?
-- What decision or help is needed from Homer?
-- What is next week's focus?
+The update should lead in this order:
+- Book / Episode Progress
+- Revenue Progress
+- Content Engine Progress
+- Decisions Needed From Homer
+- What Shipped
+- What Remains Manual
+- Next Week's Focus
 
 Keep it readable in five minutes.
 
@@ -234,19 +272,22 @@ Rules:
 - no duplicate board and docs truth
 - shipped cards need proof, not poetry
 - important decisions go in docs, not only in card comments
+- Book & Episodes should not disappear behind infrastructure unless there is a real emergency
+- content-engine cards must name the production or revenue outcome they serve
 
 The board should be a trail of breadcrumbs, not a second mountain.
 
 ## Sample Board
 
-| Column | Card | Owner | Current truth | Next step |
-| --- | --- | --- | --- | --- |
-| Shipped | Coaching workflow current-state sync | Codex | Docs now match the Prisma-backed request, conversion, email, donation-link, and calendar-link reality. | Use as source of truth for next coaching integration. |
-| Shipped | Donation/payment links | Codex | Pay-what-you-can support is an external URL via `HGO_COACHING_DONATION_URL`; no Stripe Checkout. | Keep link flow until payment reconciliation is worth building. |
-| Ready | Email logging | Codex | Resend email is best-effort with no persisted delivery status. | Add a narrow delivery log plan before implementation. |
-| Clarify | Calendar integration | Charlie/Homer | Google Calendar is link-generation only. | Decide whether staff-authenticated API sync is worth the account and consent setup. |
-| Parked | SMS/Twilio | Charlie/Homer | Twilio helper exists but coaching actions do not call it. | Revisit after consent, STOP/HELP handling, and operational need are clear. |
-| Clarify | Manuscript cockpit | Charlie | Living manuscript docs exist; public routing is separate. | Define the next non-publish internal editing surface before touching manuscript files. |
-| Ready | Public docs / field guide | Charlie | Draft public docs now live under `docs/public/`; not wired to the site. | Review voice and decide which draft should become the first public page. |
-| Parked | GCP migration | Charlie | No active migration task in repo docs. | Create a discovery card only when a deployment target decision is active. |
-| Inbox | Repo hygiene | Codex | Backup files, `.DS_Store`, and generated artifacts exist. | Audit cleanup candidates in a dedicated no-product-change pass. |
+| Workstream | Column | Card | Owner | Current truth | Next step |
+| --- | --- | --- | --- | --- | --- |
+| Book & Episodes | Ready | Next book/episode production slice | Charlie/Homer | This must stay first; recent repo work has focused more on coaching/docs than direct episode production. | Pick the next writing or episode-prep artifact and move it this week. |
+| Revenue | Shipped | Coaching workflow current-state sync | Codex | Docs now match the Prisma-backed request, conversion, email, donation-link, and calendar-link reality. | Use as source of truth for next coaching integration. |
+| Revenue | Shipped | Donation/payment links | Codex | Pay-what-you-can support is an external URL via `HGO_COACHING_DONATION_URL`; no Stripe Checkout. | Keep link flow until payment reconciliation is worth building. |
+| Revenue | Ready | Email logging | Codex | Resend email is best-effort with no persisted delivery status. | Add a narrow delivery log plan before implementation. |
+| Revenue | Clarify | Calendar integration | Charlie/Homer | Google Calendar is link-generation only. | Decide whether staff-authenticated API sync is worth the account and consent setup. |
+| Revenue | Parked | SMS/Twilio | Charlie/Homer | Twilio helper exists but coaching actions do not call it. | Revisit after consent, STOP/HELP handling, and operational need are clear. |
+| Content Engine | Clarify | Manuscript cockpit | Charlie | Living manuscript docs exist; public routing is separate. | Define how this directly helps writing or episode prep before touching manuscript files. |
+| Revenue | Ready | Public docs / field guide | Charlie | Draft public docs now live under `docs/public/`; not wired to the site. | Review voice and decide which draft should become the first public page. |
+| Parked Experiments | Parked | GCP migration | Charlie | No active migration task in repo docs. | Create a discovery card only when a deployment target decision is active. |
+| Infrastructure / Repo Health | Inbox | Repo hygiene | Codex | Backup files, `.DS_Store`, and generated artifacts exist. | Audit cleanup candidates only after Book & Episodes and Revenue are not being starved. |
