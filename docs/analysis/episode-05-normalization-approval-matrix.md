@@ -8,6 +8,8 @@ This matrix is for Homer, Charlie, and Chuck approval before any edits are made 
 
 It converts the Episode 5 normalization dry run into a decision table: approve, park, revise, or reject. The defaults below are recommendations for review, not canonical manuscript changes.
 
+Status note: the four `approve` default Charlie/reflection blocks were created in the narrow Episode 5 normalization pass on 2026-05-07. All parked, revise-needed, research, clip, production-note, arrangement, and Episode 6 decisions remain open.
+
 ## Decision Legend
 
 - Approve: safe to include in the next narrow normalization pass if Homer/Charlie agree.

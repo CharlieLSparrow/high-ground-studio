@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode 5 narrow normalization added four approved Charlie/reflection blocks while preserving Homer baseline prose and leaving research, clips, production notes, arrangements, and Episode 6 untouched.
 - Episode 5 approval matrix created so Homer/Charlie can approve, park, revise, or reject proposed blocks before canonical manuscript edits.
 - Episode 5 normalization dry run created so the next manuscript edit can be scoped and reviewed before canonical changes.
 - Episode 5 review packet created from the hardened cockpit and structured intake; it prepares the next manuscript normalization pass without changing canonical manuscript truth yet.
