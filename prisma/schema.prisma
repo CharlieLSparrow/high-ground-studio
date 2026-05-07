@@ -118,6 +118,15 @@ enum CoachingRequestStatus {
   DECLINED
 }
 
+enum StoryDraftStatus {
+  ROUGH
+  NEEDS_HOMER_REVIEW
+  NEEDS_CHUCK_REVIEW
+  APPROVED_FOR_PROMOTION
+  PROMOTED
+  PARKED
+}
+
 // The canonical human/app identity record.
 //
 // Source of truth:
@@ -181,6 +190,9 @@ model User {
   coachingRequests    CoachingRequest[] @relation("CoachingRequestClient")
   assignedCoachingRequests CoachingRequest[] @relation("CoachingRequestCoach")
   companySupportRequests CompanySupportRequest[]
+  storyDraftsCreated  StoryDraft[] @relation("StoryDraftCreatedBy")
+  storyDraftsUpdated  StoryDraft[] @relation("StoryDraftUpdatedBy")
+  storyDraftsReviewed StoryDraft[] @relation("StoryDraftReviewedBy")
 
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
 }
@@ -378,4 +390,36 @@ model CompanySupportRequest {
   @@index([createdAt])
   @@index([supportType, createdAt])
   @@index([userId, createdAt])
+}
+
+model StoryDraft {
+  id                  String           @id @default(cuid())
+  storyCandidateId    String
+  storyCandidateTitle String?
+  sourceBlockId       String
+  episodeKey          String?
+  episodeNumber       Int?
+  arrangementKey      String?
+  title               String
+  body                String
+  notes               String?
+  supportNotes        String?
+  status              StoryDraftStatus @default(ROUGH)
+  createdByUserId     String
+  updatedByUserId     String?
+  reviewedByUserId    String?
+  approvedAt          DateTime?
+  promotedAt          DateTime?
+  promotedBlockId     String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  createdBy           User             @relation("StoryDraftCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy           User?            @relation("StoryDraftUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy          User?            @relation("StoryDraftReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([storyCandidateId, status])
+  @@index([sourceBlockId, status])
+  @@index([episodeKey, status])
+  @@index([createdByUserId, createdAt])
 }

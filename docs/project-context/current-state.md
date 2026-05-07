@@ -41,6 +41,7 @@ High Ground Studio is a monorepo with:
 - `/coaching` is a stable public front door for coaching offers and sign-in handoff.
 - New coaching requests create/confirm the client role and client profile, store a `CoachingRequest`, and attempt a best-effort internal Resend email notification after the database transaction commits.
 - Coaching request email notifications go to active users with `OWNER`, `TEAM_SCHEDULER`, or `COACH` roles and do not block the user success redirect if email fails.
+- The internal Learning to Lead Story Map can save database-backed Live Story Drafts attached to Story Candidates and Homer source blocks. These drafts are live app state, not canonical manuscript truth.
 
 ## Current Coaching Workflow
 
@@ -64,6 +65,8 @@ High Ground Studio is a monorepo with:
 - SMS/Twilio notification delivery is not active.
 - Google Calendar API/OAuth synchronization is not active.
 - Email notification delivery has no retry queue or persisted delivery status.
+- Story Draft promotion into real `ManuscriptBlock` truth is not active.
+- Story Draft revision history is not active.
 
 ## Current Stabilization Decisions
 

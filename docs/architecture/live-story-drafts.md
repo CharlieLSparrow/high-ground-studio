@@ -1,5 +1,27 @@
 # Live Story Drafts
 
+## Status
+
+Phase 1 is implemented as of 2026-05-07.
+
+Implemented scope:
+
+- Prisma `StoryDraftStatus` enum
+- Prisma `StoryDraft` model
+- internal Story Draft edit helper for `OWNER`, `TEAM_SCHEDULER`, and `COACH`
+- route-local server actions for create, update, and status updates
+- server-side Story Draft loading for the Learning to Lead Story Map
+- Story Map display/editor for live database-backed drafts
+- copy-only promotion packet helper
+
+Still deferred:
+
+- draft revision history
+- public rendering
+- Draft-to-Live publishing
+- automatic manuscript writes
+- controlled promotion into real `ManuscriptBlock` truth
+
 ## Purpose
 
 Live Story Drafts are the first safe app-backed writing layer for Story Candidates.

@@ -28,6 +28,27 @@ A draft can be useful, messy, promising, or parked. It is not automatically part
 6. When the draft is ready, the team approves it for promotion.
 7. A separate manuscript pass turns the approved draft into a real `ManuscriptBlock`.
 
+## Current App Behavior
+
+The internal Learning to Lead Story Map can now show and save Live Story Drafts.
+
+Current behavior:
+
+- each Story Candidate card shows saved draft count and latest draft status
+- the latest draft can be edited directly from Story Map
+- an authorized user can also save the current form as a new draft
+- saved drafts live in the database
+- drafts are attached to Story Candidate IDs and source Homer block IDs
+- copy-only promotion packets can be generated from saved drafts
+
+Allowed editors in Phase 1:
+
+- `OWNER`
+- `TEAM_SCHEDULER`
+- `COACH`
+
+If Homer needs app writing access without broader team-console powers, the next access-control pass should decide whether to add a narrower contributor/editor role.
+
 ## What Homer Needs To Know
 
 Writing in the app should be safe.

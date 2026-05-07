@@ -144,6 +144,48 @@ In practice:
 - Do **not** introduce ad hoc production SQL that diverges from `prisma/schema.prisma` unless you are explicitly repairing drift.
 - Do **not** treat `db push` as a substitute for a real migration history forever; it is the repo’s current reality, not its ideal final form.
 
+## Live Story Drafts Change
+The Live Story Drafts Phase 1 rollout added:
+
+- `StoryDraftStatus` enum
+- `StoryDraft` model
+- `User` relations for created, updated, and reviewed Story Drafts
+
+App code now expects the database to contain the `StoryDraft` table and `StoryDraftStatus` enum.
+
+Because the repo still has no checked-in Prisma migration history, `prisma migrate dev --name live_story_drafts` detected drift against the existing database and asked to reset the public schema. That reset was not run.
+
+The current repo-documented apply command remains:
+
+```bash
+pnpm db:push
+```
+
+Run it only in an environment where `DATABASE_URL` points at the intended target database.
+
+### How To Verify The StoryDraft Table Exists
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name = 'StoryDraft';
+```
+
+Expected result:
+
+- one row for `StoryDraft`
+
+Enum verification:
+
+```sql
+select typname
+from pg_type
+where typname = 'StoryDraftStatus';
+```
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 

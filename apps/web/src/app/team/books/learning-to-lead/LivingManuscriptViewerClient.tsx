@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import PaperCard from "@/components/ui/PaperCard";
+import {
+  createStoryDraftAction,
+  updateStoryDraftAction,
+} from "./actions";
 import type {
   EpisodeProductionEpisode,
   EpisodeVirtualSplitChunk,
@@ -19,6 +23,12 @@ import type {
   LivingManuscriptDocument,
   LivingManuscriptPodcastArrangement,
 } from "@/lib/server/living-manuscript";
+import {
+  buildSourceSeedStoryCandidateId,
+  EMPTY_STORY_DRAFT_ACTION_STATE,
+  STORY_DRAFT_STATUSES,
+  type StoryDraftClientRecord,
+} from "@/lib/story-drafts";
 
 type ViewerProps = {
   manuscript: LivingManuscriptDocument;
@@ -26,6 +36,8 @@ type ViewerProps = {
   podcastArrangement: LivingManuscriptPodcastArrangement;
   episodeProductionState: SeasonOneEpisodeProductionState;
   episodeVirtualSplitState: EpisodeVirtualSplitState;
+  storyDrafts: StoryDraftClientRecord[];
+  canEditStoryDrafts: boolean;
 };
 
 type FilterState = {
@@ -74,6 +86,15 @@ type EpisodeProductionPanel = {
 
 type StoryMapPanel = EpisodeProductionPanel & {
   sourceBlock: LivingManuscriptBlock | null;
+};
+
+type StoryDraftContext = {
+  storyCandidateId: string;
+  storyCandidateTitle: string;
+  sourceBlockId: string;
+  episodeKey: string;
+  episodeNumber: number | null;
+  arrangementKey: string | null;
 };
 
 type PlaygroundCopyKind =
@@ -1360,6 +1381,66 @@ function buildHomerReviewList(panel: StoryMapPanel) {
   return [...intro, ...lines].join("\n").trimEnd();
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getLatestStoryDraft(drafts: StoryDraftClientRecord[]) {
+  return drafts[0] ?? null;
+}
+
+function buildStoryDraftPromotionPacket(draft: StoryDraftClientRecord) {
+  return [
+    `# Story Draft Promotion Packet: ${draft.title}`,
+    "",
+    `Story Draft ID: ${draft.id}`,
+    `Story Candidate ID: ${draft.storyCandidateId}`,
+    `Story Candidate Title: ${draft.storyCandidateTitle ?? "Not recorded"}`,
+    `Source Block ID: ${draft.sourceBlockId}`,
+    `Episode Key: ${draft.episodeKey ?? "Not recorded"}`,
+    `Episode Number: ${draft.episodeNumber ?? "Not recorded"}`,
+    `Arrangement Key: ${draft.arrangementKey ?? "Not recorded"}`,
+    `Current Status: ${formatLabel(draft.status)}`,
+    `Updated: ${formatDateTime(draft.updatedAt)}`,
+    "",
+    "## Draft Body",
+    "",
+    draft.body,
+    "",
+    "## Notes",
+    "",
+    draft.notes || "None.",
+    "",
+    "## Support Notes",
+    "",
+    draft.supportNotes || "None.",
+    "",
+    "## Promotion Checklist",
+    "",
+    "- [ ] Confirm Homer source truth and comfort level.",
+    "- [ ] Choose final future ManuscriptBlock ID.",
+    "- [ ] Choose type, voice, chapter, tags, source, and pairsWith metadata.",
+    "- [ ] Confirm this draft should become canonical manuscript truth.",
+    "- [ ] Validate duplicate block IDs after manuscript edit.",
+    "- [ ] Validate arrangement references after manuscript edit.",
+    "- [ ] Create a session note for the promotion pass.",
+    "",
+    "Warning: this packet is copy-only. No ManuscriptBlock has been created yet.",
+  ].join("\n");
+}
+
 async function copyText(value: string) {
   if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
     return false;
@@ -2079,15 +2160,32 @@ function EpisodeProductionPlaygroundView({
 function StoryCandidateCard({
   chunk,
   index,
+  production,
+  arrangement,
+  drafts,
+  canEditStoryDrafts,
   copiedKey,
   onCopy,
 }: {
   chunk: EpisodeVirtualSplitChunk;
   index: number;
+  production: EpisodeProductionEpisode;
+  arrangement: EpisodeGroup | null;
+  drafts: StoryDraftClientRecord[];
+  canEditStoryDrafts: boolean;
   copiedKey: string | null;
-  onCopy: (key: string, value: string) => void;
+  onCopy: (key: string, value: string) => void | Promise<void>;
 }) {
   const stubKey = `story-stub:${chunk.id}`;
+  const storyDraftContext: StoryDraftContext = {
+    storyCandidateId: chunk.id,
+    storyCandidateTitle: chunk.title,
+    sourceBlockId: chunk.sourceBlockId,
+    episodeKey: production.key,
+    episodeNumber: production.episodeNumber,
+    arrangementKey:
+      arrangement?.arrangementKey ?? production.arrangementKeys[0] ?? null,
+  };
 
   return (
     <article className="rounded-[28px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,255,255,0.58)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.07)]">
@@ -2130,16 +2228,294 @@ function StoryCandidateCard({
         <MetadataRow label="Charlie Fit" value={chunk.charlieSupportOpportunity} />
         <MetadataRow label="Notes" value={chunk.notes} />
       </div>
+
+      <StoryDraftPanel
+        context={storyDraftContext}
+        drafts={drafts}
+        canEditStoryDrafts={canEditStoryDrafts}
+        copiedKey={copiedKey}
+        onCopy={onCopy}
+      />
     </article>
+  );
+}
+
+function StoryDraftHiddenFields({ context }: { context: StoryDraftContext }) {
+  return (
+    <>
+      <input
+        type="hidden"
+        name="storyCandidateId"
+        value={context.storyCandidateId}
+      />
+      <input
+        type="hidden"
+        name="storyCandidateTitle"
+        value={context.storyCandidateTitle}
+      />
+      <input type="hidden" name="sourceBlockId" value={context.sourceBlockId} />
+      <input type="hidden" name="episodeKey" value={context.episodeKey} />
+      <input
+        type="hidden"
+        name="episodeNumber"
+        value={context.episodeNumber ?? ""}
+      />
+      <input
+        type="hidden"
+        name="arrangementKey"
+        value={context.arrangementKey ?? ""}
+      />
+    </>
+  );
+}
+
+function StoryDraftPanel({
+  context,
+  drafts,
+  canEditStoryDrafts,
+  copiedKey,
+  onCopy,
+}: {
+  context: StoryDraftContext;
+  drafts: StoryDraftClientRecord[];
+  canEditStoryDrafts: boolean;
+  copiedKey: string | null;
+  onCopy: (key: string, value: string) => void | Promise<void>;
+}) {
+  const latestDraft = getLatestStoryDraft(drafts);
+  const primaryAction = latestDraft
+    ? updateStoryDraftAction
+    : createStoryDraftAction;
+  const [primaryState, primaryFormAction] = useActionState(
+    primaryAction,
+    EMPTY_STORY_DRAFT_ACTION_STATE,
+  );
+  const [newDraftState, createNewDraftFormAction] = useActionState(
+    createStoryDraftAction,
+    EMPTY_STORY_DRAFT_ACTION_STATE,
+  );
+  const latestDraftPromotionKey = latestDraft
+    ? `draft-promotion:${latestDraft.id}`
+    : null;
+  const visibleState = primaryState.message ? primaryState : newDraftState;
+
+  return (
+    <section className="mt-5 rounded-[24px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.52)] px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.65)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+              Live Story Draft
+            </span>
+            <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.65)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+              Saved in app
+            </span>
+            <span className="rounded-full border border-[rgba(179,42,42,0.18)] bg-[rgba(179,42,42,0.08)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(94,26,26,0.86)]">
+              Not manuscript truth
+            </span>
+          </div>
+          <h5 className="m-0 mt-3 text-[1rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+            {latestDraft ? latestDraft.title : "No saved draft yet"}
+          </h5>
+          <div className="mt-2 text-xs uppercase tracking-[0.08em] text-[rgba(38,30,24,0.56)]">
+            {drafts.length} saved draft{drafts.length === 1 ? "" : "s"}
+            {latestDraft ? ` · ${formatLabel(latestDraft.status)}` : ""}
+          </div>
+        </div>
+
+        {latestDraft && latestDraftPromotionKey ? (
+          <button
+            type="button"
+            onClick={() =>
+              onCopy(
+                latestDraftPromotionKey,
+                buildStoryDraftPromotionPacket(latestDraft),
+              )
+            }
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.65)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+          >
+            {copiedKey === latestDraftPromotionKey
+              ? "Copied Packet"
+              : "Copy promotion packet"}
+          </button>
+        ) : null}
+      </div>
+
+      {latestDraft ? (
+        <div className="mt-4 grid gap-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+          <div className="rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-3 py-3">
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+              Latest Draft Preview
+            </div>
+            <p className="mb-0 mt-2 whitespace-pre-line">
+              {latestDraft.body.length > 520
+                ? `${latestDraft.body.slice(0, 520).trim()}...`
+                : latestDraft.body}
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <MetadataRow
+              label="Updated"
+              value={`${formatDateTime(latestDraft.updatedAt)} by ${
+                latestDraft.updatedByLabel ?? latestDraft.createdByLabel
+              }`}
+            />
+            <MetadataRow label="Created By" value={latestDraft.createdByLabel} />
+          </div>
+
+          {latestDraft.notes ? (
+            <MetadataRow label="Notes" value={latestDraft.notes} />
+          ) : null}
+          {latestDraft.supportNotes ? (
+            <MetadataRow label="Support Notes" value={latestDraft.supportNotes} />
+          ) : null}
+        </div>
+      ) : (
+        <p className="mb-0 mt-4 text-sm leading-6 text-[rgba(38,30,24,0.72)]">
+          Create the first durable draft for this Story Candidate when Homer or
+          Chuck is ready to write in the app.
+        </p>
+      )}
+
+      {canEditStoryDrafts ? (
+        <form action={primaryFormAction} className="mt-5 space-y-3">
+          <StoryDraftHiddenFields context={context} />
+          {latestDraft ? (
+            <input type="hidden" name="draftId" value={latestDraft.id} />
+          ) : null}
+
+          <label className="block">
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.58)]">
+              Draft Title
+            </span>
+            <input
+              name="title"
+              required
+              defaultValue={latestDraft?.title ?? context.storyCandidateTitle}
+              className="mt-2 w-full rounded-2xl border border-[rgba(37,28,20,0.14)] bg-[rgba(255,255,255,0.72)] px-3 py-2.5 text-sm text-[#1d1712] outline-none focus:border-[rgba(255,122,24,0.45)]"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.58)]">
+              Draft Body
+            </span>
+            <textarea
+              name="body"
+              required
+              rows={7}
+              defaultValue={latestDraft?.body ?? ""}
+              placeholder="Write the live draft here. This saves to the database, not the manuscript file."
+              className="mt-2 w-full rounded-2xl border border-[rgba(37,28,20,0.14)] bg-[rgba(255,255,255,0.72)] px-3 py-2.5 text-sm leading-6 text-[#1d1712] outline-none focus:border-[rgba(255,122,24,0.45)]"
+            />
+          </label>
+
+          <div className="grid gap-3 lg:grid-cols-3">
+            <label className="block">
+              <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.58)]">
+                Status
+              </span>
+              <select
+                name="status"
+                defaultValue={latestDraft?.status ?? "ROUGH"}
+                className="mt-2 w-full rounded-2xl border border-[rgba(37,28,20,0.14)] bg-[rgba(255,255,255,0.72)] px-3 py-2.5 text-sm text-[#1d1712] outline-none focus:border-[rgba(255,122,24,0.45)]"
+              >
+                {STORY_DRAFT_STATUSES.filter((status) => status !== "PROMOTED").map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {formatLabel(status)}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            <label className="block lg:col-span-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.58)]">
+                Notes
+              </span>
+              <input
+                name="notes"
+                defaultValue={latestDraft?.notes ?? ""}
+                placeholder="Optional review note"
+                className="mt-2 w-full rounded-2xl border border-[rgba(37,28,20,0.14)] bg-[rgba(255,255,255,0.72)] px-3 py-2.5 text-sm text-[#1d1712] outline-none focus:border-[rgba(255,122,24,0.45)]"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.58)]">
+              Chuck Support Notes
+            </span>
+            <textarea
+              name="supportNotes"
+              rows={3}
+              defaultValue={latestDraft?.supportNotes ?? ""}
+              placeholder="Optional support-layer notes, research reminders, or review questions."
+              className="mt-2 w-full rounded-2xl border border-[rgba(37,28,20,0.14)] bg-[rgba(255,255,255,0.72)] px-3 py-2.5 text-sm leading-6 text-[#1d1712] outline-none focus:border-[rgba(255,122,24,0.45)]"
+            />
+          </label>
+
+          <div className="rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,248,232,0.6)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+            This saves a live draft in the database. It does not edit Homer's
+            manuscript yet. Promotion is a later reviewed step.
+          </div>
+
+          {visibleState.message ? (
+            <div
+              className={[
+                "rounded-2xl border px-3 py-3 text-sm leading-6",
+                visibleState.ok
+                  ? "border-[rgba(53,124,77,0.22)] bg-[rgba(53,124,77,0.08)] text-[rgba(28,86,47,0.92)]"
+                  : "border-[rgba(179,42,42,0.22)] bg-[rgba(179,42,42,0.08)] text-[rgba(94,26,26,0.92)]",
+              ].join(" ")}
+            >
+              {visibleState.message}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              className="rounded-full border border-[rgba(255,122,24,0.35)] bg-[rgba(255,122,24,0.12)] px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[#8f3a00] transition hover:bg-[rgba(255,122,24,0.18)]"
+            >
+              {latestDraft ? "Save Latest Draft" : "Create Live Draft"}
+            </button>
+
+            {latestDraft ? (
+              <button
+                type="submit"
+                formAction={createNewDraftFormAction}
+                className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.62)] px-4 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+              >
+                Save As New Draft
+              </button>
+            ) : null}
+          </div>
+        </form>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,248,232,0.58)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+          Story Draft editing is limited to internal team writing roles. This
+          card is read-only for the current session.
+        </div>
+      )}
+    </section>
   );
 }
 
 function StoryMapView({
   panels,
   warnings,
+  storyDraftsByStoryCandidateId,
+  storyDraftsBySourceBlockId,
+  canEditStoryDrafts,
 }: {
   panels: StoryMapPanel[];
   warnings: string[];
+  storyDraftsByStoryCandidateId: Map<string, StoryDraftClientRecord[]>;
+  storyDraftsBySourceBlockId: Map<string, StoryDraftClientRecord[]>;
+  canEditStoryDrafts: boolean;
 }) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const candidateCount = panels.reduce(
@@ -2299,6 +2675,10 @@ function StoryMapView({
                     key={chunk.id}
                     chunk={chunk}
                     index={index}
+                    production={production}
+                    arrangement={arrangement}
+                    drafts={storyDraftsByStoryCandidateId.get(chunk.id) ?? []}
+                    canEditStoryDrafts={canEditStoryDrafts}
                     copiedKey={copiedKey}
                     onCopy={copyStoryMapText}
                   />
@@ -2325,6 +2705,35 @@ function StoryMapView({
                   Next action: create Story Candidates before this chapter seed is
                   treated as a usable episode structure.
                 </div>
+                <StoryDraftPanel
+                  context={{
+                    storyCandidateId: buildSourceSeedStoryCandidateId({
+                      episodeKey: production.key,
+                      sourceBlockId: sourceBlock.id,
+                    }),
+                    storyCandidateTitle: `Chapter seed: ${sourceBlock.title}`,
+                    sourceBlockId: sourceBlock.id,
+                    episodeKey: production.key,
+                    episodeNumber: production.episodeNumber,
+                    arrangementKey:
+                      arrangement?.arrangementKey ??
+                      production.arrangementKeys[0] ??
+                      null,
+                  }}
+                  drafts={
+                    storyDraftsByStoryCandidateId.get(
+                      buildSourceSeedStoryCandidateId({
+                        episodeKey: production.key,
+                        sourceBlockId: sourceBlock.id,
+                      }),
+                    ) ??
+                    storyDraftsBySourceBlockId.get(sourceBlock.id) ??
+                    []
+                  }
+                  canEditStoryDrafts={canEditStoryDrafts}
+                  copiedKey={copiedKey}
+                  onCopy={copyStoryMapText}
+                />
               </div>
             ) : null}
           </PaperCard>
@@ -2440,6 +2849,8 @@ export default function LivingManuscriptViewerClient({
   podcastArrangement,
   episodeProductionState,
   episodeVirtualSplitState,
+  storyDrafts,
+  canEditStoryDrafts,
 }: ViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("book");
   const [episodeViewMode, setEpisodeViewMode] =
@@ -2538,6 +2949,28 @@ export default function LivingManuscriptViewerClient({
     () => new Map(manuscript.blocks.map((block) => [block.id, block])),
     [manuscript.blocks],
   );
+  const storyDraftsByStoryCandidateId = useMemo(() => {
+    const draftsById = new Map<string, StoryDraftClientRecord[]>();
+
+    for (const draft of storyDrafts) {
+      const existing = draftsById.get(draft.storyCandidateId) ?? [];
+      existing.push(draft);
+      draftsById.set(draft.storyCandidateId, existing);
+    }
+
+    return draftsById;
+  }, [storyDrafts]);
+  const storyDraftsBySourceBlockId = useMemo(() => {
+    const draftsById = new Map<string, StoryDraftClientRecord[]>();
+
+    for (const draft of storyDrafts) {
+      const existing = draftsById.get(draft.sourceBlockId) ?? [];
+      existing.push(draft);
+      draftsById.set(draft.sourceBlockId, existing);
+    }
+
+    return draftsById;
+  }, [storyDrafts]);
 
   const chapterGroups = useMemo<ChapterGroup[]>(() => {
     return filterOptions.chapters.map((chapter) => ({
@@ -3145,6 +3578,9 @@ export default function LivingManuscriptViewerClient({
             <StoryMapView
               panels={storyMapPanels}
               warnings={episodeVirtualSplitState.warnings}
+              storyDraftsByStoryCandidateId={storyDraftsByStoryCandidateId}
+              storyDraftsBySourceBlockId={storyDraftsBySourceBlockId}
+              canEditStoryDrafts={canEditStoryDrafts}
             />
           ) : podcastArrangement.episodes.length === 0 &&
             productionEpisodePanels.length === 0 ? (

@@ -2,6 +2,8 @@ import BackLink from "@/components/ui/BackLink";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import LivingManuscriptViewerClient from "./LivingManuscriptViewerClient";
+import { canEditStoryDrafts } from "@/lib/authz";
+import { resolveTeamAccess } from "@/lib/content-access";
 import {
   getLearningToLeadEpisodeProductionState,
   getLearningToLeadEpisodeVirtualSplitState,
@@ -11,6 +13,8 @@ import {
   getLearningToLeadManuscript,
   getLearningToLeadPodcastArrangement,
 } from "@/lib/server/living-manuscript";
+import { getStoryDraftsForStoryMap } from "@/lib/server/story-drafts";
+import { buildSourceSeedStoryCandidateId } from "@/lib/story-drafts";
 
 const MANUSCRIPT_SOURCE_LABEL =
   "content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx";
@@ -25,6 +29,60 @@ function formatLabel(value: string) {
     .join(" ");
 }
 
+function collectStoryDraftLookupKeys({
+  episodeProductionState,
+  episodeVirtualSplitState,
+  podcastArrangement,
+}: {
+  episodeProductionState: Awaited<
+    ReturnType<typeof getLearningToLeadEpisodeProductionState>
+  >;
+  episodeVirtualSplitState: Awaited<
+    ReturnType<typeof getLearningToLeadEpisodeVirtualSplitState>
+  >;
+  podcastArrangement: Awaited<ReturnType<typeof getLearningToLeadPodcastArrangement>>;
+}) {
+  const storyCandidateIds = new Set<string>();
+  const sourceBlockIds = new Set<string>();
+  const podcastEpisodeByKey = new Map(
+    podcastArrangement.episodes.map((episode) => [episode.key, episode]),
+  );
+
+  for (const plan of episodeVirtualSplitState.episodes) {
+    sourceBlockIds.add(plan.sourceBlockId);
+
+    for (const chunk of plan.chunks) {
+      storyCandidateIds.add(chunk.id);
+      sourceBlockIds.add(chunk.sourceBlockId);
+    }
+  }
+
+  for (const production of episodeProductionState.episodes) {
+    const arrangement =
+      production.arrangementKeys
+        .map((key) => podcastEpisodeByKey.get(key))
+        .find(Boolean) ?? null;
+    const homerSourceBlock = arrangement?.blocks.find(
+      (block) => block.voice === "homer",
+    );
+
+    if (homerSourceBlock && (production.episodeNumber ?? 0) >= 7) {
+      storyCandidateIds.add(
+        buildSourceSeedStoryCandidateId({
+          episodeKey: production.key,
+          sourceBlockId: homerSourceBlock.id,
+        }),
+      );
+      sourceBlockIds.add(homerSourceBlock.id);
+    }
+  }
+
+  return {
+    storyCandidateIds: [...storyCandidateIds],
+    sourceBlockIds: [...sourceBlockIds],
+  };
+}
+
 export default async function LearningToLeadBookPage() {
   const manuscript = await getLearningToLeadManuscript();
   const bookArrangement = await getLearningToLeadBookArrangement(manuscript);
@@ -33,6 +91,14 @@ export default async function LearningToLeadBookPage() {
   const episodeVirtualSplitState = await getLearningToLeadEpisodeVirtualSplitState(
     manuscript.blocks,
   );
+  const teamAccess = await resolveTeamAccess();
+  const storyDraftLookupKeys = collectStoryDraftLookupKeys({
+    episodeProductionState,
+    episodeVirtualSplitState,
+    podcastArrangement,
+  });
+  const storyDrafts = await getStoryDraftsForStoryMap(storyDraftLookupKeys);
+  const userCanEditStoryDrafts = canEditStoryDrafts(teamAccess.roles);
   const clientManuscript = {
     ...manuscript,
     sourcePath: MANUSCRIPT_SOURCE_LABEL,
@@ -142,6 +208,8 @@ export default async function LearningToLeadBookPage() {
         podcastArrangement={clientPodcastArrangement}
         episodeProductionState={episodeProductionState}
         episodeVirtualSplitState={episodeVirtualSplitState}
+        storyDrafts={storyDrafts}
+        canEditStoryDrafts={userCanEditStoryDrafts}
       />
     </section>
   );

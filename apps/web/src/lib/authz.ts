@@ -116,3 +116,13 @@ export function canManageMemberships(
 ): boolean {
   return hasAnyRole(roles, ["OWNER", "TEAM_SCHEDULER"]);
 }
+
+// Story Drafts are live app writing state, not public content and not
+// canonical manuscript truth. Phase 1 keeps the gate aligned with current
+// trusted team roles; a narrower contributor/editor role can arrive later if
+// Homer needs writing access without broader internal powers.
+export function canEditStoryDrafts(
+  roles: AppRole[] | undefined | null,
+): boolean {
+  return hasAnyRole(roles, TEAM_ROLES);
+}
