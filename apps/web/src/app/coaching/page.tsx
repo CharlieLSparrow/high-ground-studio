@@ -98,8 +98,7 @@ export default async function CoachingPage() {
                   <p className="mb-0 mt-4 max-w-[700px] text-[1rem] leading-8 text-[rgba(245,239,230,0.84)]">
                     Donation-supported while Homer completes his coaching
                     credentialing hours. No fixed rate. After your session,
-                    contribute what you can in a way that feels right and
-                    sustainable.
+                    contribute what you can.
                   </p>
 
                   <div className="mt-8">
