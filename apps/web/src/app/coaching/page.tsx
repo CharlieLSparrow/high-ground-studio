@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { cookies } from "next/headers";
 
 import { auth } from "@/auth";
@@ -59,29 +60,21 @@ export default async function CoachingPage() {
               getLayoutPanelTreatment(layoutVariant, "featured"),
             ].join(" ")}
           >
+            <div className="absolute inset-0">
+              <Image
+                src="/images/CoachingHero0.png"
+                alt="Scott Sparrow coaching portrait"
+                fill
+                priority
+                className="object-cover object-center"
+                sizes="100vw"
+              />
+            </div>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,122,24,0.28),rgba(7,20,24,0.12)_28%,rgba(7,20,24,0.72)_68%,rgba(7,20,24,0.94)_100%)]" />
             <div className="absolute inset-0 bg-[linear-gradient(118deg,rgba(4,10,12,0.94)_0%,rgba(4,10,12,0.78)_35%,rgba(4,10,12,0.34)_62%,rgba(4,10,12,0.72)_100%)]" />
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_20%,rgba(0,0,0,0.24)_100%)]" />
 
             <div className="relative min-h-[560px]">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex h-full w-full flex-col justify-between border-y border-dashed border-white/14 px-6 py-8 md:px-10 lg:px-14">
-                  <div className="flex justify-end">
-                    <div className="rounded-full border border-white/12 bg-black/18 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(245,239,230,0.72)]">
-                      Hero image placeholder
-                    </div>
-                  </div>
-
-                  <div className="mx-auto max-w-[440px] rounded-[30px] border border-white/10 bg-[rgba(7,20,24,0.38)] px-6 py-8 text-center backdrop-blur-sm">
-                    <p className="mb-0 text-base font-medium leading-7 text-[rgba(245,239,230,0.9)] md:text-lg">
-                      Replace with Scott coaching photo / portrait / scene
-                    </p>
-                  </div>
-
-                  <div />
-                </div>
-              </div>
-
               <div className="relative z-10 flex min-h-[560px] items-end">
                 <div className="w-full p-7 md:p-10 lg:max-w-[820px] lg:p-14">
                   <PageEyebrow>Coaching with Scott Sparrow</PageEyebrow>
