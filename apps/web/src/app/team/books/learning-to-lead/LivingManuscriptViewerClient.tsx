@@ -43,7 +43,7 @@ type ViewerPreset =
   | "needs-citation"
   | "episode-4";
 
-type ViewMode = "book" | "story" | "episode";
+type ViewMode = "book" | "story" | "episode" | "story-map";
 type EpisodeViewMode = "everything" | "draft" | "playground";
 
 type ChapterGroup = {
@@ -72,7 +72,15 @@ type EpisodeProductionPanel = {
   virtualSplitPlan: EpisodeVirtualSplitPlan | null;
 };
 
-type PlaygroundCopyKind = "arrangement" | "draft" | "story-checklist" | `stub:${string}`;
+type StoryMapPanel = EpisodeProductionPanel & {
+  sourceBlock: LivingManuscriptBlock | null;
+};
+
+type PlaygroundCopyKind =
+  | "arrangement"
+  | "draft"
+  | "story-checklist"
+  | `stub:${string}`;
 
 const EMPTY_FILTERS: FilterState = {
   chapters: [],
@@ -1296,6 +1304,62 @@ function buildVirtualChunkStub(chunk: EpisodeVirtualSplitChunk) {
   ].join("\n");
 }
 
+function buildStoryMapSeedChecklist(panel: StoryMapPanel) {
+  const { production, sourceBlock } = panel;
+  const sourceLabel = sourceBlock
+    ? `${sourceBlock.title} (${sourceBlock.id})`
+    : "No Homer source block found";
+
+  return [
+    `# Episode ${production.episodeNumber ?? "?"}: ${production.title}`,
+    "",
+    "Story Candidate planning checklist",
+    "",
+    `- [ ] Review Homer source: ${sourceLabel}`,
+    "- [ ] Identify the natural story beats.",
+    "- [ ] Mark which beats are episode openers, middles, closes, or parked fragments.",
+    "- [ ] Decide whether this chapter seed is one episode or more than one episode.",
+    "- [ ] Do not add Story Candidate IDs to arrangement YAML until real ManuscriptBlocks exist.",
+    "",
+    "Planning only. No manuscript split has happened yet.",
+  ].join("\n");
+}
+
+function buildHomerReviewList(panel: StoryMapPanel) {
+  const { production, virtualSplitPlan, sourceBlock } = panel;
+  const sourceTitle = sourceBlock?.title ?? virtualSplitPlan?.sourceBlockId ?? "Unknown source";
+  const sourceChapter = sourceBlock ? formatLabel(sourceBlock.chapter) : "Unknown chapter";
+  const intro = [
+    `Episode ${production.episodeNumber ?? "?"}: ${production.title}`,
+    `Book source: ${sourceTitle}`,
+    `Chapter: ${sourceChapter}`,
+    "",
+    "For Homer review:",
+    "These are planning cards only. They are not edited manuscript text yet.",
+    "",
+  ];
+
+  if (!virtualSplitPlan || virtualSplitPlan.chunks.length === 0) {
+    return [
+      ...intro,
+      "1. Story title: Current Homer chapter seed",
+      `   What part of the book it comes from: ${sourceTitle}`,
+      "   Why it might matter: This is the current book-text backbone for the episode, but it has not been broken into Story Candidates yet.",
+      "   Question for Homer: What are the natural story breaks inside this section?",
+    ].join("\n");
+  }
+
+  const lines = virtualSplitPlan.chunks.flatMap((chunk, index) => [
+    `${index + 1}. Story title: ${chunk.title}`,
+    `   What part of the book it comes from: ${sourceTitle}`,
+    `   Why it might matter: ${chunk.role}`,
+    `   Question for Homer: Does this feel like a real story unit, or should it be paired, split, or parked?`,
+    "",
+  ]);
+
+  return [...intro, ...lines].join("\n").trimEnd();
+}
+
 async function copyText(value: string) {
   if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
     return false;
@@ -2012,6 +2076,264 @@ function EpisodeProductionPlaygroundView({
   );
 }
 
+function StoryCandidateCard({
+  chunk,
+  index,
+  copiedKey,
+  onCopy,
+}: {
+  chunk: EpisodeVirtualSplitChunk;
+  index: number;
+  copiedKey: string | null;
+  onCopy: (key: string, value: string) => void;
+}) {
+  const stubKey = `story-stub:${chunk.id}`;
+
+  return (
+    <article className="rounded-[28px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,255,255,0.58)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.07)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.72)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+              Story Candidate
+            </span>
+            <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.72)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+              Planning only
+            </span>
+            <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.72)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+              Not a manuscript block
+            </span>
+          </div>
+          <h4 className="m-0 mt-3 text-[1.15rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+            {index + 1}. {chunk.title}
+          </h4>
+          <div className="mt-2 break-all font-mono text-xs text-[rgba(38,30,24,0.62)]">
+            {chunk.id}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onCopy(stubKey, buildVirtualChunkStub(chunk))}
+          className="shrink-0 rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.6)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+        >
+          {copiedKey === stubKey ? "Copied Stub" : "Copy future story block stub"}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+        <MetadataRow label="Source" value={<code>{chunk.sourceBlockId}</code>} />
+        <MetadataRow label="Range" value={chunk.sourceRangeSummary} />
+        <MetadataRow label="Role" value={chunk.role} />
+        <MetadataRow label="Placement" value={chunk.recommendedPlacement} />
+        <MetadataRow label="Split" value={formatLabel(chunk.splitRecommendation)} />
+        <MetadataRow label="Charlie Fit" value={chunk.charlieSupportOpportunity} />
+        <MetadataRow label="Notes" value={chunk.notes} />
+      </div>
+    </article>
+  );
+}
+
+function StoryMapView({
+  panels,
+  warnings,
+}: {
+  panels: StoryMapPanel[];
+  warnings: string[];
+}) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const candidateCount = panels.reduce(
+    (total, panel) => total + (panel.virtualSplitPlan?.chunks.length ?? 0),
+    0,
+  );
+  const plannedEpisodeCount = panels.filter((panel) => panel.virtualSplitPlan).length;
+  const seedOnlyCount = panels.length - plannedEpisodeCount;
+
+  async function copyStoryMapText(key: string, value: string) {
+    const copied = await copyText(value);
+
+    if (copied) {
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey(null), 1400);
+    }
+  }
+
+  if (panels.length === 0) {
+    return (
+      <PaperCard>
+        <h2 className="m-0 text-[1.8rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+          No Story Candidate planning data is available yet.
+        </h2>
+        <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
+          Story Map reads the non-canonical Story Candidate planning file and
+          future chapter-seeded production cards. Nothing is wrong with the book;
+          this just means no planning layer is available for display.
+        </p>
+      </PaperCard>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PaperCard className="px-6 py-8 sm:px-8 sm:py-10">
+        <PageEyebrow>Story Map</PageEyebrow>
+        <div className="grid gap-5 xl:grid-cols-[1fr_auto] xl:items-start">
+          <div>
+            <h2 className="m-0 mt-2 text-[2rem] leading-tight tracking-[-0.04em] text-[#1d1712]">
+              Homer's book, broken into reviewable story candidates.
+            </h2>
+            <p className="mb-0 mt-4 max-w-[820px] text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
+              Story Map shows the planning layer between giant chapter blocks and
+              podcast episodes. These cards are for discussion and review. They are
+              not manuscript blocks, arrangement IDs, or public publish truth.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[420px]">
+            <ProductionMetric label="Episodes" value={`${panels.length} mapped`} />
+            <ProductionMetric label="Candidates" value={`${candidateCount} cards`} />
+            <ProductionMetric label="Seed Only" value={`${seedOnlyCount} episodes`} />
+          </div>
+        </div>
+
+        {warnings.length > 0 ? (
+          <div className="mt-6 rounded-[24px] border border-[rgba(179,42,42,0.18)] bg-[rgba(179,42,42,0.08)] px-4 py-4 text-sm leading-6 text-[rgba(94,26,26,0.9)]">
+            {warnings.join(" ")}
+          </div>
+        ) : null}
+      </PaperCard>
+
+      {panels.map((panel) => {
+        const { production, arrangement, virtualSplitPlan, sourceBlock } = panel;
+        const storyChecklist = virtualSplitPlan
+          ? buildVirtualSplitChecklist(virtualSplitPlan)
+          : buildStoryMapSeedChecklist(panel);
+        const storyChecklistKey = `story-checklist:${production.key}`;
+        const homerReviewKey = `homer-review:${production.key}`;
+        const splitCue = sourceBlock ? getBlockSizeCue(sourceBlock) : null;
+
+        return (
+          <PaperCard
+            key={production.key}
+            className="px-5 py-6 sm:px-6 sm:py-8"
+          >
+            <div className="grid gap-5 xl:grid-cols-[1fr_auto] xl:items-start">
+              <div className="min-w-0">
+                <div className="flex flex-wrap gap-2">
+                  <PageEyebrow>{production.key}</PageEyebrow>
+                  <PageEyebrow>{production.lifecycleStatus}</PageEyebrow>
+                  {arrangement ? <PageEyebrow>{arrangement.arrangementKey}</PageEyebrow> : null}
+                </div>
+                <h3 className="m-0 mt-2 text-[1.65rem] leading-tight tracking-[-0.04em] text-[#1d1712]">
+                  Episode {production.episodeNumber ?? "?"}: {production.title}
+                </h3>
+                <div className="mt-3 text-sm leading-6 text-[rgba(38,30,24,0.76)]">
+                  {sourceBlock ? (
+                    <>
+                      Book source: <strong>{sourceBlock.title}</strong>
+                      <span className="mx-2 text-[rgba(38,30,24,0.36)]">/</span>
+                      {formatLabel(sourceBlock.chapter)}
+                      <span className="mx-2 text-[rgba(38,30,24,0.36)]">/</span>
+                      {sourceBlock.wordCount} words
+                    </>
+                  ) : (
+                    "No Homer source block was found for this planning card."
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.72)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                    Book text is the backbone
+                  </span>
+                  {virtualSplitPlan ? (
+                    <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,248,232,0.72)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                      {virtualSplitPlan.chunks.length} Story Candidates
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-[rgba(179,42,42,0.18)] bg-[rgba(179,42,42,0.08)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(94,26,26,0.86)]">
+                      Create Story Candidates
+                    </span>
+                  )}
+                  {sourceBlock ? <BlockSizeCue block={sourceBlock} /> : null}
+                  {splitCue ? null : sourceBlock ? (
+                    <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                      Likely one story
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 xl:justify-end">
+                <button
+                  type="button"
+                  onClick={() => copyStoryMapText(storyChecklistKey, storyChecklist)}
+                  className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.58)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+                >
+                  {copiedKey === storyChecklistKey
+                    ? "Copied Checklist"
+                    : "Copy story checklist"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    copyStoryMapText(homerReviewKey, buildHomerReviewList(panel))
+                  }
+                  className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.58)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+                >
+                  {copiedKey === homerReviewKey
+                    ? "Copied Review List"
+                    : "Copy Homer review list"}
+                </button>
+              </div>
+            </div>
+
+            {virtualSplitPlan?.sourceWarnings.length ? (
+              <div className="mt-5 rounded-[24px] border border-[rgba(179,42,42,0.18)] bg-[rgba(179,42,42,0.08)] px-4 py-4 text-sm leading-6 text-[rgba(94,26,26,0.9)]">
+                {virtualSplitPlan.sourceWarnings.join(" ")}
+              </div>
+            ) : null}
+
+            {virtualSplitPlan && virtualSplitPlan.chunks.length > 0 ? (
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                {virtualSplitPlan.chunks.map((chunk, index) => (
+                  <StoryCandidateCard
+                    key={chunk.id}
+                    chunk={chunk}
+                    index={index}
+                    copiedKey={copiedKey}
+                    onCopy={copyStoryMapText}
+                  />
+                ))}
+              </div>
+            ) : sourceBlock ? (
+              <div className="mt-5 rounded-[28px] border border-[rgba(96,62,28,0.14)] bg-[rgba(255,248,232,0.52)] px-4 py-4">
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[rgba(96,62,28,0.16)] bg-[rgba(255,255,255,0.5)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f3f16]">
+                    Homer chapter seed
+                  </span>
+                  <span className="rounded-full border border-[rgba(179,42,42,0.18)] bg-[rgba(179,42,42,0.08)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(94,26,26,0.86)]">
+                    Create Story Candidates
+                  </span>
+                  <BlockSizeCue block={sourceBlock} />
+                </div>
+                <h4 className="m-0 mt-3 text-[1.2rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+                  {sourceBlock.title}
+                </h4>
+                <div className="mt-4">
+                  <BookTextPreview block={sourceBlock} compact />
+                </div>
+                <div className="mt-4 rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.44)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                  Next action: create Story Candidates before this chapter seed is
+                  treated as a usable episode structure.
+                </div>
+              </div>
+            ) : null}
+          </PaperCard>
+        );
+      })}
+    </div>
+  );
+}
+
 function EpisodeProductionCockpit({
   panel,
   viewMode,
@@ -2212,6 +2534,10 @@ export default function LivingManuscriptViewerClient({
     () => new Set(filteredBlocks.map((block) => block.id)),
     [filteredBlocks],
   );
+  const manuscriptBlockById = useMemo(
+    () => new Map(manuscript.blocks.map((block) => [block.id, block])),
+    [manuscript.blocks],
+  );
 
   const chapterGroups = useMemo<ChapterGroup[]>(() => {
     return filterOptions.chapters.map((chapter) => ({
@@ -2268,6 +2594,26 @@ export default function LivingManuscriptViewerClient({
     ) ??
     productionEpisodePanels[0] ??
     null;
+  const storyMapPanels = useMemo<StoryMapPanel[]>(() => {
+    return productionEpisodePanels
+      .filter(
+        (panel) =>
+          Boolean(panel.virtualSplitPlan) ||
+          (panel.production.episodeNumber ?? 0) >= 7,
+      )
+      .map((panel) => {
+        const sourceBlock =
+          panel.virtualSplitPlan?.sourceBlockId
+            ? manuscriptBlockById.get(panel.virtualSplitPlan.sourceBlockId) ?? null
+            : panel.arrangement?.totalBlocks.find((block) => block.voice === "homer") ??
+              null;
+
+        return {
+          ...panel,
+          sourceBlock,
+        };
+      });
+  }, [manuscriptBlockById, productionEpisodePanels]);
 
   const activeFilterCount =
     filters.chapters.length +
@@ -2315,12 +2661,13 @@ export default function LivingManuscriptViewerClient({
           <div>
             <PageEyebrow>Viewer Mode</PageEyebrow>
             <h2 className="m-0 text-[1.4rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-              Book, Story, and Episode Views
+              Book, Story, Episode, and Story Map Views
             </h2>
             <p className="mb-0 mt-3 max-w-[760px] text-sm leading-6 text-[rgba(245,239,230,0.82)]">
               Book View provides a seamless reading experience. Story View shows modular
               manuscript blocks. Episode View now adds a read-only production cockpit
-              over the arrangement and episode state files.
+              over the arrangement and episode state files. Story Map shows
+              non-canonical Story Candidates for human review.
             </p>
           </div>
 
@@ -2339,6 +2686,11 @@ export default function LivingManuscriptViewerClient({
               label="Episode View"
               active={viewMode === "episode"}
               onClick={() => setViewMode("episode")}
+            />
+            <ViewModeButton
+              label="Story Map"
+              active={viewMode === "story-map"}
+              onClick={() => setViewMode("story-map")}
             />
           </div>
         </div>
@@ -2370,12 +2722,12 @@ export default function LivingManuscriptViewerClient({
 
       <div
         className={
-          viewMode === "book"
+          viewMode === "book" || viewMode === "story-map"
             ? "grid gap-6"
             : "grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]"
         }
       >
-        {viewMode !== "book" ? (
+        {viewMode !== "book" && viewMode !== "story-map" ? (
           <aside className="space-y-6 xl:self-start">
             <GlassPanel className="p-5 text-[var(--text-light)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2789,6 +3141,11 @@ export default function LivingManuscriptViewerClient({
                 <BlockCard key={block.id} block={block} showMetadata={showMetadata} />
               ))
             )
+          ) : viewMode === "story-map" ? (
+            <StoryMapView
+              panels={storyMapPanels}
+              warnings={episodeVirtualSplitState.warnings}
+            />
           ) : podcastArrangement.episodes.length === 0 &&
             productionEpisodePanels.length === 0 ? (
             <PaperCard>

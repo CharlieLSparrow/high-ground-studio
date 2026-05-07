@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Story Map view added so Homer can see his book's stories as planning cards.
+- Story Candidate terminology introduced to bridge chapters and episodes.
+- Episode 7 Story Candidates can now be reviewed outside the Playground sequence without becoming manuscript blocks.
 - Story Candidate layer defined as the natural unit between chapters and episodes.
 - Playground language updated so virtual chunks appear as Story Candidates, not canonical blocks.
 - Book-wide Story Candidate map created to guide future episode splits from Homer's manuscript.

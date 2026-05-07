@@ -35,6 +35,21 @@ The goal is to help Episode Playground work from the book first: Homer manuscrip
 - Episodes 14, 16, and 17 contain quote, clip, or fragment-adjacent material that should stay parked until reviewed.
 - Episode 7 remains the best first active Story Candidate review because it already has a full non-canonical plan.
 
+## Episode 7 Detailed Story Candidates
+
+These are currently visible in Story Map and Playground as planning-only cards:
+
+| Story Candidate | Source block | Role | Recommended first pass |
+| --- | --- | --- | --- |
+| `Mission Goal And MTC Discipline` | `homer-chapter-three-none-of-it-works-unless-you-do` | Establishes intention plus disciplined preparation. | Review as a likely opening split. |
+| `Speak Your Language` | `homer-chapter-three-none-of-it-works-unless-you-do` | Shows deliberate practice becoming real-world competence. | Review as an early-middle split. |
+| `None Of It Works Unless You Do` | `homer-chapter-three-none-of-it-works-unless-you-do` | Carries the chapter title and sharpest leadership teaching point. | Review as the middle pivot. |
+| `Let The Other Person Teach` | `homer-chapter-three-none-of-it-works-unless-you-do` | Moves from self-discipline into leadership through listening and example. | Review as late-middle material. |
+| `Trials Make Good Stories` | `homer-chapter-three-none-of-it-works-unless-you-do` | Adds hardship and growth without pretending it felt useful at the time. | Review as late episode material. |
+| `Someone Has To Be The Adult In The Room` | `homer-chapter-three-none-of-it-works-unless-you-do` | Holds leadership-call and companion fragments. | Park or human-review before promotion. |
+
+These are not final and not canonical. They are candidates for discussion before any real manuscript split.
+
 ## Recommended Next Action
 
 Review Episode 7 Story Candidates in Playground, approve the first real split set, and use that result as the template before expanding the same process across Episodes 8-10.
