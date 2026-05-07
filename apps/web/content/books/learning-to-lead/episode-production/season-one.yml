@@ -131,7 +131,7 @@ episodes:
       - "episode-breakdowns/episode-05-values-toolkit.md"
     arrangementKeys:
       - "values-toolkit"
-    draftStatus: "values-toolkit-candidate-review"
+    draftStatus: "recorded-draft-review"
     draftSelectedItems:
       - label: "Tip And The Winnemucca Promise"
         kind: "manuscript-block"
@@ -165,8 +165,10 @@ episodes:
         notes: "Reflection on coaching first, holding standards, and removing only when required."
     recordingNotes:
       - "Recording happened, but post-recording notes are not yet represented in this file."
+      - "The clean values-toolkit draft sequence is ready for Homer/Charlie recorded-draft review."
     showNotes:
-      - "No public-safe show notes have been selected yet."
+      - "Draft prep packet: docs/analysis/episode-05-show-note-prep.md."
+      - "No public episode page or final public-safe show notes have been created yet."
     unresolvedDecisions:
       - "Which Charlie interjections are book prose, sidebars, episode-only reactions, or production notes."
       - "Clip rights and citation review for Samwise, Nate, Roy, Watson/IBM, Speed of Trust, and Dichotomy references."

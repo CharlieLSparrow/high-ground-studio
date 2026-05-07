@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode 5 recorded-draft review created from the clean `values-toolkit` Draft View.
+- Episode 5 show-note prep packet created without publishing or promoting parked research/clips.
+- Episode 6 post-recording reconciliation scout created to prepare the next production-state update without prematurely normalizing Episode 6.
 - Episode 5 Draft View state now aligns with the clean `values-toolkit` sequence while intake/research/clip/production questions remain in Everything View and unresolved decisions.
 - Episode 5 `values-toolkit` candidate arrangement added and Episode 5 production state now points at the clean internal sequence while broad `values` remains for Episode 6/later Chapter Two work.
 - Episode 5 arrangement plan created to prepare a clean `values-toolkit` candidate sequence after narrow Charlie normalization.
