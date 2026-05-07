@@ -51,7 +51,7 @@ export type EpisodeProductionEpisode = {
 };
 
 export type SeasonOneEpisodeProductionState = {
-  sourcePath: string | null;
+  sourceLabel: string | null;
   episodes: EpisodeProductionEpisode[];
   warnings: string[];
 };
@@ -68,6 +68,9 @@ const EPISODE_PRODUCTION_RELATIVE_PATH = [
   "episode-production",
   "season-one.yml",
 ] as const;
+
+export const EPISODE_PRODUCTION_SOURCE_LABEL =
+  EPISODE_PRODUCTION_RELATIVE_PATH.join("/");
 
 const CONTENT_ROOT_RELATIVE_PATH = ["content"] as const;
 
@@ -408,12 +411,55 @@ async function normalizeEpisode(
   };
 }
 
+function getSeasonOneProductionStateShapeWarnings(
+  episodes: EpisodeProductionEpisode[],
+) {
+  const warnings: string[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const episode of episodes) {
+    if (seenKeys.has(episode.key)) {
+      warnings.push(`Duplicate episode production key found: ${episode.key}`);
+      continue;
+    }
+
+    seenKeys.add(episode.key);
+  }
+
+  if (episodes.length !== 6) {
+    warnings.push(
+      `Season One production state expected 6 episodes but parsed ${episodes.length}.`,
+    );
+  }
+
+  const episodeFive = episodes.find((episode) => episode.key === "episode-05");
+  const episodeSix = episodes.find((episode) => episode.key === "episode-06");
+
+  if (!episodeFive) {
+    warnings.push("Season One production state is missing episode-05.");
+  } else if (episodeFive.draftSelectedItems.length !== 5) {
+    warnings.push(
+      `Episode 5 expected 5 draft selected items but parsed ${episodeFive.draftSelectedItems.length}.`,
+    );
+  }
+
+  if (!episodeSix) {
+    warnings.push("Season One production state is missing episode-06.");
+  } else if (episodeSix.draftSelectedItems.length !== 5) {
+    warnings.push(
+      `Episode 6 expected 5 draft selected items but parsed ${episodeSix.draftSelectedItems.length}.`,
+    );
+  }
+
+  return warnings;
+}
+
 export async function getLearningToLeadEpisodeProductionState(): Promise<SeasonOneEpisodeProductionState> {
   const sourcePath = await resolveRepoRelativePath(EPISODE_PRODUCTION_RELATIVE_PATH);
 
   if (!sourcePath) {
     return {
-      sourcePath: null,
+      sourceLabel: null,
       episodes: [],
       warnings: [
         "Episode production state file not found at content/books/learning-to-lead/episode-production/season-one.yml.",
@@ -424,10 +470,14 @@ export async function getLearningToLeadEpisodeProductionState(): Promise<SeasonO
   const rawSource = await readFile(sourcePath, "utf8");
   const rawEpisodes = parseSeasonOneProductionYaml(rawSource);
   const episodes = await Promise.all(rawEpisodes.map(normalizeEpisode));
+  const parserWarnings = [
+    ...episodes.flatMap((episode) => episode.sourceWarnings),
+    ...getSeasonOneProductionStateShapeWarnings(episodes),
+  ];
 
   return {
-    sourcePath,
+    sourceLabel: EPISODE_PRODUCTION_SOURCE_LABEL,
     episodes,
-    warnings: episodes.flatMap((episode) => episode.sourceWarnings),
+    warnings: parserWarnings,
   };
 }

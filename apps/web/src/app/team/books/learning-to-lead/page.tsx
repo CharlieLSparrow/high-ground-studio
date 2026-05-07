@@ -9,6 +9,11 @@ import {
   getLearningToLeadPodcastArrangement,
 } from "@/lib/server/living-manuscript";
 
+const MANUSCRIPT_SOURCE_LABEL =
+  "content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx";
+const PODCAST_ARRANGEMENT_SOURCE_LABEL =
+  "content/books/learning-to-lead/arrangements/podcast-season-1.yml";
+
 function formatLabel(value: string) {
   return value
     .split(/[-_]/g)
@@ -22,6 +27,16 @@ export default async function LearningToLeadBookPage() {
   const bookArrangement = await getLearningToLeadBookArrangement(manuscript);
   const podcastArrangement = await getLearningToLeadPodcastArrangement(manuscript);
   const episodeProductionState = await getLearningToLeadEpisodeProductionState();
+  const clientManuscript = {
+    ...manuscript,
+    sourcePath: MANUSCRIPT_SOURCE_LABEL,
+  };
+  const clientPodcastArrangement = {
+    ...podcastArrangement,
+    sourcePath: podcastArrangement.sourcePath
+      ? PODCAST_ARRANGEMENT_SOURCE_LABEL
+      : null,
+  };
   const chapterCount = new Set(manuscript.blocks.map((block) => block.chapter)).size;
   const workflowStatus =
     typeof manuscript.frontmatter.workflowStatus === "string"
@@ -116,9 +131,9 @@ export default async function LearningToLeadBookPage() {
       </GlassPanel>
 
       <LivingManuscriptViewerClient
-        manuscript={manuscript}
+        manuscript={clientManuscript}
         bookArrangement={bookArrangement}
-        podcastArrangement={podcastArrangement}
+        podcastArrangement={clientPodcastArrangement}
         episodeProductionState={episodeProductionState}
       />
     </section>
