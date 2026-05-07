@@ -71,6 +71,8 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 - No direct book-writing or podcast episode-prep artifact shipped in this slice.
 - That is the important warning from this addendum: coaching and infrastructure made progress, but next week should show visible Book & Episodes movement unless a true emergency blocks it.
 - Likely next move: choose the next book or episode production artifact and make one concrete writing/prep commit before pulling more infrastructure work.
+- Follow-up verification found Chapter One is already split into reusable Early Days Homer blocks and arranged for book/podcast use; no duplicate split was made. This is structural production readiness, not a polished chapter or recorded episode.
+- The next clean Book & Episodes move is Episode 5 intake incorporation using the Episode 4 pattern.
 
 ### Revenue Progress
 
