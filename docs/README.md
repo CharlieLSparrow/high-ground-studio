@@ -34,6 +34,10 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `analysis/charlie-presentation-taxonomy.md`: semantic and visual taxonomy for Charlie material before changing manuscript structure or viewer code.
 - `public/high-ground-field-guide-draft.md`: draft public-facing field guide entry for `Welcome To High Ground Odyssey`.
 
+## File-Backed Product State
+
+- `../apps/web/content/books/learning-to-lead/episode-production/season-one.yml`: read-only Season One episode lifecycle and Draft/Everything cockpit state for the internal Learning to Lead viewer.
+
 ## Current High-Signal Session Notes
 
 - `sessions/stripe-recovery-result.md`

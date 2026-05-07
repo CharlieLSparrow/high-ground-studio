@@ -6,6 +6,10 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import PaperCard from "@/components/ui/PaperCard";
 import type {
+  EpisodeProductionEpisode,
+  SeasonOneEpisodeProductionState,
+} from "@/lib/server/episode-production";
+import type {
   LivingManuscriptBlock,
   LivingManuscriptBookArrangement,
   LivingManuscriptBookChapter,
@@ -17,6 +21,7 @@ type ViewerProps = {
   manuscript: LivingManuscriptDocument;
   bookArrangement: LivingManuscriptBookArrangement;
   podcastArrangement: LivingManuscriptPodcastArrangement;
+  episodeProductionState: SeasonOneEpisodeProductionState;
 };
 
 type FilterState = {
@@ -35,7 +40,7 @@ type ViewerPreset =
   | "episode-4";
 
 type ViewMode = "book" | "story" | "episode";
-type EpisodeViewMode = "board" | "reading";
+type EpisodeViewMode = "everything" | "draft";
 
 type ChapterGroup = {
   key: string;
@@ -46,6 +51,7 @@ type ChapterGroup = {
 
 type EpisodeGroup = {
   key: string;
+  arrangementKey: string;
   title: string;
   status: string;
   totalBlocks: LivingManuscriptBlock[];
@@ -54,6 +60,11 @@ type EpisodeGroup = {
   warnings: string[];
   primaryChapter: string | null;
   totalWordCount: number;
+};
+
+type EpisodeProductionPanel = {
+  production: EpisodeProductionEpisode;
+  arrangement: EpisodeGroup | null;
 };
 
 const EMPTY_FILTERS: FilterState = {
@@ -1115,13 +1126,354 @@ function EpisodeReadingView({
   );
 }
 
+function ProductionMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-3xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-3">
+      <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold leading-6 text-[rgba(38,30,24,0.86)]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ProductionList({
+  title,
+  items,
+  emptyLabel = "None recorded.",
+}: {
+  title: string;
+  items: string[];
+  emptyLabel?: string;
+}) {
+  return (
+    <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.38)] px-4 py-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+        {title}
+      </div>
+      {items.length === 0 ? (
+        <div className="mt-2 text-sm leading-6 text-[rgba(38,30,24,0.66)]">
+          {emptyLabel}
+        </div>
+      ) : (
+        <ul className="mb-0 mt-3 space-y-2 pl-5 text-sm leading-6 text-[rgba(38,30,24,0.82)]">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ProductionWarningList({
+  episode,
+}: {
+  episode: EpisodeProductionEpisode;
+}) {
+  const warnings = [...episode.warnings, ...episode.sourceWarnings];
+
+  if (warnings.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-[28px] border border-[rgba(179,42,42,0.2)] bg-[rgba(179,42,42,0.08)] px-4 py-4 text-[rgba(94,26,26,0.92)]">
+      <div className="text-[11px] font-bold uppercase tracking-[0.08em]">
+        Warnings
+      </div>
+      <ul className="mb-0 mt-3 space-y-2 pl-5 text-sm leading-6">
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EpisodeProductionEverythingView({
+  episode,
+  arrangement,
+  showMetadata,
+}: {
+  episode: EpisodeProductionEpisode;
+  arrangement: EpisodeGroup | null;
+  showMetadata: boolean;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ProductionMetric
+          label="Arrangement Blocks"
+          value={
+            arrangement
+              ? `${arrangement.totalBlocks.length} blocks`
+              : "No matching arrangement"
+          }
+        />
+        <ProductionMetric
+          label="Intake References"
+          value={`${episode.intakeFileStatuses.length} files`}
+        />
+        <ProductionMetric
+          label="Draft Picks"
+          value={`${episode.draftSelectedItems.length} selected`}
+        />
+        <ProductionMetric
+          label="Decisions"
+          value={`${episode.unresolvedDecisions.length} unresolved`}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-5">
+          <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.38)] px-4 py-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+              Source / Intake References
+            </div>
+            <div className="mt-3 space-y-2">
+              {episode.intakeFileStatuses.map((reference) => (
+                <div
+                  key={reference.path}
+                  className="rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-3 py-3"
+                >
+                  <div className="break-all font-mono text-xs text-[rgba(38,30,24,0.82)]">
+                    {reference.path}
+                  </div>
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.58)]">
+                    {reference.exists ? "Found" : "Missing"}
+                  </div>
+                  {reference.warning ? (
+                    <div className="mt-1 text-sm leading-6 text-[rgba(94,26,26,0.9)]">
+                      {reference.warning}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <ProductionList
+            title="Unresolved Decisions"
+            items={episode.unresolvedDecisions}
+            emptyLabel="No unresolved decisions recorded for this episode."
+          />
+
+          <ProductionWarningList episode={episode} />
+        </div>
+
+        <div className="space-y-5">
+          <ProductionList
+            title="Recording Notes"
+            items={episode.recordingNotes}
+            emptyLabel="No recording notes have been selected."
+          />
+          <ProductionList
+            title="Show Notes"
+            items={episode.showNotes}
+            emptyLabel="No public-safe show notes have been selected."
+          />
+          <ProductionList
+            title="Next Action"
+            items={[episode.nextAction]}
+            emptyLabel="No next action recorded."
+          />
+        </div>
+      </div>
+
+      {arrangement ? (
+        <EpisodeCard episode={arrangement} showMetadata={showMetadata} />
+      ) : (
+        <PaperCard className="px-6 py-8 sm:px-8 sm:py-10">
+          <PageEyebrow>Arrangement</PageEyebrow>
+          <h3 className="m-0 mt-2 text-[1.45rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+            No matching podcast arrangement yet.
+          </h3>
+          <p className="mb-0 mt-4 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+            Everything View can still show intake references and decisions. A later
+            arrangement pass can replace the broad candidate sequence with a
+            precise episode sequence.
+          </p>
+        </PaperCard>
+      )}
+    </div>
+  );
+}
+
+function EpisodeProductionDraftView({
+  episode,
+}: {
+  episode: EpisodeProductionEpisode;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+              Draft Status
+            </div>
+            <div className="mt-1 text-lg font-semibold text-[rgba(38,30,24,0.88)]">
+              {formatLabel(episode.draftStatus)}
+            </div>
+          </div>
+          <div className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.68)]">
+            {episode.draftSelectedItems.length} selected items
+          </div>
+        </div>
+      </div>
+
+      {episode.draftSelectedItems.length === 0 ? (
+        <PaperCard className="px-6 py-8 sm:px-8 sm:py-10">
+          <h3 className="m-0 text-[1.45rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+            No curated Draft View selections yet.
+          </h3>
+          <p className="mb-0 mt-4 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+            Use Everything View as the candidate inventory until a human-selected
+            sequence is captured in the production state file.
+          </p>
+        </PaperCard>
+      ) : (
+        <div className="space-y-4">
+          {episode.draftSelectedItems.map((item, index) => (
+            <article
+              key={`${item.label}-${index}`}
+              className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.46)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                  Draft {index + 1}
+                </span>
+                <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                  {formatLabel(item.kind)}
+                </span>
+              </div>
+              <h3 className="m-0 mt-3 text-[1.25rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+                {item.label}
+              </h3>
+              {item.classification ? (
+                <div className="mt-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                  <strong>Classification:</strong> {item.classification}
+                </div>
+              ) : null}
+              {item.source ? (
+                <div className="mt-3 break-all font-mono text-xs text-[rgba(38,30,24,0.66)]">
+                  {item.source}
+                </div>
+              ) : null}
+              {item.notes ? (
+                <div className="mt-3 rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.45)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                  {item.notes}
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ProductionList
+          title="Recording Notes"
+          items={episode.recordingNotes}
+          emptyLabel="No recording notes have been selected."
+        />
+        <ProductionList
+          title="Show Notes"
+          items={episode.showNotes}
+          emptyLabel="No public-safe show notes have been selected."
+        />
+      </div>
+
+      <ProductionWarningList episode={episode} />
+    </div>
+  );
+}
+
+function EpisodeProductionCockpit({
+  panel,
+  viewMode,
+  showMetadata,
+}: {
+  panel: EpisodeProductionPanel;
+  viewMode: EpisodeViewMode;
+  showMetadata: boolean;
+}) {
+  const { production, arrangement } = panel;
+
+  return (
+    <PaperCard className="px-6 py-8 sm:px-8 sm:py-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <PageEyebrow>Episode Production</PageEyebrow>
+            <PageEyebrow>{production.lifecycleStatus}</PageEyebrow>
+            <PageEyebrow>{production.key}</PageEyebrow>
+            {production.publicSlug ? (
+              <PageEyebrow>{production.publicSlug}</PageEyebrow>
+            ) : null}
+          </div>
+
+          <h2 className="m-0 mt-2 text-[1.9rem] leading-tight tracking-[-0.04em] text-[#1d1712]">
+            Episode {production.episodeNumber ?? "?"}: {production.title}
+          </h2>
+          <p className="mb-0 mt-3 max-w-[780px] text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+            Everything View shows source references, unresolved decisions, warnings,
+            and the current arrangement snapshot. Draft View shows only the selected
+            read-only draft sequence stored in `season-one.yml`.
+          </p>
+        </div>
+
+        <div className="grid min-w-[260px] gap-3 text-sm text-[rgba(38,30,24,0.84)] sm:grid-cols-2 lg:grid-cols-1">
+          <ProductionMetric label="Recording" value={production.recordingStatus} />
+          <ProductionMetric label="Confidence" value={production.sourceConfidence} />
+          <ProductionMetric
+            label="Unresolved"
+            value={`${production.unresolvedDecisions.length} decisions`}
+          />
+          <ProductionMetric
+            label="Warnings"
+            value={`${production.warnings.length + production.sourceWarnings.length} warnings`}
+          />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        {viewMode === "everything" ? (
+          <EpisodeProductionEverythingView
+            episode={production}
+            arrangement={arrangement}
+            showMetadata={showMetadata}
+          />
+        ) : (
+          <EpisodeProductionDraftView episode={production} />
+        )}
+      </div>
+    </PaperCard>
+  );
+}
+
 export default function LivingManuscriptViewerClient({
   manuscript,
   bookArrangement,
   podcastArrangement,
+  episodeProductionState,
 }: ViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("book");
-  const [episodeViewMode, setEpisodeViewMode] = useState<EpisodeViewMode>("board");
+  const [episodeViewMode, setEpisodeViewMode] =
+    useState<EpisodeViewMode>("everything");
+  const [selectedProductionEpisodeKey, setSelectedProductionEpisodeKey] = useState(
+    episodeProductionState.episodes[4]?.key ??
+      episodeProductionState.episodes[0]?.key ??
+      "",
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -1220,6 +1572,7 @@ export default function LivingManuscriptViewerClient({
   const episodeGroups = useMemo<EpisodeGroup[]>(() => {
     return podcastArrangement.episodes.map((episode) => ({
       key: `episode:${episode.key}`,
+      arrangementKey: episode.key,
       title: episode.title,
       status: episode.status,
       totalBlocks: episode.blocks,
@@ -1230,6 +1583,31 @@ export default function LivingManuscriptViewerClient({
       totalWordCount: episode.totalWordCount,
     }));
   }, [filteredBlockIds, podcastArrangement.episodes]);
+
+  const productionEpisodePanels = useMemo<EpisodeProductionPanel[]>(() => {
+    const arrangementByKey = new Map(
+      episodeGroups.map((episode) => [episode.arrangementKey, episode]),
+    );
+
+    return episodeProductionState.episodes.map((production) => {
+      const arrangement =
+        production.arrangementKeys
+          .map((key) => arrangementByKey.get(key))
+          .find((episode): episode is EpisodeGroup => Boolean(episode)) ?? null;
+
+      return {
+        production,
+        arrangement,
+      };
+    });
+  }, [episodeGroups, episodeProductionState.episodes]);
+
+  const selectedProductionPanel =
+    productionEpisodePanels.find(
+      (panel) => panel.production.key === selectedProductionEpisodeKey,
+    ) ??
+    productionEpisodePanels[0] ??
+    null;
 
   const activeFilterCount =
     filters.chapters.length +
@@ -1281,7 +1659,8 @@ export default function LivingManuscriptViewerClient({
             </h2>
             <p className="mb-0 mt-3 max-w-[760px] text-sm leading-6 text-[rgba(245,239,230,0.82)]">
               Book View provides a seamless reading experience. Story View shows modular
-              manuscript blocks. Episode View arranges blocks by podcast episode.
+              manuscript blocks. Episode View now adds a read-only production cockpit
+              over the arrangement and episode state files.
             </p>
           </div>
 
@@ -1310,14 +1689,14 @@ export default function LivingManuscriptViewerClient({
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <PresetButton
-                label="Board"
-                active={episodeViewMode === "board"}
-                onClick={() => setEpisodeViewMode("board")}
+                label="Everything"
+                active={episodeViewMode === "everything"}
+                onClick={() => setEpisodeViewMode("everything")}
               />
               <PresetButton
-                label="Reading"
-                active={episodeViewMode === "reading"}
-                onClick={() => setEpisodeViewMode("reading")}
+                label="Draft"
+                active={episodeViewMode === "draft"}
+                onClick={() => setEpisodeViewMode("draft")}
               />
             </div>
           </div>
@@ -1569,14 +1948,16 @@ export default function LivingManuscriptViewerClient({
           </GlassPanel>
 
           <GlassPanel className="p-5 text-[var(--text-light)]">
-            <PageEyebrow>{viewMode === "story" ? "Chapters" : "Episodes"}</PageEyebrow>
+            <PageEyebrow>
+              {viewMode === "story" ? "Chapters" : "Production"}
+            </PageEyebrow>
             <h2 className="m-0 text-[1.3rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
-              {viewMode === "story" ? "Chapter Groups" : "Podcast Episode Groups"}
+              {viewMode === "story" ? "Chapter Groups" : "Season One Episodes"}
             </h2>
             <p className="mb-0 mt-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
               {viewMode === "story"
                 ? "Chapter groups show visible manuscript blocks against each chapter total."
-                : "Episode groups show arranged production order with visible block counts, warnings, and cross-chapter composition."}
+                : "Episode state shows lifecycle status, draft selections, source confidence, and unresolved decisions."}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1627,63 +2008,61 @@ export default function LivingManuscriptViewerClient({
                       </div>
                     );
                   })
-                : episodeGroups.map((episode) => {
-                    const collapsed = collapsedGroups.includes(episode.key);
+                : productionEpisodePanels.map((panel) => {
+                    const { production, arrangement } = panel;
+                    const active =
+                      selectedProductionPanel?.production.key === production.key;
+                    const warningCount =
+                      production.warnings.length + production.sourceWarnings.length;
 
                     return (
-                      <div
-                        key={episode.key}
-                        className="rounded-2xl border border-white/10 bg-white/6 p-3"
+                      <button
+                        key={production.key}
+                        type="button"
+                        onClick={() =>
+                          setSelectedProductionEpisodeKey(production.key)
+                        }
+                        className={[
+                          "block w-full rounded-2xl border p-3 text-left transition",
+                          active
+                            ? "border-flare/35 bg-flare/12 text-[rgba(245,239,230,0.98)]"
+                            : "border-white/10 bg-white/6 text-[rgba(245,239,230,0.9)] hover:border-[rgba(255,122,24,0.28)] hover:bg-white/8",
+                        ].join(" ")}
                       >
-                        <button
-                          type="button"
-                          onClick={() => toggleGroup(episode.key)}
-                          className="flex w-full items-center justify-between gap-3 text-left text-[rgba(245,239,230,0.96)]"
-                        >
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold">
-                              {episode.title}
+                              {production.episodeNumber
+                                ? `Episode ${production.episodeNumber}: `
+                                : ""}
+                              {production.title}
                             </div>
                             <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
-                              {episode.key}
+                              {production.lifecycleStatus} ·{" "}
+                              {formatLabel(production.sourceConfidence)}
                             </div>
                           </div>
-                          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
-                            {episode.visibleBlocks.length}/{episode.totalBlocks.length}
+                          <span className="shrink-0 rounded-full border border-white/10 bg-white/8 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                            {production.unresolvedDecisions.length}
                           </span>
-                        </button>
+                        </div>
 
-                        {!collapsed ? (
-                          <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
-                            {episode.missingBlockIds.length > 0 ? (
-                              <div className="rounded-2xl border border-[rgba(255,122,24,0.22)] bg-[rgba(255,122,24,0.08)] px-3 py-2 text-sm text-[rgba(255,229,190,0.9)]">
-                                {episode.missingBlockIds.length} missing block reference{episode.missingBlockIds.length === 1 ? "" : "s"}
-                              </div>
-                            ) : null}
-
-                            {episode.visibleBlocks.length === 0 ? (
-                              <div className="rounded-2xl border border-white/8 bg-white/4 px-3 py-2 text-sm text-[rgba(245,239,230,0.66)]">
-                                No visible blocks in this episode.
-                              </div>
-                            ) : (
-                              episode.visibleBlocks.map((block) => (
-                                <a
-                                  key={`${episode.key}-${block.id}`}
-                                  href={`#episode-${episode.key}-${block.id}`}
-                                  className={getBlockPresentation(block).sidebarLinkClassName}
-                                >
-                                  <div className="font-semibold">{block.title}</div>
-                                  <div
-                                    className={getBlockPresentation(block).sidebarMetaClassName}
-                                  >
-                                    {formatLabel(block.chapter)} · {formatLabel(block.voice)}
-                                  </div>
-                                </a>
-                              ))
-                            )}
+                        <div className="mt-3 grid gap-2 text-[11px] uppercase tracking-[0.08em] text-[rgba(245,239,230,0.64)]">
+                          <div>
+                            Draft: {formatLabel(production.draftStatus)}
                           </div>
-                        ) : null}
-                      </div>
+                          <div>
+                            Arrangement:{" "}
+                            {arrangement
+                              ? arrangement.arrangementKey
+                              : "not matched"}
+                          </div>
+                          <div>
+                            {production.draftSelectedItems.length} draft items ·{" "}
+                            {warningCount} warnings
+                          </div>
+                        </div>
+                      </button>
                     );
                   })}
             </div>
@@ -1719,20 +2098,27 @@ export default function LivingManuscriptViewerClient({
                 <BlockCard key={block.id} block={block} showMetadata={showMetadata} />
               ))
             )
-          ) : podcastArrangement.episodes.length === 0 ? (
+          ) : podcastArrangement.episodes.length === 0 &&
+            productionEpisodePanels.length === 0 ? (
             <PaperCard>
               <h2 className="m-0 text-[1.8rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
-                No podcast arrangement data is available.
+                No episode production data is available.
               </h2>
               <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
-                Episode View depends on `podcast-season-1.yml`. The viewer did not
-                find a usable arrangement file for this project.
+                Episode View can read `episode-production/season-one.yml` and
+                `podcast-season-1.yml`. The viewer did not find usable production
+                or arrangement data for this project.
               </p>
-              {podcastArrangement.warnings.length > 0 ? (
+              {[
+                ...podcastArrangement.warnings,
+                ...episodeProductionState.warnings,
+              ].length > 0 ? (
                 <ul className="mb-0 mt-5 space-y-2 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
-                  {podcastArrangement.warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
+                  {[...podcastArrangement.warnings, ...episodeProductionState.warnings].map(
+                    (warning) => (
+                      <li key={warning}>{warning}</li>
+                    ),
+                  )}
                 </ul>
               ) : null}
             </PaperCard>
@@ -1754,21 +2140,38 @@ export default function LivingManuscriptViewerClient({
                 </PaperCard>
               ) : null}
 
-              {episodeViewMode === "board"
-                ? episodeGroups.map((episode) => (
-                    <EpisodeCard
-                      key={episode.key}
-                      episode={episode}
-                      showMetadata={showMetadata}
-                    />
-                  ))
-                : episodeGroups.map((episode) => (
-                    <EpisodeReadingView
-                      key={episode.key}
-                      episode={episode}
-                      showMetadata={showMetadata}
-                    />
-                  ))}
+              {episodeProductionState.warnings.length > 0 ? (
+                <PaperCard>
+                  <h2 className="m-0 text-[1.5rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+                    Episode production state warnings
+                  </h2>
+                  <p className="mb-0 mt-4 text-[1rem] leading-7 text-[rgba(38,30,24,0.82)]">
+                    The production state loaded, but some source references need
+                    attention.
+                  </p>
+                  <ul className="mb-0 mt-5 space-y-2 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+                    {episodeProductionState.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </PaperCard>
+              ) : null}
+
+              {selectedProductionPanel ? (
+                <EpisodeProductionCockpit
+                  panel={selectedProductionPanel}
+                  viewMode={episodeViewMode}
+                  showMetadata={showMetadata}
+                />
+              ) : episodeGroups.length > 0 ? (
+                episodeGroups.map((episode) => (
+                  <EpisodeCard
+                    key={episode.key}
+                    episode={episode}
+                    showMetadata={showMetadata}
+                  />
+                ))
+              ) : null}
             </>
           )}
         </div>

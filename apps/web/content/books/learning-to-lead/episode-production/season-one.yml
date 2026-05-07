@@ -1,0 +1,228 @@
+# Read-only Season One episode production state for the Learning to Lead cockpit.
+# This file is draft/production state, not living-manuscript truth and not public
+# publish truth. Everything here should remain reviewable in Git before any
+# future editable workflow or Draft-to-Live publishing behavior exists.
+
+episodes:
+  episode-01:
+    episodeNumber: 1
+    title: "Write It Down"
+    lifecycleStatus: "Live"
+    recordingStatus: "recorded / published in current public episode set"
+    publicSlug: "write-it-down"
+    sourceConfidence: "high"
+    intakeFiles:
+      - "_inbox/Episode 1 - Preface.md"
+    arrangementKeys:
+      - "write-it-down"
+    draftStatus: "live-reference"
+    draftSelectedItems:
+      - label: "Preface / Write It Down"
+        kind: "manuscript-block"
+        source: "homer-preface-write-it-down"
+        classification: "Homer baseline"
+        notes: "Use as public/live reference; later boundary audit can refine the source split."
+    recordingNotes:
+      - "Recorded and represented in the current public episode set per production docs."
+    showNotes:
+      - "Existing public packet/public derivative remains source until a later publish audit."
+    unresolvedDecisions:
+      - "Later boundary audit should compare OneNote, packet, public derivative, and living-manuscript block scope."
+    warnings:
+      - "Do not disturb while Episode 5 and Episode 6 intake work is higher priority."
+    nextAction: "Leave stable; audit boundaries later."
+
+  episode-02:
+    episodeNumber: 2
+    title: "Look for Lessons / It's a Metaphor"
+    lifecycleStatus: "Live"
+    recordingStatus: "recorded / published in current public episode set"
+    publicSlug: "look-for-lessons"
+    sourceConfidence: "medium-high"
+    intakeFiles:
+      - "_inbox/Episode 2 - Introduction.md"
+    arrangementKeys:
+      - "look-for-lessons"
+    draftStatus: "live-reference"
+    draftSelectedItems:
+      - label: "Introduction / Look for Lessons"
+        kind: "manuscript-block"
+        source: "homer-introduction-look-for-lessons"
+        classification: "Homer baseline with Charlie packet/public derivative"
+        notes: "Raw OneNote has a clear Charlie section but also checklist artifacts."
+    recordingNotes:
+      - "Recorded and represented in the current public episode set per production docs."
+    showNotes:
+      - "Public title history should be reconciled before any future arrangement changes."
+    unresolvedDecisions:
+      - "Decide whether the long-term public title remains Look for Lessons or moves closer to It's a Metaphor."
+    warnings:
+      - "Raw OneNote file contains checklist/formatting artifacts that should not be normalized blindly."
+    nextAction: "Later cleanup and title-history review."
+
+  episode-03:
+    episodeNumber: 3
+    title: "Know Where You Came From / Chub and Jack"
+    lifecycleStatus: "Live"
+    recordingStatus: "recorded / published in current public episode set"
+    publicSlug: "know-where-you-came-from"
+    sourceConfidence: "medium"
+    intakeFiles:
+      - "_inbox/Episode 3 - Chapter 0.md"
+    arrangementKeys:
+      - "know-where-you-came-from"
+    draftStatus: "live-reference"
+    draftSelectedItems:
+      - label: "Chapter Zero / In The Beginning"
+        kind: "manuscript-block"
+        source: "homer-chapter-zero-in-the-beginning"
+        classification: "Homer baseline with Charlie packet/public derivative"
+        notes: "Raw OneNote appears to contain duplicate or alternate sectioned drafts."
+    recordingNotes:
+      - "Recorded and represented in the current public episode set per production docs."
+    showNotes:
+      - "Existing public packet/public derivative remains source until a later publish audit."
+    unresolvedDecisions:
+      - "Choose which duplicate or alternate raw draft layer is baseline before future normalization."
+    warnings:
+      - "Do not normalize raw Episode 3 material until duplicate/alternate-draft handling is resolved."
+    nextAction: "Later duplicate-draft source selection."
+
+  episode-04:
+    episodeNumber: 4
+    title: "The Early Days"
+    lifecycleStatus: "Recorded"
+    recordingStatus: "recorded / incorporated into living manuscript, with OneNote review still needed"
+    publicSlug: "TBD"
+    sourceConfidence: "medium-high"
+    intakeFiles:
+      - "_inbox/Episode 4.1 and 4.2 - Chapter 1.md"
+      - "episode-breakdowns/episode-04-early-days.md"
+    arrangementKeys:
+      - "early-life-lessons"
+    draftStatus: "repo-incorporated-review-needed"
+    draftSelectedItems:
+      - label: "Chapter One / Early Days arrangement"
+        kind: "arrangement"
+        source: "early-life-lessons"
+        classification: "Homer baseline plus Charlie sidebars"
+        notes: "Chapter One Homer blocks and Episode 4 Charlie draft blocks are in the living manuscript."
+    recordingNotes:
+      - "Recorded, but OneNote/recording prep should still be compared against repo incorporation."
+    showNotes:
+      - "Public publication status was not verified in the latest production-state pass."
+    unresolvedDecisions:
+      - "Final public title and slug."
+      - "Whether the recorded/prepped OneNote state added cues not represented in the repo."
+      - "Whether the final close belongs in book, episode, or both."
+    warnings:
+      - "Already incorporated does not mean OneNote and recorded cues are fully reconciled."
+    nextAction: "Compare Episode 4 OneNote/recording prep against repo intake and living-manuscript blocks."
+
+  episode-05:
+    episodeNumber: 5
+    title: "The Values Toolkit"
+    lifecycleStatus: "Recorded"
+    recordingStatus: "recorded / structured OneNote intake classified"
+    publicSlug: "TBD"
+    sourceConfidence: "medium-high"
+    intakeFiles:
+      - "_inbox/Episode 5 - Chapter 2.md"
+      - "episode-breakdowns/episode-05-values-toolkit.md"
+    arrangementKeys:
+      - "values"
+    draftStatus: "first-full-structured-intake-fixture"
+    draftSelectedItems:
+      - label: "Samwise Clip / Tip And The Winnemucca Promise"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-05-values-toolkit.md"
+        classification: "clip candidate + Homer baseline candidate + Charlie inline/sidebar candidates + research bridge"
+        notes: "Tip origin, Winnemucca rescue promise, trust/dependability framing, and Samwise production anchor."
+      - label: "Nate Clip / Milk Down The Drain"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-05-values-toolkit.md"
+        classification: "clip candidate + Homer baseline candidate + Charlie sidebar/reflection candidate + research bridge"
+        notes: "Milk mistake, restored confidence, and Watson/IBM quote verification need."
+      - label: "Forgive And Fire / Standards"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-05-values-toolkit.md"
+        classification: "Homer baseline candidate + Charlie sidebar/reflection candidate + unresolved decision"
+        notes: "Leadership standard: forgive mistakes while removing people whose habits harm the organization."
+      - label: "Roy Firing / Coaching Before Removal"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-05-values-toolkit.md"
+        classification: "clip candidate + research bridge + Charlie sidebar/reflection candidate + production notes"
+        notes: "Coaching first, removal when required, Jocko/Dichotomy reference, team development and diversity notes."
+      - label: "Trailing Radio / Responsibility / Dead Cow Fragments"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-05-values-toolkit.md"
+        classification: "production note + unresolved decision"
+        notes: "Preserve as production-intent fragments until the Episode 5/6 boundary is resolved."
+    recordingNotes:
+      - "Recording happened, but post-recording notes are not yet represented in this file."
+    showNotes:
+      - "No public-safe show notes have been selected yet."
+    unresolvedDecisions:
+      - "Which Charlie interjections are book prose, sidebars, episode-only reactions, or production notes."
+      - "Clip rights and citation review for Samwise, Nate, Roy, Watson/IBM, Speed of Trust, and Dichotomy references."
+      - "Final public title and slug."
+      - "Episode 5/6 boundary, especially radio/dead-cow/farm-responsibility fragments."
+    warnings:
+      - "Recorded does not mean normalized into the living manuscript."
+      - "Clip candidates are production anchors, not cleared public material."
+      - "Current podcast arrangement key values is broad and overlaps Episode 6."
+    nextAction: "Review Episode 5 structured intake with Homer/Charlie, then run a narrow living-manuscript normalization pass if accepted."
+
+  episode-06:
+    episodeNumber: 6
+    title: "Trust Through Consistency"
+    lifecycleStatus: "Ready to Record"
+    recordingStatus: "prepped / pending recording and post-recording review"
+    publicSlug: "TBD"
+    sourceConfidence: "medium"
+    intakeFiles:
+      - "_inbox/Episode 6 - Chapter 2 Continued.md"
+      - "episode-breakdowns/episode-06-trust-through-consistency.md"
+    arrangementKeys:
+      - "values"
+    draftStatus: "pre-recording-candidate"
+    draftSelectedItems:
+      - label: "Rocky Montage / Farm Discipline / Mount Fuji"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-06-trust-through-consistency.md"
+        classification: "clip candidates + Homer baseline candidate + Charlie trust sidebar + research bridge"
+        notes: "Ordinary consistency, farm discipline, Mount Fuji habit frame, trust model, and Joe vs the Volcano reaction cue."
+      - label: "Farm Sale / Grudges / Communication"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-06-trust-through-consistency.md"
+        classification: "Homer baseline candidate + Charlie sidebar/reflection candidate + production note"
+        notes: "Resentment, expectations, communication, and story-making around trust."
+      - label: "Frozen Flashlight / Listening / Canal Company"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-06-trust-through-consistency.md"
+        classification: "Homer baseline candidate + Charlie sidebar/reflection candidate + clip candidate"
+        notes: "Listening, invested time, canal-company relationship building, and Joe Quitting reference."
+      - label: "Early Work / Autonomy / Sound Of Music Correction"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-06-trust-through-consistency.md"
+        classification: "Homer baseline candidate + production note + clip/reference candidate + unresolved decision"
+        notes: "Leadership readiness, autonomy with correction, and whether the arc belongs here or later."
+      - label: "McFarland USA / Sidekick Leadership / Habit Formation Drafts"
+        kind: "classified-intake-section"
+        source: "episode-breakdowns/episode-06-trust-through-consistency.md"
+        classification: "clip candidates + Charlie sidebar/reflection candidate + research bridges + production note"
+        notes: "Sidekick/service leadership, Toyota andon, habit formation, and duplicate/alternate draft material."
+    recordingNotes:
+      - "Use as prep visibility only until recording and post-recording review confirm the arc."
+    showNotes:
+      - "No public-safe show notes have been selected yet."
+    unresolvedDecisions:
+      - "Episode 5/6 boundary and whether Episode 6 is a distinct or cross-chapter trust episode."
+      - "Duplicate and alternate drafts near the end of the OneNote export."
+      - "Clip rights and citation review for Rocky, Joe vs the Volcano, Joe Quitting, Sound of Music, McFarland USA, Toyota/andon, and habit research."
+      - "Final title, public slug, and whether the recording confirms the current arc."
+    warnings:
+      - "Final normalization waits for post-recording review."
+      - "Current podcast arrangement key values is broad and overlaps Episode 5."
+      - "Raw file includes table fragments, duplicate drafts, and unresolved questions."
+    nextAction: "After recording, compare the recorded shape against structured intake before normalizing or rebuilding the Episode 5/6 split."

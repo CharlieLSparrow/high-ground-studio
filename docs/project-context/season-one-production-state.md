@@ -42,6 +42,23 @@ Everything View must never publish directly. Draft View can become the source fo
 
 Lifecycle status belongs in a separate episode production/draft state layer, not in raw `_inbox` files, structured intake files, living manuscript block status, or public publish status.
 
+## File-Backed Production State
+
+The first read-only cockpit state now lives at:
+
+- `apps/web/content/books/learning-to-lead/episode-production/season-one.yml`
+
+This file carries Season One lifecycle status, recording status, intake references, arrangement keys, draft selected items, unresolved decisions, warnings, and next actions for Episodes 1-6.
+
+Current boundaries:
+
+- It is production/draft state, not living-manuscript truth.
+- It is read by the internal Learning to Lead viewer.
+- It verifies referenced intake files exist and surfaces missing-file warnings.
+- It does not parse raw `_inbox` content bodies.
+- It does not publish anything.
+- It does not add editable status controls.
+
 ## Status Types
 
 - Recording status: whether the episode has been recorded or is planned for recording.

@@ -2,6 +2,7 @@ import BackLink from "@/components/ui/BackLink";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import LivingManuscriptViewerClient from "./LivingManuscriptViewerClient";
+import { getLearningToLeadEpisodeProductionState } from "@/lib/server/episode-production";
 import {
   getLearningToLeadBookArrangement,
   getLearningToLeadManuscript,
@@ -20,6 +21,7 @@ export default async function LearningToLeadBookPage() {
   const manuscript = await getLearningToLeadManuscript();
   const bookArrangement = await getLearningToLeadBookArrangement(manuscript);
   const podcastArrangement = await getLearningToLeadPodcastArrangement(manuscript);
+  const episodeProductionState = await getLearningToLeadEpisodeProductionState();
   const chapterCount = new Set(manuscript.blocks.map((block) => block.chapter)).size;
   const workflowStatus =
     typeof manuscript.frontmatter.workflowStatus === "string"
@@ -106,7 +108,7 @@ export default async function LearningToLeadBookPage() {
                 Viewer Summary
               </div>
               <div className="mt-1 font-semibold text-[var(--text-light)]">
-                {manuscript.blocks.length} blocks · {chapterCount} chapters · {podcastArrangement.episodes.length} podcast episodes
+                {manuscript.blocks.length} blocks · {chapterCount} chapters · {podcastArrangement.episodes.length} podcast episodes · {episodeProductionState.episodes.length} production states
               </div>
             </div>
           </div>
@@ -117,6 +119,7 @@ export default async function LearningToLeadBookPage() {
         manuscript={manuscript}
         bookArrangement={bookArrangement}
         podcastArrangement={podcastArrangement}
+        episodeProductionState={episodeProductionState}
       />
     </section>
   );

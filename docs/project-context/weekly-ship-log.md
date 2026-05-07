@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- The internal Learning to Lead viewer now has the first read-only Episode production cockpit slice: file-backed Season One state, lifecycle badges, episode selection, Everything/Draft subviews, source/intake references, unresolved decisions, warnings, and YAML-selected draft items.
+- Episode 5 is the first full fixture because it is recorded and classified; Episode 6 is visible as pre-recording/pending post-recording review rather than being treated as final.
+- This moves Book & Episodes by making production truth visible for prep and normalization decisions. It does not mean Episode 5 was normalized into the living manuscript, and it does not publish public episode pages.
 - Episode View now has a documented production-cockpit design: Everything View for all candidates, Draft View for curated episode drafts, and lifecycle stages from Brainstorm through Live.
 - This is Book & Episodes architecture work that supports episode prep and publishing. It is not a substitute for actual writing, recording, editing, or Episode 5 normalization.
 - The latest raw OneNote exports for Episodes 1-6 are now inventoried as tracked staging truth under `_inbox`.
