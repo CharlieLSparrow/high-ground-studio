@@ -70,9 +70,9 @@ export default async function CoachingPage() {
                 sizes="100vw"
               />
             </div>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,122,24,0.28),rgba(7,20,24,0.12)_28%,rgba(7,20,24,0.72)_68%,rgba(7,20,24,0.94)_100%)]" />
-            <div className="absolute inset-0 bg-[linear-gradient(118deg,rgba(4,10,12,0.94)_0%,rgba(4,10,12,0.78)_35%,rgba(4,10,12,0.34)_62%,rgba(4,10,12,0.72)_100%)]" />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_20%,rgba(0,0,0,0.24)_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,12,14,0.90)_0%,rgba(3,12,14,0.76)_34%,rgba(3,12,14,0.42)_56%,rgba(3,12,14,0.24)_76%,rgba(3,12,14,0.42)_100%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_38%,rgba(255,146,52,0.24),rgba(255,146,52,0.10)_28%,rgba(255,146,52,0)_56%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_24%,rgba(0,0,0,0.18)_100%)]" />
 
             <div className="relative min-h-[560px]">
               <div className="relative z-10 flex min-h-[560px] items-end">
