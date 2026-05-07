@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode View now includes a non-canonical Playground subview so Chuck can test and copy possible episode sequences without writing manuscript, arrangement, production-state, publish, or public page files.
 - Episode 5 recorded-draft review created from the clean `values-toolkit` Draft View.
 - Episode 5 show-note prep packet created without publishing or promoting parked research/clips.
 - Episode 6 post-recording reconciliation scout created to prepare the next production-state update without prematurely normalizing Episode 6.

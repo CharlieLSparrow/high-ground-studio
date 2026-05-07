@@ -437,9 +437,9 @@ function getSeasonOneProductionStateShapeWarnings(
 
   if (!episodeFive) {
     warnings.push("Season One production state is missing episode-05.");
-  } else if (episodeFive.draftSelectedItems.length !== 5) {
+  } else if (episodeFive.draftSelectedItems.length !== 6) {
     warnings.push(
-      `Episode 5 expected 5 draft selected items but parsed ${episodeFive.draftSelectedItems.length}.`,
+      `Episode 5 expected 6 draft selected items but parsed ${episodeFive.draftSelectedItems.length}.`,
     );
   }
 

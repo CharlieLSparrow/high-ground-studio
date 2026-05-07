@@ -40,7 +40,7 @@ type ViewerPreset =
   | "episode-4";
 
 type ViewMode = "book" | "story" | "episode";
-type EpisodeViewMode = "everything" | "draft";
+type EpisodeViewMode = "everything" | "draft" | "playground";
 
 type ChapterGroup = {
   key: string;
@@ -66,6 +66,8 @@ type EpisodeProductionPanel = {
   production: EpisodeProductionEpisode;
   arrangement: EpisodeGroup | null;
 };
+
+type PlaygroundCopyKind = "arrangement" | "draft";
 
 const EMPTY_FILTERS: FilterState = {
   chapters: [],
@@ -928,6 +930,141 @@ function ProductionWarningList({
   );
 }
 
+function getUniqueBlockIds(ids: string[]) {
+  const seen = new Set<string>();
+  const uniqueIds: string[] = [];
+
+  for (const id of ids) {
+    if (seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+    uniqueIds.push(id);
+  }
+
+  return uniqueIds;
+}
+
+function getDraftSourceBlockIds(
+  episode: EpisodeProductionEpisode,
+  blockById: Map<string, LivingManuscriptBlock>,
+) {
+  return getUniqueBlockIds(
+    episode.draftSelectedItems
+      .map((item) => item.source)
+      .filter((source): source is string => Boolean(source && blockById.has(source))),
+  );
+}
+
+function buildPlaygroundCandidatePool({
+  episode,
+  arrangement,
+  blocks,
+  blockById,
+}: {
+  episode: EpisodeProductionEpisode;
+  arrangement: EpisodeGroup | null;
+  blocks: LivingManuscriptBlock[];
+  blockById: Map<string, LivingManuscriptBlock>;
+}) {
+  const pool: LivingManuscriptBlock[] = [];
+  const seen = new Set<string>();
+
+  function addBlock(block: LivingManuscriptBlock | null | undefined) {
+    if (!block || seen.has(block.id)) {
+      return;
+    }
+
+    seen.add(block.id);
+    pool.push(block);
+  }
+
+  for (const block of arrangement?.totalBlocks ?? []) {
+    addBlock(block);
+  }
+
+  for (const blockId of getDraftSourceBlockIds(episode, blockById)) {
+    addBlock(blockById.get(blockId));
+  }
+
+  for (const block of blocks) {
+    if (block.tags.includes(episode.key)) {
+      addBlock(block);
+    }
+  }
+
+  return pool;
+}
+
+function getPlaygroundDraftStartIds({
+  episode,
+  arrangement,
+  blockById,
+}: {
+  episode: EpisodeProductionEpisode;
+  arrangement: EpisodeGroup | null;
+  blockById: Map<string, LivingManuscriptBlock>;
+}) {
+  const draftIds = getDraftSourceBlockIds(episode, blockById);
+
+  if (draftIds.length > 0) {
+    return draftIds;
+  }
+
+  return getUniqueBlockIds((arrangement?.totalBlocks ?? []).map((block) => block.id));
+}
+
+function buildArrangementYaml({
+  key,
+  title,
+  blockIds,
+}: {
+  key: string;
+  title: string;
+  blockIds: string[];
+}) {
+  const blockLines =
+    blockIds.length > 0
+      ? blockIds.map((id) => `    - ${id}`).join("\n")
+      : "    # Add block IDs here";
+
+  return `${key}:\n  title: "${title}"\n  status: "draft"\n  blocks:\n${blockLines}\n`;
+}
+
+function buildDraftSelectedItemsYaml({
+  sequence,
+}: {
+  sequence: LivingManuscriptBlock[];
+}) {
+  if (sequence.length === 0) {
+    return "draftSelectedItems: []\n";
+  }
+
+  const lines = sequence.flatMap((block) => [
+    `  - label: "${block.title.replaceAll('"', '\\"')}"`,
+    `    kind: "manuscript-block"`,
+    `    source: "${block.id}"`,
+    `    classification: "${formatLabel(block.voice)} ${formatLabel(block.type)}"`,
+    `    notes: "Playground candidate; review before committing to production state."`,
+  ]);
+
+  return `draftSelectedItems:\n${lines.join("\n")}\n`;
+}
+
+async function copyText(value: string) {
+  if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+    return false;
+  }
+
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function EpisodeProductionEverythingView({
   episode,
   arrangement,
@@ -1126,14 +1263,347 @@ function EpisodeProductionDraftView({
   );
 }
 
+function EpisodeProductionPlaygroundView({
+  episode,
+  arrangement,
+  blocks,
+}: {
+  episode: EpisodeProductionEpisode;
+  arrangement: EpisodeGroup | null;
+  blocks: LivingManuscriptBlock[];
+}) {
+  const blockById = useMemo(
+    () => new Map(blocks.map((block) => [block.id, block])),
+    [blocks],
+  );
+  const draftStartIds = useMemo(
+    () => getPlaygroundDraftStartIds({ episode, arrangement, blockById }),
+    [arrangement, blockById, episode],
+  );
+  const arrangementStartIds = useMemo(
+    () => getUniqueBlockIds((arrangement?.totalBlocks ?? []).map((block) => block.id)),
+    [arrangement],
+  );
+  const candidatePool = useMemo(
+    () =>
+      buildPlaygroundCandidatePool({
+        episode,
+        arrangement,
+        blocks,
+        blockById,
+      }),
+    [arrangement, blockById, blocks, episode],
+  );
+  const [sequenceIds, setSequenceIds] = useState(() => draftStartIds);
+  const [copiedKind, setCopiedKind] = useState<PlaygroundCopyKind | null>(null);
+  const sequenceBlocks = sequenceIds
+    .map((id) => blockById.get(id))
+    .filter((block): block is LivingManuscriptBlock => Boolean(block));
+  const sequenceIdSet = new Set(sequenceIds);
+  const sequenceWordCount = sequenceBlocks.reduce(
+    (total, block) => total + block.wordCount,
+    0,
+  );
+  const playgroundArrangementKey =
+    episode.arrangementKeys[0] ? `${episode.arrangementKeys[0]}-playground` : `${episode.key}-playground`;
+  const playgroundArrangementTitle = `${episode.title} Playground`;
+  const arrangementYaml = buildArrangementYaml({
+    key: playgroundArrangementKey,
+    title: playgroundArrangementTitle,
+    blockIds: sequenceIds,
+  });
+  const draftSelectedItemsYaml = buildDraftSelectedItemsYaml({
+    sequence: sequenceBlocks,
+  });
+
+  function addBlock(blockId: string) {
+    setSequenceIds((current) =>
+      current.includes(blockId) ? current : [...current, blockId],
+    );
+  }
+
+  function removeBlock(blockId: string) {
+    setSequenceIds((current) => current.filter((id) => id !== blockId));
+  }
+
+  function moveBlock(blockId: string, direction: -1 | 1) {
+    setSequenceIds((current) => {
+      const index = current.indexOf(blockId);
+      const nextIndex = index + direction;
+
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+      const [item] = next.splice(index, 1);
+      next.splice(nextIndex, 0, item);
+      return next;
+    });
+  }
+
+  async function copyYaml(kind: PlaygroundCopyKind) {
+    const copied = await copyText(
+      kind === "arrangement" ? arrangementYaml : draftSelectedItemsYaml,
+    );
+
+    if (copied) {
+      setCopiedKind(kind);
+      window.setTimeout(() => setCopiedKind(null), 1400);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.42)] px-4 py-4">
+        <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-start">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+              Non-Canonical Playground
+            </div>
+            <h3 className="m-0 mt-2 text-[1.35rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+              Try the shape before committing the shape.
+            </h3>
+            <p className="mb-0 mt-3 max-w-[760px] text-sm leading-6 text-[rgba(38,30,24,0.78)]">
+              Playground starts from the selected episode draft sequence and lets
+              you test block order in the browser only. It does not write
+              manuscript, arrangement, production-state, publish, or public page
+              files.
+            </p>
+          </div>
+
+          <div className="grid gap-2 rounded-3xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.45)] px-4 py-3 text-sm text-[rgba(38,30,24,0.84)] sm:grid-cols-3 xl:min-w-[360px]">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+                Pool
+              </div>
+              <div className="mt-1 font-semibold">{candidatePool.length} blocks</div>
+            </div>
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+                Sequence
+              </div>
+              <div className="mt-1 font-semibold">{sequenceBlocks.length} blocks</div>
+            </div>
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.55)]">
+                Words
+              </div>
+              <div className="mt-1 font-semibold">{sequenceWordCount}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setSequenceIds(draftStartIds)}
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+          >
+            Reset from Draft
+          </button>
+          <button
+            type="button"
+            onClick={() => setSequenceIds(arrangementStartIds)}
+            disabled={arrangementStartIds.length === 0}
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Reset from Arrangement
+          </button>
+          <button
+            type="button"
+            onClick={() => setSequenceIds([])}
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+          >
+            Clear Playground
+          </button>
+          <button
+            type="button"
+            onClick={() => copyYaml("arrangement")}
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+          >
+            {copiedKind === "arrangement"
+              ? "Copied Arrangement"
+              : "Copy arrangement YAML"}
+          </button>
+          <button
+            type="button"
+            onClick={() => copyYaml("draft")}
+            className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00]"
+          >
+            {copiedKind === "draft"
+              ? "Copied Draft Items"
+              : "Copy draftSelectedItems YAML"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <div className="space-y-4">
+          <div>
+            <PageEyebrow>Candidate Pool</PageEyebrow>
+            <h3 className="m-0 mt-2 text-[1.35rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+              Useful first-pass pieces
+            </h3>
+            <p className="mb-0 mt-2 text-sm leading-6 text-[rgba(38,30,24,0.72)]">
+              Pool includes matched arrangement blocks, draft item block sources,
+              and manuscript blocks tagged `{episode.key}`.
+            </p>
+          </div>
+
+          {candidatePool.length === 0 ? (
+            <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.4)] px-4 py-4 text-sm leading-6 text-[rgba(38,30,24,0.72)]">
+              No candidate blocks found for this episode yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {candidatePool.map((block) => {
+                const alreadyAdded = sequenceIdSet.has(block.id);
+
+                return (
+                  <article
+                    key={block.id}
+                    className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.46)] px-4 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h4 className="m-0 text-[1.05rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+                          {block.title}
+                        </h4>
+                        <div className="mt-2 break-all font-mono text-xs text-[rgba(38,30,24,0.62)]">
+                          {block.id}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addBlock(block.id)}
+                        disabled={alreadyAdded}
+                        className="shrink-0 rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {alreadyAdded ? "Added" : "Add"}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                        {formatLabel(block.voice)}
+                      </span>
+                      <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                        {formatLabel(block.type)}
+                      </span>
+                      <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                        {formatLabel(block.status)}
+                      </span>
+                      <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                        {block.wordCount} words
+                      </span>
+                    </div>
+
+                    <div className="mt-3">
+                      <MetadataTagList values={block.tags} />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <PageEyebrow>Playground Sequence</PageEyebrow>
+            <h3 className="m-0 mt-2 text-[1.35rem] leading-tight tracking-[-0.03em] text-[#1d1712]">
+              Browser-only test order
+            </h3>
+            <p className="mb-0 mt-2 text-sm leading-6 text-[rgba(38,30,24,0.72)]">
+              Move, remove, and copy a possible next arrangement. Copying only puts
+              text on your clipboard; it does not update any source file.
+            </p>
+          </div>
+
+          {sequenceBlocks.length === 0 ? (
+            <div className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.4)] px-4 py-4 text-sm leading-6 text-[rgba(38,30,24,0.72)]">
+              Playground is empty. Add blocks from the candidate pool or reset from
+              Draft/Arrangement.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sequenceBlocks.map((block, index) => (
+                <article
+                  key={`${block.id}-${index}`}
+                  className="rounded-[28px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.52)] px-4 py-4 shadow-[0_16px_40px_rgba(25,18,12,0.08)]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                        Sequence {index + 1}
+                      </div>
+                      <h4 className="m-0 mt-3 text-[1.05rem] leading-tight tracking-[-0.02em] text-[#1d1712]">
+                        {block.title}
+                      </h4>
+                      <div className="mt-2 break-all font-mono text-xs text-[rgba(38,30,24,0.62)]">
+                        {block.id}
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveBlock(block.id, -1)}
+                        disabled={index === 0}
+                        className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        Move Up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveBlock(block.id, 1)}
+                        disabled={index === sequenceBlocks.length - 1}
+                        className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)] transition hover:border-[rgba(255,122,24,0.35)] hover:text-[#8f3a00] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        Move Down
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeBlock(block.id)}
+                        className="rounded-full border border-[rgba(179,42,42,0.16)] bg-[rgba(179,42,42,0.08)] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(94,26,26,0.86)] transition hover:border-[rgba(179,42,42,0.32)]"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                      {formatLabel(block.voice)}
+                    </span>
+                    <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                      {formatLabel(block.type)}
+                    </span>
+                    <span className="rounded-full border border-[rgba(37,28,20,0.12)] bg-[rgba(255,255,255,0.55)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[rgba(38,30,24,0.72)]">
+                      {block.wordCount} words
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EpisodeProductionCockpit({
   panel,
   viewMode,
   showMetadata,
+  blocks,
 }: {
   panel: EpisodeProductionPanel;
   viewMode: EpisodeViewMode;
   showMetadata: boolean;
+  blocks: LivingManuscriptBlock[];
 }) {
   const { production, arrangement } = panel;
 
@@ -1155,8 +1625,10 @@ function EpisodeProductionCockpit({
           </h2>
           <p className="mb-0 mt-3 max-w-[780px] text-sm leading-6 text-[rgba(38,30,24,0.78)]">
             Everything View shows source references, unresolved decisions, warnings,
-            and the current arrangement snapshot. Draft View shows only the selected
-            read-only draft sequence stored in `season-one.yml`.
+            and the current arrangement snapshot. Draft View shows the selected
+            read-only sequence stored in `season-one.yml`. Playground is a
+            browser-only test bench for trying sequence changes before committing
+            them anywhere.
           </p>
         </div>
 
@@ -1181,8 +1653,15 @@ function EpisodeProductionCockpit({
             arrangement={arrangement}
             showMetadata={showMetadata}
           />
-        ) : (
+        ) : viewMode === "draft" ? (
           <EpisodeProductionDraftView episode={production} />
+        ) : (
+          <EpisodeProductionPlaygroundView
+            key={production.key}
+            episode={production}
+            arrangement={arrangement}
+            blocks={blocks}
+          />
         )}
       </div>
     </PaperCard>
@@ -1426,6 +1905,11 @@ export default function LivingManuscriptViewerClient({
                 label="Draft"
                 active={episodeViewMode === "draft"}
                 onClick={() => setEpisodeViewMode("draft")}
+              />
+              <PresetButton
+                label="Playground"
+                active={episodeViewMode === "playground"}
+                onClick={() => setEpisodeViewMode("playground")}
               />
             </div>
           </div>
@@ -1891,6 +2375,7 @@ export default function LivingManuscriptViewerClient({
                   panel={selectedProductionPanel}
                   viewMode={episodeViewMode}
                   showMetadata={showMetadata}
+                  blocks={manuscript.blocks}
                 />
               ) : episodeGroups.length > 0 ? (
                 episodeGroups.map((episode) => (
