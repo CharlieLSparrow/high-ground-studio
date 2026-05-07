@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode 5 Draft View state now aligns with the clean `values-toolkit` sequence while intake/research/clip/production questions remain in Everything View and unresolved decisions.
 - Episode 5 `values-toolkit` candidate arrangement added and Episode 5 production state now points at the clean internal sequence while broad `values` remains for Episode 6/later Chapter Two work.
 - Episode 5 arrangement plan created to prepare a clean `values-toolkit` candidate sequence after narrow Charlie normalization.
 - Episode 5 narrow normalization added four approved Charlie/reflection blocks while preserving Homer baseline prose and leaving research, clips, production notes, arrangements, and Episode 6 untouched.
