@@ -29,8 +29,10 @@ Main route areas in `apps/web/src/app`:
   - public offer/front-door page
 - `/dashboard`
   - signed-in client dashboard
+- `/team/coaching-requests`
+  - internal coaching request queue and request-to-appointment conversion surface
 - `/team/*`
-  - internal team console for clients and appointments
+  - internal team console for clients, coaching requests, and appointments
 - `/api/auth/[...nextauth]`
   - NextAuth route handlers
 
@@ -52,6 +54,8 @@ Main route areas in `apps/web/src/app`:
 Team workflows are server-rendered pages plus server actions:
 - `src/app/team/clients/page.tsx`
 - `src/app/team/clients/actions.ts`
+- `src/app/team/coaching-requests/page.tsx`
+- `src/app/team/coaching-requests/actions.ts`
 - `src/app/team/appointments/page.tsx`
 - `src/app/team/appointments/actions.ts`
 
@@ -62,6 +66,24 @@ This is currently a pragmatic internal-ops architecture:
 - `revalidatePath()` after mutations
 
 It is simple, explicit, and easy for agents to trace.
+
+## Coaching Workflow Architecture
+
+The current coaching workflow is Prisma-backed and intentionally lightweight:
+- `/coaching` is the public front door and sign-in handoff, not a checkout route.
+- `/dashboard?intent=coaching` is the signed-in request form.
+- `submitCoachingRequestAction()` creates/updates the client role/profile, creates a `CoachingRequest`, sends a best-effort internal Resend email after the transaction commits, revalidates team/dashboard routes, and redirects to the dashboard or public requested state.
+- `/dashboard` shows the latest coaching request, recent request history, assigned coach, converted appointment summaries, generated Google Calendar links, and donation CTAs when configured.
+- `/team/coaching-requests` is the internal queue for request status changes, coach assignment, internal notes, and conversion into appointments.
+- `convertCoachingRequestToAppointmentAction()` creates an `Appointment`, marks the request `SCHEDULED`, assigns the coach, links `convertedAppointmentId`, and revalidates `/team/coaching-requests`, `/team/appointments`, and `/dashboard`.
+- `/team/appointments` remains the general appointment creation/editing queue.
+
+External integration posture:
+- Donation/payment is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
+- Google Calendar is event-template URL generation only.
+- Resend email is wired for new internal coaching request notifications.
+- SMS/Twilio is not called by the active coaching workflow.
+- Full Stripe Checkout is not active.
 
 ## Content Architecture
 

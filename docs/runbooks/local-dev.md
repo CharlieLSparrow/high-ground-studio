@@ -35,7 +35,10 @@ Notes:
 - use the checked-in `.env.example` as the starting point
 - current code prefers `AUTH_SECRET`
 - `NEXTAUTH_SECRET` is a legacy fallback and is only read when `AUTH_SECRET` is unset
+- `HGO_COACHING_DONATION_URL` enables the external pay-what-you-can contribution CTA; it is not full Stripe Checkout
+- `RESEND_API_KEY`, `HGO_EMAIL_FROM`, and `HGO_SITE_URL` enable best-effort internal coaching request email notifications
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
+- `apps/web/src/lib/server/sms.ts` reads Twilio env vars if called, but SMS/Twilio is not wired into the active coaching request flow and those vars are not required for local development today
 
 ## Install
 

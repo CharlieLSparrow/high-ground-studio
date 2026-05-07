@@ -129,8 +129,56 @@ Current location enum:
 - `OTHER`
 
 Current reality:
-- appointments are managed manually through internal forms
+- appointments are managed through internal forms and can also be created by converting a coaching request
+- request conversion creates an appointment with client, coach, creator, scheduled start/end, timezone, location, and notes
 - `googleEventId` exists in schema, but active calendar synchronization is not established in the current repo docs/code path
+- current calendar behavior is generated Google Calendar event-template links, not persisted Google API events
+
+## Coaching Requests
+
+### `CoachingRequest`
+
+Client-facing request for a coaching follow-up conversation.
+
+Key fields:
+- `clientUserId`
+- `preferredContactMethod`
+- `email`
+- `phone`
+- `availabilityNotes`
+- `coachingGoals`
+- `contactConsent`
+- `status`
+- `assignedCoachUserId`
+- `convertedAppointmentId`
+- `internalNotes`
+
+Current status enum:
+- `NEW`
+- `CONTACTED`
+- `SCHEDULED`
+- `CLOSED`
+- `DECLINED`
+
+Current usage:
+- created from the signed-in dashboard coaching request form
+- listed on `/dashboard` for the client
+- managed from `/team/coaching-requests`
+- can be assigned to a coach before conversion
+- can be converted to an `Appointment`
+
+Conversion behavior:
+- creates an `Appointment`
+- marks the request `SCHEDULED`
+- sets `assignedCoachUserId`
+- links `convertedAppointmentId`
+- appends the scheduling note to `internalNotes`
+- leaves later appointment edits to `/team/appointments`
+
+Notification behavior:
+- new request creation attempts a best-effort internal Resend email after the request transaction commits
+- email failure is logged and does not block request creation or redirect
+- SMS/Twilio notification sending is not wired into the current request flow
 
 ## Content Access Model
 
@@ -161,5 +209,8 @@ Current behavior:
 
 - Auth identity and staff bootstrap are env-assisted.
 - Clients, memberships, and appointments are Prisma-backed and operational.
+- Coaching requests are Prisma-backed and operational, including internal request-to-appointment conversion.
 - Stripe commercialization is not the source of truth yet.
+- Donation/payment support is currently an external link, not app-owned Stripe Checkout state.
+- Google Calendar support is generated links, not OAuth/API sync.
 - Content publishing is split between stable metadata arrays and a guarded MDX route path.

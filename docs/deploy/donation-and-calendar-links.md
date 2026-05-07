@@ -22,6 +22,8 @@ HGO_COACHING_DONATION_URL="https://buy.stripe.com/your-payment-link"
 - The CTA appears when the user has a converted coaching appointment or another scheduled/completed appointment available on the dashboard.
 - If the env var is missing, clients do not see a broken or empty donation button.
 - Team pages show a small configuration note so staff can tell whether the donation CTA is live.
+- The app does not create Stripe Checkout sessions, store payment records, or process webhooks for this flow.
+- The configured URL is treated as an external pay-what-you-can destination, usually a Stripe Payment Link.
 
 ## How To Test The Donation Button
 
@@ -43,6 +45,7 @@ HGO_COACHING_DONATION_URL="https://buy.stripe.com/your-payment-link"
 - No OAuth is used.
 - No Google Calendar API calls are made.
 - No server-side calendar events are created or updated.
+- `Appointment.googleEventId` exists in the Prisma schema, but this link-only flow does not write it.
 
 ## How To Test Calendar Links
 

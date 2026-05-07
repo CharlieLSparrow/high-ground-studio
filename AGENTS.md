@@ -33,8 +33,15 @@ Recent stabilization history lives in:
 - Google/NextAuth sign-in is wired and promotes/updates app users in Prisma.
 - Users support primary email, alias emails, roles, client profiles, memberships, and appointments.
 - `/dashboard` is a working signed-in client dashboard backed by Prisma.
-- `/team/clients` and `/team/appointments` are working internal operations screens backed by server actions.
-- `/coaching` is a public offer/front-door page, not a completed Stripe checkout flow.
+- `/dashboard?intent=coaching` lets signed-in users submit a coaching request.
+- `/dashboard` shows recent coaching requests and converted appointment summaries.
+- `/team/clients`, `/team/coaching-requests`, and `/team/appointments` are working internal operations screens backed by server actions.
+- `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
+- `/coaching` is a public offer/front-door page and sign-in handoff, not a completed Stripe checkout flow.
+- Coaching donation support is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
+- Google Calendar support is generated event-template links only; there is no Google Calendar API/OAuth sync.
+- New coaching request email notifications are best-effort Resend emails to active internal users with `OWNER`, `TEAM_SCHEDULER`, or `COACH`.
+- SMS/Twilio notification sending is not wired into the current coaching request flow.
 - `/episodes/[[...slug]]` currently uses a guarded Fumadocs loader path.
 - The repo currently builds under both:
   - `pnpm --filter web build`
@@ -75,7 +82,15 @@ Documented from source usage:
 - `HGO_OWNER_EMAILS`
 - `HGO_TEAM_SCHEDULER_EMAILS`
 - `HGO_COACH_EMAILS`
+- `HGO_COACHING_DONATION_URL`
+- `HGO_COMPANY_FAMILY_SUPPORT_URL`
+- `RESEND_API_KEY`
+- `HGO_EMAIL_FROM`
+- `HGO_SITE_URL`
 - `ENABLE_EPISODES_FUMADOCS`
+
+Dormant/non-required for the current coaching flow:
+- `apps/web/src/lib/server/sms.ts` still contains a Twilio REST helper, but no active coaching action imports or calls it.
 
 Current auth-secret reality:
 - the code prefers `AUTH_SECRET`
