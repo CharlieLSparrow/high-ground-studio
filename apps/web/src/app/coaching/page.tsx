@@ -70,7 +70,7 @@ export default async function CoachingPage() {
                 sizes="100vw"
               />
             </div>
-            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,12,14,0.94)_0%,rgba(3,12,14,0.84)_34%,rgba(3,12,14,0.48)_56%,rgba(3,12,14,0.24)_76%,rgba(3,12,14,0.36)_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,12,14,0.92)_0%,rgba(3,12,14,0.80)_34%,rgba(3,12,14,0.45)_56%,rgba(3,12,14,0.24)_76%,rgba(3,12,14,0.39)_100%)]" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_38%,rgba(255,146,52,0.24),rgba(255,146,52,0.10)_28%,rgba(255,146,52,0)_56%)]" />
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_24%,rgba(0,0,0,0.18)_100%)]" />
 
