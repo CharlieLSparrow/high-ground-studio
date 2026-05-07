@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Live Story Draft architecture planned so Homer and Chuck can move writing into the app without directly risking canonical manuscript truth.
 - Episode 6 recording checkpoint captured after recording started and paused for camera battery; full reconciliation waits until recording is complete.
 - Story Map view added so Homer can see his book's stories as planning cards.
 - Story Candidate terminology introduced to bridge chapters and episodes.
