@@ -68,6 +68,7 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Episode 5 approval matrix created so Homer/Charlie can approve, park, revise, or reject proposed blocks before canonical manuscript edits.
 - Episode 5 normalization dry run created so the next manuscript edit can be scoped and reviewed before canonical changes.
 - Episode 5 review packet created from the hardened cockpit and structured intake; it prepares the next manuscript normalization pass without changing canonical manuscript truth yet.
 - The internal Learning to Lead viewer now has the first read-only Episode production cockpit slice: file-backed Season One state, lifecycle badges, episode selection, Everything/Draft subviews, source/intake references, unresolved decisions, warnings, and YAML-selected draft items.
