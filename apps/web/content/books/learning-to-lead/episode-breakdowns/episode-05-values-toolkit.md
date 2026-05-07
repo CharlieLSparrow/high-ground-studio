@@ -1,204 +1,187 @@
 # Episode 5: The Values Toolkit
 
 ## Episode Metadata
+
 - workingTitle: The Values Toolkit
 - publicTitle: TBD
 - episodeNumber: 5
-- status: intake-stage
-- recordingStatus: editorial shaping in progress
+- status: structured-intake
+- recordingStatus: recorded
 - publicationStatus: unpublished
 - pairedBookMaterial: Chapter Two / Values: Get Some
 - pairedReadingSlug: TBD
+- latestRawSource: `apps/web/content/_inbox/Episode 5 - Chapter 2.md`
 - sourceConfidence: medium-high
-- notes: The pasted intake combines Chapter Two story material, Charlie inline reactions, trust framing, and firing/coaching material. Episode boundaries still look provisional.
+- notes: Latest OneNote export is richer than the earlier breakdown and should be treated as the current intake truth. This file classifies the material without normalizing it into the living manuscript.
 
 ## Intake Summary
-Episode 5 appears to be a values-and-character episode with three production anchors:
-- `Samwise Clip`
-- `Nate Clip`
-- `Roy Firing`
 
-The main movement is:
-- Tip and the Winnemucca promise
-- trust and dependability
-- spilled milk and restored confidence
-- standards, forgiveness, coaching, and firing
+Episode 5 is the highest-priority normalization candidate because it is recorded and contains a usable values/trust arc with clear production anchors.
 
-Charlie’s material is embedded directly in the prose as reactions, trust framing, and application bridges rather than isolated sidebars.
+Main movement:
 
-## Source Material
-Preserved intake anchors from the pasted material, kept in source order:
+- Tip and the Winnemucca promise.
+- Trust as consistency and dependability.
+- Milk dumped down the drain and restored confidence.
+- Forgiving mistakes versus removing people who cannot meet the standard.
+- Coaching, team development, diversity, and firing responsibility.
+
+The raw file mixes preserved Homer baseline material with Charlie inline reactions, research/field-note material, clip candidates, and production notes. The `==...==` sections are raw OneNote/Charlie/editorial markup, not clean manuscript prose by default.
+
+## Classification Categories Used
+
+- Homer baseline candidate
+- Charlie inline candidate
+- Charlie sidebar/reflection candidate
+- research bridge / field note candidate
+- clip candidate
+- production note
+- unresolved / needs human decision
+
+## Classified Sequence
+
+### 1. Samwise Clip / Tip And The Winnemucca Promise
+
+Classification:
+
+- clip candidate: `Samwise Clip`.
+- Homer baseline candidate: the stray dog/Tip origin, the newspaper ad, Tip becoming part of the family, Tip disappearing, the Winnemucca pound call, the 14-hour rescue drive, Tip returning home, and the conclusion that trusted leaders are followed.
+- Charlie inline candidate: direct interjections about loving Tip, being a kindred spirit, the oddly specific promise request, the possibility that everyone would have recovered, the claim that no dog was better than Tip, and remembering Mom's "Tip! That will be enough!" cadence.
+- research bridge / field note candidate: the J.C. Watts character quote, "It's just what we do," trust as consistency/dependability, Stephen M. R. Covey's *The Speed of Trust*, trust tax/friction, and neurodivergent follow-through difficulty.
+- production note: `Scott gets real about how hard the last few months working with me have been...`
+- unresolved / needs human decision: decide which Charlie interjections are episode-only reactions versus clean book sidebars or inline prose.
+
+Important raw source markers to preserve:
 
 ```md
-The Values Toolkit
-Theme: Character - The dog, spilled milk, frozen flashlight
-[Chapter Two: Values: Get Some]
-
 Samwise Clip
-
-... Tip, or Tippie ... became part of the family ...
-... my little brother loved her ...
-
-*I really did! I loved that dumb dog so much. She was a kindred spirit loving the farm, full of enthusiasm, but not particularly useful.
-
-... “Dad,” he pleaded ... “will you go get Tippie no matter how far away she is.” ...
-
-*It's weird that I made a request that specific. ...
-
-... the pound in Winnemucca, Nevada ...
-... he got in his truck and drove for 14 hours ...
-
-*Wait! I even know the cadence she said that in ...
-
-... My father was a man who kept promises. ...
 Leaders who are trusted are leaders who are followed.
-
-Character is doing the right thing when nobody's looking. ...
-~ J.C. Watts
-
-... “It’s just what we do” ...
-
-... trust research ...
-... To be trustworthy is to be consistent and dependable. ...
-... Stephen M. R. Covey in The Speed of Trust ...
-
-Nate Clip
-
-... We had literally dumped the entire milking down the drain. ...
-... I was surprised at how quickly we were forgiven and confidence was restored. ...
-
-... Thomas J. Watson of IBM ...
-... “Resign? Why would I ask you to resign? I just spent $600,000 educating you!” ...
-
-... Forgive and Fire, both are critical.
-
-Roy Firing
-
-... The Dichotomy of Leadership ...
-... a “great guy” ... but he just couldn't perform at the level they needed ...
-... they had to pull him from the platoon ...
-
-... Team development inject ...
-... Diversity inject ...
-
-... if you have done the formal, written counseling ...
-
-I want to talk about talking on the radio as a kid
-And about the responsibility I had as a kid
-That cow died mom
+Dad often says "It's just what we do"
+To be trustworthy is to be consistent and dependable.
+It's just what we do.
 ```
 
-## Detected Sections
-- Theme line: character / dog / spilled milk / frozen flashlight
-- `Samwise Clip`
-- Tip origin story
-- Charlie inline reflection on loving Tip
-- Tip disappears
-- Charlie inline reflection on the “no matter how far away” request
-- Winnemucca / Nevada retrieval story
-- Charlie inline memory about Mom’s cadence and Tip inside the house
-- Dad as promise-keeper
-- J.C. Watts quote
-- “It’s just what we do”
-- Charlie trust research / consistency section
-- `Nate Clip`
-- Milk down the drain / trust restored
-- Thomas J. Watson / IBM anecdote
-- Forgive and Fire leadership principle
-- `Roy Firing`
-- Jocko / *The Dichotomy of Leadership* anecdote
-- Team development inject
-- Diversity inject
-- formal counseling / removal framing
-- trailing unfinished note about radio / childhood responsibility / dead cow
+### 2. Nate Clip / Milk Down The Drain
 
-## Charlie Sidebars / Additions
-Detected Charlie material:
-- direct inline reaction to Tip: “I really did! I loved that dumb dog...”
-- direct inline reflection on the Winnemucca promise request
-- direct inline memory about Mom’s “Tip! That will be enough!”
-- explicit trust research/application section:
-  - dependable and consistent
-  - neurodivergence and follow-through
-  - friction / nervous-system tax
-  - honesty while rebuilding trust
-- inline production note:
-  - `*Scott gets real about how hard the last few months...`
-- later editorial inserts:
-  - `Team development inject`
-  - `Diversity inject`
-- trailing fragment notes:
-  - radio / kid responsibility / dead cow
+Classification:
 
-## Clip Notes
-Explicit clip markers or likely clip references:
-- `Samwise Clip`
-- `Nate Clip`
-- `Roy Firing`
+- clip candidate: `Nate Clip`.
+- Homer baseline candidate: canal-company summer context, cow-milking responsibility, the disconnected pipe, dumped milk, CB radio confession, Dad's silence, quick forgiveness, and restored confidence.
+- research bridge / field note candidate: Thomas J. Watson / IBM story and the "I just spent $600,000 educating you!" quote.
+- Charlie sidebar/reflection candidate: the question of when someone is worth keeping after a costly mistake versus when they should be let go.
+- unresolved / needs human decision: verify the Watson anecdote before any public/book derivative treats it as citation-ready.
 
-Other likely clip/reference candidates from the intake:
-- Winnemucca dog rescue story
-- J.C. Watts quote
-- IBM / Thomas J. Watson anecdote
-- *The Speed of Trust*
-- *The Dichotomy of Leadership*
+Important raw source markers to preserve:
 
-## Research / Quote Notes
-- J.C. Watts quote:
-  - “Character is doing the right thing when nobody's looking...”
-  - citationStatus: needs-verification
-- Stephen M. R. Covey, *The Speed of Trust*
-- Thomas J. Watson / IBM resignation anecdote
-  - citationStatus: needs-verification
-- Jocko Willink / *The Dichotomy of Leadership*
-- trust framing:
-  - dependable
-  - consistent
-  - trust tax / friction / emotional cost
-- explicit mention of neurodivergent difficulty around follow-through
+```md
+Nate Clip
+We had literally dumped the entire milking down the drain.
+I was surprised at how quickly we were forgiven and confidence was restored.
+"Resign? Why would I ask you to resign? I just spent $600,000 educating you!"
+```
+
+### 3. Forgive And Fire / Standards
+
+Classification:
+
+- Homer baseline candidate: leaders must remove people whose habits harm the organization; keeping underperformers lowers the standard; mistakes should be confessable; forgiving subordinates fosters reciprocal forgiveness.
+- Charlie sidebar/reflection candidate: "So how do we decide when someone is worth keeping..." as a bridge into the leadership question.
+- unresolved / needs human decision: decide whether this principle belongs in Episode 5 only or later becomes a reusable book subsection.
+
+Important raw source marker to preserve:
+
+```md
+Forgive and Fire, both are critical.
+```
+
+### 4. Roy Firing / Coaching Before Removal
+
+Classification:
+
+- clip candidate: `Roy Firing`.
+- research bridge / field note candidate: Jocko Willink / *The Dichotomy of Leadership* anecdote about a liked SEAL officer who could not perform at the required level.
+- Charlie sidebar/reflection candidate: personal reflection on not regretting most firings, regretting holding on too long, coaching first, turnover cost, and emotionally reforming teams.
+- production note: `Team development inject`.
+- production note: `Diversity inject`.
+- Homer/Charlie blended candidate: retention should emphasize strengths; do not remove someone merely because they disagree; written counseling and clear standards make removal less threatening.
+- unresolved / needs human decision: clarify which parts are Scott/Homer baseline, which are Charlie additions, and which are production-only coaching notes before manuscript normalization.
+
+Important raw source markers to preserve:
+
+```md
+Roy Firing
+Team development inject
+Diversity inject
+```
+
+### 5. Trailing Radio / Responsibility / Dead Cow Fragments
+
+Classification:
+
+- production note: `I want to talk about talking on the radio as a kid`.
+- production note: `And about the responsibility I had as a kid`.
+- unresolved / needs human decision: `That cow died mom`.
+
+Treatment:
+
+- Do not normalize these into clean manuscript blocks yet.
+- Preserve them as production-intent fragments until Homer/Charlie decide whether they belong in Episode 5, Episode 6, or a later farm-responsibility story.
+
+## Formatting Artifacts
+
+- Heavy use of `==...==` raw OneNote/export highlighting.
+- Several Charlie interjections begin with `==*`, suggesting inline reactions rather than settled prose.
+- One production note is missing a closing emphasis marker.
+- No table fragment appears in Episode 5.
+- Trailing fragments are not attached to a clear section yet.
 
 ## Living Manuscript Mapping
+
 Likely existing `ManuscriptBlock` IDs involved:
+
 - `homer-values-tip-nevada-promise`
 - `homer-values-milk-down-the-drain`
 - `homer-values-grudges-and-listening`
 - `homer-values-army-leadership-and-integrity`
+- `homer-values-mundane-greatness`
 
-The current living manuscript already contains the Tip and milk stories, but not the Charlie inline trust layer or the later firing/coaching overlay in this intake shape.
+The current living manuscript already contains the Tip and milk stories, but not the latest Charlie inline trust layer, clip candidates, coaching/firing overlay, or unresolved trailing fragments from the OneNote export.
 
-## New Blocks Likely Needed
-Likely future Homer/Charlie/support blocks:
-- `charlie-values-tip-kindred-spirit-bridge`
-- `charlie-values-winnemucca-promise-bridge`
+## Future Block Candidates
+
+- `charlie-values-tip-kindred-spirit-reaction`
+- `charlie-values-winnemucca-promise-reaction`
 - `charlie-values-trust-through-dependability-bridge`
-- `charlie-values-neurodivergence-follow-through-bridge`
-- `clip-samwise-values-candidate`
-- `clip-nate-values-candidate`
-- `clip-roy-firing-candidate`
-- `quote-jc-watts-character`
-- `quote-thomas-watson-educating-you`
+- `charlie-values-neurodivergence-follow-through-reflection`
 - `research-values-speed-of-trust-bridge`
-- `research-values-dichotomy-of-leadership-bridge`
-- `editorial-values-team-development-note`
-- `editorial-values-diversity-note`
-- `editorial-values-radio-responsibility-note`
+- `research-values-watson-education-quote`
+- `research-values-dichotomy-firing-bridge`
+- `clip-values-samwise-candidate`
+- `clip-values-nate-candidate`
+- `clip-values-roy-firing-candidate`
+- `production-values-team-development-note`
+- `production-values-diversity-note`
+- `production-values-radio-dead-cow-fragment`
+
+These are intake candidates only. Do not create them in the living manuscript without a dedicated normalization pass.
 
 ## Arrangement Implications
-- `book-v1.yml`:
-  - likely still anchored in Chapter Two values material
-  - may need a later selective arrangement rather than a single whole-chapter pull
-- `podcast-season-1.yml`:
-  - Episode 5 likely uses only part of the Chapter Two split blocks
-  - may need to share Chapter Two material with Episode 6
-- `public-site.yml`:
-  - should remain conservative
-  - no public-ready assumption yet for this intake
+
+- `book-v1.yml` should remain unchanged until the clean book/prose layer is selected.
+- `podcast-season-1.yml` likely needs a future Episode 5-specific sequence rather than the broad `values` candidate.
+- Episode 5 and Episode 6 still overlap around trust, consistency, responsibility, and the later Chapter Two material.
+- Public-site arrangement should remain conservative.
 
 ## Open Questions
-- Is `The Values Toolkit` the actual public title or just a working title?
-- What should the public slug be?
-- Is the frozen flashlight material part of Episode 5 or Episode 6?
-- Are Episodes 5 and 6 truly separate episodes or one split values/trust arc?
-- Which Charlie inserts belong as sidebars, and which are episode-only narration?
-- Which quote anecdotes need verification before any public-facing derivative?
-- Is the trailing radio / dead-cow note part of this episode or a future follow-up?
+
+- Is `The Values Toolkit` the final public title?
+- Which Charlie interjections should become clean book prose, which should become sidebars, and which should stay episode-only?
+- Does `Samwise Clip` map to a specific cleared media moment or only a conversational reference?
+- Does `Nate Clip` refer to a specific clip/reference that needs rights or citation review?
+- Does `Roy Firing` refer to a specific clip/reference that needs rights or citation review?
+- Should the radio/dead-cow fragments stay with Episode 5 or move into Episode 6/later farm responsibility material?
+- Which quote/reference items need verification before public use?
+
+## Recommended Next Action
+
+Run a living-manuscript normalization pass for Episode 5 only after a human confirms the classification above. Preserve Homer baseline blocks, add Charlie/support blocks separately, and keep clip/production cues out of clean book prose unless deliberately promoted.

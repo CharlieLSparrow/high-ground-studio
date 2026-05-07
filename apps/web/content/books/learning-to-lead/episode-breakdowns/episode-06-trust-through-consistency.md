@@ -1,171 +1,228 @@
 # Episode 6: Trust Through Consistency
 
 ## Episode Metadata
+
 - workingTitle: Trust Through Consistency
 - publicTitle: TBD
 - episodeNumber: 6
-- status: intake-stage
-- recordingStatus: editorial shaping in progress
+- status: structured-intake
+- recordingStatus: prepped / pending recording
 - publicationStatus: unpublished
 - pairedBookMaterial: Chapter Two spillover and/or later trust material
 - pairedReadingSlug: TBD
-- sourceConfidence: medium-high
-- notes: The pasted intake reads like a trust-rebuild continuation of the values arc, with clip framing, research bridges, and a likely cross-over between late Chapter Two material and later trust material.
+- latestRawSource: `apps/web/content/_inbox/Episode 6 - Chapter 2 Continued.md`
+- sourceConfidence: medium
+- notes: Latest OneNote export is more current than the earlier breakdown, but Episode 6 should be reviewed after recording before final living-manuscript normalization.
 
 ## Intake Summary
-Episode 6 appears to be a trust-and-consistency episode built around repeated ordinary effort rather than dramatic rescue. The intake connects farm discipline, grudges, flashlight/listening stories, autonomy/trust correction, and Charlie’s trust framework. It also looks like a possible continuation or back half of the same larger arc as Episode 5.
 
-## Source Material
-Preserved intake anchors from the pasted material, kept in source order:
+Episode 6 continues the values/trust arc with a focus on ordinary reliability, habit, communication, repaired trust, and directed effort.
+
+Main movement:
+
+- Rocky/Miracle on Ice style consistency framing.
+- Farm work and Mount Fuji habit lesson.
+- Trust rebuilt through ability, benevolence, integrity, care, and consistency.
+- Grudges, unmet expectations, and the stories people tell themselves.
+- Flashlight/frozen pump story and canal-company time as listening/investment examples.
+- Joe Versus the Volcano / misdirected effort.
+- Early work, autonomy, Sound of Music, and trust correction.
+- Trust rupture repair and acknowledgment.
+- McFarland USA / sidekick leadership / habit formation draft material.
+
+The raw file is valuable but less stable than Episode 5. It contains table fragments, duplicate/alternate Charlie drafts, a `//` comment, and unresolved questions. Treat it as preserved prep truth until the recording clarifies the final arc.
+
+## Classification Categories Used
+
+- Homer baseline candidate
+- Charlie inline candidate
+- Charlie sidebar/reflection candidate
+- research bridge / field note candidate
+- clip candidate
+- production note
+- unresolved / needs human decision
+
+## Classified Sequence
+
+### 1. Rocky Montage / Farm Discipline / Mount Fuji
+
+Classification:
+
+- clip candidate: `Rocky Montage (Climbing the stairs, meat locker, Rocky 4)`.
+- clip candidate: Miracle on Ice / Herbies reference.
+- Homer baseline candidate: daily farm work, cows milked twice a day, greatness forged through monotonous work, doctors as long-training example, Mount Fuji versus refrigerator movement, and the habit/consistency lesson.
+- Charlie inline candidate: "Homer why are you making me do trust and consistency again?"
+- Charlie sidebar/reflection candidate: trust can be rebuilt; hope after damaged trust; ordinary reliability over big speeches.
+- research bridge / field note candidate: Roger Mayer, James Davis, and F. David Schoorman trust model: ability, benevolence, integrity.
+- reaction cue: "Did you just quote Joe vs the Volcano?"
+- clip candidate: `Joe vs the Volcano` / "I know he can get the job but can he do the job."
+
+Important raw source markers to preserve:
 
 ```md
-Rocky Montage (Climbing the stairs, meat locker, Rocky 4)
-
-... greatness is typically forged, not in one great act, but from meaningful, often monotonous, things done every day. ...
-... Mount Fuji can be climbed by putting one foot in front of the other ...
-
-Homer why are you making me do trust and consistency again? Just to twist in the knife?
-
-... Last chapter we talked about the value of trust ...
-... trust is usually built in the repeated evidence of ordinary reliability. ...
-
-Roger Mayer, James Davis, and F. David Schoorman ...
-... ability, benevolence, and integrity ...
-
-“I know he can get the job but can he do the job”
-    - Joe vs the Volcano
-
-Decisions Consistency - (The Wednesday Rule - I'm the guy that…) - Jay Shetty Character
-
-... I harbored ill feeling towards my father for a long time ...
-... Holding grudges and blaming others ... is not helpful. ...
-... Direct communication ... will go a long way ...
-
-... one cold winter night ... hold the flashlight ...
-... I climbed in the truck and cranked up the heat, leaving him alone in the dark frozen hole ...
-Sorry dad. Thanks for listening.
-
-... Working summer months for the West Cache Cannel Company ...
-... Invest in them your time.
-
-... Joe Versus the Volcano sneaks in wearing clown shoes ...
-... Joe is exerting effort ... but none of it is taking him anywhere worth going. ...
-
-Joe Quitting
-
-... With the cows gone, I felt a need for employment and income. ...
-... Even hard workers don’t always make good leaders. ...
-... Sound of Music ...
-... “Your mom is worried about you.” ...
-Leaders, give subordinates the freedom to succeed but you still have to care and make corrections when necessary.
-
-... If you have a painful trust moment with someone ... maybe at least acknowledge it ...
-... The mind can create some pretty brutal stories in the absence of this type of closure. ...
-
-McFarland USA
+Rocky Montage
+Mount Fuji can be climbed by putting one foot in front of the other...
+Homer why are you making me do trust and consistency again?
+ability, benevolence, and integrity
+Joe vs the Volcano
 ```
 
-## Detected Sections
-- `Rocky Montage` opener
-- daily discipline / mundane effort / Mount Fuji habit framing
-- Charlie/Homer trust callback: “why are you making me do trust and consistency again?”
-- last-chapter trust recap
-- Mayer / Davis / Schoorman trust model
-- Joe vs the Volcano line
-- consistency / systems / Wednesday Rule note
-- farm sale / grudges / communication section
-- frozen flashlight / listening story
-- canal work / investment of time
-- Joe Versus the Volcano callback
-- `Joe Quitting`
-- fast-food and early work leadership
-- Sound of Music / autonomy / trust correction story
-- Charlie advice on acknowledging trust ruptures
-- `McFarland USA` marker
+### 2. Consistency Systems / Wednesday Rule
 
-## Charlie Sidebars / Additions
-Detected Charlie-style additions:
-- direct challenge/opening line:
-  - “Homer why are you making me do trust and consistency again?”
-- trust recap and “there is always hope” framing
-- Mayer / Davis / Schoorman trust model explanation
-- Joe vs the Volcano application
-- systems/habits framing:
-  - “don't rely on caring to keep you consistent”
-- Jay Shetty / Wednesday Rule note
-- extended narrative interpretation around grudges and story-making
-- Joe Versus the Volcano callback with flashlight metaphor
-- direct advice about acknowledging trust ruptures instead of pretending nothing happened
-- trailing `McFarland USA` marker as likely future clip bridge
+Classification:
 
-## Clip Notes
-Explicit clip markers or likely clip references:
-- `Rocky Montage (Climbing the stairs, meat locker, Rocky 4)`
-- `Joe vs the Volcano`
-- `Joe Quitting`
-- `McFarland USA`
+- Charlie sidebar/reflection candidate: care can support effort, but systems and habits need to carry consistency.
+- production note: `Decisions Consistency - (The Wednesday Rule - I'm the guy that...) - Jay Shetty Character`.
+- research bridge / field note candidate: Jay Shetty / character / Wednesday Rule if it is retained.
+- unresolved / needs human decision: decide whether this is a research bridge, a production prompt, or a cuttable note.
 
-Other likely reference moments:
-- Miracle on Ice / Herbies
-- Mount Fuji metaphor
-- Sound of Music / Rolf and Liesl story
+### 3. Farm Sale / Grudges / Communication
 
-## Research / Quote Notes
-- Roger Mayer, James Davis, and F. David Schoorman trust model
-  - ability
-  - benevolence
-  - integrity
-- Jay Shetty / character / Wednesday Rule
-- Joe vs the Volcano reference
-- Miracle on Ice / Herbies reference
-- McFarland USA reference
-- trust-repair framing:
-  - consistency
-  - habits
-  - systems
-  - acknowledgment and closure
+Classification:
+
+- Homer baseline candidate: Dad sold the farm; missed tractor/motorcycle expectations; long-held resentment; later appreciation; grudges lead to mistrust and contention.
+- Homer baseline candidate: sister birthday-party grudge; communication is not magic but is necessary when people and expectations are involved.
+- Charlie sidebar/reflection candidate: trust is shaped by both what happened and the story we tell ourselves about what happened.
+- production note: `Quick example of each if I can think of one`.
+- unresolved / needs human decision: `Gossip and mean spiritedness eroding trust - Well meaningless` needs clarification before normalization.
+
+Important raw source markers to preserve:
+
+```md
+Holding grudges and blaming others for doing something, or not doing something, is not helpful.
+People = Expectations and feelings that may not be obvious or make sense to you right away.
+```
+
+### 4. Frozen Flashlight / Listening / Canal Company
+
+Classification:
+
+- Homer baseline candidate: cold water-box/frozen pump story, failed flashlight-holding, retreating to the truck, and `Sorry dad. Thanks for listening.`
+- Homer baseline candidate: West Cache Canal Company rides, opening gates, radio/lemonade time, and investing time in people.
+- Charlie sidebar/reflection candidate: this is a great-dad/leader example of time and attention.
+- Charlie sidebar/reflection candidate: Mount Fuji callback, Joe Versus the Volcano application, and misdirected effort.
+- clip candidate: `Joe Quitting`.
+
+Important raw source markers to preserve:
+
+```md
+Sorry dad. Thanks for listening.
+Invest in them your time.
+Joe Quitting
+```
+
+### 5. Early Work / Autonomy / Sound Of Music Correction
+
+Classification:
+
+- Homer baseline candidate: fast-food work after the cows were gone; not being seen as ready to lead; not all hard workers are good leaders.
+- production note: `// We're going to come back to this concept - look up reference`.
+- Homer baseline candidate: high school plays, Sound of Music, staying out late, Dad's correction, and the lesson about autonomy with care and correction.
+- clip/reference candidate: Sound of Music / Rolf and Liesl.
+- unresolved / needs human decision: decide whether the early-work leadership readiness point belongs in Episode 6 or a later leadership-development episode.
+
+Important raw source markers to preserve:
+
+```md
+Even hard workers don't always make good leaders.
+Leaders, give subordinates the freedom to succeed but you still have to care and make corrections when necessary.
+```
+
+### 6. Trust Rupture Closure
+
+Classification:
+
+- Charlie sidebar/reflection candidate: acknowledge painful trust moments instead of pretending normal.
+- Charlie sidebar/reflection candidate: missing closure creates brutal internal stories.
+- production note: raw table fragment splits a sentence across cells and should be cleaned only in a future normalization pass.
+- unresolved / needs human decision: this advice may be useful, but it needs human review after recording to decide tone and placement.
+
+Formatting artifact to preserve as a warning:
+
+```md
+|   |   |
+|---|---|
+|==Building and maintaining trust is really hard...|a==, but...==
+```
+
+### 7. McFarland USA / Sidekick Leadership / Habit Formation Drafts
+
+Classification:
+
+- clip candidate: `McFarland USA`.
+- clip/reference candidates: Samwise, Watson, R2D2, Chewbacca, Radar O'Reilly.
+- Charlie sidebar/reflection candidate: shifting from hero/title obsession toward sidekick/service leadership.
+- research bridge / field note candidate: Toyota andon system as reliability infrastructure.
+- research bridge / field note candidate: Phillippa Lally 2010 habit-formation study and the 66-day automaticity finding.
+- Charlie inline candidate: Mount Fuji / refrigerator / lasagna repetition point.
+- production note: duplicate/alternate drafts repeat the same Mount Fuji and effort-direction point.
+- unresolved / needs human decision: `Was the moment you learned that lesson...`, the ambition versus leading-where-you-are fragment, and `Does this all fit?`.
+
+Important raw source markers to preserve:
+
+```md
+McFarland USA
+Not all repetition is progress. Not all effort is equal.
+Motion is not the same thing as direction.
+Does this all fit?
+```
+
+## Formatting Artifacts
+
+- Heavy `==...==` raw OneNote/export highlighting.
+- Bullet fragment for `Joe vs the Volcano`.
+- `//` comment marker.
+- A malformed table fragment around trust-rupture advice.
+- Duplicate/alternate Charlie drafts near the end.
+- Several unresolved production questions and unfinished transitions.
 
 ## Living Manuscript Mapping
+
 Likely existing `ManuscriptBlock` IDs involved:
+
 - `homer-values-mundane-greatness`
 - `homer-values-grudges-and-listening`
 - `homer-values-autonomy-and-army-choice`
 - `homer-values-simple-solutions`
 
-Possible later-manuscript touchpoints to review in a future pass:
-- later trust/communication material in unsplit chapters
+Possible later-manuscript touchpoints:
 
-## New Blocks Likely Needed
-Likely future Homer/Charlie/support blocks:
+- later trust/communication material in unsplit chapters
+- later leadership-development material if the ambition/title versus service-leadership section does not belong in Episode 6
+
+## Future Block Candidates
+
+- `clip-trust-rocky-montage-candidate`
+- `clip-trust-joe-vs-the-volcano-candidate`
+- `clip-trust-mcfarland-usa-candidate`
 - `charlie-trust-through-consistency-opener`
 - `research-trust-ability-benevolence-integrity-bridge`
 - `charlie-trust-systems-and-habits-bridge`
-- `quote-joe-vs-the-volcano-get-the-job`
-- `clip-rocky-montage-candidate`
-- `clip-joe-vs-the-volcano-candidate`
-- `clip-mcfarland-usa-candidate`
-- `homer-trust-grudges-and-storytelling-derived`
-- `homer-trust-frozen-flashlight-derived`
+- `charlie-trust-story-making-reflection`
 - `charlie-trust-rupture-closure-bridge`
-- `charlie-trust-autonomy-correction-bridge`
+- `research-trust-toyota-andon-bridge`
+- `research-trust-habit-formation-bridge`
+- `production-trust-wednesday-rule-note`
+- `production-trust-ambition-leading-from-here-fragment`
+
+These are intake candidates only. Do not create them in the living manuscript without a dedicated normalization pass.
 
 ## Arrangement Implications
-- `book-v1.yml`:
-  - likely still split across existing Chapter Two material and later trust material
-  - no book update should happen until the relevant manuscript blocks are clearer
-- `podcast-season-1.yml`:
-  - Episode 6 may be either:
-    - a clean second half of the values arc, or
-    - a cross-chapter trust episode
-- `public-site.yml`:
-  - should remain conservative
-  - no public-ready assumption yet for this intake
+
+- Episode 6 may be a clean second half of the Episode 5 values/trust arc.
+- Episode 6 may also become a cross-chapter trust episode if the recording confirms that direction.
+- `podcast-season-1.yml` should not be updated until the post-recording review resolves the Episode 5/6 boundary.
+- Public-site arrangement should remain conservative.
 
 ## Open Questions
-- Is `Trust Through Consistency` the actual public title or a working title?
-- What should the public slug be?
-- Is this a distinct episode or just the back half of Episode 5?
-- Which existing Chapter Two blocks actually belong here versus Episode 5?
-- How much later trust material from outside Chapter Two should be pulled in?
-- Which clip references need verification or stronger sourcing?
-- Should Charlie’s trust-repair advice become sidebars, episode narration, or production notes?
+
+- Did the recording confirm `Trust Through Consistency` as the final Episode 6 title and arc?
+- Which of the duplicate habit/Mount Fuji drafts should survive?
+- Should Toyota/andon and Phillippa Lally remain in Episode 6 or become later research bridges?
+- Is the McFarland USA section a true Episode 6 close, a later leadership segment, or just a clip idea?
+- Should ambition versus leading-from-where-you-are remain here or move to a later episode?
+- Which clip references need rights/citation review before public derivative work?
+
+## Recommended Next Action
+
+Preserve Episode 6 as structured intake until after recording. Then run a post-recording review against the raw OneNote file and decide whether to normalize it as Episode 6 or rebuild the Episode 5/6 split.

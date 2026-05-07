@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- The latest raw OneNote exports for Episodes 1-6 are now inventoried as tracked staging truth under `_inbox`.
+- Episode 5 and Episode 6 have structured intake classification files that separate Homer baseline candidates, Charlie material, research/field notes, clip candidates, production notes, and unresolved decisions.
+- Episode 5 is now the next clean living-manuscript normalization candidate if Homer/Charlie accept the classification; Episode 6 should be reviewed after recording before final normalization.
 - Production truth was corrected again using the real Season One state: Episodes 1-5 are recorded, and Episode 6 is prepped for recording on 2026-05-08.
 - Repo state now needs OneNote reconciliation for Episodes 5-6, plus an Episode 4 review to confirm recorded/prepped cues did not drift beyond the incorporated living-manuscript blocks.
 - This prevents the content engine from optimizing against stale production data or polishing future episode splits that may need to be rebuilt.

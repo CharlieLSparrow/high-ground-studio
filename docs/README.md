@@ -28,6 +28,7 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `plans/kanban-operating-model.md`: lightweight kanban model for visible progress, small cards, shipped proof, and weekly updates for Homer.
 - `project-context/season-one-production-state.md`: current Season One production truth across recording, OneNote prep, repo intake, living manuscript, arrangements, and public publish status.
 - `project-context/weekly-ship-log.md`: recurring proof-of-progress artifact Chuck can show Homer.
+- `analysis/episodes-01-06-onenote-intake-audit.md`: raw OneNote intake inventory and classification guidance for Episodes 1-6 before living-manuscript normalization.
 - `analysis/charlie-presentation-taxonomy.md`: semantic and visual taxonomy for Charlie material before changing manuscript structure or viewer code.
 - `public/high-ground-field-guide-draft.md`: draft public-facing field guide entry for `Welcome To High Ground Odyssey`.
 
