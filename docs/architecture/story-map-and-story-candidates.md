@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Story Map gives Homer and Chuck a read-only way to see the book broken into reviewable story planning cards before anyone edits the manuscript.
+The Story Map gives Homer and Chuck an internal way to see the book broken into reviewable story planning cards before anyone edits the manuscript.
 
 It exists because the book is the thing. Episode prep, Charlie support, clips, research, and public pages should orbit Homer's source text instead of replacing it.
 
@@ -101,9 +101,24 @@ It shows:
 - Charlie support opportunities
 - notes
 - planning-only labels
+- Live Story Draft panels for database-backed draft writing
 - copy helpers for story checklists, future story block stubs, and Homer review lists
 
 It does not write files, split prose, change arrangements, or publish anything.
+
+## Live Story Drafts Vs Story Assignment
+
+Live Story Drafts are where words go.
+
+They are saved writing in the app: draft prose, ordinary notes, Chuck support notes, and review status. They stay attached to a Story Candidate and Homer source block, but they do not move the story, split the source, or change the episode plan.
+
+Story Assignment is where stories go.
+
+A future assignment layer should capture boundary and placement decisions: which Story Candidate begins or ends a story, which episode it belongs in, what role it plays in that episode, and what support it needs. That layer is not implemented yet.
+
+Episode arrangements are where approved real blocks line up for recording.
+
+Arrangement YAML should continue to reference real `ManuscriptBlock` IDs, not Story Candidate IDs and not Story Draft database IDs.
 
 ## Recommended Next Action
 

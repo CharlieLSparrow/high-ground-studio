@@ -68,6 +68,9 @@ The coaching path moved from "promising front door" to a clearer, documented ope
 
 ### Book / Episode Progress
 
+- Live Story Drafts Phase 1 hardened after implementation.
+- Live Story Draft quick-start workflow added so Homer and Chuck can use the app as the writing home.
+- Story Assignment workflow planned separately so moving stories between episodes stays distinct from writing drafts.
 - Live Story Drafts Phase 1 implemented so Homer and Chuck can save database-backed drafts in the app without changing canonical manuscript truth.
 - Episode 6 recording completion checkpoint captured after recording resumed; full recorded-shape reconciliation remains next.
 - Live Story Draft architecture planned so Homer and Chuck can move writing into the app without directly risking canonical manuscript truth.

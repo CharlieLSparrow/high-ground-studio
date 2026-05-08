@@ -14,17 +14,26 @@ import {
 
 const STORY_DRAFT_ROUTE = "/team/books/learning-to-lead";
 
+class StoryDraftActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoryDraftActionError";
+  }
+}
+
 async function requireStoryDraftEditor() {
   const session = await auth();
 
   if (!session?.user?.id) {
-    throw new Error("Please sign in before saving Story Drafts.");
+    throw new StoryDraftActionError("Please sign in before saving Story Drafts.");
   }
 
   const roles = Array.isArray(session.user.roles) ? session.user.roles : [];
 
   if (!canEditStoryDrafts(roles)) {
-    throw new Error("You do not have permission to edit Story Drafts.");
+    throw new StoryDraftActionError(
+      "You do not have permission to edit Story Drafts.",
+    );
   }
 
   return session;
@@ -52,7 +61,7 @@ function parseStoryDraftStatus(value: string): StoryDraftStatus {
     : "ROUGH";
 
   if (status === "PROMOTED") {
-    throw new Error(
+    throw new StoryDraftActionError(
       "Promoted status requires the later controlled manuscript promotion workflow.",
     );
   }
@@ -65,7 +74,9 @@ async function assertSourceBlockExists(sourceBlockId: string) {
   const exists = manuscript.blocks.some((block) => block.id === sourceBlockId);
 
   if (!exists) {
-    throw new Error(`Source block does not exist: ${sourceBlockId}`);
+    throw new StoryDraftActionError(
+      "Source block does not exist in the current parsed manuscript.",
+    );
   }
 }
 
@@ -77,19 +88,19 @@ function parseDraftInput(formData: FormData) {
   const status = parseStoryDraftStatus(readFormString(formData, "status"));
 
   if (!storyCandidateId) {
-    throw new Error("Story Candidate ID is required.");
+    throw new StoryDraftActionError("Story Candidate ID is required.");
   }
 
   if (!sourceBlockId) {
-    throw new Error("Source block ID is required.");
+    throw new StoryDraftActionError("Source block ID is required.");
   }
 
   if (!title) {
-    throw new Error("Draft title is required.");
+    throw new StoryDraftActionError("Draft title is required.");
   }
 
   if (!body) {
-    throw new Error("Draft body is required.");
+    throw new StoryDraftActionError("Draft body is required.");
   }
 
   return {
@@ -115,9 +126,19 @@ function success(message: string): StoryDraftActionState {
 }
 
 function failure(error: unknown): StoryDraftActionState {
+  if (error instanceof StoryDraftActionError) {
+    return {
+      ok: false,
+      message: error.message,
+    };
+  }
+
+  console.error("Story Draft action failed.", error);
+
   return {
     ok: false,
-    message: error instanceof Error ? error.message : "Story Draft save failed.",
+    message:
+      "Story Draft save failed. Please try again or ask the team to check server logs.",
   };
 }
 
@@ -160,7 +181,7 @@ export async function updateStoryDraftAction(
     const input = parseDraftInput(formData);
 
     if (!draftId) {
-      throw new Error("Draft ID is required for updates.");
+      throw new StoryDraftActionError("Draft ID is required for updates.");
     }
 
     await assertSourceBlockExists(input.sourceBlockId);
@@ -178,7 +199,7 @@ export async function updateStoryDraftAction(
     });
 
     if (!existing) {
-      throw new Error("Story Draft not found.");
+      throw new StoryDraftActionError("Story Draft not found.");
     }
 
     await prisma.storyDraft.update({
@@ -217,7 +238,9 @@ export async function setStoryDraftStatusAction(
     const status = parseStoryDraftStatus(readFormString(formData, "status"));
 
     if (!draftId) {
-      throw new Error("Draft ID is required for status updates.");
+      throw new StoryDraftActionError(
+        "Draft ID is required for status updates.",
+      );
     }
 
     const existing = await prisma.storyDraft.findUnique({
@@ -231,7 +254,7 @@ export async function setStoryDraftStatusAction(
     });
 
     if (!existing) {
-      throw new Error("Story Draft not found.");
+      throw new StoryDraftActionError("Story Draft not found.");
     }
 
     await prisma.storyDraft.update({

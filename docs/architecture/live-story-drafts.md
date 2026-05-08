@@ -4,6 +4,8 @@
 
 Phase 1 is implemented as of 2026-05-07.
 
+Phase 1 hardening was completed on 2026-05-08.
+
 Implemented scope:
 
 - Prisma `StoryDraftStatus` enum
@@ -21,6 +23,16 @@ Still deferred:
 - Draft-to-Live publishing
 - automatic manuscript writes
 - controlled promotion into real `ManuscriptBlock` truth
+
+Hardening note:
+
+- `PROMOTED` remains a schema status for the future controlled promotion workflow, but the Phase 1 Story Map editor does not offer it as a manual choice.
+- Story Draft server actions reject manual `PROMOTED` writes.
+- Expected validation and access failures stay visible in the editor; unexpected server/database failures are logged and return a generic failure message.
+- Source blocks are validated against the current parsed living manuscript before create/update saves.
+- A real database mutation smoke test was skipped during hardening because the local `DATABASE_URL` points at a remote Neon database, not a clearly disposable local development database.
+- The quick-start workflow now lives at `docs/workflows/live-story-drafts-quick-start.md`.
+- Story Assignment remains separate and unimplemented; the next workflow design lives at `docs/analysis/story-assignment-workflow-plan.md`.
 
 ## Purpose
 

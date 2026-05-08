@@ -2297,7 +2297,16 @@ function StoryDraftPanel({
   const latestDraftPromotionKey = latestDraft
     ? `draft-promotion:${latestDraft.id}`
     : null;
-  const visibleState = primaryState.message ? primaryState : newDraftState;
+  const visibleStates = [
+    {
+      key: "latest",
+      state: primaryState,
+    },
+    {
+      key: "new",
+      state: newDraftState,
+    },
+  ].filter(({ state }) => state.message);
 
   return (
     <section className="mt-5 rounded-[24px] border border-[rgba(37,28,20,0.1)] bg-[rgba(255,255,255,0.52)] px-4 py-4">
@@ -2460,18 +2469,30 @@ function StoryDraftPanel({
           <div className="rounded-2xl border border-[rgba(37,28,20,0.1)] bg-[rgba(255,248,232,0.6)] px-3 py-3 text-sm leading-6 text-[rgba(38,30,24,0.78)]">
             This saves a live draft in the database. It does not edit Homer's
             manuscript yet. Promotion is a later reviewed step.
+            {latestDraft ? (
+              <span className="mt-2 block">
+                Save Latest Draft updates the draft shown above. Save As New
+                Draft keeps that version and creates a separate draft. The
+                newest updated draft is shown first.
+              </span>
+            ) : null}
           </div>
 
-          {visibleState.message ? (
-            <div
-              className={[
-                "rounded-2xl border px-3 py-3 text-sm leading-6",
-                visibleState.ok
-                  ? "border-[rgba(53,124,77,0.22)] bg-[rgba(53,124,77,0.08)] text-[rgba(28,86,47,0.92)]"
-                  : "border-[rgba(179,42,42,0.22)] bg-[rgba(179,42,42,0.08)] text-[rgba(94,26,26,0.92)]",
-              ].join(" ")}
-            >
-              {visibleState.message}
+          {visibleStates.length > 0 ? (
+            <div className="space-y-2">
+              {visibleStates.map(({ key, state }) => (
+                <div
+                  key={key}
+                  className={[
+                    "rounded-2xl border px-3 py-3 text-sm leading-6",
+                    state.ok
+                      ? "border-[rgba(53,124,77,0.22)] bg-[rgba(53,124,77,0.08)] text-[rgba(28,86,47,0.92)]"
+                      : "border-[rgba(179,42,42,0.22)] bg-[rgba(179,42,42,0.08)] text-[rgba(94,26,26,0.92)]",
+                  ].join(" ")}
+                >
+                  {state.message}
+                </div>
+              ))}
             </div>
           ) : null}
 
