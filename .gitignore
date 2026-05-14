@@ -9,6 +9,7 @@ dist/
 .next/
 out/
 .vite/
+*.tsbuildinfo
 
 # logs
 npm-debug.log*
