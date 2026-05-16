@@ -332,6 +332,28 @@ button:disabled {
   margin-top: 18px;
 }
 
+.studio-persistence-note,
+.studio-action-message {
+  border: 1px solid var(--studio-line);
+  border-radius: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  color: var(--studio-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.studio-persistence-note[data-active="true"],
+.studio-action-message[data-ok="true"] {
+  border-color: rgba(159, 209, 139, 0.42);
+  color: var(--studio-tag);
+}
+
+.studio-action-message[data-ok="false"] {
+  border-color: rgba(242, 166, 166, 0.48);
+  color: var(--studio-danger);
+}
+
 .studio-control-group label,
 .studio-offset-grid span {
   color: var(--studio-muted);

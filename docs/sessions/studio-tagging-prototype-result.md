@@ -53,6 +53,23 @@ Refreshing the page clears:
 This is correct for the prototype pass. The next pass should persist this same
 shape rather than widen the feature surface.
 
+## Follow-Up Persistence Slice
+
+The 2026-05-16 Studio persistence slice supersedes the prototype's client-only
+state for development use.
+
+Current status after that follow-up:
+
+- the same seed document/block/tag loop has Prisma models
+- `apps/studio` server-loads seed document data, tags, tagged spans, and nodes
+- applying a tag persists a `StudioTaggedSpan`
+- the server action creates or reuses the matching `StudioKnowledgeNode`
+- refresh should preserve persisted tag applications and nodes once the schema
+  is applied to a safe local development database
+
+The seed remains non-canonical fixture data. It does not import or modify the
+Learning to Lead manuscript.
+
 ## What Should Become Database-Backed Next
 
 The next schema slice should make these concepts durable:

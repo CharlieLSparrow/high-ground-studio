@@ -186,6 +186,63 @@ from pg_type
 where typname = 'StoryDraftStatus';
 ```
 
+## Studio Persistence Slice Change
+The Studio persistence slice added private authoring tables:
+
+- `StudioWorkspace`
+- `StudioProject`
+- `StudioDocument`
+- `StudioDocumentBlock`
+- `StudioTag`
+- `StudioTaggedSpan`
+- `StudioKnowledgeNode`
+
+It also added these Studio-only enums:
+
+- `StudioProjectionStatus`
+- `StudioTagCategory`
+- `StudioKnowledgeNodeType`
+
+These tables are private Studio authoring state. Public routes should not read
+from them directly. Future public output should come through approved projection
+tables or checked-in public content.
+
+The development seed helper writes only when `DATABASE_URL` points at a local
+database and `NODE_ENV` is not `production`. It should not be treated as a
+production seeding path.
+
+If a target environment should run the Studio persistence slice, apply the
+schema deliberately:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+Do not run `pnpm db:push` against remote Neon or production data unless that
+target has been explicitly confirmed safe.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in (
+    'StudioWorkspace',
+    'StudioProject',
+    'StudioDocument',
+    'StudioDocumentBlock',
+    'StudioTag',
+    'StudioTaggedSpan',
+    'StudioKnowledgeNode'
+  );
+```
+
+Expected result:
+
+- one row for each Studio table above
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 

@@ -127,6 +127,33 @@ enum StoryDraftStatus {
   PARKED
 }
 
+enum StudioProjectionStatus {
+  private
+  draft
+  review
+  approved
+  published
+  not_public
+  projection_not_approved
+}
+
+enum StudioTagCategory {
+  meaning
+  structure
+  source
+  projection
+  review
+}
+
+enum StudioKnowledgeNodeType {
+  principle
+  story
+  quote
+  question
+  projection_candidate
+  source_note
+}
+
 // The canonical human/app identity record.
 //
 // Source of truth:
@@ -422,4 +449,178 @@ model StoryDraft {
   @@index([sourceBlockId, status])
   @@index([episodeKey, status])
   @@index([createdByUserId, createdAt])
+}
+
+model StudioWorkspace {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  name        String
+  description String?
+  ownerLabel  String?
+  isPrivate   Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  projects    StudioProject[]
+}
+
+model StudioProject {
+  id          String                @id @default(cuid())
+  workspaceId String
+  slug        String
+  name        String
+  description String?
+  sourceLabel String?
+  isPrivate   Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  workspace   StudioWorkspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents   StudioDocument[]
+  tags        StudioTag[]
+  knowledgeNodes StudioKnowledgeNode[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+model StudioDocument {
+  id               String                 @id @default(cuid())
+  projectId        String
+  stableId         String                 @unique
+  title            String
+  sourceLabel      String?
+  sourcePath       String?
+  projectionStatus StudioProjectionStatus @default(private)
+  isPrivate        Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  project          StudioProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blocks           StudioDocumentBlock[]
+  taggedSpans      StudioTaggedSpan[]
+  knowledgeNodes   StudioKnowledgeNode[]
+
+  @@index([projectId, stableId])
+  @@index([projectId, projectionStatus])
+}
+
+model StudioDocumentBlock {
+  id               String                 @id @default(cuid())
+  documentId       String
+  stableId         String
+  order            Int
+  title            String?
+  body             String
+  sourceLabel      String?
+  sourcePath       String?
+  externalId       String?
+  projectionStatus StudioProjectionStatus @default(private)
+  isPrivate        Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  document         StudioDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  taggedSpans      StudioTaggedSpan[]
+  knowledgeNodes   StudioKnowledgeNode[]
+
+  @@unique([documentId, stableId])
+  @@unique([documentId, order])
+  @@index([documentId, order])
+  @@index([externalId])
+}
+
+model StudioTag {
+  id           String                  @id @default(cuid())
+  projectId    String
+  slug         String
+  label        String
+  description  String?
+  category     StudioTagCategory       @default(meaning)
+  nodeType     StudioKnowledgeNodeType @default(source_note)
+  isPrivate    Boolean                 @default(true)
+  isActive     Boolean                 @default(true)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  project      StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taggedSpans  StudioTaggedSpan[]
+  knowledgeNodes StudioKnowledgeNode[]
+
+  @@unique([projectId, slug])
+  @@index([projectId, category])
+  @@index([projectId, isActive])
+}
+
+model StudioTaggedSpan {
+  id                    String                 @id @default(cuid())
+  documentId            String
+  blockId               String
+  tagId                 String
+  startOffset           Int
+  endOffset             Int
+  selectedText          String
+  documentStableId      String
+  documentTitleSnapshot String
+  blockStableId         String
+  blockTitleSnapshot    String?
+  sourceLabel           String?
+  sourcePath            String?
+  sourceExternalId      String?
+  projectionStatus      StudioProjectionStatus @default(private)
+  isPrivate             Boolean                @default(true)
+  createdByLabel        String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  document              StudioDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  block                 StudioDocumentBlock    @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  tag                   StudioTag              @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  knowledgeNode         StudioKnowledgeNode?
+
+  @@unique([blockId, tagId, startOffset, endOffset])
+  @@index([documentId, blockId])
+  @@index([tagId])
+  @@index([projectionStatus, createdAt])
+  @@index([documentStableId, blockStableId])
+}
+
+model StudioKnowledgeNode {
+  id                    String                  @id @default(cuid())
+  projectId             String
+  documentId            String
+  blockId               String
+  taggedSpanId          String                  @unique
+  tagId                 String
+  tagLabel              String
+  tagCategory           StudioTagCategory
+  nodeType              StudioKnowledgeNodeType @default(source_note)
+  sourceText            String
+  title                 String
+  body                  String
+  projectionStatus      StudioProjectionStatus  @default(projection_not_approved)
+  reviewStatus          String                  @default("draft")
+  isPrivate             Boolean                 @default(true)
+  documentStableId      String
+  documentTitleSnapshot String
+  blockStableId         String
+  blockTitleSnapshot    String?
+  spanStartOffset       Int
+  spanEndOffset         Int
+  sourceLabel           String?
+  sourcePath            String?
+  createdByLabel        String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  project               StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document              StudioDocument          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  block                 StudioDocumentBlock     @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  taggedSpan            StudioTaggedSpan        @relation(fields: [taggedSpanId], references: [id], onDelete: Cascade)
+  tag                   StudioTag               @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, projectionStatus])
+  @@index([tagId])
+  @@index([documentId, blockId])
+  @@index([reviewStatus, createdAt])
 }

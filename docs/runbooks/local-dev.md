@@ -89,6 +89,26 @@ pnpm motion
 
 That builds `packages/motion-engine` and starts `apps/motion-lab`.
 
+## Run The Studio App
+
+```bash
+pnpm studio
+```
+
+The Studio persistence slice uses Prisma models for private authoring data. Run
+these after schema changes when your database target is a safe local
+development database:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+Do not run `pnpm db:push` against remote Neon or production data unless that
+target has been explicitly confirmed safe. The Studio seed helper only creates
+development fixture rows when `DATABASE_URL` points at a local database and
+`NODE_ENV` is not `production`.
+
 ## Build Verification
 
 Default production build:

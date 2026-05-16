@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type {
   KnowledgeNode,
   StudioBlock,
@@ -16,92 +17,7 @@ import {
   validateSpanOffsets,
 } from "@high-ground/studio-domain";
 
-const DOCUMENT_ID = "studio-doc-learning-to-lead-seed";
-const FIXTURE_CREATED_AT = "2026-05-16T00:00:00.000Z";
-
-const sourceBlocks: StudioBlock[] = [
-  {
-    id: "l2l-seed-001",
-    documentId: DOCUMENT_ID,
-    order: 1,
-    title: "Leadership starts in the named moment",
-    body: "Leadership starts to become visible when a young person can name what is happening, decide what is theirs to carry, and practice the next responsible action.",
-    sourceLabel: "Studio seed fixture",
-    sourcePath:
-      "apps/web/content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx",
-    externalId: "seed:l2l:001",
-    projectionStatus: "private",
-  },
-  {
-    id: "l2l-seed-002",
-    documentId: DOCUMENT_ID,
-    order: 2,
-    title: "Stories become structure when the source trail stays attached",
-    body: "A story candidate should keep the original wording close enough that later editors can see the source, test the meaning, and decide whether it belongs in a chapter, episode, or exercise.",
-    sourceLabel: "Studio seed fixture",
-    sourcePath:
-      "apps/web/content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx",
-    externalId: "seed:l2l:002",
-    projectionStatus: "private",
-  },
-  {
-    id: "l2l-seed-003",
-    documentId: DOCUMENT_ID,
-    order: 3,
-    title: "Projection is an approval path, not a shortcut",
-    body: "A public projection should only happen after the private span, tag, node, and review state are clear enough that no rough note accidentally becomes public truth.",
-    sourceLabel: "Studio seed fixture",
-    sourcePath:
-      "apps/web/content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx",
-    externalId: "seed:l2l:003",
-    projectionStatus: "private",
-  },
-];
-
-const sampleDocument: StudioDocument = {
-  id: DOCUMENT_ID,
-  title: "Learning to Lead - Studio tagging seed",
-  sourceLabel: "Non-canonical fixture based on the Learning to Lead workflow",
-  sourcePath:
-    "apps/web/content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx",
-  workspaceId: "high-ground-private",
-  projectId: "learning-to-lead",
-  projectionStatus: "private",
-  blocks: sourceBlocks,
-  createdAt: FIXTURE_CREATED_AT,
-  updatedAt: FIXTURE_CREATED_AT,
-};
-
-const tagPalette: StudioTag[] = [
-  {
-    id: "leadership-principle",
-    label: "leadership-principle",
-    description: "Reusable leadership idea that can become teaching structure.",
-    category: "meaning",
-    nodeType: "principle",
-  },
-  {
-    id: "story-candidate",
-    label: "story-candidate",
-    description: "Narrative material that may become a chapter or episode story.",
-    category: "structure",
-    nodeType: "story",
-  },
-  {
-    id: "requires-review",
-    label: "requires-review",
-    description: "Span needs human judgment before projection or citation.",
-    category: "review",
-    nodeType: "question",
-  },
-  {
-    id: "projection-candidate",
-    label: "projection-candidate",
-    description: "Material that may later feed a public projection.",
-    category: "projection",
-    nodeType: "projection_candidate",
-  },
-];
+import { createStudioTaggedSpanAction } from "./actions";
 
 const excerptPresets = [
   {
@@ -132,12 +48,31 @@ const excerptPresets = [
 
 type ExcerptPreset = (typeof excerptPresets)[number];
 
-function findBlock(blockId: string) {
-  return sourceBlocks.find((block) => block.id === blockId) ?? sourceBlocks[0];
+type StudioPersistenceState = {
+  mode: "database" | "fallback";
+  canWrite: boolean;
+  message: string;
+};
+
+type StudioActionState = {
+  ok: boolean;
+  message: string;
+} | null;
+
+type StudioWorkbenchClientProps = {
+  document: StudioDocument;
+  tags: StudioTag[];
+  tagApplications: StudioTagApplication[];
+  knowledgeNodes: KnowledgeNode[];
+  persistence: StudioPersistenceState;
+};
+
+function findBlock(blocks: StudioBlock[], blockId: string) {
+  return blocks.find((block) => block.id === blockId) ?? blocks[0];
 }
 
-function getPresetOffsets(preset: ExcerptPreset) {
-  const block = findBlock(preset.blockId);
+function getPresetOffsets(blocks: StudioBlock[], preset: ExcerptPreset) {
+  const block = findBlock(blocks, preset.blockId);
   const startOffset = block.body.indexOf(preset.phrase);
 
   if (startOffset < 0) {
@@ -180,22 +115,31 @@ function renderBlockText(
   );
 }
 
-export function StudioWorkbenchClient() {
-  const initialPreset = excerptPresets[0];
-  const initialOffsets = getPresetOffsets(initialPreset);
+function formatStatus(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+export function StudioWorkbenchClient({
+  document,
+  tags,
+  tagApplications,
+  knowledgeNodes,
+  persistence,
+}: StudioWorkbenchClientProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const initialBlock = document.blocks[0];
+  const initialPreset = getDefaultPresetForBlock(initialBlock.id);
+  const initialOffsets = getPresetOffsets(document.blocks, initialPreset);
   const [selectedBlockId, setSelectedBlockId] = useState(initialPreset.blockId);
   const [selectedExcerptId, setSelectedExcerptId] = useState(initialPreset.id);
   const [startOffset, setStartOffset] = useState(initialOffsets.startOffset);
   const [endOffset, setEndOffset] = useState(initialOffsets.endOffset);
-  const [selectedTagId, setSelectedTagId] = useState(tagPalette[0].id);
-  const [tagApplications, setTagApplications] = useState<
-    StudioTagApplication[]
-  >([]);
-  const [knowledgeNodes, setKnowledgeNodes] = useState<KnowledgeNode[]>([]);
+  const [selectedTagId, setSelectedTagId] = useState(tags[0]?.id ?? "");
+  const [actionState, setActionState] = useState<StudioActionState>(null);
 
-  const selectedBlock = findBlock(selectedBlockId);
-  const selectedTag =
-    tagPalette.find((tag) => tag.id === selectedTagId) ?? tagPalette[0];
+  const selectedBlock = findBlock(document.blocks, selectedBlockId);
+  const selectedTag = tags.find((tag) => tag.id === selectedTagId) ?? tags[0];
   const blockPresets = excerptPresets.filter(
     (preset) => preset.blockId === selectedBlock.id,
   );
@@ -209,13 +153,13 @@ export function StudioWorkbenchClient() {
     : "";
 
   const previewApplication = useMemo(() => {
-    if (!spanValidation.ok) {
+    if (!spanValidation.ok || !selectedTag) {
       return null;
     }
 
     const span = createSpanSnapshot({
       id: "span-preview",
-      documentId: sampleDocument.id,
+      documentId: document.id,
       block: selectedBlock,
       startOffset,
       endOffset,
@@ -223,15 +167,15 @@ export function StudioWorkbenchClient() {
 
     return createTagApplication({
       id: "tag-app-preview",
-      document: sampleDocument,
+      document,
       block: selectedBlock,
       span,
       tag: selectedTag,
-      createdAt: "local-preview",
-      createdByLabel: "local prototype",
+      createdAt: "database-preview",
+      createdByLabel: "local development seed",
       projectionStatus: "private",
     });
-  }, [endOffset, selectedBlock, selectedTag, spanValidation.ok, startOffset]);
+  }, [document, endOffset, selectedBlock, selectedTag, spanValidation.ok, startOffset]);
 
   const previewNode = previewApplication
     ? createKnowledgeNodeFromTaggedSpan({
@@ -242,59 +186,45 @@ export function StudioWorkbenchClient() {
 
   function chooseBlock(blockId: string) {
     const preset = getDefaultPresetForBlock(blockId);
-    const offsets = getPresetOffsets(preset);
+    const offsets = getPresetOffsets(document.blocks, preset);
 
     setSelectedBlockId(blockId);
     setSelectedExcerptId(preset.id);
     setStartOffset(offsets.startOffset);
     setEndOffset(offsets.endOffset);
+    setActionState(null);
   }
 
   function chooseExcerpt(presetId: string) {
     const preset =
       excerptPresets.find((excerpt) => excerpt.id === presetId) ??
       getDefaultPresetForBlock(selectedBlock.id);
-    const offsets = getPresetOffsets(preset);
+    const offsets = getPresetOffsets(document.blocks, preset);
 
     setSelectedBlockId(preset.blockId);
     setSelectedExcerptId(preset.id);
     setStartOffset(offsets.startOffset);
     setEndOffset(offsets.endOffset);
+    setActionState(null);
   }
 
   function applyTag() {
-    if (!spanValidation.ok) {
+    if (!spanValidation.ok || !selectedTag || !persistence.canWrite) {
       return;
     }
 
-    const createdAt = new Date().toISOString();
-    const sequence = tagApplications.length + 1;
-    const span = createSpanSnapshot({
-      id: `span-local-${sequence}`,
-      documentId: sampleDocument.id,
-      block: selectedBlock,
-      startOffset,
-      endOffset,
+    startTransition(() => {
+      void createStudioTaggedSpanAction({
+        documentStableId: document.id,
+        blockStableId: selectedBlock.id,
+        tagId: selectedTag.id,
+        startOffset,
+        endOffset,
+      }).then((result) => {
+        setActionState(result);
+        router.refresh();
+      });
     });
-    const application = createTagApplication({
-      id: `tag-app-local-${sequence}`,
-      document: sampleDocument,
-      block: selectedBlock,
-      span,
-      tag: selectedTag,
-      createdAt,
-      createdByLabel: "local prototype",
-      projectionStatus: "private",
-    });
-    const node = createKnowledgeNodeFromTaggedSpan({
-      id: `knowledge-node-local-${sequence}`,
-      application,
-      createdAt,
-      projectionStatus: "projection_not_approved",
-    });
-
-    setTagApplications((current) => [application, ...current]);
-    setKnowledgeNodes((current) => [node, ...current]);
   }
 
   return (
@@ -319,7 +249,7 @@ export function StudioWorkbenchClient() {
               Private
             </span>
             <span className="studio-chip" data-tone="tag">
-              Draft
+              Database seeded
             </span>
             <span className="studio-chip" data-tone="node">
               Not public
@@ -335,26 +265,26 @@ export function StudioWorkbenchClient() {
             <div className="studio-panel-heading">
               <p className="studio-label">Source Document</p>
               <span className="studio-chip" data-tone="source">
-                {sampleDocument.projectionStatus}
+                {formatStatus(document.projectionStatus)}
               </span>
             </div>
 
-            <h2>{sampleDocument.title}</h2>
-            <p className="studio-panel-copy">{sampleDocument.sourceLabel}</p>
+            <h2>{document.title}</h2>
+            <p className="studio-panel-copy">{document.sourceLabel}</p>
 
             <dl className="studio-meta-grid">
               <div>
                 <dt>Document ID</dt>
-                <dd>{sampleDocument.id}</dd>
+                <dd>{document.id}</dd>
               </div>
               <div>
                 <dt>Source path</dt>
-                <dd>{sampleDocument.sourcePath}</dd>
+                <dd>{document.sourcePath}</dd>
               </div>
             </dl>
 
             <div className="studio-block-list">
-              {sampleDocument.blocks.map((block) => (
+              {document.blocks.map((block) => (
                 <article
                   className="studio-block"
                   data-active={block.id === selectedBlock.id}
@@ -391,16 +321,20 @@ export function StudioWorkbenchClient() {
             <div className="studio-panel-heading">
               <p className="studio-label">Tagging Controls</p>
               <span className="studio-chip" data-tone="tag">
-                Client-only
+                {persistence.mode === "database" ? "Durable" : "Fixture"}
               </span>
             </div>
 
             <h2>Block to span to semantic tag</h2>
             <p className="studio-panel-copy">
               Choose a stable block, select an excerpt or offset range, then
-              apply a meaning tag. Applying a tag creates a provenance-aware
-              knowledge node in local state.
+              apply a meaning tag. Applying a tag writes a provenance-aware
+              tagged span and knowledge node when local persistence is enabled.
             </p>
+
+            <div className="studio-persistence-note" data-active={persistence.canWrite}>
+              {persistence.message}
+            </div>
 
             <div className="studio-control-group">
               <label htmlFor="excerpt-select">Meaningful excerpt</label>
@@ -455,10 +389,10 @@ export function StudioWorkbenchClient() {
             </div>
 
             <div className="studio-tag-palette" aria-label="Semantic tag palette">
-              {tagPalette.map((tag) => (
+              {tags.map((tag) => (
                 <button
                   className="studio-tag-button"
-                  data-active={tag.id === selectedTag.id}
+                  data-active={tag.id === selectedTag?.id}
                   key={tag.id}
                   type="button"
                   onClick={() => setSelectedTagId(tag.id)}
@@ -487,11 +421,17 @@ export function StudioWorkbenchClient() {
             <button
               className="studio-primary-button"
               type="button"
-              disabled={!spanValidation.ok}
+              disabled={!spanValidation.ok || !persistence.canWrite || isPending}
               onClick={applyTag}
             >
-              Apply semantic tag
+              {isPending ? "Persisting..." : "Apply semantic tag"}
             </button>
+
+            {actionState ? (
+              <div className="studio-action-message" data-ok={actionState.ok}>
+                {actionState.message}
+              </div>
+            ) : null}
           </section>
 
           <aside className="studio-panel" aria-label="Knowledge nodes and provenance">
@@ -504,14 +444,14 @@ export function StudioWorkbenchClient() {
 
             <h2>Provenance stays attached</h2>
             <p className="studio-panel-copy">
-              Each created node carries the selected text, tag, block ID, span
+              Each persisted node carries the selected text, tag, block ID, span
               offsets, document identity, and projection status.
             </p>
 
             <div className="studio-node-list">
               {knowledgeNodes.length === 0 ? (
                 <div className="studio-empty-state">
-                  Apply a tag to create the first local knowledge node.
+                  Apply a tag to create the first durable knowledge node.
                 </div>
               ) : (
                 knowledgeNodes.map((node) => (
@@ -519,7 +459,7 @@ export function StudioWorkbenchClient() {
                     <div className="studio-node-card-header">
                       <h3>{node.title}</h3>
                       <span className="studio-chip" data-tone="review">
-                        {node.projectionStatus.replaceAll("_", " ")}
+                        {formatStatus(node.projectionStatus)}
                       </span>
                     </div>
                     <p>{node.body}</p>
@@ -587,7 +527,7 @@ export function StudioWorkbenchClient() {
         </section>
 
         <section className="studio-activity-strip" aria-label="Tag applications">
-          <p className="studio-label">Local tag applications</p>
+          <p className="studio-label">Durable tag applications</p>
           <div>
             {tagApplications.length === 0
               ? "No tag applications yet."

@@ -5,8 +5,9 @@ Date: 2026-05-14
 ## Purpose
 
 This workflow defines the first real implementation slice after the
-`apps/studio` shell. As of the Studio tagging prototype pass, the app now has a
-client-side workbench that proves the loop without persistence.
+`apps/studio` shell. The Studio tagging prototype first proved the loop in
+client state. The persistence slice now makes that same loop durable in
+development code without widening into editor, search, or projection work.
 
 The goal is not a beautiful editor. The goal is to prove the core Studio loop:
 
@@ -20,7 +21,7 @@ not decoration.
 
 ## Current Prototype Status
 
-The current `apps/studio` prototype proves the loop in local React state:
+The original `apps/studio` prototype proved the loop in local React state:
 
 - one seeded Studio document
 - three stable source blocks
@@ -33,11 +34,35 @@ The current `apps/studio` prototype proves the loop in local React state:
 - provenance displayed beside each node
 - visible private, draft, not public, and projection-not-approved markers
 
-The current prototype intentionally does not persist anything. Refreshing the
-page clears tag applications and nodes.
+The original prototype intentionally did not persist anything. Refreshing the
+page cleared tag applications and nodes.
 
-The next pass should make the same shapes durable instead of redesigning the
-workflow.
+## Persistence Slice Status
+
+As of the 2026-05-16 Studio persistence slice, the same loop now has a minimal
+Prisma backing in development code:
+
+- `StudioWorkspace`
+- `StudioProject`
+- `StudioDocument`
+- `StudioDocumentBlock`
+- `StudioTag`
+- `StudioTaggedSpan`
+- `StudioKnowledgeNode`
+
+`apps/studio` now server-loads the seed Studio document, ordered blocks, tags,
+tagged spans, and knowledge nodes from Prisma when the schema exists. Applying
+a tag calls a server action that creates or reuses one tagged span for the same
+block/tag/start/end range and creates or reuses the matching knowledge node.
+
+Refresh should preserve persisted tag applications and nodes because the
+workbench reloads them from the database instead of client memory.
+
+The seed/bootstrap path is intentionally local-development-only. It creates the
+same non-canonical fixture records only when `DATABASE_URL` points at a local
+database and `NODE_ENV` is not `production`. When the configured database target
+does not look local, the app can show the fixture fallback but disables Studio
+writes.
 
 ## Starting Boundary
 
@@ -173,12 +198,16 @@ git diff --check
 If Prisma changes are introduced:
 
 ```bash
+pnpm exec prisma validate
 pnpm db:generate
 ```
 
 Only run `pnpm db:push` against a clearly safe local development database.
 Do not mutate remote Neon data for a smoke test unless the environment is
 confirmed disposable.
+
+For the 2026-05-16 persistence slice, the configured database target did not
+look local, so mutation smoke testing and `pnpm db:push` were skipped.
 
 ## Non-Goals
 
@@ -211,9 +240,18 @@ The current prototype is successful because:
 - no public publishing behavior changes
 - no canonical manuscript files are modified
 
-The next pass is successful when:
+The persistence pass is successful when:
 
 - the same loop is persisted in development data
 - refresh does not lose tag applications or nodes
 - provenance remains queryable from document, block, span, tag, and node records
 - no public route reads from private Studio authoring tables
+
+## Recommended Next Slice
+
+Add the private Studio auth boundary before expanding editor behavior:
+
+- decide which existing `User` roles can enter `apps/studio`
+- replace `ownerLabel` / `createdByLabel` with real optional user ownership
+- keep local seed data clearly separated from imported manuscript data
+- only then consider a controlled import path for selected real source blocks
