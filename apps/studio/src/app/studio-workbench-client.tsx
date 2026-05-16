@@ -506,7 +506,8 @@ export function StudioWorkbenchClient({
             },
             {
               title: "Projections",
-              detail: "Approved public outputs for web, books, and Quiplore.",
+              detail:
+                "Approved public outputs for web, books, public talks, and Quiplore.",
             },
             {
               title: "Agents",

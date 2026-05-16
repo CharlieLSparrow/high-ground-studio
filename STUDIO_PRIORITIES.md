@@ -17,6 +17,7 @@ The Studio is a private creative and research operating system for:
 - writing and revising original work
 - tagging and structuring source material
 - preparing podcast episodes
+- studying and writing TED talks / public talks
 - developing books and chapters
 - collecting and curating quotes for Quiplore
 - analyzing fiction, nonfiction, comedy, songs, sketches, transcripts, and articles
