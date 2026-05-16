@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@high-ground/studio-domain": "workspace:*",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

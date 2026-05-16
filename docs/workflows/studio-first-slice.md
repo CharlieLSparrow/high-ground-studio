@@ -5,7 +5,8 @@ Date: 2026-05-14
 ## Purpose
 
 This workflow defines the first real implementation slice after the
-`apps/studio` shell.
+`apps/studio` shell. As of the Studio tagging prototype pass, the app now has a
+client-side workbench that proves the loop without persistence.
 
 The goal is not a beautiful editor. The goal is to prove the core Studio loop:
 
@@ -16,6 +17,27 @@ document or source block -> selected span -> semantic tag -> knowledge node
 
 The tagging system is the main interface for meaning. Treat it as architecture,
 not decoration.
+
+## Current Prototype Status
+
+The current `apps/studio` prototype proves the loop in local React state:
+
+- one seeded Studio document
+- three stable source blocks
+- visible block IDs
+- excerpt presets plus editable start/end offsets
+- semantic tag palette
+- span validation through `packages/studio-domain`
+- tag applications created in memory
+- knowledge nodes extracted from tagged spans
+- provenance displayed beside each node
+- visible private, draft, not public, and projection-not-approved markers
+
+The current prototype intentionally does not persist anything. Refreshing the
+page clears tag applications and nodes.
+
+The next pass should make the same shapes durable instead of redesigning the
+workflow.
 
 ## Starting Boundary
 
@@ -50,7 +72,7 @@ fixture repo-local and clearly non-canonical.
 
 Design the schema before editing Prisma.
 
-The first slice likely needs:
+The next database-backed slice likely needs:
 
 - `StudioWorkspace`
 - `StudioProject`
@@ -77,7 +99,14 @@ Fields to preserve from the first pass:
 
 Do not add embeddings yet. Leave that for the semantic search pass.
 
-## Implementation Steps
+Useful pure types and helpers already live in:
+
+- `packages/studio-domain`
+
+That package should stay free of Prisma, React, Next.js, and database access.
+Use it as the shared vocabulary for the first schema pass.
+
+## Next Implementation Steps
 
 1. Add a Studio schema plan.
    - Start with a short docs note or session plan.
@@ -85,8 +114,10 @@ Do not add embeddings yet. Leave that for the semantic search pass.
    - Keep auth roles and data ownership explicit.
 
 2. Add a tiny import/create path.
-   - Either import selected `ManuscriptBlock` entries from `learning-to-lead.living.mdx`.
-   - Or create one Studio document with a few seed blocks from a checked-in fixture.
+   - Either import selected `ManuscriptBlock` entries from
+     `learning-to-lead.living.mdx`.
+   - Or create one Studio document with a few seed blocks from a checked-in
+     fixture.
    - Do not write back to manuscript files.
 
 3. Render the document in `apps/studio`.
@@ -116,6 +147,7 @@ Do not add embeddings yet. Leave that for the semantic search pass.
    - Store selected text snapshot.
    - Store tag reference.
    - Store creator metadata.
+   - Preserve the current local prototype behavior as the acceptance baseline.
 
 7. Extract a knowledge node.
    - Create one node from the tagged span.
@@ -169,13 +201,19 @@ source-aware.
 
 ## Acceptance Criteria
 
-The next pass is successful when:
+The current prototype is successful because:
 
 - `apps/studio` shows one real or seeded Studio document
 - the document has stable block IDs
 - one selected span can receive one semantic tag
-- the tagged span is persisted
-- one knowledge node can be created from that span
+- one knowledge node can be created from that tagged span
 - the node panel shows provenance back to source document, block, and span
 - no public publishing behavior changes
 - no canonical manuscript files are modified
+
+The next pass is successful when:
+
+- the same loop is persisted in development data
+- refresh does not lose tag applications or nodes
+- provenance remains queryable from document, block, span, tag, and node records
+- no public route reads from private Studio authoring tables

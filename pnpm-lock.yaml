@@ -37,6 +37,9 @@ importers:
 
   apps/studio:
     dependencies:
+      '@high-ground/studio-domain':
+        specifier: workspace:*
+        version: link:../../packages/studio-domain
       next:
         specifier: latest
         version: 16.1.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -124,6 +127,12 @@ importers:
       '@types/three':
         specifier: ^0.183.1
         version: 0.183.1
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  packages/studio-domain:
+    devDependencies:
       typescript:
         specifier: ^5.5.4
         version: 5.9.3
