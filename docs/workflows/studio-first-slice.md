@@ -64,6 +64,22 @@ database and `NODE_ENV` is not `production`. When the configured database target
 does not look local, the app can show the fixture fallback but disables Studio
 writes.
 
+## Auth Boundary Status
+
+As of the 2026-05-16 Studio auth boundary pass, the workbench is private in
+code:
+
+- signed-out visitors see a Studio sign-in screen
+- signed-in users without an approved role see an access-restricted screen
+- approved Studio access currently means one of the existing `OWNER`,
+  `TEAM_SCHEDULER`, or `COACH` roles
+- the tag creation server action repeats the role check before writing
+- created spans and nodes record the signed-in primary email in
+  `createdByLabel`
+
+This pass did not add new Studio roles or real `User` foreign-key ownership.
+Those remain the next schema decision.
+
 ## Starting Boundary
 
 Use the existing shell:

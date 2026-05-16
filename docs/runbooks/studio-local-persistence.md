@@ -39,6 +39,10 @@ at one of:
 - pnpm installed
 - no other local Postgres service using port `5432`, unless you adjust the
   compose port and local `DATABASE_URL` together
+- Google OAuth credentials configured for local NextAuth sign-in when using the
+  browser Studio app
+- the signed-in account listed in one of `HGO_OWNER_EMAILS`,
+  `HGO_TEAM_SCHEDULER_EMAILS`, or `HGO_COACH_EMAILS`
 
 ## Example Local Database URL
 
@@ -91,6 +95,10 @@ Then start Studio against the same local database:
 ```bash
 pnpm studio:local
 ```
+
+The browser workbench is private. Sign in with Google using an account included
+in the local role env lists. The smoke script remains a local database check and
+does not exercise browser auth.
 
 ## Apply Schema Safely
 
@@ -151,6 +159,13 @@ Open the local Studio app and apply a semantic tag. Refresh the page. The
 tagged span and knowledge node should remain visible because the workbench
 reloads them from Prisma.
 
+If the page shows the access screen instead of the workbench, confirm:
+
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set for local NextAuth
+- `AUTH_SECRET` or `NEXTAUTH_SECRET` is set
+- the signed-in email appears in one of the Studio-approved role env lists
+- the Google OAuth redirect URI matches the local Studio dev server port
+
 ## Reset Local Seed Data
 
 Only do this against a confirmed local database.
@@ -195,3 +210,5 @@ pnpm studio:db:down
 - Do not import the whole manuscript in this slice.
 - Do not add TipTap, Yjs, embeddings, semantic search, public projections, or
   deployment wiring to this local smoke path.
+- Do not bypass the Studio role gate by exposing the workbench as a public
+  route.

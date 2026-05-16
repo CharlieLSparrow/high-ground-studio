@@ -65,6 +65,10 @@ type StudioWorkbenchClientProps = {
   tagApplications: StudioTagApplication[];
   knowledgeNodes: KnowledgeNode[];
   persistence: StudioPersistenceState;
+  actor: {
+    primaryEmail: string;
+    roles: string[];
+  };
 };
 
 function findBlock(blocks: StudioBlock[], blockId: string) {
@@ -125,6 +129,7 @@ export function StudioWorkbenchClient({
   tagApplications,
   knowledgeNodes,
   persistence,
+  actor,
 }: StudioWorkbenchClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -172,10 +177,18 @@ export function StudioWorkbenchClient({
       span,
       tag: selectedTag,
       createdAt: "database-preview",
-      createdByLabel: "local development seed",
+      createdByLabel: actor.primaryEmail,
       projectionStatus: "private",
     });
-  }, [document, endOffset, selectedBlock, selectedTag, spanValidation.ok, startOffset]);
+  }, [
+    actor.primaryEmail,
+    document,
+    endOffset,
+    selectedBlock,
+    selectedTag,
+    spanValidation.ok,
+    startOffset,
+  ]);
 
   const previewNode = previewApplication
     ? createKnowledgeNodeFromTaggedSpan({
@@ -245,6 +258,12 @@ export function StudioWorkbenchClient({
           </div>
 
           <div className="studio-status">
+            <span className="studio-chip" data-tone="tag">
+              Studio access
+            </span>
+            <span className="studio-chip" data-tone="source">
+              {actor.primaryEmail}
+            </span>
             <span className="studio-chip" data-tone="source">
               Private
             </span>

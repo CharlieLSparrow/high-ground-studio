@@ -87,9 +87,18 @@ page falls back to the fixture and disables Studio writes.
 This pass did not import or modify
 `apps/web/content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx`.
 
+## Auth Boundary Update
+
+The first private Studio auth boundary landed after this persistence slice.
+`apps/studio` now requires Google sign-in plus an approved existing team role
+before rendering the workbench or creating tag applications.
+
+Real `User` foreign-key ownership remains deferred. Created spans and nodes now
+carry the signed-in primary email in `createdByLabel` as an accountable
+placeholder until the dedicated Studio ownership model is added.
+
 ## What Is Still Mocked Or Deferred
 
-- Studio auth and role gates
 - real `User` ownership relations
 - full manuscript import
 - rich text editing

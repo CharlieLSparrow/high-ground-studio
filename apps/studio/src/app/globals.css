@@ -54,6 +54,11 @@ button:disabled {
   padding: 24px;
 }
 
+.studio-access-shell {
+  display: grid;
+  place-items: center;
+}
+
 .studio-frame {
   display: grid;
   min-height: calc(100vh - 48px);
@@ -63,6 +68,7 @@ button:disabled {
 
 .studio-topbar,
 .studio-panel,
+.studio-access-panel,
 .studio-future-lane,
 .studio-activity-strip {
   border: 1px solid var(--studio-line);
@@ -170,6 +176,40 @@ button:disabled {
 .studio-panel {
   min-width: 0;
   padding: 18px;
+}
+
+.studio-access-panel {
+  display: grid;
+  width: min(100%, 560px);
+  gap: 14px;
+  padding: 24px;
+}
+
+.studio-access-panel .studio-glyph {
+  margin-bottom: 2px;
+}
+
+.studio-access-user {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--studio-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--studio-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.studio-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.studio-auth-actions form {
+  min-width: min(100%, 220px);
 }
 
 .studio-panel-heading {
@@ -305,6 +345,7 @@ button:disabled {
 
 .studio-small-button,
 .studio-primary-button,
+.studio-secondary-button,
 .studio-tag-button {
   border: 1px solid var(--studio-line);
   border-radius: 8px;
@@ -464,6 +505,15 @@ button:disabled {
   border-color: var(--studio-line);
   background: rgba(244, 240, 232, 0.04);
   color: var(--studio-dim);
+}
+
+.studio-secondary-button {
+  width: 100%;
+  min-height: 44px;
+  border-color: rgba(242, 166, 166, 0.4);
+  background: rgba(242, 166, 166, 0.08);
+  color: var(--studio-danger);
+  font-weight: 900;
 }
 
 .studio-node-list {

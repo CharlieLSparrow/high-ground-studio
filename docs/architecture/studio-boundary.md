@@ -91,6 +91,35 @@ Initial responsibilities:
 - show nodes, tags, source references, and provenance in structured panels
 - prepare for semantic search and future agent workflows
 
+## First Auth And Ownership Boundary
+
+As of the 2026-05-16 auth-boundary pass, `apps/studio` has its first private
+access gate.
+
+The boundary intentionally reuses the existing app identity shape:
+
+- Google sign-in through NextAuth
+- canonical `User` lookup/provisioning in Prisma
+- env-bootstrapped `OWNER`, `TEAM_SCHEDULER`, and `COACH` roles
+- a Studio-specific authorization helper that treats those roles as the first
+  approved Studio access set
+
+This is not the final Studio role model. It avoids new Prisma schema and keeps
+the change reversible while preventing the Studio workbench from being a public
+dev page.
+
+Current ownership behavior is deliberately lightweight:
+
+- page access requires an approved signed-in user
+- tag creation requires the same Studio access check server-side
+- newly created `StudioTaggedSpan` and `StudioKnowledgeNode` rows keep the
+  signed-in user's primary email in `createdByLabel`
+
+This gives Studio records an accountable human label without adding real `User`
+foreign keys before the Studio ownership model is ready. A later pass should
+replace label-only creator tracking with explicit owner/creator/reviewer
+relations once the role model is stable.
+
 Later responsibilities:
 
 - collaboration and revision history

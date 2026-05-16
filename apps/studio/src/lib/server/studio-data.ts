@@ -126,6 +126,10 @@ export type CreateTaggedSpanInput = {
   endOffset: number;
 };
 
+export type StudioWriteActor = {
+  actorLabel: string;
+};
+
 export type StudioActionResult = {
   ok: boolean;
   message: string;
@@ -732,6 +736,7 @@ export async function loadStudioWorkbenchData(): Promise<StudioWorkbenchData> {
 
 export async function createStudioTaggedSpanWithNode(
   input: CreateTaggedSpanInput,
+  actor: StudioWriteActor,
 ): Promise<StudioActionResult> {
   if (!canWriteStudioDevData()) {
     return {
@@ -742,6 +747,7 @@ export async function createStudioTaggedSpanWithNode(
   }
 
   const prisma = getPrismaClient();
+  const createdByLabel = actor.actorLabel.trim() || "signed-in Studio user";
 
   try {
     await ensureSeedStudioData(prisma);
@@ -810,7 +816,7 @@ export async function createStudioTaggedSpanWithNode(
         span,
         tag: domainTag,
         createdAt: createdAtText,
-        createdByLabel: "local development seed",
+        createdByLabel,
         projectionStatus: "private",
       });
       const node = createKnowledgeNodeFromTaggedSpan({
@@ -848,7 +854,7 @@ export async function createStudioTaggedSpanWithNode(
             sourceExternalId: block.externalId,
             projectionStatus: "private",
             isPrivate: true,
-            createdByLabel: "local development seed",
+            createdByLabel,
             createdAt,
           },
         }));
@@ -881,7 +887,7 @@ export async function createStudioTaggedSpanWithNode(
           spanEndOffset: input.endOffset,
           sourceLabel: block.sourceLabel ?? document.sourceLabel,
           sourcePath: block.sourcePath ?? document.sourcePath,
-          createdByLabel: "local development seed",
+          createdByLabel,
           createdAt,
         },
       });
