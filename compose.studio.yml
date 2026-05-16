@@ -1,0 +1,22 @@
+name: high-ground-studio-local
+
+services:
+  studio-postgres:
+    image: postgres:16-alpine
+    container_name: high-ground-studio-postgres
+    environment:
+      POSTGRES_DB: high_ground_studio
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - high_ground_studio_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d high_ground_studio"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  high_ground_studio_pgdata:

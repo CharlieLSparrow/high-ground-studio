@@ -44,14 +44,16 @@ environment.
 
 ## Local Developer Next Step
 
-Use a disposable local database URL, then run:
+Use the local Docker Postgres path, then run:
 
 ```bash
-pnpm db:generate
-pnpm db:push
-pnpm studio:smoke:persistence
-pnpm studio
+pnpm studio:local:bootstrap
+pnpm studio:local
 ```
+
+`studio:local:bootstrap` starts the local Compose database, applies the Prisma
+schema with an inline local `DATABASE_URL`, and runs the smoke test. This avoids
+using a repo `.env` that may point at remote Neon.
 
 Do not run `pnpm db:push` or the smoke path against remote Neon unless that
 target has been explicitly confirmed safe.

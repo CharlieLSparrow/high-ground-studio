@@ -113,6 +113,13 @@ For the full local persistence workflow and smoke test, read:
 
 - `docs/runbooks/studio-local-persistence.md`
 
+Fast path with local Docker Postgres:
+
+```bash
+pnpm studio:local:bootstrap
+pnpm studio:local
+```
+
 ## Build Verification
 
 Default production build:

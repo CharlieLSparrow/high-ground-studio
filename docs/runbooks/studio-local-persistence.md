@@ -33,6 +33,13 @@ at one of:
 - `127.0.0.1`
 - `::1`
 
+## Prerequisites
+
+- Docker Desktop or another Docker daemon running locally
+- pnpm installed
+- no other local Postgres service using port `5432`, unless you adjust the
+  compose port and local `DATABASE_URL` together
+
 ## Example Local Database URL
 
 Use a disposable local database. Example:
@@ -42,6 +49,48 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/high_ground_studio"
 ```
 
 You can put that in local `.env`. Do not commit `.env`.
+
+The repo also has a local-only Docker Compose file:
+
+- `compose.studio.yml`
+
+It starts one Postgres service:
+
+- database: `high_ground_studio`
+- user: `postgres`
+- password: `postgres`
+- host port: `5432`
+- volume: `high-ground-studio-local_high_ground_studio_pgdata`
+
+If port `5432` is already in use on your machine, stop the other local
+Postgres service or adjust the compose port and local `DATABASE_URL` together.
+
+## One-Command Bootstrap
+
+For the normal local smoke-test path:
+
+```bash
+pnpm studio:local:bootstrap
+```
+
+This runs:
+
+```bash
+pnpm studio:db:up
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm db:generate
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm db:push
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm studio:smoke:persistence
+```
+
+The script passes the local `DATABASE_URL` inline, so it does not matter if
+your repo `.env` points at remote Neon. The smoke script still refuses any
+non-local database host.
+
+Then start Studio against the same local database:
+
+```bash
+pnpm studio:local
+```
 
 ## Apply Schema Safely
 
@@ -61,6 +110,12 @@ From repo root:
 
 ```bash
 pnpm studio:smoke:persistence
+```
+
+If your `.env` does not point at local Postgres, pass the local URL inline:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm studio:smoke:persistence
 ```
 
 The script will:
@@ -89,7 +144,7 @@ knowledge node ID: ...
 In another terminal:
 
 ```bash
-pnpm studio
+pnpm studio:local
 ```
 
 Open the local Studio app and apply a semantic tag. Refresh the page. The
@@ -113,6 +168,22 @@ Then recreate the seed and smoke records:
 
 ```bash
 pnpm studio:smoke:persistence
+```
+
+To reset the whole local Compose database volume:
+
+```bash
+pnpm studio:db:reset
+pnpm studio:local:bootstrap
+```
+
+`studio:db:reset` removes only the local Compose volume declared in
+`compose.studio.yml`. Do not use it for any non-local database workflow.
+
+To stop the local container without deleting data:
+
+```bash
+pnpm studio:db:down
 ```
 
 ## What Not To Do
