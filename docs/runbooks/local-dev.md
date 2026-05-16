@@ -109,6 +109,10 @@ target has been explicitly confirmed safe. The Studio seed helper only creates
 development fixture rows when `DATABASE_URL` points at a local database and
 `NODE_ENV` is not `production`.
 
+For the full local persistence workflow and smoke test, read:
+
+- `docs/runbooks/studio-local-persistence.md`
+
 ## Build Verification
 
 Default production build:
