@@ -8,6 +8,8 @@
   "scripts": {
     "postinstall": "prisma generate",
     "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
+    "studio": "pnpm --filter studio dev",
+    "studio:build": "pnpm --filter studio build",
     "web": "pnpm --filter web dev",
     "engine:build": "pnpm --filter @high-ground/motion-engine build",
     "db:generate": "prisma generate",

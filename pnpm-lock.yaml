@@ -35,6 +35,28 @@ importers:
         specifier: ^5.4.1
         version: 5.4.21(@types/node@25.3.3)(lightningcss@1.32.0)
 
+  apps/studio:
+    dependencies:
+      next:
+        specifier: latest
+        version: 16.1.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: latest
+        version: 19.2.4
+      react-dom:
+        specifier: latest
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      '@types/react':
+        specifier: 19.2.14
+        version: 19.2.14
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   apps/web:
     dependencies:
       '@prisma/adapter-pg':
