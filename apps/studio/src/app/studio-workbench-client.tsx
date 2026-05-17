@@ -18,6 +18,18 @@ import {
 } from "@high-ground/studio-domain";
 
 import { createStudioTaggedSpanAction } from "./actions";
+import {
+  cardClassName,
+  cn,
+  labelClassName,
+  monoMetaClassName,
+  panelClassName,
+  panelCopyClassName,
+  panelTitleClassName,
+  primaryButtonClassName,
+  StudioChip,
+  StudioGlyph,
+} from "./studio-ui";
 
 const excerptPresets = [
   {
@@ -67,7 +79,6 @@ type StudioWorkbenchClientProps = {
   persistence: StudioPersistenceState;
   actor: {
     primaryEmail: string;
-    roles: string[];
   };
 };
 
@@ -111,7 +122,7 @@ function renderBlockText(
   return (
     <>
       {block.body.slice(0, startOffset)}
-      <mark className="studio-selected-span">
+      <mark className="rounded bg-studio-tag/20 text-studio-ink shadow-[inset_0_-2px_0_rgba(159,209,139,0.86)]">
         {block.body.slice(startOffset, endOffset)}
       </mark>
       {block.body.slice(endOffset)}
@@ -122,6 +133,18 @@ function renderBlockText(
 function formatStatus(value: string) {
   return value.replaceAll("_", " ");
 }
+
+const fieldLabelClassName =
+  "text-[0.78rem] font-extrabold uppercase text-studio-muted";
+
+const fieldClassName =
+  "min-h-10 w-full rounded-lg border border-studio-line-strong bg-[#0f1512] px-2.5 py-2 text-studio-ink";
+
+const smallButtonClassName =
+  "min-h-8 shrink-0 rounded-lg border border-studio-line bg-studio-ink/5 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-source aria-pressed:border-studio-source/55 aria-pressed:bg-studio-source/10";
+
+const offsetLabelClassName =
+  "inline-flex max-w-full break-words font-mono text-[0.72rem] leading-snug text-studio-dim";
 
 export function StudioWorkbenchClient({
   document,
@@ -241,81 +264,90 @@ export function StudioWorkbenchClient({
   }
 
   return (
-    <main className="studio-shell">
-      <div className="studio-frame">
-        <header className="studio-topbar" aria-label="Studio status">
-          <div className="studio-mark">
-            <div className="studio-glyph" aria-hidden="true">
-              S
-            </div>
+    <main className="min-h-screen p-3.5 md:p-6">
+      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_1fr_auto_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
+        <header
+          className={cn(
+            panelClassName,
+            "flex min-h-[72px] flex-col items-stretch justify-between gap-[18px] px-[18px] py-4 lg:flex-row lg:items-center",
+          )}
+          aria-label="Studio status"
+        >
+          <div className="flex min-w-0 flex-col items-stretch gap-3.5 sm:flex-row sm:items-center">
+            <StudioGlyph />
             <div>
-              <h1 className="studio-title">High Ground Studio</h1>
-              <p className="studio-subtitle">
+              <h1 className="m-0 text-[1.75rem] leading-[1.08] tracking-normal text-studio-ink max-sm:text-[1.45rem]">
+                High Ground Studio
+              </h1>
+              <p className="mt-1.5 mb-0 max-w-[760px] text-[0.94rem] leading-relaxed text-studio-muted">
                 Private semantic workbench for source blocks, spans, tags,
                 knowledge nodes, and provenance.
               </p>
             </div>
           </div>
 
-          <div className="studio-status">
-            <span className="studio-chip" data-tone="tag">
-              Studio access
-            </span>
-            <span className="studio-chip" data-tone="source">
+          <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+            <StudioChip tone="tag">Studio access</StudioChip>
+            <StudioChip className="normal-case" tone="source">
               {actor.primaryEmail}
-            </span>
-            <span className="studio-chip" data-tone="source">
-              Private
-            </span>
-            <span className="studio-chip" data-tone="tag">
-              Database seeded
-            </span>
-            <span className="studio-chip" data-tone="node">
-              Not public
-            </span>
-            <span className="studio-chip" data-tone="review">
-              Projection not approved
-            </span>
+            </StudioChip>
+            <StudioChip tone="source">Private</StudioChip>
+            <StudioChip tone="tag">Database seeded</StudioChip>
+            <StudioChip tone="node">Not public</StudioChip>
+            <StudioChip tone="review">Projection not approved</StudioChip>
           </div>
         </header>
 
-        <section className="studio-workbench" aria-label="Studio tagging workbench">
-          <section className="studio-panel" aria-label="Source document">
-            <div className="studio-panel-heading">
-              <p className="studio-label">Source Document</p>
-              <span className="studio-chip" data-tone="source">
+        <section
+          className="grid gap-[18px] xl:grid-cols-[minmax(310px,0.95fr)_minmax(330px,0.95fr)_minmax(310px,0.82fr)]"
+          aria-label="Studio tagging workbench"
+        >
+          <section className={panelClassName} aria-label="Source document">
+            <div className="mb-3.5 flex items-start justify-between gap-3">
+              <p className={labelClassName}>Source Document</p>
+              <StudioChip tone="source">
                 {formatStatus(document.projectionStatus)}
-              </span>
+              </StudioChip>
             </div>
 
-            <h2>{document.title}</h2>
-            <p className="studio-panel-copy">{document.sourceLabel}</p>
+            <h2 className={panelTitleClassName}>{document.title}</h2>
+            <p className={panelCopyClassName}>{document.sourceLabel}</p>
 
-            <dl className="studio-meta-grid">
-              <div>
-                <dt>Document ID</dt>
-                <dd>{document.id}</dd>
+            <dl className="mt-4 grid gap-2.5">
+              <div className="min-w-0">
+                <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                  Document ID
+                </dt>
+                <dd className={monoMetaClassName}>{document.id}</dd>
               </div>
-              <div>
-                <dt>Source path</dt>
-                <dd>{document.sourcePath}</dd>
+              <div className="min-w-0">
+                <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                  Source path
+                </dt>
+                <dd className={monoMetaClassName}>{document.sourcePath}</dd>
               </div>
             </dl>
 
-            <div className="studio-block-list">
+            <div className="mt-[18px] grid gap-3.5">
               {document.blocks.map((block) => (
                 <article
-                  className="studio-block"
-                  data-active={block.id === selectedBlock.id}
+                  className={cn(
+                    cardClassName,
+                    "p-[15px]",
+                    block.id === selectedBlock.id &&
+                      "border-studio-source/55 bg-studio-source/10",
+                  )}
                   key={block.id}
                 >
-                  <div className="studio-block-header">
+                  <div className="mb-3 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
                     <div>
-                      <h3 className="studio-block-title">{block.title}</h3>
-                      <span className="studio-block-id">{block.id}</span>
+                      <h3 className="mt-0 mb-1.5 text-[0.95rem] leading-snug text-studio-ink">
+                        {block.title}
+                      </h3>
+                      <span className={offsetLabelClassName}>{block.id}</span>
                     </div>
                     <button
-                      className="studio-small-button"
+                      className={smallButtonClassName}
                       type="button"
                       aria-pressed={block.id === selectedBlock.id}
                       onClick={() => chooseBlock(block.id)}
@@ -323,7 +355,7 @@ export function StudioWorkbenchClient({
                       Choose
                     </button>
                   </div>
-                  <p className="studio-block-body">
+                  <p className="m-0 text-[0.95rem] leading-7 text-studio-ink/90">
                     {renderBlockText(
                       block,
                       selectedBlock.id,
@@ -336,28 +368,38 @@ export function StudioWorkbenchClient({
             </div>
           </section>
 
-          <section className="studio-panel" aria-label="Tagging controls">
-            <div className="studio-panel-heading">
-              <p className="studio-label">Tagging Controls</p>
-              <span className="studio-chip" data-tone="tag">
+          <section className={panelClassName} aria-label="Tagging controls">
+            <div className="mb-3.5 flex items-start justify-between gap-3">
+              <p className={labelClassName}>Tagging Controls</p>
+              <StudioChip tone="tag">
                 {persistence.mode === "database" ? "Durable" : "Fixture"}
-              </span>
+              </StudioChip>
             </div>
 
-            <h2>Block to span to semantic tag</h2>
-            <p className="studio-panel-copy">
+            <h2 className={panelTitleClassName}>
+              Block to span to semantic tag
+            </h2>
+            <p className={panelCopyClassName}>
               Choose a stable block, select an excerpt or offset range, then
               apply a meaning tag. Applying a tag writes a provenance-aware
               tagged span and knowledge node when local persistence is enabled.
             </p>
 
-            <div className="studio-persistence-note" data-active={persistence.canWrite}>
+            <div
+              className={cn(
+                "mt-3.5 rounded-lg border border-studio-line p-3 text-[0.82rem] leading-relaxed text-studio-muted",
+                persistence.canWrite && "border-studio-tag/45 text-studio-tag",
+              )}
+            >
               {persistence.message}
             </div>
 
-            <div className="studio-control-group">
-              <label htmlFor="excerpt-select">Meaningful excerpt</label>
+            <div className="mt-[18px] grid gap-2">
+              <label className={fieldLabelClassName} htmlFor="excerpt-select">
+                Meaningful excerpt
+              </label>
               <select
+                className={fieldClassName}
                 id="excerpt-select"
                 value={selectedExcerptId}
                 onChange={(event) => chooseExcerpt(event.target.value)}
@@ -370,10 +412,11 @@ export function StudioWorkbenchClient({
               </select>
             </div>
 
-            <div className="studio-offset-grid">
-              <label>
-                <span>Start offset</span>
+            <div className="mt-3.5 grid gap-3 md:grid-cols-2">
+              <label className="grid gap-2">
+                <span className={fieldLabelClassName}>Start offset</span>
                 <input
+                  className={fieldClassName}
                   min={0}
                   max={selectedBlock.body.length}
                   type="number"
@@ -383,9 +426,10 @@ export function StudioWorkbenchClient({
                   }
                 />
               </label>
-              <label>
-                <span>End offset</span>
+              <label className="grid gap-2">
+                <span className={fieldLabelClassName}>End offset</span>
                 <input
+                  className={fieldClassName}
                   min={0}
                   max={selectedBlock.body.length}
                   type="number"
@@ -395,50 +439,73 @@ export function StudioWorkbenchClient({
               </label>
             </div>
 
-            <div className="studio-preview-box" data-valid={spanValidation.ok}>
-              <span className="studio-preview-kicker">Selected span</span>
-              {spanValidation.ok ? (
-                <p>{selectedText}</p>
-              ) : (
-                <p>{spanValidation.reason}</p>
+            <div
+              className={cn(
+                cardClassName,
+                "mt-3.5 grid gap-2 p-3.5",
+                !spanValidation.ok && "border-studio-danger/50",
               )}
-              <span className="studio-offset-label">
+            >
+              <span className={labelClassName}>Selected span</span>
+              {spanValidation.ok ? (
+                <p className="m-0 text-[0.92rem] leading-relaxed text-studio-ink/90">
+                  {selectedText}
+                </p>
+              ) : (
+                <p className="m-0 text-[0.92rem] leading-relaxed text-studio-ink/90">
+                  {spanValidation.reason}
+                </p>
+              )}
+              <span className={offsetLabelClassName}>
                 {selectedBlock.id}:{startOffset}-{endOffset}
               </span>
             </div>
 
-            <div className="studio-tag-palette" aria-label="Semantic tag palette">
+            <div className="mt-4 grid gap-2.5" aria-label="Semantic tag palette">
               {tags.map((tag) => (
                 <button
-                  className="studio-tag-button"
-                  data-active={tag.id === selectedTag?.id}
+                  className={cn(
+                    "grid gap-1 rounded-lg border border-studio-line bg-studio-ink/5 p-3 text-left text-studio-ink",
+                    tag.id === selectedTag?.id &&
+                      "border-studio-tag/60 bg-studio-tag/10",
+                  )}
                   key={tag.id}
                   type="button"
                   onClick={() => setSelectedTagId(tag.id)}
                 >
-                  <strong>{tag.label}</strong>
-                  <span>{tag.description}</span>
+                  <strong className="text-[0.9rem] text-studio-tag">
+                    {tag.label}
+                  </strong>
+                  <span className="text-[0.82rem] leading-snug text-studio-muted">
+                    {tag.description}
+                  </span>
                 </button>
               ))}
             </div>
 
-            <div className="studio-node-preview">
-              <p className="studio-label">Knowledge node preview</p>
+            <div className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+              <p className={labelClassName}>Knowledge node preview</p>
               {previewNode ? (
                 <>
-                  <h3>{previewNode.title}</h3>
-                  <p>{previewNode.body}</p>
-                  <span className="studio-offset-label">
+                  <h3 className="m-0 text-[0.98rem] leading-snug text-studio-ink">
+                    {previewNode.title}
+                  </h3>
+                  <p className="m-0 text-[0.92rem] leading-relaxed text-studio-ink/90">
+                    {previewNode.body}
+                  </p>
+                  <span className={offsetLabelClassName}>
                     {formatProvenanceLabel(previewNode.provenance)}
                   </span>
                 </>
               ) : (
-                <p>Fix the span offsets before node creation.</p>
+                <p className="m-0 text-[0.92rem] leading-relaxed text-studio-ink/90">
+                  Fix the span offsets before node creation.
+                </p>
               )}
             </div>
 
             <button
-              className="studio-primary-button"
+              className={primaryButtonClassName}
               type="button"
               disabled={!spanValidation.ok || !persistence.canWrite || isPending}
               onClick={applyTag}
@@ -447,67 +514,90 @@ export function StudioWorkbenchClient({
             </button>
 
             {actionState ? (
-              <div className="studio-action-message" data-ok={actionState.ok}>
+              <div
+                className={cn(
+                  "mt-3.5 rounded-lg border p-3 text-[0.82rem] leading-relaxed",
+                  actionState.ok
+                    ? "border-studio-tag/45 text-studio-tag"
+                    : "border-studio-danger/50 text-studio-danger",
+                )}
+              >
                 {actionState.message}
               </div>
             ) : null}
           </section>
 
-          <aside className="studio-panel" aria-label="Knowledge nodes and provenance">
-            <div className="studio-panel-heading">
-              <p className="studio-label">Knowledge Panel</p>
-              <span className="studio-chip" data-tone="node">
-                {knowledgeNodes.length} nodes
-              </span>
+          <aside className={panelClassName} aria-label="Knowledge nodes and provenance">
+            <div className="mb-3.5 flex items-start justify-between gap-3">
+              <p className={labelClassName}>Knowledge Panel</p>
+              <StudioChip tone="node">{knowledgeNodes.length} nodes</StudioChip>
             </div>
 
-            <h2>Provenance stays attached</h2>
-            <p className="studio-panel-copy">
+            <h2 className={panelTitleClassName}>Provenance stays attached</h2>
+            <p className={panelCopyClassName}>
               Each persisted node carries the selected text, tag, block ID, span
               offsets, document identity, and projection status.
             </p>
 
-            <div className="studio-node-list">
+            <div className="mt-[18px] grid gap-3">
               {knowledgeNodes.length === 0 ? (
-                <div className="studio-empty-state">
+                <div className={cn(cardClassName, "p-4 text-[0.92rem] leading-relaxed text-studio-muted")}>
                   Apply a tag to create the first durable knowledge node.
                 </div>
               ) : (
                 knowledgeNodes.map((node) => (
-                  <article className="studio-node-card" key={node.id}>
-                    <div className="studio-node-card-header">
-                      <h3>{node.title}</h3>
-                      <span className="studio-chip" data-tone="review">
+                  <article className={cn(cardClassName, "p-3.5")} key={node.id}>
+                    <div className="mb-2.5 flex flex-col items-stretch justify-between gap-2.5 sm:flex-row sm:items-start">
+                      <h3 className="m-0 text-[0.98rem] leading-snug text-studio-ink">
+                        {node.title}
+                      </h3>
+                      <StudioChip tone="review">
                         {formatStatus(node.projectionStatus)}
-                      </span>
+                      </StudioChip>
                     </div>
-                    <p>{node.body}</p>
-                    <dl className="studio-provenance-list">
-                      <div>
-                        <dt>Document</dt>
-                        <dd>
+                    <p className="m-0 text-[0.92rem] leading-relaxed text-studio-ink/90">
+                      {node.body}
+                    </p>
+                    <dl className="mt-4 grid gap-2.5">
+                      <div className="min-w-0">
+                        <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                          Document
+                        </dt>
+                        <dd className={monoMetaClassName}>
                           {node.provenance.documentTitle} (
                           {node.provenance.documentId})
                         </dd>
                       </div>
-                      <div>
-                        <dt>Block</dt>
-                        <dd>{node.provenance.blockId}</dd>
+                      <div className="min-w-0">
+                        <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                          Block
+                        </dt>
+                        <dd className={monoMetaClassName}>
+                          {node.provenance.blockId}
+                        </dd>
                       </div>
-                      <div>
-                        <dt>Span</dt>
-                        <dd>
+                      <div className="min-w-0">
+                        <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                          Span
+                        </dt>
+                        <dd className={monoMetaClassName}>
                           {node.provenance.spanStartOffset}-
                           {node.provenance.spanEndOffset}
                         </dd>
                       </div>
-                      <div>
-                        <dt>Tag</dt>
-                        <dd>{node.provenance.tagLabel}</dd>
+                      <div className="min-w-0">
+                        <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                          Tag
+                        </dt>
+                        <dd className={monoMetaClassName}>
+                          {node.provenance.tagLabel}
+                        </dd>
                       </div>
-                      <div>
-                        <dt>Created</dt>
-                        <dd>{node.createdAt}</dd>
+                      <div className="min-w-0">
+                        <dt className="text-[0.72rem] font-extrabold uppercase leading-tight text-studio-dim">
+                          Created
+                        </dt>
+                        <dd className={monoMetaClassName}>{node.createdAt}</dd>
                       </div>
                     </dl>
                   </article>
@@ -517,7 +607,10 @@ export function StudioWorkbenchClient({
           </aside>
         </section>
 
-        <section className="studio-future-lanes" aria-label="Future Studio lanes">
+        <section
+          className="grid gap-3.5 xl:grid-cols-3"
+          aria-label="Future Studio lanes"
+        >
           {[
             {
               title: "Structures",
@@ -533,22 +626,32 @@ export function StudioWorkbenchClient({
               detail: "Future source-aware agent runs with status and review.",
             },
           ].map((lane) => (
-            <div className="studio-future-lane" aria-disabled="true" key={lane.title}>
+            <div
+              className={cn(
+                panelClassName,
+                "flex min-w-0 flex-col items-stretch justify-between gap-3.5 p-4 opacity-75 sm:flex-row sm:items-start",
+              )}
+              aria-disabled="true"
+              key={lane.title}
+            >
               <div>
-                <p className="studio-label">Future lane</p>
-                <h2>{lane.title}</h2>
-                <p>{lane.detail}</p>
+                <p className={labelClassName}>Future lane</p>
+                <h2 className={panelTitleClassName}>{lane.title}</h2>
+                <p className="mt-2 mb-0 text-[0.88rem] leading-relaxed text-studio-muted">
+                  {lane.detail}
+                </p>
               </div>
-              <span className="studio-chip" data-tone="review">
-                Not wired
-              </span>
+              <StudioChip tone="review">Not wired</StudioChip>
             </div>
           ))}
         </section>
 
-        <section className="studio-activity-strip" aria-label="Tag applications">
-          <p className="studio-label">Durable tag applications</p>
-          <div>
+        <section
+          className={cn(panelClassName, "grid gap-2 px-4 py-3.5")}
+          aria-label="Tag applications"
+        >
+          <p className={labelClassName}>Durable tag applications</p>
+          <div className="break-words font-mono text-[0.76rem] leading-relaxed text-studio-muted">
             {tagApplications.length === 0
               ? "No tag applications yet."
               : tagApplications
