@@ -120,6 +120,21 @@ foreign keys before the Studio ownership model is ready. A later pass should
 replace label-only creator tracking with explicit owner/creator/reviewer
 relations once the role model is stable.
 
+## First Writing Desk Boundary
+
+As of the 2026-05-18 writing-desk pass, `apps/studio` also owns the first
+private book-drafting surface at `/write`.
+
+That surface is intentionally plain text and textarea-based. It reuses
+`StudioDocument` and `StudioDocumentBlock` for a deterministic private draft
+document, separate from the source-tagging seed document. It only creates or
+updates draft rows when the database target is local development Postgres; when
+the database is missing, remote, or not ready, it renders a read-only fixture.
+
+The writing desk is not a manuscript promotion workflow. It does not import the
+whole Learning to Lead manuscript, write MDX files, create public projections,
+or approve anything for publication.
+
 Later responsibilities:
 
 - collaboration and revision history

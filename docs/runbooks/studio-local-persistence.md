@@ -14,6 +14,11 @@ document block -> selected span -> semantic tag -> StudioTaggedSpan
 -> StudioKnowledgeNode -> refresh-safe provenance panel
 ```
 
+The same local persistence guard also protects the first Studio writing desk at
+`/write`. That route creates and updates a deterministic private draft document
+only when `DATABASE_URL` points at local Postgres. If the target is missing,
+remote, or unavailable, `/write` renders a read-only fixture instead.
+
 ## Why Local Only
 
 The Studio persistence slice writes private authoring records:
@@ -21,6 +26,7 @@ The Studio persistence slice writes private authoring records:
 - seed workspace/project/document/block/tag rows
 - tagged span rows
 - knowledge node rows
+- writing desk draft document/block rows
 
 Do not run the smoke path or `pnpm db:push` against remote Neon or
 production-like data casually. This is still a development fixture and not a
@@ -159,6 +165,24 @@ Open the local Studio app and apply a semantic tag. Refresh the page. The
 tagged span and knowledge node should remain visible because the workbench
 reloads them from Prisma.
 
+Open `/write` in the same Studio app to use the writing desk. Edits save to the
+local deterministic draft document:
+
+```text
+studio-doc-learning-to-lead-writing-desk-draft
+```
+
+The first draft block IDs are:
+
+```text
+l2l-writing-draft-001
+l2l-writing-draft-002
+l2l-writing-draft-003
+```
+
+These are private draft rows. They are not canonical manuscript files and are
+not approved public projections.
+
 If the page shows the access screen instead of the workbench, confirm:
 
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set for local NextAuth
@@ -207,6 +231,7 @@ pnpm studio:db:down
 - Do not run `pnpm db:push` against production-like data without explicit
   confirmation.
 - Do not treat the seed data as canonical Learning to Lead manuscript content.
+- Do not treat writing desk draft rows as canonical manuscript content.
 - Do not import the whole manuscript in this slice.
 - Do not add TipTap, Yjs, embeddings, semantic search, public projections, or
   deployment wiring to this local smoke path.

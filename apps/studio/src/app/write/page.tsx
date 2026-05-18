@@ -1,15 +1,15 @@
-import { StudioAccessShell } from "./studio-access-shell";
-import { StudioWorkbenchClient } from "./studio-workbench-client";
+import { StudioAccessShell } from "../studio-access-shell";
+import { StudioWritingDeskClient } from "./studio-writing-desk-client";
 import { getStudioAccessState } from "@/lib/server/studio-access";
-import { loadStudioWorkbenchData } from "@/lib/server/studio-data";
+import { loadStudioWritingDeskData } from "@/lib/server/studio-writing-desk";
 
 export const dynamic = "force-dynamic";
 
-export default async function StudioHomePage() {
+export default async function StudioWritingDeskPage() {
   const access = await getStudioAccessState();
 
   if (!access.isSignedIn) {
-    return <StudioAccessShell mode="signed-out" />;
+    return <StudioAccessShell mode="signed-out" redirectTo="/write" />;
   }
 
   if (!access.canAccess) {
@@ -22,10 +22,10 @@ export default async function StudioHomePage() {
     );
   }
 
-  const data = await loadStudioWorkbenchData();
+  const data = await loadStudioWritingDeskData();
 
   return (
-    <StudioWorkbenchClient
+    <StudioWritingDeskClient
       {...data}
       actor={{
         primaryEmail: access.actorLabel,

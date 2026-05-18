@@ -13,6 +13,10 @@ import {
 } from "@high-ground/studio-domain";
 
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  canWriteStudioDevData,
+  getStudioDatabaseUrl,
+} from "@/lib/server/studio-persistence-guard";
 
 const SEED_CREATED_AT = "2026-05-16T00:00:00.000Z";
 const STUDIO_ROUTE = "/";
@@ -242,34 +246,6 @@ function toNodeType(value: string): StudioTag["nodeType"] {
   ].includes(value)
     ? (value as StudioTag["nodeType"])
     : "source_note";
-}
-
-function getDatabaseUrl() {
-  return process.env.DATABASE_URL ?? "";
-}
-
-function getDatabaseHost() {
-  const databaseUrl = getDatabaseUrl();
-
-  if (!databaseUrl) {
-    return null;
-  }
-
-  try {
-    return new URL(databaseUrl).hostname;
-  } catch {
-    return null;
-  }
-}
-
-function isLocalDatabaseTarget() {
-  const host = getDatabaseHost();
-
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
-}
-
-function canWriteStudioDevData() {
-  return process.env.NODE_ENV !== "production" && isLocalDatabaseTarget();
 }
 
 function mapTag(tag: TagRecord): StudioTag {
@@ -615,7 +591,7 @@ export async function listStudioKnowledgeNodes(documentStableId: string) {
 }
 
 export async function loadStudioWorkbenchData(): Promise<StudioWorkbenchData> {
-  if (!getDatabaseUrl()) {
+  if (!getStudioDatabaseUrl()) {
     return fallbackData(
       "DATABASE_URL is not set, so Studio is showing the dev fixture without persistence.",
     );

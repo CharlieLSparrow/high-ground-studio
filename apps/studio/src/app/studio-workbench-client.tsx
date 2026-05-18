@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
   KnowledgeNode,
@@ -20,6 +21,7 @@ import {
 import { createStudioTaggedSpanAction } from "./actions";
 import {
   cardClassName,
+  compactLinkButtonClassName,
   cn,
   labelClassName,
   monoMetaClassName,
@@ -287,6 +289,9 @@ export function StudioWorkbenchClient({
           </div>
 
           <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+            <Link className={compactLinkButtonClassName} href="/write">
+              Writing desk
+            </Link>
             <StudioChip tone="tag">Studio access</StudioChip>
             <StudioChip className="normal-case" tone="source">
               {actor.primaryEmail}

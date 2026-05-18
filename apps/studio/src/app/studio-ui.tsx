@@ -39,6 +39,9 @@ export const primaryButtonClassName =
 export const secondaryButtonClassName =
   "min-h-11 w-full rounded-lg border border-studio-danger/40 bg-studio-danger/10 px-4 py-2 font-black text-studio-danger";
 
+export const compactLinkButtonClassName =
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-studio-line-strong bg-studio-ink/5 px-3.5 py-2 text-[0.82rem] font-black text-studio-ink hover:border-studio-tag/55 hover:bg-studio-tag/10 hover:text-studio-tag";
+
 export function StudioChip({
   children,
   className,
