@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
   KnowledgeNode,
@@ -19,9 +18,9 @@ import {
 } from "@high-ground/studio-domain";
 
 import { createStudioTaggedSpanAction } from "./actions";
+import { StudioNav } from "./studio-nav";
 import {
   cardClassName,
-  compactLinkButtonClassName,
   cn,
   labelClassName,
   monoMetaClassName,
@@ -267,7 +266,7 @@ export function StudioWorkbenchClient({
 
   return (
     <main className="min-h-screen p-3.5 md:p-6">
-      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_1fr_auto_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
+      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_auto_1fr_auto_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
         <header
           className={cn(
             panelClassName,
@@ -289,9 +288,7 @@ export function StudioWorkbenchClient({
           </div>
 
           <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-            <Link className={compactLinkButtonClassName} href="/write">
-              Writing desk
-            </Link>
+            <StudioNav />
             <StudioChip tone="tag">Studio access</StudioChip>
             <StudioChip className="normal-case" tone="source">
               {actor.primaryEmail}
@@ -302,6 +299,16 @@ export function StudioWorkbenchClient({
             <StudioChip tone="review">Projection not approved</StudioChip>
           </div>
         </header>
+
+        <section
+          className={cn(panelClassName, "grid gap-2 px-4 py-3.5")}
+          aria-label="Tagging desk orientation"
+        >
+          <p className={labelClassName}>Tagging Desk</p>
+          <p className="m-0 text-[0.92rem] leading-relaxed text-studio-muted">
+            Find meaning in source material.
+          </p>
+        </section>
 
         <section
           className="grid gap-[18px] xl:grid-cols-[minmax(310px,0.95fr)_minmax(330px,0.95fr)_minmax(310px,0.82fr)]"

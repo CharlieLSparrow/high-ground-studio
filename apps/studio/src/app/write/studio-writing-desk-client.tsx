@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { updateWritingDeskBlockAction } from "./actions";
+import { StudioNav } from "../studio-nav";
 import {
   cardClassName,
-  compactLinkButtonClassName,
   cn,
   labelClassName,
   monoMetaClassName,
@@ -125,7 +124,7 @@ export function StudioWritingDeskClient({
 
   return (
     <main className="min-h-screen p-3.5 md:p-6">
-      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_1fr_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
+      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_auto_1fr_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
         <header
           className={cn(
             panelClassName,
@@ -147,9 +146,7 @@ export function StudioWritingDeskClient({
           </div>
 
           <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-            <Link className={compactLinkButtonClassName} href="/">
-              Tagging desk
-            </Link>
+            <StudioNav />
             <StudioChip tone="tag">Studio access</StudioChip>
             <StudioChip className="normal-case" tone="source">
               {actor.primaryEmail}
@@ -163,6 +160,16 @@ export function StudioWritingDeskClient({
             </StudioChip>
           </div>
         </header>
+
+        <section
+          className={cn(panelClassName, "grid gap-2 px-4 py-3.5")}
+          aria-label="Writing desk orientation"
+        >
+          <p className={labelClassName}>Writing Desk</p>
+          <p className="m-0 text-[0.92rem] leading-relaxed text-studio-muted">
+            Create private draft material.
+          </p>
+        </section>
 
         <section
           className="grid gap-[18px] xl:grid-cols-[minmax(320px,0.7fr)_minmax(0,1.3fr)]"

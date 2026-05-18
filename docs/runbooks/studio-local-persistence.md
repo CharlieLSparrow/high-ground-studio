@@ -165,8 +165,13 @@ Open the local Studio app and apply a semantic tag. Refresh the page. The
 tagged span and knowledge node should remain visible because the workbench
 reloads them from Prisma.
 
-Open `/write` in the same Studio app to use the writing desk. Edits save to the
-local deterministic draft document:
+Use the shared Studio navigation to move between the active desks:
+
+- `/` - Tagging Desk
+- `/write` - Writing Desk
+
+Open `/write` to use the writing desk. Edits save to the local deterministic
+draft document:
 
 ```text
 studio-doc-learning-to-lead-writing-desk-draft
