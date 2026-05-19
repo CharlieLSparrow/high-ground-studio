@@ -2,12 +2,15 @@
 
 FROM node:22-slim AS base
 
+ARG PNPM_VERSION=10.30.3
+
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 WORKDIR /app
 
-RUN corepack enable
+RUN corepack enable \
+  && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 
 FROM base AS deps
 

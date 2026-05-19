@@ -179,6 +179,22 @@ Build:
 pnpm studio:cloudbuild:image:sha
 ```
 
+The Docker build path is pinned to `pnpm@10.30.3` through the root
+`packageManager` field and `apps/studio/Dockerfile`. The workspace build-script
+approval list is intentionally narrow in `pnpm-workspace.yaml`:
+
+```yaml
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - esbuild
+  - prisma
+  - sharp
+```
+
+If Cloud Build reports `ERR_PNPM_IGNORED_BUILDS`, first verify the build is
+using the pushed commit with the pnpm pin and this approval list before
+changing dependencies or approving additional packages.
+
 To override the default region or image tag, use:
 
 ```bash
