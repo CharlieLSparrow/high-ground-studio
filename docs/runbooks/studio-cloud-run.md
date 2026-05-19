@@ -94,6 +94,17 @@ Do not commit real values. Store sensitive values in Secret Manager.
 Run these manually from a workstation after selecting the project and region.
 The examples use placeholders.
 
+Before mutating any Google Cloud resources, run the local read-only preflight:
+
+```bash
+pnpm studio:cloudrun:preflight
+```
+
+That script checks repository readiness, local tool availability, and read-only
+`gcloud` account/project/region configuration. It does not deploy, run Cloud
+Build, create resources, change IAM, change DNS, create secrets, or mutate any
+database.
+
 ```bash
 gcloud config set project PROJECT_ID
 gcloud config set run/region us-central1
