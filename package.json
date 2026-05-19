@@ -19,6 +19,7 @@
     "studio:cloudbuild:image:sha": "gcloud builds submit --config cloudbuild.studio.yaml --substitutions=_IMAGE_TAG=$(git rev-parse --short HEAD) .",
     "studio:cloudrun:preflight": "node scripts/studio-cloud-run-preflight.mjs",
     "studio:cloudrun:test": "node --test scripts/studio-cloud-run-readiness.test.mjs",
+    "studio:structure:test": "node --experimental-strip-types --test scripts/studio-structure-mode.test.mjs",
     "studio:smoke:persistence": "node scripts/smoke-studio-persistence.mjs",
     "web": "pnpm --filter web dev",
     "engine:build": "pnpm --filter @high-ground/motion-engine build",
