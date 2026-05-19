@@ -7,8 +7,13 @@ Date: 2026-05-19
 This runbook documents the first live private Studio deployment path for Google
 Cloud Run.
 
-Do not treat this as permission to deploy from an agent session. The current
-pass prepares code, image build config, and operator steps only.
+Do not treat this as permission to deploy from an agent session. Codex can
+prepare docs, scripts, and code, but an operator owns live Google Cloud
+mutations.
+
+First successful deployment result:
+
+- `docs/sessions/studio-cloud-run-first-deployment-result.md`
 
 ## Current Deployment Boundary
 
@@ -83,7 +88,7 @@ Required runtime values:
 - `STUDIO_AUTH_MODE`
 - `STUDIO_ALLOWED_EMAILS`
 
-Recommended after the service URL exists:
+Set after the service URL exists and before the auth smoke:
 
 - `AUTH_URL`
 
@@ -232,12 +237,27 @@ gcloud run deploy studio \
 `--allow-unauthenticated` allows browsers to reach the NextAuth sign-in route.
 Studio itself remains protected by Google OAuth plus the Studio allowlist.
 
+Org-policy note from the first successful deployment:
+
+- the selected organization policy blocked adding an `allUsers`
+  `roles/run.invoker` binding
+- the operator used Cloud Run's disabled invoker-IAM-check setting instead of
+  forcing an `allUsers` IAM binding
+- keep Google OAuth plus `STUDIO_AUTH_MODE=allowlist` intact when using that
+  path
+- record the exception in the deployment notes so future operators do not
+  mistake the missing `allUsers` binding for a failed deploy
+
+If this path is used again, verify both sides:
+
+- `/api/health` is reachable from a normal browser
+- a non-allowlisted Google account cannot enter Studio
+
 After the first service URL exists:
 
 1. Add `https://<service-url>/api/auth/callback/google` to the Google OAuth
    client.
-2. Set `AUTH_URL=https://<service-url>` if callback URL inference is not enough
-   in the deployed service.
+2. Set `AUTH_URL=https://<service-url>` on the Cloud Run service.
 3. Re-deploy or update the Cloud Run service with that environment value if
    needed.
 
