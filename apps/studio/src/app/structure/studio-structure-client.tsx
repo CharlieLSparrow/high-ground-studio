@@ -570,6 +570,11 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                 Paste any useful text here. Select a span in the textarea, then
                 create a highlight card.
               </p>
+              <p className="mt-3 rounded-lg border border-studio-line bg-studio-ink/5 p-3 text-[0.82rem] leading-relaxed text-studio-muted">
+                Cards keep selected text snapshots. If you rewrite this source
+                later, existing cards remain, but offsets may point at old source
+                positions. Export JSON before large source rewrites.
+              </p>
 
               <div className="mt-4 grid gap-3">
                 <label className="grid gap-2">
