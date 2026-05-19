@@ -21,6 +21,8 @@ Derived from source usage:
 - `GOOGLE_CLIENT_SECRET`
 - `AUTH_SECRET`
 - `NEXTAUTH_SECRET`
+- `STUDIO_AUTH_MODE`
+- `STUDIO_ALLOWED_EMAILS`
 - `HGO_OWNER_EMAILS`
 - `HGO_TEAM_SCHEDULER_EMAILS`
 - `HGO_COACH_EMAILS`
@@ -35,6 +37,10 @@ Notes:
 - use the checked-in `.env.example` as the starting point
 - current code prefers `AUTH_SECRET`
 - `NEXTAUTH_SECRET` is a legacy fallback and is only read when `AUTH_SECRET` is unset
+- `STUDIO_AUTH_MODE=database` uses Prisma-backed Studio identity and role
+  bootstrap; `STUDIO_AUTH_MODE=allowlist` is the temporary live MVP mode that
+  skips Prisma provisioning and allows only verified Google emails listed in
+  `STUDIO_ALLOWED_EMAILS`
 - `HGO_COACHING_DONATION_URL` enables the external pay-what-you-can contribution CTA; it is not full Stripe Checkout
 - `RESEND_API_KEY`, `HGO_EMAIL_FROM`, and `HGO_SITE_URL` enable best-effort internal coaching request email notifications
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
@@ -188,6 +194,8 @@ Use it when changing:
 If auth is broken:
 - verify Google OAuth env vars
 - verify `AUTH_SECRET` / `NEXTAUTH_SECRET`
+- for live-MVP style Studio auth, verify `STUDIO_AUTH_MODE=allowlist` and
+  `STUDIO_ALLOWED_EMAILS`
 
 If Prisma is broken:
 - verify `DATABASE_URL`

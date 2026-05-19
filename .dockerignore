@@ -1,0 +1,15 @@
+.git
+.next
+node_modules
+**/.next
+**/node_modules
+**/dist
+**/tsconfig.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+logs
+project_audit.json
+apps/web/content/_inbox
+apps/web/content/_staging

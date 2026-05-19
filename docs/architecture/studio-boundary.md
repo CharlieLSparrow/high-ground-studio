@@ -120,6 +120,19 @@ foreign keys before the Studio ownership model is ready. A later pass should
 replace label-only creator tracking with explicit owner/creator/reviewer
 relations once the role model is stable.
 
+For the first Cloud Run live MVP, Studio also has a temporary allowlist auth
+mode:
+
+```text
+STUDIO_AUTH_MODE=allowlist
+STUDIO_ALLOWED_EMAILS=comma,separated,emails
+```
+
+That mode still requires Google OAuth and verified email addresses, but it skips
+Prisma-backed user provisioning so `/structure` can be used live before a remote
+database boundary is approved. It should remain a deployment bridge, not the
+final Studio ownership model.
+
 ## First Writing Desk Boundary
 
 As of the 2026-05-18 writing-desk pass, `apps/studio` also owns the first

@@ -2,6 +2,11 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
 import {
+  createStudioAllowlistIdentity,
+  isStudioAllowlistAuthMode,
+  isStudioEmailAllowed,
+} from "@/lib/server/studio-auth-mode";
+import {
   ensureStudioUserFromGoogle,
   getStudioUserIdentityByEmail,
 } from "@/lib/server/studio-user-identity";
@@ -44,6 +49,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
+      if (isStudioAllowlistAuthMode()) {
+        return isStudioEmailAllowed(email);
+      }
+
       try {
         await ensureStudioUserFromGoogle({
           email,
@@ -70,8 +79,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       try {
-        const identity =
-          account?.provider === "google" || profile
+        const identity = isStudioAllowlistAuthMode()
+          ? createStudioAllowlistIdentity({
+              email,
+              name: googleProfile?.name ?? null,
+              image: googleProfile?.picture ?? null,
+            })
+          : account?.provider === "google" || profile
             ? await ensureStudioUserFromGoogle({
                 email,
                 name: googleProfile?.name ?? null,
