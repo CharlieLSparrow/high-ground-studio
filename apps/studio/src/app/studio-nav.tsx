@@ -30,6 +30,10 @@ const primaryLinks = [
     href: "/structure",
     label: "Structure Mode",
   },
+  {
+    href: "/manuscript",
+    label: "Manuscript Desk",
+  },
 ];
 
 const futureLinks = ["Projections", "Sources"];

@@ -52,3 +52,68 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+
+.manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
+  margin: 0 0 1rem;
+}
+
+.manuscript-prosemirror :where(h1, h2, h3) {
+  line-height: 1.2;
+}
+
+.manuscript-prosemirror :where(ul, ol) {
+  padding-left: 1.35rem;
+}
+
+.manuscript-prosemirror .manuscript-author-charlie {
+  background: rgba(130, 198, 216, 0.18);
+  box-shadow: inset 0 -0.18em rgba(130, 198, 216, 0.42);
+}
+
+.manuscript-prosemirror .manuscript-author-homer {
+  background: rgba(159, 209, 139, 0.17);
+  box-shadow: inset 0 -0.18em rgba(159, 209, 139, 0.42);
+}
+
+.manuscript-prosemirror .manuscript-author-unassigned {
+  background: rgba(244, 240, 232, 0.08);
+  box-shadow: inset 0 -0.18em rgba(244, 240, 232, 0.22);
+}
+
+.manuscript-prosemirror .manuscript-semantic-quote {
+  outline: 1px solid rgba(240, 183, 101, 0.65);
+}
+
+.manuscript-prosemirror .manuscript-semantic-story {
+  outline: 1px solid rgba(159, 209, 139, 0.72);
+}
+
+.manuscript-prosemirror .manuscript-semantic-insight {
+  outline: 1px solid rgba(130, 198, 216, 0.72);
+}
+
+.manuscript-prosemirror .manuscript-semantic-research {
+  outline: 1px solid rgba(201, 179, 255, 0.72);
+}
+
+.manuscript-prosemirror .manuscript-semantic-question,
+.manuscript-prosemirror .manuscript-semantic-needs-review {
+  outline: 1px solid rgba(242, 166, 166, 0.78);
+}
+
+.manuscript-prosemirror .manuscript-semantic-thesis {
+  outline: 1px solid rgba(244, 240, 232, 0.72);
+}
+
+.manuscript-prosemirror .manuscript-semantic-transition {
+  outline: 1px dashed rgba(240, 183, 101, 0.75);
+}
+
+.manuscript-hide-author-colors .manuscript-author-mark {
+  background: transparent;
+  box-shadow: none;
+}
+
+.manuscript-hide-semantic-colors .manuscript-semantic-mark {
+  outline: none;
+}
