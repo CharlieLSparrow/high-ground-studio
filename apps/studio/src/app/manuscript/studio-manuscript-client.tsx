@@ -22,12 +22,16 @@ import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
 import {
   collectBlockSummaries,
   collectSemanticHighlights,
+  countMissingBlockIds,
   countWordsAndCharacters,
+  createBackupFileName,
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
+  createManuscriptImportSummary,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
   getSemanticHighlightDefinition,
+  hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
@@ -38,6 +42,7 @@ import {
   type ManuscriptAuthorId,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
+  type ManuscriptImportSummary,
   type SemanticHighlightType,
 } from "./manuscript-editor-model";
 
@@ -111,6 +116,7 @@ function getAuthorMarkAttrs(authorId: ManuscriptAuthorId) {
 function createDraftFromState(input: {
   title: string;
   sourceFileName: string | null;
+  importSummary: ManuscriptImportSummary | null;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
   showAuthorColors: boolean;
@@ -121,6 +127,7 @@ function createDraftFromState(input: {
     schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
     title: input.title.trim() || "Untitled manuscript",
     sourceFileName: input.sourceFileName,
+    importSummary: input.importSummary,
     editorJson: input.editorJson,
     activeAuthorId: input.activeAuthorId,
     showAuthorColors: input.showAuthorColors,
@@ -137,6 +144,24 @@ function setCursorAtDocumentEnd(editor: NonNullable<ReturnType<typeof useEditor>
   editor.commands.setTextSelection(editor.state.doc.content.size);
 }
 
+function downloadTextFile(input: {
+  content: string;
+  fileName: string;
+  mimeType: string;
+}) {
+  const blob = new Blob([input.content], { type: input.mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = input.fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function StudioManuscriptClient({
   actor,
 }: StudioManuscriptClientProps) {
@@ -144,6 +169,8 @@ export function StudioManuscriptClient({
   const [isHydrated, setIsHydrated] = useState(false);
   const [title, setTitle] = useState("Untitled manuscript");
   const [sourceFileName, setSourceFileName] = useState<string | null>(null);
+  const [importSummary, setImportSummary] =
+    useState<ManuscriptImportSummary | null>(null);
   const [activeAuthorId, setActiveAuthorId] =
     useState<ManuscriptAuthorId>("homer");
   const [showAuthorColors, setShowAuthorColors] = useState(true);
@@ -205,6 +232,7 @@ export function StudioManuscriptClient({
         if (parsed) {
           setTitle(parsed.title);
           setSourceFileName(parsed.sourceFileName);
+          setImportSummary(parsed.importSummary);
           setActiveAuthorId(parsed.activeAuthorId);
           setShowAuthorColors(parsed.showAuthorColors);
           setShowSemanticColors(parsed.showSemanticColors);
@@ -236,6 +264,7 @@ export function StudioManuscriptClient({
     const draft = createDraftFromState({
       title,
       sourceFileName,
+      importSummary,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
       showAuthorColors,
@@ -257,6 +286,7 @@ export function StudioManuscriptClient({
     activeAuthorId,
     editor,
     editorJson,
+    importSummary,
     isHydrated,
     showAuthorColors,
     showSemanticColors,
@@ -284,6 +314,30 @@ export function StudioManuscriptClient({
     () => collectSemanticHighlights(currentEditorJson),
     [currentEditorJson],
   );
+  const missingBlockIdCount = useMemo(
+    () => countMissingBlockIds(currentEditorJson),
+    [currentEditorJson],
+  );
+  const hasReplaceableDraft = useMemo(
+    () =>
+      hasMeaningfulManuscriptDraft({
+        title,
+        sourceFileName,
+        importSummary,
+        editorJson: currentEditorJson,
+      }),
+    [currentEditorJson, importSummary, sourceFileName, title],
+  );
+
+  function confirmDraftReplacement(action: string) {
+    if (!hasReplaceableDraft) {
+      return true;
+    }
+
+    return window.confirm(
+      `${action} will replace the current browser-local Manuscript Desk draft. Export a backup first if you need to keep it. Continue?`,
+    );
+  }
 
   function updateActiveAuthor(authorId: ManuscriptAuthorId) {
     setActiveAuthorId(authorId);
@@ -329,9 +383,15 @@ export function StudioManuscriptClient({
       .setMark("authorMark", getAuthorMarkAttrs("homer"))
       .run();
     setCursorAtDocumentEnd(editor);
-    editor.chain().focus().setMark("authorMark", getAuthorMarkAttrs("homer")).run();
-    setActiveAuthorId("homer");
-    setMessage("Marked the full manuscript as Homer / Scott.");
+    editor
+      .chain()
+      .focus()
+      .setMark("authorMark", getAuthorMarkAttrs("charlie"))
+      .run();
+    setActiveAuthorId("charlie");
+    setMessage(
+      "Marked the full manuscript as Homer / Scott. Active author is now Charlie for new writing.",
+    );
   }
 
   function applySemanticHighlight() {
@@ -376,6 +436,11 @@ export function StudioManuscriptClient({
       return;
     }
 
+    if (!confirmDraftReplacement("Importing this .docx")) {
+      setMessage(".docx import canceled. Current browser-local draft kept.");
+      return;
+    }
+
     try {
       setMessage("Converting .docx to editor content...");
       const arrayBuffer = await file.arrayBuffer();
@@ -399,20 +464,28 @@ export function StudioManuscriptClient({
       editor
         .chain()
         .focus()
-        .setMark("authorMark", getAuthorMarkAttrs("homer"))
+        .setMark("authorMark", getAuthorMarkAttrs("charlie"))
         .run();
 
       const importedJson = ensureBlockIds(
         editor.getJSON() as ManuscriptEditorJson,
       );
+      const importedAt = new Date().toISOString();
+      const summary = createManuscriptImportSummary({
+        sourceFileName: file.name,
+        editorJson: importedJson,
+        importedAt,
+      });
+
       setEditorJson(importedJson);
       setSourceFileName(file.name);
+      setImportSummary(summary);
       setTitle(file.name.replace(/\.docx$/i, "").trim() || title);
-      setActiveAuthorId("homer");
+      setActiveAuthorId("charlie");
       setMessage(
         result.messages.length
-          ? `.docx imported with ${result.messages.length} Mammoth message(s). Imported text was marked Homer / Scott by default.`
-          : ".docx imported. Imported text was marked Homer / Scott by default.",
+          ? `.docx imported with ${result.messages.length} Mammoth message(s). Imported text is Homer / Scott. Active author is Charlie for new writing. Export a backup before major edits.`
+          : ".docx imported. Imported text is Homer / Scott. Active author is Charlie for new writing. Export a backup before major edits.",
       );
     } catch (error) {
       console.error("Manuscript .docx import failed.", error);
@@ -448,8 +521,143 @@ export function StudioManuscriptClient({
     setMessage("Plain text exported.");
   }
 
+  function createCurrentDraft(timestamp = new Date().toISOString()) {
+    if (!editor) {
+      return null;
+    }
+
+    return createDraftFromState({
+      title,
+      sourceFileName,
+      importSummary,
+      editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
+      activeAuthorId,
+      showAuthorColors,
+      showSemanticColors,
+      lastUpdatedAt: timestamp,
+    });
+  }
+
+  function downloadBackup(input: {
+    kind: string;
+    extension: string;
+    mimeType: string;
+    content: string;
+  }) {
+    const timestamp = new Date().toISOString();
+
+    downloadTextFile({
+      content: input.content,
+      fileName: createBackupFileName({
+        title,
+        kind: input.kind,
+        extension: input.extension,
+        timestamp,
+      }),
+      mimeType: input.mimeType,
+    });
+  }
+
+  function downloadFullDraftJson() {
+    const draft = createCurrentDraft();
+
+    if (!draft) {
+      return;
+    }
+
+    downloadBackup({
+      kind: "full-draft",
+      extension: "json",
+      mimeType: "application/json",
+      content: JSON.stringify(draft, null, 2),
+    });
+    setMessage("Full draft JSON downloaded.");
+  }
+
+  function downloadEditorJson() {
+    if (!editor) {
+      return;
+    }
+
+    downloadBackup({
+      kind: "editor-json",
+      extension: "json",
+      mimeType: "application/json",
+      content: JSON.stringify(
+        ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
+        null,
+        2,
+      ),
+    });
+    setMessage("Editor JSON downloaded.");
+  }
+
+  function downloadEditorHtml() {
+    if (!editor) {
+      return;
+    }
+
+    downloadBackup({
+      kind: "html",
+      extension: "html",
+      mimeType: "text/html",
+      content: editor.getHTML(),
+    });
+    setMessage("HTML backup downloaded.");
+  }
+
+  function downloadEditorPlainText() {
+    if (!editor) {
+      return;
+    }
+
+    downloadBackup({
+      kind: "plain-text",
+      extension: "txt",
+      mimeType: "text/plain",
+      content: editor.getText(),
+    });
+    setMessage("Plain text backup downloaded.");
+  }
+
+  function focusBlock(blockId: string | null) {
+    if (!editor || !blockId) {
+      setMessage("Cannot focus a block without a block ID.");
+      return;
+    }
+
+    let targetPosition: number | null = null;
+
+    editor.state.doc.descendants((node, pos) => {
+      if (node.attrs?.blockId === blockId) {
+        targetPosition = pos;
+        return false;
+      }
+
+      return true;
+    });
+
+    if (targetPosition === null) {
+      setMessage("Block ID was not found in the editor.");
+      return;
+    }
+
+    editor
+      .chain()
+      .focus()
+      .setTextSelection(Math.min(targetPosition + 1, editor.state.doc.content.size))
+      .scrollIntoView()
+      .run();
+    setMessage(`Focused block ${blockId}.`);
+  }
+
   function importEditorJson() {
     if (!editor) {
+      return;
+    }
+
+    if (!confirmDraftReplacement("Importing JSON")) {
+      setMessage("JSON import canceled. Current browser-local draft kept.");
       return;
     }
 
@@ -460,6 +668,7 @@ export function StudioManuscriptClient({
       if (parsedDraft) {
         setTitle(parsedDraft.title);
         setSourceFileName(parsedDraft.sourceFileName);
+        setImportSummary(parsedDraft.importSummary);
         setActiveAuthorId(parsedDraft.activeAuthorId);
         setShowAuthorColors(parsedDraft.showAuthorColors);
         setShowSemanticColors(parsedDraft.showSemanticColors);
@@ -479,6 +688,8 @@ export function StudioManuscriptClient({
       const jsonWithBlockIds = ensureBlockIds(parsed);
       editor.commands.setContent(jsonWithBlockIds as JSONContent);
       setEditorJson(jsonWithBlockIds);
+      setSourceFileName(null);
+      setImportSummary(null);
       setImportJson("");
       setMessage("Editor JSON imported.");
     } catch {
@@ -487,20 +698,11 @@ export function StudioManuscriptClient({
   }
 
   function exportFullDraft() {
-    if (!editor) {
+    const draft = createCurrentDraft();
+
+    if (!draft) {
       return;
     }
-
-    const timestamp = new Date().toISOString();
-    const draft = createDraftFromState({
-      title,
-      sourceFileName,
-      editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
-      activeAuthorId,
-      showAuthorColors,
-      showSemanticColors,
-      lastUpdatedAt: timestamp,
-    });
 
     setExportJson(JSON.stringify(draft, null, 2));
     setMessage("Full browser-local draft JSON exported.");
@@ -525,6 +727,7 @@ export function StudioManuscriptClient({
     editor.commands.setContent(emptyDraft.editorJson as JSONContent);
     setTitle(emptyDraft.title);
     setSourceFileName(null);
+    setImportSummary(null);
     setActiveAuthorId(emptyDraft.activeAuthorId);
     setShowAuthorColors(emptyDraft.showAuthorColors);
     setShowSemanticColors(emptyDraft.showSemanticColors);
@@ -541,6 +744,7 @@ export function StudioManuscriptClient({
     message.includes("failed") || message.includes("Could not")
       ? "danger"
       : message.includes("exported") ||
+          message.includes("downloaded") ||
           message.includes("imported") ||
           message.includes("Marked") ||
           message.includes("Applied") ||
@@ -593,6 +797,7 @@ export function StudioManuscriptClient({
               <p className={labelClassName}>Draft status</p>
               <p className="m-0 text-[0.92rem] leading-relaxed text-studio-muted">
                 Saved locally in this browser. Not yet synced to Studio database.
+                Export backups before serious edits or long writing sessions.
               </p>
               <p className="m-0 font-mono text-[0.76rem] leading-relaxed text-studio-muted">
                 {MANUSCRIPT_STORAGE_KEY}
@@ -603,6 +808,21 @@ export function StudioManuscriptClient({
                 {" | "}Last saved: {formatDateTime(lastUpdatedAt)}
                 {sourceFileName ? ` | Source: ${sourceFileName}` : ""}
               </p>
+              {importSummary ? (
+                <div className="mt-1 grid gap-1 rounded-lg border border-studio-tag/40 bg-studio-tag/10 p-3 text-[0.8rem] leading-relaxed text-studio-muted">
+                  <p className="m-0 font-extrabold text-studio-tag">
+                    Imported text is Homer / Scott. New writing should be
+                    Charlie.
+                  </p>
+                  <p className="m-0">
+                    {importSummary.sourceFileName} imported{" "}
+                    {formatDateTime(importSummary.importedAt)} with{" "}
+                    {importSummary.words.toLocaleString()} words,{" "}
+                    {importSummary.characters.toLocaleString()} characters, and{" "}
+                    {importSummary.blocks.toLocaleString()} blocks.
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -646,7 +866,8 @@ export function StudioManuscriptClient({
             <h2 className={panelTitleClassName}>Source document</h2>
             <p className={panelCopyClassName}>
               Import Word content into TipTap JSON. Imported text is marked
-              Homer / Scott by default.
+              Homer / Scott by default, then the active author switches to
+              Charlie for new writing.
             </p>
 
             <div className="mt-4 grid gap-3">
@@ -679,6 +900,10 @@ export function StudioManuscriptClient({
               >
                 Mark all as Homer / Scott
               </button>
+              <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                Importing a `.docx` replaces the current browser-local draft
+                after confirmation. Download a backup before major edits.
+              </p>
             </div>
 
             <div className="mt-6 grid gap-3">
@@ -841,6 +1066,47 @@ export function StudioManuscriptClient({
               </div>
             </div>
 
+            <div className="flex flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+              <p className={labelClassName}>Selection actions</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => markSelectionAsAuthor("charlie")}
+                >
+                  Mark Charlie
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => markSelectionAsAuthor("homer")}
+                >
+                  Mark Homer / Scott
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => markSelectionAsAuthor("unassigned")}
+                >
+                  Clear author
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={applySemanticHighlight}
+                >
+                  Apply {getSemanticHighlightDefinition(semanticType).label}
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={clearSemanticHighlight}
+                >
+                  Clear semantic
+                </button>
+              </div>
+            </div>
+
             <EditorContent editor={editor} />
 
             <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
@@ -883,15 +1149,29 @@ export function StudioManuscriptClient({
             </section>
 
             <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-              <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                Block IDs
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                  Block IDs
+                </h2>
+                <StudioChip tone={missingBlockIdCount ? "danger" : "source"}>
+                  {blockSummaries.length.toLocaleString()} blocks
+                </StudioChip>
+              </div>
+              {missingBlockIdCount ? (
+                <p className="m-0 rounded-lg border border-studio-danger/45 bg-studio-danger/10 p-2 text-[0.78rem] leading-relaxed text-studio-danger">
+                  {missingBlockIdCount.toLocaleString()} visible block
+                  {missingBlockIdCount === 1 ? "" : "s"} missing block IDs.
+                  Exported JSON should be checked before future persistence work.
+                </p>
+              ) : null}
               <div className="grid max-h-[310px] gap-2 overflow-auto pr-1">
                 {blockSummaries.length ? (
                   blockSummaries.map((block, index) => (
-                    <article
-                      className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                    <button
+                      className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-tag/55 hover:bg-studio-tag/10"
                       key={`${block.blockId ?? "missing"}-${index}`}
+                      type="button"
+                      onClick={() => focusBlock(block.blockId)}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <StudioChip tone={block.blockId ? "source" : "danger"}>
@@ -904,7 +1184,7 @@ export function StudioManuscriptClient({
                       <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
                         {block.preview || "Empty block"}
                       </p>
-                    </article>
+                    </button>
                   ))
                 ) : (
                   <p className={panelCopyClassName}>No blocks yet.</p>
@@ -949,6 +1229,40 @@ export function StudioManuscriptClient({
               <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                 Export / backup
               </h2>
+              <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                Download backups before serious editing. Downloads are browser
+                generated and do not write to the server or repo.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadFullDraftJson}
+                >
+                  Download full draft JSON
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadEditorJson}
+                >
+                  Download editor JSON
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadEditorHtml}
+                >
+                  Download HTML
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadEditorPlainText}
+                >
+                  Download plain text
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   className={smallButtonClassName}

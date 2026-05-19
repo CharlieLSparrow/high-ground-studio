@@ -59,6 +59,7 @@ export type ManuscriptDraft = {
   schemaVersion: typeof MANUSCRIPT_SCHEMA_VERSION;
   title: string;
   sourceFileName: string | null;
+  importSummary: ManuscriptImportSummary | null;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
   showAuthorColors: boolean;
@@ -92,6 +93,14 @@ export type SemanticHighlightSummary = {
   note: string;
   preview: string;
   createdAt: string;
+};
+
+export type ManuscriptImportSummary = {
+  sourceFileName: string;
+  words: number;
+  characters: number;
+  blocks: number;
+  importedAt: string;
 };
 
 const defaultTitle = "Untitled manuscript";
@@ -143,6 +152,7 @@ export function createDefaultManuscriptDraft(
     schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
     title: defaultTitle,
     sourceFileName: null,
+    importSummary: null,
     editorJson: createEmptyManuscriptDoc(),
     activeAuthorId: "homer",
     showAuthorColors: true,
@@ -278,6 +288,10 @@ export function collectBlockSummaries(
   return blocks;
 }
 
+export function countMissingBlockIds(json: ManuscriptEditorJson) {
+  return collectBlockSummaries(json).filter((block) => !block.blockId).length;
+}
+
 export function collectSemanticHighlights(
   json: ManuscriptEditorJson,
 ): SemanticHighlightSummary[] {
@@ -319,6 +333,100 @@ export function collectSemanticHighlights(
 
   visit(json);
   return highlights;
+}
+
+export function createManuscriptImportSummary(input: {
+  sourceFileName: string;
+  editorJson: ManuscriptEditorJson;
+  importedAt: string;
+}): ManuscriptImportSummary {
+  const stats = countWordsAndCharacters(input.editorJson);
+
+  return {
+    sourceFileName: input.sourceFileName,
+    words: stats.words,
+    characters: stats.characters,
+    blocks: collectBlockSummaries(input.editorJson).length,
+    importedAt: input.importedAt,
+  };
+}
+
+export function safeManuscriptImportSummary(
+  value: unknown,
+): ManuscriptImportSummary | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const summary = value as Partial<ManuscriptImportSummary>;
+
+  if (
+    typeof summary.sourceFileName !== "string" ||
+    typeof summary.words !== "number" ||
+    typeof summary.characters !== "number" ||
+    typeof summary.blocks !== "number" ||
+    typeof summary.importedAt !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    sourceFileName: summary.sourceFileName,
+    words: summary.words,
+    characters: summary.characters,
+    blocks: summary.blocks,
+    importedAt: summary.importedAt,
+  };
+}
+
+export function hasMeaningfulManuscriptDraft(input: {
+  title: string;
+  sourceFileName: string | null;
+  editorJson: ManuscriptEditorJson;
+  importSummary?: ManuscriptImportSummary | null;
+}) {
+  return (
+    input.title.trim() !== defaultTitle ||
+    Boolean(input.sourceFileName) ||
+    Boolean(input.importSummary) ||
+    countWordsAndCharacters(input.editorJson).words > 0
+  );
+}
+
+export function createBackupFileName(input: {
+  title: string;
+  kind: string;
+  extension: string;
+  timestamp: string;
+}) {
+  const safeTitle =
+    input.title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 72) || "untitled-manuscript";
+  const safeKind =
+    input.kind
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 36) || "backup";
+  const safeTimestamp =
+    input.timestamp
+      .trim()
+      .replace(/[:.]/g, "-")
+      .replace(/[^0-9a-zA-Z-]/g, "")
+      .slice(0, 32) || "undated";
+  const safeExtension =
+    input.extension
+      .trim()
+      .toLowerCase()
+      .replace(/^\.+/, "")
+      .replace(/[^a-z0-9]+/g, "") || "txt";
+
+  return `${safeTitle}-${safeKind}-${safeTimestamp}.${safeExtension}`;
 }
 
 export function ensureManuscriptBlockIds(
@@ -428,6 +536,10 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
 
   const draft = value as Partial<ManuscriptDraft>;
   const activeAuthorId = String(draft.activeAuthorId ?? "");
+  const importSummary =
+    draft.importSummary === null || draft.importSummary === undefined
+      ? null
+      : safeManuscriptImportSummary(draft.importSummary);
 
   if (
     draft.schemaVersion !== MANUSCRIPT_SCHEMA_VERSION ||
@@ -441,6 +553,11 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
       typeof draft.sourceFileName === "string"
     ) ||
     !(
+      draft.importSummary === null ||
+      draft.importSummary === undefined ||
+      importSummary
+    ) ||
+    !(
       draft.lastUpdatedAt === null ||
       typeof draft.lastUpdatedAt === "string"
     )
@@ -452,6 +569,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
     title: draft.title.trim() || defaultTitle,
     sourceFileName: draft.sourceFileName,
+    importSummary,
     editorJson: draft.editorJson,
     activeAuthorId,
     showAuthorColors: draft.showAuthorColors,

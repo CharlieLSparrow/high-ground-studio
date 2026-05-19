@@ -4,8 +4,12 @@ import { test } from "node:test";
 import {
   collectBlockSummaries,
   collectSemanticHighlights,
+  countMissingBlockIds,
   countWordsAndCharacters,
+  createBackupFileName,
   ensureManuscriptBlockIds,
+  createManuscriptImportSummary,
+  hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
@@ -96,6 +100,13 @@ test("safeManuscriptDraft accepts a valid draft", () => {
     schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
     title: "Book draft",
     sourceFileName: "source.docx",
+    importSummary: {
+      sourceFileName: "source.docx",
+      words: 8,
+      characters: 52,
+      blocks: 1,
+      importedAt: "2026-05-19T12:00:00.000Z",
+    },
     editorJson,
     activeAuthorId: "homer",
     showAuthorColors: true,
@@ -154,6 +165,56 @@ test("countWordsAndCharacters handles manuscript JSON", () => {
   });
 });
 
+test("createManuscriptImportSummary calculates first-use import facts", () => {
+  assert.deepEqual(
+    createManuscriptImportSummary({
+      sourceFileName: "source.docx",
+      editorJson,
+      importedAt: "2026-05-19T12:00:00.000Z",
+    }),
+    {
+      sourceFileName: "source.docx",
+      words: 8,
+      characters: 52,
+      blocks: 1,
+      importedAt: "2026-05-19T12:00:00.000Z",
+    },
+  );
+});
+
+test("createBackupFileName generates safe timestamped names", () => {
+  assert.equal(
+    createBackupFileName({
+      title: "Scott / Homer Draft",
+      kind: "full draft",
+      extension: ".json",
+      timestamp: "2026-05-19T12:34:56.789Z",
+    }),
+    "scott-homer-draft-full-draft-2026-05-19T12-34-56-789Z.json",
+  );
+});
+
+test("hasMeaningfulManuscriptDraft detects drafts worth protecting", () => {
+  assert.equal(
+    hasMeaningfulManuscriptDraft({
+      title: "Untitled manuscript",
+      sourceFileName: null,
+      importSummary: null,
+      editorJson: { type: "doc", content: [{ type: "paragraph" }] },
+    }),
+    false,
+  );
+  assert.equal(
+    hasMeaningfulManuscriptDraft({
+      title: "Untitled manuscript",
+      sourceFileName: "source.docx",
+      importSummary: null,
+      editorJson: { type: "doc", content: [{ type: "paragraph" }] },
+    }),
+    true,
+  );
+});
+
 test("summarizeAuthorMarkedSpans separates Charlie and Homer spans", () => {
   const summaries = summarizeAuthorMarkedSpans(editorJson);
   const charlie = summaries.find((summary) => summary.authorId === "charlie");
@@ -182,6 +243,19 @@ test("ensureManuscriptBlockIds adds missing durable IDs", () => {
   assert.deepEqual(
     collectBlockSummaries(withIds).map((block) => block.blockId),
     ["block-paragraph-1", "block-heading-2"],
+  );
+});
+
+test("countMissingBlockIds reports block ID gaps", () => {
+  assert.equal(
+    countMissingBlockIds({
+      type: "doc",
+      content: [
+        { type: "paragraph", attrs: { blockId: "block-1" } },
+        { type: "heading" },
+      ],
+    }),
+    1,
   );
 });
 
