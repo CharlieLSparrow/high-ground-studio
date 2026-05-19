@@ -2,32 +2,28 @@ import "server-only";
 
 import type { AppRole } from "@prisma/client";
 
+import {
+  createStudioAllowlistIdentityFromList,
+  isStudioAllowlistAuthModeValue,
+  isStudioEmailAllowedInList,
+  normalizeStudioAuthEmail,
+  parseStudioEmailList,
+} from "@/lib/studio-auth-mode-core.mjs";
 import type { StudioUserIdentity } from "./studio-user-identity";
 import { canAccessStudio } from "@/lib/studio-authz";
 
-const ALLOWLIST_STUDIO_ROLE: AppRole = "OWNER";
-
-export function normalizeStudioAuthEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function parseEmailList(value?: string): string[] {
-  return (value ?? "")
-    .split(",")
-    .map((entry) => normalizeStudioAuthEmail(entry))
-    .filter(Boolean);
-}
+export { normalizeStudioAuthEmail };
 
 export function isStudioAllowlistAuthMode(): boolean {
-  return process.env.STUDIO_AUTH_MODE === "allowlist";
+  return isStudioAllowlistAuthModeValue(process.env.STUDIO_AUTH_MODE);
 }
 
 export function getStudioAllowedEmails(): string[] {
-  return parseEmailList(process.env.STUDIO_ALLOWED_EMAILS);
+  return parseStudioEmailList(process.env.STUDIO_ALLOWED_EMAILS);
 }
 
 export function isStudioEmailAllowed(email: string): boolean {
-  return getStudioAllowedEmails().includes(normalizeStudioAuthEmail(email));
+  return isStudioEmailAllowedInList(email, process.env.STUDIO_ALLOWED_EMAILS);
 }
 
 export function createStudioAllowlistIdentity(input: {
@@ -35,19 +31,19 @@ export function createStudioAllowlistIdentity(input: {
   name?: string | null;
   image?: string | null;
 }): StudioUserIdentity | null {
-  const primaryEmail = normalizeStudioAuthEmail(input.email);
+  const identity = createStudioAllowlistIdentityFromList(
+    input,
+    process.env.STUDIO_ALLOWED_EMAILS,
+  );
 
-  if (!isStudioEmailAllowed(primaryEmail)) {
+  if (!identity) {
     return null;
   }
 
-  const roles: AppRole[] = [ALLOWLIST_STUDIO_ROLE];
+  const roles = identity.roles as AppRole[];
 
   return {
-    id: `studio-allowlist:${primaryEmail}`,
-    primaryEmail,
-    name: input.name?.trim() || null,
-    image: input.image || null,
+    ...identity,
     roles,
     isStaff: canAccessStudio(roles),
   };

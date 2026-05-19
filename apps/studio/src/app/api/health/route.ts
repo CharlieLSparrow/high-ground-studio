@@ -1,14 +1,10 @@
+import {
+  createStudioHealthResponseBody,
+  STUDIO_HEALTH_HEADERS,
+} from "@/lib/studio-health.mjs";
+
 export function GET() {
-  return Response.json(
-    {
-      ok: true,
-      service: "high-ground-studio",
-      app: "studio",
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    },
-  );
+  return Response.json(createStudioHealthResponseBody(), {
+    headers: STUDIO_HEALTH_HEADERS,
+  });
 }

@@ -105,6 +105,13 @@ That script checks repository readiness, local tool availability, and read-only
 Build, create resources, change IAM, change DNS, create secrets, or mutate any
 database.
 
+Run the local readiness tests when changing the allowlist auth path, health
+route, or preflight script:
+
+```bash
+pnpm studio:cloudrun:test
+```
+
 ```bash
 gcloud config set project PROJECT_ID
 gcloud config set run/region us-central1
