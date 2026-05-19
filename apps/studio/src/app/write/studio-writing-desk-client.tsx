@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { updateWritingDeskBlockAction } from "./actions";
+import {
+  archiveWritingDeskBlockAction,
+  createWritingDeskBlockAction,
+  moveWritingDeskBlockAction,
+  updateWritingDeskBlockAction,
+} from "./actions";
 import { StudioNav } from "../studio-nav";
 import {
   cardClassName,
@@ -71,6 +76,12 @@ const inputClassName =
 const textareaClassName =
   "min-h-[220px] w-full resize-y rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 py-2.5 text-[0.95rem] leading-7 text-studio-ink disabled:text-studio-dim";
 
+const smallActionButtonClassName =
+  "min-h-8 rounded-lg border border-studio-line bg-studio-ink/5 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim";
+
+const dangerActionButtonClassName =
+  "min-h-8 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-danger disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim";
+
 export function StudioWritingDeskClient({
   document,
   persistence,
@@ -81,6 +92,10 @@ export function StudioWritingDeskClient({
   const [draftBlocks, setDraftBlocks] = useState(() =>
     createDraftState(document),
   );
+  const [newBlockTitle, setNewBlockTitle] = useState("");
+  const [newBlockBody, setNewBlockBody] = useState("");
+  const [deskActionState, setDeskActionState] =
+    useState<StudioWritingDeskActionResult | null>(null);
   const [actionState, setActionState] = useState<
     Record<string, StudioWritingDeskActionResult | undefined>
   >({});
@@ -117,6 +132,79 @@ export function StudioWritingDeskClient({
           ...current,
           [blockId]: result,
         }));
+        setDeskActionState(null);
+        router.refresh();
+      });
+    });
+  }
+
+  function createBlock() {
+    if (!persistence.canWrite || !newBlockBody.trim()) {
+      return;
+    }
+
+    startTransition(() => {
+      void createWritingDeskBlockAction({
+        documentStableId: document.id,
+        title: newBlockTitle,
+        body: newBlockBody,
+      }).then((result) => {
+        setDeskActionState(result);
+
+        if (result.ok) {
+          setNewBlockTitle("");
+          setNewBlockBody("");
+        }
+
+        router.refresh();
+      });
+    });
+  }
+
+  function moveBlock(blockId: string, direction: "up" | "down") {
+    if (!persistence.canWrite) {
+      return;
+    }
+
+    startTransition(() => {
+      void moveWritingDeskBlockAction({
+        documentStableId: document.id,
+        blockStableId: blockId,
+        direction,
+      }).then((result) => {
+        setActionState((current) => ({
+          ...current,
+          [blockId]: result,
+        }));
+        setDeskActionState(null);
+        router.refresh();
+      });
+    });
+  }
+
+  function archiveBlock(blockId: string, title: string) {
+    if (!persistence.canWrite) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Archive "${title || "Untitled draft block"}"?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    startTransition(() => {
+      void archiveWritingDeskBlockAction({
+        documentStableId: document.id,
+        blockStableId: blockId,
+      }).then((result) => {
+        setActionState((current) => ({
+          ...current,
+          [blockId]: result,
+        }));
+        setDeskActionState(null);
         router.refresh();
       });
     });
@@ -124,7 +212,7 @@ export function StudioWritingDeskClient({
 
   return (
     <main className="min-h-screen p-3.5 md:p-6">
-      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_auto_1fr_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
+      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_auto_1fr_auto_auto] gap-[18px] md:min-h-[calc(100vh-48px)]">
         <header
           className={cn(
             panelClassName,
@@ -178,7 +266,9 @@ export function StudioWritingDeskClient({
           <aside className={panelClassName} aria-label="Draft metadata">
             <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Draft Document</p>
-              <StudioChip tone="source">{document.blocks.length} blocks</StudioChip>
+              <StudioChip tone="source">
+                {document.blocks.length} active
+              </StudioChip>
             </div>
 
             <h2 className={panelTitleClassName}>Private book draft</h2>
@@ -219,10 +309,77 @@ export function StudioWritingDeskClient({
                 </dd>
               </div>
             </dl>
+
+            <div className={cn(cardClassName, "mt-5 grid gap-3 p-3.5")}>
+              <div>
+                <p className={labelClassName}>Add block</p>
+                <p className="mt-2 mb-0 text-[0.82rem] leading-relaxed text-studio-muted">
+                  Create a private draft block at the end of the active list.
+                </p>
+              </div>
+
+              <label className="grid gap-2">
+                <span className={fieldLabelClassName}>Title</span>
+                <input
+                  className={inputClassName}
+                  disabled={!persistence.canWrite}
+                  maxLength={160}
+                  placeholder="Untitled draft block"
+                  value={newBlockTitle}
+                  onChange={(event) => setNewBlockTitle(event.target.value)}
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className={fieldLabelClassName}>Body</span>
+                <textarea
+                  className={cn(textareaClassName, "min-h-[140px]")}
+                  disabled={!persistence.canWrite}
+                  placeholder="Draft the next scene, section, question, or connective passage."
+                  value={newBlockBody}
+                  onChange={(event) => setNewBlockBody(event.target.value)}
+                />
+              </label>
+
+              <button
+                className={cn(primaryButtonClassName, "mt-0")}
+                disabled={
+                  !persistence.canWrite || !newBlockBody.trim() || isPending
+                }
+                type="button"
+                onClick={createBlock}
+              >
+                {isPending ? "Adding..." : "Add block"}
+              </button>
+
+              {deskActionState ? (
+                <div
+                  className={cn(
+                    "rounded-lg border p-3 text-[0.82rem] leading-relaxed",
+                    deskActionState.ok
+                      ? "border-studio-tag/45 text-studio-tag"
+                      : "border-studio-danger/50 text-studio-danger",
+                  )}
+                >
+                  {deskActionState.message}
+                </div>
+              ) : null}
+            </div>
           </aside>
 
           <section className="grid gap-[18px]" aria-label="Draft blocks">
-            {document.blocks.map((block) => {
+            {document.blocks.length === 0 ? (
+              <div
+                className={cn(
+                  cardClassName,
+                  "p-4 text-[0.92rem] leading-relaxed text-studio-muted",
+                )}
+              >
+                No active draft blocks. Add a block to start writing again.
+              </div>
+            ) : null}
+
+            {document.blocks.map((block, blockIndex) => {
               const draft = draftBlocks[block.id] ?? {
                 title: block.title,
                 body: block.body,
@@ -250,6 +407,39 @@ export function StudioWritingDeskClient({
                         {formatStatus(block.projectionStatus)}
                       </StudioChip>
                     </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className={smallActionButtonClassName}
+                      disabled={
+                        !persistence.canWrite || blockIndex === 0 || isPending
+                      }
+                      type="button"
+                      onClick={() => moveBlock(block.id, "up")}
+                    >
+                      Move up
+                    </button>
+                    <button
+                      className={smallActionButtonClassName}
+                      disabled={
+                        !persistence.canWrite ||
+                        blockIndex === document.blocks.length - 1 ||
+                        isPending
+                      }
+                      type="button"
+                      onClick={() => moveBlock(block.id, "down")}
+                    >
+                      Move down
+                    </button>
+                    <button
+                      className={dangerActionButtonClassName}
+                      disabled={!persistence.canWrite || isPending}
+                      type="button"
+                      onClick={() => archiveBlock(block.id, draft.title)}
+                    >
+                      Archive
+                    </button>
                   </div>
 
                   <div className="grid gap-2">
@@ -323,6 +513,51 @@ export function StudioWritingDeskClient({
             })}
           </section>
         </section>
+
+        {document.archivedBlocks.length > 0 ? (
+          <section className={panelClassName} aria-label="Archived draft blocks">
+            <details>
+              <summary className="cursor-pointer text-[0.82rem] font-black uppercase text-studio-muted">
+                Archived draft blocks ({document.archivedBlocks.length})
+              </summary>
+
+              <div className="mt-4 grid gap-3">
+                {document.archivedBlocks.map((block) => (
+                  <article
+                    className={cn(cardClassName, "grid gap-3 p-3.5 opacity-75")}
+                    key={block.id}
+                  >
+                    <div className="flex flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-start">
+                      <div>
+                        <p className={labelClassName}>Archived block</p>
+                        <h2 className="mt-1.5 mb-0 text-[1rem] leading-snug text-studio-ink">
+                          {block.title || "Untitled draft block"}
+                        </h2>
+                      </div>
+                      <StudioChip tone="review">{block.id}</StudioChip>
+                    </div>
+
+                    <p className="m-0 whitespace-pre-wrap text-[0.9rem] leading-7 text-studio-muted">
+                      {block.body}
+                    </p>
+
+                    <div className="grid gap-1 font-mono text-[0.75rem] leading-relaxed text-studio-muted">
+                      <span>
+                        archived{" "}
+                        {block.archivedAt
+                          ? formatDateTime(block.archivedAt)
+                          : "unknown"}
+                      </span>
+                      {block.archivedByLabel ? (
+                        <span>by {block.archivedByLabel}</span>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </details>
+          </section>
+        ) : null}
 
         <section
           className={cn(panelClassName, "grid gap-2 px-4 py-3.5")}

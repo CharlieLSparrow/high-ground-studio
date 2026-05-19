@@ -21,7 +21,8 @@ the restricted-access screen.
 The writing desk renders a practical draft surface:
 
 - one private Learning to Lead writing-desk draft document
-- three stable draft block IDs
+- three initial stable draft block IDs
+- private draft block add/move/archive controls
 - editable block title fields
 - editable block body textareas
 - per-block save actions
@@ -52,6 +53,10 @@ l2l-writing-draft-003
 Saves update `StudioDocumentBlock.title`, `StudioDocumentBlock.body`, and the
 block `updatedAt` timestamp. The parent `StudioDocument` remains private and in
 `draft` projection status.
+
+The later block-management pass added `StudioDocumentBlock.archivedAt` and
+`archivedByLabel` so archived Writing Desk blocks leave the active writing
+surface without being deleted.
 
 The current schema does not have `createdByLabel` or `updatedByLabel` fields on
 `StudioDocument` or `StudioDocumentBlock`. Those labels currently exist only on

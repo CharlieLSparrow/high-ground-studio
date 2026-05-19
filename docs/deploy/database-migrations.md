@@ -211,6 +211,15 @@ The development seed helper writes only when `DATABASE_URL` points at a local
 database and `NODE_ENV` is not `production`. It should not be treated as a
 production seeding path.
 
+The Studio Writing Desk block-management slice later added archive metadata to
+`StudioDocumentBlock`:
+
+- `archivedAt`
+- `archivedByLabel`
+
+Those fields support private draft block archive behavior. They are not public
+projection state and should not be interpreted as manuscript deletion.
+
 If a target environment should run the Studio persistence slice, apply the
 schema deliberately:
 

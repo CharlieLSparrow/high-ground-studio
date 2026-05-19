@@ -27,6 +27,7 @@ The Studio persistence slice writes private authoring records:
 - tagged span rows
 - knowledge node rows
 - writing desk draft document/block rows
+- writing desk archive metadata on draft block rows
 
 Do not run the smoke path or `pnpm db:push` against remote Neon or
 production-like data casually. This is still a development fixture and not a
@@ -188,6 +189,18 @@ l2l-writing-draft-003
 These are private draft rows. They are not canonical manuscript files and are
 not approved public projections.
 
+The Writing Desk can also add, move, and archive private draft blocks. Archive
+sets `StudioDocumentBlock.archivedAt` and `archivedByLabel`; it hides the block
+from the active writing surface without deleting the row.
+
+If this schema has not been applied to your local database yet, run the schema
+push only after confirming `DATABASE_URL` points at local Postgres:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
 If the page shows the access screen instead of the workbench, confirm:
 
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set for local NextAuth
@@ -237,6 +250,7 @@ pnpm studio:db:down
   confirmation.
 - Do not treat the seed data as canonical Learning to Lead manuscript content.
 - Do not treat writing desk draft rows as canonical manuscript content.
+- Do not treat archived writing desk blocks as deleted or public.
 - Do not import the whole manuscript in this slice.
 - Do not add TipTap, Yjs, embeddings, semantic search, public projections, or
   deployment wiring to this local smoke path.
