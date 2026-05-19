@@ -175,6 +175,29 @@ These are structures Studio may eventually help outline, compare, and draft:
 These are structures because they describe arrangement. They are not tags,
 sources, nodes, or projections.
 
+## Structure Mode MVP Vocabulary
+
+The first `/structure` route uses generic lanes as a browser-local MVP:
+
+- Opening
+- Story
+- Principle
+- Evidence
+- Application
+- Closing
+- Parking Lot
+
+Those lanes are working arrangement buckets, not final schema. A highlight card
+can come from a pasted book excerpt, article, transcript, TED/public talk,
+podcast, notes, or other source text. The card keeps a selected text snapshot,
+offsets, semantic type, note, source title, source type, created timestamp, and
+lane assignment in browser `localStorage`.
+
+This vocabulary is deliberately looser than durable Studio tags or future
+database-backed structure records. It is meant to test whether paste,
+highlight, and arrange is useful across books, talks, podcasts, essays, and
+research before the taxonomy becomes schema.
+
 ## Taxonomy Boundaries
 
 ### Source Type

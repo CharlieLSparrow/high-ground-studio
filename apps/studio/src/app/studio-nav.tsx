@@ -26,9 +26,13 @@ const primaryLinks = [
     href: "/write",
     label: "Writing Desk",
   },
+  {
+    href: "/structure",
+    label: "Structure Mode",
+  },
 ];
 
-const futureLinks = ["Structures", "Projections", "Sources"];
+const futureLinks = ["Projections", "Sources"];
 
 export function StudioNav() {
   const pathname = usePathname();

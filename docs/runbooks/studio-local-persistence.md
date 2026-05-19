@@ -170,6 +170,7 @@ Use the shared Studio navigation to move between the active desks:
 
 - `/` - Tagging Desk
 - `/write` - Writing Desk
+- `/structure` - Structure Mode
 
 Open `/write` to use the writing desk. Edits save to the local deterministic
 draft document:
@@ -200,6 +201,17 @@ push only after confirming `DATABASE_URL` points at local Postgres:
 pnpm db:generate
 pnpm db:push
 ```
+
+Open `/structure` to use the Structure Mode MVP. It does not require the local
+database because it stores the pasted source, highlight cards, semantic types,
+notes, lanes, and card order in browser `localStorage` under:
+
+```text
+high-ground-studio.structure-mode.v1
+```
+
+Use its export/import JSON controls as the backup path until structures become
+database-backed.
 
 If the page shows the access screen instead of the workbench, confirm:
 

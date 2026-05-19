@@ -135,6 +135,26 @@ The writing desk is not a manuscript promotion workflow. It does not import the
 whole Learning to Lead manuscript, write MDX files, create public projections,
 or approve anything for publication.
 
+## First Structure Mode Boundary
+
+As of the 2026-05-19 Structure Mode MVP pass, `apps/studio` also owns a private
+paste-and-highlight structure surface at `/structure`.
+
+That surface is intentionally browser-local. It lets an approved Studio user
+paste source text, select meaningful spans in a textarea, turn those selections
+into highlight cards, assign semantic types, and arrange the cards into
+structure lanes. It stores the draft in browser `localStorage` under:
+
+```text
+high-ground-studio.structure-mode.v1
+```
+
+This is not an importer, source archive, or durable database structure model.
+It does not create Studio rows, mutate manuscript files, write public
+projections, or synchronize across users. Its boundary is to prove the fast
+human meaning-capture loop before promoting structures into Prisma-backed
+records.
+
 Later responsibilities:
 
 - collaboration and revision history
