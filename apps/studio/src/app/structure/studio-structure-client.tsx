@@ -101,6 +101,47 @@ type SelectionState = {
   selectedText: string;
 };
 
+const DEFAULT_SOURCE_TITLE = "Untitled pasted source";
+const DEFAULT_SOURCE_TYPE: SourceType = "notes";
+const DEFAULT_SEMANTIC_TYPE: SemanticType = "insight";
+const DEFAULT_LANE_ID: LaneId = "parking_lot";
+const DEFAULT_SELECTION: SelectionState = {
+  startOffset: 0,
+  endOffset: 0,
+  selectedText: "",
+};
+
+const STARTER_SAMPLE_TITLE = "Starter sample: one clear moment";
+const STARTER_SAMPLE_TYPE: SourceType = "notes";
+const STARTER_SAMPLE_TEXT =
+  "A useful structure starts with one clear moment. The story gives the idea a body, the principle gives it a name, and the application gives the reader a next step.";
+
+const starterSampleCards = [
+  {
+    selectedText: "one clear moment",
+    semanticType: "opening_hook",
+    note: "This can become the first promise of the piece.",
+    laneId: "opening",
+  },
+  {
+    selectedText: "The story gives the idea a body",
+    semanticType: "story",
+    note: "Use a lived scene before naming the principle.",
+    laneId: "story",
+  },
+  {
+    selectedText: "the application gives the reader a next step",
+    semanticType: "insight",
+    note: "End with a concrete action instead of a summary.",
+    laneId: "application",
+  },
+] as const satisfies readonly {
+  selectedText: string;
+  semanticType: SemanticType;
+  note: string;
+  laneId: LaneId;
+}[];
+
 type StudioStructureClientProps = {
   actor: {
     primaryEmail: string;
@@ -149,8 +190,32 @@ function getLaneLabel(value: LaneId) {
   return structureLanes.find((lane) => lane.id === value)?.label ?? value;
 }
 
+function getSourceTypeLabel(value: SourceType) {
+  return sourceTypeOptions.find((option) => option.id === value)?.label ?? value;
+}
+
 function normalizeMarkdownText(value: string) {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function createStarterSampleCards(): HighlightCard[] {
+  return starterSampleCards.map((card) => {
+    const startOffset = STARTER_SAMPLE_TEXT.indexOf(card.selectedText);
+    const safeStartOffset = startOffset >= 0 ? startOffset : 0;
+
+    return {
+      id: createCardId(),
+      selectedText: card.selectedText,
+      startOffset: safeStartOffset,
+      endOffset: safeStartOffset + card.selectedText.length,
+      semanticType: card.semanticType,
+      note: card.note,
+      sourceTitle: STARTER_SAMPLE_TITLE,
+      sourceType: STARTER_SAMPLE_TYPE,
+      createdAt: new Date().toISOString(),
+      laneId: card.laneId,
+    };
+  });
 }
 
 function safeStructureDraft(value: unknown): StructureDraft | null {
@@ -236,18 +301,19 @@ const dangerButtonClassName =
 
 export function StudioStructureClient({ actor }: StudioStructureClientProps) {
   const sourceTextRef = useRef<HTMLTextAreaElement>(null);
+  const skipNextPersistRef = useRef(false);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [sourceTitle, setSourceTitle] = useState("Untitled pasted source");
-  const [sourceType, setSourceType] = useState<SourceType>("notes");
+  const [isSourcePanelVisible, setIsSourcePanelVisible] = useState(true);
+  const [sourceTitle, setSourceTitle] = useState(DEFAULT_SOURCE_TITLE);
+  const [sourceType, setSourceType] =
+    useState<SourceType>(DEFAULT_SOURCE_TYPE);
   const [sourceText, setSourceText] = useState("");
-  const [selection, setSelection] = useState<SelectionState>({
-    startOffset: 0,
-    endOffset: 0,
-    selectedText: "",
-  });
-  const [semanticType, setSemanticType] = useState<SemanticType>("insight");
+  const [selection, setSelection] =
+    useState<SelectionState>(DEFAULT_SELECTION);
+  const [semanticType, setSemanticType] =
+    useState<SemanticType>(DEFAULT_SEMANTIC_TYPE);
   const [highlightNote, setHighlightNote] = useState("");
-  const [defaultLaneId, setDefaultLaneId] = useState<LaneId>("parking_lot");
+  const [defaultLaneId, setDefaultLaneId] = useState<LaneId>(DEFAULT_LANE_ID);
   const [cards, setCards] = useState<HighlightCard[]>([]);
   const [exportJson, setExportJson] = useState("");
   const [outlineMarkdown, setOutlineMarkdown] = useState("");
@@ -282,6 +348,11 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
       return;
     }
 
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+
     const draft: StructureDraft = {
       sourceTitle,
       sourceType,
@@ -306,6 +377,9 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
     ) as Record<LaneId, HighlightCard[]>;
   }, [cards]);
 
+  const hasDraftContent = sourceText.trim().length > 0 || cards.length > 0;
+  const sourceSummary = `${sourceTitle.trim() || DEFAULT_SOURCE_TITLE} - ${getSourceTypeLabel(sourceType)} - ${sourceText.length.toLocaleString()} chars`;
+
   function captureSelection() {
     const textarea = sourceTextRef.current;
 
@@ -326,6 +400,11 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
   }
 
   function createHighlightCard() {
+    if (!isSourcePanelVisible) {
+      setMessage("Show the pasted source panel before creating a new highlight.");
+      return;
+    }
+
     const textarea = sourceTextRef.current;
     const startOffset = textarea?.selectionStart ?? selection.startOffset;
     const endOffset = textarea?.selectionEnd ?? selection.endOffset;
@@ -344,7 +423,7 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
       endOffset,
       semanticType,
       note: highlightNote.trim(),
-      sourceTitle: sourceTitle.trim() || "Untitled pasted source",
+      sourceTitle: sourceTitle.trim() || DEFAULT_SOURCE_TITLE,
       sourceType,
       createdAt: new Date().toISOString(),
       laneId: defaultLaneId,
@@ -550,6 +629,58 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
     }
   }
 
+  function clearStructureDraft() {
+    const confirmed = window.confirm(
+      `Clear this Structure Mode browser draft? This removes only ${STORAGE_KEY} from localStorage in this browser.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    skipNextPersistRef.current = true;
+    window.localStorage.removeItem(STORAGE_KEY);
+    setSourceTitle(DEFAULT_SOURCE_TITLE);
+    setSourceType(DEFAULT_SOURCE_TYPE);
+    setSourceText("");
+    setSelection(DEFAULT_SELECTION);
+    setSemanticType(DEFAULT_SEMANTIC_TYPE);
+    setHighlightNote("");
+    setDefaultLaneId(DEFAULT_LANE_ID);
+    setCards([]);
+    setExportJson("");
+    setOutlineMarkdown("");
+    setImportJson("");
+    setIsSourcePanelVisible(true);
+    setMessage("Structure Mode browser draft cleared.");
+  }
+
+  function loadStarterSample() {
+    if (hasDraftContent) {
+      const confirmed = window.confirm(
+        "Load the starter sample and replace the current browser-local source and cards?",
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setSourceTitle(STARTER_SAMPLE_TITLE);
+    setSourceType(STARTER_SAMPLE_TYPE);
+    setSourceText(STARTER_SAMPLE_TEXT);
+    setSelection(DEFAULT_SELECTION);
+    setSemanticType(DEFAULT_SEMANTIC_TYPE);
+    setHighlightNote("");
+    setDefaultLaneId(DEFAULT_LANE_ID);
+    setCards(createStarterSampleCards());
+    setExportJson("");
+    setOutlineMarkdown("");
+    setImportJson("");
+    setIsSourcePanelVisible(true);
+    setMessage("Starter sample loaded and saved locally in this browser.");
+  }
+
   function importStructureJson() {
     try {
       const parsed = safeStructureDraft(JSON.parse(importJson));
@@ -609,76 +740,120 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
           className={cn(panelClassName, "grid gap-2 px-4 py-3.5")}
           aria-label="Structure mode persistence status"
         >
-          <p className={labelClassName}>Structure Mode</p>
-          <p className="m-0 text-[0.92rem] leading-relaxed text-studio-muted">
-            Saved locally in this browser. Not yet synced to Studio database.
-          </p>
-          <p className="m-0 font-mono text-[0.76rem] leading-relaxed text-studio-muted">
-            {STORAGE_KEY}
-          </p>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="grid gap-2">
+              <p className={labelClassName}>Structure Mode</p>
+              <p className="m-0 text-[0.92rem] leading-relaxed text-studio-muted">
+                Saved locally in this browser. Not yet synced to Studio database.
+              </p>
+              <p className="m-0 font-mono text-[0.76rem] leading-relaxed text-studio-muted">
+                {STORAGE_KEY}
+              </p>
+              <p className="m-0 text-[0.84rem] leading-relaxed text-studio-muted">
+                Current source: {sourceSummary}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <button
+                className={smallButtonClassName}
+                type="button"
+                onClick={() =>
+                  setIsSourcePanelVisible((currentValue) => !currentValue)
+                }
+              >
+                {isSourcePanelVisible
+                  ? "Hide pasted source"
+                  : "Show pasted source"}
+              </button>
+              <button
+                className={smallButtonClassName}
+                type="button"
+                onClick={loadStarterSample}
+              >
+                Load starter sample
+              </button>
+              <button
+                className={dangerButtonClassName}
+                type="button"
+                onClick={clearStructureDraft}
+              >
+                Clear draft
+              </button>
+            </div>
+          </div>
         </section>
 
         <section
-          className="grid gap-[18px] xl:grid-cols-[minmax(330px,0.72fr)_minmax(360px,0.86fr)_minmax(420px,1.25fr)]"
+          className={cn(
+            "grid gap-[18px]",
+            isSourcePanelVisible
+              ? "xl:grid-cols-[minmax(330px,0.72fr)_minmax(360px,0.86fr)_minmax(420px,1.25fr)]"
+              : "xl:grid-cols-[minmax(340px,0.72fr)_minmax(520px,1.35fr)]",
+          )}
           aria-label="Structure mode workspace"
         >
-          <section className={panelClassName} aria-label="Pasted source">
-            <div className="mb-3.5 flex items-start justify-between gap-3">
-              <p className={labelClassName}>Pasted Source</p>
-              <StudioChip tone="source">{sourceTypeOptions.find((option) => option.id === sourceType)?.label}</StudioChip>
-            </div>
+          {isSourcePanelVisible ? (
+            <section className={panelClassName} aria-label="Pasted source">
+              <div className="mb-3.5 flex items-start justify-between gap-3">
+                <p className={labelClassName}>Pasted Source</p>
+                <StudioChip tone="source">
+                  {getSourceTypeLabel(sourceType)}
+                </StudioChip>
+              </div>
 
-            <h2 className={panelTitleClassName}>Source setup</h2>
-            <p className={panelCopyClassName}>
-              Paste any useful text here. Select a span in the textarea, then
-              create a highlight card.
-            </p>
+              <h2 className={panelTitleClassName}>Source setup</h2>
+              <p className={panelCopyClassName}>
+                Paste any useful text here. Select a span in the textarea, then
+                create a highlight card.
+              </p>
 
-            <div className="mt-4 grid gap-3">
-              <label className="grid gap-2">
-                <span className={fieldLabelClassName}>Title</span>
-                <input
-                  className={fieldClassName}
-                  value={sourceTitle}
-                  onChange={(event) => setSourceTitle(event.target.value)}
-                />
-              </label>
+              <div className="mt-4 grid gap-3">
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Title</span>
+                  <input
+                    className={fieldClassName}
+                    value={sourceTitle}
+                    onChange={(event) => setSourceTitle(event.target.value)}
+                  />
+                </label>
 
-              <label className="grid gap-2">
-                <span className={fieldLabelClassName}>Source type</span>
-                <select
-                  className={fieldClassName}
-                  value={sourceType}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSourceType(isSourceType(value) ? value : "other");
-                  }}
-                >
-                  {sourceTypeOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Source type</span>
+                  <select
+                    className={fieldClassName}
+                    value={sourceType}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSourceType(isSourceType(value) ? value : "other");
+                    }}
+                  >
+                    {sourceTypeOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              <label className="grid gap-2">
-                <span className={fieldLabelClassName}>Source text</span>
-                <textarea
-                  className={cn(textareaClassName, "min-h-[460px]")}
-                  ref={sourceTextRef}
-                  value={sourceText}
-                  onChange={(event) => {
-                    setSourceText(event.target.value);
-                    captureSelection();
-                  }}
-                  onKeyUp={captureSelection}
-                  onMouseUp={captureSelection}
-                  onSelect={captureSelection}
-                />
-              </label>
-            </div>
-          </section>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Source text</span>
+                  <textarea
+                    className={cn(textareaClassName, "min-h-[460px]")}
+                    ref={sourceTextRef}
+                    value={sourceText}
+                    onChange={(event) => {
+                      setSourceText(event.target.value);
+                      captureSelection();
+                    }}
+                    onKeyUp={captureSelection}
+                    onMouseUp={captureSelection}
+                    onSelect={captureSelection}
+                  />
+                </label>
+              </div>
+            </section>
+          ) : null}
 
           <section className={panelClassName} aria-label="Highlight controls">
             <div className="mb-3.5 flex items-start justify-between gap-3">
@@ -688,14 +863,17 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
 
             <h2 className={panelTitleClassName}>Selected span to card</h2>
             <p className={panelCopyClassName}>
-              Use the native textarea selection. The selected offsets and text
-              snapshot are stored on the card.
+              {isSourcePanelVisible
+                ? "Use the native textarea selection. The selected offsets and text snapshot are stored on the card."
+                : "Show the pasted source panel to select source text and create new highlights."}
             </p>
 
             <div className={cn(cardClassName, "mt-4 grid gap-2 p-3.5")}>
               <p className={labelClassName}>Current selection</p>
               <p className="m-0 text-[0.92rem] leading-relaxed text-studio-ink/90">
-                {selection.selectedText || "No selected text yet."}
+                {isSourcePanelVisible
+                  ? selection.selectedText || "No selected text yet."
+                  : "Source panel hidden."}
               </p>
               <span className={monoMetaClassName}>
                 {selection.startOffset}-{selection.endOffset}
@@ -793,6 +971,7 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
 
             <button
               className={primaryButtonClassName}
+              disabled={!isSourcePanelVisible}
               type="button"
               onClick={createHighlightCard}
             >
@@ -808,7 +987,9 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                   message.includes("imported") ||
                   message.includes("copied") ||
                   message.includes("duplicated") ||
-                  message.includes("deleted")
+                  message.includes("deleted") ||
+                  message.includes("cleared") ||
+                  message.includes("sample")
                   ? "border-studio-tag/45 text-studio-tag"
                   : "",
               )}

@@ -53,6 +53,22 @@ The Markdown outline groups cards by lane:
   Note: ...
 ```
 
+## Follow-Up Reset And Focus Closure
+
+A follow-up pass closed the remaining daily-use gaps:
+
+- clear the current Structure Mode draft with browser confirmation
+- remove only `high-ground-studio.structure-mode.v1` from localStorage during
+  the clear action
+- reset source, selection, card, JSON export/import, Markdown export, and
+  status-message UI state
+- show or hide the pasted source panel
+- keep a compact source title/type/length summary visible when the source panel
+  is hidden
+- disable highlight creation while the source panel is hidden
+- load a small starter sample with confirmation when an existing source or
+  cards would be replaced
+
 ## What Did Not Change
 
 - No Prisma schema changes.
