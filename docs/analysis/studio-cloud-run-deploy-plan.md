@@ -14,6 +14,10 @@ Mode MVP. Cloud Run lets the team practice containerized deployment,
 environment configuration, service identity, logs, revisions, and rollback
 without owning servers or Kubernetes yet.
 
+The broader platform boundary is documented separately in:
+
+- `docs/architecture/platform-service-boundaries.md`
+
 ## Build Path
 
 Use:
@@ -54,6 +58,7 @@ That means a useful first private deployment can support:
 
 - Google sign-in
 - email allowlist access
+- non-sensitive `/api/health` checks
 - pasted source text
 - highlight cards
 - semantic type assignment
@@ -124,7 +129,7 @@ Manual setup still needs to happen outside this pass:
    `https://<service-url>/api/auth/callback/google`.
 9. Submit the Cloud Build image build.
 10. Deploy the image to Cloud Run.
-11. Verify sign-in and `/structure`.
+11. Verify `/api/health`, sign-in, and `/structure`.
 
 This pass does not execute any of those cloud mutations.
 

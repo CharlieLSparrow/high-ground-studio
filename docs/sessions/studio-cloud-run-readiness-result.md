@@ -39,6 +39,17 @@ No remote database is required for that route.
 - Added a Cloud Run deployment plan and runbook.
 - Updated local env docs and the Studio boundary docs.
 
+## Follow-Up Readiness Closure
+
+A follow-up readiness pass added the public non-sensitive Studio health route:
+
+```text
+/api/health
+```
+
+It also added a platform/service boundary note for future commerce,
+subscriptions, multi-site public surfaces, and AI/ML services.
+
 ## What Did Not Happen
 
 - No Cloud Run deployment.

@@ -16,6 +16,7 @@
     "studio:local": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm studio",
     "studio:local:bootstrap": "pnpm studio:db:up && DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm db:generate && DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm db:push && DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm studio:smoke:persistence",
     "studio:cloudbuild:image": "gcloud builds submit --config cloudbuild.studio.yaml .",
+    "studio:cloudbuild:image:sha": "gcloud builds submit --config cloudbuild.studio.yaml --substitutions=_IMAGE_TAG=$(git rev-parse --short HEAD) .",
     "studio:smoke:persistence": "node scripts/smoke-studio-persistence.mjs",
     "web": "pnpm --filter web dev",
     "engine:build": "pnpm --filter @high-ground/motion-engine build",

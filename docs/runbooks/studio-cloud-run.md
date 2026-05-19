@@ -25,6 +25,22 @@ Studio routes remain private:
 - `/write` - Writing Desk
 - `/structure` - Structure Mode
 
+The health route is intentionally public and non-sensitive:
+
+```text
+/api/health
+```
+
+Expected response:
+
+```json
+{
+  "ok": true,
+  "service": "high-ground-studio",
+  "app": "studio"
+}
+```
+
 Only `/structure` is useful without database persistence because it stores its
 draft in browser `localStorage` under:
 
@@ -142,6 +158,12 @@ After the manual cloud setup is complete, build and push the image with Cloud
 Build:
 
 ```bash
+pnpm studio:cloudbuild:image:sha
+```
+
+To override the default region or image tag, use:
+
+```bash
 pnpm studio:cloudbuild:image -- --substitutions=_REGION=us-central1,_IMAGE_TAG=$(git rev-parse --short HEAD)
 ```
 
@@ -190,6 +212,7 @@ After the first service URL exists:
 After an explicitly approved deployment:
 
 - open the Cloud Run service URL
+- verify `/api/health` returns `{ "ok": true, "service": "high-ground-studio", "app": "studio" }`
 - sign in with an allowlisted Google account
 - verify `/structure` opens
 - paste text
