@@ -58,6 +58,23 @@ type SourceType = (typeof sourceTypeOptions)[number]["id"];
 type SemanticType = (typeof semanticTypeOptions)[number]["id"];
 type LaneId = (typeof structureLanes)[number]["id"];
 
+const quickSemanticTypeOptions = [
+  "quote",
+  "story",
+  "insight",
+  "research",
+  "question",
+  "ted_public_talk_beat",
+] as const satisfies readonly SemanticType[];
+
+const quickLaneOptions = [
+  "opening",
+  "story",
+  "evidence",
+  "application",
+  "parking_lot",
+] as const satisfies readonly LaneId[];
+
 type HighlightCard = {
   id: string;
   selectedText: string;
@@ -126,6 +143,14 @@ function getSemanticLabel(value: SemanticType) {
   return (
     semanticTypeOptions.find((option) => option.id === value)?.label ?? value
   );
+}
+
+function getLaneLabel(value: LaneId) {
+  return structureLanes.find((lane) => lane.id === value)?.label ?? value;
+}
+
+function normalizeMarkdownText(value: string) {
+  return value.trim().replace(/\s+/g, " ");
 }
 
 function safeStructureDraft(value: unknown): StructureDraft | null {
@@ -206,6 +231,9 @@ const textareaClassName =
 const smallButtonClassName =
   "min-h-8 rounded-lg border border-studio-line bg-studio-ink/5 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim";
 
+const dangerButtonClassName =
+  "min-h-8 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-danger";
+
 export function StudioStructureClient({ actor }: StudioStructureClientProps) {
   const sourceTextRef = useRef<HTMLTextAreaElement>(null);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -222,6 +250,7 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
   const [defaultLaneId, setDefaultLaneId] = useState<LaneId>("parking_lot");
   const [cards, setCards] = useState<HighlightCard[]>([]);
   const [exportJson, setExportJson] = useState("");
+  const [outlineMarkdown, setOutlineMarkdown] = useState("");
   const [importJson, setImportJson] = useState("");
   const [message, setMessage] = useState("MVP browser draft.");
 
@@ -344,6 +373,61 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
     );
   }
 
+  function duplicateCard(cardId: string) {
+    const currentIndex = cards.findIndex((card) => card.id === cardId);
+    const card = cards[currentIndex];
+
+    if (!card) {
+      return;
+    }
+
+    const duplicate: HighlightCard = {
+      ...card,
+      id: createCardId(),
+      createdAt: new Date().toISOString(),
+    };
+
+    setCards((current) => [
+      ...current.slice(0, currentIndex + 1),
+      duplicate,
+      ...current.slice(currentIndex + 1),
+    ]);
+    setMessage("Highlight card duplicated.");
+  }
+
+  function deleteCard(cardId: string) {
+    const card = cards.find((candidate) => candidate.id === cardId);
+
+    if (!card) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete this highlight card from the browser-local draft?",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCards((current) => current.filter((candidate) => candidate.id !== cardId));
+    setMessage("Highlight card deleted from this browser draft.");
+  }
+
+  async function copyCardText(card: HighlightCard) {
+    if (!navigator.clipboard?.writeText) {
+      setMessage("Clipboard copy is not available in this browser.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(card.selectedText);
+      setMessage("Selected text copied to clipboard.");
+    } catch {
+      setMessage("Clipboard copy failed.");
+    }
+  }
+
   function moveCardWithinLane(cardId: string, direction: "up" | "down") {
     const currentIndex = cards.findIndex((card) => card.id === cardId);
     const card = cards[currentIndex];
@@ -407,6 +491,63 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
 
     setExportJson(JSON.stringify(draft, null, 2));
     setMessage("Structure JSON exported below.");
+  }
+
+  function createOutlineMarkdown() {
+    const title = sourceTitle.trim() || "Untitled pasted source";
+    const lines = [`# Structure: ${title}`, ""];
+    let hasCards = false;
+
+    for (const lane of structureLanes) {
+      const laneCards = cards.filter((card) => card.laneId === lane.id);
+
+      if (laneCards.length === 0) {
+        continue;
+      }
+
+      hasCards = true;
+      lines.push(`## ${lane.label}`, "");
+
+      for (const card of laneCards) {
+        lines.push(
+          `- [${getSemanticLabel(card.semanticType)}] ${normalizeMarkdownText(card.selectedText)}`,
+        );
+
+        if (card.note.trim()) {
+          lines.push(`  Note: ${normalizeMarkdownText(card.note)}`);
+        }
+      }
+
+      lines.push("");
+    }
+
+    if (!hasCards) {
+      lines.push("_No highlight cards yet._", "");
+    }
+
+    return lines.join("\n").trimEnd();
+  }
+
+  function exportOutlineMarkdown() {
+    setOutlineMarkdown(createOutlineMarkdown());
+    setMessage("Outline Markdown exported below.");
+  }
+
+  async function copyOutlineMarkdown() {
+    const markdown = createOutlineMarkdown();
+    setOutlineMarkdown(markdown);
+
+    if (!navigator.clipboard?.writeText) {
+      setMessage("Clipboard copy is not available in this browser.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setMessage("Outline Markdown copied to clipboard.");
+    } catch {
+      setMessage("Outline Markdown copy failed.");
+    }
   }
 
   function importStructureJson() {
@@ -580,6 +721,27 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                 </select>
               </label>
 
+              <div className="grid gap-2">
+                <span className={fieldLabelClassName}>Quick type</span>
+                <div className="flex flex-wrap gap-2">
+                  {quickSemanticTypeOptions.map((option) => (
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        semanticType === option
+                          ? "border-studio-tag/55 bg-studio-tag/15 text-studio-tag"
+                          : "",
+                      )}
+                      key={option}
+                      type="button"
+                      onClick={() => setSemanticType(option)}
+                    >
+                      {getSemanticLabel(option)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <label className="grid gap-2">
                 <span className={fieldLabelClassName}>Initial lane</span>
                 <select
@@ -597,6 +759,27 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                   ))}
                 </select>
               </label>
+
+              <div className="grid gap-2">
+                <span className={fieldLabelClassName}>Quick lane</span>
+                <div className="flex flex-wrap gap-2">
+                  {quickLaneOptions.map((laneId) => (
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        defaultLaneId === laneId
+                          ? "border-studio-source/55 bg-studio-source/10 text-studio-source"
+                          : "",
+                      )}
+                      key={laneId}
+                      type="button"
+                      onClick={() => setDefaultLaneId(laneId)}
+                    >
+                      {getLaneLabel(laneId)}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <label className="grid gap-2">
                 <span className={fieldLabelClassName}>Note</span>
@@ -622,7 +805,10 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                 message.includes("created") ||
                   message.includes("Loaded") ||
                   message.includes("exported") ||
-                  message.includes("imported")
+                  message.includes("imported") ||
+                  message.includes("copied") ||
+                  message.includes("duplicated") ||
+                  message.includes("deleted")
                   ? "border-studio-tag/45 text-studio-tag"
                   : "",
               )}
@@ -642,6 +828,28 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                 className={cn(textareaClassName, "min-h-[140px] font-mono text-xs")}
                 readOnly
                 value={exportJson}
+              />
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={copyOutlineMarkdown}
+                >
+                  Copy outline as Markdown
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={exportOutlineMarkdown}
+                >
+                  Export outline Markdown
+                </button>
+              </div>
+              <textarea
+                className={cn(textareaClassName, "min-h-[160px] font-mono text-xs")}
+                readOnly
+                value={outlineMarkdown}
               />
 
               <label className="grid gap-2">
@@ -715,11 +923,42 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                           {card.selectedText}
                         </p>
 
-                        {card.note ? (
-                          <p className="m-0 rounded-lg border border-studio-line bg-studio-ink/5 p-2 text-[0.84rem] leading-relaxed text-studio-muted">
-                            {card.note}
-                          </p>
-                        ) : null}
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                          <label className="grid gap-2">
+                            <span className={fieldLabelClassName}>Type</span>
+                            <select
+                              className={fieldClassName}
+                              value={card.semanticType}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                updateCard(card.id, {
+                                  semanticType: isSemanticType(value)
+                                    ? value
+                                    : card.semanticType,
+                                });
+                              }}
+                            >
+                              {semanticTypeOptions.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="grid gap-2">
+                            <span className={fieldLabelClassName}>Note</span>
+                            <textarea
+                              className={cn(textareaClassName, "min-h-[82px]")}
+                              value={card.note}
+                              onChange={(event) =>
+                                updateCard(card.id, {
+                                  note: event.target.value,
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
 
                         <dl className="grid gap-1 font-mono text-[0.72rem] leading-relaxed text-studio-muted">
                           <div>
@@ -788,6 +1027,27 @@ export function StudioStructureClient({ actor }: StudioStructureClientProps) {
                             onClick={() => moveCardWithinLane(card.id, "down")}
                           >
                             Move down
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() => void copyCardText(card)}
+                          >
+                            Copy text
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() => duplicateCard(card.id)}
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            className={dangerButtonClassName}
+                            type="button"
+                            onClick={() => deleteCard(card.id)}
+                          >
+                            Delete
                           </button>
                         </div>
                       </article>
