@@ -32,6 +32,7 @@ import {
   createBlockRangeSummary,
   createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
+  createDefaultManuscriptQuoteReview,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
   createManuscriptImportSummary,
@@ -39,6 +40,8 @@ import {
   createStructureOutlineMarkdown,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
+  getManuscriptQuoteReviewStatusDefinition,
+  getManuscriptQuoteSourceTypeDefinition,
   getManuscriptStructureLabelPresetDefinition,
   getManuscriptStructureDefinition,
   getSemanticHighlightDefinition,
@@ -46,22 +49,30 @@ import {
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
+  manuscriptQuoteReviewStatusDefinitions,
+  manuscriptQuoteSourceTypeDefinitions,
   manuscriptStructureDefinitions,
   manuscriptStructureLabelPresets,
   moveManuscriptStructureRegionWithinKind,
+  removeManuscriptQuoteReview,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
   filterManuscriptBlocks,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
   summarizeAuthorMarkedSpans,
+  updateManuscriptQuoteReview,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
   type ManuscriptAuthorId,
   type ManuscriptBlockFilterCriteria,
+  type ManuscriptCitedQuotationSummary,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptImportSummary,
+  type ManuscriptQuoteReview,
+  type ManuscriptQuoteReviewStatus,
+  type ManuscriptQuoteSourceType,
   type ManuscriptStructureKind,
   type ManuscriptStructureLabelPreset,
   type ManuscriptStructureRegion,
@@ -135,6 +146,18 @@ function formatDateTime(value: string | null) {
   }).format(date);
 }
 
+function getQuoteReviewStatusTone(status: ManuscriptQuoteReviewStatus) {
+  if (status === "verified") {
+    return "source" as const;
+  }
+
+  if (status === "do-not-use") {
+    return "danger" as const;
+  }
+
+  return "review" as const;
+}
+
 function getAuthorMarkAttrs(authorId: ManuscriptAuthorId) {
   const author = getManuscriptAuthorDefinition(authorId);
 
@@ -149,6 +172,7 @@ function createDraftFromState(input: {
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
   structureRegions: ManuscriptStructureRegion[];
+  quoteReviews: Record<string, ManuscriptQuoteReview>;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
   showAuthorColors: boolean;
@@ -161,6 +185,7 @@ function createDraftFromState(input: {
     sourceFileName: input.sourceFileName,
     importSummary: input.importSummary,
     structureRegions: input.structureRegions,
+    quoteReviews: input.quoteReviews,
     editorJson: input.editorJson,
     activeAuthorId: input.activeAuthorId,
     showAuthorColors: input.showAuthorColors,
@@ -272,6 +297,9 @@ export function StudioManuscriptClient({
   const [structureRegions, setStructureRegions] = useState<
     ManuscriptStructureRegion[]
   >([]);
+  const [quoteReviews, setQuoteReviews] = useState<
+    Record<string, ManuscriptQuoteReview>
+  >({});
   const [editingStructureRegionId, setEditingStructureRegionId] = useState<
     string | null
   >(null);
@@ -308,6 +336,18 @@ export function StudioManuscriptClient({
   const [filterOnlyWithoutAuthor, setFilterOnlyWithoutAuthor] = useState(false);
   const [filterVisualMode, setFilterVisualMode] =
     useState<ManuscriptFilterVisualMode>("highlight-matches");
+  const [editingQuoteReviewHighlightId, setEditingQuoteReviewHighlightId] =
+    useState<string | null>(null);
+  const [editingQuoteAttributedTo, setEditingQuoteAttributedTo] = useState("");
+  const [editingQuoteSourceTitle, setEditingQuoteSourceTitle] = useState("");
+  const [editingQuoteSourceType, setEditingQuoteSourceType] =
+    useState<ManuscriptQuoteSourceType>("unknown");
+  const [editingQuoteLocator, setEditingQuoteLocator] = useState("");
+  const [editingQuoteCitationText, setEditingQuoteCitationText] = useState("");
+  const [editingQuoteReviewStatus, setEditingQuoteReviewStatus] =
+    useState<ManuscriptQuoteReviewStatus>("needs-source");
+  const [editingQuoteRightsNote, setEditingQuoteRightsNote] = useState("");
+  const [editingQuoteEditorNote, setEditingQuoteEditorNote] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [editorJson, setEditorJson] = useState<ManuscriptEditorJson>(
     createEmptyManuscriptDoc(),
@@ -368,6 +408,7 @@ export function StudioManuscriptClient({
           setSourceFileName(parsed.sourceFileName);
           setImportSummary(parsed.importSummary);
           setStructureRegions(parsed.structureRegions);
+          setQuoteReviews(parsed.quoteReviews);
           setActiveAuthorId(parsed.activeAuthorId);
           setShowAuthorColors(parsed.showAuthorColors);
           setShowSemanticColors(parsed.showSemanticColors);
@@ -401,6 +442,7 @@ export function StudioManuscriptClient({
       sourceFileName,
       importSummary,
       structureRegions,
+      quoteReviews,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
       showAuthorColors,
@@ -424,6 +466,7 @@ export function StudioManuscriptClient({
     editorJson,
     importSummary,
     isHydrated,
+    quoteReviews,
     showAuthorColors,
     showSemanticColors,
     sourceFileName,
@@ -472,8 +515,9 @@ export function StudioManuscriptClient({
       collectManuscriptBlockDetails({
         json: currentEditorJson,
         regions: structureRegions,
+        quoteReviews,
       }),
-    [currentEditorJson, structureRegions],
+    [currentEditorJson, quoteReviews, structureRegions],
   );
   const blockFilterOptions = useMemo(
     () => createBlockFilterOptions(blockDetails),
@@ -533,8 +577,9 @@ export function StudioManuscriptClient({
       collectCitedQuotationHighlights({
         json: currentEditorJson,
         regions: structureRegions,
+        quoteReviews,
       }),
-    [currentEditorJson, structureRegions],
+    [currentEditorJson, quoteReviews, structureRegions],
   );
   const citedQuotationMarkdown = useMemo(
     () => createCitedQuotationMarkdown({ quotations: citedQuotations }),
@@ -559,9 +604,17 @@ export function StudioManuscriptClient({
         sourceFileName,
         importSummary,
         structureRegions,
+        quoteReviews,
         editorJson: currentEditorJson,
       }),
-    [currentEditorJson, importSummary, sourceFileName, structureRegions, title],
+    [
+      currentEditorJson,
+      importSummary,
+      quoteReviews,
+      sourceFileName,
+      structureRegions,
+      title,
+    ],
   );
 
   useEffect(() => {
@@ -749,6 +802,68 @@ export function StudioManuscriptClient({
     setMessage("Manuscript filters cleared.");
   }
 
+  function beginEditingQuoteReview(quotation: ManuscriptCitedQuotationSummary) {
+    const review = quotation.review;
+
+    setEditingQuoteReviewHighlightId(quotation.highlightId);
+    setEditingQuoteAttributedTo(review.attributedTo);
+    setEditingQuoteSourceTitle(review.sourceTitle);
+    setEditingQuoteSourceType(review.sourceType);
+    setEditingQuoteLocator(review.locator);
+    setEditingQuoteCitationText(review.citationText || quotation.note);
+    setEditingQuoteReviewStatus(review.reviewStatus);
+    setEditingQuoteRightsNote(review.rightsNote);
+    setEditingQuoteEditorNote(review.editorNote);
+    setMessage("Quote review opened.");
+  }
+
+  function cancelEditingQuoteReview() {
+    setEditingQuoteReviewHighlightId(null);
+    setEditingQuoteAttributedTo("");
+    setEditingQuoteSourceTitle("");
+    setEditingQuoteSourceType("unknown");
+    setEditingQuoteLocator("");
+    setEditingQuoteCitationText("");
+    setEditingQuoteReviewStatus("needs-source");
+    setEditingQuoteRightsNote("");
+    setEditingQuoteEditorNote("");
+    setMessage("Quote review edit canceled.");
+  }
+
+  function saveQuoteReview(highlightId: string) {
+    setQuoteReviews((current) =>
+      updateManuscriptQuoteReview({
+        reviews: current,
+        review: {
+          highlightId,
+          attributedTo: editingQuoteAttributedTo,
+          sourceTitle: editingQuoteSourceTitle,
+          sourceType: editingQuoteSourceType,
+          locator: editingQuoteLocator,
+          citationText: editingQuoteCitationText,
+          reviewStatus: editingQuoteReviewStatus,
+          rightsNote: editingQuoteRightsNote,
+          editorNote: editingQuoteEditorNote,
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    setEditingQuoteReviewHighlightId(null);
+    setMessage("Quote review saved.");
+  }
+
+  function removeQuoteReview(highlightId: string) {
+    setQuoteReviews((current) =>
+      removeManuscriptQuoteReview({ reviews: current, highlightId }),
+    );
+
+    if (editingQuoteReviewHighlightId === highlightId) {
+      cancelEditingQuoteReview();
+    }
+
+    setMessage("Quote review metadata removed.");
+  }
+
   function getDefaultStructureTitle(
     kind: ManuscriptStructureKind,
     labelPreset?: ManuscriptStructureLabelPreset,
@@ -892,27 +1007,31 @@ export function StudioManuscriptClient({
     tagType: SemanticHighlightType;
     note: string;
     message: string;
+    highlightId?: string;
+    createdAt?: string;
   }) {
     if (!editor) {
-      return false;
+      return null;
     }
 
     const definition = getSemanticHighlightDefinition(input.tagType);
+    const highlightId = input.highlightId ?? createHighlightId();
+    const createdAt = input.createdAt ?? new Date().toISOString();
 
     editor
       .chain()
       .focus()
       .setMark("semanticHighlightMark", {
-        highlightId: createHighlightId(),
+        highlightId,
         tagType: definition.id,
         label: definition.label,
         colorKey: definition.colorKey,
         note: input.note.trim(),
-        createdAt: new Date().toISOString(),
+        createdAt,
       })
       .run();
     setMessage(input.message);
-    return true;
+    return highlightId;
   }
 
   function applySemanticHighlight() {
@@ -932,16 +1051,30 @@ export function StudioManuscriptClient({
   }
 
   function markCitedQuotation() {
-    if (
-      !applySemanticHighlightToSelection({
-        tagType: "cited-quotation",
-        note: citationNote,
-        message: "Marked selection as cited quotation.",
-      })
-    ) {
+    const highlightId = createHighlightId();
+    const updatedAt = new Date().toISOString();
+    const appliedHighlightId = applySemanticHighlightToSelection({
+      tagType: "cited-quotation",
+      note: citationNote,
+      highlightId,
+      createdAt: updatedAt,
+      message: "Marked selection as cited quotation.",
+    });
+
+    if (!appliedHighlightId) {
       return;
     }
 
+    setQuoteReviews((current) =>
+      updateManuscriptQuoteReview({
+        reviews: current,
+        review: createDefaultManuscriptQuoteReview({
+          highlightId,
+          citationText: citationNote,
+          updatedAt,
+        }),
+      }),
+    );
     setCitationNote("");
     setSemanticType("cited-quotation");
   }
@@ -1200,6 +1333,8 @@ export function StudioManuscriptClient({
       setSourceFileName(file.name);
       setImportSummary(summary);
       setStructureRegions([]);
+      setQuoteReviews({});
+      setEditingQuoteReviewHighlightId(null);
       setSelectedStructureRange(null);
       setPendingStructureStartBlockId(null);
       setPendingStructureEndBlockId(null);
@@ -1257,6 +1392,7 @@ export function StudioManuscriptClient({
       sourceFileName,
       importSummary,
       structureRegions,
+      quoteReviews,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
       showAuthorColors,
@@ -1442,6 +1578,8 @@ export function StudioManuscriptClient({
         setSourceFileName(parsedDraft.sourceFileName);
         setImportSummary(parsedDraft.importSummary);
         setStructureRegions(parsedDraft.structureRegions);
+        setQuoteReviews(parsedDraft.quoteReviews);
+        setEditingQuoteReviewHighlightId(null);
         setSelectedStructureRange(null);
         setActiveAuthorId(parsedDraft.activeAuthorId);
         setShowAuthorColors(parsedDraft.showAuthorColors);
@@ -1470,6 +1608,8 @@ export function StudioManuscriptClient({
       setSourceFileName(null);
       setImportSummary(null);
       setStructureRegions([]);
+      setQuoteReviews({});
+      setEditingQuoteReviewHighlightId(null);
       setSelectedStructureRange(null);
       setPendingStructureStartBlockId(null);
       setPendingStructureEndBlockId(null);
@@ -1515,6 +1655,8 @@ export function StudioManuscriptClient({
     setSourceFileName(null);
     setImportSummary(null);
     setStructureRegions([]);
+    setQuoteReviews({});
+    setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
     setPendingStructureStartBlockId(null);
     setPendingStructureEndBlockId(null);
@@ -2770,44 +2912,285 @@ export function StudioManuscriptClient({
                   </div>
                   <div className="grid max-h-[220px] gap-2 overflow-auto pr-1">
                     {citedQuotations.length ? (
-                      citedQuotations.map((quotation, index) => (
-                        <article
-                          className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-review/60 hover:bg-studio-review/10"
-                          key={`${quotation.highlightId || quotation.blockId || "quote"}-${index}`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <StudioChip tone="review">{quotation.label}</StudioChip>
-                            <button
-                              className={smallButtonClassName}
-                              type="button"
-                              onClick={() => focusBlock(quotation.blockId)}
-                            >
-                              Jump
-                            </button>
-                          </div>
-                          <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
-                            {quotation.preview || "Empty quotation"}
-                          </p>
-                          <p className="m-0 text-[0.74rem] leading-relaxed text-studio-dim">
-                            {quotation.blockPreview || quotation.blockId}
-                          </p>
-                          {quotation.note.trim() ? (
-                            <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
-                              {quotation.note}
+                      citedQuotations.map((quotation, index) => {
+                        const isEditing =
+                          editingQuoteReviewHighlightId ===
+                          quotation.highlightId;
+                        const review = quotation.review;
+
+                        return (
+                          <article
+                            className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-review/60 hover:bg-studio-review/10"
+                            key={`${quotation.highlightId || quotation.blockId || "quote"}-${index}`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap gap-1.5">
+                                <StudioChip tone="review">
+                                  {quotation.label}
+                                </StudioChip>
+                                <StudioChip
+                                  tone={getQuoteReviewStatusTone(
+                                    review.reviewStatus,
+                                  )}
+                                >
+                                  {
+                                    getManuscriptQuoteReviewStatusDefinition(
+                                      review.reviewStatus,
+                                    ).label
+                                  }
+                                </StudioChip>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                <button
+                                  className={smallButtonClassName}
+                                  type="button"
+                                  onClick={() => focusBlock(quotation.blockId)}
+                                >
+                                  Jump
+                                </button>
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className={smallButtonClassName}
+                                      type="button"
+                                      onClick={() =>
+                                        saveQuoteReview(quotation.highlightId)
+                                      }
+                                    >
+                                      Save review
+                                    </button>
+                                    <button
+                                      className={smallButtonClassName}
+                                      type="button"
+                                      onClick={cancelEditingQuoteReview}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    className={smallButtonClassName}
+                                    type="button"
+                                    onClick={() =>
+                                      beginEditingQuoteReview(quotation)
+                                    }
+                                  >
+                                    Review
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
+                              {quotation.preview || "Empty quotation"}
                             </p>
-                          ) : null}
-                          <div className="flex flex-wrap gap-1">
-                            {quotation.structureRegions.map((region) => (
-                              <StudioChip key={region.id} tone="node">
-                                {region.title}
-                              </StudioChip>
-                            ))}
-                          </div>
-                          <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
-                            {quotation.blockId ?? "missing blockId"}
-                          </span>
-                        </article>
-                      ))
+                            <p className="m-0 text-[0.74rem] leading-relaxed text-studio-dim">
+                              {quotation.blockPreview || quotation.blockId}
+                            </p>
+                            {quotation.note.trim() ? (
+                              <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                                {quotation.note}
+                              </p>
+                            ) : null}
+                            <div className="flex flex-wrap gap-1">
+                              {quotation.structureRegions.map((region) => (
+                                <StudioChip key={region.id} tone="node">
+                                  {region.title}
+                                </StudioChip>
+                              ))}
+                              {review.attributedTo.trim() ? (
+                                <StudioChip tone="source">
+                                  {review.attributedTo}
+                                </StudioChip>
+                              ) : null}
+                              {review.sourceTitle.trim() ? (
+                                <StudioChip tone="tag">
+                                  {review.sourceTitle}
+                                </StudioChip>
+                              ) : null}
+                              {review.sourceType !== "unknown" ? (
+                                <StudioChip tone="default">
+                                  {
+                                    getManuscriptQuoteSourceTypeDefinition(
+                                      review.sourceType,
+                                    ).label
+                                  }
+                                </StudioChip>
+                              ) : null}
+                              {review.locator.trim() ? (
+                                <StudioChip tone="default">
+                                  {review.locator}
+                                </StudioChip>
+                              ) : null}
+                            </div>
+
+                            {isEditing ? (
+                              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <label className="grid gap-1.5">
+                                    <span className={fieldLabelClassName}>
+                                      Review status
+                                    </span>
+                                    <select
+                                      className={fieldClassName}
+                                      value={editingQuoteReviewStatus}
+                                      onChange={(event) =>
+                                        setEditingQuoteReviewStatus(
+                                          event.target
+                                            .value as ManuscriptQuoteReviewStatus,
+                                        )
+                                      }
+                                    >
+                                      {manuscriptQuoteReviewStatusDefinitions.map(
+                                        (status) => (
+                                          <option
+                                            key={status.id}
+                                            value={status.id}
+                                          >
+                                            {status.label}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  </label>
+                                  <label className="grid gap-1.5">
+                                    <span className={fieldLabelClassName}>
+                                      Source type
+                                    </span>
+                                    <select
+                                      className={fieldClassName}
+                                      value={editingQuoteSourceType}
+                                      onChange={(event) =>
+                                        setEditingQuoteSourceType(
+                                          event.target
+                                            .value as ManuscriptQuoteSourceType,
+                                        )
+                                      }
+                                    >
+                                      {manuscriptQuoteSourceTypeDefinitions.map(
+                                        (sourceType) => (
+                                          <option
+                                            key={sourceType.id}
+                                            value={sourceType.id}
+                                          >
+                                            {sourceType.label}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  </label>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <label className="grid gap-1.5">
+                                    <span className={fieldLabelClassName}>
+                                      Attributed to
+                                    </span>
+                                    <input
+                                      className={fieldClassName}
+                                      value={editingQuoteAttributedTo}
+                                      onChange={(event) =>
+                                        setEditingQuoteAttributedTo(
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </label>
+                                  <label className="grid gap-1.5">
+                                    <span className={fieldLabelClassName}>
+                                      Source title
+                                    </span>
+                                    <input
+                                      className={fieldClassName}
+                                      value={editingQuoteSourceTitle}
+                                      onChange={(event) =>
+                                        setEditingQuoteSourceTitle(
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                                <label className="grid gap-1.5">
+                                  <span className={fieldLabelClassName}>
+                                    Locator
+                                  </span>
+                                  <input
+                                    className={fieldClassName}
+                                    value={editingQuoteLocator}
+                                    onChange={(event) =>
+                                      setEditingQuoteLocator(event.target.value)
+                                    }
+                                  />
+                                </label>
+                                <label className="grid gap-1.5">
+                                  <span className={fieldLabelClassName}>
+                                    Citation text
+                                  </span>
+                                  <textarea
+                                    className={cn(
+                                      textareaClassName,
+                                      "min-h-[72px]",
+                                    )}
+                                    value={editingQuoteCitationText}
+                                    onChange={(event) =>
+                                      setEditingQuoteCitationText(
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className="grid gap-1.5">
+                                  <span className={fieldLabelClassName}>
+                                    Rights note
+                                  </span>
+                                  <textarea
+                                    className={cn(
+                                      textareaClassName,
+                                      "min-h-[72px]",
+                                    )}
+                                    value={editingQuoteRightsNote}
+                                    onChange={(event) =>
+                                      setEditingQuoteRightsNote(
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className="grid gap-1.5">
+                                  <span className={fieldLabelClassName}>
+                                    Editor note
+                                  </span>
+                                  <textarea
+                                    className={cn(
+                                      textareaClassName,
+                                      "min-h-[72px]",
+                                    )}
+                                    value={editingQuoteEditorNote}
+                                    onChange={(event) =>
+                                      setEditingQuoteEditorNote(
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  className={dangerButtonClassName}
+                                  type="button"
+                                  onClick={() =>
+                                    removeQuoteReview(quotation.highlightId)
+                                  }
+                                >
+                                  Remove review metadata
+                                </button>
+                              </div>
+                            ) : null}
+
+                            <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
+                              {quotation.blockId ?? "missing blockId"} |{" "}
+                              {quotation.highlightId || "missing highlightId"}
+                            </span>
+                          </article>
+                        );
+                      })
                     ) : (
                       <p className={panelCopyClassName}>
                         No cited quotations marked.

@@ -34,6 +34,7 @@ The draft includes:
 - import summary with source file name, word count, character count, block count,
   and imported timestamp
 - block-range structure regions for chapter/book regions, episodes, and sections
+- browser-local cited quotation review metadata keyed by semantic highlight ID
 - TipTap/ProseMirror editor JSON
 - active author
 - author and semantic color toggles
@@ -215,9 +216,20 @@ archive files.
 12. Confirm the `Cited quotations` list shows quote preview, block context,
     source note, structure chips when present, and a `Jump` button.
 13. Click `Jump` and confirm the editor focuses the source block.
-14. Click `Export quote Markdown` and confirm the textarea includes quote text,
-    block ID, source note, and structure labels when present.
-15. Click `Download quote Markdown` and confirm a timestamped `.md` file
+14. Click `Review` on the cited quotation.
+15. Set `Review status` to `Needs verification`.
+16. Fill `Attributed to`, `Source type`, `Source title`, `Locator`,
+    `Citation text`, `Rights note`, and `Editor note` with synthetic values.
+17. Click `Save review` and confirm the status/source chips update.
+18. Refresh the page and confirm the cited quotation review metadata persists
+    in the browser-local draft.
+19. Click `Review`, then `Remove review metadata`, and confirm the quote remains
+    marked while structured review fields reset.
+20. Refill and save the review metadata.
+21. Click `Export quote Markdown` and confirm the textarea includes quote text,
+    block ID, source note, structure labels, review status, attribution, source
+    title, locator, citation text, rights note, and editor note when present.
+22. Click `Download quote Markdown` and confirm a timestamped `.md` file
     downloads from the browser.
 
 ## What To Inspect In Exported JSON
@@ -277,6 +289,25 @@ Look for block-range structure regions in full draft JSON:
 
 Structure regions should not appear as inline marks inside text nodes. They are
 draft-level block-range annotations.
+
+Look for browser-local cited quotation review metadata in full draft JSON:
+
+```json
+{
+  "quoteReviews": {
+    "semantic-highlight-id": {
+      "reviewStatus": "needs-verification",
+      "sourceType": "book",
+      "attributedTo": "Synthetic attribution",
+      "sourceTitle": "Synthetic source",
+      "locator": "p. 12"
+    }
+  }
+}
+```
+
+Cited quotation review metadata should not appear inside the inline mark itself.
+It is draft-level metadata keyed by the semantic highlight ID.
 
 ## Source Truth
 

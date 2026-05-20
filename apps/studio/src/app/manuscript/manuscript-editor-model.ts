@@ -58,6 +58,23 @@ export const manuscriptStructureLabelPresets = [
   { id: "custom", label: "Custom", title: "" },
 ] as const;
 
+export const manuscriptQuoteReviewStatusDefinitions = [
+  { id: "needs-source", label: "Needs source" },
+  { id: "needs-verification", label: "Needs verification" },
+  { id: "verified", label: "Verified" },
+  { id: "do-not-use", label: "Do not use" },
+] as const;
+
+export const manuscriptQuoteSourceTypeDefinitions = [
+  { id: "book", label: "Book" },
+  { id: "article", label: "Article" },
+  { id: "speech", label: "Speech" },
+  { id: "interview", label: "Interview" },
+  { id: "scripture", label: "Scripture" },
+  { id: "unknown", label: "Unknown" },
+  { id: "other", label: "Other" },
+] as const;
+
 export const manuscriptBlockNodeTypes = [
   "paragraph",
   "heading",
@@ -76,6 +93,12 @@ export type ManuscriptStructureKind =
 export type ManuscriptStructureLabelPreset =
   (typeof manuscriptStructureLabelPresets)[number]["id"];
 
+export type ManuscriptQuoteReviewStatus =
+  (typeof manuscriptQuoteReviewStatusDefinitions)[number]["id"];
+
+export type ManuscriptQuoteSourceType =
+  (typeof manuscriptQuoteSourceTypeDefinitions)[number]["id"];
+
 export type ManuscriptEditorJson = {
   type?: string;
   attrs?: Record<string, unknown>;
@@ -93,6 +116,7 @@ export type ManuscriptDraft = {
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
   structureRegions: ManuscriptStructureRegion[];
+  quoteReviews: Record<string, ManuscriptQuoteReview>;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
   showAuthorColors: boolean;
@@ -140,6 +164,7 @@ export type ManuscriptCitedQuotationSummary = {
   blockId: string | null;
   blockPreview: string;
   structureRegions: ManuscriptBlockStructureReference[];
+  review: ManuscriptQuoteReview;
   createdAt: string;
 };
 
@@ -199,6 +224,19 @@ export type ManuscriptStructureRegion = {
   colorKey: string;
   notes: string;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type ManuscriptQuoteReview = {
+  highlightId: string;
+  attributedTo: string;
+  sourceTitle: string;
+  sourceType: ManuscriptQuoteSourceType;
+  locator: string;
+  citationText: string;
+  reviewStatus: ManuscriptQuoteReviewStatus;
+  rightsNote: string;
+  editorNote: string;
   updatedAt: string;
 };
 
@@ -275,6 +313,22 @@ export function isManuscriptStructureLabelPreset(
   return manuscriptStructureLabelPresets.some((preset) => preset.id === value);
 }
 
+export function isManuscriptQuoteReviewStatus(
+  value: string,
+): value is ManuscriptQuoteReviewStatus {
+  return manuscriptQuoteReviewStatusDefinitions.some(
+    (status) => status.id === value,
+  );
+}
+
+export function isManuscriptQuoteSourceType(
+  value: string,
+): value is ManuscriptQuoteSourceType {
+  return manuscriptQuoteSourceTypeDefinitions.some(
+    (sourceType) => sourceType.id === value,
+  );
+}
+
 export function getManuscriptAuthorDefinition(authorId: ManuscriptAuthorId) {
   return (
     manuscriptAuthorDefinitions.find((author) => author.id === authorId) ??
@@ -310,6 +364,26 @@ export function getManuscriptStructureLabelPresetDefinition(
   );
 }
 
+export function getManuscriptQuoteReviewStatusDefinition(
+  status: ManuscriptQuoteReviewStatus,
+) {
+  return (
+    manuscriptQuoteReviewStatusDefinitions.find(
+      (definition) => definition.id === status,
+    ) ?? manuscriptQuoteReviewStatusDefinitions[0]
+  );
+}
+
+export function getManuscriptQuoteSourceTypeDefinition(
+  sourceType: ManuscriptQuoteSourceType,
+) {
+  return (
+    manuscriptQuoteSourceTypeDefinitions.find(
+      (definition) => definition.id === sourceType,
+    ) ?? manuscriptQuoteSourceTypeDefinitions[5]
+  );
+}
+
 export function createEmptyManuscriptDoc(): ManuscriptEditorJson {
   return {
     type: "doc",
@@ -333,6 +407,7 @@ export function createDefaultManuscriptDraft(
     sourceFileName: null,
     importSummary: null,
     structureRegions: [],
+    quoteReviews: {},
     editorJson: createEmptyManuscriptDoc(),
     activeAuthorId: "homer",
     showAuthorColors: true,
@@ -606,6 +681,52 @@ export function createStructureRegionDefaultTitle(input: {
   return presetDefinition.title;
 }
 
+export function createDefaultManuscriptQuoteReview(input: {
+  highlightId: string;
+  citationText?: string;
+  updatedAt: string;
+}): ManuscriptQuoteReview {
+  return {
+    highlightId: input.highlightId,
+    attributedTo: "",
+    sourceTitle: "",
+    sourceType: "unknown",
+    locator: "",
+    citationText: input.citationText?.trim() ?? "",
+    reviewStatus: "needs-source",
+    rightsNote: "",
+    editorNote: "",
+    updatedAt: input.updatedAt,
+  };
+}
+
+export function updateManuscriptQuoteReview(input: {
+  reviews: Record<string, ManuscriptQuoteReview>;
+  review: ManuscriptQuoteReview;
+}) {
+  return {
+    ...input.reviews,
+    [input.review.highlightId]: {
+      ...input.review,
+      attributedTo: input.review.attributedTo.trim(),
+      sourceTitle: input.review.sourceTitle.trim(),
+      locator: input.review.locator.trim(),
+      citationText: input.review.citationText.trim(),
+      rightsNote: input.review.rightsNote.trim(),
+      editorNote: input.review.editorNote.trim(),
+    },
+  };
+}
+
+export function removeManuscriptQuoteReview(input: {
+  reviews: Record<string, ManuscriptQuoteReview>;
+  highlightId: string;
+}) {
+  const nextReviews = { ...input.reviews };
+  delete nextReviews[input.highlightId];
+  return nextReviews;
+}
+
 export function updateManuscriptStructureRegion(input: {
   regions: ManuscriptStructureRegion[];
   regionId: string;
@@ -803,6 +924,7 @@ export function collectStructureRegionSummaries(input: {
 export function collectManuscriptBlockDetails(input: {
   json: ManuscriptEditorJson;
   regions?: ManuscriptStructureRegion[];
+  quoteReviews?: Record<string, ManuscriptQuoteReview>;
 }): ManuscriptBlockDetail[] {
   const structureRegionSummaries = collectStructureRegionSummaries({
     json: input.json,
@@ -864,17 +986,26 @@ export function collectManuscriptBlockDetails(input: {
               if (isCitedQuotationTagType(rawTagType)) {
                 const definition = getSemanticHighlightDefinition(rawTagType);
                 const quoteText = String(textNode.text ?? "");
+                const highlightId = String(mark.attrs?.highlightId ?? "");
+                const note = String(mark.attrs?.note ?? "");
 
                 citedQuotations.push({
-                  highlightId: String(mark.attrs?.highlightId ?? ""),
+                  highlightId,
                   tagType: rawTagType,
                   label: String(mark.attrs?.label ?? definition.label),
-                  note: String(mark.attrs?.note ?? ""),
+                  note,
                   text: quoteText,
                   preview: createTextPreview(quoteText, 96),
                   blockId,
                   blockPreview: preview,
                   structureRegions: structureReferences,
+                  review:
+                    input.quoteReviews?.[highlightId] ??
+                    createDefaultManuscriptQuoteReview({
+                      highlightId,
+                      citationText: note,
+                      updatedAt: String(mark.attrs?.createdAt ?? ""),
+                    }),
                   createdAt: String(mark.attrs?.createdAt ?? ""),
                 });
               }
@@ -909,6 +1040,7 @@ export function collectManuscriptBlockDetails(input: {
 export function collectCitedQuotationHighlights(input: {
   json: ManuscriptEditorJson;
   regions?: ManuscriptStructureRegion[];
+  quoteReviews?: Record<string, ManuscriptQuoteReview>;
 }): ManuscriptCitedQuotationSummary[] {
   return collectManuscriptBlockDetails(input).flatMap(
     (block) => block.citedQuotations,
@@ -1218,6 +1350,60 @@ export function createCitedQuotationMarkdown(input: {
       lines.push(`   - Source note: ${createMarkdownText(quotation.note)}`);
     }
 
+    lines.push(
+      `   - Review status: ${createMarkdownText(
+        getManuscriptQuoteReviewStatusDefinition(quotation.review.reviewStatus)
+          .label,
+      )}`,
+    );
+
+    if (quotation.review.attributedTo.trim()) {
+      lines.push(
+        `   - Attributed to: ${createMarkdownText(
+          quotation.review.attributedTo,
+        )}`,
+      );
+    }
+
+    if (quotation.review.sourceTitle.trim()) {
+      lines.push(
+        `   - Source title: ${createMarkdownText(
+          quotation.review.sourceTitle,
+        )}`,
+      );
+    }
+
+    if (quotation.review.sourceType !== "unknown") {
+      lines.push(
+        `   - Source type: ${createMarkdownText(
+          getManuscriptQuoteSourceTypeDefinition(quotation.review.sourceType)
+            .label,
+        )}`,
+      );
+    }
+
+    if (quotation.review.locator.trim()) {
+      lines.push(`   - Locator: ${createMarkdownText(quotation.review.locator)}`);
+    }
+
+    if (quotation.review.citationText.trim()) {
+      lines.push(
+        `   - Citation: ${createMarkdownText(quotation.review.citationText)}`,
+      );
+    }
+
+    if (quotation.review.rightsNote.trim()) {
+      lines.push(
+        `   - Rights note: ${createMarkdownText(quotation.review.rightsNote)}`,
+      );
+    }
+
+    if (quotation.review.editorNote.trim()) {
+      lines.push(
+        `   - Editor note: ${createMarkdownText(quotation.review.editorNote)}`,
+      );
+    }
+
     lines.push("");
   });
 
@@ -1491,6 +1677,61 @@ export function safeManuscriptStructureRegions(
   return regions.sort((left, right) => left.order - right.order);
 }
 
+export function safeManuscriptQuoteReviews(
+  value: unknown,
+): Record<string, ManuscriptQuoteReview> | null {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const reviews: Record<string, ManuscriptQuoteReview> = {};
+
+  for (const [key, item] of Object.entries(value)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+
+    const review = item as Partial<ManuscriptQuoteReview>;
+    const highlightId = String(review.highlightId ?? key);
+    const sourceType = String(review.sourceType ?? "unknown");
+    const reviewStatus = String(review.reviewStatus ?? "needs-source");
+
+    if (
+      !highlightId.trim() ||
+      typeof review.attributedTo !== "string" ||
+      typeof review.sourceTitle !== "string" ||
+      !isManuscriptQuoteSourceType(sourceType) ||
+      typeof review.locator !== "string" ||
+      typeof review.citationText !== "string" ||
+      !isManuscriptQuoteReviewStatus(reviewStatus) ||
+      typeof review.rightsNote !== "string" ||
+      typeof review.editorNote !== "string" ||
+      typeof review.updatedAt !== "string"
+    ) {
+      return null;
+    }
+
+    reviews[highlightId] = {
+      highlightId,
+      attributedTo: review.attributedTo,
+      sourceTitle: review.sourceTitle,
+      sourceType,
+      locator: review.locator,
+      citationText: review.citationText,
+      reviewStatus,
+      rightsNote: review.rightsNote,
+      editorNote: review.editorNote,
+      updatedAt: review.updatedAt,
+    };
+  }
+
+  return reviews;
+}
+
 export function safeManuscriptImportSummary(
   value: unknown,
 ): ManuscriptImportSummary | null {
@@ -1525,12 +1766,14 @@ export function hasMeaningfulManuscriptDraft(input: {
   editorJson: ManuscriptEditorJson;
   importSummary?: ManuscriptImportSummary | null;
   structureRegions?: ManuscriptStructureRegion[];
+  quoteReviews?: Record<string, ManuscriptQuoteReview>;
 }) {
   return (
     input.title.trim() !== defaultTitle ||
     Boolean(input.sourceFileName) ||
     Boolean(input.importSummary) ||
     Boolean(input.structureRegions?.length) ||
+    Boolean(Object.keys(input.quoteReviews ?? {}).length) ||
     countWordsAndCharacters(input.editorJson).words > 0
   );
 }
@@ -1685,12 +1928,14 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
   const structureRegions = safeManuscriptStructureRegions(
     draft.structureRegions,
   );
+  const quoteReviews = safeManuscriptQuoteReviews(draft.quoteReviews);
 
   if (
     draft.schemaVersion !== MANUSCRIPT_SCHEMA_VERSION ||
     typeof draft.title !== "string" ||
     !validateEditorJsonShape(draft.editorJson) ||
     !structureRegions ||
+    !quoteReviews ||
     !isManuscriptAuthorId(activeAuthorId) ||
     typeof draft.showAuthorColors !== "boolean" ||
     typeof draft.showSemanticColors !== "boolean" ||
@@ -1717,6 +1962,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     sourceFileName: draft.sourceFileName,
     importSummary,
     structureRegions,
+    quoteReviews,
     editorJson: draft.editorJson,
     activeAuthorId,
     showAuthorColors: draft.showAuthorColors,

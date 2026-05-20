@@ -13,6 +13,7 @@ import {
   createBlockFilterOptions,
   createBlockRangeSummary,
   createCitedQuotationMarkdown,
+  createDefaultManuscriptQuoteReview,
   ensureManuscriptBlockIds,
   createFilteredBlockListMarkdown,
   createManuscriptImportSummary,
@@ -23,15 +24,20 @@ import {
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
+  manuscriptQuoteReviewStatusDefinitions,
+  manuscriptQuoteSourceTypeDefinitions,
   manuscriptStructureDefinitions,
   manuscriptStructureLabelPresets,
   moveManuscriptStructureRegionWithinKind,
+  removeManuscriptQuoteReview,
   safeManuscriptDraft,
+  safeManuscriptQuoteReviews,
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
   summarizeAuthorMarkedSpans,
+  updateManuscriptQuoteReview,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
 } from "../apps/studio/src/app/manuscript/manuscript-editor-model.ts";
@@ -128,6 +134,14 @@ test("author and semantic definitions contain the MVP options", () => {
       "custom",
     ],
   );
+  assert.deepEqual(
+    manuscriptQuoteReviewStatusDefinitions.map((status) => status.id),
+    ["needs-source", "needs-verification", "verified", "do-not-use"],
+  );
+  assert.deepEqual(
+    manuscriptQuoteSourceTypeDefinitions.map((sourceType) => sourceType.id),
+    ["book", "article", "speech", "interview", "scripture", "unknown", "other"],
+  );
 });
 
 test("safeManuscriptDraft accepts a valid draft", () => {
@@ -156,6 +170,20 @@ test("safeManuscriptDraft accepts a valid draft", () => {
         updatedAt: "2026-05-19T12:00:00.000Z",
       },
     ],
+    quoteReviews: {
+      "semantic-1": {
+        highlightId: "semantic-1",
+        attributedTo: "Synthetic thinker",
+        sourceTitle: "Synthetic Source",
+        sourceType: "book",
+        locator: "p. 12",
+        citationText: "Synthetic Source, p. 12",
+        reviewStatus: "needs-verification",
+        rightsNote: "Synthetic rights note.",
+        editorNote: "Synthetic editor note.",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+      },
+    },
     editorJson,
     activeAuthorId: "homer",
     showAuthorColors: true,
@@ -180,6 +208,7 @@ test("safeManuscriptDraft defaults older drafts to no structure regions", () => 
   });
 
   assert.deepEqual(parsed?.structureRegions, []);
+  assert.deepEqual(parsed?.quoteReviews, {});
 });
 
 test("safeManuscriptDraft rejects invalid draft envelopes", () => {
@@ -202,6 +231,36 @@ test("safeManuscriptDraft rejects invalid draft envelopes", () => {
       schemaVersion: 999,
       title: "Book draft",
       sourceFileName: null,
+      editorJson,
+      activeAuthorId: "homer",
+      showAuthorColors: true,
+      showSemanticColors: true,
+      lastUpdatedAt: null,
+    }),
+    null,
+  );
+
+  assert.equal(
+    safeManuscriptDraft({
+      schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
+      title: "Book draft",
+      sourceFileName: null,
+      importSummary: null,
+      structureRegions: [],
+      quoteReviews: {
+        "semantic-1": {
+          highlightId: "semantic-1",
+          attributedTo: "",
+          sourceTitle: "",
+          sourceType: "unknown",
+          locator: "",
+          citationText: "",
+          reviewStatus: "invented-status",
+          rightsNote: "",
+          editorNote: "",
+          updatedAt: "2026-05-19T12:00:00.000Z",
+        },
+      },
       editorJson,
       activeAuthorId: "homer",
       showAuthorColors: true,
@@ -594,6 +653,55 @@ test("structure region parser keeps old regions and normalizes invalid presets",
   assert.equal(parsed?.[1].title, "Introduction");
 });
 
+test("quote review helpers parse update and remove browser-local metadata", () => {
+  const defaultReview = createDefaultManuscriptQuoteReview({
+    highlightId: "semantic-cited-1",
+    citationText: " Synthetic source note ",
+    updatedAt: "2026-05-19T12:00:00.000Z",
+  });
+  const updated = updateManuscriptQuoteReview({
+    reviews: {},
+    review: {
+      ...defaultReview,
+      attributedTo: " Synthetic Person ",
+      sourceTitle: " Synthetic Book ",
+      sourceType: "book",
+      locator: " p. 7 ",
+      citationText: " Synthetic Book, p. 7 ",
+      reviewStatus: "verified",
+      rightsNote: " Public domain check ",
+      editorNote: " Use in review packet ",
+      updatedAt: "2026-05-19T13:00:00.000Z",
+    },
+  });
+  const parsed = safeManuscriptQuoteReviews(updated);
+
+  assert.equal(defaultReview.reviewStatus, "needs-source");
+  assert.equal(defaultReview.sourceType, "unknown");
+  assert.equal(defaultReview.citationText, "Synthetic source note");
+  assert.equal(parsed?.["semantic-cited-1"].attributedTo, "Synthetic Person");
+  assert.equal(parsed?.["semantic-cited-1"].sourceTitle, "Synthetic Book");
+  assert.equal(parsed?.["semantic-cited-1"].sourceType, "book");
+  assert.equal(parsed?.["semantic-cited-1"].locator, "p. 7");
+  assert.equal(parsed?.["semantic-cited-1"].reviewStatus, "verified");
+  assert.deepEqual(
+    removeManuscriptQuoteReview({
+      reviews: updated,
+      highlightId: "semantic-cited-1",
+    }),
+    {},
+  );
+  assert.equal(
+    safeManuscriptQuoteReviews({
+      "semantic-cited-1": {
+        ...updated["semantic-cited-1"],
+        reviewStatus: "invalid",
+      },
+    }),
+    null,
+  );
+});
+
 test("block range summary normalizes pending start and end blocks", () => {
   const blocks = [
     { blockId: "block-a", type: "heading", preview: "Synthetic Preface" },
@@ -974,6 +1082,21 @@ const filterRegions = [
   },
 ];
 
+const quoteReviewMap = {
+  "semantic-cited-1": {
+    highlightId: "semantic-cited-1",
+    attributedTo: "Synthetic author",
+    sourceTitle: "Synthetic Collected Works",
+    sourceType: "book",
+    locator: "p. 42",
+    citationText: "Synthetic Collected Works, p. 42",
+    reviewStatus: "verified",
+    rightsNote: "Synthetic rights review complete.",
+    editorNote: "Synthetic editor note.",
+    updatedAt: "2026-05-19T13:00:00.000Z",
+  },
+};
+
 test("block details extract text marks and covering structures", () => {
   const details = collectManuscriptBlockDetails({
     json: filterDoc,
@@ -1111,6 +1234,7 @@ test("cited quotation marks are extracted with block and structure context", () 
   const quotations = collectCitedQuotationHighlights({
     json: filterDoc,
     regions: filterRegions,
+    quoteReviews: quoteReviewMap,
   });
 
   assert.deepEqual(citedBlock?.authorIds, ["charlie"]);
@@ -1120,10 +1244,25 @@ test("cited quotation marks are extracted with block and structure context", () 
   assert.equal(quotations[0].tagType, "cited-quotation");
   assert.equal(quotations[0].note, "Synthetic source note");
   assert.equal(quotations[0].blockId, "block-cited");
+  assert.equal(quotations[0].review.reviewStatus, "verified");
+  assert.equal(quotations[0].review.attributedTo, "Synthetic author");
+  assert.equal(quotations[0].review.sourceTitle, "Synthetic Collected Works");
   assert.deepEqual(
     quotations[0].structureRegions.map((region) => region.title),
     ["Episode 1"],
   );
+});
+
+test("cited quotation extraction falls back to semantic note for review metadata", () => {
+  const quotations = collectCitedQuotationHighlights({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+
+  assert.equal(quotations.length, 1);
+  assert.equal(quotations[0].review.reviewStatus, "needs-source");
+  assert.equal(quotations[0].review.sourceType, "unknown");
+  assert.equal(quotations[0].review.citationText, "Synthetic source note");
 });
 
 test("block filters can show blocks containing cited quotations", () => {
@@ -1145,6 +1284,7 @@ test("cited quotation markdown includes source notes and structure labels", () =
   const quotations = collectCitedQuotationHighlights({
     json: filterDoc,
     regions: filterRegions,
+    quoteReviews: quoteReviewMap,
   });
   const markdown = createCitedQuotationMarkdown({ quotations });
 
@@ -1155,4 +1295,12 @@ test("cited quotation markdown includes source notes and structure labels", () =
   assert.match(markdown, /- Block ID: block-cited/);
   assert.match(markdown, /- Structure: Episode 1/);
   assert.match(markdown, /- Source note: Synthetic source note/);
+  assert.match(markdown, /- Review status: Verified/);
+  assert.match(markdown, /- Attributed to: Synthetic author/);
+  assert.match(markdown, /- Source title: Synthetic Collected Works/);
+  assert.match(markdown, /- Source type: Book/);
+  assert.match(markdown, /- Locator: p\. 42/);
+  assert.match(markdown, /- Citation: Synthetic Collected Works, p\. 42/);
+  assert.match(markdown, /- Rights note: Synthetic rights review complete\./);
+  assert.match(markdown, /- Editor note: Synthetic editor note\./);
 });
