@@ -96,6 +96,8 @@ type StudioManuscriptClientProps = {
 
 type ManuscriptSidePanelMode = "structure" | "filters" | "export";
 
+type RecordingOutlineKind = ManuscriptStructureKind | "all";
+
 const fieldLabelClassName =
   "text-[0.78rem] font-extrabold uppercase text-studio-muted";
 
@@ -106,13 +108,13 @@ const textareaClassName =
   "w-full resize-y rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 py-2.5 text-[0.9rem] leading-6 text-studio-ink disabled:text-studio-dim";
 
 const smallButtonClassName =
-  "min-h-8 rounded-lg border border-studio-line bg-studio-ink/5 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim";
+  "min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.8rem] font-extrabold text-studio-source disabled:text-studio-dim sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
 
 const activeButtonClassName =
   "border-studio-tag/55 bg-studio-tag/15 text-studio-tag";
 
 const dangerButtonClassName =
-  "min-h-8 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-2.5 py-1.5 text-[0.78rem] font-extrabold text-studio-danger";
+  "min-h-10 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 py-2 text-[0.8rem] font-extrabold text-studio-danger sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 
@@ -290,6 +292,9 @@ export function StudioManuscriptClient({
   const [showSemanticColors, setShowSemanticColors] = useState(true);
   const [sidePanelMode, setSidePanelMode] =
     useState<ManuscriptSidePanelMode>("structure");
+  const [isRecordingMode, setIsRecordingMode] = useState(false);
+  const [recordingOutlineKind, setRecordingOutlineKind] =
+    useState<RecordingOutlineKind>("all");
   const [semanticType, setSemanticType] =
     useState<SemanticHighlightType>("insight");
   const [semanticNote, setSemanticNote] = useState("");
@@ -635,6 +640,15 @@ export function StudioManuscriptClient({
       }),
     [blockDetails, filterContextBlockCount, filteredBlockDetails],
   );
+  const recordingOutlineRegions = useMemo(
+    () =>
+      recordingOutlineKind === "all"
+        ? structureRegionSummaries
+        : structureRegionSummaries.filter(
+            (region) => region.kind === recordingOutlineKind,
+          ),
+    [recordingOutlineKind, structureRegionSummaries],
+  );
   const authorSummaries = useMemo(
     () => summarizeAuthorMarkedSpans(currentEditorJson),
     [currentEditorJson],
@@ -676,6 +690,20 @@ export function StudioManuscriptClient({
       return Math.min(current, filteredCitedQuotations.length - 1);
     });
   }, [filteredCitedQuotations.length]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    editor.setEditable(!isRecordingMode);
+  }, [editor, isRecordingMode]);
+
+  useEffect(() => {
+    if (isRecordingMode && sidePanelMode === "export") {
+      setSidePanelMode("structure");
+    }
+  }, [isRecordingMode, sidePanelMode]);
 
   useEffect(() => {
     if (!editor) {
@@ -900,6 +928,57 @@ export function StudioManuscriptClient({
     setFilterVisualMode("highlight-matches");
     setFilterContextBlockCount(0);
     setMessage("Focus View exited. Full manuscript wall restored.");
+  }
+
+  function applyHomerReadingFocus() {
+    setSidePanelMode("filters");
+    setFilterTextQuery("");
+    setFilterAuthorId("homer");
+    setFilterSemanticType("");
+    setFilterStructureRegionId("");
+    setFilterStructureKind("");
+    setFilterBlockType("");
+    setFilterQuoteReviewStatus("");
+    setFilterOnlyUnstructured(false);
+    setFilterOnlyWithSemanticHighlights(false);
+    setFilterOnlyWithoutAuthor(false);
+    setFilterVisualMode("hide-nonmatches");
+    setFilterContextBlockCount(0);
+    setCurrentQuoteIndex(0);
+    setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
+    setMessage("Reading focus enabled for Homer / Scott parts.");
+  }
+
+  function showRecordingOutline(kind: RecordingOutlineKind) {
+    setRecordingOutlineKind(kind);
+    setSidePanelMode("structure");
+    setMessage(
+      kind === "all"
+        ? "Recording outline showing all structure regions."
+        : `${getManuscriptStructureDefinition(kind).label} outline selected.`,
+    );
+  }
+
+  function showFullManuscriptForRecording() {
+    exitFocusView();
+    setRecordingOutlineKind("all");
+    setMessage("Full manuscript visibility restored.");
+  }
+
+  function updateRecordingMode(enabled: boolean) {
+    setIsRecordingMode(enabled);
+
+    if (enabled) {
+      setSidePanelMode("structure");
+      setRecordingOutlineKind("all");
+      setEditingStructureRegionId(null);
+      setEditingQuoteReviewHighlightId(null);
+      setMessage("Recording mode is view-only. Exit recording mode to edit.");
+      return;
+    }
+
+    setMessage("Recording mode exited. Editing controls are available.");
   }
 
   function beginEditingQuoteReview(quotation: ManuscriptCitedQuotationSummary) {
@@ -1829,7 +1908,7 @@ export function StudioManuscriptClient({
         : "default";
 
   return (
-    <main className="min-h-screen p-3.5 md:p-6">
+    <main className="min-h-screen overflow-x-hidden p-3.5 md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_auto_1fr] gap-[18px] md:min-h-[calc(100vh-48px)]">
         <header
           className={cn(
@@ -1860,6 +1939,9 @@ export function StudioManuscriptClient({
             </StudioChip>
             <StudioChip tone="review">Browser-local draft</StudioChip>
             <StudioChip tone="source">No database writes</StudioChip>
+            {isRecordingMode ? (
+              <StudioChip tone="node">Recording mode</StudioChip>
+            ) : null}
           </div>
         </header>
 
@@ -1877,13 +1959,22 @@ export function StudioManuscriptClient({
               <p className="m-0 font-mono text-[0.76rem] leading-relaxed text-studio-muted">
                 {MANUSCRIPT_STORAGE_KEY}
               </p>
-              <p className="m-0 text-[0.84rem] leading-relaxed text-studio-muted">
-                Active author:{" "}
-                {getManuscriptAuthorDefinition(activeAuthorId).label}
-                {" | "}Last saved: {formatDateTime(lastUpdatedAt)}
-                {" | "}Structure regions: {structureRegions.length}
-                {sourceFileName ? ` | Source: ${sourceFileName}` : ""}
-              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <StudioChip tone="source">
+                  Active: {getManuscriptAuthorDefinition(activeAuthorId).label}
+                </StudioChip>
+                <StudioChip tone="default">
+                  Saved: {formatDateTime(lastUpdatedAt)}
+                </StudioChip>
+                <StudioChip tone="node">
+                  Structure {structureRegions.length.toLocaleString()}
+                </StudioChip>
+                {sourceFileName ? (
+                  <StudioChip className="normal-case" tone="review">
+                    Source: {sourceFileName}
+                  </StudioChip>
+                ) : null}
+              </div>
               {importSummary ? (
                 <div className="mt-1 grid gap-1 rounded-lg border border-studio-tag/40 bg-studio-tag/10 p-3 text-[0.8rem] leading-relaxed text-studio-muted">
                   <p className="m-0 font-extrabold text-studio-tag">
@@ -1903,6 +1994,18 @@ export function StudioManuscriptClient({
 
             <div className="flex flex-wrap gap-2 lg:justify-end">
               <button
+                className={cn(
+                  smallButtonClassName,
+                  isRecordingMode ? activeButtonClassName : "",
+                )}
+                type="button"
+                onClick={() => updateRecordingMode(!isRecordingMode)}
+              >
+                {isRecordingMode
+                  ? "Exit Recording / Reading"
+                  : "Recording / Reading mode"}
+              </button>
+              <button
                 className={smallButtonClassName}
                 type="button"
                 onClick={() => setShowAuthorColors((current) => !current)}
@@ -1918,22 +2021,182 @@ export function StudioManuscriptClient({
                   ? "Hide semantic colors"
                   : "Show semantic colors"}
               </button>
-              <button
-                className={dangerButtonClassName}
-                type="button"
-                onClick={clearLocalDraft}
-              >
-                Clear local draft
-              </button>
+              {!isRecordingMode ? (
+                <button
+                  className={dangerButtonClassName}
+                  type="button"
+                  onClick={clearLocalDraft}
+                >
+                  Clear local draft
+                </button>
+              ) : null}
             </div>
           </div>
         </section>
 
+        {isRecordingMode ? (
+          <section
+            className={cn(
+              panelClassName,
+              "sticky top-2 z-20 grid gap-3 border-studio-node/45 bg-studio-panel/98 px-4 py-3.5",
+            )}
+            aria-label="Recording reading controls"
+          >
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <p className={labelClassName}>Recording / Reading mode</p>
+                <p className="m-0 text-[0.88rem] leading-relaxed text-studio-muted">
+                  Recording mode is view-only. Exit recording mode to edit.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={applyHomerReadingFocus}
+                >
+                  Read Homer / Scott parts
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => showRecordingOutline("episode")}
+                >
+                  Episode outline
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => showRecordingOutline("chapter")}
+                >
+                  Chapter / book outline
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => applyQuoteFocus()}
+                >
+                  Cited quotations
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={showFullManuscriptForRecording}
+                >
+                  Full manuscript
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="m-0 text-[0.95rem] leading-snug text-studio-ink">
+                  Recording outline
+                </h2>
+                <div className="flex flex-wrap gap-1.5">
+                  <StudioChip tone="node">
+                    {recordingOutlineKind === "all"
+                      ? "All structure"
+                      : getManuscriptStructureDefinition(recordingOutlineKind)
+                          .label}
+                  </StudioChip>
+                  <StudioChip tone="source">
+                    {recordingOutlineRegions.length.toLocaleString()} items
+                  </StudioChip>
+                  {blockFilterSummary.hasActiveFilters ? (
+                    <StudioChip tone="review">
+                      {filteredBlockDetails.length.toLocaleString()} matches
+                    </StudioChip>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["all", "All"],
+                    ["chapter", "Chapters"],
+                    ["episode", "Episodes"],
+                    ["section", "Sections"],
+                  ] as Array<[RecordingOutlineKind, string]>
+                ).map(([kind, label]) => (
+                  <button
+                    className={cn(
+                      smallButtonClassName,
+                      recordingOutlineKind === kind ? activeButtonClassName : "",
+                    )}
+                    key={kind}
+                    type="button"
+                    onClick={() => showRecordingOutline(kind)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid max-h-[38vh] gap-2 overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+                {recordingOutlineRegions.length ? (
+                  recordingOutlineRegions.map((region) => (
+                    <article
+                      className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                      key={region.id}
+                    >
+                      <div className="flex flex-wrap gap-1.5">
+                        <StudioChip tone="node">
+                          {getManuscriptStructureDefinition(region.kind).label}
+                        </StudioChip>
+                        <StudioChip tone="source">
+                          {region.blockCount.toLocaleString()} blocks
+                        </StudioChip>
+                      </div>
+                      <h3 className="m-0 text-[0.94rem] leading-snug text-studio-ink">
+                        {region.title}
+                      </h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={() => focusBlock(region.startBlockId)}
+                        >
+                          Jump start
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={() => focusBlock(region.endBlockId)}
+                        >
+                          Jump end
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className={panelCopyClassName}>
+                    No structure regions are available for this outline.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section
-          className="grid gap-[18px] xl:grid-cols-[minmax(310px,0.55fr)_minmax(520px,1fr)_minmax(340px,0.55fr)]"
+          className={cn(
+            "grid gap-[18px]",
+            isRecordingMode
+              ? "xl:grid-cols-[minmax(560px,1fr)_minmax(340px,0.48fr)]"
+              : "xl:grid-cols-[minmax(310px,0.55fr)_minmax(520px,1fr)_minmax(340px,0.55fr)]",
+          )}
           aria-label="Manuscript Desk workspace"
         >
-          <aside className={panelClassName} aria-label="Import and toolbar">
+          <aside
+            className={cn(
+              panelClassName,
+              "order-3 xl:order-1",
+              isRecordingMode && "hidden",
+            )}
+            aria-label="Import and toolbar"
+          >
             <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Import</p>
               <StudioChip tone="source">.docx to HTML</StudioChip>
@@ -2292,11 +2555,12 @@ export function StudioManuscriptClient({
           <section
             className={cn(
               panelClassName,
-              "grid gap-3",
+              "order-1 grid gap-3 xl:order-2",
+              isRecordingMode && "manuscript-recording-mode",
               !showAuthorColors && "manuscript-hide-author-colors",
               !showSemanticColors && "manuscript-hide-semantic-colors",
             )}
-            aria-label="Editable manuscript"
+            aria-label={isRecordingMode ? "Read-only manuscript" : "Editable manuscript"}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -2322,7 +2586,12 @@ export function StudioManuscriptClient({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+            {isRecordingMode ? (
+              <div className="rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted">
+                Recording mode is view-only. Exit recording mode to edit.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
               <p className={labelClassName}>Selection actions</p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -2383,6 +2652,7 @@ export function StudioManuscriptClient({
                 </button>
               </div>
             </div>
+            )}
 
             <EditorContent editor={editor} />
 
@@ -2393,7 +2663,10 @@ export function StudioManuscriptClient({
             </p>
           </section>
 
-          <aside className={panelClassName} aria-label="Block and highlight panel">
+          <aside
+            className={cn(panelClassName, "order-2 xl:order-3")}
+            aria-label="Block and highlight panel"
+          >
             <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Inspector</p>
               <StudioChip tone="node">
@@ -2435,26 +2708,30 @@ export function StudioManuscriptClient({
               <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                 Side panel
               </h2>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {(
                   [
                     ["structure", "Structure"],
                     ["filters", "Filters"],
                     ["export", "Export"],
                   ] as Array<[ManuscriptSidePanelMode, string]>
-                ).map(([mode, label]) => (
-                  <button
-                    className={cn(
-                      smallButtonClassName,
-                      sidePanelMode === mode ? activeButtonClassName : "",
-                    )}
-                    key={mode}
-                    type="button"
-                    onClick={() => setSidePanelMode(mode)}
-                  >
-                    {label}
-                  </button>
-                ))}
+                )
+                  .filter(([mode]) => !isRecordingMode || mode !== "export")
+                  .map(([mode, label]) => (
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        sidePanelMode === mode ? activeButtonClassName : "",
+                      )}
+                      key={mode}
+                      type="button"
+                      onClick={() => setSidePanelMode(mode)}
+                    >
+                      {mode === "structure" && isRecordingMode
+                        ? "Outline"
+                        : label}
+                    </button>
+                  ))}
               </div>
             </section>
 
@@ -2517,61 +2794,73 @@ export function StudioManuscriptClient({
                             >
                               Jump to end
                             </button>
-                            <button
-                              className={smallButtonClassName}
-                              type="button"
-                              disabled={!canMoveStructureRegion(region, "up")}
-                              onClick={() => moveStructureRegion(region.id, "up")}
-                            >
-                              Move up
-                            </button>
-                            <button
-                              className={smallButtonClassName}
-                              type="button"
-                              disabled={!canMoveStructureRegion(region, "down")}
-                              onClick={() =>
-                                moveStructureRegion(region.id, "down")
-                              }
-                            >
-                              Move down
-                            </button>
-                            {isEditing ? (
+                            {!isRecordingMode ? (
                               <>
                                 <button
                                   className={smallButtonClassName}
                                   type="button"
-                                  onClick={() => saveStructureRegion(region.id)}
+                                  disabled={!canMoveStructureRegion(region, "up")}
+                                  onClick={() =>
+                                    moveStructureRegion(region.id, "up")
+                                  }
                                 >
-                                  Save
+                                  Move up
                                 </button>
                                 <button
                                   className={smallButtonClassName}
                                   type="button"
-                                  onClick={cancelEditingStructureRegion}
+                                  disabled={
+                                    !canMoveStructureRegion(region, "down")
+                                  }
+                                  onClick={() =>
+                                    moveStructureRegion(region.id, "down")
+                                  }
                                 >
-                                  Cancel
+                                  Move down
+                                </button>
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className={smallButtonClassName}
+                                      type="button"
+                                      onClick={() =>
+                                        saveStructureRegion(region.id)
+                                      }
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      className={smallButtonClassName}
+                                      type="button"
+                                      onClick={cancelEditingStructureRegion}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    className={smallButtonClassName}
+                                    type="button"
+                                    onClick={() =>
+                                      beginEditingStructureRegion(region)
+                                    }
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                <button
+                                  className={dangerButtonClassName}
+                                  type="button"
+                                  onClick={() => removeStructureRegion(region.id)}
+                                >
+                                  Remove
                                 </button>
                               </>
-                            ) : (
-                              <button
-                                className={smallButtonClassName}
-                                type="button"
-                                onClick={() => beginEditingStructureRegion(region)}
-                              >
-                                Edit
-                              </button>
-                            )}
-                            <button
-                              className={dangerButtonClassName}
-                              type="button"
-                              onClick={() => removeStructureRegion(region.id)}
-                            >
-                              Remove
-                            </button>
+                            ) : null}
                           </div>
                         </div>
 
-                        {isEditing ? (
+                        {isEditing && !isRecordingMode ? (
                           <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                             <label className="grid gap-1.5">
                               <span className={fieldLabelClassName}>
@@ -2727,26 +3016,30 @@ export function StudioManuscriptClient({
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          <button
-                            className={smallButtonClassName}
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setPendingStructureStart(block.blockId);
-                            }}
-                          >
-                            Set start
-                          </button>
-                          <button
-                            className={smallButtonClassName}
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setPendingStructureEnd(block.blockId);
-                            }}
-                          >
-                            Set end
-                          </button>
+                          {!isRecordingMode ? (
+                            <>
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setPendingStructureStart(block.blockId);
+                                }}
+                              >
+                                Set start
+                              </button>
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setPendingStructureEnd(block.blockId);
+                                }}
+                              >
+                                Set end
+                              </button>
+                            </>
+                          ) : null}
                           <button
                             className={smallButtonClassName}
                             type="button"
@@ -3077,20 +3370,24 @@ export function StudioManuscriptClient({
                   >
                     Clear filters
                   </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={exportFilteredBlockList}
-                  >
-                    Export filtered Markdown
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={downloadFilteredBlockList}
-                  >
-                    Download filtered Markdown
-                  </button>
+                  {!isRecordingMode ? (
+                    <>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={exportFilteredBlockList}
+                      >
+                        Export filtered Markdown
+                      </button>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={downloadFilteredBlockList}
+                      >
+                        Download filtered Markdown
+                      </button>
+                    </>
+                  ) : null}
                 </div>
                 <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3163,22 +3460,24 @@ export function StudioManuscriptClient({
                         }`
                       : "No quotes in the current filter."}
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={exportCitedQuotations}
-                    >
-                      Export quote Markdown
-                    </button>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={downloadCitedQuotations}
-                    >
-                      Download quote Markdown
-                    </button>
-                  </div>
+                  {!isRecordingMode ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={exportCitedQuotations}
+                      >
+                        Export quote Markdown
+                      </button>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={downloadCitedQuotations}
+                      >
+                        Download quote Markdown
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="grid max-h-[220px] gap-2 overflow-auto pr-1">
                     {filteredCitedQuotations.length ? (
                       filteredCitedQuotations.map((quotation, index) => {
@@ -3217,36 +3516,38 @@ export function StudioManuscriptClient({
                                 >
                                   Jump
                                 </button>
-                                {isEditing ? (
-                                  <>
+                                {!isRecordingMode ? (
+                                  isEditing ? (
+                                    <>
+                                      <button
+                                        className={smallButtonClassName}
+                                        type="button"
+                                        onClick={() =>
+                                          saveQuoteReview(quotation.highlightId)
+                                        }
+                                      >
+                                        Save review
+                                      </button>
+                                      <button
+                                        className={smallButtonClassName}
+                                        type="button"
+                                        onClick={cancelEditingQuoteReview}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
                                     <button
                                       className={smallButtonClassName}
                                       type="button"
                                       onClick={() =>
-                                        saveQuoteReview(quotation.highlightId)
+                                        beginEditingQuoteReview(quotation)
                                       }
                                     >
-                                      Save review
+                                      Review
                                     </button>
-                                    <button
-                                      className={smallButtonClassName}
-                                      type="button"
-                                      onClick={cancelEditingQuoteReview}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    className={smallButtonClassName}
-                                    type="button"
-                                    onClick={() =>
-                                      beginEditingQuoteReview(quotation)
-                                    }
-                                  >
-                                    Review
-                                  </button>
-                                )}
+                                  )
+                                ) : null}
                               </div>
                             </div>
                             <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
@@ -3292,7 +3593,7 @@ export function StudioManuscriptClient({
                               ) : null}
                             </div>
 
-                            {isEditing ? (
+                            {isEditing && !isRecordingMode ? (
                               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   <label className="grid gap-1.5">
@@ -3534,7 +3835,7 @@ export function StudioManuscriptClient({
               </section>
             ) : null}
 
-            {sidePanelMode === "export" ? (
+            {sidePanelMode === "export" && !isRecordingMode ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                 Export / backup

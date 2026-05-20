@@ -51,6 +51,11 @@ Quote Focus is a narrower Focus View for cited quotation review. It can filter
 by browser-local quote review status and show zero, one, or two surrounding
 context blocks, but it must not mutate hidden manuscript blocks.
 
+Recording / Reading mode is also view state only. It makes the editor read-only
+and emphasizes outline/navigation controls without changing manuscript JSON,
+structure regions, author marks, semantic marks, quote reviews, or the
+localStorage schema.
+
 The MVP is not database-backed. It does not write Prisma rows, remote Studio
 documents, public projections, `.docx` exports, manuscript MDX, or imported
 archive files.
@@ -279,6 +284,45 @@ archive files.
     the full manuscript wall returns.
 19. Click `Export editor JSON` and confirm hidden blocks are still present in
     the editor JSON.
+
+## Mobile Recording / Reading Smoke Steps
+
+1. Open `/manuscript` on desktop.
+2. Narrow the browser width or use a mobile simulator.
+3. Confirm the layout stacks cleanly with the manuscript surface before the
+   dense import/edit toolbar.
+4. Confirm buttons wrap cleanly and remain tappable.
+5. Confirm the status area uses compact chips instead of a long pipe-separated
+   text line.
+6. Enable `Recording / Reading mode`.
+7. Confirm the copy says `Recording mode is view-only. Exit recording mode to
+   edit.`
+8. Try typing in the manuscript surface and confirm editing is disabled.
+9. Confirm advanced import/edit/export controls are hidden or moved out of the
+   primary mobile reading path.
+10. Confirm the script view remains one continuous scroll with main manuscript
+    text visually primary, Charlie-marked spans visually distinct, structure
+    labels visible, and cited quotations still distinguishable.
+11. Use `Read Homer / Scott parts`.
+12. Confirm the author filter is Homer / Scott, visual mode is Hide nonmatches,
+    matching count appears, and only Homer / Scott blocks remain visible.
+13. Use `Episode outline`.
+14. Confirm episode structure regions appear with block counts and Jump start /
+    Jump end controls.
+15. Use `Chapter / book outline`.
+16. Confirm chapter/book structure regions appear with block counts and Jump
+    start / Jump end controls.
+17. Use `Cited quotations`.
+18. Confirm cited-quotation blocks are visible and nonmatching blocks are
+    hidden.
+19. Use `Full manuscript`.
+20. Confirm filters clear and the full long-wall manuscript returns while
+    Recording / Reading mode remains active.
+21. Exit Recording / Reading mode.
+22. Confirm editing controls return and the manuscript surface is editable
+    again.
+23. Export editor JSON or full draft JSON and confirm changing modes did not
+    remove hidden blocks or mutate manuscript data.
 
 ## What To Inspect In Exported JSON
 
