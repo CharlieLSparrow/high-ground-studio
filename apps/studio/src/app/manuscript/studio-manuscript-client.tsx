@@ -94,9 +94,22 @@ type StudioManuscriptClientProps = {
   };
 };
 
-type ManuscriptSidePanelMode = "structure" | "filters" | "export";
+type ManuscriptSidePanelMode =
+  | "mark"
+  | "structure"
+  | "find"
+  | "quotes"
+  | "backup";
 
 type RecordingOutlineKind = ManuscriptStructureKind | "all";
+
+const manuscriptSidePanelModes = [
+  { id: "mark", label: "Mark" },
+  { id: "structure", label: "Structure" },
+  { id: "find", label: "Find" },
+  { id: "quotes", label: "Quotes" },
+  { id: "backup", label: "Backup" },
+] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
 const fieldLabelClassName =
   "text-[0.78rem] font-extrabold uppercase text-studio-muted";
@@ -164,6 +177,13 @@ function getQuoteReviewStatusTone(status: ManuscriptQuoteReviewStatus) {
   }
 
   return "review" as const;
+}
+
+function getSidePanelModeLabel(mode: ManuscriptSidePanelMode) {
+  return (
+    manuscriptSidePanelModes.find((definition) => definition.id === mode)
+      ?.label ?? "Mark"
+  );
 }
 
 function getAuthorMarkAttrs(authorId: ManuscriptAuthorId) {
@@ -292,7 +312,7 @@ export function StudioManuscriptClient({
   const [showAuthorColors, setShowAuthorColors] = useState(true);
   const [showSemanticColors, setShowSemanticColors] = useState(true);
   const [sidePanelMode, setSidePanelMode] =
-    useState<ManuscriptSidePanelMode>("structure");
+    useState<ManuscriptSidePanelMode>("mark");
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [recordingOutlineKind, setRecordingOutlineKind] =
@@ -702,7 +722,7 @@ export function StudioManuscriptClient({
   }, [editor, isRecordingMode]);
 
   useEffect(() => {
-    if (isRecordingMode && sidePanelMode === "export") {
+    if (isRecordingMode && sidePanelMode === "backup") {
       setSidePanelMode("structure");
     }
   }, [isRecordingMode, sidePanelMode]);
@@ -903,7 +923,7 @@ export function StudioManuscriptClient({
   }
 
   function applyQuoteFocus(status: ManuscriptQuoteReviewStatusFilter | "" = "") {
-    setSidePanelMode("filters");
+    setSidePanelMode("find");
     setFilterTextQuery("");
     setFilterAuthorId("");
     setFilterSemanticType("cited-quotation");
@@ -933,7 +953,7 @@ export function StudioManuscriptClient({
   }
 
   function applyHomerReadingFocus() {
-    setSidePanelMode("filters");
+    setSidePanelMode("find");
     setFilterTextQuery("");
     setFilterAuthorId("homer");
     setFilterSemanticType("");
@@ -1926,661 +1946,105 @@ export function StudioManuscriptClient({
 
   return (
     <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-24 md:p-6">
-      <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_auto_1fr] md:gap-[18px]">
+      <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
         <header
           className={cn(
             panelClassName,
-            "hidden min-h-[72px] flex-col items-stretch justify-between gap-[18px] px-[18px] py-4 md:flex lg:flex-row lg:items-center",
+            "sticky top-3 z-30 hidden gap-3 px-3 py-2.5 md:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center",
           )}
-          aria-label="Manuscript Desk status"
+          aria-label="Manuscript command bar"
         >
-          <div className="flex min-w-0 flex-col items-stretch gap-3.5 sm:flex-row sm:items-center">
-            <StudioGlyph />
-            <div>
-              <p className={labelClassName}>Studio Manuscript Desk</p>
-              <h1 className="mt-1.5 mb-0 text-[1.75rem] leading-[1.08] tracking-normal text-studio-ink max-sm:text-[1.45rem]">
-                Block-aware attribution
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <StudioGlyph className="size-9 text-base" />
+            <div className="min-w-[180px] flex-1">
+              <p className={labelClassName}>Manuscript Desk</p>
+              <h1 className="m-0 truncate text-[1.05rem] leading-tight tracking-normal text-studio-ink">
+                {title || "Untitled manuscript"}
               </h1>
-              <p className="mt-1.5 mb-0 max-w-[840px] text-[0.94rem] leading-relaxed text-studio-muted">
-                Import a manuscript, edit block by block, and mark spans for
-                authorship, meaning, chapters, and episodes.
-              </p>
             </div>
+            <StudioChip tone="source">
+              Active: {getManuscriptAuthorDefinition(activeAuthorId).label}
+            </StudioChip>
+            <StudioChip tone="node">
+              Mode: {getSidePanelModeLabel(sidePanelMode)}
+            </StudioChip>
+            <StudioChip tone="review">
+              Quotes {citedQuotations.length.toLocaleString()}
+            </StudioChip>
+            {blockFilterSummary.hasActiveFilters ? (
+              <StudioChip tone="review">
+                Focus {filteredBlockDetails.length.toLocaleString()} /{" "}
+                {blockDetails.length.toLocaleString()}
+              </StudioChip>
+            ) : null}
+            {isRecordingMode ? (
+              <StudioChip tone="node">Recording view-only</StudioChip>
+            ) : null}
+            <StudioChip tone="default">
+              Saved: {formatDateTime(lastUpdatedAt)}
+            </StudioChip>
           </div>
 
-          <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+          <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
             <StudioNav />
-            <StudioChip tone="tag">Studio access</StudioChip>
-            <StudioChip className="normal-case" tone="source">
-              {actor.primaryEmail}
-            </StudioChip>
-            <StudioChip tone="review">Browser-local draft</StudioChip>
-            <StudioChip tone="source">No database writes</StudioChip>
-            {isRecordingMode ? (
-              <StudioChip tone="node">Recording mode</StudioChip>
+            <button
+              className={cn(
+                smallButtonClassName,
+                isRecordingMode ? activeButtonClassName : "",
+              )}
+              type="button"
+              onClick={() => updateRecordingMode(!isRecordingMode)}
+            >
+              {isRecordingMode
+                ? "Exit Recording / Reading"
+                : "Recording / Reading"}
+            </button>
+            {blockFilterSummary.hasActiveFilters ? (
+              <button
+                className={smallButtonClassName}
+                type="button"
+                onClick={exitFocusView}
+              >
+                Full manuscript
+              </button>
             ) : null}
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={downloadFullDraftJson}
+            >
+              Backup
+            </button>
           </div>
+          <p
+            className={cn(
+              "m-0 truncate text-[0.78rem] leading-relaxed text-studio-muted xl:col-span-2",
+              statusTone === "tag" && "text-studio-tag",
+              statusTone === "danger" && "text-studio-danger",
+            )}
+          >
+            {message} Browser-local draft. No database writes.
+          </p>
         </header>
 
         <section
-          className={cn(panelClassName, "hidden gap-3 px-4 py-3.5 md:grid")}
-          aria-label="Manuscript persistence status"
-        >
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="grid gap-2">
-              <p className={labelClassName}>Draft status</p>
-              <p className="m-0 text-[0.92rem] leading-relaxed text-studio-muted">
-                Saved locally in this browser. Not yet synced to Studio database.
-                Export backups before serious edits or long writing sessions.
-              </p>
-              <p className="m-0 font-mono text-[0.76rem] leading-relaxed text-studio-muted">
-                {MANUSCRIPT_STORAGE_KEY}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                <StudioChip tone="source">
-                  Active: {getManuscriptAuthorDefinition(activeAuthorId).label}
-                </StudioChip>
-                <StudioChip tone="default">
-                  Saved: {formatDateTime(lastUpdatedAt)}
-                </StudioChip>
-                <StudioChip tone="node">
-                  Structure {structureRegions.length.toLocaleString()}
-                </StudioChip>
-                {sourceFileName ? (
-                  <StudioChip className="normal-case" tone="review">
-                    Source: {sourceFileName}
-                  </StudioChip>
-                ) : null}
-              </div>
-              {importSummary ? (
-                <div className="mt-1 grid gap-1 rounded-lg border border-studio-tag/40 bg-studio-tag/10 p-3 text-[0.8rem] leading-relaxed text-studio-muted">
-                  <p className="m-0 font-extrabold text-studio-tag">
-                    Imported text is Homer / Scott. New writing should be
-                    Charlie.
-                  </p>
-                  <p className="m-0">
-                    {importSummary.sourceFileName} imported{" "}
-                    {formatDateTime(importSummary.importedAt)} with{" "}
-                    {importSummary.words.toLocaleString()} words,{" "}
-                    {importSummary.characters.toLocaleString()} characters, and{" "}
-                    {importSummary.blocks.toLocaleString()} blocks.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-              <button
-                className={cn(
-                  smallButtonClassName,
-                  isRecordingMode ? activeButtonClassName : "",
-                )}
-                type="button"
-                onClick={() => updateRecordingMode(!isRecordingMode)}
-              >
-                {isRecordingMode
-                  ? "Exit Recording / Reading"
-                  : "Recording / Reading mode"}
-              </button>
-              <button
-                className={smallButtonClassName}
-                type="button"
-                onClick={() => setShowAuthorColors((current) => !current)}
-              >
-                {showAuthorColors ? "Hide author colors" : "Show author colors"}
-              </button>
-              <button
-                className={smallButtonClassName}
-                type="button"
-                onClick={() => setShowSemanticColors((current) => !current)}
-              >
-                {showSemanticColors
-                  ? "Hide semantic colors"
-                  : "Show semantic colors"}
-              </button>
-              {!isRecordingMode ? (
-                <button
-                  className={dangerButtonClassName}
-                  type="button"
-                  onClick={clearLocalDraft}
-                >
-                  Clear local draft
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        {isRecordingMode ? (
-          <section
-            className={cn(
-              panelClassName,
-              "sticky top-2 z-20 hidden gap-3 border-studio-node/45 bg-studio-panel/98 px-4 py-3.5 md:grid",
-            )}
-            aria-label="Recording reading controls"
-          >
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <p className={labelClassName}>Recording / Reading mode</p>
-                <p className="m-0 text-[0.88rem] leading-relaxed text-studio-muted">
-                  Recording mode is view-only. Exit recording mode to edit.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={applyHomerReadingFocus}
-                >
-                  Read Homer / Scott parts
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => showRecordingOutline("episode")}
-                >
-                  Episode outline
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => showRecordingOutline("chapter")}
-                >
-                  Chapter / book outline
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => applyQuoteFocus()}
-                >
-                  Cited quotations
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={showFullManuscriptForRecording}
-                >
-                  Full manuscript
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="m-0 text-[0.95rem] leading-snug text-studio-ink">
-                  Recording outline
-                </h2>
-                <div className="flex flex-wrap gap-1.5">
-                  <StudioChip tone="node">
-                    {recordingOutlineKind === "all"
-                      ? "All structure"
-                      : getManuscriptStructureDefinition(recordingOutlineKind)
-                          .label}
-                  </StudioChip>
-                  <StudioChip tone="source">
-                    {recordingOutlineRegions.length.toLocaleString()} items
-                  </StudioChip>
-                  {blockFilterSummary.hasActiveFilters ? (
-                    <StudioChip tone="review">
-                      {filteredBlockDetails.length.toLocaleString()} matches
-                    </StudioChip>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    ["all", "All"],
-                    ["chapter", "Chapters"],
-                    ["episode", "Episodes"],
-                    ["section", "Sections"],
-                  ] as Array<[RecordingOutlineKind, string]>
-                ).map(([kind, label]) => (
-                  <button
-                    className={cn(
-                      smallButtonClassName,
-                      recordingOutlineKind === kind ? activeButtonClassName : "",
-                    )}
-                    key={kind}
-                    type="button"
-                    onClick={() => showRecordingOutline(kind)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid max-h-[38vh] gap-2 overflow-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
-                {recordingOutlineRegions.length ? (
-                  recordingOutlineRegions.map((region) => (
-                    <article
-                      className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                      key={region.id}
-                    >
-                      <div className="flex flex-wrap gap-1.5">
-                        <StudioChip tone="node">
-                          {getManuscriptStructureDefinition(region.kind).label}
-                        </StudioChip>
-                        <StudioChip tone="source">
-                          {region.blockCount.toLocaleString()} blocks
-                        </StudioChip>
-                      </div>
-                      <h3 className="m-0 text-[0.94rem] leading-snug text-studio-ink">
-                        {region.title}
-                      </h3>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          className={smallButtonClassName}
-                          type="button"
-                          onClick={() => focusBlock(region.startBlockId)}
-                        >
-                          Jump start
-                        </button>
-                        <button
-                          className={smallButtonClassName}
-                          type="button"
-                          onClick={() => focusBlock(region.endBlockId)}
-                        >
-                          Jump end
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className={panelCopyClassName}>
-                    No structure regions are available for this outline.
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        <section
           className={cn(
-            "grid gap-[18px]",
-            isRecordingMode
-              ? "xl:grid-cols-[minmax(560px,1fr)_minmax(340px,0.48fr)]"
-              : "xl:grid-cols-[minmax(310px,0.55fr)_minmax(520px,1fr)_minmax(340px,0.55fr)]",
+            "grid gap-[18px] md:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:grid-cols-[minmax(0,1fr)_400px]",
           )}
           aria-label="Manuscript Desk workspace"
         >
-          <aside
-            className={cn(
-              panelClassName,
-              "order-3 xl:order-1",
-              isRecordingMode && "hidden",
-            )}
-            aria-label="Import and toolbar"
-          >
-            <div className="mb-3.5 flex items-start justify-between gap-3">
-              <p className={labelClassName}>Import</p>
-              <StudioChip tone="source">.docx to HTML</StudioChip>
-            </div>
-
-            <h2 className={panelTitleClassName}>Source document</h2>
-            <p className={panelCopyClassName}>
-              Import Word content into TipTap JSON. Imported text is marked
-              Homer / Scott by default, then the active author switches to
-              Charlie for new writing.
-            </p>
-
-            <div className="mt-4 grid gap-3">
-              <label className="grid gap-2">
-                <span className={fieldLabelClassName}>Title</span>
-                <input
-                  className={fieldClassName}
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className={fieldLabelClassName}>Upload .docx</span>
-                <input
-                  className={fieldClassName}
-                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  type="file"
-                  onChange={(event) => {
-                    void importDocx(event.target.files?.[0] ?? null);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
-
-              <button
-                className={smallButtonClassName}
-                type="button"
-                onClick={markAllAsHomer}
-              >
-                Mark all as Homer / Scott
-              </button>
-              <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
-                Importing a `.docx` replaces the current browser-local draft
-                after confirmation. Download a backup before major edits.
-              </p>
-            </div>
-
-            <div className="mt-6 grid gap-3">
-              <p className={labelClassName}>Active author</p>
-              <div className="grid gap-2">
-                {manuscriptAuthorDefinitions.map((author) => (
-                  <button
-                    className={cn(
-                      smallButtonClassName,
-                      activeAuthorId === author.id ? activeButtonClassName : "",
-                    )}
-                    key={author.id}
-                    type="button"
-                    onClick={() => updateActiveAuthor(author.id)}
-                  >
-                    {author.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-3">
-              <p className={labelClassName}>Toolbar</p>
-              <div className="grid gap-2">
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => markSelectionAsAuthor("charlie")}
-                >
-                  Mark selection as Charlie
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => markSelectionAsAuthor("homer")}
-                >
-                  Mark selection as Homer / Scott
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => markSelectionAsAuthor("unassigned")}
-                >
-                  Clear author mark
-                </button>
-              </div>
-
-              <div className="grid gap-2">
-                <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>Semantic tag</span>
-                  <select
-                    className={fieldClassName}
-                    value={semanticType}
-                    onChange={(event) =>
-                      setSemanticType(event.target.value as SemanticHighlightType)
-                    }
-                  >
-                    {semanticHighlightDefinitions.map((definition) => (
-                      <option key={definition.id} value={definition.id}>
-                        {definition.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>Semantic note</span>
-                  <textarea
-                    className={cn(textareaClassName, "min-h-[84px]")}
-                    value={semanticNote}
-                    onChange={(event) => setSemanticNote(event.target.value)}
-                  />
-                </label>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={applySemanticHighlight}
-                >
-                  Apply semantic highlight
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={clearSemanticHighlight}
-                >
-                  Clear semantic highlight
-                </button>
-              </div>
-
-              <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className={labelClassName}>Cited quotation</p>
-                  <StudioChip tone="review">
-                    {citedQuotations.length.toLocaleString()} marked
-                  </StudioChip>
-                </div>
-                <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>
-                    Citation / source note
-                  </span>
-                  <textarea
-                    className={cn(textareaClassName, "min-h-[72px]")}
-                    value={citationNote}
-                    onChange={(event) => setCitationNote(event.target.value)}
-                  />
-                </label>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={markCitedQuotation}
-                >
-                  Mark cited quotation
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => applyQuoteFocus()}
-                >
-                  Quote Focus
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={clearSemanticHighlight}
-                >
-                  Clear cited quotation / semantic
-                </button>
-              </div>
-
-              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className={labelClassName}>Structure layer</p>
-                  <StudioChip tone="node">
-                    {selectedStructureRange
-                      ? `${selectedStructureRange.blockCount.toLocaleString()} blocks`
-                      : "No range"}
-                  </StudioChip>
-                </div>
-                <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>Region kind</span>
-                  <select
-                    className={fieldClassName}
-                    value={structureKind}
-                    onChange={(event) =>
-                      updateStructureKind(
-                        event.target.value as ManuscriptStructureKind,
-                      )
-                    }
-                  >
-                    {manuscriptStructureDefinitions.map((definition) => (
-                      <option key={definition.id} value={definition.id}>
-                        {definition.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {structureKind === "chapter" ? (
-                  <label className="grid gap-2">
-                    <span className={fieldLabelClassName}>
-                      Book label preset
-                    </span>
-                    <select
-                      className={fieldClassName}
-                      value={structureLabelPreset}
-                      onChange={(event) =>
-                        updateStructureLabelPreset(
-                          event.target.value as ManuscriptStructureLabelPreset,
-                        )
-                      }
-                    >
-                      {manuscriptStructureLabelPresets.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>Region title</span>
-                  <input
-                    className={fieldClassName}
-                    placeholder={getDefaultStructureTitle(
-                      structureKind,
-                      structureLabelPreset,
-                    )}
-                    value={structureTitle}
-                    onChange={(event) => setStructureTitle(event.target.value)}
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>Structure notes</span>
-                  <textarea
-                    className={cn(textareaClassName, "min-h-[76px]")}
-                    value={structureNotes}
-                    onChange={(event) => setStructureNotes(event.target.value)}
-                  />
-                </label>
-                {pendingStructureRange ? (
-                  <div className="grid gap-2 rounded-lg border border-studio-node/40 bg-studio-node/10 p-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className={fieldLabelClassName}>
-                        Pending structure range
-                      </span>
-                      <StudioChip
-                        tone={
-                          pendingStructureRange.isRangeComplete
-                            ? "node"
-                            : "review"
-                        }
-                      >
-                        {pendingStructureRange.isRangeComplete
-                          ? `${pendingStructureRange.blockCount.toLocaleString()} blocks`
-                          : "Set both ends"}
-                      </StudioChip>
-                    </div>
-                    <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                      Start:{" "}
-                      {getBlockPreview(pendingStructureStartBlockId) ||
-                        pendingStructureRange.startPreview}
-                    </p>
-                    <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                      End:{" "}
-                      {getBlockPreview(pendingStructureEndBlockId) ||
-                        pendingStructureRange.endPreview}
-                    </p>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={clearPendingStructureRange}
-                    >
-                      Clear pending range
-                    </button>
-                  </div>
-                ) : null}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={captureStructureRange}
-                  >
-                    Capture range
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={createStructureRegion}
-                  >
-                    Add structure
-                  </button>
-                </div>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={suggestBookRegionsFromHeadings}
-                >
-                  Suggest book regions from headings
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  className={cn(
-                    smallButtonClassName,
-                    editor?.isActive("bold") ? activeButtonClassName : "",
-                  )}
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleBold().run()}
-                >
-                  Bold
-                </button>
-                <button
-                  className={cn(
-                    smallButtonClassName,
-                    editor?.isActive("italic") ? activeButtonClassName : "",
-                  )}
-                  type="button"
-                  onClick={() => editor?.chain().focus().toggleItalic().run()}
-                >
-                  Italic
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => editor?.chain().focus().undo().run()}
-                >
-                  Undo
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => editor?.chain().focus().redo().run()}
-                >
-                  Redo
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={cn(
-                "mt-5 rounded-lg border border-studio-line p-3 text-[0.82rem] leading-relaxed text-studio-muted",
-                statusTone === "tag" && "border-studio-tag/45 text-studio-tag",
-                statusTone === "danger" &&
-                  "border-studio-danger/50 text-studio-danger",
-              )}
-            >
-              {message}
-            </div>
-          </aside>
-
           <section
             ref={manuscriptSurfaceRef}
             className={cn(
               panelClassName,
-              "order-1 grid gap-3 xl:order-2",
+              "order-1 grid gap-3 md:order-none",
               isRecordingMode && "manuscript-recording-mode",
               !showAuthorColors && "manuscript-hide-author-colors",
               !showSemanticColors && "manuscript-hide-semantic-colors",
             )}
             aria-label={isRecordingMode ? "Read-only manuscript" : "Editable manuscript"}
           >
-            <div className="hidden flex-wrap items-start justify-between gap-3 md:flex">
+            <div className="hidden">
               <div>
                 <p className={labelClassName}>Editor</p>
                 <h2 className={panelTitleClassName}>Manuscript surface</h2>
@@ -2605,11 +2069,11 @@ export function StudioManuscriptClient({
             </div>
 
             {isRecordingMode ? (
-              <div className="hidden rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted md:block">
+              <div className="hidden rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted">
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
             ) : (
-              <div className="hidden flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 md:flex">
+              <div className="hidden flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
               <p className={labelClassName}>Selection actions</p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -2682,79 +2146,385 @@ export function StudioManuscriptClient({
           </section>
 
           <aside
-            className={cn(panelClassName, "order-2 xl:order-3")}
-            aria-label="Block and highlight panel"
+            className={cn(
+              panelClassName,
+              "order-2 hidden overflow-auto md:sticky md:top-[118px] md:block md:max-h-[calc(100vh-132px)] xl:top-[94px] xl:max-h-[calc(100vh-104px)]",
+            )}
+            aria-label="Manuscript tools sidebar"
           >
             <div className="mb-3.5 flex items-start justify-between gap-3">
-              <p className={labelClassName}>Inspector</p>
+              <p className={labelClassName}>Tools</p>
               <StudioChip tone="node">
-                {sidePanelMode === "structure"
-                  ? "Structure"
-                  : sidePanelMode === "filters"
-                    ? "Filters"
-                    : "Export"}
+                {getSidePanelModeLabel(sidePanelMode)}
               </StudioChip>
             </div>
 
             <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
               <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                Author counts
-              </h2>
-              <div className="grid gap-2">
-                {authorSummaries.map((summary) => (
-                  <div
-                    className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                    key={summary.authorId}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[0.82rem] font-extrabold text-studio-ink">
-                        {summary.label}
-                      </span>
-                      <span className="font-mono text-[0.72rem] text-studio-dim">
-                        {summary.spans} spans
-                      </span>
-                    </div>
-                    <span className="font-mono text-[0.72rem] text-studio-muted">
-                      {summary.words} words / {summary.characters} chars
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-              <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                Side panel
+                Sidebar modes
               </h2>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {(
-                  [
-                    ["structure", "Structure"],
-                    ["filters", "Filters"],
-                    ["export", "Export"],
-                  ] as Array<[ManuscriptSidePanelMode, string]>
-                )
-                  .filter(([mode]) => !isRecordingMode || mode !== "export")
-                  .map(([mode, label]) => (
+                {manuscriptSidePanelModes
+                  .filter(
+                    (mode) =>
+                      !isRecordingMode ||
+                      (mode.id !== "mark" && mode.id !== "backup"),
+                  )
+                  .map((mode) => (
                     <button
                       className={cn(
                         smallButtonClassName,
-                        sidePanelMode === mode ? activeButtonClassName : "",
+                        sidePanelMode === mode.id ? activeButtonClassName : "",
                       )}
-                      key={mode}
+                      key={mode.id}
                       type="button"
-                      onClick={() => setSidePanelMode(mode)}
+                      onClick={() => setSidePanelMode(mode.id)}
                     >
-                      {mode === "structure" && isRecordingMode
-                        ? "Outline"
-                        : label}
+                      {mode.label}
                     </button>
                   ))}
               </div>
             </section>
 
+            {sidePanelMode === "mark" ? (
+              <>
+                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                    Author counts
+                  </h2>
+                  <div className="grid gap-2">
+                    {authorSummaries.map((summary) => (
+                      <div
+                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={summary.authorId}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[0.82rem] font-extrabold text-studio-ink">
+                            {summary.label}
+                          </span>
+                          <span className="font-mono text-[0.72rem] text-studio-dim">
+                            {summary.spans} spans
+                          </span>
+                        </div>
+                        <span className="font-mono text-[0.72rem] text-studio-muted">
+                          {summary.words} words / {summary.characters} chars
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                      Mark selected text
+                    </h2>
+                    <StudioChip tone="source">
+                      {getManuscriptAuthorDefinition(activeAuthorId).label}
+                    </StudioChip>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <p className={labelClassName}>Active author</p>
+                    {manuscriptAuthorDefinitions.map((author) => (
+                      <button
+                        className={cn(
+                          smallButtonClassName,
+                          activeAuthorId === author.id
+                            ? activeButtonClassName
+                            : "",
+                        )}
+                        key={author.id}
+                        type="button"
+                        onClick={() => updateActiveAuthor(author.id)}
+                      >
+                        {author.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => markSelectionAsAuthor("charlie")}
+                    >
+                      Mark Charlie
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => markSelectionAsAuthor("homer")}
+                    >
+                      Mark Homer / Scott
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => markSelectionAsAuthor("unassigned")}
+                    >
+                      Clear author
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={markAllAsHomer}
+                    >
+                      Mark all Homer / Scott
+                    </button>
+                  </div>
+
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>Semantic tag</span>
+                    <select
+                      className={fieldClassName}
+                      value={semanticType}
+                      onChange={(event) =>
+                        setSemanticType(event.target.value as SemanticHighlightType)
+                      }
+                    >
+                      {semanticHighlightDefinitions.map((definition) => (
+                        <option key={definition.id} value={definition.id}>
+                          {definition.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>Semantic note</span>
+                    <textarea
+                      className={cn(textareaClassName, "min-h-[76px]")}
+                      value={semanticNote}
+                      onChange={(event) => setSemanticNote(event.target.value)}
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={applySemanticHighlight}
+                    >
+                      Apply semantic
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={clearSemanticHighlight}
+                    >
+                      Clear semantic
+                    </button>
+                  </div>
+
+                  <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className={labelClassName}>Cited quotation</p>
+                      <StudioChip tone="review">
+                        {citedQuotations.length.toLocaleString()} marked
+                      </StudioChip>
+                    </div>
+                    <label className="grid gap-2">
+                      <span className={fieldLabelClassName}>
+                        Citation / source note
+                      </span>
+                      <textarea
+                        className={cn(textareaClassName, "min-h-[72px]")}
+                        value={citationNote}
+                        onChange={(event) => setCitationNote(event.target.value)}
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={markCitedQuotation}
+                      >
+                        Mark cited quote
+                      </button>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={() => applyQuoteFocus()}
+                      >
+                        Quote Focus
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        editor?.isActive("bold") ? activeButtonClassName : "",
+                      )}
+                      type="button"
+                      onClick={() => editor?.chain().focus().toggleBold().run()}
+                    >
+                      Bold
+                    </button>
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        editor?.isActive("italic") ? activeButtonClassName : "",
+                      )}
+                      type="button"
+                      onClick={() => editor?.chain().focus().toggleItalic().run()}
+                    >
+                      Italic
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => editor?.chain().focus().undo().run()}
+                    >
+                      Undo
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => editor?.chain().focus().redo().run()}
+                    >
+                      Redo
+                    </button>
+                  </div>
+                </section>
+              </>
+            ) : null}
+
             {sidePanelMode === "structure" ? (
               <>
+                <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                      Create structure
+                    </h2>
+                    <StudioChip tone="node">
+                      {selectedStructureRange
+                        ? `${selectedStructureRange.blockCount.toLocaleString()} selected`
+                        : "Block range"}
+                    </StudioChip>
+                  </div>
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>Region kind</span>
+                    <select
+                      className={fieldClassName}
+                      value={structureKind}
+                      onChange={(event) =>
+                        updateStructureKind(
+                          event.target.value as ManuscriptStructureKind,
+                        )
+                      }
+                    >
+                      {manuscriptStructureDefinitions.map((definition) => (
+                        <option key={definition.id} value={definition.id}>
+                          {definition.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {structureKind === "chapter" ? (
+                    <label className="grid gap-2">
+                      <span className={fieldLabelClassName}>
+                        Book label preset
+                      </span>
+                      <select
+                        className={fieldClassName}
+                        value={structureLabelPreset}
+                        onChange={(event) =>
+                          updateStructureLabelPreset(
+                            event.target.value as ManuscriptStructureLabelPreset,
+                          )
+                        }
+                      >
+                        {manuscriptStructureLabelPresets.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>Region title</span>
+                    <input
+                      className={fieldClassName}
+                      placeholder={getDefaultStructureTitle(
+                        structureKind,
+                        structureLabelPreset,
+                      )}
+                      value={structureTitle}
+                      onChange={(event) => setStructureTitle(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>Structure notes</span>
+                    <textarea
+                      className={cn(textareaClassName, "min-h-[76px]")}
+                      value={structureNotes}
+                      onChange={(event) => setStructureNotes(event.target.value)}
+                    />
+                  </label>
+                  {pendingStructureRange ? (
+                    <div className="grid gap-2 rounded-lg border border-studio-node/40 bg-studio-node/10 p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className={fieldLabelClassName}>
+                          Pending range
+                        </span>
+                        <StudioChip
+                          tone={
+                            pendingStructureRange.isRangeComplete
+                              ? "node"
+                              : "review"
+                          }
+                        >
+                          {pendingStructureRange.isRangeComplete
+                            ? `${pendingStructureRange.blockCount.toLocaleString()} blocks`
+                            : "Set both ends"}
+                        </StudioChip>
+                      </div>
+                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                        Start:{" "}
+                        {getBlockPreview(pendingStructureStartBlockId) ||
+                          pendingStructureRange.startPreview}
+                      </p>
+                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                        End:{" "}
+                        {getBlockPreview(pendingStructureEndBlockId) ||
+                          pendingStructureRange.endPreview}
+                      </p>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={clearPendingStructureRange}
+                      >
+                        Clear pending range
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={captureStructureRange}
+                    >
+                      Capture range
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={createStructureRegion}
+                    >
+                      Add structure
+                    </button>
+                  </div>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={suggestBookRegionsFromHeadings}
+                  >
+                    Suggest book regions from headings
+                  </button>
+                </section>
+
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
@@ -3125,11 +2895,11 @@ export function StudioManuscriptClient({
               </>
             ) : null}
 
-            {sidePanelMode === "filters" ? (
+            {sidePanelMode === "find" || sidePanelMode === "quotes" ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                    Filter lens
+                    {sidePanelMode === "quotes" ? "Quote review" : "Filter lens"}
                   </h2>
                   <StudioChip
                     tone={blockFilterSummary.hasActiveFilters ? "review" : "source"}
@@ -3853,7 +3623,7 @@ export function StudioManuscriptClient({
               </section>
             ) : null}
 
-            {sidePanelMode === "export" && !isRecordingMode ? (
+            {sidePanelMode === "backup" && !isRecordingMode ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                 Export / backup
@@ -3862,6 +3632,51 @@ export function StudioManuscriptClient({
                 Download backups before serious editing. Downloads are browser
                 generated and do not write to the server or repo.
               </p>
+              <div className="grid gap-3 rounded-lg border border-studio-line bg-black/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className={labelClassName}>Browser-local source</p>
+                  <StudioChip tone="review">No database writes</StudioChip>
+                </div>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Title</span>
+                  <input
+                    className={fieldClassName}
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Upload .docx</span>
+                  <input
+                    className={fieldClassName}
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    type="file"
+                    onChange={(event) => {
+                      void importDocx(event.target.files?.[0] ?? null);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                  Saved locally in this browser under `{MANUSCRIPT_STORAGE_KEY}`.
+                  Export a full draft backup before replacing an imported
+                  manuscript.
+                </p>
+                {sourceFileName ? (
+                  <StudioChip className="normal-case" tone="source">
+                    Source: {sourceFileName}
+                  </StudioChip>
+                ) : null}
+                {importSummary ? (
+                  <p className="m-0 rounded-lg border border-studio-tag/35 bg-studio-tag/10 p-2 text-[0.76rem] leading-relaxed text-studio-muted">
+                    {importSummary.sourceFileName} imported{" "}
+                    {formatDateTime(importSummary.importedAt)} with{" "}
+                    {importSummary.words.toLocaleString()} words,{" "}
+                    {importSummary.characters.toLocaleString()} characters, and{" "}
+                    {importSummary.blocks.toLocaleString()} blocks.
+                  </p>
+                ) : null}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   className={smallButtonClassName}
@@ -4008,6 +3823,13 @@ export function StudioManuscriptClient({
                 onClick={importEditorJson}
               >
                 Import editor JSON
+              </button>
+              <button
+                className={dangerButtonClassName}
+                type="button"
+                onClick={clearLocalDraft}
+              >
+                Clear local draft
               </button>
             </section>
             ) : null}

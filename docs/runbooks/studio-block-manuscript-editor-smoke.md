@@ -64,48 +64,61 @@ archive files.
 
 1. Open `/manuscript`.
 2. Sign in with an authorized Studio account if prompted.
-3. Confirm the page says the draft is saved locally in this browser and not yet
-   synced to the Studio database.
-4. Upload a `.docx` containing Scott/Homer manuscript text.
-5. If a browser-local draft already exists, confirm the replacement prompt
+3. Confirm the desktop page opens with the manuscript as the central working
+   surface, one sticky command bar above it, and one sticky mode-switching
+   sidebar beside it.
+4. Confirm the command bar shows manuscript title, active author, current mode,
+   cited quotation count, saved state, and a backup action without becoming a
+   large header.
+5. Scroll the manuscript and confirm the command bar and sidebar remain visible
+   without obscuring focused manuscript blocks.
+6. In the sidebar, switch through `Mark`, `Structure`, `Find`, `Quotes`, and
+   `Backup`.
+7. Confirm switching modes does not change manuscript text, author marks,
+   semantic marks, structure regions, quote reviews, or Focus View state unless
+   a specific action button is clicked.
+8. In `Backup`, confirm the page says the draft is saved locally in this
+   browser and not yet synced to the Studio database.
+9. Upload a `.docx` containing Scott/Homer manuscript text.
+10. If a browser-local draft already exists, confirm the replacement prompt
    appears. Cancel once if needed to verify the existing draft is preserved,
    then import again and confirm.
-6. Confirm editable content appears in the manuscript surface.
-7. Confirm the import summary shows source file name, word count, character
+11. Confirm editable content appears in the manuscript surface.
+12. Confirm the import summary shows source file name, word count, character
    count, block count, and imported timestamp.
-8. Confirm the page states imported text is Homer / Scott, new writing should be
+13. Confirm the page states imported text is Homer / Scott, new writing should be
    Charlie, and backups should be exported before major edits.
-9. Confirm the active author is Charlie after import.
-10. Confirm the source file name appears in the draft status.
-11. Confirm the block inspector lists paragraph, heading, or list-item block
+14. Confirm the active author is Charlie after import.
+15. Confirm the source file name appears in the draft status.
+16. Confirm the block inspector lists paragraph, heading, or list-item block
     IDs.
-12. Confirm the block count is prominent and there is no missing block ID
+17. Confirm the block count is prominent and there is no missing block ID
     warning.
-13. Click a block preview and confirm the editor focuses that block.
-14. If imported text was not already marked, click `Mark all as Homer / Scott`
+18. Click a block preview and confirm the editor focuses that block.
+19. If imported text was not already marked, click `Mark all as Homer / Scott`
     and confirm active author returns to Charlie for new writing.
-15. Select a span and click `Mark Charlie` in the selection actions area.
-16. Select another span and click `Mark Homer / Scott`, then `Clear author`.
-17. Add new Charlie text in the editor.
-18. Use the active author selector or toolbar to mark the new text as Charlie.
-19. Select meaningful text, choose a semantic tag, and click
+20. Select a span and click `Mark Charlie` in the `Mark` sidebar mode.
+21. Select another span and click `Mark Homer / Scott`, then `Clear author`.
+22. Add new Charlie text in the editor.
+23. Use the active author selector or toolbar to mark the new text as Charlie.
+24. Select meaningful text, choose a semantic tag, and click
     `Apply semantic highlight`.
-20. Select the same text and use the compact selection action area to clear and
+25. Select the same text and use the `Mark` mode action area to clear and
     reapply the selected semantic highlight.
-21. Confirm author counts update.
-22. Confirm semantic highlights appear in the inspector.
-23. Select a multi-block range in the manuscript surface.
-24. In the Structure layer controls, choose `Chapter / book`, set `Book label
+26. Confirm author counts update.
+27. Confirm semantic highlights appear in the sidebar.
+28. Select a multi-block range in the manuscript surface.
+29. In `Structure`, choose `Chapter / book`, set `Book label
     preset` to `Preface`, leave the title as `Preface`, and click
     `Capture range`.
-25. In the block inspector, click `Set start` on the first block for the
+30. In the block inspector, click `Set start` on the first block for the
     Preface range.
-26. Click `Set end` on a later block for the Preface range.
-27. Confirm the pending range summary shows start preview, end preview, block
+31. Click `Set end` on a later block for the Preface range.
+32. Confirm the pending range summary shows start preview, end preview, block
     count, and `Clear pending range`.
-28. Click `Add structure` and confirm the pending range is used instead of the
+33. Click `Add structure` and confirm the pending range is used instead of the
     current text selection.
-29. Confirm the `Preface` structure region appears in the inspector with the
+34. Confirm the `Preface` structure region appears in the sidebar with the
     title prominent.
 30. Confirm the covered blocks show structure-region styling in the manuscript
     surface and matching structure chips in the block inspector.
@@ -189,7 +202,7 @@ archive files.
 
 1. Open `/manuscript`.
 2. Confirm the full manuscript surface remains visible.
-3. In the right side panel, switch from `Structure` to `Filters`.
+3. In the sticky sidebar, switch to `Find`.
 4. Search by text and confirm matching blocks are listed in the filter results.
 5. Filter by `Charlie` and confirm Charlie-marked blocks appear.
 6. Filter by `Homer / Scott` and confirm Homer / Scott-marked blocks appear.
@@ -227,7 +240,7 @@ archive files.
    its original text, author mark, or structure-region styling.
 7. Select the same text and click `Clear cited quotation / semantic`.
 8. Reapply `Mark cited quotation`.
-9. Switch the right side panel to `Filters`.
+9. Switch the sticky sidebar to `Find` or `Quotes`.
 10. Click `Show only cited quotations` or set `Semantic tag` to
     `Cited quotation`.
 11. Confirm the visual mode changes to `Hide nonmatches`.

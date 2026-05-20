@@ -55,6 +55,7 @@ button:disabled {
 
 .manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
   margin: 0 0 1rem;
+  scroll-margin-top: 7rem;
 }
 
 .manuscript-prosemirror :where(h1, h2, h3) {
