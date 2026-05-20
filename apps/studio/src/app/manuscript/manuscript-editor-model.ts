@@ -142,6 +142,29 @@ export type ManuscriptStructureRegionSummary = ManuscriptStructureRegion & {
   isRangeComplete: boolean;
 };
 
+export type ManuscriptBlockRangeSummary = {
+  startBlockId: string | null;
+  endBlockId: string | null;
+  startIndex: number;
+  endIndex: number;
+  blockCount: number;
+  startPreview: string;
+  endPreview: string;
+  blockIds: string[];
+  isRangeComplete: boolean;
+};
+
+export type ManuscriptStructureRegionSuggestion = {
+  kind: "chapter";
+  title: string;
+  labelPreset?: ManuscriptStructureLabelPreset;
+  startBlockId: string;
+  endBlockId: string;
+  order: number;
+  colorKey: string;
+  notes: string;
+};
+
 export type ManuscriptImportSummary = {
   sourceFileName: string;
   words: number;
@@ -535,54 +558,336 @@ export function updateManuscriptStructureRegion(input: {
   });
 }
 
-export function collectStructureRegionSummaries(input: {
-  json: ManuscriptEditorJson;
+export function moveManuscriptStructureRegionWithinKind(input: {
   regions: ManuscriptStructureRegion[];
-}): ManuscriptStructureRegionSummary[] {
-  const blockSummaries = collectBlockSummaries(input.json);
+  regionId: string;
+  direction: "up" | "down";
+  updatedAt: string;
+}) {
+  const orderedRegions = [...input.regions].sort(
+    (left, right) => left.order - right.order,
+  );
+  const target = orderedRegions.find((region) => region.id === input.regionId);
+
+  if (!target) {
+    return input.regions;
+  }
+
+  const sameKindRegions = orderedRegions.filter(
+    (region) => region.kind === target.kind,
+  );
+  const sameKindIndex = sameKindRegions.findIndex(
+    (region) => region.id === input.regionId,
+  );
+  const swapIndex =
+    input.direction === "up" ? sameKindIndex - 1 : sameKindIndex + 1;
+
+  if (
+    sameKindIndex < 0 ||
+    swapIndex < 0 ||
+    swapIndex >= sameKindRegions.length
+  ) {
+    return input.regions;
+  }
+
+  const reorderedSameKindRegions = [...sameKindRegions];
+  const targetRegion = reorderedSameKindRegions[sameKindIndex];
+  const swapRegion = reorderedSameKindRegions[swapIndex];
+
+  reorderedSameKindRegions[sameKindIndex] = swapRegion;
+  reorderedSameKindRegions[swapIndex] = targetRegion;
+
+  const movedIds = new Set([targetRegion.id, swapRegion.id]);
+  let sameKindCursor = 0;
+
+  return orderedRegions.map((region, index) => {
+    if (region.kind !== target.kind) {
+      return {
+        ...region,
+        order: index + 1,
+      };
+    }
+
+    const replacement = reorderedSameKindRegions[sameKindCursor];
+    sameKindCursor += 1;
+
+    return {
+      ...replacement,
+      order: index + 1,
+      updatedAt: movedIds.has(replacement.id)
+        ? input.updatedAt
+        : replacement.updatedAt,
+    };
+  });
+}
+
+export function createBlockRangeSummary(input: {
+  blocks: ManuscriptBlockSummary[];
+  startBlockId: string | null;
+  endBlockId: string | null;
+}): ManuscriptBlockRangeSummary | null {
+  if (!input.startBlockId && !input.endBlockId) {
+    return null;
+  }
+
   const blockIndexById = new Map<string, number>();
 
-  blockSummaries.forEach((block, index) => {
+  input.blocks.forEach((block, index) => {
     if (block.blockId) {
       blockIndexById.set(block.blockId, index);
     }
   });
 
+  const rawStartIndex = input.startBlockId
+    ? blockIndexById.get(input.startBlockId)
+    : undefined;
+  const rawEndIndex = input.endBlockId
+    ? blockIndexById.get(input.endBlockId)
+    : undefined;
+  const isRangeComplete =
+    input.startBlockId !== null &&
+    input.endBlockId !== null &&
+    rawStartIndex !== undefined &&
+    rawEndIndex !== undefined;
+  const startIndex = rawStartIndex ?? -1;
+  const endIndex = rawEndIndex ?? -1;
+  const normalizedStartIndex = isRangeComplete
+    ? Math.min(startIndex, endIndex)
+    : -1;
+  const normalizedEndIndex = isRangeComplete
+    ? Math.max(startIndex, endIndex)
+    : -1;
+  const rangeBlocks = isRangeComplete
+    ? input.blocks.slice(normalizedStartIndex, normalizedEndIndex + 1)
+    : [];
+
+  return {
+    startBlockId: input.startBlockId,
+    endBlockId: input.endBlockId,
+    startIndex,
+    endIndex,
+    blockCount: rangeBlocks.length,
+    startPreview: input.startBlockId
+      ? input.blocks[rawStartIndex ?? -1]?.preview ?? "Start block not found"
+      : "No start block set",
+    endPreview: input.endBlockId
+      ? input.blocks[rawEndIndex ?? -1]?.preview ?? "End block not found"
+      : "No end block set",
+    blockIds: rangeBlocks.flatMap((block) =>
+      block.blockId ? [block.blockId] : [],
+    ),
+    isRangeComplete,
+  };
+}
+
+export function collectStructureRegionSummaries(input: {
+  json: ManuscriptEditorJson;
+  regions: ManuscriptStructureRegion[];
+}): ManuscriptStructureRegionSummary[] {
+  const blockSummaries = collectBlockSummaries(input.json);
+
   return [...input.regions]
     .sort((left, right) => left.order - right.order)
     .map((region) => {
-      const rawStartIndex = blockIndexById.get(region.startBlockId);
-      const rawEndIndex = blockIndexById.get(region.endBlockId);
-      const isRangeComplete =
-        rawStartIndex !== undefined && rawEndIndex !== undefined;
-      const startIndex = rawStartIndex ?? -1;
-      const endIndex = rawEndIndex ?? -1;
-      const normalizedStartIndex = isRangeComplete
-        ? Math.min(startIndex, endIndex)
-        : -1;
-      const normalizedEndIndex = isRangeComplete
-        ? Math.max(startIndex, endIndex)
-        : -1;
-      const regionBlocks = isRangeComplete
-        ? blockSummaries.slice(normalizedStartIndex, normalizedEndIndex + 1)
-        : [];
+      const rangeSummary = createBlockRangeSummary({
+        blocks: blockSummaries,
+        startBlockId: region.startBlockId,
+        endBlockId: region.endBlockId,
+      });
 
       return {
         ...region,
-        startIndex,
-        endIndex,
-        blockCount: regionBlocks.length,
-        startPreview:
-          blockSummaries[rawStartIndex ?? -1]?.preview ??
-          "Start block not found",
-        endPreview:
-          blockSummaries[rawEndIndex ?? -1]?.preview ?? "End block not found",
-        blockIds: regionBlocks.flatMap((block) =>
-          block.blockId ? [block.blockId] : [],
-        ),
-        isRangeComplete,
+        startIndex: rangeSummary?.startIndex ?? -1,
+        endIndex: rangeSummary?.endIndex ?? -1,
+        blockCount: rangeSummary?.blockCount ?? 0,
+        startPreview: rangeSummary?.startPreview ?? "Start block not found",
+        endPreview: rangeSummary?.endPreview ?? "End block not found",
+        blockIds: rangeSummary?.blockIds ?? [],
+        isRangeComplete: rangeSummary?.isRangeComplete ?? false,
       };
     });
+}
+
+function createMarkdownText(value: string) {
+  return value.trim().replace(/\s+/g, " ") || "Untitled region";
+}
+
+export function createStructureOutlineMarkdown(input: {
+  regions: ManuscriptStructureRegionSummary[];
+}) {
+  const lines = ["# Manuscript Structure", ""];
+  const groups: Array<{
+    kind: ManuscriptStructureKind;
+    heading: string;
+  }> = [
+    { kind: "chapter", heading: "Chapter / book" },
+    { kind: "episode", heading: "Episodes" },
+    { kind: "section", heading: "Sections" },
+  ];
+  const sortedRegions = [...input.regions].sort(
+    (left, right) => left.order - right.order,
+  );
+
+  if (!sortedRegions.length) {
+    lines.push("_No structure regions._");
+    return lines.join("\n");
+  }
+
+  for (const group of groups) {
+    const groupRegions = sortedRegions.filter(
+      (region) => region.kind === group.kind,
+    );
+
+    if (!groupRegions.length) {
+      continue;
+    }
+
+    lines.push(`## ${group.heading}`, "");
+
+    groupRegions.forEach((region, index) => {
+      const definition = getManuscriptStructureDefinition(region.kind);
+
+      lines.push(`${index + 1}. ${createMarkdownText(region.title)}`);
+      lines.push(`   - Kind: ${definition.label}`);
+      lines.push(`   - Blocks: ${region.blockCount.toLocaleString()}`);
+      lines.push(`   - Start: ${createMarkdownText(region.startPreview)}`);
+      lines.push(`   - End: ${createMarkdownText(region.endPreview)}`);
+
+      if (region.notes.trim()) {
+        lines.push(`   - Notes: ${createMarkdownText(region.notes)}`);
+      }
+
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+const chapterHeadingNumberWords = new Set([
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
+]);
+
+function detectBookRegionHeading(
+  block: ManuscriptBlockSummary,
+): Pick<ManuscriptStructureRegionSuggestion, "title" | "labelPreset"> | null {
+  const preview = block.preview.trim().replace(/\s+/g, " ");
+
+  if (!preview) {
+    return null;
+  }
+
+  if (block.type !== "heading" && preview.length > 48) {
+    return null;
+  }
+
+  if (/^preface\b/i.test(preview)) {
+    return {
+      title: preview,
+      labelPreset: "preface",
+    };
+  }
+
+  if (/^introduction\b/i.test(preview)) {
+    return {
+      title: preview,
+      labelPreset: "introduction",
+    };
+  }
+
+  const chapterMatch = preview.match(/^chapter\s+([0-9]+|[a-z]+)\b/i);
+
+  if (!chapterMatch) {
+    return null;
+  }
+
+  const chapterNumber = chapterMatch[1].toLowerCase();
+  const isChapterZero = chapterNumber === "0" || chapterNumber === "zero";
+
+  if (!isChapterZero && !/^\d+$/.test(chapterNumber)) {
+    if (!chapterHeadingNumberWords.has(chapterNumber)) {
+      return null;
+    }
+  }
+
+  return {
+    title: preview,
+    labelPreset: isChapterZero ? "chapter-0" : "chapter",
+  };
+}
+
+export function suggestBookStructureRegionsFromHeadings(input: {
+  blocks: ManuscriptBlockSummary[];
+}): ManuscriptStructureRegionSuggestion[] {
+  const definition = getManuscriptStructureDefinition("chapter");
+  const detectedHeadings = input.blocks.flatMap((block, index) => {
+    const heading = detectBookRegionHeading(block);
+
+    if (!heading || !block.blockId) {
+      return [];
+    }
+
+    return [
+      {
+        ...heading,
+        index,
+        blockId: block.blockId,
+      },
+    ];
+  });
+  const suggestions: ManuscriptStructureRegionSuggestion[] = [];
+
+  detectedHeadings.forEach((heading, headingIndex) => {
+    const nextHeading = detectedHeadings[headingIndex + 1];
+    const rawEndIndex = nextHeading ? nextHeading.index - 1 : input.blocks.length - 1;
+    let endBlockId: string | null = null;
+
+    for (let index = rawEndIndex; index >= heading.index; index -= 1) {
+      const candidateBlockId = input.blocks[index]?.blockId;
+
+      if (candidateBlockId) {
+        endBlockId = candidateBlockId;
+        break;
+      }
+    }
+
+    if (!endBlockId) {
+      return;
+    }
+
+    suggestions.push({
+      kind: "chapter",
+      title: heading.title,
+      labelPreset: heading.labelPreset,
+      startBlockId: heading.blockId,
+      endBlockId,
+      order: suggestions.length + 1,
+      colorKey: definition.colorKey,
+      notes: "",
+    });
+  });
+
+  return suggestions;
 }
 
 export function createManuscriptImportSummary(input: {

@@ -26,10 +26,12 @@ import {
   countMissingBlockIds,
   countWordsAndCharacters,
   createBackupFileName,
+  createBlockRangeSummary,
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
   createManuscriptImportSummary,
   createStructureRegionDefaultTitle,
+  createStructureOutlineMarkdown,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
   getManuscriptStructureLabelPresetDefinition,
@@ -41,8 +43,10 @@ import {
   manuscriptAuthorDefinitions,
   manuscriptStructureDefinitions,
   manuscriptStructureLabelPresets,
+  moveManuscriptStructureRegionWithinKind,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
+  suggestBookStructureRegionsFromHeadings,
   summarizeAuthorMarkedSpans,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
@@ -267,6 +271,10 @@ export function StudioManuscriptClient({
     endBlockId: string;
     blockCount: number;
   } | null>(null);
+  const [pendingStructureStartBlockId, setPendingStructureStartBlockId] =
+    useState<string | null>(null);
+  const [pendingStructureEndBlockId, setPendingStructureEndBlockId] =
+    useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [editorJson, setEditorJson] = useState<ManuscriptEditorJson>(
     createEmptyManuscriptDoc(),
@@ -275,6 +283,7 @@ export function StudioManuscriptClient({
   const [importJson, setImportJson] = useState("");
   const [exportHtml, setExportHtml] = useState("");
   const [exportPlainText, setExportPlainText] = useState("");
+  const [exportStructureMarkdown, setExportStructureMarkdown] = useState("");
   const [message, setMessage] = useState(
     "Browser-local Manuscript Desk draft.",
   );
@@ -398,6 +407,15 @@ export function StudioManuscriptClient({
     () => collectBlockSummaries(currentEditorJson),
     [currentEditorJson],
   );
+  const pendingStructureRange = useMemo(
+    () =>
+      createBlockRangeSummary({
+        blocks: blockSummaries,
+        startBlockId: pendingStructureStartBlockId,
+        endBlockId: pendingStructureEndBlockId,
+      }),
+    [blockSummaries, pendingStructureEndBlockId, pendingStructureStartBlockId],
+  );
   const structureRegionSummaries = useMemo(
     () =>
       collectStructureRegionSummaries({
@@ -405,6 +423,13 @@ export function StudioManuscriptClient({
         regions: structureRegions,
       }),
     [currentEditorJson, structureRegions],
+  );
+  const structureOutlineMarkdown = useMemo(
+    () =>
+      createStructureOutlineMarkdown({
+        regions: structureRegionSummaries,
+      }),
+    [structureRegionSummaries],
   );
   const authorSummaries = useMemo(
     () => summarizeAuthorMarkedSpans(currentEditorJson),
@@ -537,6 +562,43 @@ export function StudioManuscriptClient({
     return structureRegionSummaries.filter((region) =>
       region.blockIds.includes(blockId),
     );
+  }
+
+  function getBlockPreview(blockId: string | null) {
+    if (!blockId) {
+      return "Not set";
+    }
+
+    return (
+      blockSummaries.find((block) => block.blockId === blockId)?.preview ||
+      "Empty block"
+    );
+  }
+
+  function setPendingStructureStart(blockId: string | null) {
+    if (!blockId) {
+      setMessage("Cannot set a structure start without a block ID.");
+      return;
+    }
+
+    setPendingStructureStartBlockId(blockId);
+    setMessage("Pending structure start set.");
+  }
+
+  function setPendingStructureEnd(blockId: string | null) {
+    if (!blockId) {
+      setMessage("Cannot set a structure end without a block ID.");
+      return;
+    }
+
+    setPendingStructureEndBlockId(blockId);
+    setMessage("Pending structure end set.");
+  }
+
+  function clearPendingStructureRange() {
+    setPendingStructureStartBlockId(null);
+    setPendingStructureEndBlockId(null);
+    setMessage("Pending structure range cleared.");
   }
 
   function getDefaultStructureTitle(
@@ -735,11 +797,26 @@ export function StudioManuscriptClient({
       return;
     }
 
-    const range =
-      selectedStructureRange ?? getEditorSelectionBlockRange(editor);
+    const hasPendingEndpoint =
+      pendingStructureStartBlockId !== null || pendingStructureEndBlockId !== null;
+    const range = hasPendingEndpoint
+      ? pendingStructureRange?.isRangeComplete &&
+        pendingStructureRange.startBlockId &&
+        pendingStructureRange.endBlockId
+        ? {
+            startBlockId: pendingStructureRange.startBlockId,
+            endBlockId: pendingStructureRange.endBlockId,
+            blockCount: pendingStructureRange.blockCount,
+          }
+        : null
+      : selectedStructureRange ?? getEditorSelectionBlockRange(editor);
 
-    if (!range) {
-      setMessage("Select a block range in the manuscript before adding structure.");
+    if (!range || !range.startBlockId || !range.endBlockId) {
+      setMessage(
+        hasPendingEndpoint
+          ? "Set both pending start and end blocks before adding structure."
+          : "Select a block range in the manuscript before adding structure.",
+      );
       return;
     }
 
@@ -769,6 +846,9 @@ export function StudioManuscriptClient({
     setStructureRegions((current) => [...current, nextRegion]);
     setStructureTitle("");
     setStructureNotes("");
+    if (hasPendingEndpoint) {
+      clearPendingStructureRange();
+    }
     setMessage(
       `Added ${definition.label.toLowerCase()} structure region across ${range.blockCount.toLocaleString()} block${
         range.blockCount === 1 ? "" : "s"
@@ -787,6 +867,99 @@ export function StudioManuscriptClient({
         })),
     );
     setMessage("Structure region removed.");
+  }
+
+  function canMoveStructureRegion(
+    region: ManuscriptStructureRegionSummary,
+    direction: "up" | "down",
+  ) {
+    const sameKindRegions = structureRegionSummaries.filter(
+      (candidate) => candidate.kind === region.kind,
+    );
+    const index = sameKindRegions.findIndex(
+      (candidate) => candidate.id === region.id,
+    );
+
+    return direction === "up"
+      ? index > 0
+      : index >= 0 && index < sameKindRegions.length - 1;
+  }
+
+  function moveStructureRegion(regionId: string, direction: "up" | "down") {
+    setStructureRegions((current) =>
+      moveManuscriptStructureRegionWithinKind({
+        regions: current,
+        regionId,
+        direction,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    setMessage("Structure region order updated.");
+  }
+
+  function suggestBookRegionsFromHeadings() {
+    const suggestions = suggestBookStructureRegionsFromHeadings({
+      blocks: blockSummaries,
+    });
+
+    if (!suggestions.length) {
+      setMessage("No Preface, Introduction, or Chapter headings found.");
+      return;
+    }
+
+    const existingBookRegions = structureRegions.filter(
+      (region) => region.kind === "chapter",
+    );
+
+    if (
+      existingBookRegions.length &&
+      !window.confirm(
+        `Replace ${existingBookRegions.length.toLocaleString()} existing Chapter / book region${
+          existingBookRegions.length === 1 ? "" : "s"
+        } with suggestions from headings? Episode and Section regions will be kept.`,
+      )
+    ) {
+      setMessage("Heading suggestion canceled. Existing book regions kept.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const suggestedRegions = suggestions.map((suggestion) => {
+      const region: ManuscriptStructureRegion = {
+        id: createStructureRegionId(),
+        kind: suggestion.kind,
+        title: suggestion.title,
+        startBlockId: suggestion.startBlockId,
+        endBlockId: suggestion.endBlockId,
+        order: suggestion.order,
+        colorKey: suggestion.colorKey,
+        notes: suggestion.notes,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      if (suggestion.labelPreset) {
+        region.labelPreset = suggestion.labelPreset;
+      }
+
+      return region;
+    });
+
+    setStructureRegions((current) =>
+      [
+        ...suggestedRegions,
+        ...current.filter((region) => region.kind !== "chapter"),
+      ].map((region, index) => ({
+        ...region,
+        order: index + 1,
+        updatedAt: region.updatedAt || now,
+      })),
+    );
+    setMessage(
+      `Suggested ${suggestedRegions.length.toLocaleString()} Chapter / book region${
+        suggestedRegions.length === 1 ? "" : "s"
+      } from headings.`,
+    );
   }
 
   async function importDocx(file: File | null) {
@@ -845,6 +1018,9 @@ export function StudioManuscriptClient({
       setImportSummary(summary);
       setStructureRegions([]);
       setSelectedStructureRange(null);
+      setPendingStructureStartBlockId(null);
+      setPendingStructureEndBlockId(null);
+      setExportStructureMarkdown("");
       setTitle(file.name.replace(/\.docx$/i, "").trim() || title);
       setActiveAuthorId("charlie");
       setMessage(
@@ -986,6 +1162,21 @@ export function StudioManuscriptClient({
     setMessage("Plain text backup downloaded.");
   }
 
+  function exportStructureOutline() {
+    setExportStructureMarkdown(structureOutlineMarkdown);
+    setMessage("Structure outline Markdown exported.");
+  }
+
+  function downloadStructureOutline() {
+    downloadBackup({
+      kind: "structure-outline",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: structureOutlineMarkdown,
+    });
+    setMessage("Structure outline Markdown downloaded.");
+  }
+
   function focusBlock(blockId: string | null) {
     if (!editor || !blockId) {
       setMessage("Cannot focus a block without a block ID.");
@@ -1043,6 +1234,9 @@ export function StudioManuscriptClient({
         setLastUpdatedAt(parsedDraft.lastUpdatedAt);
         editor.commands.setContent(parsedDraft.editorJson as JSONContent);
         setEditorJson(parsedDraft.editorJson);
+        setPendingStructureStartBlockId(null);
+        setPendingStructureEndBlockId(null);
+        setExportStructureMarkdown("");
         setImportJson("");
         setMessage("Full Manuscript Desk draft JSON imported.");
         return;
@@ -1060,6 +1254,9 @@ export function StudioManuscriptClient({
       setImportSummary(null);
       setStructureRegions([]);
       setSelectedStructureRange(null);
+      setPendingStructureStartBlockId(null);
+      setPendingStructureEndBlockId(null);
+      setExportStructureMarkdown("");
       setImportJson("");
       setMessage("Editor JSON imported.");
     } catch {
@@ -1100,6 +1297,8 @@ export function StudioManuscriptClient({
     setImportSummary(null);
     setStructureRegions([]);
     setSelectedStructureRange(null);
+    setPendingStructureStartBlockId(null);
+    setPendingStructureEndBlockId(null);
     setActiveAuthorId(emptyDraft.activeAuthorId);
     setShowAuthorColors(emptyDraft.showAuthorColors);
     setShowSemanticColors(emptyDraft.showSemanticColors);
@@ -1109,6 +1308,7 @@ export function StudioManuscriptClient({
     setImportJson("");
     setExportHtml("");
     setExportPlainText("");
+    setExportStructureMarkdown("");
     setMessage("Manuscript Desk browser draft cleared.");
   }
 
@@ -1122,9 +1322,11 @@ export function StudioManuscriptClient({
           message.includes("Applied") ||
           message.includes("Captured") ||
           message.includes("Added") ||
+          message.includes("Suggested") ||
           message.includes("saved") ||
           message.includes("cleared") ||
           message.includes("removed") ||
+          message.includes("updated") ||
           message.includes("Loaded")
         ? "tag"
         : "default";
@@ -1438,6 +1640,43 @@ export function StudioManuscriptClient({
                     onChange={(event) => setStructureNotes(event.target.value)}
                   />
                 </label>
+                {pendingStructureRange ? (
+                  <div className="grid gap-2 rounded-lg border border-studio-node/40 bg-studio-node/10 p-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className={fieldLabelClassName}>
+                        Pending structure range
+                      </span>
+                      <StudioChip
+                        tone={
+                          pendingStructureRange.isRangeComplete
+                            ? "node"
+                            : "review"
+                        }
+                      >
+                        {pendingStructureRange.isRangeComplete
+                          ? `${pendingStructureRange.blockCount.toLocaleString()} blocks`
+                          : "Set both ends"}
+                      </StudioChip>
+                    </div>
+                    <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                      Start:{" "}
+                      {getBlockPreview(pendingStructureStartBlockId) ||
+                        pendingStructureRange.startPreview}
+                    </p>
+                    <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                      End:{" "}
+                      {getBlockPreview(pendingStructureEndBlockId) ||
+                        pendingStructureRange.endPreview}
+                    </p>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={clearPendingStructureRange}
+                    >
+                      Clear pending range
+                    </button>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     className={smallButtonClassName}
@@ -1454,6 +1693,13 @@ export function StudioManuscriptClient({
                     Add structure
                   </button>
                 </div>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={suggestBookRegionsFromHeadings}
+                >
+                  Suggest book regions from headings
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -1672,6 +1918,38 @@ export function StudioManuscriptClient({
                             </h3>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
+                            <button
+                              className={smallButtonClassName}
+                              type="button"
+                              onClick={() => focusBlock(region.startBlockId)}
+                            >
+                              Jump to start
+                            </button>
+                            <button
+                              className={smallButtonClassName}
+                              type="button"
+                              onClick={() => focusBlock(region.endBlockId)}
+                            >
+                              Jump to end
+                            </button>
+                            <button
+                              className={smallButtonClassName}
+                              type="button"
+                              disabled={!canMoveStructureRegion(region, "up")}
+                              onClick={() => moveStructureRegion(region.id, "up")}
+                            >
+                              Move up
+                            </button>
+                            <button
+                              className={smallButtonClassName}
+                              type="button"
+                              disabled={!canMoveStructureRegion(region, "down")}
+                              onClick={() =>
+                                moveStructureRegion(region.id, "down")
+                              }
+                            >
+                              Move down
+                            </button>
                             {isEditing ? (
                               <>
                                 <button
@@ -1837,21 +2115,63 @@ export function StudioManuscriptClient({
                     );
 
                     return (
-                      <button
-                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-tag/55 hover:bg-studio-tag/10"
+                      <article
+                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-tag/55 hover:bg-studio-tag/10"
                         key={`${block.blockId ?? "missing"}-${index}`}
-                        type="button"
                         onClick={() => focusBlock(block.blockId)}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <StudioChip
-                            tone={block.blockId ? "source" : "danger"}
-                          >
-                            {block.type}
-                          </StudioChip>
+                          <div className="flex flex-wrap gap-1.5">
+                            <StudioChip
+                              tone={block.blockId ? "source" : "danger"}
+                            >
+                              {block.type}
+                            </StudioChip>
+                            {block.blockId &&
+                            block.blockId ===
+                              pendingStructureStartBlockId ? (
+                              <StudioChip tone="node">Start</StudioChip>
+                            ) : null}
+                            {block.blockId &&
+                            block.blockId === pendingStructureEndBlockId ? (
+                              <StudioChip tone="review">End</StudioChip>
+                            ) : null}
+                          </div>
                           <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
                             {block.blockId ?? "missing blockId"}
                           </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPendingStructureStart(block.blockId);
+                            }}
+                          >
+                            Set start
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPendingStructureEnd(block.blockId);
+                            }}
+                          >
+                            Set end
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              focusBlock(block.blockId);
+                            }}
+                          >
+                            Jump
+                          </button>
                         </div>
                         {blockRegions.length ? (
                           <div className="flex flex-wrap gap-1">
@@ -1865,7 +2185,7 @@ export function StudioManuscriptClient({
                         <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
                           {block.preview || "Empty block"}
                         </p>
-                      </button>
+                      </article>
                     );
                   })
                 ) : (
@@ -1944,6 +2264,13 @@ export function StudioManuscriptClient({
                 >
                   Download plain text
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadStructureOutline}
+                >
+                  Download structure outline Markdown
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -1974,6 +2301,13 @@ export function StudioManuscriptClient({
                 >
                   Export plain text
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={exportStructureOutline}
+                >
+                  Export structure outline Markdown
+                </button>
               </div>
               <textarea
                 className={cn(textareaClassName, "min-h-[150px] font-mono text-xs")}
@@ -1989,6 +2323,11 @@ export function StudioManuscriptClient({
                 className={cn(textareaClassName, "min-h-[110px]")}
                 readOnly
                 value={exportPlainText}
+              />
+              <textarea
+                className={cn(textareaClassName, "min-h-[130px] font-mono text-xs")}
+                readOnly
+                value={exportStructureMarkdown}
               />
               <label className="grid gap-2">
                 <span className={fieldLabelClassName}>Import JSON</span>

@@ -8,18 +8,22 @@ import {
   countMissingBlockIds,
   countWordsAndCharacters,
   createBackupFileName,
+  createBlockRangeSummary,
   ensureManuscriptBlockIds,
   createManuscriptImportSummary,
   createStructureRegionDefaultTitle,
+  createStructureOutlineMarkdown,
   hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
   manuscriptStructureDefinitions,
   manuscriptStructureLabelPresets,
+  moveManuscriptStructureRegionWithinKind,
   safeManuscriptDraft,
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
+  suggestBookStructureRegionsFromHeadings,
   summarizeAuthorMarkedSpans,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
@@ -579,4 +583,243 @@ test("structure region parser keeps old regions and normalizes invalid presets",
   assert.equal(parsed?.[0].title, "Chapter One");
   assert.equal(parsed?.[1].labelPreset, undefined);
   assert.equal(parsed?.[1].title, "Introduction");
+});
+
+test("block range summary normalizes pending start and end blocks", () => {
+  const blocks = [
+    { blockId: "block-a", type: "heading", preview: "Synthetic Preface" },
+    { blockId: "block-b", type: "paragraph", preview: "Synthetic setup" },
+    { blockId: "block-c", type: "paragraph", preview: "Synthetic close" },
+  ];
+
+  const summary = createBlockRangeSummary({
+    blocks,
+    startBlockId: "block-c",
+    endBlockId: "block-a",
+  });
+
+  assert.equal(summary?.isRangeComplete, true);
+  assert.equal(summary?.startIndex, 2);
+  assert.equal(summary?.endIndex, 0);
+  assert.equal(summary?.blockCount, 3);
+  assert.deepEqual(summary?.blockIds, ["block-a", "block-b", "block-c"]);
+
+  const partialSummary = createBlockRangeSummary({
+    blocks,
+    startBlockId: "block-a",
+    endBlockId: null,
+  });
+
+  assert.equal(partialSummary?.isRangeComplete, false);
+  assert.equal(partialSummary?.startPreview, "Synthetic Preface");
+  assert.equal(partialSummary?.endPreview, "No end block set");
+});
+
+test("structure outline markdown groups regions with previews and notes", () => {
+  const syntheticDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "heading",
+        attrs: { blockId: "block-preface" },
+        content: [{ type: "text", text: "Synthetic Preface" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-preface-body" },
+        content: [{ type: "text", text: "Synthetic front matter" }],
+      },
+      {
+        type: "heading",
+        attrs: { blockId: "block-episode" },
+        content: [{ type: "text", text: "Synthetic Episode" }],
+      },
+    ],
+  };
+  const summaries = collectStructureRegionSummaries({
+    json: syntheticDoc,
+    regions: [
+      {
+        id: "structure-preface",
+        kind: "chapter",
+        title: "Preface",
+        labelPreset: "preface",
+        startBlockId: "block-preface",
+        endBlockId: "block-preface-body",
+        order: 1,
+        colorKey: "chapter",
+        notes: "Synthetic note.",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+      },
+      {
+        id: "structure-episode",
+        kind: "episode",
+        title: "Episode 1",
+        startBlockId: "block-episode",
+        endBlockId: "block-episode",
+        order: 2,
+        colorKey: "episode",
+        notes: "",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+      },
+    ],
+  });
+  const markdown = createStructureOutlineMarkdown({ regions: summaries });
+
+  assert.match(markdown, /^# Manuscript Structure/);
+  assert.match(markdown, /## Chapter \/ book/);
+  assert.match(markdown, /1\. Preface/);
+  assert.match(markdown, /- Kind: Chapter \/ book/);
+  assert.match(markdown, /- Blocks: 2/);
+  assert.match(markdown, /- Start: Synthetic Preface/);
+  assert.match(markdown, /- End: Synthetic front matter/);
+  assert.match(markdown, /- Notes: Synthetic note\./);
+  assert.match(markdown, /## Episodes/);
+  assert.match(markdown, /1\. Episode 1/);
+});
+
+test("heading suggestions create book regions for synthetic front matter and chapters", () => {
+  const suggestions = suggestBookStructureRegionsFromHeadings({
+    blocks: [
+      { blockId: "block-preface", type: "heading", preview: "Preface" },
+      {
+        blockId: "block-preface-body",
+        type: "paragraph",
+        preview: "Synthetic front matter.",
+      },
+      {
+        blockId: "block-introduction",
+        type: "heading",
+        preview: "Introduction",
+      },
+      {
+        blockId: "block-introduction-body",
+        type: "paragraph",
+        preview: "Synthetic introduction body.",
+      },
+      { blockId: "block-chapter-zero", type: "heading", preview: "Chapter 0" },
+      {
+        blockId: "block-chapter-zero-body",
+        type: "paragraph",
+        preview: "Synthetic chapter zero body.",
+      },
+      { blockId: "block-chapter-one", type: "heading", preview: "Chapter One" },
+      {
+        blockId: "block-chapter-one-body",
+        type: "paragraph",
+        preview: "Synthetic chapter one body.",
+      },
+      { blockId: "block-chapter-two", type: "heading", preview: "Chapter 2" },
+      {
+        blockId: "block-chapter-two-body",
+        type: "paragraph",
+        preview: "Synthetic chapter two body.",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    suggestions.map((suggestion) => suggestion.title),
+    ["Preface", "Introduction", "Chapter 0", "Chapter One", "Chapter 2"],
+  );
+  assert.deepEqual(
+    suggestions.map((suggestion) => suggestion.labelPreset),
+    ["preface", "introduction", "chapter-0", "chapter", "chapter"],
+  );
+  assert.deepEqual(
+    suggestions.map((suggestion) => [
+      suggestion.startBlockId,
+      suggestion.endBlockId,
+    ]),
+    [
+      ["block-preface", "block-preface-body"],
+      ["block-introduction", "block-introduction-body"],
+      ["block-chapter-zero", "block-chapter-zero-body"],
+      ["block-chapter-one", "block-chapter-one-body"],
+      ["block-chapter-two", "block-chapter-two-body"],
+    ],
+  );
+
+  const zeroWordSuggestions = suggestBookStructureRegionsFromHeadings({
+    blocks: [
+      { blockId: "block-zero-word", type: "heading", preview: "Chapter Zero" },
+    ],
+  });
+
+  assert.equal(zeroWordSuggestions[0].labelPreset, "chapter-0");
+});
+
+test("heading suggestions ignore non-heading-like synthetic blocks", () => {
+  assert.deepEqual(
+    suggestBookStructureRegionsFromHeadings({
+      blocks: [
+        {
+          blockId: "block-body",
+          type: "paragraph",
+          preview:
+            "This synthetic paragraph mentions Chapter One but is too long to be a heading.",
+        },
+      ],
+    }),
+    [],
+  );
+});
+
+test("structure region move helper reorders only within the same kind", () => {
+  const timestamp = "2026-05-19T15:00:00.000Z";
+  const regions = [
+    {
+      id: "structure-chapter-one",
+      kind: "chapter",
+      title: "Chapter One",
+      startBlockId: "block-a",
+      endBlockId: "block-a",
+      order: 1,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+    {
+      id: "structure-episode-one",
+      kind: "episode",
+      title: "Episode 1",
+      startBlockId: "block-a",
+      endBlockId: "block-b",
+      order: 2,
+      colorKey: "episode",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+    {
+      id: "structure-chapter-two",
+      kind: "chapter",
+      title: "Chapter Two",
+      startBlockId: "block-b",
+      endBlockId: "block-c",
+      order: 3,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+  ];
+
+  const moved = moveManuscriptStructureRegionWithinKind({
+    regions,
+    regionId: "structure-chapter-two",
+    direction: "up",
+    updatedAt: timestamp,
+  });
+
+  assert.deepEqual(
+    moved.map((region) => region.id),
+    ["structure-chapter-two", "structure-episode-one", "structure-chapter-one"],
+  );
+  assert.equal(moved[0].updatedAt, timestamp);
+  assert.equal(moved[1].updatedAt, "2026-05-19T12:00:00.000Z");
+  assert.equal(moved[2].updatedAt, timestamp);
 });

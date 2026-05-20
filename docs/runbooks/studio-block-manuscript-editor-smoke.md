@@ -79,69 +79,93 @@ archive files.
 22. Confirm semantic highlights appear in the inspector.
 23. Select a multi-block range in the manuscript surface.
 24. In the Structure layer controls, choose `Chapter / book`, set `Book label
-    preset` to `Preface`, leave the title as `Preface`,
-    and click `Capture range`.
-25. Click `Add structure`.
-26. Confirm the `Preface` structure region appears in the inspector with the
+    preset` to `Preface`, leave the title as `Preface`, and click
+    `Capture range`.
+25. In the block inspector, click `Set start` on the first block for the
+    Preface range.
+26. Click `Set end` on a later block for the Preface range.
+27. Confirm the pending range summary shows start preview, end preview, block
+    count, and `Clear pending range`.
+28. Click `Add structure` and confirm the pending range is used instead of the
+    current text selection.
+29. Confirm the `Preface` structure region appears in the inspector with the
     title prominent.
-27. Confirm the covered blocks show structure-region styling in the manuscript
+30. Confirm the covered blocks show structure-region styling in the manuscript
     surface and matching structure chips in the block inspector.
-28. Repeat with `Chapter / book` and `Introduction`.
-29. Repeat with `Chapter / book` and `Chapter 0`.
-30. Repeat with `Chapter / book`, `Chapter`, and confirm the default title is
+31. Click `Jump to start` on the Preface structure card and confirm the editor
+    focuses the first block in that range.
+32. Click `Jump to end` on the Preface structure card and confirm the editor
+    focuses the last block in that range.
+33. Repeat with `Chapter / book` and `Introduction`.
+34. Repeat with `Chapter / book` and `Chapter 0`.
+35. Repeat with `Chapter / book`, `Chapter`, and confirm the default title is
     suitable for `Chapter One`.
-31. Repeat with `Episode` across an overlapping synthetic block range and
+36. Repeat with `Episode` across an overlapping synthetic block range and
     confirm the default title is suitable for `Episode 1`.
-32. Confirm the book regions and episode regions coexist without changing author or
-    semantic marks.
-33. Click `Edit` on one structure region.
-34. Change the title and notes, then click `Save`.
-35. Confirm the edited title and notes appear in the inspector and block-region
+37. Confirm the book regions and episode regions coexist without changing author
+    or semantic marks.
+38. Click `Edit` on one structure region.
+39. Change the title and notes, then click `Save`.
+40. Confirm the edited title and notes appear in the inspector and block-region
     chips.
-36. Click `Edit` again, change a field, click `Cancel`, and confirm the
+41. Click `Edit` again, change a field, click `Cancel`, and confirm the
     previous saved label remains.
-37. Remove one structure region and confirm the others remain.
-38. Toggle `Hide author colors`, then confirm author color styling disappears.
-39. Toggle `Show author colors`, then confirm author color styling returns.
-40. Toggle `Hide semantic colors`, then confirm semantic outline styling
+42. Use `Move up` or `Move down` on two regions in the same layer and confirm
+    only that layer's order changes.
+43. Remove one structure region and confirm the others remain.
+44. Click `Suggest book regions from headings`.
+45. If existing Chapter / book regions exist, confirm the replacement prompt;
+    verify suggested regions are created from Preface, Introduction, Chapter 0,
+    and Chapter headings only.
+46. Click `Export structure outline Markdown`.
+47. Confirm the outline textarea contains `# Manuscript Structure`, grouped
+    Chapter / book, Episodes, and Sections entries, block counts, start/end
+    previews, and notes where present.
+48. Click `Download structure outline Markdown`.
+49. Confirm a timestamped `.md` outline downloads.
+50. Toggle `Hide author colors`, then confirm author color styling disappears.
+51. Toggle `Show author colors`, then confirm author color styling returns.
+52. Toggle `Hide semantic colors`, then confirm semantic outline styling
     disappears.
-41. Toggle `Show semantic colors`, then confirm semantic outline styling
+53. Toggle `Show semantic colors`, then confirm semantic outline styling
     returns.
-42. Click `Download full draft JSON`.
-43. Confirm a timestamped `.json` backup downloads.
-44. Click `Download editor JSON`.
-45. Confirm a timestamped editor `.json` backup downloads.
-46. Click `Download HTML`.
-47. Confirm a timestamped `.html` backup downloads.
-48. Click `Download plain text`.
-49. Confirm a timestamped `.txt` backup downloads.
-50. Click `Export editor JSON`.
-51. Confirm exported JSON contains block IDs and inline marks but not structure
+54. Click `Download full draft JSON`.
+55. Confirm a timestamped `.json` backup downloads.
+56. Click `Download editor JSON`.
+57. Confirm a timestamped editor `.json` backup downloads.
+58. Click `Download HTML`.
+59. Confirm a timestamped `.html` backup downloads.
+60. Click `Download plain text`.
+61. Confirm a timestamped `.txt` backup downloads.
+62. Click `Export editor JSON`.
+63. Confirm exported JSON contains block IDs and inline marks but not structure
     regions.
-52. Copy the exported editor JSON, paste it into `Import JSON`, and click
+64. Copy the exported editor JSON, paste it into `Import JSON`, and click
     `Import editor JSON`.
-53. Confirm the replacement prompt appears if the current draft has content.
-54. Confirm text, block IDs, author marks, and semantic marks return after
+65. Confirm the replacement prompt appears if the current draft has content.
+66. Confirm text, block IDs, author marks, and semantic marks return after
     import, and structure regions are reset because this is editor JSON only.
-55. Recreate one synthetic structure region and edit its title or notes.
-56. Click `Export full draft`.
-57. Confirm the exported draft includes `schemaVersion`, title, source file
+67. Recreate one synthetic structure region and edit its title or notes.
+68. Click `Export full draft`.
+69. Confirm the exported draft includes `schemaVersion`, title, source file
     name, import summary, `structureRegions` with title and optional
     `labelPreset`, editor JSON, active author, display toggles, and last
     updated time.
-58. Copy the exported full draft JSON, paste it into `Import JSON`, and click
+70. Confirm the full draft JSON preserves the created structure regions and
+    edited structure labels.
+71. Copy the exported full draft JSON, paste it into `Import JSON`, and click
     `Import editor JSON`.
-59. Confirm text, block IDs, inline marks, edited title, edited notes, and
+72. Confirm text, block IDs, inline marks, edited title, edited notes, and
     structure regions return.
-60. Click `Export HTML`.
-61. Confirm HTML includes manuscript text and data attributes for marks.
-62. Click `Export plain text`.
-63. Confirm plain text contains the manuscript text without metadata.
-64. Refresh the page.
-65. Confirm the browser-local draft and edited structure labels survive refresh.
-66. Click `Clear local draft`.
-67. Confirm the browser prompt.
-68. Confirm only `high-ground-studio.manuscript-editor.v1` is removed from
+73. Click `Export HTML`.
+74. Confirm HTML includes manuscript text and data attributes for marks.
+75. Click `Export plain text`.
+76. Confirm plain text contains the manuscript text without metadata.
+77. Refresh the page.
+78. Confirm the browser-local draft and edited structure labels survive refresh.
+79. Click `Clear local draft`.
+80. Confirm the browser prompt.
+81. Confirm only `high-ground-studio.manuscript-editor.v1` is removed from
     localStorage.
 
 ## What To Inspect In Exported JSON
