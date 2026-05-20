@@ -281,6 +281,7 @@ export function StudioManuscriptClient({
   actor,
 }: StudioManuscriptClientProps) {
   const skipNextPersistRef = useRef(false);
+  const manuscriptSurfaceRef = useRef<HTMLElement | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [title, setTitle] = useState("Untitled manuscript");
   const [sourceFileName, setSourceFileName] = useState<string | null>(null);
@@ -293,6 +294,7 @@ export function StudioManuscriptClient({
   const [sidePanelMode, setSidePanelMode] =
     useState<ManuscriptSidePanelMode>("structure");
   const [isRecordingMode, setIsRecordingMode] = useState(false);
+  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [recordingOutlineKind, setRecordingOutlineKind] =
     useState<RecordingOutlineKind>("all");
   const [semanticType, setSemanticType] =
@@ -964,6 +966,21 @@ export function StudioManuscriptClient({
     exitFocusView();
     setRecordingOutlineKind("all");
     setMessage("Full manuscript visibility restored.");
+  }
+
+  function returnToManuscript() {
+    setIsMobileToolsOpen(false);
+    window.requestAnimationFrame(() => {
+      manuscriptSurfaceRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function focusBlockFromMobileTools(blockId: string | null) {
+    setIsMobileToolsOpen(false);
+    window.requestAnimationFrame(() => focusBlock(blockId));
   }
 
   function updateRecordingMode(enabled: boolean) {
@@ -1908,12 +1925,12 @@ export function StudioManuscriptClient({
         : "default";
 
   return (
-    <main className="min-h-screen overflow-x-hidden p-3.5 md:p-6">
-      <div className="grid min-h-[calc(100vh-28px)] grid-rows-[auto_auto_1fr] gap-[18px] md:min-h-[calc(100vh-48px)]">
+    <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-24 md:p-6">
+      <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_auto_1fr] md:gap-[18px]">
         <header
           className={cn(
             panelClassName,
-            "flex min-h-[72px] flex-col items-stretch justify-between gap-[18px] px-[18px] py-4 lg:flex-row lg:items-center",
+            "hidden min-h-[72px] flex-col items-stretch justify-between gap-[18px] px-[18px] py-4 md:flex lg:flex-row lg:items-center",
           )}
           aria-label="Manuscript Desk status"
         >
@@ -1946,7 +1963,7 @@ export function StudioManuscriptClient({
         </header>
 
         <section
-          className={cn(panelClassName, "grid gap-3 px-4 py-3.5")}
+          className={cn(panelClassName, "hidden gap-3 px-4 py-3.5 md:grid")}
           aria-label="Manuscript persistence status"
         >
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -2038,7 +2055,7 @@ export function StudioManuscriptClient({
           <section
             className={cn(
               panelClassName,
-              "sticky top-2 z-20 grid gap-3 border-studio-node/45 bg-studio-panel/98 px-4 py-3.5",
+              "sticky top-2 z-20 hidden gap-3 border-studio-node/45 bg-studio-panel/98 px-4 py-3.5 md:grid",
             )}
             aria-label="Recording reading controls"
           >
@@ -2553,6 +2570,7 @@ export function StudioManuscriptClient({
           </aside>
 
           <section
+            ref={manuscriptSurfaceRef}
             className={cn(
               panelClassName,
               "order-1 grid gap-3 xl:order-2",
@@ -2562,7 +2580,7 @@ export function StudioManuscriptClient({
             )}
             aria-label={isRecordingMode ? "Read-only manuscript" : "Editable manuscript"}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="hidden flex-wrap items-start justify-between gap-3 md:flex">
               <div>
                 <p className={labelClassName}>Editor</p>
                 <h2 className={panelTitleClassName}>Manuscript surface</h2>
@@ -2587,11 +2605,11 @@ export function StudioManuscriptClient({
             </div>
 
             {isRecordingMode ? (
-              <div className="rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted">
+              <div className="hidden rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted md:block">
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
             ) : (
-              <div className="flex flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+              <div className="hidden flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 md:flex">
               <p className={labelClassName}>Selection actions</p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -3994,6 +4012,234 @@ export function StudioManuscriptClient({
             </section>
             ) : null}
           </aside>
+        </section>
+
+        <section
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 py-2 shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur md:hidden"
+          aria-label="Mobile manuscript tools"
+        >
+          {isMobileToolsOpen ? (
+            <div className="mb-2 grid max-h-[70vh] gap-3 overflow-auto rounded-t-2xl border border-studio-line-strong bg-[#0f1512] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={labelClassName}>Mobile tools</p>
+                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                    Manuscript support controls
+                  </h2>
+                </div>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={returnToManuscript}
+                >
+                  Back to manuscript
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    isRecordingMode ? activeButtonClassName : "",
+                  )}
+                  type="button"
+                  onClick={() => updateRecordingMode(!isRecordingMode)}
+                >
+                  {isRecordingMode ? "Exit Recording" : "Recording mode"}
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => {
+                    applyHomerReadingFocus();
+                    returnToManuscript();
+                  }}
+                >
+                  Read Homer / Scott parts
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => showRecordingOutline("episode")}
+                >
+                  Episode outline
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => showRecordingOutline("chapter")}
+                >
+                  Chapter / book outline
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => {
+                    applyQuoteFocus();
+                    returnToManuscript();
+                  }}
+                >
+                  Cited quotations
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => {
+                    showFullManuscriptForRecording();
+                    returnToManuscript();
+                  }}
+                >
+                  Full manuscript
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => setShowAuthorColors((current) => !current)}
+                >
+                  {showAuthorColors ? "Hide author colors" : "Show author colors"}
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => setShowSemanticColors((current) => !current)}
+                >
+                  {showSemanticColors
+                    ? "Hide semantic colors"
+                    : "Show semantic colors"}
+                </button>
+              </div>
+
+              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="m-0 text-[0.95rem] leading-snug text-studio-ink">
+                    Outline
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    <StudioChip tone="node">
+                      {recordingOutlineKind === "all"
+                        ? "All structure"
+                        : getManuscriptStructureDefinition(recordingOutlineKind)
+                            .label}
+                    </StudioChip>
+                    <StudioChip tone="source">
+                      {recordingOutlineRegions.length.toLocaleString()} items
+                    </StudioChip>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(
+                    [
+                      ["all", "All"],
+                      ["chapter", "Chapters"],
+                      ["episode", "Episodes"],
+                      ["section", "Sections"],
+                    ] as Array<[RecordingOutlineKind, string]>
+                  ).map(([kind, label]) => (
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        "px-1.5 text-[0.72rem]",
+                        recordingOutlineKind === kind
+                          ? activeButtonClassName
+                          : "",
+                      )}
+                      key={kind}
+                      type="button"
+                      onClick={() => showRecordingOutline(kind)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid max-h-[32vh] gap-2 overflow-auto pr-1">
+                  {recordingOutlineRegions.length ? (
+                    recordingOutlineRegions.map((region) => (
+                      <article
+                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={region.id}
+                      >
+                        <div className="flex flex-wrap gap-1.5">
+                          <StudioChip tone="node">
+                            {getManuscriptStructureDefinition(region.kind).label}
+                          </StudioChip>
+                          <StudioChip tone="source">
+                            {region.blockCount.toLocaleString()} blocks
+                          </StudioChip>
+                        </div>
+                        <h4 className="m-0 text-[0.9rem] leading-snug text-studio-ink">
+                          {region.title}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() =>
+                              focusBlockFromMobileTools(region.startBlockId)
+                            }
+                          >
+                            Jump start
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() =>
+                              focusBlockFromMobileTools(region.endBlockId)
+                            }
+                          >
+                            Jump end
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <p className={panelCopyClassName}>
+                      No structure regions are available for this outline.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="m-0 truncate text-[0.82rem] font-extrabold leading-tight text-studio-ink">
+                {title || "Untitled manuscript"}
+              </p>
+              <p className="m-0 truncate text-[0.72rem] leading-tight text-studio-muted">
+                {isRecordingMode
+                  ? "Recording view-only"
+                  : blockFilterSummary.hasActiveFilters
+                    ? `${filteredBlockDetails.length.toLocaleString()} matches visible`
+                    : `${blockSummaries.length.toLocaleString()} manuscript blocks`}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  isRecordingMode ? activeButtonClassName : "",
+                )}
+                type="button"
+                onClick={() => updateRecordingMode(!isRecordingMode)}
+              >
+                {isRecordingMode ? "Exit" : "Read"}
+              </button>
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  isMobileToolsOpen ? activeButtonClassName : "",
+                )}
+                type="button"
+                aria-expanded={isMobileToolsOpen}
+                onClick={() => setIsMobileToolsOpen((current) => !current)}
+              >
+                {isMobileToolsOpen ? "Close tools" : "Tools"}
+              </button>
+            </div>
+          </div>
         </section>
       </div>
     </main>
