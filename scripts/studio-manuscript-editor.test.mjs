@@ -24,6 +24,7 @@ import {
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
+  manuscriptFilterVisualModeDefinitions,
   manuscriptQuoteReviewStatusDefinitions,
   manuscriptQuoteSourceTypeDefinitions,
   manuscriptStructureDefinitions,
@@ -141,6 +142,10 @@ test("author and semantic definitions contain the MVP options", () => {
   assert.deepEqual(
     manuscriptQuoteSourceTypeDefinitions.map((sourceType) => sourceType.id),
     ["book", "article", "speech", "interview", "scripture", "unknown", "other"],
+  );
+  assert.deepEqual(
+    manuscriptFilterVisualModeDefinitions.map((mode) => mode.id),
+    ["highlight-matches", "dim-nonmatches", "hide-nonmatches"],
   );
 });
 

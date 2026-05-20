@@ -49,6 +49,7 @@ import {
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
+  manuscriptFilterVisualModeDefinitions,
   manuscriptQuoteReviewStatusDefinitions,
   manuscriptQuoteSourceTypeDefinitions,
   manuscriptStructureDefinitions,
@@ -69,6 +70,7 @@ import {
   type ManuscriptCitedQuotationSummary,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
+  type ManuscriptFilterVisualMode,
   type ManuscriptImportSummary,
   type ManuscriptQuoteReview,
   type ManuscriptQuoteReviewStatus,
@@ -87,8 +89,6 @@ type StudioManuscriptClientProps = {
 };
 
 type ManuscriptSidePanelMode = "structure" | "filters" | "export";
-
-type ManuscriptFilterVisualMode = "highlight-matches" | "dim-nonmatches";
 
 const fieldLabelClassName =
   "text-[0.78rem] font-extrabold uppercase text-studio-muted";
@@ -648,6 +648,7 @@ export function StudioManuscriptClient({
       "manuscript-structure-section",
       "manuscript-filter-match",
       "manuscript-filter-dim",
+      "manuscript-filter-hide",
     ];
 
     editor.state.doc.descendants((node, pos) => {
@@ -717,6 +718,8 @@ export function StudioManuscriptClient({
           domNode.classList.add("manuscript-filter-match");
         } else if (filterVisualMode === "dim-nonmatches") {
           domNode.classList.add("manuscript-filter-dim");
+        } else if (filterVisualMode === "hide-nonmatches") {
+          domNode.classList.add("manuscript-filter-hide");
         }
       }
 
@@ -1964,9 +1967,10 @@ export function StudioManuscriptClient({
                   onClick={() => {
                     setSidePanelMode("filters");
                     setFilterSemanticType("cited-quotation");
+                    setFilterVisualMode("hide-nonmatches");
                   }}
                 >
-                  Show cited quotations
+                  Show only cited quotations
                 </button>
                 <button
                   className={smallButtonClassName}
@@ -2804,8 +2808,11 @@ export function StudioManuscriptClient({
                         )
                       }
                     >
-                      <option value="highlight-matches">Highlight matches</option>
-                      <option value="dim-nonmatches">Dim nonmatches</option>
+                      {manuscriptFilterVisualModeDefinitions.map((mode) => (
+                        <option key={mode.id} value={mode.id}>
+                          {mode.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
@@ -2859,9 +2866,12 @@ export function StudioManuscriptClient({
                   <button
                     className={smallButtonClassName}
                     type="button"
-                    onClick={() => setFilterSemanticType("cited-quotation")}
+                    onClick={() => {
+                      setFilterSemanticType("cited-quotation");
+                      setFilterVisualMode("hide-nonmatches");
+                    }}
                   >
-                    Show cited quotations
+                    Show only cited quotations
                   </button>
                   <button
                     className={smallButtonClassName}

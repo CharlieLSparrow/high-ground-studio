@@ -155,6 +155,10 @@ button:disabled {
   filter: saturate(0.65);
 }
 
+.manuscript-prosemirror .manuscript-filter-hide {
+  display: none !important;
+}
+
 .manuscript-hide-author-colors .manuscript-author-mark {
   background: transparent;
   box-shadow: none;

@@ -75,6 +75,12 @@ export const manuscriptQuoteSourceTypeDefinitions = [
   { id: "other", label: "Other" },
 ] as const;
 
+export const manuscriptFilterVisualModeDefinitions = [
+  { id: "highlight-matches", label: "Highlight matches" },
+  { id: "dim-nonmatches", label: "Dim nonmatches" },
+  { id: "hide-nonmatches", label: "Hide nonmatches" },
+] as const;
+
 export const manuscriptBlockNodeTypes = [
   "paragraph",
   "heading",
@@ -98,6 +104,9 @@ export type ManuscriptQuoteReviewStatus =
 
 export type ManuscriptQuoteSourceType =
   (typeof manuscriptQuoteSourceTypeDefinitions)[number]["id"];
+
+export type ManuscriptFilterVisualMode =
+  (typeof manuscriptFilterVisualModeDefinitions)[number]["id"];
 
 export type ManuscriptEditorJson = {
   type?: string;

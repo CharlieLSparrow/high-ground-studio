@@ -43,6 +43,10 @@ The draft includes:
 Filter/lens controls are view state only. They do not change the browser-local
 draft source data or localStorage schema.
 
+Focus View hiding is also view state only. It should hide nonmatching blocks in
+the manuscript surface without deleting, rewriting, splitting, or removing them
+from the editor JSON.
+
 The MVP is not database-backed. It does not write Prisma rows, remote Studio
 documents, public projections, `.docx` exports, manuscript MDX, or imported
 archive files.
@@ -188,13 +192,18 @@ archive files.
     manuscript surface.
 11. Switch visual mode to `Dim nonmatches` and confirm nonmatching blocks dim
     while the full manuscript remains visible.
-12. Toggle `Only unstructured blocks`, `Only blocks with semantic highlights`,
+12. Switch visual mode to `Hide nonmatches` and confirm nonmatching blocks are
+    hidden from the manuscript surface while the matching blocks remain visible.
+13. Click `Export editor JSON` and confirm hidden blocks are still present in
+    the editor JSON.
+14. Toggle `Only unstructured blocks`, `Only blocks with semantic highlights`,
     and `Only blocks with no author mark` and confirm each narrows results.
-13. Click `Clear filters` and confirm manuscript filter styling is removed.
-14. Click `Export filtered Markdown` and confirm the textarea includes active
+15. Click `Clear filters` and confirm hidden blocks return and manuscript
+    filter styling is removed.
+16. Click `Export filtered Markdown` and confirm the textarea includes active
     filters, matching block count, block previews, block types, block IDs, and
     structure labels.
-15. Click `Download filtered Markdown` and confirm a timestamped `.md` file
+17. Click `Download filtered Markdown` and confirm a timestamped `.md` file
     downloads from the browser.
 
 ## Cited Quotation Smoke Steps
@@ -210,26 +219,30 @@ archive files.
 7. Select the same text and click `Clear cited quotation / semantic`.
 8. Reapply `Mark cited quotation`.
 9. Switch the right side panel to `Filters`.
-10. Click `Show cited quotations` or set `Semantic tag` to
+10. Click `Show only cited quotations` or set `Semantic tag` to
     `Cited quotation`.
-11. Confirm the filter results show blocks containing cited quotations.
-12. Confirm the `Cited quotations` list shows quote preview, block context,
+11. Confirm the visual mode changes to `Hide nonmatches`.
+12. Confirm only manuscript blocks containing cited quotations remain visible in
+    the manuscript surface.
+13. Confirm the filter results show blocks containing cited quotations.
+14. Confirm the `Cited quotations` list shows quote preview, block context,
     source note, structure chips when present, and a `Jump` button.
-13. Click `Jump` and confirm the editor focuses the source block.
-14. Click `Review` on the cited quotation.
-15. Set `Review status` to `Needs verification`.
-16. Fill `Attributed to`, `Source type`, `Source title`, `Locator`,
+15. Click `Jump` and confirm the editor focuses the source block.
+16. Click `Review` on the cited quotation.
+17. Set `Review status` to `Needs verification`.
+18. Fill `Attributed to`, `Source type`, `Source title`, `Locator`,
     `Citation text`, `Rights note`, and `Editor note` with synthetic values.
-17. Click `Save review` and confirm the status/source chips update.
-18. Refresh the page and confirm the cited quotation review metadata persists
+19. Click `Save review` and confirm the status/source chips update.
+20. Refresh the page and confirm the cited quotation review metadata persists
     in the browser-local draft.
-19. Click `Review`, then `Remove review metadata`, and confirm the quote remains
+21. Click `Review`, then `Remove review metadata`, and confirm the quote remains
     marked while structured review fields reset.
-20. Refill and save the review metadata.
-21. Click `Export quote Markdown` and confirm the textarea includes quote text,
+22. Refill and save the review metadata.
+23. Click `Clear filters` and confirm the full manuscript wall returns.
+24. Click `Export quote Markdown` and confirm the textarea includes quote text,
     block ID, source note, structure labels, review status, attribution, source
     title, locator, citation text, rights note, and editor note when present.
-22. Click `Download quote Markdown` and confirm a timestamped `.md` file
+25. Click `Download quote Markdown` and confirm a timestamped `.md` file
     downloads from the browser.
 
 ## What To Inspect In Exported JSON
