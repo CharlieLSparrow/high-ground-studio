@@ -129,6 +129,18 @@ button:disabled {
   border-left-color: rgba(201, 179, 255, 0.76);
 }
 
+.manuscript-prosemirror .manuscript-filter-match {
+  border-radius: 0.35rem;
+  outline: 2px solid rgba(159, 209, 139, 0.82);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(159, 209, 139, 0.12);
+}
+
+.manuscript-prosemirror .manuscript-filter-dim {
+  opacity: 0.36;
+  filter: saturate(0.65);
+}
+
 .manuscript-hide-author-colors .manuscript-author-mark {
   background: transparent;
   box-shadow: none;

@@ -21,14 +21,17 @@ import {
 import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
 import {
   collectBlockSummaries,
+  collectManuscriptBlockDetails,
   collectSemanticHighlights,
   collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
   createBackupFileName,
+  createBlockFilterOptions,
   createBlockRangeSummary,
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
+  createFilteredBlockListMarkdown,
   createManuscriptImportSummary,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
@@ -46,11 +49,14 @@ import {
   moveManuscriptStructureRegionWithinKind,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
+  filterManuscriptBlocks,
   suggestBookStructureRegionsFromHeadings,
+  summarizeBlockFilterResults,
   summarizeAuthorMarkedSpans,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
   type ManuscriptAuthorId,
+  type ManuscriptBlockFilterCriteria,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptImportSummary,
@@ -66,6 +72,10 @@ type StudioManuscriptClientProps = {
     primaryEmail: string;
   };
 };
+
+type ManuscriptSidePanelMode = "structure" | "filters" | "export";
+
+type ManuscriptFilterVisualMode = "highlight-matches" | "dim-nonmatches";
 
 const fieldLabelClassName =
   "text-[0.78rem] font-extrabold uppercase text-studio-muted";
@@ -245,6 +255,8 @@ export function StudioManuscriptClient({
     useState<ManuscriptAuthorId>("homer");
   const [showAuthorColors, setShowAuthorColors] = useState(true);
   const [showSemanticColors, setShowSemanticColors] = useState(true);
+  const [sidePanelMode, setSidePanelMode] =
+    useState<ManuscriptSidePanelMode>("structure");
   const [semanticType, setSemanticType] =
     useState<SemanticHighlightType>("insight");
   const [semanticNote, setSemanticNote] = useState("");
@@ -275,6 +287,24 @@ export function StudioManuscriptClient({
     useState<string | null>(null);
   const [pendingStructureEndBlockId, setPendingStructureEndBlockId] =
     useState<string | null>(null);
+  const [filterTextQuery, setFilterTextQuery] = useState("");
+  const [filterAuthorId, setFilterAuthorId] = useState<
+    ManuscriptAuthorId | ""
+  >("");
+  const [filterSemanticType, setFilterSemanticType] = useState<
+    SemanticHighlightType | ""
+  >("");
+  const [filterStructureRegionId, setFilterStructureRegionId] = useState("");
+  const [filterStructureKind, setFilterStructureKind] = useState<
+    ManuscriptStructureKind | ""
+  >("");
+  const [filterBlockType, setFilterBlockType] = useState("");
+  const [filterOnlyUnstructured, setFilterOnlyUnstructured] = useState(false);
+  const [filterOnlyWithSemanticHighlights, setFilterOnlyWithSemanticHighlights] =
+    useState(false);
+  const [filterOnlyWithoutAuthor, setFilterOnlyWithoutAuthor] = useState(false);
+  const [filterVisualMode, setFilterVisualMode] =
+    useState<ManuscriptFilterVisualMode>("highlight-matches");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [editorJson, setEditorJson] = useState<ManuscriptEditorJson>(
     createEmptyManuscriptDoc(),
@@ -284,6 +314,7 @@ export function StudioManuscriptClient({
   const [exportHtml, setExportHtml] = useState("");
   const [exportPlainText, setExportPlainText] = useState("");
   const [exportStructureMarkdown, setExportStructureMarkdown] = useState("");
+  const [exportFilteredMarkdown, setExportFilteredMarkdown] = useState("");
   const [message, setMessage] = useState(
     "Browser-local Manuscript Desk draft.",
   );
@@ -431,6 +462,67 @@ export function StudioManuscriptClient({
       }),
     [structureRegionSummaries],
   );
+  const blockDetails = useMemo(
+    () =>
+      collectManuscriptBlockDetails({
+        json: currentEditorJson,
+        regions: structureRegions,
+      }),
+    [currentEditorJson, structureRegions],
+  );
+  const blockFilterOptions = useMemo(
+    () => createBlockFilterOptions(blockDetails),
+    [blockDetails],
+  );
+  const blockFilterCriteria = useMemo<ManuscriptBlockFilterCriteria>(
+    () => ({
+      textQuery: filterTextQuery,
+      authorId: filterAuthorId || null,
+      semanticTagType: filterSemanticType || null,
+      structureRegionId: filterStructureRegionId || null,
+      structureKind: filterStructureKind || null,
+      blockType: filterBlockType || null,
+      onlyUnstructured: filterOnlyUnstructured,
+      onlyWithSemanticHighlights: filterOnlyWithSemanticHighlights,
+      onlyWithoutAuthor: filterOnlyWithoutAuthor,
+    }),
+    [
+      filterAuthorId,
+      filterBlockType,
+      filterOnlyUnstructured,
+      filterOnlyWithSemanticHighlights,
+      filterOnlyWithoutAuthor,
+      filterSemanticType,
+      filterStructureKind,
+      filterStructureRegionId,
+      filterTextQuery,
+    ],
+  );
+  const filteredBlockDetails = useMemo(
+    () =>
+      filterManuscriptBlocks({
+        blocks: blockDetails,
+        criteria: blockFilterCriteria,
+      }),
+    [blockDetails, blockFilterCriteria],
+  );
+  const blockFilterSummary = useMemo(
+    () =>
+      summarizeBlockFilterResults({
+        blocks: blockDetails,
+        filteredBlocks: filteredBlockDetails,
+        criteria: blockFilterCriteria,
+      }),
+    [blockDetails, blockFilterCriteria, filteredBlockDetails],
+  );
+  const filteredBlockListMarkdown = useMemo(
+    () =>
+      createFilteredBlockListMarkdown({
+        blocks: blockDetails,
+        criteria: blockFilterCriteria,
+      }),
+    [blockDetails, blockFilterCriteria],
+  );
   const authorSummaries = useMemo(
     () => summarizeAuthorMarkedSpans(currentEditorJson),
     [currentEditorJson],
@@ -484,6 +576,8 @@ export function StudioManuscriptClient({
       "manuscript-structure-chapter",
       "manuscript-structure-episode",
       "manuscript-structure-section",
+      "manuscript-filter-match",
+      "manuscript-filter-dim",
     ];
 
     editor.state.doc.descendants((node, pos) => {
@@ -511,6 +605,12 @@ export function StudioManuscriptClient({
       }
     }
 
+    const matchingFilterBlockIds = new Set(
+      filteredBlockDetails.flatMap((block) =>
+        block.blockId ? [block.blockId] : [],
+      ),
+    );
+
     editor.state.doc.descendants((node, pos) => {
       if (!blockNodeTypes.includes(node.type.name)) {
         return true;
@@ -525,24 +625,41 @@ export function StudioManuscriptClient({
       const regions = regionsByBlockId.get(blockId);
       const domNode = editor.view.nodeDOM(pos);
 
-      if (!regions?.length || !(domNode instanceof HTMLElement)) {
+      if (!(domNode instanceof HTMLElement)) {
         return true;
       }
 
-      domNode.classList.add("manuscript-structure-block");
+      if (regions?.length) {
+        domNode.classList.add("manuscript-structure-block");
 
-      for (const region of regions) {
-        domNode.classList.add(`manuscript-structure-${region.colorKey}`);
+        for (const region of regions) {
+          domNode.classList.add(`manuscript-structure-${region.colorKey}`);
+        }
+
+        domNode.setAttribute(
+          "data-structure-regions",
+          regions.map((region) => region.title).join(", "),
+        );
       }
 
-      domNode.setAttribute(
-        "data-structure-regions",
-        regions.map((region) => region.title).join(", "),
-      );
+      if (blockFilterSummary.hasActiveFilters) {
+        if (matchingFilterBlockIds.has(blockId)) {
+          domNode.classList.add("manuscript-filter-match");
+        } else if (filterVisualMode === "dim-nonmatches") {
+          domNode.classList.add("manuscript-filter-dim");
+        }
+      }
 
       return true;
     });
-  }, [editor, editorJson, structureRegionSummaries]);
+  }, [
+    blockFilterSummary.hasActiveFilters,
+    editor,
+    editorJson,
+    filteredBlockDetails,
+    filterVisualMode,
+    structureRegionSummaries,
+  ]);
 
   function confirmDraftReplacement(action: string) {
     if (!hasReplaceableDraft) {
@@ -599,6 +716,20 @@ export function StudioManuscriptClient({
     setPendingStructureStartBlockId(null);
     setPendingStructureEndBlockId(null);
     setMessage("Pending structure range cleared.");
+  }
+
+  function clearBlockFilters() {
+    setFilterTextQuery("");
+    setFilterAuthorId("");
+    setFilterSemanticType("");
+    setFilterStructureRegionId("");
+    setFilterStructureKind("");
+    setFilterBlockType("");
+    setFilterOnlyUnstructured(false);
+    setFilterOnlyWithSemanticHighlights(false);
+    setFilterOnlyWithoutAuthor(false);
+    setExportFilteredMarkdown("");
+    setMessage("Manuscript filters cleared.");
   }
 
   function getDefaultStructureTitle(
@@ -1021,6 +1152,7 @@ export function StudioManuscriptClient({
       setPendingStructureStartBlockId(null);
       setPendingStructureEndBlockId(null);
       setExportStructureMarkdown("");
+      setExportFilteredMarkdown("");
       setTitle(file.name.replace(/\.docx$/i, "").trim() || title);
       setActiveAuthorId("charlie");
       setMessage(
@@ -1177,6 +1309,21 @@ export function StudioManuscriptClient({
     setMessage("Structure outline Markdown downloaded.");
   }
 
+  function exportFilteredBlockList() {
+    setExportFilteredMarkdown(filteredBlockListMarkdown);
+    setMessage("Filtered block list Markdown exported.");
+  }
+
+  function downloadFilteredBlockList() {
+    downloadBackup({
+      kind: "filtered-blocks",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: filteredBlockListMarkdown,
+    });
+    setMessage("Filtered block list Markdown downloaded.");
+  }
+
   function focusBlock(blockId: string | null) {
     if (!editor || !blockId) {
       setMessage("Cannot focus a block without a block ID.");
@@ -1237,6 +1384,7 @@ export function StudioManuscriptClient({
         setPendingStructureStartBlockId(null);
         setPendingStructureEndBlockId(null);
         setExportStructureMarkdown("");
+        setExportFilteredMarkdown("");
         setImportJson("");
         setMessage("Full Manuscript Desk draft JSON imported.");
         return;
@@ -1257,6 +1405,7 @@ export function StudioManuscriptClient({
       setPendingStructureStartBlockId(null);
       setPendingStructureEndBlockId(null);
       setExportStructureMarkdown("");
+      setExportFilteredMarkdown("");
       setImportJson("");
       setMessage("Editor JSON imported.");
     } catch {
@@ -1309,6 +1458,7 @@ export function StudioManuscriptClient({
     setExportHtml("");
     setExportPlainText("");
     setExportStructureMarkdown("");
+    setExportFilteredMarkdown("");
     setMessage("Manuscript Desk browser draft cleared.");
   }
 
@@ -1776,6 +1926,12 @@ export function StudioManuscriptClient({
                 <StudioChip tone="node">
                   {structureRegions.length.toLocaleString()} structure
                 </StudioChip>
+                {blockFilterSummary.hasActiveFilters ? (
+                  <StudioChip tone="review">
+                    {filteredBlockDetails.length.toLocaleString()} filter
+                    matches
+                  </StudioChip>
+                ) : null}
               </div>
             </div>
 
@@ -1846,7 +2002,13 @@ export function StudioManuscriptClient({
           <aside className={panelClassName} aria-label="Block and highlight panel">
             <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Inspector</p>
-              <StudioChip tone="node">Blocks + marks</StudioChip>
+              <StudioChip tone="node">
+                {sidePanelMode === "structure"
+                  ? "Structure"
+                  : sidePanelMode === "filters"
+                    ? "Filters"
+                    : "Export"}
+              </StudioChip>
             </div>
 
             <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
@@ -1876,6 +2038,35 @@ export function StudioManuscriptClient({
             </section>
 
             <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+              <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                Side panel
+              </h2>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ["structure", "Structure"],
+                    ["filters", "Filters"],
+                    ["export", "Export"],
+                  ] as Array<[ManuscriptSidePanelMode, string]>
+                ).map(([mode, label]) => (
+                  <button
+                    className={cn(
+                      smallButtonClassName,
+                      sidePanelMode === mode ? activeButtonClassName : "",
+                    )}
+                    key={mode}
+                    type="button"
+                    onClick={() => setSidePanelMode(mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {sidePanelMode === "structure" ? (
+              <>
+                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                   Structure regions
@@ -2226,8 +2417,268 @@ export function StudioManuscriptClient({
                 )}
               </div>
             </section>
+              </>
+            ) : null}
 
-            <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+            {sidePanelMode === "filters" ? (
+              <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                    Filter lens
+                  </h2>
+                  <StudioChip
+                    tone={blockFilterSummary.hasActiveFilters ? "review" : "source"}
+                  >
+                    {filteredBlockDetails.length.toLocaleString()} /{" "}
+                    {blockDetails.length.toLocaleString()} blocks
+                  </StudioChip>
+                </div>
+                <label className="grid gap-1.5">
+                  <span className={fieldLabelClassName}>Search text</span>
+                  <input
+                    className={fieldClassName}
+                    value={filterTextQuery}
+                    onChange={(event) => setFilterTextQuery(event.target.value)}
+                    placeholder="Search block text"
+                  />
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Author</span>
+                    <select
+                      className={fieldClassName}
+                      value={filterAuthorId}
+                      onChange={(event) =>
+                        setFilterAuthorId(event.target.value as ManuscriptAuthorId | "")
+                      }
+                    >
+                      <option value="">Any author</option>
+                      {manuscriptAuthorDefinitions.map((author) => (
+                        <option key={author.id} value={author.id}>
+                          {author.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Semantic tag</span>
+                    <select
+                      className={fieldClassName}
+                      value={filterSemanticType}
+                      onChange={(event) =>
+                        setFilterSemanticType(
+                          event.target.value as SemanticHighlightType | "",
+                        )
+                      }
+                    >
+                      <option value="">Any semantic tag</option>
+                      {semanticHighlightDefinitions.map((definition) => (
+                        <option key={definition.id} value={definition.id}>
+                          {definition.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Structure region</span>
+                    <select
+                      className={fieldClassName}
+                      value={filterStructureRegionId}
+                      onChange={(event) =>
+                        setFilterStructureRegionId(event.target.value)
+                      }
+                    >
+                      <option value="">Any structure region</option>
+                      {blockFilterOptions.structureRegions.map((region) => (
+                        <option key={region.id} value={region.id}>
+                          {region.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Structure kind</span>
+                    <select
+                      className={fieldClassName}
+                      value={filterStructureKind}
+                      onChange={(event) =>
+                        setFilterStructureKind(
+                          event.target.value as ManuscriptStructureKind | "",
+                        )
+                      }
+                    >
+                      <option value="">Any structure kind</option>
+                      {manuscriptStructureDefinitions.map((definition) => (
+                        <option key={definition.id} value={definition.id}>
+                          {definition.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Block type</span>
+                    <select
+                      className={fieldClassName}
+                      value={filterBlockType}
+                      onChange={(event) => setFilterBlockType(event.target.value)}
+                    >
+                      <option value="">Any block type</option>
+                      {blockFilterOptions.blockTypes.map((blockType) => (
+                        <option key={blockType} value={blockType}>
+                          {blockType}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Visual mode</span>
+                    <select
+                      className={fieldClassName}
+                      value={filterVisualMode}
+                      onChange={(event) =>
+                        setFilterVisualMode(
+                          event.target.value as ManuscriptFilterVisualMode,
+                        )
+                      }
+                    >
+                      <option value="highlight-matches">Highlight matches</option>
+                      <option value="dim-nonmatches">Dim nonmatches</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                  <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+                    <input
+                      checked={filterOnlyUnstructured}
+                      type="checkbox"
+                      onChange={(event) =>
+                        setFilterOnlyUnstructured(event.target.checked)
+                      }
+                    />
+                    Only unstructured blocks
+                  </label>
+                  <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+                    <input
+                      checked={filterOnlyWithSemanticHighlights}
+                      type="checkbox"
+                      onChange={(event) =>
+                        setFilterOnlyWithSemanticHighlights(event.target.checked)
+                      }
+                    />
+                    Only blocks with semantic highlights
+                  </label>
+                  <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+                    <input
+                      checked={filterOnlyWithoutAuthor}
+                      type="checkbox"
+                      onChange={(event) =>
+                        setFilterOnlyWithoutAuthor(event.target.checked)
+                      }
+                    />
+                    Only blocks with no author mark
+                  </label>
+                </div>
+                {blockFilterSummary.activeFilterLabels.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {blockFilterSummary.activeFilterLabels.map((label) => (
+                      <StudioChip key={label} tone="review">
+                        {label}
+                      </StudioChip>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                    No filters active. The full manuscript remains the working
+                    surface.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={clearBlockFilters}
+                  >
+                    Clear filters
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={exportFilteredBlockList}
+                  >
+                    Export filtered Markdown
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={downloadFilteredBlockList}
+                  >
+                    Download filtered Markdown
+                  </button>
+                </div>
+                <div className="grid max-h-[360px] gap-2 overflow-auto pr-1">
+                  {filteredBlockDetails.length ? (
+                    filteredBlockDetails.map((block, index) => (
+                      <article
+                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-tag/55 hover:bg-studio-tag/10"
+                        key={`${block.blockId ?? "missing"}-${index}`}
+                        onClick={() => focusBlock(block.blockId)}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <StudioChip tone={block.blockId ? "source" : "danger"}>
+                            {block.type}
+                          </StudioChip>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              focusBlock(block.blockId);
+                            }}
+                          >
+                            Jump
+                          </button>
+                        </div>
+                        <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
+                          {block.preview || "Empty block"}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {block.structureRegions.map((region) => (
+                            <StudioChip key={region.id} tone="node">
+                              {region.title}
+                            </StudioChip>
+                          ))}
+                          {block.authorIds.map((authorId) => (
+                            <StudioChip key={authorId} tone="source">
+                              {getManuscriptAuthorDefinition(authorId).label}
+                            </StudioChip>
+                          ))}
+                          {block.semanticTagTypes.map((tagType) => (
+                            <StudioChip key={tagType} tone="tag">
+                              {getSemanticHighlightDefinition(tagType).label}
+                            </StudioChip>
+                          ))}
+                        </div>
+                        <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
+                          {block.blockId ?? "missing blockId"}
+                        </span>
+                      </article>
+                    ))
+                  ) : (
+                    <p className={panelCopyClassName}>
+                      No blocks match the active filters.
+                    </p>
+                  )}
+                </div>
+                <textarea
+                  className={cn(textareaClassName, "min-h-[120px] font-mono text-xs")}
+                  readOnly
+                  value={exportFilteredMarkdown}
+                />
+              </section>
+            ) : null}
+
+            {sidePanelMode === "export" ? (
+              <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                 Export / backup
               </h2>
@@ -2271,6 +2722,13 @@ export function StudioManuscriptClient({
                 >
                   Download structure outline Markdown
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadFilteredBlockList}
+                >
+                  Download filtered block Markdown
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -2308,6 +2766,13 @@ export function StudioManuscriptClient({
                 >
                   Export structure outline Markdown
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={exportFilteredBlockList}
+                >
+                  Export filtered block Markdown
+                </button>
               </div>
               <textarea
                 className={cn(textareaClassName, "min-h-[150px] font-mono text-xs")}
@@ -2329,6 +2794,11 @@ export function StudioManuscriptClient({
                 readOnly
                 value={exportStructureMarkdown}
               />
+              <textarea
+                className={cn(textareaClassName, "min-h-[130px] font-mono text-xs")}
+                readOnly
+                value={exportFilteredMarkdown}
+              />
               <label className="grid gap-2">
                 <span className={fieldLabelClassName}>Import JSON</span>
                 <textarea
@@ -2345,6 +2815,7 @@ export function StudioManuscriptClient({
                 Import editor JSON
               </button>
             </section>
+            ) : null}
           </aside>
         </section>
       </div>

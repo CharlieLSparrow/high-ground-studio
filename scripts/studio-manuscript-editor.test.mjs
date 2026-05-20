@@ -3,16 +3,20 @@ import { test } from "node:test";
 
 import {
   collectBlockSummaries,
+  collectManuscriptBlockDetails,
   collectSemanticHighlights,
   collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
   createBackupFileName,
+  createBlockFilterOptions,
   createBlockRangeSummary,
   ensureManuscriptBlockIds,
+  createFilteredBlockListMarkdown,
   createManuscriptImportSummary,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
+  filterManuscriptBlocks,
   hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
@@ -24,6 +28,7 @@ import {
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
   suggestBookStructureRegionsFromHeadings,
+  summarizeBlockFilterResults,
   summarizeAuthorMarkedSpans,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
@@ -822,4 +827,239 @@ test("structure region move helper reorders only within the same kind", () => {
   assert.equal(moved[0].updatedAt, timestamp);
   assert.equal(moved[1].updatedAt, "2026-05-19T12:00:00.000Z");
   assert.equal(moved[2].updatedAt, timestamp);
+});
+
+const filterDoc = {
+  type: "doc",
+  content: [
+    {
+      type: "heading",
+      attrs: { blockId: "block-preface" },
+      content: [
+        {
+          type: "text",
+          text: "Synthetic Preface",
+          marks: [
+            {
+              type: "authorMark",
+              attrs: {
+                authorId: "homer",
+                authorLabel: "Homer / Scott",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "block-charlie" },
+      content: [
+        {
+          type: "text",
+          text: "Charlie synthetic reflection",
+          marks: [
+            {
+              type: "authorMark",
+              attrs: {
+                authorId: "charlie",
+                authorLabel: "Charlie",
+              },
+            },
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "semantic-filter-1",
+                tagType: "insight",
+                label: "Insight",
+                colorKey: "insight",
+                note: "",
+                createdAt: "2026-05-19T12:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "block-question" },
+      content: [
+        {
+          type: "text",
+          text: "Unmarked synthetic question",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "semantic-filter-2",
+                tagType: "question",
+                label: "Question",
+                colorKey: "question",
+                note: "",
+                createdAt: "2026-05-19T12:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "block-loose" },
+      content: [{ type: "text", text: "Loose synthetic note" }],
+    },
+  ],
+};
+
+const filterRegions = [
+  {
+    id: "structure-preface",
+    kind: "chapter",
+    title: "Preface",
+    labelPreset: "preface",
+    startBlockId: "block-preface",
+    endBlockId: "block-charlie",
+    order: 1,
+    colorKey: "chapter",
+    notes: "",
+    createdAt: "2026-05-19T12:00:00.000Z",
+    updatedAt: "2026-05-19T12:00:00.000Z",
+  },
+  {
+    id: "structure-episode",
+    kind: "episode",
+    title: "Episode 1",
+    startBlockId: "block-charlie",
+    endBlockId: "block-question",
+    order: 2,
+    colorKey: "episode",
+    notes: "",
+    createdAt: "2026-05-19T12:00:00.000Z",
+    updatedAt: "2026-05-19T12:00:00.000Z",
+  },
+];
+
+test("block details extract text marks and covering structures", () => {
+  const details = collectManuscriptBlockDetails({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+  const charlieBlock = details.find((block) => block.blockId === "block-charlie");
+  const options = createBlockFilterOptions(details);
+
+  assert.equal(details.length, 4);
+  assert.equal(charlieBlock?.text, "Charlie synthetic reflection");
+  assert.deepEqual(charlieBlock?.authorIds, ["charlie"]);
+  assert.deepEqual(charlieBlock?.semanticTagTypes, ["insight"]);
+  assert.deepEqual(
+    charlieBlock?.structureRegions.map((region) => region.id),
+    ["structure-preface", "structure-episode"],
+  );
+  assert.deepEqual(options.blockTypes, ["heading", "paragraph"]);
+  assert.deepEqual(options.authorIds, ["charlie", "homer"]);
+  assert.deepEqual(options.semanticTagTypes, ["insight", "question"]);
+});
+
+test("block filters match text query author semantic and structure criteria", () => {
+  const details = collectManuscriptBlockDetails({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { textQuery: "reflection" },
+    }).map((block) => block.blockId),
+    ["block-charlie"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { authorId: "charlie" },
+    }).map((block) => block.blockId),
+    ["block-charlie"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { semanticTagType: "insight" },
+    }).map((block) => block.blockId),
+    ["block-charlie"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { structureRegionId: "structure-preface" },
+    }).map((block) => block.blockId),
+    ["block-preface", "block-charlie"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { structureKind: "episode" },
+    }).map((block) => block.blockId),
+    ["block-charlie", "block-question"],
+  );
+});
+
+test("block filters support unstructured semantic-present and no-author lenses", () => {
+  const details = collectManuscriptBlockDetails({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { onlyUnstructured: true },
+    }).map((block) => block.blockId),
+    ["block-loose"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { onlyWithSemanticHighlights: true },
+    }).map((block) => block.blockId),
+    ["block-charlie", "block-question"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { onlyWithoutAuthor: true },
+    }).map((block) => block.blockId),
+    ["block-question", "block-loose"],
+  );
+});
+
+test("filtered block markdown includes filters counts previews and structures", () => {
+  const details = collectManuscriptBlockDetails({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+  const filtered = filterManuscriptBlocks({
+    blocks: details,
+    criteria: { semanticTagType: "insight" },
+  });
+  const summary = summarizeBlockFilterResults({
+    blocks: details,
+    filteredBlocks: filtered,
+    criteria: { semanticTagType: "insight" },
+  });
+  const markdown = createFilteredBlockListMarkdown({
+    blocks: details,
+    criteria: { semanticTagType: "insight" },
+  });
+
+  assert.equal(summary.matchingBlocks, 1);
+  assert.equal(summary.totalBlocks, 4);
+  assert.deepEqual(summary.activeFilterLabels, ["Semantic: Insight"]);
+  assert.match(markdown, /^# Manuscript Filtered Blocks/);
+  assert.match(markdown, /Matching blocks: 1 of 4/);
+  assert.match(markdown, /- Semantic: Insight/);
+  assert.match(markdown, /1\. Charlie synthetic reflection/);
+  assert.match(markdown, /- Type: paragraph/);
+  assert.match(markdown, /- Block ID: block-charlie/);
+  assert.match(markdown, /- Structure: Preface, Episode 1/);
 });

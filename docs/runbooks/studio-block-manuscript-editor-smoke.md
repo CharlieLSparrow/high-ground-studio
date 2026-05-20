@@ -1,6 +1,6 @@
 # Studio Block Manuscript Editor Smoke Checklist
 
-Date: 2026-05-19
+Date: 2026-05-20
 
 ## Purpose
 
@@ -38,6 +38,9 @@ The draft includes:
 - active author
 - author and semantic color toggles
 - last updated timestamp
+
+Filter/lens controls are view state only. They do not change the browser-local
+draft source data or localStorage schema.
 
 The MVP is not database-backed. It does not write Prisma rows, remote Studio
 documents, public projections, `.docx` exports, manuscript MDX, or imported
@@ -167,6 +170,31 @@ archive files.
 80. Confirm the browser prompt.
 81. Confirm only `high-ground-studio.manuscript-editor.v1` is removed from
     localStorage.
+
+## Filter Lens Smoke Steps
+
+1. Open `/manuscript`.
+2. Confirm the full manuscript surface remains visible.
+3. In the right side panel, switch from `Structure` to `Filters`.
+4. Search by text and confirm matching blocks are listed in the filter results.
+5. Filter by `Charlie` and confirm Charlie-marked blocks appear.
+6. Filter by `Homer / Scott` and confirm Homer / Scott-marked blocks appear.
+7. Filter by a semantic tag and confirm blocks with that semantic highlight
+   appear.
+8. Filter by a structure region and confirm covered blocks appear.
+9. Click `Jump` on a filtered block and confirm the editor focuses that block.
+10. With filters active, confirm matching blocks are emphasized in the full
+    manuscript surface.
+11. Switch visual mode to `Dim nonmatches` and confirm nonmatching blocks dim
+    while the full manuscript remains visible.
+12. Toggle `Only unstructured blocks`, `Only blocks with semantic highlights`,
+    and `Only blocks with no author mark` and confirm each narrows results.
+13. Click `Clear filters` and confirm manuscript filter styling is removed.
+14. Click `Export filtered Markdown` and confirm the textarea includes active
+    filters, matching block count, block previews, block types, block IDs, and
+    structure labels.
+15. Click `Download filtered Markdown` and confirm a timestamped `.md` file
+    downloads from the browser.
 
 ## What To Inspect In Exported JSON
 

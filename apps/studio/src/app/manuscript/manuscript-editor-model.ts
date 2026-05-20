@@ -109,6 +109,47 @@ export type ManuscriptBlockSummary = {
   preview: string;
 };
 
+export type ManuscriptBlockStructureReference = {
+  id: string;
+  kind: ManuscriptStructureKind;
+  title: string;
+};
+
+export type ManuscriptBlockDetail = ManuscriptBlockSummary & {
+  text: string;
+  authorIds: ManuscriptAuthorId[];
+  semanticTagTypes: SemanticHighlightType[];
+  structureRegions: ManuscriptBlockStructureReference[];
+};
+
+export type ManuscriptBlockFilterCriteria = {
+  textQuery?: string;
+  authorId?: ManuscriptAuthorId | null;
+  semanticTagType?: SemanticHighlightType | null;
+  structureRegionId?: string | null;
+  structureKind?: ManuscriptStructureKind | null;
+  blockType?: string | null;
+  onlyUnstructured?: boolean;
+  onlyWithSemanticHighlights?: boolean;
+  onlyWithoutAuthor?: boolean;
+};
+
+export type ManuscriptBlockFilterOptions = {
+  authorIds: ManuscriptAuthorId[];
+  semanticTagTypes: SemanticHighlightType[];
+  structureRegions: ManuscriptBlockStructureReference[];
+  structureKinds: ManuscriptStructureKind[];
+  blockTypes: string[];
+};
+
+export type ManuscriptBlockFilterSummary = {
+  totalBlocks: number;
+  matchingBlocks: number;
+  activeFilterCount: number;
+  hasActiveFilters: boolean;
+  activeFilterLabels: string[];
+};
+
 export type SemanticHighlightSummary = {
   highlightId: string;
   tagType: SemanticHighlightType;
@@ -305,6 +346,31 @@ export function createTextPreview(value: string, maxLength = 92) {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trim()}...`;
 }
 
+function getNodeText(node: ManuscriptEditorJson): string {
+  if (typeof node.text === "string") {
+    return node.text;
+  }
+
+  return Array.isArray(node.content)
+    ? node.content.map((child) => getNodeText(child)).join(" ")
+    : "";
+}
+
+function visitTextNodes(
+  node: ManuscriptEditorJson,
+  callback: (node: ManuscriptEditorJson) => void,
+) {
+  if (typeof node.text === "string") {
+    callback(node);
+  }
+
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      visitTextNodes(child, callback);
+    }
+  }
+}
+
 export function summarizeAuthorMarkedSpans(
   json: ManuscriptEditorJson,
 ): AuthorSpanSummary[] {
@@ -352,16 +418,6 @@ export function collectBlockSummaries(
   json: ManuscriptEditorJson,
 ): ManuscriptBlockSummary[] {
   const blocks: ManuscriptBlockSummary[] = [];
-
-  function getNodeText(node: ManuscriptEditorJson): string {
-    if (typeof node.text === "string") {
-      return node.text;
-    }
-
-    return Array.isArray(node.content)
-      ? node.content.map((child) => getNodeText(child)).join(" ")
-      : "";
-  }
 
   function visit(node: ManuscriptEditorJson) {
     if (
@@ -706,6 +762,356 @@ export function collectStructureRegionSummaries(input: {
         isRangeComplete: rangeSummary?.isRangeComplete ?? false,
       };
     });
+}
+
+export function collectManuscriptBlockDetails(input: {
+  json: ManuscriptEditorJson;
+  regions?: ManuscriptStructureRegion[];
+}): ManuscriptBlockDetail[] {
+  const structureRegionSummaries = collectStructureRegionSummaries({
+    json: input.json,
+    regions: input.regions ?? [],
+  });
+  const structureRegionsByBlockId = new Map<
+    string,
+    ManuscriptBlockStructureReference[]
+  >();
+
+  for (const region of structureRegionSummaries) {
+    for (const blockId of region.blockIds) {
+      const references = structureRegionsByBlockId.get(blockId) ?? [];
+      references.push({
+        id: region.id,
+        kind: region.kind,
+        title: region.title,
+      });
+      structureRegionsByBlockId.set(blockId, references);
+    }
+  }
+
+  const details: ManuscriptBlockDetail[] = [];
+
+  function visit(node: ManuscriptEditorJson) {
+    if (
+      typeof node.type === "string" &&
+      manuscriptBlockNodeTypes.includes(
+        node.type as (typeof manuscriptBlockNodeTypes)[number],
+      )
+    ) {
+      const blockId =
+        typeof node.attrs?.blockId === "string" ? node.attrs.blockId : null;
+      const authorIds = new Set<ManuscriptAuthorId>();
+      const semanticTagTypes = new Set<SemanticHighlightType>();
+      const text = getNodeText(node);
+
+      visitTextNodes(node, (textNode) => {
+        for (const mark of textNode.marks ?? []) {
+          if (mark.type === "authorMark") {
+            const rawAuthorId = String(mark.attrs?.authorId ?? "");
+
+            if (isManuscriptAuthorId(rawAuthorId)) {
+              authorIds.add(rawAuthorId);
+            }
+          }
+
+          if (mark.type === "semanticHighlightMark") {
+            const rawTagType = String(mark.attrs?.tagType ?? "");
+
+            if (isSemanticHighlightType(rawTagType)) {
+              semanticTagTypes.add(rawTagType);
+            }
+          }
+        }
+      });
+
+      details.push({
+        blockId,
+        type: node.type,
+        preview: createTextPreview(text, 84),
+        text,
+        authorIds: [...authorIds],
+        semanticTagTypes: [...semanticTagTypes],
+        structureRegions: blockId
+          ? (structureRegionsByBlockId.get(blockId) ?? [])
+          : [],
+      });
+    }
+
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) {
+        visit(child);
+      }
+    }
+  }
+
+  visit(input.json);
+  return details;
+}
+
+function dedupeSortedValues<T extends string>(
+  values: T[],
+  preferredOrder: readonly T[],
+) {
+  const valueSet = new Set(values);
+
+  return [
+    ...preferredOrder.filter((value) => valueSet.has(value)),
+    ...[...valueSet]
+      .filter((value) => !preferredOrder.includes(value))
+      .sort((left, right) => left.localeCompare(right)),
+  ];
+}
+
+export function createBlockFilterOptions(
+  blocks: ManuscriptBlockDetail[],
+): ManuscriptBlockFilterOptions {
+  const structureRegionsById = new Map<
+    string,
+    ManuscriptBlockStructureReference
+  >();
+
+  for (const block of blocks) {
+    for (const region of block.structureRegions) {
+      structureRegionsById.set(region.id, region);
+    }
+  }
+
+  return {
+    authorIds: dedupeSortedValues(
+      blocks.flatMap((block) => block.authorIds),
+      manuscriptAuthorDefinitions.map((author) => author.id),
+    ),
+    semanticTagTypes: dedupeSortedValues(
+      blocks.flatMap((block) => block.semanticTagTypes),
+      semanticHighlightDefinitions.map((tag) => tag.id),
+    ),
+    structureRegions: [...structureRegionsById.values()].sort((left, right) =>
+      left.title.localeCompare(right.title),
+    ),
+    structureKinds: dedupeSortedValues(
+      blocks.flatMap((block) =>
+        block.structureRegions.map((region) => region.kind),
+      ),
+      manuscriptStructureDefinitions.map((kind) => kind.id),
+    ),
+    blockTypes: [...new Set(blocks.map((block) => block.type))].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+  };
+}
+
+function normalizeFilterText(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+export function filterManuscriptBlocks(input: {
+  blocks: ManuscriptBlockDetail[];
+  criteria: ManuscriptBlockFilterCriteria;
+}) {
+  const textQuery = normalizeFilterText(input.criteria.textQuery);
+  const authorId = input.criteria.authorId ?? null;
+  const semanticTagType = input.criteria.semanticTagType ?? null;
+  const structureRegionId = input.criteria.structureRegionId?.trim() || null;
+  const structureKind = input.criteria.structureKind ?? null;
+  const blockType = input.criteria.blockType?.trim() || null;
+
+  return input.blocks.filter((block) => {
+    if (textQuery) {
+      const haystack = [
+        block.text,
+        block.preview,
+        block.blockId ?? "",
+        ...block.structureRegions.map((region) => region.title),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      if (!haystack.includes(textQuery)) {
+        return false;
+      }
+    }
+
+    if (authorId && !block.authorIds.includes(authorId)) {
+      return false;
+    }
+
+    if (
+      semanticTagType &&
+      !block.semanticTagTypes.includes(semanticTagType)
+    ) {
+      return false;
+    }
+
+    if (
+      structureRegionId &&
+      !block.structureRegions.some((region) => region.id === structureRegionId)
+    ) {
+      return false;
+    }
+
+    if (
+      structureKind &&
+      !block.structureRegions.some((region) => region.kind === structureKind)
+    ) {
+      return false;
+    }
+
+    if (blockType && block.type !== blockType) {
+      return false;
+    }
+
+    if (input.criteria.onlyUnstructured && block.structureRegions.length) {
+      return false;
+    }
+
+    if (
+      input.criteria.onlyWithSemanticHighlights &&
+      !block.semanticTagTypes.length
+    ) {
+      return false;
+    }
+
+    if (input.criteria.onlyWithoutAuthor && block.authorIds.length) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function describeBlockFilterCriteria(input: {
+  blocks: ManuscriptBlockDetail[];
+  criteria: ManuscriptBlockFilterCriteria;
+}) {
+  const labels: string[] = [];
+  const textQuery = input.criteria.textQuery?.trim();
+  const structureRegionId = input.criteria.structureRegionId?.trim();
+  const blockType = input.criteria.blockType?.trim();
+
+  if (textQuery) {
+    labels.push(`Text: ${textQuery}`);
+  }
+
+  if (input.criteria.authorId) {
+    labels.push(
+      `Author: ${getManuscriptAuthorDefinition(input.criteria.authorId).label}`,
+    );
+  }
+
+  if (input.criteria.semanticTagType) {
+    labels.push(
+      `Semantic: ${
+        getSemanticHighlightDefinition(input.criteria.semanticTagType).label
+      }`,
+    );
+  }
+
+  if (structureRegionId) {
+    const regionTitle =
+      input.blocks
+        .flatMap((block) => block.structureRegions)
+        .find((region) => region.id === structureRegionId)?.title ??
+      structureRegionId;
+
+    labels.push(`Structure: ${regionTitle}`);
+  }
+
+  if (input.criteria.structureKind) {
+    labels.push(
+      `Structure kind: ${
+        getManuscriptStructureDefinition(input.criteria.structureKind).label
+      }`,
+    );
+  }
+
+  if (blockType) {
+    labels.push(`Block type: ${blockType}`);
+  }
+
+  if (input.criteria.onlyUnstructured) {
+    labels.push("Only unstructured blocks");
+  }
+
+  if (input.criteria.onlyWithSemanticHighlights) {
+    labels.push("Only blocks with semantic highlights");
+  }
+
+  if (input.criteria.onlyWithoutAuthor) {
+    labels.push("Only blocks with no author mark");
+  }
+
+  return labels;
+}
+
+export function summarizeBlockFilterResults(input: {
+  blocks: ManuscriptBlockDetail[];
+  filteredBlocks: ManuscriptBlockDetail[];
+  criteria: ManuscriptBlockFilterCriteria;
+}): ManuscriptBlockFilterSummary {
+  const activeFilterLabels = describeBlockFilterCriteria({
+    blocks: input.blocks,
+    criteria: input.criteria,
+  });
+
+  return {
+    totalBlocks: input.blocks.length,
+    matchingBlocks: input.filteredBlocks.length,
+    activeFilterCount: activeFilterLabels.length,
+    hasActiveFilters: activeFilterLabels.length > 0,
+    activeFilterLabels,
+  };
+}
+
+export function createFilteredBlockListMarkdown(input: {
+  blocks: ManuscriptBlockDetail[];
+  criteria: ManuscriptBlockFilterCriteria;
+}) {
+  const filteredBlocks = filterManuscriptBlocks(input);
+  const summary = summarizeBlockFilterResults({
+    blocks: input.blocks,
+    filteredBlocks,
+    criteria: input.criteria,
+  });
+  const lines = ["# Manuscript Filtered Blocks", ""];
+
+  lines.push(
+    `Matching blocks: ${summary.matchingBlocks.toLocaleString()} of ${summary.totalBlocks.toLocaleString()}`,
+    "",
+  );
+  lines.push("## Active Filters", "");
+
+  if (summary.activeFilterLabels.length) {
+    for (const label of summary.activeFilterLabels) {
+      lines.push(`- ${createMarkdownText(label)}`);
+    }
+  } else {
+    lines.push("- None");
+  }
+
+  lines.push("", "## Blocks", "");
+
+  if (!filteredBlocks.length) {
+    lines.push("_No matching blocks._");
+    return lines.join("\n");
+  }
+
+  filteredBlocks.forEach((block, index) => {
+    lines.push(`${index + 1}. ${createMarkdownText(block.preview)}`);
+    lines.push(`   - Type: ${block.type}`);
+    lines.push(`   - Block ID: ${block.blockId ?? "missing blockId"}`);
+
+    if (block.structureRegions.length) {
+      lines.push(
+        `   - Structure: ${block.structureRegions
+          .map((region) => createMarkdownText(region.title))
+          .join(", ")}`,
+      );
+    }
+
+    lines.push("");
+  });
+
+  return lines.join("\n").trimEnd();
 }
 
 function createMarkdownText(value: string) {
