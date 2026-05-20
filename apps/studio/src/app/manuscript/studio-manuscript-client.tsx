@@ -22,6 +22,7 @@ import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
 import {
   collectBlockSummaries,
   collectSemanticHighlights,
+  collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
   createBackupFileName,
@@ -30,11 +31,13 @@ import {
   createManuscriptImportSummary,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
+  getManuscriptStructureDefinition,
   getSemanticHighlightDefinition,
   hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
+  manuscriptStructureDefinitions,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
   summarizeAuthorMarkedSpans,
@@ -43,6 +46,9 @@ import {
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptImportSummary,
+  type ManuscriptStructureKind,
+  type ManuscriptStructureRegion,
+  type ManuscriptStructureRegionSummary,
   type SemanticHighlightType,
 } from "./manuscript-editor-model";
 
@@ -87,6 +93,10 @@ function createHighlightId() {
   return `semantic-${createId("highlight")}`;
 }
 
+function createStructureRegionId() {
+  return `structure-${createId("region")}`;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return "Not saved yet";
@@ -117,6 +127,7 @@ function createDraftFromState(input: {
   title: string;
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
+  structureRegions: ManuscriptStructureRegion[];
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
   showAuthorColors: boolean;
@@ -128,6 +139,7 @@ function createDraftFromState(input: {
     title: input.title.trim() || "Untitled manuscript",
     sourceFileName: input.sourceFileName,
     importSummary: input.importSummary,
+    structureRegions: input.structureRegions,
     editorJson: input.editorJson,
     activeAuthorId: input.activeAuthorId,
     showAuthorColors: input.showAuthorColors,
@@ -138,6 +150,55 @@ function createDraftFromState(input: {
 
 function ensureBlockIds(json: ManuscriptEditorJson) {
   return ensureManuscriptBlockIds(json, createBlockId);
+}
+
+function getEditorSelectionBlockRange(
+  editor: NonNullable<ReturnType<typeof useEditor>>,
+) {
+  const blockIds: string[] = [];
+  const seen = new Set<string>();
+  const { from, to, $from } = editor.state.selection;
+
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (!blockNodeTypes.includes(node.type.name)) {
+      return true;
+    }
+
+    const blockId = node.attrs.blockId;
+
+    if (typeof blockId === "string" && blockId.trim() && !seen.has(blockId)) {
+      seen.add(blockId);
+      blockIds.push(blockId);
+    }
+
+    return true;
+  });
+
+  if (!blockIds.length) {
+    for (let depth = $from.depth; depth >= 0; depth -= 1) {
+      const node = $from.node(depth);
+      const blockId = node.attrs.blockId;
+
+      if (
+        blockNodeTypes.includes(node.type.name) &&
+        typeof blockId === "string" &&
+        blockId.trim()
+      ) {
+        blockIds.push(blockId);
+        break;
+      }
+    }
+  }
+
+  if (!blockIds.length) {
+    return null;
+  }
+
+  return {
+    startBlockId: blockIds[0],
+    endBlockId: blockIds[blockIds.length - 1],
+    blockCount: blockIds.length,
+  };
 }
 
 function setCursorAtDocumentEnd(editor: NonNullable<ReturnType<typeof useEditor>>) {
@@ -178,6 +239,18 @@ export function StudioManuscriptClient({
   const [semanticType, setSemanticType] =
     useState<SemanticHighlightType>("insight");
   const [semanticNote, setSemanticNote] = useState("");
+  const [structureKind, setStructureKind] =
+    useState<ManuscriptStructureKind>("chapter");
+  const [structureTitle, setStructureTitle] = useState("");
+  const [structureNotes, setStructureNotes] = useState("");
+  const [structureRegions, setStructureRegions] = useState<
+    ManuscriptStructureRegion[]
+  >([]);
+  const [selectedStructureRange, setSelectedStructureRange] = useState<{
+    startBlockId: string;
+    endBlockId: string;
+    blockCount: number;
+  } | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [editorJson, setEditorJson] = useState<ManuscriptEditorJson>(
     createEmptyManuscriptDoc(),
@@ -233,6 +306,7 @@ export function StudioManuscriptClient({
           setTitle(parsed.title);
           setSourceFileName(parsed.sourceFileName);
           setImportSummary(parsed.importSummary);
+          setStructureRegions(parsed.structureRegions);
           setActiveAuthorId(parsed.activeAuthorId);
           setShowAuthorColors(parsed.showAuthorColors);
           setShowSemanticColors(parsed.showSemanticColors);
@@ -265,6 +339,7 @@ export function StudioManuscriptClient({
       title,
       sourceFileName,
       importSummary,
+      structureRegions,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
       showAuthorColors,
@@ -291,6 +366,7 @@ export function StudioManuscriptClient({
     showAuthorColors,
     showSemanticColors,
     sourceFileName,
+    structureRegions,
     title,
   ]);
 
@@ -305,6 +381,14 @@ export function StudioManuscriptClient({
   const blockSummaries = useMemo(
     () => collectBlockSummaries(currentEditorJson),
     [currentEditorJson],
+  );
+  const structureRegionSummaries = useMemo(
+    () =>
+      collectStructureRegionSummaries({
+        json: currentEditorJson,
+        regions: structureRegions,
+      }),
+    [currentEditorJson, structureRegions],
   );
   const authorSummaries = useMemo(
     () => summarizeAuthorMarkedSpans(currentEditorJson),
@@ -324,10 +408,100 @@ export function StudioManuscriptClient({
         title,
         sourceFileName,
         importSummary,
+        structureRegions,
         editorJson: currentEditorJson,
       }),
-    [currentEditorJson, importSummary, sourceFileName, title],
+    [currentEditorJson, importSummary, sourceFileName, structureRegions, title],
   );
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const updateSelectedRange = () => {
+      setSelectedStructureRange(getEditorSelectionBlockRange(editor));
+    };
+
+    updateSelectedRange();
+    editor.on("selectionUpdate", updateSelectedRange);
+    editor.on("update", updateSelectedRange);
+
+    return () => {
+      editor.off("selectionUpdate", updateSelectedRange);
+      editor.off("update", updateSelectedRange);
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const classNames = [
+      "manuscript-structure-block",
+      "manuscript-structure-chapter",
+      "manuscript-structure-episode",
+      "manuscript-structure-section",
+    ];
+
+    editor.state.doc.descendants((node, pos) => {
+      if (!blockNodeTypes.includes(node.type.name)) {
+        return true;
+      }
+
+      const domNode = editor.view.nodeDOM(pos);
+
+      if (domNode instanceof HTMLElement) {
+        domNode.classList.remove(...classNames);
+        domNode.removeAttribute("data-structure-regions");
+      }
+
+      return true;
+    });
+
+    const regionsByBlockId = new Map<string, ManuscriptStructureRegionSummary[]>();
+
+    for (const region of structureRegionSummaries) {
+      for (const blockId of region.blockIds) {
+        const regions = regionsByBlockId.get(blockId) ?? [];
+        regions.push(region);
+        regionsByBlockId.set(blockId, regions);
+      }
+    }
+
+    editor.state.doc.descendants((node, pos) => {
+      if (!blockNodeTypes.includes(node.type.name)) {
+        return true;
+      }
+
+      const blockId = node.attrs.blockId;
+
+      if (typeof blockId !== "string") {
+        return true;
+      }
+
+      const regions = regionsByBlockId.get(blockId);
+      const domNode = editor.view.nodeDOM(pos);
+
+      if (!regions?.length || !(domNode instanceof HTMLElement)) {
+        return true;
+      }
+
+      domNode.classList.add("manuscript-structure-block");
+
+      for (const region of regions) {
+        domNode.classList.add(`manuscript-structure-${region.colorKey}`);
+      }
+
+      domNode.setAttribute(
+        "data-structure-regions",
+        regions.map((region) => region.title).join(", "),
+      );
+
+      return true;
+    });
+  }, [editor, editorJson, structureRegionSummaries]);
 
   function confirmDraftReplacement(action: string) {
     if (!hasReplaceableDraft) {
@@ -336,6 +510,16 @@ export function StudioManuscriptClient({
 
     return window.confirm(
       `${action} will replace the current browser-local Manuscript Desk draft. Export a backup first if you need to keep it. Continue?`,
+    );
+  }
+
+  function getStructureRegionsForBlock(blockId: string | null) {
+    if (!blockId) {
+      return [];
+    }
+
+    return structureRegionSummaries.filter((region) =>
+      region.blockIds.includes(blockId),
     );
   }
 
@@ -426,6 +610,80 @@ export function StudioManuscriptClient({
     setMessage("Semantic highlight cleared from the current selection.");
   }
 
+  function captureStructureRange() {
+    if (!editor) {
+      return;
+    }
+
+    const range = getEditorSelectionBlockRange(editor);
+
+    if (!range) {
+      setMessage("Select manuscript text or place the cursor in a block first.");
+      return;
+    }
+
+    setSelectedStructureRange(range);
+    setMessage(
+      `Captured ${range.blockCount.toLocaleString()} block${
+        range.blockCount === 1 ? "" : "s"
+      } for the structure region.`,
+    );
+  }
+
+  function createStructureRegion() {
+    if (!editor) {
+      return;
+    }
+
+    const range =
+      selectedStructureRange ?? getEditorSelectionBlockRange(editor);
+
+    if (!range) {
+      setMessage("Select a block range in the manuscript before adding structure.");
+      return;
+    }
+
+    const definition = getManuscriptStructureDefinition(structureKind);
+    const kindCount =
+      structureRegions.filter((region) => region.kind === definition.id).length +
+      1;
+    const now = new Date().toISOString();
+    const nextRegion: ManuscriptStructureRegion = {
+      id: createStructureRegionId(),
+      kind: definition.id,
+      title: structureTitle.trim() || `${definition.label} ${kindCount}`,
+      startBlockId: range.startBlockId,
+      endBlockId: range.endBlockId,
+      order: structureRegions.length + 1,
+      colorKey: definition.colorKey,
+      notes: structureNotes.trim(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setStructureRegions((current) => [...current, nextRegion]);
+    setStructureTitle("");
+    setStructureNotes("");
+    setMessage(
+      `Added ${definition.label.toLowerCase()} structure region across ${range.blockCount.toLocaleString()} block${
+        range.blockCount === 1 ? "" : "s"
+      }.`,
+    );
+  }
+
+  function removeStructureRegion(regionId: string) {
+    setStructureRegions((current) =>
+      current
+        .filter((region) => region.id !== regionId)
+        .map((region, index) => ({
+          ...region,
+          order: index + 1,
+          updatedAt: new Date().toISOString(),
+        })),
+    );
+    setMessage("Structure region removed.");
+  }
+
   async function importDocx(file: File | null) {
     if (!editor || !file) {
       return;
@@ -480,6 +738,8 @@ export function StudioManuscriptClient({
       setEditorJson(importedJson);
       setSourceFileName(file.name);
       setImportSummary(summary);
+      setStructureRegions([]);
+      setSelectedStructureRange(null);
       setTitle(file.name.replace(/\.docx$/i, "").trim() || title);
       setActiveAuthorId("charlie");
       setMessage(
@@ -530,6 +790,7 @@ export function StudioManuscriptClient({
       title,
       sourceFileName,
       importSummary,
+      structureRegions,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
       showAuthorColors,
@@ -669,6 +930,8 @@ export function StudioManuscriptClient({
         setTitle(parsedDraft.title);
         setSourceFileName(parsedDraft.sourceFileName);
         setImportSummary(parsedDraft.importSummary);
+        setStructureRegions(parsedDraft.structureRegions);
+        setSelectedStructureRange(null);
         setActiveAuthorId(parsedDraft.activeAuthorId);
         setShowAuthorColors(parsedDraft.showAuthorColors);
         setShowSemanticColors(parsedDraft.showSemanticColors);
@@ -690,6 +953,8 @@ export function StudioManuscriptClient({
       setEditorJson(jsonWithBlockIds);
       setSourceFileName(null);
       setImportSummary(null);
+      setStructureRegions([]);
+      setSelectedStructureRange(null);
       setImportJson("");
       setMessage("Editor JSON imported.");
     } catch {
@@ -728,6 +993,8 @@ export function StudioManuscriptClient({
     setTitle(emptyDraft.title);
     setSourceFileName(null);
     setImportSummary(null);
+    setStructureRegions([]);
+    setSelectedStructureRange(null);
     setActiveAuthorId(emptyDraft.activeAuthorId);
     setShowAuthorColors(emptyDraft.showAuthorColors);
     setShowSemanticColors(emptyDraft.showSemanticColors);
@@ -748,7 +1015,10 @@ export function StudioManuscriptClient({
           message.includes("imported") ||
           message.includes("Marked") ||
           message.includes("Applied") ||
+          message.includes("Captured") ||
+          message.includes("Added") ||
           message.includes("cleared") ||
+          message.includes("removed") ||
           message.includes("Loaded")
         ? "tag"
         : "default";
@@ -772,7 +1042,7 @@ export function StudioManuscriptClient({
               </h1>
               <p className="mt-1.5 mb-0 max-w-[840px] text-[0.94rem] leading-relaxed text-studio-muted">
                 Import a manuscript, edit block by block, and mark spans for
-                authorship and meaning.
+                authorship, meaning, chapters, and episodes.
               </p>
             </div>
           </div>
@@ -806,6 +1076,7 @@ export function StudioManuscriptClient({
                 Active author:{" "}
                 {getManuscriptAuthorDefinition(activeAuthorId).label}
                 {" | "}Last saved: {formatDateTime(lastUpdatedAt)}
+                {" | "}Structure regions: {structureRegions.length}
                 {sourceFileName ? ` | Source: ${sourceFileName}` : ""}
               </p>
               {importSummary ? (
@@ -992,6 +1263,68 @@ export function StudioManuscriptClient({
                 </button>
               </div>
 
+              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className={labelClassName}>Structure layer</p>
+                  <StudioChip tone="node">
+                    {selectedStructureRange
+                      ? `${selectedStructureRange.blockCount.toLocaleString()} blocks`
+                      : "No range"}
+                  </StudioChip>
+                </div>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Region kind</span>
+                  <select
+                    className={fieldClassName}
+                    value={structureKind}
+                    onChange={(event) =>
+                      setStructureKind(
+                        event.target.value as ManuscriptStructureKind,
+                      )
+                    }
+                  >
+                    {manuscriptStructureDefinitions.map((definition) => (
+                      <option key={definition.id} value={definition.id}>
+                        {definition.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Region title</span>
+                  <input
+                    className={fieldClassName}
+                    placeholder={`${getManuscriptStructureDefinition(structureKind).label} title`}
+                    value={structureTitle}
+                    onChange={(event) => setStructureTitle(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Structure notes</span>
+                  <textarea
+                    className={cn(textareaClassName, "min-h-[76px]")}
+                    value={structureNotes}
+                    onChange={(event) => setStructureNotes(event.target.value)}
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={captureStructureRange}
+                  >
+                    Capture range
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={createStructureRegion}
+                  >
+                    Add structure
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   className={cn(
@@ -1063,6 +1396,9 @@ export function StudioManuscriptClient({
                 <StudioChip tone="source">
                   {blockSummaries.length.toLocaleString()} blocks
                 </StudioChip>
+                <StudioChip tone="node">
+                  {structureRegions.length.toLocaleString()} structure
+                </StudioChip>
               </div>
             </div>
 
@@ -1104,6 +1440,20 @@ export function StudioManuscriptClient({
                 >
                   Clear semantic
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={captureStructureRange}
+                >
+                  Capture structure range
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={createStructureRegion}
+                >
+                  Add {getManuscriptStructureDefinition(structureKind).label}
+                </button>
               </div>
             </div>
 
@@ -1111,8 +1461,8 @@ export function StudioManuscriptClient({
 
             <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
               Paragraphs, headings, and list items carry `blockId` attributes in
-              the editor JSON. Author marks and semantic highlights are separate
-              inline marks and can overlap.
+              the editor JSON. Structure regions are block ranges. Author marks
+              and semantic highlights are separate inline marks and can overlap.
             </p>
           </section>
 
@@ -1151,6 +1501,63 @@ export function StudioManuscriptClient({
             <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                  Structure regions
+                </h2>
+                <StudioChip tone="node">
+                  {structureRegions.length.toLocaleString()} regions
+                </StudioChip>
+              </div>
+              <div className="grid max-h-[280px] gap-2 overflow-auto pr-1">
+                {structureRegionSummaries.length ? (
+                  structureRegionSummaries.map((region) => (
+                    <article
+                      className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                      key={region.id}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <StudioChip tone="node">
+                            {getManuscriptStructureDefinition(region.kind).label}
+                          </StudioChip>
+                          <h3 className="mt-2 mb-0 text-[0.92rem] leading-snug text-studio-ink">
+                            {region.title}
+                          </h3>
+                        </div>
+                        <button
+                          className={dangerButtonClassName}
+                          type="button"
+                          onClick={() => removeStructureRegion(region.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+                        {region.isRangeComplete
+                          ? `${region.blockCount.toLocaleString()} blocks`
+                          : "Range needs review"}
+                      </p>
+                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                        Start: {region.startPreview}
+                      </p>
+                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                        End: {region.endPreview}
+                      </p>
+                      {region.notes ? (
+                        <p className="m-0 text-[0.75rem] leading-relaxed text-studio-review">
+                          {region.notes}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))
+                ) : (
+                  <p className={panelCopyClassName}>No structure regions yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
                   Block IDs
                 </h2>
                 <StudioChip tone={missingBlockIdCount ? "danger" : "source"}>
@@ -1166,26 +1573,43 @@ export function StudioManuscriptClient({
               ) : null}
               <div className="grid max-h-[310px] gap-2 overflow-auto pr-1">
                 {blockSummaries.length ? (
-                  blockSummaries.map((block, index) => (
-                    <button
-                      className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-tag/55 hover:bg-studio-tag/10"
-                      key={`${block.blockId ?? "missing"}-${index}`}
-                      type="button"
-                      onClick={() => focusBlock(block.blockId)}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <StudioChip tone={block.blockId ? "source" : "danger"}>
-                          {block.type}
-                        </StudioChip>
-                        <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
-                          {block.blockId ?? "missing blockId"}
-                        </span>
-                      </div>
-                      <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
-                        {block.preview || "Empty block"}
-                      </p>
-                    </button>
-                  ))
+                  blockSummaries.map((block, index) => {
+                    const blockRegions = getStructureRegionsForBlock(
+                      block.blockId,
+                    );
+
+                    return (
+                      <button
+                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-tag/55 hover:bg-studio-tag/10"
+                        key={`${block.blockId ?? "missing"}-${index}`}
+                        type="button"
+                        onClick={() => focusBlock(block.blockId)}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <StudioChip
+                            tone={block.blockId ? "source" : "danger"}
+                          >
+                            {block.type}
+                          </StudioChip>
+                          <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
+                            {block.blockId ?? "missing blockId"}
+                          </span>
+                        </div>
+                        {blockRegions.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {blockRegions.map((region) => (
+                              <StudioChip key={region.id} tone="node">
+                                {region.title}
+                              </StudioChip>
+                            ))}
+                          </div>
+                        ) : null}
+                        <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
+                          {block.preview || "Empty block"}
+                        </p>
+                      </button>
+                    );
+                  })
                 ) : (
                   <p className={panelCopyClassName}>No blocks yet.</p>
                 )}

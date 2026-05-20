@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   collectBlockSummaries,
   collectSemanticHighlights,
+  collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
   createBackupFileName,
@@ -13,7 +14,9 @@ import {
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
+  manuscriptStructureDefinitions,
   safeManuscriptDraft,
+  safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
   summarizeAuthorMarkedSpans,
   validateEditorJsonShape,
@@ -93,6 +96,10 @@ test("author and semantic definitions contain the MVP options", () => {
       "transition",
     ],
   );
+  assert.deepEqual(
+    manuscriptStructureDefinitions.map((definition) => definition.id),
+    ["chapter", "episode", "section"],
+  );
 });
 
 test("safeManuscriptDraft accepts a valid draft", () => {
@@ -107,6 +114,20 @@ test("safeManuscriptDraft accepts a valid draft", () => {
       blocks: 1,
       importedAt: "2026-05-19T12:00:00.000Z",
     },
+    structureRegions: [
+      {
+        id: "structure-1",
+        kind: "chapter",
+        title: "Chapter 1",
+        startBlockId: "block-1",
+        endBlockId: "block-1",
+        order: 1,
+        colorKey: "chapter",
+        notes: "Synthetic chapter example.",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+      },
+    ],
     editorJson,
     activeAuthorId: "homer",
     showAuthorColors: true,
@@ -115,6 +136,22 @@ test("safeManuscriptDraft accepts a valid draft", () => {
   };
 
   assert.deepEqual(safeManuscriptDraft(draft), draft);
+});
+
+test("safeManuscriptDraft defaults older drafts to no structure regions", () => {
+  const parsed = safeManuscriptDraft({
+    schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
+    title: "Older draft",
+    sourceFileName: null,
+    importSummary: null,
+    editorJson,
+    activeAuthorId: "homer",
+    showAuthorColors: true,
+    showSemanticColors: true,
+    lastUpdatedAt: null,
+  });
+
+  assert.deepEqual(parsed?.structureRegions, []);
 });
 
 test("safeManuscriptDraft rejects invalid draft envelopes", () => {
@@ -213,6 +250,29 @@ test("hasMeaningfulManuscriptDraft detects drafts worth protecting", () => {
     }),
     true,
   );
+  assert.equal(
+    hasMeaningfulManuscriptDraft({
+      title: "Untitled manuscript",
+      sourceFileName: null,
+      importSummary: null,
+      structureRegions: [
+        {
+          id: "structure-empty",
+          kind: "episode",
+          title: "Episode A",
+          startBlockId: "block-1",
+          endBlockId: "block-1",
+          order: 1,
+          colorKey: "episode",
+          notes: "",
+          createdAt: "2026-05-19T12:00:00.000Z",
+          updatedAt: "2026-05-19T12:00:00.000Z",
+        },
+      ],
+      editorJson: { type: "doc", content: [{ type: "paragraph" }] },
+    }),
+    true,
+  );
 });
 
 test("summarizeAuthorMarkedSpans separates Charlie and Homer spans", () => {
@@ -266,4 +326,74 @@ test("collectSemanticHighlights returns inline semantic marks", () => {
   assert.equal(highlights[0].highlightId, "semantic-1");
   assert.equal(highlights[0].tagType, "insight");
   assert.equal(highlights[0].note, "important");
+});
+
+test("structure regions summarize block ranges without inline marks", () => {
+  const threeBlockDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "heading",
+        attrs: { blockId: "block-a" },
+        content: [{ type: "text", text: "Synthetic opening" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-b" },
+        content: [{ type: "text", text: "Synthetic middle paragraph" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-c" },
+        content: [{ type: "text", text: "Synthetic closing paragraph" }],
+      },
+    ],
+  };
+  const regions = [
+    {
+      id: "structure-episode-1",
+      kind: "episode",
+      title: "Episode 1",
+      startBlockId: "block-a",
+      endBlockId: "block-c",
+      order: 2,
+      colorKey: "episode",
+      notes: "Synthetic episode range.",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+    {
+      id: "structure-chapter-1",
+      kind: "chapter",
+      title: "Chapter 1",
+      startBlockId: "block-a",
+      endBlockId: "block-b",
+      order: 1,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+  ];
+
+  assert.deepEqual(safeManuscriptStructureRegions(regions), [
+    regions[1],
+    regions[0],
+  ]);
+
+  const summaries = collectStructureRegionSummaries({
+    json: threeBlockDoc,
+    regions,
+  });
+
+  assert.equal(summaries.length, 2);
+  assert.equal(summaries[0].kind, "chapter");
+  assert.deepEqual(summaries[0].blockIds, ["block-a", "block-b"]);
+  assert.equal(summaries[1].kind, "episode");
+  assert.deepEqual(summaries[1].blockIds, [
+    "block-a",
+    "block-b",
+    "block-c",
+  ]);
+  assert.equal(collectSemanticHighlights(threeBlockDoc).length, 0);
 });

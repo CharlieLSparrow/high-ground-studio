@@ -109,6 +109,26 @@ button:disabled {
   outline: 1px dashed rgba(240, 183, 101, 0.75);
 }
 
+.manuscript-prosemirror .manuscript-structure-block {
+  border-left: 3px solid rgba(244, 240, 232, 0.34);
+  padding-left: 0.75rem;
+}
+
+.manuscript-prosemirror .manuscript-structure-chapter {
+  background: linear-gradient(90deg, rgba(240, 183, 101, 0.13), transparent 72%);
+  border-left-color: rgba(240, 183, 101, 0.76);
+}
+
+.manuscript-prosemirror .manuscript-structure-episode {
+  background: linear-gradient(90deg, rgba(130, 198, 216, 0.13), transparent 72%);
+  border-left-color: rgba(130, 198, 216, 0.76);
+}
+
+.manuscript-prosemirror .manuscript-structure-section {
+  background: linear-gradient(90deg, rgba(201, 179, 255, 0.13), transparent 72%);
+  border-left-color: rgba(201, 179, 255, 0.76);
+}
+
 .manuscript-hide-author-colors .manuscript-author-mark {
   background: transparent;
   box-shadow: none;

@@ -32,6 +32,12 @@ export const semanticHighlightDefinitions = [
   { id: "transition", label: "Transition", colorKey: "transition" },
 ] as const;
 
+export const manuscriptStructureDefinitions = [
+  { id: "chapter", label: "Chapter", colorKey: "chapter" },
+  { id: "episode", label: "Episode", colorKey: "episode" },
+  { id: "section", label: "Section", colorKey: "section" },
+] as const;
+
 export const manuscriptBlockNodeTypes = [
   "paragraph",
   "heading",
@@ -43,6 +49,9 @@ export type ManuscriptAuthorId =
 
 export type SemanticHighlightType =
   (typeof semanticHighlightDefinitions)[number]["id"];
+
+export type ManuscriptStructureKind =
+  (typeof manuscriptStructureDefinitions)[number]["id"];
 
 export type ManuscriptEditorJson = {
   type?: string;
@@ -60,6 +69,7 @@ export type ManuscriptDraft = {
   title: string;
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
+  structureRegions: ManuscriptStructureRegion[];
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
   showAuthorColors: boolean;
@@ -95,6 +105,29 @@ export type SemanticHighlightSummary = {
   createdAt: string;
 };
 
+export type ManuscriptStructureRegion = {
+  id: string;
+  kind: ManuscriptStructureKind;
+  title: string;
+  startBlockId: string;
+  endBlockId: string;
+  order: number;
+  colorKey: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ManuscriptStructureRegionSummary = ManuscriptStructureRegion & {
+  startIndex: number;
+  endIndex: number;
+  blockCount: number;
+  startPreview: string;
+  endPreview: string;
+  blockIds: string[];
+  isRangeComplete: boolean;
+};
+
 export type ManuscriptImportSummary = {
   sourceFileName: string;
   words: number;
@@ -117,6 +150,12 @@ export function isSemanticHighlightType(
   return semanticHighlightDefinitions.some((tag) => tag.id === value);
 }
 
+export function isManuscriptStructureKind(
+  value: string,
+): value is ManuscriptStructureKind {
+  return manuscriptStructureDefinitions.some((kind) => kind.id === value);
+}
+
 export function getManuscriptAuthorDefinition(authorId: ManuscriptAuthorId) {
   return (
     manuscriptAuthorDefinitions.find((author) => author.id === authorId) ??
@@ -128,6 +167,16 @@ export function getSemanticHighlightDefinition(tagType: SemanticHighlightType) {
   return (
     semanticHighlightDefinitions.find((tag) => tag.id === tagType) ??
     semanticHighlightDefinitions[2]
+  );
+}
+
+export function getManuscriptStructureDefinition(
+  kind: ManuscriptStructureKind,
+) {
+  return (
+    manuscriptStructureDefinitions.find(
+      (definition) => definition.id === kind,
+    ) ?? manuscriptStructureDefinitions[0]
   );
 }
 
@@ -153,6 +202,7 @@ export function createDefaultManuscriptDraft(
     title: defaultTitle,
     sourceFileName: null,
     importSummary: null,
+    structureRegions: [],
     editorJson: createEmptyManuscriptDoc(),
     activeAuthorId: "homer",
     showAuthorColors: true,
@@ -335,6 +385,56 @@ export function collectSemanticHighlights(
   return highlights;
 }
 
+export function collectStructureRegionSummaries(input: {
+  json: ManuscriptEditorJson;
+  regions: ManuscriptStructureRegion[];
+}): ManuscriptStructureRegionSummary[] {
+  const blockSummaries = collectBlockSummaries(input.json);
+  const blockIndexById = new Map<string, number>();
+
+  blockSummaries.forEach((block, index) => {
+    if (block.blockId) {
+      blockIndexById.set(block.blockId, index);
+    }
+  });
+
+  return [...input.regions]
+    .sort((left, right) => left.order - right.order)
+    .map((region) => {
+      const rawStartIndex = blockIndexById.get(region.startBlockId);
+      const rawEndIndex = blockIndexById.get(region.endBlockId);
+      const isRangeComplete =
+        rawStartIndex !== undefined && rawEndIndex !== undefined;
+      const startIndex = rawStartIndex ?? -1;
+      const endIndex = rawEndIndex ?? -1;
+      const normalizedStartIndex = isRangeComplete
+        ? Math.min(startIndex, endIndex)
+        : -1;
+      const normalizedEndIndex = isRangeComplete
+        ? Math.max(startIndex, endIndex)
+        : -1;
+      const regionBlocks = isRangeComplete
+        ? blockSummaries.slice(normalizedStartIndex, normalizedEndIndex + 1)
+        : [];
+
+      return {
+        ...region,
+        startIndex,
+        endIndex,
+        blockCount: regionBlocks.length,
+        startPreview:
+          blockSummaries[rawStartIndex ?? -1]?.preview ??
+          "Start block not found",
+        endPreview:
+          blockSummaries[rawEndIndex ?? -1]?.preview ?? "End block not found",
+        blockIds: regionBlocks.flatMap((block) =>
+          block.blockId ? [block.blockId] : [],
+        ),
+        isRangeComplete,
+      };
+    });
+}
+
 export function createManuscriptImportSummary(input: {
   sourceFileName: string;
   editorJson: ManuscriptEditorJson;
@@ -349,6 +449,65 @@ export function createManuscriptImportSummary(input: {
     blocks: collectBlockSummaries(input.editorJson).length,
     importedAt: input.importedAt,
   };
+}
+
+export function safeManuscriptStructureRegions(
+  value: unknown,
+): ManuscriptStructureRegion[] | null {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const regions: ManuscriptStructureRegion[] = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+
+    const region = item as Partial<ManuscriptStructureRegion>;
+    const kind = String(region.kind ?? "");
+
+    if (
+      typeof region.id !== "string" ||
+      !region.id.trim() ||
+      !isManuscriptStructureKind(kind) ||
+      typeof region.title !== "string" ||
+      typeof region.startBlockId !== "string" ||
+      !region.startBlockId.trim() ||
+      typeof region.endBlockId !== "string" ||
+      !region.endBlockId.trim() ||
+      typeof region.order !== "number" ||
+      !Number.isFinite(region.order) ||
+      typeof region.colorKey !== "string" ||
+      typeof region.notes !== "string" ||
+      typeof region.createdAt !== "string" ||
+      typeof region.updatedAt !== "string"
+    ) {
+      return null;
+    }
+
+    const definition = getManuscriptStructureDefinition(kind);
+
+    regions.push({
+      id: region.id,
+      kind,
+      title: region.title.trim() || definition.label,
+      startBlockId: region.startBlockId,
+      endBlockId: region.endBlockId,
+      order: region.order,
+      colorKey: definition.colorKey,
+      notes: region.notes,
+      createdAt: region.createdAt,
+      updatedAt: region.updatedAt,
+    });
+  }
+
+  return regions.sort((left, right) => left.order - right.order);
 }
 
 export function safeManuscriptImportSummary(
@@ -384,11 +543,13 @@ export function hasMeaningfulManuscriptDraft(input: {
   sourceFileName: string | null;
   editorJson: ManuscriptEditorJson;
   importSummary?: ManuscriptImportSummary | null;
+  structureRegions?: ManuscriptStructureRegion[];
 }) {
   return (
     input.title.trim() !== defaultTitle ||
     Boolean(input.sourceFileName) ||
     Boolean(input.importSummary) ||
+    Boolean(input.structureRegions?.length) ||
     countWordsAndCharacters(input.editorJson).words > 0
   );
 }
@@ -540,11 +701,15 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     draft.importSummary === null || draft.importSummary === undefined
       ? null
       : safeManuscriptImportSummary(draft.importSummary);
+  const structureRegions = safeManuscriptStructureRegions(
+    draft.structureRegions,
+  );
 
   if (
     draft.schemaVersion !== MANUSCRIPT_SCHEMA_VERSION ||
     typeof draft.title !== "string" ||
     !validateEditorJsonShape(draft.editorJson) ||
+    !structureRegions ||
     !isManuscriptAuthorId(activeAuthorId) ||
     typeof draft.showAuthorColors !== "boolean" ||
     typeof draft.showSemanticColors !== "boolean" ||
@@ -570,6 +735,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     title: draft.title.trim() || defaultTitle,
     sourceFileName: draft.sourceFileName,
     importSummary,
+    structureRegions,
     editorJson: draft.editorJson,
     activeAuthorId,
     showAuthorColors: draft.showAuthorColors,
