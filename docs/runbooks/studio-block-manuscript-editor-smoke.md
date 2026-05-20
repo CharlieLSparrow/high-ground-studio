@@ -47,6 +47,10 @@ Focus View hiding is also view state only. It should hide nonmatching blocks in
 the manuscript surface without deleting, rewriting, splitting, or removing them
 from the editor JSON.
 
+Quote Focus is a narrower Focus View for cited quotation review. It can filter
+by browser-local quote review status and show zero, one, or two surrounding
+context blocks, but it must not mutate hidden manuscript blocks.
+
 The MVP is not database-backed. It does not write Prisma rows, remote Studio
 documents, public projections, `.docx` exports, manuscript MDX, or imported
 archive files.
@@ -244,6 +248,37 @@ archive files.
     title, locator, citation text, rights note, and editor note when present.
 25. Click `Download quote Markdown` and confirm a timestamped `.md` file
     downloads from the browser.
+
+## Quote Focus Controls Smoke Steps
+
+1. Open `/manuscript`.
+2. Confirm the full manuscript surface remains visible.
+3. Mark several synthetic cited quotations.
+4. In the `Cited quotations` list, save different review statuses:
+   `Needs source`, `Needs verification`, `Verified`, and `Do not use`.
+5. Click `Quote Focus`.
+6. Confirm the semantic filter is `Cited quotation`, visual mode is
+   `Hide nonmatches`, and only quote-containing blocks are visible.
+7. Click `Needs Source Focus`.
+8. Confirm only needs-source quote blocks are visible and listed.
+9. Click `Needs Verification Focus`.
+10. Confirm only needs-verification quote blocks are visible and listed.
+11. Use `Previous quote`, `Jump current`, and `Next quote` and confirm the
+    editor moves quote-to-quote within the current filtered quote list.
+12. Set `Context around matches` to `1 block`.
+13. Confirm neighboring blocks remain visible with subtler context styling and
+    do not appear as true matching blocks in the filter counts or exports.
+14. Set `Quote review status` to `Verified` and confirm the quote list and
+    quote Markdown export respect that status filter.
+15. Select `No review metadata` if older quote marks exist without saved
+    review metadata and confirm only those quotes are listed.
+16. Click `Export quote Markdown` and confirm the export uses the current quote
+    review status filter when one is active.
+17. Click `Exit Focus View`.
+18. Confirm all filters clear, visual mode returns to `Highlight matches`, and
+    the full manuscript wall returns.
+19. Click `Export editor JSON` and confirm hidden blocks are still present in
+    the editor JSON.
 
 ## What To Inspect In Exported JSON
 

@@ -35,11 +35,13 @@ import {
   createDefaultManuscriptQuoteReview,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
+  createFocusVisibleBlockIds,
   createManuscriptImportSummary,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
+  getManuscriptQuoteReviewStatusFilterLabel,
   getManuscriptQuoteReviewStatusDefinition,
   getManuscriptQuoteSourceTypeDefinition,
   getManuscriptStructureLabelPresetDefinition,
@@ -50,6 +52,7 @@ import {
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
   manuscriptFilterVisualModeDefinitions,
+  manuscriptQuoteReviewStatusFilterDefinitions,
   manuscriptQuoteReviewStatusDefinitions,
   manuscriptQuoteSourceTypeDefinitions,
   manuscriptStructureDefinitions,
@@ -58,9 +61,11 @@ import {
   removeManuscriptQuoteReview,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
+  filterCitedQuotationsByReviewStatus,
   filterManuscriptBlocks,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
+  summarizeCitedQuotationReviewProgress,
   summarizeAuthorMarkedSpans,
   updateManuscriptQuoteReview,
   updateManuscriptStructureRegion,
@@ -74,6 +79,7 @@ import {
   type ManuscriptImportSummary,
   type ManuscriptQuoteReview,
   type ManuscriptQuoteReviewStatus,
+  type ManuscriptQuoteReviewStatusFilter,
   type ManuscriptQuoteSourceType,
   type ManuscriptStructureKind,
   type ManuscriptStructureLabelPreset,
@@ -330,12 +336,17 @@ export function StudioManuscriptClient({
     ManuscriptStructureKind | ""
   >("");
   const [filterBlockType, setFilterBlockType] = useState("");
+  const [filterQuoteReviewStatus, setFilterQuoteReviewStatus] = useState<
+    ManuscriptQuoteReviewStatusFilter | ""
+  >("");
   const [filterOnlyUnstructured, setFilterOnlyUnstructured] = useState(false);
   const [filterOnlyWithSemanticHighlights, setFilterOnlyWithSemanticHighlights] =
     useState(false);
   const [filterOnlyWithoutAuthor, setFilterOnlyWithoutAuthor] = useState(false);
   const [filterVisualMode, setFilterVisualMode] =
     useState<ManuscriptFilterVisualMode>("highlight-matches");
+  const [filterContextBlockCount, setFilterContextBlockCount] = useState(0);
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
   const [editingQuoteReviewHighlightId, setEditingQuoteReviewHighlightId] =
     useState<string | null>(null);
   const [editingQuoteAttributedTo, setEditingQuoteAttributedTo] = useState("");
@@ -531,6 +542,7 @@ export function StudioManuscriptClient({
       structureRegionId: filterStructureRegionId || null,
       structureKind: filterStructureKind || null,
       blockType: filterBlockType || null,
+      quoteReviewStatus: filterQuoteReviewStatus || null,
       onlyUnstructured: filterOnlyUnstructured,
       onlyWithSemanticHighlights: filterOnlyWithSemanticHighlights,
       onlyWithoutAuthor: filterOnlyWithoutAuthor,
@@ -541,6 +553,7 @@ export function StudioManuscriptClient({
       filterOnlyUnstructured,
       filterOnlyWithSemanticHighlights,
       filterOnlyWithoutAuthor,
+      filterQuoteReviewStatus,
       filterSemanticType,
       filterStructureKind,
       filterStructureRegionId,
@@ -581,9 +594,46 @@ export function StudioManuscriptClient({
       }),
     [currentEditorJson, quoteReviews, structureRegions],
   );
-  const citedQuotationMarkdown = useMemo(
-    () => createCitedQuotationMarkdown({ quotations: citedQuotations }),
+  const quoteReviewProgress = useMemo(
+    () => summarizeCitedQuotationReviewProgress(citedQuotations),
     [citedQuotations],
+  );
+  const filteredCitedQuotations = useMemo(() => {
+    const blockIds = new Set(
+      filteredBlockDetails.flatMap((block) =>
+        block.blockId ? [block.blockId] : [],
+      ),
+    );
+    const statusFilteredQuotations = filterCitedQuotationsByReviewStatus({
+      quotations: citedQuotations,
+      reviewStatus: filterQuoteReviewStatus || null,
+    });
+
+    if (!blockFilterSummary.hasActiveFilters) {
+      return statusFilteredQuotations;
+    }
+
+    return statusFilteredQuotations.filter(
+      (quotation) => quotation.blockId && blockIds.has(quotation.blockId),
+    );
+  }, [
+    blockFilterSummary.hasActiveFilters,
+    citedQuotations,
+    filterQuoteReviewStatus,
+    filteredBlockDetails,
+  ]);
+  const citedQuotationMarkdown = useMemo(
+    () => createCitedQuotationMarkdown({ quotations: filteredCitedQuotations }),
+    [filteredCitedQuotations],
+  );
+  const focusVisibleBlockIds = useMemo(
+    () =>
+      createFocusVisibleBlockIds({
+        blocks: blockDetails,
+        matchingBlocks: filteredBlockDetails,
+        contextBlocks: filterContextBlockCount,
+      }),
+    [blockDetails, filterContextBlockCount, filteredBlockDetails],
   );
   const authorSummaries = useMemo(
     () => summarizeAuthorMarkedSpans(currentEditorJson),
@@ -618,6 +668,16 @@ export function StudioManuscriptClient({
   );
 
   useEffect(() => {
+    setCurrentQuoteIndex((current) => {
+      if (!filteredCitedQuotations.length) {
+        return 0;
+      }
+
+      return Math.min(current, filteredCitedQuotations.length - 1);
+    });
+  }, [filteredCitedQuotations.length]);
+
+  useEffect(() => {
     if (!editor) {
       return;
     }
@@ -649,6 +709,7 @@ export function StudioManuscriptClient({
       "manuscript-filter-match",
       "manuscript-filter-dim",
       "manuscript-filter-hide",
+      "manuscript-filter-context",
     ];
 
     editor.state.doc.descendants((node, pos) => {
@@ -676,11 +737,9 @@ export function StudioManuscriptClient({
       }
     }
 
-    const matchingFilterBlockIds = new Set(
-      filteredBlockDetails.flatMap((block) =>
-        block.blockId ? [block.blockId] : [],
-      ),
-    );
+    const matchingFilterBlockIds = new Set(focusVisibleBlockIds.matchingBlockIds);
+    const contextFilterBlockIds = new Set(focusVisibleBlockIds.contextBlockIds);
+    const visibleFilterBlockIds = new Set(focusVisibleBlockIds.visibleBlockIds);
 
     editor.state.doc.descendants((node, pos) => {
       if (!blockNodeTypes.includes(node.type.name)) {
@@ -719,7 +778,11 @@ export function StudioManuscriptClient({
         } else if (filterVisualMode === "dim-nonmatches") {
           domNode.classList.add("manuscript-filter-dim");
         } else if (filterVisualMode === "hide-nonmatches") {
-          domNode.classList.add("manuscript-filter-hide");
+          if (contextFilterBlockIds.has(blockId)) {
+            domNode.classList.add("manuscript-filter-context");
+          } else if (!visibleFilterBlockIds.has(blockId)) {
+            domNode.classList.add("manuscript-filter-hide");
+          }
         }
       }
 
@@ -729,8 +792,8 @@ export function StudioManuscriptClient({
     blockFilterSummary.hasActiveFilters,
     editor,
     editorJson,
-    filteredBlockDetails,
     filterVisualMode,
+    focusVisibleBlockIds,
     structureRegionSummaries,
   ]);
 
@@ -798,11 +861,45 @@ export function StudioManuscriptClient({
     setFilterStructureRegionId("");
     setFilterStructureKind("");
     setFilterBlockType("");
+    setFilterQuoteReviewStatus("");
     setFilterOnlyUnstructured(false);
     setFilterOnlyWithSemanticHighlights(false);
     setFilterOnlyWithoutAuthor(false);
+    setFilterContextBlockCount(0);
+    setCurrentQuoteIndex(0);
     setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
     setMessage("Manuscript filters cleared.");
+  }
+
+  function applyQuoteFocus(status: ManuscriptQuoteReviewStatusFilter | "" = "") {
+    setSidePanelMode("filters");
+    setFilterTextQuery("");
+    setFilterAuthorId("");
+    setFilterSemanticType("cited-quotation");
+    setFilterStructureRegionId("");
+    setFilterStructureKind("");
+    setFilterBlockType("");
+    setFilterQuoteReviewStatus(status);
+    setFilterOnlyUnstructured(false);
+    setFilterOnlyWithSemanticHighlights(false);
+    setFilterOnlyWithoutAuthor(false);
+    setFilterVisualMode("hide-nonmatches");
+    setCurrentQuoteIndex(0);
+    setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
+    setMessage(
+      status
+        ? `${getManuscriptQuoteReviewStatusFilterLabel(status)} quote focus enabled.`
+        : "Quote Focus enabled.",
+    );
+  }
+
+  function exitFocusView() {
+    clearBlockFilters();
+    setFilterVisualMode("highlight-matches");
+    setFilterContextBlockCount(0);
+    setMessage("Focus View exited. Full manuscript wall restored.");
   }
 
   function beginEditingQuoteReview(quotation: ManuscriptCitedQuotationSummary) {
@@ -1562,6 +1659,40 @@ export function StudioManuscriptClient({
     setMessage(`Focused block ${blockId}.`);
   }
 
+  function focusQuotationAtIndex(index: number) {
+    const quotation = filteredCitedQuotations[index];
+
+    if (!quotation) {
+      setMessage("No cited quotation is available in the current filter.");
+      return;
+    }
+
+    if (!quotation.blockId) {
+      setMessage("Cannot focus this quotation because its block ID is missing.");
+      return;
+    }
+
+    setCurrentQuoteIndex(index);
+    focusBlock(quotation.blockId);
+    setMessage(
+      `Focused quote ${index + 1} of ${filteredCitedQuotations.length}.`,
+    );
+  }
+
+  function focusPreviousQuotation() {
+    focusQuotationAtIndex(Math.max(0, currentQuoteIndex - 1));
+  }
+
+  function focusNextQuotation() {
+    focusQuotationAtIndex(
+      Math.min(filteredCitedQuotations.length - 1, currentQuoteIndex + 1),
+    );
+  }
+
+  function focusCurrentQuotation() {
+    focusQuotationAtIndex(currentQuoteIndex);
+  }
+
   function importEditorJson() {
     if (!editor) {
       return;
@@ -1964,13 +2095,9 @@ export function StudioManuscriptClient({
                 <button
                   className={smallButtonClassName}
                   type="button"
-                  onClick={() => {
-                    setSidePanelMode("filters");
-                    setFilterSemanticType("cited-quotation");
-                    setFilterVisualMode("hide-nonmatches");
-                  }}
+                  onClick={() => applyQuoteFocus()}
                 >
-                  Show only cited quotations
+                  Quote Focus
                 </button>
                 <button
                   className={smallButtonClassName}
@@ -2798,6 +2925,30 @@ export function StudioManuscriptClient({
                     </select>
                   </label>
                   <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>
+                      Quote review status
+                    </span>
+                    <select
+                      className={fieldClassName}
+                      value={filterQuoteReviewStatus}
+                      onChange={(event) =>
+                        setFilterQuoteReviewStatus(
+                          event.target
+                            .value as ManuscriptQuoteReviewStatusFilter | "",
+                        )
+                      }
+                    >
+                      <option value="">Any quote review status</option>
+                      {manuscriptQuoteReviewStatusFilterDefinitions.map(
+                        (status) => (
+                          <option key={status.id} value={status.id}>
+                            {status.label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
                     <span className={fieldLabelClassName}>Visual mode</span>
                     <select
                       className={fieldClassName}
@@ -2813,6 +2964,22 @@ export function StudioManuscriptClient({
                           {mode.label}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>
+                      Context around matches
+                    </span>
+                    <select
+                      className={fieldClassName}
+                      value={String(filterContextBlockCount)}
+                      onChange={(event) =>
+                        setFilterContextBlockCount(Number(event.target.value))
+                      }
+                    >
+                      <option value="0">0 blocks</option>
+                      <option value="1">1 block</option>
+                      <option value="2">2 blocks</option>
                     </select>
                   </label>
                 </div>
@@ -2862,14 +3029,44 @@ export function StudioManuscriptClient({
                     surface.
                   </p>
                 )}
+                <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
+                  <p className={labelClassName}>Quote Review Focus</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applyQuoteFocus()}
+                    >
+                      Quote Focus
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applyQuoteFocus("needs-source")}
+                    >
+                      Needs Source Focus
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applyQuoteFocus("needs-verification")}
+                    >
+                      Needs Verification Focus
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={exitFocusView}
+                    >
+                      Exit Focus View
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     className={smallButtonClassName}
                     type="button"
-                    onClick={() => {
-                      setFilterSemanticType("cited-quotation");
-                      setFilterVisualMode("hide-nonmatches");
-                    }}
+                    onClick={() => applyQuoteFocus()}
                   >
                     Show only cited quotations
                   </button>
@@ -2901,9 +3098,71 @@ export function StudioManuscriptClient({
                       Cited quotations
                     </h3>
                     <StudioChip tone="review">
+                      {filteredCitedQuotations.length.toLocaleString()} /{" "}
                       {citedQuotations.length.toLocaleString()}
                     </StudioChip>
                   </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    <StudioChip tone="review">
+                      Total {quoteReviewProgress.total.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="danger">
+                      Needs source{" "}
+                      {quoteReviewProgress.needsSource.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="review">
+                      Needs verification{" "}
+                      {quoteReviewProgress.needsVerification.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="tag">
+                      Verified {quoteReviewProgress.verified.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="danger">
+                      Do not use {quoteReviewProgress.doNotUse.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="source">
+                      No metadata{" "}
+                      {quoteReviewProgress.noReviewMetadata.toLocaleString()}
+                    </StudioChip>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      disabled={
+                        !filteredCitedQuotations.length || currentQuoteIndex <= 0
+                      }
+                      type="button"
+                      onClick={focusPreviousQuotation}
+                    >
+                      Previous quote
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      disabled={!filteredCitedQuotations.length}
+                      type="button"
+                      onClick={focusCurrentQuotation}
+                    >
+                      Jump current
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      disabled={
+                        !filteredCitedQuotations.length ||
+                        currentQuoteIndex >= filteredCitedQuotations.length - 1
+                      }
+                      type="button"
+                      onClick={focusNextQuotation}
+                    >
+                      Next quote
+                    </button>
+                  </div>
+                  <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
+                    {filteredCitedQuotations.length
+                      ? `Quote ${currentQuoteIndex + 1} of ${
+                          filteredCitedQuotations.length
+                        }`
+                      : "No quotes in the current filter."}
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       className={smallButtonClassName}
@@ -2921,8 +3180,8 @@ export function StudioManuscriptClient({
                     </button>
                   </div>
                   <div className="grid max-h-[220px] gap-2 overflow-auto pr-1">
-                    {citedQuotations.length ? (
-                      citedQuotations.map((quotation, index) => {
+                    {filteredCitedQuotations.length ? (
+                      filteredCitedQuotations.map((quotation, index) => {
                         const isEditing =
                           editingQuoteReviewHighlightId ===
                           quotation.highlightId;
@@ -2954,7 +3213,7 @@ export function StudioManuscriptClient({
                                 <button
                                   className={smallButtonClassName}
                                   type="button"
-                                  onClick={() => focusBlock(quotation.blockId)}
+                                  onClick={() => focusQuotationAtIndex(index)}
                                 >
                                   Jump
                                 </button>
@@ -3203,7 +3462,7 @@ export function StudioManuscriptClient({
                       })
                     ) : (
                       <p className={panelCopyClassName}>
-                        No cited quotations marked.
+                        No cited quotations match the current quote filters.
                       </p>
                     )}
                   </div>

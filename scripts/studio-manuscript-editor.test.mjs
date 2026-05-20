@@ -16,15 +16,18 @@ import {
   createDefaultManuscriptQuoteReview,
   ensureManuscriptBlockIds,
   createFilteredBlockListMarkdown,
+  createFocusVisibleBlockIds,
   createManuscriptImportSummary,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
+  filterCitedQuotationsByReviewStatus,
   filterManuscriptBlocks,
   hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
   manuscriptFilterVisualModeDefinitions,
+  manuscriptQuoteReviewStatusFilterDefinitions,
   manuscriptQuoteReviewStatusDefinitions,
   manuscriptQuoteSourceTypeDefinitions,
   manuscriptStructureDefinitions,
@@ -37,6 +40,7 @@ import {
   semanticHighlightDefinitions,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
+  summarizeCitedQuotationReviewProgress,
   summarizeAuthorMarkedSpans,
   updateManuscriptQuoteReview,
   updateManuscriptStructureRegion,
@@ -138,6 +142,16 @@ test("author and semantic definitions contain the MVP options", () => {
   assert.deepEqual(
     manuscriptQuoteReviewStatusDefinitions.map((status) => status.id),
     ["needs-source", "needs-verification", "verified", "do-not-use"],
+  );
+  assert.deepEqual(
+    manuscriptQuoteReviewStatusFilterDefinitions.map((status) => status.id),
+    [
+      "needs-source",
+      "needs-verification",
+      "verified",
+      "do-not-use",
+      "no-review-metadata",
+    ],
   );
   assert.deepEqual(
     manuscriptQuoteSourceTypeDefinitions.map((sourceType) => sourceType.id),
@@ -1308,4 +1322,225 @@ test("cited quotation markdown includes source notes and structure labels", () =
   assert.match(markdown, /- Citation: Synthetic Collected Works, p\. 42/);
   assert.match(markdown, /- Rights note: Synthetic rights review complete\./);
   assert.match(markdown, /- Editor note: Synthetic editor note\./);
+});
+
+const quoteFocusDoc = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      attrs: { blockId: "focus-before" },
+      content: [{ type: "text", text: "Synthetic setup before quotes." }],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "focus-needs-source" },
+      content: [
+        {
+          type: "text",
+          text: "Synthetic quotation needing source.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "focus-quote-needs-source",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "",
+                createdAt: "2026-05-20T12:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "focus-between" },
+      content: [{ type: "text", text: "Synthetic bridge between quotes." }],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "focus-verified" },
+      content: [
+        {
+          type: "text",
+          text: "Synthetic verified quotation.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "focus-quote-verified",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "",
+                createdAt: "2026-05-20T12:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "focus-no-metadata" },
+      content: [
+        {
+          type: "text",
+          text: "Synthetic quotation without review metadata.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "focus-quote-no-metadata",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "",
+                createdAt: "2026-05-20T12:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "focus-after" },
+      content: [{ type: "text", text: "Synthetic closing after quotes." }],
+    },
+  ],
+};
+
+const quoteFocusReviews = {
+  "focus-quote-needs-source": {
+    highlightId: "focus-quote-needs-source",
+    attributedTo: "",
+    sourceTitle: "",
+    sourceType: "unknown",
+    locator: "",
+    citationText: "",
+    reviewStatus: "needs-source",
+    rightsNote: "",
+    editorNote: "",
+    updatedAt: "2026-05-20T12:00:00.000Z",
+  },
+  "focus-quote-verified": {
+    highlightId: "focus-quote-verified",
+    attributedTo: "Synthetic verified author",
+    sourceTitle: "Synthetic verified source",
+    sourceType: "book",
+    locator: "p. 9",
+    citationText: "Synthetic verified source, p. 9",
+    reviewStatus: "verified",
+    rightsNote: "",
+    editorNote: "",
+    updatedAt: "2026-05-20T12:00:00.000Z",
+  },
+};
+
+test("quote review status filtering supports focus controls and no metadata", () => {
+  const details = collectManuscriptBlockDetails({
+    json: quoteFocusDoc,
+    quoteReviews: quoteFocusReviews,
+  });
+  const quotations = collectCitedQuotationHighlights({
+    json: quoteFocusDoc,
+    quoteReviews: quoteFocusReviews,
+  });
+  const verifiedQuotations = filterCitedQuotationsByReviewStatus({
+    quotations,
+    reviewStatus: "verified",
+  });
+  const noMetadataQuotations = filterCitedQuotationsByReviewStatus({
+    quotations,
+    reviewStatus: "no-review-metadata",
+  });
+
+  assert.deepEqual(
+    verifiedQuotations.map((quotation) => quotation.highlightId),
+    ["focus-quote-verified"],
+  );
+  assert.deepEqual(
+    noMetadataQuotations.map((quotation) => quotation.highlightId),
+    ["focus-quote-no-metadata"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: {
+        semanticTagType: "cited-quotation",
+        quoteReviewStatus: "needs-source",
+      },
+    }).map((block) => block.blockId),
+    ["focus-needs-source", "focus-no-metadata"],
+  );
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: {
+        semanticTagType: "cited-quotation",
+        quoteReviewStatus: "no-review-metadata",
+      },
+    }).map((block) => block.blockId),
+    ["focus-no-metadata"],
+  );
+
+  const markdown = createCitedQuotationMarkdown({
+    quotations: verifiedQuotations,
+  });
+
+  assert.match(markdown, /Total cited quotations: 1/);
+  assert.match(markdown, /Synthetic verified quotation\./);
+  assert.doesNotMatch(markdown, /Synthetic quotation needing source\./);
+});
+
+test("quote review progress summary counts synthetic review states", () => {
+  const progress = summarizeCitedQuotationReviewProgress(
+    collectCitedQuotationHighlights({
+      json: quoteFocusDoc,
+      quoteReviews: quoteFocusReviews,
+    }),
+  );
+
+  assert.deepEqual(progress, {
+    total: 3,
+    needsSource: 2,
+    needsVerification: 0,
+    verified: 1,
+    doNotUse: 0,
+    noReviewMetadata: 1,
+  });
+});
+
+test("focus visible block helper adds context without changing matches", () => {
+  const details = collectManuscriptBlockDetails({
+    json: quoteFocusDoc,
+    quoteReviews: quoteFocusReviews,
+  });
+  const matchingBlocks = filterManuscriptBlocks({
+    blocks: details,
+    criteria: {
+      semanticTagType: "cited-quotation",
+      quoteReviewStatus: "verified",
+    },
+  });
+  const focus = createFocusVisibleBlockIds({
+    blocks: details,
+    matchingBlocks,
+    contextBlocks: 1,
+  });
+
+  assert.deepEqual(focus.matchingBlockIds, ["focus-verified"]);
+  assert.deepEqual(focus.contextBlockIds, [
+    "focus-between",
+    "focus-no-metadata",
+  ]);
+  assert.deepEqual(focus.visibleBlockIds, [
+    "focus-between",
+    "focus-verified",
+    "focus-no-metadata",
+  ]);
 });

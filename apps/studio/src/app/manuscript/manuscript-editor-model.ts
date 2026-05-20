@@ -65,6 +65,11 @@ export const manuscriptQuoteReviewStatusDefinitions = [
   { id: "do-not-use", label: "Do not use" },
 ] as const;
 
+export const manuscriptQuoteReviewStatusFilterDefinitions = [
+  ...manuscriptQuoteReviewStatusDefinitions,
+  { id: "no-review-metadata", label: "No review metadata" },
+] as const;
+
 export const manuscriptQuoteSourceTypeDefinitions = [
   { id: "book", label: "Book" },
   { id: "article", label: "Article" },
@@ -101,6 +106,9 @@ export type ManuscriptStructureLabelPreset =
 
 export type ManuscriptQuoteReviewStatus =
   (typeof manuscriptQuoteReviewStatusDefinitions)[number]["id"];
+
+export type ManuscriptQuoteReviewStatusFilter =
+  (typeof manuscriptQuoteReviewStatusFilterDefinitions)[number]["id"];
 
 export type ManuscriptQuoteSourceType =
   (typeof manuscriptQuoteSourceTypeDefinitions)[number]["id"];
@@ -174,6 +182,7 @@ export type ManuscriptCitedQuotationSummary = {
   blockPreview: string;
   structureRegions: ManuscriptBlockStructureReference[];
   review: ManuscriptQuoteReview;
+  hasReviewMetadata: boolean;
   createdAt: string;
 };
 
@@ -192,6 +201,7 @@ export type ManuscriptBlockFilterCriteria = {
   structureRegionId?: string | null;
   structureKind?: ManuscriptStructureKind | null;
   blockType?: string | null;
+  quoteReviewStatus?: ManuscriptQuoteReviewStatusFilter | null;
   onlyUnstructured?: boolean;
   onlyWithSemanticHighlights?: boolean;
   onlyWithoutAuthor?: boolean;
@@ -211,6 +221,21 @@ export type ManuscriptBlockFilterSummary = {
   activeFilterCount: number;
   hasActiveFilters: boolean;
   activeFilterLabels: string[];
+};
+
+export type ManuscriptCitedQuotationReviewProgress = {
+  total: number;
+  needsSource: number;
+  needsVerification: number;
+  verified: number;
+  doNotUse: number;
+  noReviewMetadata: number;
+};
+
+export type ManuscriptFocusVisibleBlockIds = {
+  matchingBlockIds: string[];
+  contextBlockIds: string[];
+  visibleBlockIds: string[];
 };
 
 export type SemanticHighlightSummary = {
@@ -330,6 +355,14 @@ export function isManuscriptQuoteReviewStatus(
   );
 }
 
+export function isManuscriptQuoteReviewStatusFilter(
+  value: string,
+): value is ManuscriptQuoteReviewStatusFilter {
+  return manuscriptQuoteReviewStatusFilterDefinitions.some(
+    (status) => status.id === value,
+  );
+}
+
 export function isManuscriptQuoteSourceType(
   value: string,
 ): value is ManuscriptQuoteSourceType {
@@ -381,6 +414,16 @@ export function getManuscriptQuoteReviewStatusDefinition(
       (definition) => definition.id === status,
     ) ?? manuscriptQuoteReviewStatusDefinitions[0]
   );
+}
+
+export function getManuscriptQuoteReviewStatusFilterLabel(
+  status: ManuscriptQuoteReviewStatusFilter,
+) {
+  if (status === "no-review-metadata") {
+    return "No review metadata";
+  }
+
+  return getManuscriptQuoteReviewStatusDefinition(status).label;
 }
 
 export function getManuscriptQuoteSourceTypeDefinition(
@@ -997,6 +1040,7 @@ export function collectManuscriptBlockDetails(input: {
                 const quoteText = String(textNode.text ?? "");
                 const highlightId = String(mark.attrs?.highlightId ?? "");
                 const note = String(mark.attrs?.note ?? "");
+                const review = input.quoteReviews?.[highlightId];
 
                 citedQuotations.push({
                   highlightId,
@@ -1009,12 +1053,13 @@ export function collectManuscriptBlockDetails(input: {
                   blockPreview: preview,
                   structureRegions: structureReferences,
                   review:
-                    input.quoteReviews?.[highlightId] ??
+                    review ??
                     createDefaultManuscriptQuoteReview({
                       highlightId,
                       citationText: note,
                       updatedAt: String(mark.attrs?.createdAt ?? ""),
                     }),
+                  hasReviewMetadata: Boolean(review),
                   createdAt: String(mark.attrs?.createdAt ?? ""),
                 });
               }
@@ -1054,6 +1099,61 @@ export function collectCitedQuotationHighlights(input: {
   return collectManuscriptBlockDetails(input).flatMap(
     (block) => block.citedQuotations,
   );
+}
+
+function doesCitedQuotationMatchReviewStatus(
+  quotation: ManuscriptCitedQuotationSummary,
+  status: ManuscriptQuoteReviewStatusFilter,
+) {
+  if (status === "no-review-metadata") {
+    return !quotation.hasReviewMetadata;
+  }
+
+  return quotation.review.reviewStatus === status;
+}
+
+export function filterCitedQuotationsByReviewStatus(input: {
+  quotations: ManuscriptCitedQuotationSummary[];
+  reviewStatus?: ManuscriptQuoteReviewStatusFilter | null;
+}) {
+  if (!input.reviewStatus) {
+    return input.quotations;
+  }
+
+  return input.quotations.filter((quotation) =>
+    doesCitedQuotationMatchReviewStatus(quotation, input.reviewStatus!),
+  );
+}
+
+export function summarizeCitedQuotationReviewProgress(
+  quotations: ManuscriptCitedQuotationSummary[],
+): ManuscriptCitedQuotationReviewProgress {
+  const progress: ManuscriptCitedQuotationReviewProgress = {
+    total: quotations.length,
+    needsSource: 0,
+    needsVerification: 0,
+    verified: 0,
+    doNotUse: 0,
+    noReviewMetadata: 0,
+  };
+
+  for (const quotation of quotations) {
+    if (!quotation.hasReviewMetadata) {
+      progress.noReviewMetadata += 1;
+    }
+
+    if (quotation.review.reviewStatus === "needs-source") {
+      progress.needsSource += 1;
+    } else if (quotation.review.reviewStatus === "needs-verification") {
+      progress.needsVerification += 1;
+    } else if (quotation.review.reviewStatus === "verified") {
+      progress.verified += 1;
+    } else if (quotation.review.reviewStatus === "do-not-use") {
+      progress.doNotUse += 1;
+    }
+  }
+
+  return progress;
 }
 
 function dedupeSortedValues<T extends string>(
@@ -1122,6 +1222,7 @@ export function filterManuscriptBlocks(input: {
   const structureRegionId = input.criteria.structureRegionId?.trim() || null;
   const structureKind = input.criteria.structureKind ?? null;
   const blockType = input.criteria.blockType?.trim() || null;
+  const quoteReviewStatus = input.criteria.quoteReviewStatus ?? null;
 
   return input.blocks.filter((block) => {
     if (textQuery) {
@@ -1165,6 +1266,15 @@ export function filterManuscriptBlocks(input: {
     }
 
     if (blockType && block.type !== blockType) {
+      return false;
+    }
+
+    if (
+      quoteReviewStatus &&
+      !block.citedQuotations.some((quotation) =>
+        doesCitedQuotationMatchReviewStatus(quotation, quoteReviewStatus),
+      )
+    ) {
       return false;
     }
 
@@ -1236,6 +1346,14 @@ function describeBlockFilterCriteria(input: {
     labels.push(`Block type: ${blockType}`);
   }
 
+  if (input.criteria.quoteReviewStatus) {
+    labels.push(
+      `Quote review: ${getManuscriptQuoteReviewStatusFilterLabel(
+        input.criteria.quoteReviewStatus,
+      )}`,
+    );
+  }
+
   if (input.criteria.onlyUnstructured) {
     labels.push("Only unstructured blocks");
   }
@@ -1267,6 +1385,66 @@ export function summarizeBlockFilterResults(input: {
     activeFilterCount: activeFilterLabels.length,
     hasActiveFilters: activeFilterLabels.length > 0,
     activeFilterLabels,
+  };
+}
+
+export function createFocusVisibleBlockIds(input: {
+  blocks: ManuscriptBlockDetail[];
+  matchingBlocks: ManuscriptBlockDetail[];
+  contextBlocks: number;
+}): ManuscriptFocusVisibleBlockIds {
+  const contextBlocks = Math.max(0, Math.floor(input.contextBlocks));
+  const matchingBlockIds = input.matchingBlocks.flatMap((block) =>
+    block.blockId ? [block.blockId] : [],
+  );
+  const matchingBlockIdSet = new Set(matchingBlockIds);
+  const visibleBlockIdSet = new Set(matchingBlockIds);
+  const contextBlockIdSet = new Set<string>();
+  const blockIndexById = new Map<string, number>();
+
+  input.blocks.forEach((block, index) => {
+    if (block.blockId) {
+      blockIndexById.set(block.blockId, index);
+    }
+  });
+
+  if (contextBlocks > 0) {
+    for (const blockId of matchingBlockIds) {
+      const blockIndex = blockIndexById.get(blockId);
+
+      if (blockIndex === undefined) {
+        continue;
+      }
+
+      const startIndex = Math.max(0, blockIndex - contextBlocks);
+      const endIndex = Math.min(input.blocks.length - 1, blockIndex + contextBlocks);
+
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        const contextBlockId = input.blocks[index]?.blockId;
+
+        if (!contextBlockId) {
+          continue;
+        }
+
+        visibleBlockIdSet.add(contextBlockId);
+
+        if (!matchingBlockIdSet.has(contextBlockId)) {
+          contextBlockIdSet.add(contextBlockId);
+        }
+      }
+    }
+  }
+
+  return {
+    matchingBlockIds,
+    contextBlockIds: input.blocks.flatMap((block) =>
+      block.blockId && contextBlockIdSet.has(block.blockId)
+        ? [block.blockId]
+        : [],
+    ),
+    visibleBlockIds: input.blocks.flatMap((block) =>
+      block.blockId && visibleBlockIdSet.has(block.blockId) ? [block.blockId] : [],
+    ),
   };
 }
 

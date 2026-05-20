@@ -159,6 +159,14 @@ button:disabled {
   display: none !important;
 }
 
+.manuscript-prosemirror .manuscript-filter-context {
+  border-radius: 0.35rem;
+  opacity: 0.68;
+  filter: saturate(0.78);
+  outline: 1px dashed rgba(244, 240, 232, 0.28);
+  outline-offset: 2px;
+}
+
 .manuscript-hide-author-colors .manuscript-author-mark {
   background: transparent;
   box-shadow: none;
