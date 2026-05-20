@@ -33,9 +33,19 @@ export const semanticHighlightDefinitions = [
 ] as const;
 
 export const manuscriptStructureDefinitions = [
-  { id: "chapter", label: "Chapter", colorKey: "chapter" },
+  { id: "chapter", label: "Chapter / book", colorKey: "chapter" },
   { id: "episode", label: "Episode", colorKey: "episode" },
   { id: "section", label: "Section", colorKey: "section" },
+] as const;
+
+export const manuscriptStructureLabelPresets = [
+  { id: "preface", label: "Preface", title: "Preface" },
+  { id: "introduction", label: "Introduction", title: "Introduction" },
+  { id: "chapter-0", label: "Chapter 0", title: "Chapter 0" },
+  { id: "chapter", label: "Chapter", title: "Chapter" },
+  { id: "interlude", label: "Interlude", title: "Interlude" },
+  { id: "appendix", label: "Appendix", title: "Appendix" },
+  { id: "custom", label: "Custom", title: "" },
 ] as const;
 
 export const manuscriptBlockNodeTypes = [
@@ -52,6 +62,9 @@ export type SemanticHighlightType =
 
 export type ManuscriptStructureKind =
   (typeof manuscriptStructureDefinitions)[number]["id"];
+
+export type ManuscriptStructureLabelPreset =
+  (typeof manuscriptStructureLabelPresets)[number]["id"];
 
 export type ManuscriptEditorJson = {
   type?: string;
@@ -109,6 +122,7 @@ export type ManuscriptStructureRegion = {
   id: string;
   kind: ManuscriptStructureKind;
   title: string;
+  labelPreset?: ManuscriptStructureLabelPreset;
   startBlockId: string;
   endBlockId: string;
   order: number;
@@ -156,6 +170,12 @@ export function isManuscriptStructureKind(
   return manuscriptStructureDefinitions.some((kind) => kind.id === value);
 }
 
+export function isManuscriptStructureLabelPreset(
+  value: string,
+): value is ManuscriptStructureLabelPreset {
+  return manuscriptStructureLabelPresets.some((preset) => preset.id === value);
+}
+
 export function getManuscriptAuthorDefinition(authorId: ManuscriptAuthorId) {
   return (
     manuscriptAuthorDefinitions.find((author) => author.id === authorId) ??
@@ -177,6 +197,16 @@ export function getManuscriptStructureDefinition(
     manuscriptStructureDefinitions.find(
       (definition) => definition.id === kind,
     ) ?? manuscriptStructureDefinitions[0]
+  );
+}
+
+export function getManuscriptStructureLabelPresetDefinition(
+  preset: ManuscriptStructureLabelPreset,
+) {
+  return (
+    manuscriptStructureLabelPresets.find(
+      (definition) => definition.id === preset,
+    ) ?? manuscriptStructureLabelPresets[6]
   );
 }
 
@@ -385,6 +415,126 @@ export function collectSemanticHighlights(
   return highlights;
 }
 
+function formatStructureNumber(value: number) {
+  const words = [
+    "Zero",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+    "Twenty",
+  ];
+
+  return words[value] ?? String(value);
+}
+
+export function createStructureRegionDefaultTitle(input: {
+  kind: ManuscriptStructureKind;
+  labelPreset?: ManuscriptStructureLabelPreset;
+  existingRegions: ManuscriptStructureRegion[];
+}) {
+  if (input.kind === "episode") {
+    const episodeCount =
+      input.existingRegions.filter((region) => region.kind === "episode")
+        .length + 1;
+
+    return `Episode ${episodeCount}`;
+  }
+
+  if (input.kind === "section") {
+    const sectionCount =
+      input.existingRegions.filter((region) => region.kind === "section")
+        .length + 1;
+
+    return `Section ${sectionCount}`;
+  }
+
+  const preset = input.labelPreset ?? "chapter";
+  const presetDefinition = getManuscriptStructureLabelPresetDefinition(preset);
+
+  if (preset === "chapter") {
+    const chapterCount =
+      input.existingRegions.filter(
+        (region) =>
+          region.kind === "chapter" &&
+          (region.labelPreset === "chapter" ||
+            (!region.labelPreset &&
+              /^chapter(?!\s*0\b)/i.test(region.title.trim()))),
+      ).length + 1;
+
+    return `Chapter ${formatStructureNumber(chapterCount)}`;
+  }
+
+  if (preset === "custom") {
+    const bookRegionCount =
+      input.existingRegions.filter((region) => region.kind === "chapter")
+        .length + 1;
+
+    return `Book region ${bookRegionCount}`;
+  }
+
+  return presetDefinition.title;
+}
+
+export function updateManuscriptStructureRegion(input: {
+  regions: ManuscriptStructureRegion[];
+  regionId: string;
+  kind: ManuscriptStructureKind;
+  title: string;
+  labelPreset?: ManuscriptStructureLabelPreset;
+  notes: string;
+  updatedAt: string;
+}) {
+  const definition = getManuscriptStructureDefinition(input.kind);
+  const safeLabelPreset =
+    input.kind === "chapter" ? input.labelPreset : undefined;
+  const title =
+    input.title.trim() ||
+    createStructureRegionDefaultTitle({
+      kind: input.kind,
+      labelPreset: safeLabelPreset,
+      existingRegions: input.regions,
+    });
+
+  return input.regions.map((region) => {
+    if (region.id !== input.regionId) {
+      return region;
+    }
+
+    const updatedRegion: ManuscriptStructureRegion = {
+      ...region,
+      kind: input.kind,
+      title,
+      colorKey: definition.colorKey,
+      notes: input.notes.trim(),
+      updatedAt: input.updatedAt,
+    };
+
+    if (safeLabelPreset) {
+      updatedRegion.labelPreset = safeLabelPreset;
+    } else {
+      delete updatedRegion.labelPreset;
+    }
+
+    return updatedRegion;
+  });
+}
+
 export function collectStructureRegionSummaries(input: {
   json: ManuscriptEditorJson;
   regions: ManuscriptStructureRegion[];
@@ -471,6 +621,14 @@ export function safeManuscriptStructureRegions(
 
     const region = item as Partial<ManuscriptStructureRegion>;
     const kind = String(region.kind ?? "");
+    const rawLabelPreset =
+      typeof region.labelPreset === "string" ? region.labelPreset : "";
+    const labelPreset =
+      isManuscriptStructureKind(kind) &&
+      kind === "chapter" &&
+      isManuscriptStructureLabelPreset(rawLabelPreset)
+        ? rawLabelPreset
+        : undefined;
 
     if (
       typeof region.id !== "string" ||
@@ -493,7 +651,7 @@ export function safeManuscriptStructureRegions(
 
     const definition = getManuscriptStructureDefinition(kind);
 
-    regions.push({
+    const normalizedRegion: ManuscriptStructureRegion = {
       id: region.id,
       kind,
       title: region.title.trim() || definition.label,
@@ -504,7 +662,13 @@ export function safeManuscriptStructureRegions(
       notes: region.notes,
       createdAt: region.createdAt,
       updatedAt: region.updatedAt,
-    });
+    };
+
+    if (labelPreset) {
+      normalizedRegion.labelPreset = labelPreset;
+    }
+
+    regions.push(normalizedRegion);
   }
 
   return regions.sort((left, right) => left.order - right.order);

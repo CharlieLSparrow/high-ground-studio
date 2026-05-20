@@ -33,7 +33,7 @@ The draft includes:
 - imported source file name
 - import summary with source file name, word count, character count, block count,
   and imported timestamp
-- block-range structure regions for chapters, episodes, and sections
+- block-range structure regions for chapter/book regions, episodes, and sections
 - TipTap/ProseMirror editor JSON
 - active author
 - author and semantic color toggles
@@ -78,55 +78,70 @@ archive files.
 21. Confirm author counts update.
 22. Confirm semantic highlights appear in the inspector.
 23. Select a multi-block range in the manuscript surface.
-24. In the Structure layer controls, choose `Chapter`, enter a synthetic title,
+24. In the Structure layer controls, choose `Chapter / book`, set `Book label
+    preset` to `Preface`, leave the title as `Preface`,
     and click `Capture range`.
 25. Click `Add structure`.
-26. Confirm the structure region appears in the inspector.
+26. Confirm the `Preface` structure region appears in the inspector with the
+    title prominent.
 27. Confirm the covered blocks show structure-region styling in the manuscript
     surface and matching structure chips in the block inspector.
-28. Repeat with `Episode` across an overlapping synthetic block range.
-29. Confirm the chapter and episode regions coexist without changing author or
+28. Repeat with `Chapter / book` and `Introduction`.
+29. Repeat with `Chapter / book` and `Chapter 0`.
+30. Repeat with `Chapter / book`, `Chapter`, and confirm the default title is
+    suitable for `Chapter One`.
+31. Repeat with `Episode` across an overlapping synthetic block range and
+    confirm the default title is suitable for `Episode 1`.
+32. Confirm the book regions and episode regions coexist without changing author or
     semantic marks.
-30. Remove one structure region and confirm the other remains.
-31. Toggle `Hide author colors`, then confirm author color styling disappears.
-32. Toggle `Show author colors`, then confirm author color styling returns.
-33. Toggle `Hide semantic colors`, then confirm semantic outline styling
+33. Click `Edit` on one structure region.
+34. Change the title and notes, then click `Save`.
+35. Confirm the edited title and notes appear in the inspector and block-region
+    chips.
+36. Click `Edit` again, change a field, click `Cancel`, and confirm the
+    previous saved label remains.
+37. Remove one structure region and confirm the others remain.
+38. Toggle `Hide author colors`, then confirm author color styling disappears.
+39. Toggle `Show author colors`, then confirm author color styling returns.
+40. Toggle `Hide semantic colors`, then confirm semantic outline styling
     disappears.
-34. Toggle `Show semantic colors`, then confirm semantic outline styling
+41. Toggle `Show semantic colors`, then confirm semantic outline styling
     returns.
-35. Click `Download full draft JSON`.
-36. Confirm a timestamped `.json` backup downloads.
-37. Click `Download editor JSON`.
-38. Confirm a timestamped editor `.json` backup downloads.
-39. Click `Download HTML`.
-40. Confirm a timestamped `.html` backup downloads.
-41. Click `Download plain text`.
-42. Confirm a timestamped `.txt` backup downloads.
-43. Click `Export editor JSON`.
-44. Confirm exported JSON contains block IDs and inline marks but not structure
+42. Click `Download full draft JSON`.
+43. Confirm a timestamped `.json` backup downloads.
+44. Click `Download editor JSON`.
+45. Confirm a timestamped editor `.json` backup downloads.
+46. Click `Download HTML`.
+47. Confirm a timestamped `.html` backup downloads.
+48. Click `Download plain text`.
+49. Confirm a timestamped `.txt` backup downloads.
+50. Click `Export editor JSON`.
+51. Confirm exported JSON contains block IDs and inline marks but not structure
     regions.
-45. Copy the exported editor JSON, paste it into `Import JSON`, and click
+52. Copy the exported editor JSON, paste it into `Import JSON`, and click
     `Import editor JSON`.
-46. Confirm the replacement prompt appears if the current draft has content.
-47. Confirm text, block IDs, author marks, and semantic marks return after
+53. Confirm the replacement prompt appears if the current draft has content.
+54. Confirm text, block IDs, author marks, and semantic marks return after
     import, and structure regions are reset because this is editor JSON only.
-48. Recreate one synthetic structure region.
-49. Click `Export full draft`.
-50. Confirm the exported draft includes `schemaVersion`, title, source file
-    name, import summary, `structureRegions`, editor JSON, active author,
-    display toggles, and last updated time.
-51. Copy the exported full draft JSON, paste it into `Import JSON`, and click
+55. Recreate one synthetic structure region and edit its title or notes.
+56. Click `Export full draft`.
+57. Confirm the exported draft includes `schemaVersion`, title, source file
+    name, import summary, `structureRegions` with title and optional
+    `labelPreset`, editor JSON, active author, display toggles, and last
+    updated time.
+58. Copy the exported full draft JSON, paste it into `Import JSON`, and click
     `Import editor JSON`.
-52. Confirm text, block IDs, inline marks, and structure regions return.
-53. Click `Export HTML`.
-54. Confirm HTML includes manuscript text and data attributes for marks.
-55. Click `Export plain text`.
-56. Confirm plain text contains the manuscript text without metadata.
-57. Refresh the page.
-58. Confirm the browser-local draft and structure regions survive refresh.
-59. Click `Clear local draft`.
-60. Confirm the browser prompt.
-61. Confirm only `high-ground-studio.manuscript-editor.v1` is removed from
+59. Confirm text, block IDs, inline marks, edited title, edited notes, and
+    structure regions return.
+60. Click `Export HTML`.
+61. Confirm HTML includes manuscript text and data attributes for marks.
+62. Click `Export plain text`.
+63. Confirm plain text contains the manuscript text without metadata.
+64. Refresh the page.
+65. Confirm the browser-local draft and edited structure labels survive refresh.
+66. Click `Clear local draft`.
+67. Confirm the browser prompt.
+68. Confirm only `high-ground-studio.manuscript-editor.v1` is removed from
     localStorage.
 
 ## What To Inspect In Exported JSON
@@ -174,7 +189,8 @@ Look for block-range structure regions in full draft JSON:
   "structureRegions": [
     {
       "kind": "chapter",
-      "title": "Synthetic Chapter",
+      "labelPreset": "preface",
+      "title": "Preface",
       "startBlockId": "block-paragraph-...",
       "endBlockId": "block-heading-..."
     }

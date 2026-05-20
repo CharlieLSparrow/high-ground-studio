@@ -10,15 +10,18 @@ import {
   createBackupFileName,
   ensureManuscriptBlockIds,
   createManuscriptImportSummary,
+  createStructureRegionDefaultTitle,
   hasMeaningfulManuscriptDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
   manuscriptStructureDefinitions,
+  manuscriptStructureLabelPresets,
   safeManuscriptDraft,
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
   summarizeAuthorMarkedSpans,
+  updateManuscriptStructureRegion,
   validateEditorJsonShape,
 } from "../apps/studio/src/app/manuscript/manuscript-editor-model.ts";
 
@@ -99,6 +102,18 @@ test("author and semantic definitions contain the MVP options", () => {
   assert.deepEqual(
     manuscriptStructureDefinitions.map((definition) => definition.id),
     ["chapter", "episode", "section"],
+  );
+  assert.deepEqual(
+    manuscriptStructureLabelPresets.map((preset) => preset.id),
+    [
+      "preface",
+      "introduction",
+      "chapter-0",
+      "chapter",
+      "interlude",
+      "appendix",
+      "custom",
+    ],
   );
 });
 
@@ -396,4 +411,172 @@ test("structure regions summarize block ranges without inline marks", () => {
     "block-c",
   ]);
   assert.equal(collectSemanticHighlights(threeBlockDoc).length, 0);
+});
+
+test("structure region presets create book-specific default titles", () => {
+  const existingRegions = [
+    {
+      id: "structure-preface",
+      kind: "chapter",
+      title: "Preface",
+      labelPreset: "preface",
+      startBlockId: "block-a",
+      endBlockId: "block-a",
+      order: 1,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+    {
+      id: "structure-chapter-one",
+      kind: "chapter",
+      title: "Chapter One",
+      labelPreset: "chapter",
+      startBlockId: "block-b",
+      endBlockId: "block-c",
+      order: 2,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+  ];
+
+  assert.equal(
+    createStructureRegionDefaultTitle({
+      kind: "chapter",
+      labelPreset: "preface",
+      existingRegions: [],
+    }),
+    "Preface",
+  );
+  assert.equal(
+    createStructureRegionDefaultTitle({
+      kind: "chapter",
+      labelPreset: "introduction",
+      existingRegions: [],
+    }),
+    "Introduction",
+  );
+  assert.equal(
+    createStructureRegionDefaultTitle({
+      kind: "chapter",
+      labelPreset: "chapter-0",
+      existingRegions: [],
+    }),
+    "Chapter 0",
+  );
+  assert.equal(
+    createStructureRegionDefaultTitle({
+      kind: "chapter",
+      labelPreset: "chapter",
+      existingRegions,
+    }),
+    "Chapter Two",
+  );
+  assert.equal(
+    createStructureRegionDefaultTitle({
+      kind: "episode",
+      existingRegions: [
+        {
+          id: "structure-episode-one",
+          kind: "episode",
+          title: "Episode 1",
+          startBlockId: "block-a",
+          endBlockId: "block-b",
+          order: 3,
+          colorKey: "episode",
+          notes: "",
+          createdAt: "2026-05-19T12:00:00.000Z",
+          updatedAt: "2026-05-19T12:00:00.000Z",
+        },
+      ],
+    }),
+    "Episode 2",
+  );
+});
+
+test("structure region updates edit title kind preset and notes", () => {
+  const regions = [
+    {
+      id: "structure-1",
+      kind: "chapter",
+      title: "Chapter One",
+      labelPreset: "chapter",
+      startBlockId: "block-a",
+      endBlockId: "block-c",
+      order: 1,
+      colorKey: "chapter",
+      notes: "Original notes",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+  ];
+
+  const updated = updateManuscriptStructureRegion({
+    regions,
+    regionId: "structure-1",
+    kind: "chapter",
+    title: "Preface",
+    labelPreset: "preface",
+    notes: "Edited notes",
+    updatedAt: "2026-05-19T13:00:00.000Z",
+  });
+
+  assert.equal(updated[0].title, "Preface");
+  assert.equal(updated[0].kind, "chapter");
+  assert.equal(updated[0].labelPreset, "preface");
+  assert.equal(updated[0].notes, "Edited notes");
+  assert.equal(updated[0].updatedAt, "2026-05-19T13:00:00.000Z");
+
+  const changedLayer = updateManuscriptStructureRegion({
+    regions: updated,
+    regionId: "structure-1",
+    kind: "episode",
+    title: "Episode 1",
+    labelPreset: "preface",
+    notes: "Episode notes",
+    updatedAt: "2026-05-19T14:00:00.000Z",
+  });
+
+  assert.equal(changedLayer[0].kind, "episode");
+  assert.equal(changedLayer[0].title, "Episode 1");
+  assert.equal(changedLayer[0].colorKey, "episode");
+  assert.equal(changedLayer[0].labelPreset, undefined);
+});
+
+test("structure region parser keeps old regions and normalizes invalid presets", () => {
+  const parsed = safeManuscriptStructureRegions([
+    {
+      id: "structure-old",
+      kind: "chapter",
+      title: "Chapter One",
+      startBlockId: "block-a",
+      endBlockId: "block-b",
+      order: 1,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+    {
+      id: "structure-invalid-preset",
+      kind: "chapter",
+      title: "Introduction",
+      labelPreset: "front-matter",
+      startBlockId: "block-c",
+      endBlockId: "block-d",
+      order: 2,
+      colorKey: "chapter",
+      notes: "",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      updatedAt: "2026-05-19T12:00:00.000Z",
+    },
+  ]);
+
+  assert.equal(parsed?.[0].labelPreset, undefined);
+  assert.equal(parsed?.[0].title, "Chapter One");
+  assert.equal(parsed?.[1].labelPreset, undefined);
+  assert.equal(parsed?.[1].title, "Introduction");
 });

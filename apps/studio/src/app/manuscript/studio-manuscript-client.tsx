@@ -29,8 +29,10 @@ import {
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
   createManuscriptImportSummary,
+  createStructureRegionDefaultTitle,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
+  getManuscriptStructureLabelPresetDefinition,
   getManuscriptStructureDefinition,
   getSemanticHighlightDefinition,
   hasMeaningfulManuscriptDraft,
@@ -38,15 +40,18 @@ import {
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
   manuscriptStructureDefinitions,
+  manuscriptStructureLabelPresets,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
   summarizeAuthorMarkedSpans,
+  updateManuscriptStructureRegion,
   validateEditorJsonShape,
   type ManuscriptAuthorId,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptImportSummary,
   type ManuscriptStructureKind,
+  type ManuscriptStructureLabelPreset,
   type ManuscriptStructureRegion,
   type ManuscriptStructureRegionSummary,
   type SemanticHighlightType,
@@ -241,11 +246,22 @@ export function StudioManuscriptClient({
   const [semanticNote, setSemanticNote] = useState("");
   const [structureKind, setStructureKind] =
     useState<ManuscriptStructureKind>("chapter");
+  const [structureLabelPreset, setStructureLabelPreset] =
+    useState<ManuscriptStructureLabelPreset>("chapter");
   const [structureTitle, setStructureTitle] = useState("");
   const [structureNotes, setStructureNotes] = useState("");
   const [structureRegions, setStructureRegions] = useState<
     ManuscriptStructureRegion[]
   >([]);
+  const [editingStructureRegionId, setEditingStructureRegionId] = useState<
+    string | null
+  >(null);
+  const [editingStructureKind, setEditingStructureKind] =
+    useState<ManuscriptStructureKind>("chapter");
+  const [editingStructureLabelPreset, setEditingStructureLabelPreset] =
+    useState<ManuscriptStructureLabelPreset>("custom");
+  const [editingStructureTitle, setEditingStructureTitle] = useState("");
+  const [editingStructureNotes, setEditingStructureNotes] = useState("");
   const [selectedStructureRange, setSelectedStructureRange] = useState<{
     startBlockId: string;
     endBlockId: string;
@@ -523,6 +539,90 @@ export function StudioManuscriptClient({
     );
   }
 
+  function getDefaultStructureTitle(
+    kind: ManuscriptStructureKind,
+    labelPreset?: ManuscriptStructureLabelPreset,
+  ) {
+    return createStructureRegionDefaultTitle({
+      kind,
+      labelPreset: kind === "chapter" ? labelPreset : undefined,
+      existingRegions: structureRegions,
+    });
+  }
+
+  function updateStructureKind(kind: ManuscriptStructureKind) {
+    setStructureKind(kind);
+
+    if (!structureTitle.trim()) {
+      setStructureTitle(getDefaultStructureTitle(kind, structureLabelPreset));
+    }
+  }
+
+  function updateStructureLabelPreset(
+    labelPreset: ManuscriptStructureLabelPreset,
+  ) {
+    setStructureLabelPreset(labelPreset);
+    setStructureTitle(getDefaultStructureTitle("chapter", labelPreset));
+  }
+
+  function beginEditingStructureRegion(region: ManuscriptStructureRegion) {
+    setEditingStructureRegionId(region.id);
+    setEditingStructureKind(region.kind);
+    setEditingStructureLabelPreset(region.labelPreset ?? "custom");
+    setEditingStructureTitle(region.title);
+    setEditingStructureNotes(region.notes);
+    setMessage(`Editing ${region.title}.`);
+  }
+
+  function cancelEditingStructureRegion() {
+    setEditingStructureRegionId(null);
+    setEditingStructureTitle("");
+    setEditingStructureNotes("");
+    setEditingStructureKind("chapter");
+    setEditingStructureLabelPreset("custom");
+    setMessage("Structure region edit canceled.");
+  }
+
+  function updateEditingStructureKind(kind: ManuscriptStructureKind) {
+    setEditingStructureKind(kind);
+
+    if (!editingStructureTitle.trim()) {
+      setEditingStructureTitle(
+        getDefaultStructureTitle(kind, editingStructureLabelPreset),
+      );
+    }
+  }
+
+  function updateEditingStructureLabelPreset(
+    labelPreset: ManuscriptStructureLabelPreset,
+  ) {
+    setEditingStructureLabelPreset(labelPreset);
+    setEditingStructureTitle(getDefaultStructureTitle("chapter", labelPreset));
+  }
+
+  function saveStructureRegion(regionId: string) {
+    setStructureRegions((current) =>
+      updateManuscriptStructureRegion({
+        regions: current,
+        regionId,
+        kind: editingStructureKind,
+        title: editingStructureTitle,
+        labelPreset:
+          editingStructureKind === "chapter"
+            ? editingStructureLabelPreset
+            : undefined,
+        notes: editingStructureNotes,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    setEditingStructureRegionId(null);
+    setEditingStructureTitle("");
+    setEditingStructureNotes("");
+    setEditingStructureKind("chapter");
+    setEditingStructureLabelPreset("custom");
+    setMessage("Structure region saved.");
+  }
+
   function updateActiveAuthor(authorId: ManuscriptAuthorId) {
     setActiveAuthorId(authorId);
 
@@ -644,14 +744,15 @@ export function StudioManuscriptClient({
     }
 
     const definition = getManuscriptStructureDefinition(structureKind);
-    const kindCount =
-      structureRegions.filter((region) => region.kind === definition.id).length +
-      1;
+    const labelPreset =
+      structureKind === "chapter" ? structureLabelPreset : undefined;
     const now = new Date().toISOString();
     const nextRegion: ManuscriptStructureRegion = {
       id: createStructureRegionId(),
       kind: definition.id,
-      title: structureTitle.trim() || `${definition.label} ${kindCount}`,
+      title:
+        structureTitle.trim() ||
+        getDefaultStructureTitle(definition.id, labelPreset),
       startBlockId: range.startBlockId,
       endBlockId: range.endBlockId,
       order: structureRegions.length + 1,
@@ -660,6 +761,10 @@ export function StudioManuscriptClient({
       createdAt: now,
       updatedAt: now,
     };
+
+    if (labelPreset) {
+      nextRegion.labelPreset = labelPreset;
+    }
 
     setStructureRegions((current) => [...current, nextRegion]);
     setStructureTitle("");
@@ -1017,6 +1122,7 @@ export function StudioManuscriptClient({
           message.includes("Applied") ||
           message.includes("Captured") ||
           message.includes("Added") ||
+          message.includes("saved") ||
           message.includes("cleared") ||
           message.includes("removed") ||
           message.includes("Loaded")
@@ -1278,7 +1384,7 @@ export function StudioManuscriptClient({
                     className={fieldClassName}
                     value={structureKind}
                     onChange={(event) =>
-                      setStructureKind(
+                      updateStructureKind(
                         event.target.value as ManuscriptStructureKind,
                       )
                     }
@@ -1290,11 +1396,36 @@ export function StudioManuscriptClient({
                     ))}
                   </select>
                 </label>
+                {structureKind === "chapter" ? (
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>
+                      Book label preset
+                    </span>
+                    <select
+                      className={fieldClassName}
+                      value={structureLabelPreset}
+                      onChange={(event) =>
+                        updateStructureLabelPreset(
+                          event.target.value as ManuscriptStructureLabelPreset,
+                        )
+                      }
+                    >
+                      {manuscriptStructureLabelPresets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label className="grid gap-2">
                   <span className={fieldLabelClassName}>Region title</span>
                   <input
                     className={fieldClassName}
-                    placeholder={`${getManuscriptStructureDefinition(structureKind).label} title`}
+                    placeholder={getDefaultStructureTitle(
+                      structureKind,
+                      structureLabelPreset,
+                    )}
                     value={structureTitle}
                     onChange={(event) => setStructureTitle(event.target.value)}
                   />
@@ -1509,46 +1640,173 @@ export function StudioManuscriptClient({
               </div>
               <div className="grid max-h-[280px] gap-2 overflow-auto pr-1">
                 {structureRegionSummaries.length ? (
-                  structureRegionSummaries.map((region) => (
-                    <article
-                      className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                      key={region.id}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <StudioChip tone="node">
-                            {getManuscriptStructureDefinition(region.kind).label}
-                          </StudioChip>
-                          <h3 className="mt-2 mb-0 text-[0.92rem] leading-snug text-studio-ink">
-                            {region.title}
-                          </h3>
+                  structureRegionSummaries.map((region) => {
+                    const isEditing = editingStructureRegionId === region.id;
+
+                    return (
+                      <article
+                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={region.id}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap gap-1.5">
+                              <StudioChip tone="node">
+                                {
+                                  getManuscriptStructureDefinition(region.kind)
+                                    .label
+                                }
+                              </StudioChip>
+                              {region.labelPreset ? (
+                                <StudioChip tone="review">
+                                  {
+                                    getManuscriptStructureLabelPresetDefinition(
+                                      region.labelPreset,
+                                    ).label
+                                  }
+                                </StudioChip>
+                              ) : null}
+                            </div>
+                            <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
+                              {region.title}
+                            </h3>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  className={smallButtonClassName}
+                                  type="button"
+                                  onClick={() => saveStructureRegion(region.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className={smallButtonClassName}
+                                  type="button"
+                                  onClick={cancelEditingStructureRegion}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={() => beginEditingStructureRegion(region)}
+                              >
+                                Edit
+                              </button>
+                            )}
+                            <button
+                              className={dangerButtonClassName}
+                              type="button"
+                              onClick={() => removeStructureRegion(region.id)}
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          className={dangerButtonClassName}
-                          type="button"
-                          onClick={() => removeStructureRegion(region.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
-                        {region.isRangeComplete
-                          ? `${region.blockCount.toLocaleString()} blocks`
-                          : "Range needs review"}
-                      </p>
-                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                        Start: {region.startPreview}
-                      </p>
-                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                        End: {region.endPreview}
-                      </p>
-                      {region.notes ? (
-                        <p className="m-0 text-[0.75rem] leading-relaxed text-studio-review">
-                          {region.notes}
+
+                        {isEditing ? (
+                          <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                            <label className="grid gap-1.5">
+                              <span className={fieldLabelClassName}>
+                                Region kind
+                              </span>
+                              <select
+                                className={fieldClassName}
+                                value={editingStructureKind}
+                                onChange={(event) =>
+                                  updateEditingStructureKind(
+                                    event.target
+                                      .value as ManuscriptStructureKind,
+                                  )
+                                }
+                              >
+                                {manuscriptStructureDefinitions.map(
+                                  (definition) => (
+                                    <option
+                                      key={definition.id}
+                                      value={definition.id}
+                                    >
+                                      {definition.label}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                            </label>
+                            {editingStructureKind === "chapter" ? (
+                              <label className="grid gap-1.5">
+                                <span className={fieldLabelClassName}>
+                                  Book label preset
+                                </span>
+                                <select
+                                  className={fieldClassName}
+                                  value={editingStructureLabelPreset}
+                                  onChange={(event) =>
+                                    updateEditingStructureLabelPreset(
+                                      event.target
+                                        .value as ManuscriptStructureLabelPreset,
+                                    )
+                                  }
+                                >
+                                  {manuscriptStructureLabelPresets.map(
+                                    (preset) => (
+                                      <option key={preset.id} value={preset.id}>
+                                        {preset.label}
+                                      </option>
+                                    ),
+                                  )}
+                                </select>
+                              </label>
+                            ) : null}
+                            <label className="grid gap-1.5">
+                              <span className={fieldLabelClassName}>
+                                Region title
+                              </span>
+                              <input
+                                className={fieldClassName}
+                                value={editingStructureTitle}
+                                onChange={(event) =>
+                                  setEditingStructureTitle(event.target.value)
+                                }
+                              />
+                            </label>
+                            <label className="grid gap-1.5">
+                              <span className={fieldLabelClassName}>
+                                Structure notes
+                              </span>
+                              <textarea
+                                className={cn(textareaClassName, "min-h-[74px]")}
+                                value={editingStructureNotes}
+                                onChange={(event) =>
+                                  setEditingStructureNotes(event.target.value)
+                                }
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+
+                        <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+                          {region.isRangeComplete
+                            ? `${region.blockCount.toLocaleString()} blocks`
+                            : "Range needs review"}
                         </p>
-                      ) : null}
-                    </article>
-                  ))
+                        <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                          Start: {region.startPreview}
+                        </p>
+                        <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                          End: {region.endPreview}
+                        </p>
+                        {region.notes ? (
+                          <p className="m-0 text-[0.75rem] leading-relaxed text-studio-review">
+                            {region.notes}
+                          </p>
+                        ) : null}
+                      </article>
+                    );
+                  })
                 ) : (
                   <p className={panelCopyClassName}>No structure regions yet.</p>
                 )}
