@@ -18,6 +18,7 @@ import {
   createFilteredBlockListMarkdown,
   createFocusVisibleBlockIds,
   createManuscriptImportSummary,
+  createManuscriptSnapshotMetadata,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
   filterCitedQuotationsByReviewStatus,
@@ -211,6 +212,90 @@ test("safeManuscriptDraft accepts a valid draft", () => {
   };
 
   assert.deepEqual(safeManuscriptDraft(draft), draft);
+});
+
+test("createManuscriptSnapshotMetadata summarizes a synthetic draft", () => {
+  const draft = {
+    schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
+    title: " Snapshot draft ",
+    sourceFileName: "synthetic.docx",
+    importSummary: null,
+    structureRegions: [
+      {
+        id: "structure-1",
+        kind: "chapter",
+        title: "Chapter One",
+        startBlockId: "block-1",
+        endBlockId: "block-1",
+        order: 1,
+        colorKey: "chapter",
+        notes: "",
+        createdAt: "2026-05-20T12:00:00.000Z",
+        updatedAt: "2026-05-20T12:00:00.000Z",
+      },
+    ],
+    quoteReviews: {
+      "semantic-quote-1": {
+        highlightId: "semantic-quote-1",
+        attributedTo: "Synthetic speaker",
+        sourceTitle: "Synthetic Source",
+        sourceType: "book",
+        locator: "p. 1",
+        citationText: "Synthetic citation",
+        reviewStatus: "verified",
+        rightsNote: "",
+        editorNote: "",
+        updatedAt: "2026-05-20T12:00:00.000Z",
+      },
+    },
+    editorJson: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: {
+            blockId: "block-1",
+          },
+          content: [
+            {
+              type: "text",
+              text: "Synthetic quote text.",
+              marks: [
+                {
+                  type: "semanticHighlightMark",
+                  attrs: {
+                    highlightId: "semantic-quote-1",
+                    tagType: "cited-quotation",
+                    label: "Cited quotation",
+                    colorKey: "cited-quotation",
+                    note: "Synthetic source note",
+                    createdAt: "2026-05-20T12:00:00.000Z",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    activeAuthorId: "homer",
+    showAuthorColors: true,
+    showSemanticColors: true,
+    lastUpdatedAt: "2026-05-20T12:05:00.000Z",
+  };
+
+  assert.deepEqual(createManuscriptSnapshotMetadata(draft), {
+    title: "Snapshot draft",
+    schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
+    sourceFileName: "synthetic.docx",
+    clientUpdatedAt: "2026-05-20T12:05:00.000Z",
+    words: 3,
+    characters: 21,
+    blocks: 1,
+    structureRegions: 1,
+    citedQuotations: 1,
+    quoteReviews: 1,
+  });
 });
 
 test("safeManuscriptDraft defaults older drafts to no structure regions", () => {

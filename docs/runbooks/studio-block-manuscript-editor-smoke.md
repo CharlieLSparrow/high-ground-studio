@@ -20,7 +20,7 @@ Open:
 /manuscript
 ```
 
-The MVP persists one browser-local draft in localStorage:
+The primary working copy is still one browser-local draft in localStorage:
 
 ```text
 high-ground-studio.manuscript-editor.v1
@@ -40,8 +40,15 @@ The draft includes:
 - author and semantic color toggles
 - last updated timestamp
 
+Server snapshots are optional and explicit. When a Studio database is
+configured and the Prisma schema has been applied, `Backup` mode can save or
+load a full `ManuscriptDraft` JSON snapshot. Opening `/manuscript`, editing,
+filtering, entering Focus View, or entering Recording / Reading mode must not
+automatically write a server snapshot.
+
 Filter/lens controls are view state only. They do not change the browser-local
-draft source data or localStorage schema.
+draft source data, the localStorage schema, or saved server snapshots unless an
+explicit snapshot action is clicked.
 
 Focus View hiding is also view state only. It should hide nonmatching blocks in
 the manuscript surface without deleting, rewriting, splitting, or removing them
@@ -56,9 +63,11 @@ and emphasizes outline/navigation controls without changing manuscript JSON,
 structure regions, author marks, semantic marks, quote reviews, or the
 localStorage schema.
 
-The MVP is not database-backed. It does not write Prisma rows, remote Studio
-documents, public projections, `.docx` exports, manuscript MDX, or imported
-archive files.
+The full manuscript editor is not a canonical database document yet. Optional
+server snapshots write only `StudioManuscriptSnapshot` rows when explicitly
+saved in a configured environment. The Manuscript Desk does not write remote
+Studio document blocks, public projections, `.docx` exports, manuscript MDX, or
+imported archive files.
 
 ## Manual Smoke Script
 
@@ -78,7 +87,7 @@ archive files.
    semantic marks, structure regions, quote reviews, or Focus View state unless
    a specific action button is clicked.
 8. In `Backup`, confirm the page says the draft is saved locally in this
-   browser and not yet synced to the Studio database.
+   browser and that server snapshots are explicit cross-device copies.
 9. Upload a `.docx` containing Scott/Homer manuscript text.
 10. If a browser-local draft already exists, confirm the replacement prompt
    appears. Cancel once if needed to verify the existing draft is preserved,
@@ -342,6 +351,40 @@ archive files.
     manuscript surface is editable again.
 26. Export editor JSON or full draft JSON and confirm changing modes did not
     remove hidden blocks or mutate manuscript data.
+
+## Server Snapshot Smoke Steps
+
+Run these only in an environment where the Studio database is intentionally
+configured and the `StudioManuscriptSnapshot` schema has been applied. Do not
+run `db:push`, migrations, or Cloud Run env/secret changes as part of this
+smoke checklist unless that work has been separately approved.
+
+1. Open `/manuscript`.
+2. Import or create a synthetic manuscript draft.
+3. Switch the sticky sidebar to `Backup`.
+4. Confirm the server snapshot panel is visible below the browser-local source
+   controls, not before the manuscript.
+5. Add a short synthetic snapshot note.
+6. Click `Save snapshot`.
+7. Confirm the UI reports that a server manuscript snapshot was saved.
+8. Confirm the recent snapshot list shows title, saved time, word count, block
+   count, structure count, and cited quote count.
+9. Open `/manuscript` in another browser profile, phone, tablet, or simulator
+   signed in as the same Studio actor.
+10. Switch to `Backup` and click `Load latest`.
+11. Confirm the replacement prompt appears if the second device has a meaningful
+    browser-local draft.
+12. Confirm the loaded manuscript text, block IDs, structure regions, cited
+    quotations, and quote review metadata match the saved snapshot.
+13. Confirm the second device now has its own browser-local copy after loading.
+14. On a phone/narrow viewport, open `Tools` and confirm `Load latest
+    snapshot` is available inside the collapsed tools drawer, not above the
+    first manuscript viewport.
+15. Confirm no autosave occurs unless `Save snapshot` is clicked again.
+
+If the database is not configured, the server snapshot panel should report that
+server snapshots are unavailable while the browser-local backup/download path
+continues to work.
 
 ## What To Inspect In Exported JSON
 

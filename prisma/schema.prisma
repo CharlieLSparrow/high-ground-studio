@@ -505,6 +505,29 @@ model StudioDocument {
   @@index([projectId, projectionStatus])
 }
 
+model StudioManuscriptSnapshot {
+  id              String   @id @default(cuid())
+  ownerEmail      String
+  title           String
+  description     String?
+  schemaVersion   Int
+  sourceFileName  String?
+  draftJson       Json
+  contentHash     String?
+  clientUpdatedAt DateTime?
+  wordCount       Int      @default(0)
+  characterCount  Int      @default(0)
+  blockCount      Int      @default(0)
+  structureCount  Int      @default(0)
+  citedQuoteCount Int      @default(0)
+  quoteReviewCount Int       @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, createdAt])
+}
+
 model StudioDocumentBlock {
   id               String                 @id @default(cuid())
   documentId       String

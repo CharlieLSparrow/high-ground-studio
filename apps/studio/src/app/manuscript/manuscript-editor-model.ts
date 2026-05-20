@@ -141,6 +141,19 @@ export type ManuscriptDraft = {
   lastUpdatedAt: string | null;
 };
 
+export type ManuscriptSnapshotMetadata = {
+  title: string;
+  schemaVersion: typeof MANUSCRIPT_SCHEMA_VERSION;
+  sourceFileName: string | null;
+  clientUpdatedAt: string | null;
+  words: number;
+  characters: number;
+  blocks: number;
+  structureRegions: number;
+  citedQuotations: number;
+  quoteReviews: number;
+};
+
 export type ManuscriptTextStats = {
   words: number;
   characters: number;
@@ -465,6 +478,31 @@ export function createDefaultManuscriptDraft(
     showAuthorColors: true,
     showSemanticColors: true,
     lastUpdatedAt: timestamp,
+  };
+}
+
+export function createManuscriptSnapshotMetadata(
+  draft: ManuscriptDraft,
+): ManuscriptSnapshotMetadata {
+  const textStats = countWordsAndCharacters(draft.editorJson);
+  const blockSummaries = collectBlockSummaries(draft.editorJson);
+  const citedQuotations = collectCitedQuotationHighlights({
+    json: draft.editorJson,
+    regions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+  });
+
+  return {
+    title: draft.title.trim() || defaultTitle,
+    schemaVersion: draft.schemaVersion,
+    sourceFileName: draft.sourceFileName,
+    clientUpdatedAt: draft.lastUpdatedAt,
+    words: textStats.words,
+    characters: textStats.characters,
+    blocks: blockSummaries.length,
+    structureRegions: draft.structureRegions.length,
+    citedQuotations: citedQuotations.length,
+    quoteReviews: Object.keys(draft.quoteReviews).length,
   };
 }
 

@@ -32,6 +32,10 @@ Current responsibilities:
 - local-only Studio persistence guard
 - browser-local Structure Mode MVP under
   `high-ground-studio.structure-mode.v1`
+- browser-local Manuscript Desk under
+  `high-ground-studio.manuscript-editor.v1`
+- optional explicit Manuscript server snapshots through
+  `StudioManuscriptSnapshot` once a safe Studio database is configured
 - health check at `/api/health`
 
 First deployment target:
@@ -183,7 +187,7 @@ That service should prove:
 - Google OAuth works
 - allowlist access works
 - `/structure` is usable
-- no remote database is required
+- no remote database is required for the browser-local MVP surfaces
 - no public projection or commerce behavior is exposed
 
 Commerce, subscriptions, multi-site public surfaces, and AI/ML services remain

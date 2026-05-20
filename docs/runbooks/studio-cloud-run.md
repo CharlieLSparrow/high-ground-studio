@@ -53,8 +53,19 @@ draft in browser `localStorage` under:
 high-ground-studio.structure-mode.v1
 ```
 
-Do not configure a remote `DATABASE_URL` for this first live MVP. The existing
-local-only persistence guard should keep database writes disabled in Cloud Run.
+`/manuscript` is also live and useful through browser-local persistence under:
+
+```text
+high-ground-studio.manuscript-editor.v1
+```
+
+The Manuscript Desk now contains server snapshot routes for a future
+cross-device persistence slice, but those routes require a configured database
+and an applied Prisma schema before they can save or load snapshots. Do not
+configure a remote `DATABASE_URL` for this browser-local live MVP unless the
+operator is explicitly performing the approved manuscript persistence release.
+The existing local-only persistence guard should keep other development seed
+writes disabled in Cloud Run.
 
 ## Checked-In Deployment Files
 
@@ -261,6 +272,34 @@ After the first service URL exists:
 3. Re-deploy or update the Cloud Run service with that environment value if
    needed.
 
+## Future Manuscript Snapshot Enablement
+
+The checked-in `/manuscript` snapshot code does not make live production
+snapshots active by itself. Without a configured `DATABASE_URL`, the snapshot
+routes return a clear `503` and browser-local manuscript backups remain the
+portable path.
+
+Enable server snapshots only through an explicit persistence release:
+
+1. Choose the Studio database target.
+2. Apply the `StudioManuscriptSnapshot` schema through the approved Prisma
+   migration or schema-sync path for that target.
+3. Store the database connection string through the approved Secret Manager
+   path. Do not commit it.
+4. Update the `studio` Cloud Run service to provide `DATABASE_URL` from the
+   approved secret/env configuration.
+5. Deploy the Studio image containing the snapshot routes.
+6. Smoke test with synthetic manuscript data:
+   - save a server snapshot from desktop
+   - load the latest snapshot on a second browser/profile/phone
+   - confirm text, block IDs, structure regions, cited quotations, and quote
+     review metadata match
+7. Confirm full draft JSON browser downloads still work before using real
+   manuscript material.
+
+Do not combine this enablement with IAM, DNS, OAuth, billing, service-account,
+Yjs, or public projection changes.
+
 ## Verification Checklist
 
 After an explicitly approved deployment:
@@ -282,10 +321,11 @@ After an explicitly approved deployment:
 ## What Not To Do
 
 - Do not run `pnpm db:push` against remote data.
-- Do not add `DATABASE_URL` to the first live Studio service.
+- Do not add `DATABASE_URL` to the live Studio service unless an approved
+  persistence release requires it.
 - Do not deploy public projections.
 - Do not import manuscript files.
-- Do not add TipTap, Yjs, embeddings, Vertex AI calls, or importers in this
+- Do not add Yjs, embeddings, Vertex AI calls, or new importers in this
   deployment-readiness slice.
 - Do not commit real secrets.
 - Do not change DNS until the Cloud Run URL is verified.

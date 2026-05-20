@@ -115,6 +115,19 @@ target has been explicitly confirmed safe. The Studio seed helper only creates
 development fixture rows when `DATABASE_URL` points at a local database and
 `NODE_ENV` is not `production`.
 
+The Manuscript Desk can optionally save full-draft server snapshots through
+`StudioManuscriptSnapshot`. That path is explicit, not autosave. It requires a
+configured Studio database and an applied schema; otherwise `/manuscript`
+continues to use browser-local storage and browser-generated backup downloads.
+
+Local snapshot enablement sequence:
+
+1. Start a safe local Studio database.
+2. Run `pnpm db:generate`.
+3. Run `pnpm db:push` only against that safe local database.
+4. Start Studio with `DATABASE_URL` pointing at the local database.
+5. Save and load snapshots with synthetic manuscript data first.
+
 For the full local persistence workflow and smoke test, read:
 
 - `docs/runbooks/studio-local-persistence.md`

@@ -178,6 +178,37 @@ Conversion behavior:
 Notification behavior:
 - new request creation attempts a best-effort internal Resend email after the request transaction commits
 - email failure is logged and does not block request creation or redirect
+
+## Studio Manuscript Snapshots
+
+### `StudioManuscriptSnapshot`
+
+Private Studio manuscript snapshot row.
+
+Current intended usage:
+- stores an explicit full `ManuscriptDraft` JSON snapshot from `/manuscript`
+- supports cross-device loading, especially desktop-to-phone/tablet Recording /
+  Reading mode
+- remains separate from canonical public manuscript content and public
+  projections
+
+Key fields:
+- `ownerEmail`
+- `title`
+- `description`
+- `schemaVersion`
+- `sourceFileName`
+- `draftJson`
+- `contentHash`
+- `clientUpdatedAt`
+- word, character, block, structure, cited quote, and quote review counts
+
+Current reality:
+- snapshots are manual, not autosaved
+- the browser-local draft remains the active working copy
+- the schema must be applied to a safe Studio database before snapshot routes can
+  persist data
+- this is not real-time collaboration or a canonical manuscript document model
 - SMS/Twilio notification sending is not wired into the current request flow
 
 ## Content Access Model
