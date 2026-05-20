@@ -21,6 +21,7 @@ import {
 import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
 import {
   collectBlockSummaries,
+  collectCitedQuotationHighlights,
   collectManuscriptBlockDetails,
   collectSemanticHighlights,
   collectStructureRegionSummaries,
@@ -29,6 +30,7 @@ import {
   createBackupFileName,
   createBlockFilterOptions,
   createBlockRangeSummary,
+  createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
@@ -260,6 +262,7 @@ export function StudioManuscriptClient({
   const [semanticType, setSemanticType] =
     useState<SemanticHighlightType>("insight");
   const [semanticNote, setSemanticNote] = useState("");
+  const [citationNote, setCitationNote] = useState("");
   const [structureKind, setStructureKind] =
     useState<ManuscriptStructureKind>("chapter");
   const [structureLabelPreset, setStructureLabelPreset] =
@@ -315,6 +318,8 @@ export function StudioManuscriptClient({
   const [exportPlainText, setExportPlainText] = useState("");
   const [exportStructureMarkdown, setExportStructureMarkdown] = useState("");
   const [exportFilteredMarkdown, setExportFilteredMarkdown] = useState("");
+  const [exportCitedQuotationMarkdown, setExportCitedQuotationMarkdown] =
+    useState("");
   const [message, setMessage] = useState(
     "Browser-local Manuscript Desk draft.",
   );
@@ -522,6 +527,18 @@ export function StudioManuscriptClient({
         criteria: blockFilterCriteria,
       }),
     [blockDetails, blockFilterCriteria],
+  );
+  const citedQuotations = useMemo(
+    () =>
+      collectCitedQuotationHighlights({
+        json: currentEditorJson,
+        regions: structureRegions,
+      }),
+    [currentEditorJson, structureRegions],
+  );
+  const citedQuotationMarkdown = useMemo(
+    () => createCitedQuotationMarkdown({ quotations: citedQuotations }),
+    [citedQuotations],
   );
   const authorSummaries = useMemo(
     () => summarizeAuthorMarkedSpans(currentEditorJson),
@@ -871,12 +888,16 @@ export function StudioManuscriptClient({
     );
   }
 
-  function applySemanticHighlight() {
+  function applySemanticHighlightToSelection(input: {
+    tagType: SemanticHighlightType;
+    note: string;
+    message: string;
+  }) {
     if (!editor) {
-      return;
+      return false;
     }
 
-    const definition = getSemanticHighlightDefinition(semanticType);
+    const definition = getSemanticHighlightDefinition(input.tagType);
 
     editor
       .chain()
@@ -886,12 +907,43 @@ export function StudioManuscriptClient({
         tagType: definition.id,
         label: definition.label,
         colorKey: definition.colorKey,
-        note: semanticNote.trim(),
+        note: input.note.trim(),
         createdAt: new Date().toISOString(),
       })
       .run();
+    setMessage(input.message);
+    return true;
+  }
+
+  function applySemanticHighlight() {
+    const definition = getSemanticHighlightDefinition(semanticType);
+
+    if (
+      !applySemanticHighlightToSelection({
+        tagType: definition.id,
+        note: semanticNote,
+        message: `Applied ${definition.label} semantic highlight.`,
+      })
+    ) {
+      return;
+    }
+
     setSemanticNote("");
-    setMessage(`Applied ${definition.label} semantic highlight.`);
+  }
+
+  function markCitedQuotation() {
+    if (
+      !applySemanticHighlightToSelection({
+        tagType: "cited-quotation",
+        note: citationNote,
+        message: "Marked selection as cited quotation.",
+      })
+    ) {
+      return;
+    }
+
+    setCitationNote("");
+    setSemanticType("cited-quotation");
   }
 
   function clearSemanticHighlight() {
@@ -1153,6 +1205,7 @@ export function StudioManuscriptClient({
       setPendingStructureEndBlockId(null);
       setExportStructureMarkdown("");
       setExportFilteredMarkdown("");
+      setExportCitedQuotationMarkdown("");
       setTitle(file.name.replace(/\.docx$/i, "").trim() || title);
       setActiveAuthorId("charlie");
       setMessage(
@@ -1324,6 +1377,21 @@ export function StudioManuscriptClient({
     setMessage("Filtered block list Markdown downloaded.");
   }
 
+  function exportCitedQuotations() {
+    setExportCitedQuotationMarkdown(citedQuotationMarkdown);
+    setMessage("Cited quotations Markdown exported.");
+  }
+
+  function downloadCitedQuotations() {
+    downloadBackup({
+      kind: "cited-quotations",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: citedQuotationMarkdown,
+    });
+    setMessage("Cited quotations Markdown downloaded.");
+  }
+
   function focusBlock(blockId: string | null) {
     if (!editor || !blockId) {
       setMessage("Cannot focus a block without a block ID.");
@@ -1385,6 +1453,7 @@ export function StudioManuscriptClient({
         setPendingStructureEndBlockId(null);
         setExportStructureMarkdown("");
         setExportFilteredMarkdown("");
+        setExportCitedQuotationMarkdown("");
         setImportJson("");
         setMessage("Full Manuscript Desk draft JSON imported.");
         return;
@@ -1406,6 +1475,7 @@ export function StudioManuscriptClient({
       setPendingStructureEndBlockId(null);
       setExportStructureMarkdown("");
       setExportFilteredMarkdown("");
+      setExportCitedQuotationMarkdown("");
       setImportJson("");
       setMessage("Editor JSON imported.");
     } catch {
@@ -1459,6 +1529,7 @@ export function StudioManuscriptClient({
     setExportPlainText("");
     setExportStructureMarkdown("");
     setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
     setMessage("Manuscript Desk browser draft cleared.");
   }
 
@@ -1721,6 +1792,49 @@ export function StudioManuscriptClient({
                 </button>
               </div>
 
+              <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className={labelClassName}>Cited quotation</p>
+                  <StudioChip tone="review">
+                    {citedQuotations.length.toLocaleString()} marked
+                  </StudioChip>
+                </div>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>
+                    Citation / source note
+                  </span>
+                  <textarea
+                    className={cn(textareaClassName, "min-h-[72px]")}
+                    value={citationNote}
+                    onChange={(event) => setCitationNote(event.target.value)}
+                  />
+                </label>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={markCitedQuotation}
+                >
+                  Mark cited quotation
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() => {
+                    setSidePanelMode("filters");
+                    setFilterSemanticType("cited-quotation");
+                  }}
+                >
+                  Show cited quotations
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={clearSemanticHighlight}
+                >
+                  Clear cited quotation / semantic
+                </button>
+              </div>
+
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className={labelClassName}>Structure layer</p>
@@ -1969,9 +2083,16 @@ export function StudioManuscriptClient({
                 <button
                   className={smallButtonClassName}
                   type="button"
+                  onClick={markCitedQuotation}
+                >
+                  Mark cited quotation
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
                   onClick={clearSemanticHighlight}
                 >
-                  Clear semantic
+                  Clear cited quotation / semantic
                 </button>
                 <button
                   className={smallButtonClassName}
@@ -2596,6 +2717,13 @@ export function StudioManuscriptClient({
                   <button
                     className={smallButtonClassName}
                     type="button"
+                    onClick={() => setFilterSemanticType("cited-quotation")}
+                  >
+                    Show cited quotations
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
                     onClick={clearBlockFilters}
                   >
                     Clear filters
@@ -2614,6 +2742,78 @@ export function StudioManuscriptClient({
                   >
                     Download filtered Markdown
                   </button>
+                </div>
+                <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="m-0 text-[0.86rem] leading-snug text-studio-ink">
+                      Cited quotations
+                    </h3>
+                    <StudioChip tone="review">
+                      {citedQuotations.length.toLocaleString()}
+                    </StudioChip>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={exportCitedQuotations}
+                    >
+                      Export quote Markdown
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={downloadCitedQuotations}
+                    >
+                      Download quote Markdown
+                    </button>
+                  </div>
+                  <div className="grid max-h-[220px] gap-2 overflow-auto pr-1">
+                    {citedQuotations.length ? (
+                      citedQuotations.map((quotation, index) => (
+                        <article
+                          className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5 text-left transition hover:border-studio-review/60 hover:bg-studio-review/10"
+                          key={`${quotation.highlightId || quotation.blockId || "quote"}-${index}`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <StudioChip tone="review">{quotation.label}</StudioChip>
+                            <button
+                              className={smallButtonClassName}
+                              type="button"
+                              onClick={() => focusBlock(quotation.blockId)}
+                            >
+                              Jump
+                            </button>
+                          </div>
+                          <p className="m-0 text-[0.8rem] leading-relaxed text-studio-muted">
+                            {quotation.preview || "Empty quotation"}
+                          </p>
+                          <p className="m-0 text-[0.74rem] leading-relaxed text-studio-dim">
+                            {quotation.blockPreview || quotation.blockId}
+                          </p>
+                          {quotation.note.trim() ? (
+                            <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                              {quotation.note}
+                            </p>
+                          ) : null}
+                          <div className="flex flex-wrap gap-1">
+                            {quotation.structureRegions.map((region) => (
+                              <StudioChip key={region.id} tone="node">
+                                {region.title}
+                              </StudioChip>
+                            ))}
+                          </div>
+                          <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
+                            {quotation.blockId ?? "missing blockId"}
+                          </span>
+                        </article>
+                      ))
+                    ) : (
+                      <p className={panelCopyClassName}>
+                        No cited quotations marked.
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="grid max-h-[360px] gap-2 overflow-auto pr-1">
                   {filteredBlockDetails.length ? (
@@ -2674,6 +2874,11 @@ export function StudioManuscriptClient({
                   readOnly
                   value={exportFilteredMarkdown}
                 />
+                <textarea
+                  className={cn(textareaClassName, "min-h-[120px] font-mono text-xs")}
+                  readOnly
+                  value={exportCitedQuotationMarkdown}
+                />
               </section>
             ) : null}
 
@@ -2729,6 +2934,13 @@ export function StudioManuscriptClient({
                 >
                   Download filtered block Markdown
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={downloadCitedQuotations}
+                >
+                  Download cited quotations Markdown
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -2773,6 +2985,13 @@ export function StudioManuscriptClient({
                 >
                   Export filtered block Markdown
                 </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={exportCitedQuotations}
+                >
+                  Export cited quotations Markdown
+                </button>
               </div>
               <textarea
                 className={cn(textareaClassName, "min-h-[150px] font-mono text-xs")}
@@ -2798,6 +3017,11 @@ export function StudioManuscriptClient({
                 className={cn(textareaClassName, "min-h-[130px] font-mono text-xs")}
                 readOnly
                 value={exportFilteredMarkdown}
+              />
+              <textarea
+                className={cn(textareaClassName, "min-h-[130px] font-mono text-xs")}
+                readOnly
+                value={exportCitedQuotationMarkdown}
               />
               <label className="grid gap-2">
                 <span className={fieldLabelClassName}>Import JSON</span>

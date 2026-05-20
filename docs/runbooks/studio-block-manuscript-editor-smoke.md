@@ -196,6 +196,30 @@ archive files.
 15. Click `Download filtered Markdown` and confirm a timestamped `.md` file
     downloads from the browser.
 
+## Cited Quotation Smoke Steps
+
+1. Open `/manuscript`.
+2. Confirm the full manuscript surface remains visible.
+3. Select a synthetic external quotation or epigraph-like line, not story
+   dialogue.
+4. Add a `Citation / source note`.
+5. Click `Mark cited quotation`.
+6. Confirm the selected text receives cited-quotation styling without losing
+   its original text, author mark, or structure-region styling.
+7. Select the same text and click `Clear cited quotation / semantic`.
+8. Reapply `Mark cited quotation`.
+9. Switch the right side panel to `Filters`.
+10. Click `Show cited quotations` or set `Semantic tag` to
+    `Cited quotation`.
+11. Confirm the filter results show blocks containing cited quotations.
+12. Confirm the `Cited quotations` list shows quote preview, block context,
+    source note, structure chips when present, and a `Jump` button.
+13. Click `Jump` and confirm the editor focuses the source block.
+14. Click `Export quote Markdown` and confirm the textarea includes quote text,
+    block ID, source note, and structure labels when present.
+15. Click `Download quote Markdown` and confirm a timestamped `.md` file
+    downloads from the browser.
+
 ## What To Inspect In Exported JSON
 
 Look for block node attributes:
@@ -225,8 +249,9 @@ Look for separate inline marks:
 {
   "type": "semanticHighlightMark",
   "attrs": {
-    "tagType": "insight",
-    "label": "Insight"
+    "tagType": "cited-quotation",
+    "label": "Cited quotation",
+    "note": "Synthetic citation/source note"
   }
 }
 ```

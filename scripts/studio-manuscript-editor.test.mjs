@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   collectBlockSummaries,
+  collectCitedQuotationHighlights,
   collectManuscriptBlockDetails,
   collectSemanticHighlights,
   collectStructureRegionSummaries,
@@ -11,6 +12,7 @@ import {
   createBackupFileName,
   createBlockFilterOptions,
   createBlockRangeSummary,
+  createCitedQuotationMarkdown,
   ensureManuscriptBlockIds,
   createFilteredBlockListMarkdown,
   createManuscriptImportSummary,
@@ -99,6 +101,8 @@ test("author and semantic definitions contain the MVP options", () => {
     semanticHighlightDefinitions.map((tag) => tag.id),
     [
       "quote",
+      "cited-quotation",
+      "quote-candidate",
       "story",
       "insight",
       "research",
@@ -906,6 +910,36 @@ const filterDoc = {
     },
     {
       type: "paragraph",
+      attrs: { blockId: "block-cited" },
+      content: [
+        {
+          type: "text",
+          text: "A synthetic cited saying for review.",
+          marks: [
+            {
+              type: "authorMark",
+              attrs: {
+                authorId: "charlie",
+                authorLabel: "Charlie",
+              },
+            },
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "semantic-cited-1",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "Synthetic source note",
+                createdAt: "2026-05-19T12:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
       attrs: { blockId: "block-loose" },
       content: [{ type: "text", text: "Loose synthetic note" }],
     },
@@ -931,7 +965,7 @@ const filterRegions = [
     kind: "episode",
     title: "Episode 1",
     startBlockId: "block-charlie",
-    endBlockId: "block-question",
+    endBlockId: "block-cited",
     order: 2,
     colorKey: "episode",
     notes: "",
@@ -948,7 +982,7 @@ test("block details extract text marks and covering structures", () => {
   const charlieBlock = details.find((block) => block.blockId === "block-charlie");
   const options = createBlockFilterOptions(details);
 
-  assert.equal(details.length, 4);
+  assert.equal(details.length, 5);
   assert.equal(charlieBlock?.text, "Charlie synthetic reflection");
   assert.deepEqual(charlieBlock?.authorIds, ["charlie"]);
   assert.deepEqual(charlieBlock?.semanticTagTypes, ["insight"]);
@@ -958,7 +992,11 @@ test("block details extract text marks and covering structures", () => {
   );
   assert.deepEqual(options.blockTypes, ["heading", "paragraph"]);
   assert.deepEqual(options.authorIds, ["charlie", "homer"]);
-  assert.deepEqual(options.semanticTagTypes, ["insight", "question"]);
+  assert.deepEqual(options.semanticTagTypes, [
+    "cited-quotation",
+    "insight",
+    "question",
+  ]);
 });
 
 test("block filters match text query author semantic and structure criteria", () => {
@@ -979,7 +1017,7 @@ test("block filters match text query author semantic and structure criteria", ()
       blocks: details,
       criteria: { authorId: "charlie" },
     }).map((block) => block.blockId),
-    ["block-charlie"],
+    ["block-charlie", "block-cited"],
   );
   assert.deepEqual(
     filterManuscriptBlocks({
@@ -1000,7 +1038,7 @@ test("block filters match text query author semantic and structure criteria", ()
       blocks: details,
       criteria: { structureKind: "episode" },
     }).map((block) => block.blockId),
-    ["block-charlie", "block-question"],
+    ["block-charlie", "block-question", "block-cited"],
   );
 });
 
@@ -1022,7 +1060,7 @@ test("block filters support unstructured semantic-present and no-author lenses",
       blocks: details,
       criteria: { onlyWithSemanticHighlights: true },
     }).map((block) => block.blockId),
-    ["block-charlie", "block-question"],
+    ["block-charlie", "block-question", "block-cited"],
   );
   assert.deepEqual(
     filterManuscriptBlocks({
@@ -1053,13 +1091,68 @@ test("filtered block markdown includes filters counts previews and structures", 
   });
 
   assert.equal(summary.matchingBlocks, 1);
-  assert.equal(summary.totalBlocks, 4);
+  assert.equal(summary.totalBlocks, 5);
   assert.deepEqual(summary.activeFilterLabels, ["Semantic: Insight"]);
   assert.match(markdown, /^# Manuscript Filtered Blocks/);
-  assert.match(markdown, /Matching blocks: 1 of 4/);
+  assert.match(markdown, /Matching blocks: 1 of 5/);
   assert.match(markdown, /- Semantic: Insight/);
   assert.match(markdown, /1\. Charlie synthetic reflection/);
   assert.match(markdown, /- Type: paragraph/);
   assert.match(markdown, /- Block ID: block-charlie/);
   assert.match(markdown, /- Structure: Preface, Episode 1/);
+});
+
+test("cited quotation marks are extracted with block and structure context", () => {
+  const details = collectManuscriptBlockDetails({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+  const citedBlock = details.find((block) => block.blockId === "block-cited");
+  const quotations = collectCitedQuotationHighlights({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+
+  assert.deepEqual(citedBlock?.authorIds, ["charlie"]);
+  assert.deepEqual(citedBlock?.semanticTagTypes, ["cited-quotation"]);
+  assert.equal(citedBlock?.citedQuotations.length, 1);
+  assert.equal(quotations.length, 1);
+  assert.equal(quotations[0].tagType, "cited-quotation");
+  assert.equal(quotations[0].note, "Synthetic source note");
+  assert.equal(quotations[0].blockId, "block-cited");
+  assert.deepEqual(
+    quotations[0].structureRegions.map((region) => region.title),
+    ["Episode 1"],
+  );
+});
+
+test("block filters can show blocks containing cited quotations", () => {
+  const details = collectManuscriptBlockDetails({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+
+  assert.deepEqual(
+    filterManuscriptBlocks({
+      blocks: details,
+      criteria: { semanticTagType: "cited-quotation" },
+    }).map((block) => block.blockId),
+    ["block-cited"],
+  );
+});
+
+test("cited quotation markdown includes source notes and structure labels", () => {
+  const quotations = collectCitedQuotationHighlights({
+    json: filterDoc,
+    regions: filterRegions,
+  });
+  const markdown = createCitedQuotationMarkdown({ quotations });
+
+  assert.match(markdown, /^# Cited Quotations/);
+  assert.match(markdown, /Total cited quotations: 1/);
+  assert.match(markdown, /A synthetic cited saying for review\./);
+  assert.match(markdown, /- Type: Cited quotation/);
+  assert.match(markdown, /- Block ID: block-cited/);
+  assert.match(markdown, /- Structure: Episode 1/);
+  assert.match(markdown, /- Source note: Synthetic source note/);
 });

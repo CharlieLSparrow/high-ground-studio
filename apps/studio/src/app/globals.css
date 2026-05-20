@@ -84,6 +84,20 @@ button:disabled {
   outline: 1px solid rgba(240, 183, 101, 0.65);
 }
 
+.manuscript-prosemirror .manuscript-semantic-cited-quotation {
+  background: rgba(240, 183, 101, 0.18);
+  outline: 2px solid rgba(240, 183, 101, 0.9);
+  box-shadow:
+    inset 0 -0.2em rgba(240, 183, 101, 0.32),
+    0 0 0 2px rgba(240, 183, 101, 0.12);
+}
+
+.manuscript-prosemirror .manuscript-semantic-quote-candidate {
+  background: rgba(130, 198, 216, 0.12);
+  outline: 1px dashed rgba(130, 198, 216, 0.82);
+  box-shadow: inset 0 -0.18em rgba(130, 198, 216, 0.2);
+}
+
 .manuscript-prosemirror .manuscript-semantic-story {
   outline: 1px solid rgba(159, 209, 139, 0.72);
 }
@@ -147,5 +161,7 @@ button:disabled {
 }
 
 .manuscript-hide-semantic-colors .manuscript-semantic-mark {
+  background: transparent;
   outline: none;
+  box-shadow: none;
 }

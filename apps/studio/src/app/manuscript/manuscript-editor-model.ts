@@ -23,6 +23,16 @@ export const manuscriptAuthorDefinitions = [
 
 export const semanticHighlightDefinitions = [
   { id: "quote", label: "Quote", colorKey: "quote" },
+  {
+    id: "cited-quotation",
+    label: "Cited quotation",
+    colorKey: "cited-quotation",
+  },
+  {
+    id: "quote-candidate",
+    label: "Quote candidate",
+    colorKey: "quote-candidate",
+  },
   { id: "story", label: "Story", colorKey: "story" },
   { id: "insight", label: "Insight", colorKey: "insight" },
   { id: "research", label: "Research", colorKey: "research" },
@@ -115,11 +125,30 @@ export type ManuscriptBlockStructureReference = {
   title: string;
 };
 
+export type CitedQuotationTagType = Extract<
+  SemanticHighlightType,
+  "cited-quotation" | "quote-candidate"
+>;
+
+export type ManuscriptCitedQuotationSummary = {
+  highlightId: string;
+  tagType: CitedQuotationTagType;
+  label: string;
+  note: string;
+  text: string;
+  preview: string;
+  blockId: string | null;
+  blockPreview: string;
+  structureRegions: ManuscriptBlockStructureReference[];
+  createdAt: string;
+};
+
 export type ManuscriptBlockDetail = ManuscriptBlockSummary & {
   text: string;
   authorIds: ManuscriptAuthorId[];
   semanticTagTypes: SemanticHighlightType[];
   structureRegions: ManuscriptBlockStructureReference[];
+  citedQuotations: ManuscriptCitedQuotationSummary[];
 };
 
 export type ManuscriptBlockFilterCriteria = {
@@ -228,6 +257,12 @@ export function isSemanticHighlightType(
   return semanticHighlightDefinitions.some((tag) => tag.id === value);
 }
 
+export function isCitedQuotationTagType(
+  value: string,
+): value is CitedQuotationTagType {
+  return value === "cited-quotation" || value === "quote-candidate";
+}
+
 export function isManuscriptStructureKind(
   value: string,
 ): value is ManuscriptStructureKind {
@@ -250,7 +285,8 @@ export function getManuscriptAuthorDefinition(authorId: ManuscriptAuthorId) {
 export function getSemanticHighlightDefinition(tagType: SemanticHighlightType) {
   return (
     semanticHighlightDefinitions.find((tag) => tag.id === tagType) ??
-    semanticHighlightDefinitions[2]
+    semanticHighlightDefinitions.find((tag) => tag.id === "insight") ??
+    semanticHighlightDefinitions[0]
   );
 }
 
@@ -803,6 +839,11 @@ export function collectManuscriptBlockDetails(input: {
       const authorIds = new Set<ManuscriptAuthorId>();
       const semanticTagTypes = new Set<SemanticHighlightType>();
       const text = getNodeText(node);
+      const preview = createTextPreview(text, 84);
+      const structureReferences = blockId
+        ? (structureRegionsByBlockId.get(blockId) ?? [])
+        : [];
+      const citedQuotations: ManuscriptCitedQuotationSummary[] = [];
 
       visitTextNodes(node, (textNode) => {
         for (const mark of textNode.marks ?? []) {
@@ -819,6 +860,24 @@ export function collectManuscriptBlockDetails(input: {
 
             if (isSemanticHighlightType(rawTagType)) {
               semanticTagTypes.add(rawTagType);
+
+              if (isCitedQuotationTagType(rawTagType)) {
+                const definition = getSemanticHighlightDefinition(rawTagType);
+                const quoteText = String(textNode.text ?? "");
+
+                citedQuotations.push({
+                  highlightId: String(mark.attrs?.highlightId ?? ""),
+                  tagType: rawTagType,
+                  label: String(mark.attrs?.label ?? definition.label),
+                  note: String(mark.attrs?.note ?? ""),
+                  text: quoteText,
+                  preview: createTextPreview(quoteText, 96),
+                  blockId,
+                  blockPreview: preview,
+                  structureRegions: structureReferences,
+                  createdAt: String(mark.attrs?.createdAt ?? ""),
+                });
+              }
             }
           }
         }
@@ -827,13 +886,12 @@ export function collectManuscriptBlockDetails(input: {
       details.push({
         blockId,
         type: node.type,
-        preview: createTextPreview(text, 84),
+        preview,
         text,
         authorIds: [...authorIds],
         semanticTagTypes: [...semanticTagTypes],
-        structureRegions: blockId
-          ? (structureRegionsByBlockId.get(blockId) ?? [])
-          : [],
+        structureRegions: structureReferences,
+        citedQuotations,
       });
     }
 
@@ -846,6 +904,15 @@ export function collectManuscriptBlockDetails(input: {
 
   visit(input.json);
   return details;
+}
+
+export function collectCitedQuotationHighlights(input: {
+  json: ManuscriptEditorJson;
+  regions?: ManuscriptStructureRegion[];
+}): ManuscriptCitedQuotationSummary[] {
+  return collectManuscriptBlockDetails(input).flatMap(
+    (block) => block.citedQuotations,
+  );
 }
 
 function dedupeSortedValues<T extends string>(
@@ -1116,6 +1183,45 @@ export function createFilteredBlockListMarkdown(input: {
 
 function createMarkdownText(value: string) {
   return value.trim().replace(/\s+/g, " ") || "Untitled region";
+}
+
+export function createCitedQuotationMarkdown(input: {
+  quotations: ManuscriptCitedQuotationSummary[];
+}) {
+  const lines = ["# Cited Quotations", ""];
+
+  lines.push(
+    `Total cited quotations: ${input.quotations.length.toLocaleString()}`,
+    "",
+  );
+
+  if (!input.quotations.length) {
+    lines.push("_No cited quotations marked._");
+    return lines.join("\n");
+  }
+
+  input.quotations.forEach((quotation, index) => {
+    lines.push(`${index + 1}. "${createMarkdownText(quotation.text)}"`);
+    lines.push(`   - Type: ${createMarkdownText(quotation.label)}`);
+    lines.push(`   - Block ID: ${quotation.blockId ?? "missing blockId"}`);
+    lines.push(`   - Block: ${createMarkdownText(quotation.blockPreview)}`);
+
+    if (quotation.structureRegions.length) {
+      lines.push(
+        `   - Structure: ${quotation.structureRegions
+          .map((region) => createMarkdownText(region.title))
+          .join(", ")}`,
+      );
+    }
+
+    if (quotation.note.trim()) {
+      lines.push(`   - Source note: ${createMarkdownText(quotation.note)}`);
+    }
+
+    lines.push("");
+  });
+
+  return lines.join("\n").trimEnd();
 }
 
 export function createStructureOutlineMarkdown(input: {
