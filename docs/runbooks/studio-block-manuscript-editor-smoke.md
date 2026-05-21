@@ -192,6 +192,50 @@ Use these steps when changing the desktop or tablet Manuscript Desk shell.
     marks, semantic marks, structure regions, cited quotations, quote review
     metadata, filters, or server snapshot state.
 
+## Publishing / Handoff Smoke Steps
+
+Use synthetic manuscript text only for this smoke.
+
+1. Open `/manuscript`.
+2. Create or load a synthetic draft with at least five blocks.
+3. Mark at least one span as Charlie and one span as Homer / Scott.
+4. Leave one small synthetic span unassigned so the readiness report can show
+   the author warning path.
+5. Create one Chapter / book region and one Episode region.
+6. Mark one synthetic cited quotation.
+7. Add quote review metadata for that quotation.
+8. If desired, save one manual server snapshot with a synthetic-only note.
+9. Switch to `Publish`.
+10. Confirm the readiness summary shows words, blocks, structure counts,
+    quote counts, and structure coverage.
+11. Confirm snapshot caution text behaves sensibly:
+    - unchecked server state says it has not been checked
+    - local changes since last server save recommends saving a snapshot before
+      handoff
+    - a known clean server checkpoint does not imply autosave or collaboration
+12. Generate the publishing packet Markdown and confirm it includes title,
+    generated timestamp, stats, structure outline, manuscript content, quote
+    appendix summary, and warnings.
+13. Download the publishing packet Markdown.
+14. Generate and download the recording handoff Markdown.
+15. Confirm the recording handoff includes quick instructions, Episode outline,
+    Chapter / book outline, author material summary, cited quotations to watch,
+    before-recording checklist, and after-recording notes placeholder.
+16. Generate and download the quote appendix Markdown.
+17. Confirm the quote appendix includes quoted text, attributedTo, sourceTitle,
+    locator, citationText, reviewStatus, rightsNote, editorNote, block ID, and
+    structure labels.
+18. Generate and download the author contribution Markdown.
+19. Confirm the author contribution export includes Charlie, Homer / Scott, and
+    Unassigned summaries plus the reminder that this is editorial metadata, not
+    legal authorship truth.
+20. Confirm none of the Publish exports create server snapshots, write database
+    rows, change manuscript text, change quote metadata, change structure
+    regions, or write canonical manuscript/content files.
+21. Narrow the browser to phone width and confirm the manuscript remains first,
+    Publish controls remain inside the mobile Tools path, and no large
+    publishing panel appears above the manuscript.
+
 ## Manual Smoke Script
 
 1. Open `/manuscript`.

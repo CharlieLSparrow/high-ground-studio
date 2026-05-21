@@ -18,7 +18,13 @@ export type ManuscriptHelpNoteId =
   | "backup-mode"
   | "mark-mode"
   | "find-mode"
-  | "quotes-mode";
+  | "quotes-mode"
+  | "publish-mode"
+  | "publishing-packet"
+  | "recording-handoff-packet"
+  | "publish-readiness-report"
+  | "quote-review-appendix"
+  | "author-contribution-export";
 
 export type ManuscriptHelpNote = {
   id: ManuscriptHelpNoteId;
@@ -270,6 +276,78 @@ export const manuscriptHelpNotes = {
       "It does not verify quotes automatically or change rights status by declaration.",
     whenToUse:
       "Use it for source cleanup, permissions review, and final quote triage.",
+  },
+  "publish-mode": {
+    id: "publish-mode",
+    label: "Publish",
+    title: "The export table before the public square",
+    body: "Publish mode gathers readiness warnings and handoff exports. It is where the manuscript puts on sensible shoes before meeting other humans.",
+    whatItDoes:
+      "It reports structure, author, quote review, and snapshot cautions, then prepares browser-downloadable Markdown packets.",
+    whatItDoesNot:
+      "It does not publish public pages, write server files, save snapshots, or declare the manuscript finished.",
+    whenToUse:
+      "Use it before recording, sharing a handoff packet, or checking whether a synthetic draft is ready for real-manuscript work.",
+  },
+  "publishing-packet": {
+    id: "publishing-packet",
+    label: "Packet",
+    title: "A working bundle, not a royal decree",
+    body: "A publishing packet gathers structure, manuscript text, quote warnings, and notes into portable Markdown for humans to inspect.",
+    whatItDoes:
+      "It creates a browser-only Markdown export from the current draft and metadata.",
+    whatItDoesNot:
+      "It does not create canonical content, public pages, database records, or an approved final manuscript.",
+    whenToUse:
+      "Use it when someone needs to review the current draft outside the Manuscript Desk.",
+  },
+  "recording-handoff-packet": {
+    id: "recording-handoff-packet",
+    label: "Handoff",
+    title: "A packet Homer can actually use",
+    body: "The recording handoff packet turns structure, author summaries, and citation cautions into a practical guide for a recording pass.",
+    whatItDoes:
+      "It lists episode and chapter outlines, quote cautions, before-recording checks, and after-recording note space.",
+    whatItDoesNot:
+      "It does not switch devices, save a server snapshot, or make Recording / Reading mode live-collaborative.",
+    whenToUse:
+      "Use it before handing a draft to Homer or opening the manuscript on a phone for recording.",
+  },
+  "publish-readiness-report": {
+    id: "publish-readiness-report",
+    label: "Readiness",
+    title: "A kindly inspector with a clipboard",
+    body: "The readiness report counts structure, authorship, quotes, and snapshot cautions. It is meant to reduce surprises, not scold the manuscript.",
+    whatItDoes:
+      "It flags missing structure, unresolved quote review states, unassigned author spans, and local changes since server save.",
+    whatItDoesNot:
+      "It does not prove legal readiness, citation rights, or final editorial quality.",
+    whenToUse:
+      "Use it before publishing exports, recording handoff, or the first real-manuscript checkpoint.",
+  },
+  "quote-review-appendix": {
+    id: "quote-review-appendix",
+    label: "Quote appendix",
+    title: "All the bright ribbons in one place",
+    body: "The quote appendix lists cited quotation text, source fields, review status, rights notes, editor notes, block IDs, and structure context.",
+    whatItDoes:
+      "It makes citation cleanup portable without searching the full manuscript wall.",
+    whatItDoesNot:
+      "It does not verify sources or grant permissions.",
+    whenToUse:
+      "Use it for source review, rights review, and final quote cleanup.",
+  },
+  "author-contribution-export": {
+    id: "author-contribution-export",
+    label: "Authors export",
+    title: "A thread count, not a courtroom",
+    body: "The author contribution export summarizes Charlie, Homer / Scott, and unassigned spans from editorial marks.",
+    whatItDoes:
+      "It estimates marked spans, words, and characters by author label for review and handoff.",
+    whatItDoesNot:
+      "It is not legal authorship truth and does not change permissions or canonical status.",
+    whenToUse:
+      "Use it when the handoff needs a quick sense of whose material is where.",
   },
 } satisfies Record<ManuscriptHelpNoteId, ManuscriptHelpNote>;
 

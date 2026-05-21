@@ -23,6 +23,12 @@ import {
   createFocusVisibleBlockIds,
   createManuscriptImportSummary,
   createManuscriptSnapshotMetadata,
+  createAuthorContributionMarkdown,
+  createChapterEpisodeExportOptions,
+  createPublishingPacketMarkdown,
+  createPublishReadinessReport,
+  createQuoteReviewAppendixMarkdown,
+  createRecordingHandoffMarkdown,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
   filterCitedQuotationsByReviewStatus,
@@ -130,6 +136,12 @@ test("manuscript help notes cover the confusing desk concepts", () => {
     "mark-mode",
     "find-mode",
     "quotes-mode",
+    "publish-mode",
+    "publishing-packet",
+    "recording-handoff-packet",
+    "publish-readiness-report",
+    "quote-review-appendix",
+    "author-contribution-export",
   ];
 
   for (const id of requiredNoteIds) {
@@ -1598,6 +1610,269 @@ const quoteFocusReviews = {
   },
 };
 
+const publishingDoc = {
+  type: "doc",
+  content: [
+    {
+      type: "heading",
+      attrs: { blockId: "publish-heading" },
+      content: [{ type: "text", text: "Synthetic Chapter One" }],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "publish-homer" },
+      content: [
+        {
+          type: "text",
+          text: "Homer synthetic opening material.",
+          marks: [
+            {
+              type: "authorMark",
+              attrs: {
+                authorId: "homer",
+                authorLabel: "Homer / Scott",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "publish-charlie" },
+      content: [
+        {
+          type: "text",
+          text: "Charlie synthetic bridge.",
+          marks: [
+            {
+              type: "authorMark",
+              attrs: {
+                authorId: "charlie",
+                authorLabel: "Charlie",
+              },
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: " Synthetic quote needing source.",
+          marks: [
+            {
+              type: "authorMark",
+              attrs: {
+                authorId: "charlie",
+                authorLabel: "Charlie",
+              },
+            },
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "publish-quote-needs-source",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "Synthetic source note A",
+                createdAt: "2026-05-21T01:00:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "publish-episode" },
+      content: [
+        {
+          type: "text",
+          text: "Synthetic quote needing verification.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "publish-quote-needs-verification",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "Synthetic source note B",
+                createdAt: "2026-05-21T01:05:00.000Z",
+              },
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: " Synthetic verified quotation.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "publish-quote-verified",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "Synthetic source note C",
+                createdAt: "2026-05-21T01:10:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      attrs: { blockId: "publish-unassigned" },
+      content: [
+        {
+          type: "text",
+          text: "Synthetic unassigned ending.",
+        },
+        {
+          type: "text",
+          text: " Synthetic do-not-use quotation.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "publish-quote-do-not-use",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "Synthetic source note D",
+                createdAt: "2026-05-21T01:15:00.000Z",
+              },
+            },
+          ],
+        },
+        {
+          type: "text",
+          text: " Synthetic quote without metadata.",
+          marks: [
+            {
+              type: "semanticHighlightMark",
+              attrs: {
+                highlightId: "publish-quote-no-metadata",
+                tagType: "cited-quotation",
+                label: "Cited quotation",
+                colorKey: "cited-quotation",
+                note: "Synthetic source note E",
+                createdAt: "2026-05-21T01:20:00.000Z",
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const publishingRegions = [
+  {
+    id: "publish-chapter",
+    kind: "chapter",
+    title: "Chapter One",
+    labelPreset: "chapter",
+    startBlockId: "publish-heading",
+    endBlockId: "publish-unassigned",
+    order: 1,
+    colorKey: "chapter",
+    notes: "Synthetic chapter notes.",
+    createdAt: "2026-05-21T01:00:00.000Z",
+    updatedAt: "2026-05-21T01:00:00.000Z",
+  },
+  {
+    id: "publish-episode",
+    kind: "episode",
+    title: "Episode 1",
+    startBlockId: "publish-homer",
+    endBlockId: "publish-episode",
+    order: 2,
+    colorKey: "episode",
+    notes: "Synthetic recording range.",
+    createdAt: "2026-05-21T01:00:00.000Z",
+    updatedAt: "2026-05-21T01:00:00.000Z",
+  },
+  {
+    id: "publish-section",
+    kind: "section",
+    title: "Synthetic Review Section",
+    startBlockId: "publish-charlie",
+    endBlockId: "publish-unassigned",
+    order: 3,
+    colorKey: "section",
+    notes: "",
+    createdAt: "2026-05-21T01:00:00.000Z",
+    updatedAt: "2026-05-21T01:00:00.000Z",
+  },
+];
+
+const publishingQuoteReviews = {
+  "publish-quote-needs-source": {
+    highlightId: "publish-quote-needs-source",
+    attributedTo: "Synthetic source seeker",
+    sourceTitle: "Synthetic Missing Source",
+    sourceType: "unknown",
+    locator: "",
+    citationText: "Synthetic missing citation",
+    reviewStatus: "needs-source",
+    rightsNote: "",
+    editorNote: "Synthetic source still needed.",
+    updatedAt: "2026-05-21T01:30:00.000Z",
+  },
+  "publish-quote-needs-verification": {
+    highlightId: "publish-quote-needs-verification",
+    attributedTo: "Synthetic verifier",
+    sourceTitle: "Synthetic Verification Source",
+    sourceType: "book",
+    locator: "p. 7",
+    citationText: "Synthetic Verification Source, p. 7",
+    reviewStatus: "needs-verification",
+    rightsNote: "Synthetic rights check pending.",
+    editorNote: "",
+    updatedAt: "2026-05-21T01:30:00.000Z",
+  },
+  "publish-quote-verified": {
+    highlightId: "publish-quote-verified",
+    attributedTo: "Synthetic verified voice",
+    sourceTitle: "Synthetic Verified Source",
+    sourceType: "article",
+    locator: "section 2",
+    citationText: "Synthetic Verified Source, section 2",
+    reviewStatus: "verified",
+    rightsNote: "Synthetic rights note.",
+    editorNote: "Synthetic editor note.",
+    updatedAt: "2026-05-21T01:30:00.000Z",
+  },
+  "publish-quote-do-not-use": {
+    highlightId: "publish-quote-do-not-use",
+    attributedTo: "Synthetic risky voice",
+    sourceTitle: "Synthetic Risk Source",
+    sourceType: "speech",
+    locator: "timestamp 00:01",
+    citationText: "Synthetic Risk Source, 00:01",
+    reviewStatus: "do-not-use",
+    rightsNote: "Synthetic do not use rights note.",
+    editorNote: "Synthetic remove before publishing.",
+    updatedAt: "2026-05-21T01:30:00.000Z",
+  },
+};
+
+const publishingExportInput = {
+  title: "Synthetic Publishing Draft",
+  sourceFileName: "synthetic-publishing.docx",
+  editorJson: publishingDoc,
+  structureRegions: publishingRegions,
+  quoteReviews: publishingQuoteReviews,
+  generatedAt: "2026-05-21T02:00:00.000Z",
+  snapshotState: {
+    serverConnectionState: "connected",
+    latestSnapshotTime: "2026-05-21T01:45:00.000Z",
+    lastSnapshotId: "snapshot-synthetic",
+    hasLocalChangesSinceServerSave: true,
+  },
+};
+
 test("quote review status filtering supports focus controls and no metadata", () => {
   const details = collectManuscriptBlockDetails({
     json: quoteFocusDoc,
@@ -1700,4 +1975,113 @@ test("focus visible block helper adds context without changing matches", () => {
     "focus-verified",
     "focus-no-metadata",
   ]);
+});
+
+test("publish readiness report counts stats structures and quote statuses", () => {
+  const report = createPublishReadinessReport({
+    ...publishingExportInput,
+    includeRecordingChecks: true,
+  });
+
+  assert.equal(report.title, "Synthetic Publishing Draft");
+  assert.equal(report.stats.blocks, 5);
+  assert.equal(report.structure.chapterRegions, 1);
+  assert.equal(report.structure.episodeRegions, 1);
+  assert.equal(report.structure.sectionRegions, 1);
+  assert.equal(report.structure.uncoveredBlocks, 0);
+  assert.deepEqual(report.quoteReview, {
+    total: 5,
+    needsSource: 1,
+    needsVerification: 1,
+    verified: 1,
+    doNotUse: 1,
+    noReviewMetadata: 1,
+  });
+  assert.ok(
+    report.issues.some(
+      (issue) =>
+        issue.id === "quotes-need-source" && issue.severity === "blocker",
+    ),
+  );
+  assert.ok(
+    report.issues.some(
+      (issue) =>
+        issue.id === "snapshot-caution" && issue.severity === "warning",
+    ),
+  );
+});
+
+test("publish readiness report detects missing structure", () => {
+  const report = createPublishReadinessReport({
+    ...publishingExportInput,
+    structureRegions: [],
+    includeRecordingChecks: true,
+    snapshotState: {
+      serverConnectionState: "unchecked",
+      hasLocalChangesSinceServerSave: null,
+    },
+  });
+
+  assert.equal(report.structure.chapterRegions, 0);
+  assert.equal(report.structure.episodeRegions, 0);
+  assert.equal(report.structure.uncoveredBlocks, 5);
+  assert.ok(report.issues.some((issue) => issue.id === "no-chapter-structure"));
+  assert.ok(report.issues.some((issue) => issue.id === "no-episode-structure"));
+});
+
+test("publishing packet Markdown includes title stats structure and warnings", () => {
+  const markdown = createPublishingPacketMarkdown(publishingExportInput);
+
+  assert.match(markdown, /# Publishing Packet/);
+  assert.match(markdown, /Synthetic Publishing Draft/);
+  assert.match(markdown, /Words:/);
+  assert.match(markdown, /Chapter One/);
+  assert.match(markdown, /BLOCKER/);
+  assert.match(markdown, /Quote Review Appendix/);
+  assert.match(markdown, /Synthetic quote needing source/);
+});
+
+test("recording handoff Markdown includes episode and chapter outlines", () => {
+  const markdown = createRecordingHandoffMarkdown(publishingExportInput);
+
+  assert.match(markdown, /# Recording Handoff/);
+  assert.match(markdown, /Episode 1/);
+  assert.match(markdown, /Chapter One/);
+  assert.match(markdown, /Before Recording Checklist/);
+  assert.match(markdown, /Homer \/ Scott/);
+});
+
+test("quote appendix Markdown includes review metadata", () => {
+  const markdown = createQuoteReviewAppendixMarkdown(publishingExportInput);
+
+  assert.match(markdown, /Synthetic verified voice/);
+  assert.match(markdown, /Synthetic Verified Source/);
+  assert.match(markdown, /section 2/);
+  assert.match(markdown, /Synthetic rights note/);
+  assert.match(markdown, /publish-episode/);
+});
+
+test("author contribution Markdown includes author labels", () => {
+  const markdown = createAuthorContributionMarkdown(publishingExportInput);
+
+  assert.match(markdown, /Charlie:/);
+  assert.match(markdown, /Homer \/ Scott:/);
+  assert.match(markdown, /Unassigned:/);
+  assert.match(markdown, /not legal authorship truth/i);
+});
+
+test("chapter and episode export options summarize handoff regions", () => {
+  const options = createChapterEpisodeExportOptions({
+    regions: collectStructureRegionSummaries({
+      json: publishingDoc,
+      regions: publishingRegions,
+    }),
+  });
+
+  assert.deepEqual(
+    options.map((option) => option.kind),
+    ["chapter", "episode"],
+  );
+  assert.equal(options[0].title, "Chapter One");
+  assert.equal(options[1].title, "Episode 1");
 });

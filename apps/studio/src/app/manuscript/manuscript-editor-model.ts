@@ -245,6 +245,78 @@ export type ManuscriptCitedQuotationReviewProgress = {
   noReviewMetadata: number;
 };
 
+export type ManuscriptPublishReadinessSeverity =
+  | "info"
+  | "warning"
+  | "blocker";
+
+export type ManuscriptPublishReadinessIssue = {
+  id: string;
+  severity: ManuscriptPublishReadinessSeverity;
+  title: string;
+  detail: string;
+};
+
+export type ManuscriptPublishQuoteReviewStatusCounts = {
+  total: number;
+  needsSource: number;
+  needsVerification: number;
+  verified: number;
+  doNotUse: number;
+  noReviewMetadata: number;
+};
+
+export type ManuscriptPublishSnapshotState = {
+  serverConnectionState?: "unchecked" | "connected" | "unavailable";
+  latestSnapshotTime?: string | null;
+  lastSnapshotId?: string | null;
+  hasLocalChangesSinceServerSave?: boolean | null;
+};
+
+export type ManuscriptPublishReadinessReport = {
+  title: string;
+  generatedAt: string;
+  sourceFileName: string | null;
+  stats: {
+    words: number;
+    characters: number;
+    blocks: number;
+  };
+  structure: {
+    chapterRegions: number;
+    episodeRegions: number;
+    sectionRegions: number;
+    coveredBlocks: number;
+    uncoveredBlocks: number;
+    coveragePercent: number;
+  };
+  authors: AuthorSpanSummary[];
+  quoteReview: ManuscriptPublishQuoteReviewStatusCounts;
+  issues: ManuscriptPublishReadinessIssue[];
+  snapshotCaution: string;
+};
+
+export type ManuscriptPublishingExportInput = {
+  title: string;
+  sourceFileName: string | null;
+  editorJson: ManuscriptEditorJson;
+  structureRegions: ManuscriptStructureRegion[];
+  quoteReviews: Record<string, ManuscriptQuoteReview>;
+  generatedAt: string;
+  snapshotState?: ManuscriptPublishSnapshotState;
+  includeRecordingChecks?: boolean;
+};
+
+export type ManuscriptChapterEpisodeExportOption = {
+  id: string;
+  kind: Extract<ManuscriptStructureKind, "chapter" | "episode">;
+  title: string;
+  label: string;
+  blockCount: number;
+  startBlockId: string;
+  endBlockId: string;
+};
+
 export type ManuscriptFocusVisibleBlockIds = {
   matchingBlockIds: string[];
   contextBlockIds: string[];
@@ -1692,6 +1764,652 @@ export function createStructureOutlineMarkdown(input: {
   }
 
   return lines.join("\n").trimEnd();
+}
+
+function createPublishingContext(input: ManuscriptPublishingExportInput) {
+  const blocks = collectManuscriptBlockDetails({
+    json: input.editorJson,
+    regions: input.structureRegions,
+    quoteReviews: input.quoteReviews,
+  });
+  const structureRegions = collectStructureRegionSummaries({
+    json: input.editorJson,
+    regions: input.structureRegions,
+  });
+  const citedQuotations = collectCitedQuotationHighlights({
+    json: input.editorJson,
+    regions: input.structureRegions,
+    quoteReviews: input.quoteReviews,
+  });
+  const authorSummaries = summarizeAuthorMarkedSpans(input.editorJson);
+
+  return {
+    blocks,
+    structureRegions,
+    citedQuotations,
+    authorSummaries,
+  };
+}
+
+function countPublishQuoteReviewStatuses(
+  quotations: ManuscriptCitedQuotationSummary[],
+): ManuscriptPublishQuoteReviewStatusCounts {
+  const counts: ManuscriptPublishQuoteReviewStatusCounts = {
+    total: quotations.length,
+    needsSource: 0,
+    needsVerification: 0,
+    verified: 0,
+    doNotUse: 0,
+    noReviewMetadata: 0,
+  };
+
+  for (const quotation of quotations) {
+    if (!quotation.hasReviewMetadata) {
+      counts.noReviewMetadata += 1;
+      continue;
+    }
+
+    if (quotation.review.reviewStatus === "needs-source") {
+      counts.needsSource += 1;
+    } else if (quotation.review.reviewStatus === "needs-verification") {
+      counts.needsVerification += 1;
+    } else if (quotation.review.reviewStatus === "verified") {
+      counts.verified += 1;
+    } else if (quotation.review.reviewStatus === "do-not-use") {
+      counts.doNotUse += 1;
+    }
+  }
+
+  return counts;
+}
+
+function createSnapshotCaution(
+  snapshotState: ManuscriptPublishSnapshotState | undefined,
+) {
+  if (!snapshotState || snapshotState.serverConnectionState === "unchecked") {
+    return "Server snapshot state has not been checked.";
+  }
+
+  if (snapshotState.serverConnectionState === "unavailable") {
+    return "Server snapshots are unavailable; download full draft JSON before serious export.";
+  }
+
+  if (snapshotState.hasLocalChangesSinceServerSave === true) {
+    return "Local changes exist since the last server save or load. Save a server snapshot before handing this draft to another device.";
+  }
+
+  if (!snapshotState.lastSnapshotId) {
+    return "No server snapshot has been saved or loaded in this browser. Download full draft JSON or save a snapshot before serious export.";
+  }
+
+  return snapshotState.latestSnapshotTime
+    ? `Latest known server snapshot: ${snapshotState.latestSnapshotTime}.`
+    : "Server snapshot checkpoint is known for this browser.";
+}
+
+function addPublishIssue(
+  issues: ManuscriptPublishReadinessIssue[],
+  issue: ManuscriptPublishReadinessIssue,
+) {
+  issues.push(issue);
+}
+
+export function createPublishReadinessReport(
+  input: ManuscriptPublishingExportInput,
+): ManuscriptPublishReadinessReport {
+  const { blocks, structureRegions, citedQuotations, authorSummaries } =
+    createPublishingContext(input);
+  const textStats = countWordsAndCharacters(input.editorJson);
+  const chapterRegions = structureRegions.filter(
+    (region) => region.kind === "chapter",
+  );
+  const episodeRegions = structureRegions.filter(
+    (region) => region.kind === "episode",
+  );
+  const sectionRegions = structureRegions.filter(
+    (region) => region.kind === "section",
+  );
+  const coveredBlockIds = new Set(
+    structureRegions.flatMap((region) => region.blockIds),
+  );
+  const knownBlockIds = blocks.flatMap((block) =>
+    block.blockId ? [block.blockId] : [],
+  );
+  const coveredBlocks = knownBlockIds.filter((blockId) =>
+    coveredBlockIds.has(blockId),
+  ).length;
+  const uncoveredBlocks = Math.max(0, knownBlockIds.length - coveredBlocks);
+  const coveragePercent = knownBlockIds.length
+    ? Math.round((coveredBlocks / knownBlockIds.length) * 100)
+    : 0;
+  const quoteReview = countPublishQuoteReviewStatuses(citedQuotations);
+  const unassignedAuthor = authorSummaries.find(
+    (summary) => summary.authorId === "unassigned",
+  );
+  const issues: ManuscriptPublishReadinessIssue[] = [];
+
+  if (!chapterRegions.length) {
+    addPublishIssue(issues, {
+      id: "no-chapter-structure",
+      severity: "warning",
+      title: "No Chapter / book structure",
+      detail:
+        "Publishing packets can still fall back to a full block list, but book-shaped structure will make review and export calmer.",
+    });
+  }
+
+  if (input.includeRecordingChecks && !episodeRegions.length) {
+    addPublishIssue(issues, {
+      id: "no-episode-structure",
+      severity: "warning",
+      title: "No Episode structure for recording",
+      detail:
+        "Recording handoff works best when Homer can follow episode-sized ranges instead of hunting through the whole wall.",
+    });
+  }
+
+  if (uncoveredBlocks > 0) {
+    addPublishIssue(issues, {
+      id: "unstructured-blocks",
+      severity:
+        knownBlockIds.length && uncoveredBlocks / knownBlockIds.length > 0.35
+          ? "warning"
+          : "info",
+      title: "Some blocks are outside structure regions",
+      detail: `${uncoveredBlocks.toLocaleString()} block${
+        uncoveredBlocks === 1 ? "" : "s"
+      } are not covered by any Chapter, Episode, or Section region.`,
+    });
+  }
+
+  if ((unassignedAuthor?.words ?? 0) > 0) {
+    addPublishIssue(issues, {
+      id: "unassigned-author-spans",
+      severity: (unassignedAuthor?.words ?? 0) > Math.max(80, textStats.words * 0.15)
+        ? "warning"
+        : "info",
+      title: "Unassigned author material remains",
+      detail: `${(unassignedAuthor?.words ?? 0).toLocaleString()} word${
+        (unassignedAuthor?.words ?? 0) === 1 ? "" : "s"
+      } are marked unassigned. That may be fine, but it should be intentional before handoff.`,
+    });
+  }
+
+  if (quoteReview.needsSource > 0) {
+    addPublishIssue(issues, {
+      id: "quotes-need-source",
+      severity: "blocker",
+      title: "Cited quotations need sources",
+      detail: `${quoteReview.needsSource.toLocaleString()} cited quotation${
+        quoteReview.needsSource === 1 ? "" : "s"
+      } have review metadata marked Needs source.`,
+    });
+  }
+
+  if (quoteReview.needsVerification > 0) {
+    addPublishIssue(issues, {
+      id: "quotes-need-verification",
+      severity: "warning",
+      title: "Cited quotations need verification",
+      detail: `${quoteReview.needsVerification.toLocaleString()} cited quotation${
+        quoteReview.needsVerification === 1 ? "" : "s"
+      } still need verification before publishing or recording.`,
+    });
+  }
+
+  if (quoteReview.doNotUse > 0) {
+    addPublishIssue(issues, {
+      id: "quotes-do-not-use",
+      severity: "blocker",
+      title: "Do not use quotations are present",
+      detail: `${quoteReview.doNotUse.toLocaleString()} cited quotation${
+        quoteReview.doNotUse === 1 ? "" : "s"
+      } are marked Do not use and should be removed or resolved before public output.`,
+    });
+  }
+
+  if (quoteReview.noReviewMetadata > 0) {
+    addPublishIssue(issues, {
+      id: "quotes-no-review-metadata",
+      severity: "warning",
+      title: "Cited quotations missing review metadata",
+      detail: `${quoteReview.noReviewMetadata.toLocaleString()} cited quotation${
+        quoteReview.noReviewMetadata === 1 ? "" : "s"
+      } have no quote review metadata yet.`,
+    });
+  }
+
+  const snapshotCaution = createSnapshotCaution(input.snapshotState);
+
+  if (
+    input.snapshotState?.hasLocalChangesSinceServerSave === true ||
+    !input.snapshotState ||
+    input.snapshotState.serverConnectionState === "unchecked"
+  ) {
+    addPublishIssue(issues, {
+      id: "snapshot-caution",
+      severity:
+        input.snapshotState?.hasLocalChangesSinceServerSave === true
+          ? "warning"
+          : "info",
+      title: "Snapshot checkpoint needs attention",
+      detail: snapshotCaution,
+    });
+  }
+
+  if (!issues.length) {
+    addPublishIssue(issues, {
+      id: "ready-with-care",
+      severity: "info",
+      title: "No major publishing blockers detected",
+      detail:
+        "This report is a practical checklist, not a guarantee. Humans still get the final vote.",
+    });
+  }
+
+  return {
+    title: input.title.trim() || defaultTitle,
+    generatedAt: input.generatedAt,
+    sourceFileName: input.sourceFileName,
+    stats: {
+      words: textStats.words,
+      characters: textStats.characters,
+      blocks: blocks.length,
+    },
+    structure: {
+      chapterRegions: chapterRegions.length,
+      episodeRegions: episodeRegions.length,
+      sectionRegions: sectionRegions.length,
+      coveredBlocks,
+      uncoveredBlocks,
+      coveragePercent,
+    },
+    authors: authorSummaries,
+    quoteReview,
+    issues,
+    snapshotCaution,
+  };
+}
+
+export function createManuscriptStructureMarkdown(input: {
+  regions: ManuscriptStructureRegionSummary[];
+}) {
+  return createStructureOutlineMarkdown(input);
+}
+
+function createReadinessIssueMarkdown(
+  issues: ManuscriptPublishReadinessIssue[],
+) {
+  if (!issues.length) {
+    return ["- None"];
+  }
+
+  return issues.map(
+    (issue) =>
+      `- **${issue.severity.toUpperCase()}** ${createMarkdownText(
+        issue.title,
+      )}: ${createMarkdownText(issue.detail)}`,
+  );
+}
+
+function createStatsMarkdown(report: ManuscriptPublishReadinessReport) {
+  return [
+    `- Words: ${report.stats.words.toLocaleString()}`,
+    `- Characters: ${report.stats.characters.toLocaleString()}`,
+    `- Blocks: ${report.stats.blocks.toLocaleString()}`,
+    `- Chapter / book regions: ${report.structure.chapterRegions.toLocaleString()}`,
+    `- Episode regions: ${report.structure.episodeRegions.toLocaleString()}`,
+    `- Section regions: ${report.structure.sectionRegions.toLocaleString()}`,
+    `- Structure coverage: ${report.structure.coveredBlocks.toLocaleString()} covered / ${report.structure.uncoveredBlocks.toLocaleString()} uncovered (${report.structure.coveragePercent}%)`,
+    `- Cited quotations: ${report.quoteReview.total.toLocaleString()}`,
+    `- Quote review: ${report.quoteReview.verified.toLocaleString()} verified, ${report.quoteReview.needsSource.toLocaleString()} need source, ${report.quoteReview.needsVerification.toLocaleString()} need verification, ${report.quoteReview.doNotUse.toLocaleString()} do not use, ${report.quoteReview.noReviewMetadata.toLocaleString()} without metadata`,
+  ];
+}
+
+function createAuthorSummaryMarkdown(authors: AuthorSpanSummary[]) {
+  return authors.map(
+    (summary) =>
+      `- ${summary.label}: ${summary.spans.toLocaleString()} span${
+        summary.spans === 1 ? "" : "s"
+      }, ${summary.words.toLocaleString()} words, ${summary.characters.toLocaleString()} characters`,
+  );
+}
+
+function createBlockLine(block: ManuscriptBlockDetail) {
+  const label = block.blockId ?? "missing blockId";
+  const text = createMarkdownText(block.text || block.preview || "Empty block");
+
+  return `- **${label}** (${block.type}): ${text}`;
+}
+
+function getBlocksForRegion(
+  blocks: ManuscriptBlockDetail[],
+  region: ManuscriptStructureRegionSummary,
+) {
+  const blockIds = new Set(region.blockIds);
+
+  return blocks.filter((block) => block.blockId && blockIds.has(block.blockId));
+}
+
+function createStructureContentMarkdown(input: {
+  blocks: ManuscriptBlockDetail[];
+  regions: ManuscriptStructureRegionSummary[];
+}) {
+  const chapterRegions = input.regions.filter(
+    (region) => region.kind === "chapter",
+  );
+  const lines: string[] = [];
+
+  if (chapterRegions.length) {
+    for (const region of chapterRegions) {
+      lines.push(`### ${createMarkdownText(region.title)}`, "");
+      const regionBlocks = getBlocksForRegion(input.blocks, region);
+
+      if (!regionBlocks.length) {
+        lines.push("_No blocks found for this region._", "");
+        continue;
+      }
+
+      for (const block of regionBlocks) {
+        lines.push(createBlockLine(block));
+      }
+
+      lines.push("");
+    }
+
+    return lines;
+  }
+
+  lines.push("### Full Manuscript Block List", "");
+
+  if (!input.blocks.length) {
+    lines.push("_No manuscript blocks found._", "");
+    return lines;
+  }
+
+  for (const block of input.blocks) {
+    lines.push(createBlockLine(block));
+  }
+
+  lines.push("");
+  return lines;
+}
+
+export function createQuoteReviewAppendixMarkdown(
+  input: ManuscriptPublishingExportInput,
+) {
+  const { citedQuotations } = createPublishingContext(input);
+  const lines = [
+    "# Quote Review Appendix",
+    "",
+    `Generated: ${input.generatedAt}`,
+    `Title: ${createMarkdownText(input.title || defaultTitle)}`,
+    "",
+    `Total cited quotations: ${citedQuotations.length.toLocaleString()}`,
+    "",
+  ];
+
+  if (!citedQuotations.length) {
+    lines.push("_No cited quotations marked._");
+    return lines.join("\n").trimEnd();
+  }
+
+  citedQuotations.forEach((quotation, index) => {
+    const review = quotation.review;
+
+    lines.push(`## ${index + 1}. ${createMarkdownText(quotation.preview)}`, "");
+    lines.push(`- Text: ${createMarkdownText(quotation.text)}`);
+    lines.push(`- Attributed to: ${createMarkdownText(review.attributedTo)}`);
+    lines.push(`- Source title: ${createMarkdownText(review.sourceTitle)}`);
+    lines.push(
+      `- Source type: ${getManuscriptQuoteSourceTypeDefinition(
+        review.sourceType,
+      ).label}`,
+    );
+    lines.push(`- Locator: ${createMarkdownText(review.locator)}`);
+    lines.push(`- Citation text: ${createMarkdownText(review.citationText)}`);
+    lines.push(
+      `- Review status: ${
+        quotation.hasReviewMetadata
+          ? getManuscriptQuoteReviewStatusDefinition(review.reviewStatus).label
+          : "No review metadata"
+      }`,
+    );
+    lines.push(`- Rights note: ${createMarkdownText(review.rightsNote)}`);
+    lines.push(`- Editor note: ${createMarkdownText(review.editorNote)}`);
+    lines.push(`- Block ID: ${quotation.blockId ?? "missing blockId"}`);
+    lines.push(
+      `- Structure: ${
+        quotation.structureRegions.length
+          ? quotation.structureRegions
+              .map((region) => createMarkdownText(region.title))
+              .join(", ")
+          : "No structure region"
+      }`,
+    );
+    lines.push("");
+  });
+
+  return lines.join("\n").trimEnd();
+}
+
+export function createAuthorContributionMarkdown(
+  input: ManuscriptPublishingExportInput,
+) {
+  const { authorSummaries } = createPublishingContext(input);
+  const lines = [
+    "# Author Contribution Summary",
+    "",
+    `Generated: ${input.generatedAt}`,
+    `Title: ${createMarkdownText(input.title || defaultTitle)}`,
+    "",
+    "This is editorial metadata from Manuscript Desk marks, not legal authorship truth.",
+    "",
+    "## Summary",
+    "",
+    ...createAuthorSummaryMarkdown(authorSummaries),
+    "",
+    "## Reminders",
+    "",
+    "- Charlie spans usually indicate additions or current editorial work.",
+    "- Homer / Scott spans usually indicate imported source manuscript material.",
+    "- Unassigned spans should be checked before handoff if the count is meaningful.",
+    "- These marks travel in full draft JSON backups and manual server snapshots.",
+  ];
+
+  return lines.join("\n").trimEnd();
+}
+
+export function createRecordingHandoffMarkdown(
+  input: ManuscriptPublishingExportInput,
+) {
+  const exportInput = {
+    ...input,
+    includeRecordingChecks: true,
+  };
+  const report = createPublishReadinessReport(exportInput);
+  const { structureRegions, citedQuotations } = createPublishingContext(input);
+  const episodeRegions = structureRegions.filter(
+    (region) => region.kind === "episode",
+  );
+  const chapterRegions = structureRegions.filter(
+    (region) => region.kind === "chapter",
+  );
+  const quoteWarnings = citedQuotations.filter(
+    (quotation) =>
+      !quotation.hasReviewMetadata ||
+      quotation.review.reviewStatus !== "verified",
+  );
+  const lines = [
+    "# Recording Handoff",
+    "",
+    `Title: ${createMarkdownText(input.title || defaultTitle)}`,
+    `Generated: ${input.generatedAt}`,
+    input.sourceFileName
+      ? `Source file: ${createMarkdownText(input.sourceFileName)}`
+      : "Source file: Not recorded",
+    "",
+    "## Quick Instructions",
+    "",
+    "- Use this as a recording guide, not a canonical manuscript.",
+    "- Load or save a manual server snapshot before moving between devices.",
+    "- Use Recording / Reading mode on phone or tablet.",
+    "- Pause at cited quotations that still need source or verification work.",
+    "",
+    "## Readiness",
+    "",
+    ...createReadinessIssueMarkdown(report.issues),
+    "",
+    "## Episode Outline",
+    "",
+  ];
+
+  if (episodeRegions.length) {
+    episodeRegions.forEach((region, index) => {
+      lines.push(
+        `${index + 1}. ${createMarkdownText(region.title)} (${region.blockCount.toLocaleString()} blocks)`,
+      );
+      lines.push(`   - Start: ${createMarkdownText(region.startPreview)}`);
+      lines.push(`   - End: ${createMarkdownText(region.endPreview)}`);
+      if (region.notes.trim()) {
+        lines.push(`   - Notes: ${createMarkdownText(region.notes)}`);
+      }
+    });
+  } else {
+    lines.push("- No Episode regions yet.");
+  }
+
+  lines.push("", "## Chapter / Book Outline", "");
+
+  if (chapterRegions.length) {
+    chapterRegions.forEach((region, index) => {
+      lines.push(
+        `${index + 1}. ${createMarkdownText(region.title)} (${region.blockCount.toLocaleString()} blocks)`,
+      );
+    });
+  } else {
+    lines.push("- No Chapter / book regions yet.");
+  }
+
+  lines.push("", "## Author Material", "", ...createAuthorSummaryMarkdown(report.authors));
+  lines.push("", "## Cited Quotations To Watch", "");
+
+  if (quoteWarnings.length) {
+    quoteWarnings.forEach((quotation, index) => {
+      const status = quotation.hasReviewMetadata
+        ? getManuscriptQuoteReviewStatusDefinition(
+            quotation.review.reviewStatus,
+          ).label
+        : "No review metadata";
+
+      lines.push(`${index + 1}. ${createMarkdownText(quotation.preview)}`);
+      lines.push(`   - Status: ${status}`);
+      lines.push(`   - Block: ${quotation.blockId ?? "missing blockId"}`);
+      if (quotation.structureRegions.length) {
+        lines.push(
+          `   - Structure: ${quotation.structureRegions
+            .map((region) => createMarkdownText(region.title))
+            .join(", ")}`,
+        );
+      }
+    });
+  } else {
+    lines.push("- No unresolved cited quotation warnings.");
+  }
+
+  lines.push(
+    "",
+    "## Before Recording Checklist",
+    "",
+    "- Confirm the intended draft is loaded.",
+    "- Confirm local changes have been saved as a server snapshot if another device is used.",
+    "- Confirm Episode or Chapter / book outline is visible.",
+    "- Confirm unresolved citation warnings are understood.",
+    "- Download a full draft JSON backup before using real manuscript material.",
+    "",
+    "## After Recording Notes",
+    "",
+    "- Recording date:",
+    "- Device:",
+    "- Sections recorded:",
+    "- Follow-up edits:",
+  );
+
+  return lines.join("\n").trimEnd();
+}
+
+export function createPublishingPacketMarkdown(
+  input: ManuscriptPublishingExportInput,
+) {
+  const report = createPublishReadinessReport(input);
+  const { blocks, structureRegions } = createPublishingContext(input);
+  const lines = [
+    "# Publishing Packet",
+    "",
+    `Title: ${createMarkdownText(input.title || defaultTitle)}`,
+    `Generated: ${input.generatedAt}`,
+    input.sourceFileName
+      ? `Source file: ${createMarkdownText(input.sourceFileName)}`
+      : "Source file: Not recorded",
+    "",
+    "This is a working export, not canonical public truth.",
+    "",
+    "## Stats",
+    "",
+    ...createStatsMarkdown(report),
+    "",
+    "## Snapshot Caution",
+    "",
+    report.snapshotCaution,
+    "",
+    "## Readiness Issues",
+    "",
+    ...createReadinessIssueMarkdown(report.issues),
+    "",
+    "## Structure Outline",
+    "",
+    createManuscriptStructureMarkdown({ regions: structureRegions }),
+    "",
+    "## Manuscript Content",
+    "",
+    ...createStructureContentMarkdown({ blocks, regions: structureRegions }),
+    "## Quote Review Appendix Summary",
+    "",
+    `- Total cited quotations: ${report.quoteReview.total.toLocaleString()}`,
+    `- Needs source: ${report.quoteReview.needsSource.toLocaleString()}`,
+    `- Needs verification: ${report.quoteReview.needsVerification.toLocaleString()}`,
+    `- Verified: ${report.quoteReview.verified.toLocaleString()}`,
+    `- Do not use: ${report.quoteReview.doNotUse.toLocaleString()}`,
+    `- No review metadata: ${report.quoteReview.noReviewMetadata.toLocaleString()}`,
+    "",
+    createQuoteReviewAppendixMarkdown(input),
+  ];
+
+  return lines.join("\n").trimEnd();
+}
+
+export function createChapterEpisodeExportOptions(input: {
+  regions: ManuscriptStructureRegionSummary[];
+}): ManuscriptChapterEpisodeExportOption[] {
+  return input.regions
+    .filter(
+      (
+        region,
+      ): region is ManuscriptStructureRegionSummary & {
+        kind: "chapter" | "episode";
+      } => region.kind === "chapter" || region.kind === "episode",
+    )
+    .map((region) => ({
+      id: region.id,
+      kind: region.kind,
+      title: region.title,
+      label: `${getManuscriptStructureDefinition(region.kind).label}: ${
+        region.title
+      }`,
+      blockCount: region.blockCount,
+      startBlockId: region.startBlockId,
+      endBlockId: region.endBlockId,
+    }));
 }
 
 const chapterHeadingNumberWords = new Set([

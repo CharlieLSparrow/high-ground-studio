@@ -37,6 +37,11 @@ import {
   createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
   createDefaultManuscriptQuoteReview,
+  createAuthorContributionMarkdown,
+  createPublishingPacketMarkdown,
+  createPublishReadinessReport,
+  createQuoteReviewAppendixMarkdown,
+  createRecordingHandoffMarkdown,
   createManuscriptDraftCheckpointKey,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
@@ -144,7 +149,8 @@ type ManuscriptSidePanelMode =
   | "structure"
   | "find"
   | "quotes"
-  | "backup";
+  | "backup"
+  | "publish";
 
 type RecordingOutlineKind = ManuscriptStructureKind | "all";
 
@@ -154,6 +160,7 @@ const manuscriptSidePanelModes = [
   { id: "find", label: "Find" },
   { id: "quotes", label: "Quotes" },
   { id: "backup", label: "Backup" },
+  { id: "publish", label: "Publish" },
 ] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
 const fieldLabelClassName =
@@ -295,7 +302,23 @@ function getSidePanelModeHelpNoteId(
     return "backup-mode";
   }
 
+  if (mode === "publish") {
+    return "publish-mode";
+  }
+
   return "structure-region";
+}
+
+function getReadinessIssueTone(severity: "info" | "warning" | "blocker") {
+  if (severity === "blocker") {
+    return "danger" as const;
+  }
+
+  if (severity === "warning") {
+    return "review" as const;
+  }
+
+  return "source" as const;
 }
 
 function getAuthorMarkAttrs(authorId: ManuscriptAuthorId) {
@@ -529,6 +552,14 @@ export function StudioManuscriptClient({
   const [exportStructureMarkdown, setExportStructureMarkdown] = useState("");
   const [exportFilteredMarkdown, setExportFilteredMarkdown] = useState("");
   const [exportCitedQuotationMarkdown, setExportCitedQuotationMarkdown] =
+    useState("");
+  const [exportPublishingPacketMarkdown, setExportPublishingPacketMarkdown] =
+    useState("");
+  const [exportRecordingHandoffMarkdown, setExportRecordingHandoffMarkdown] =
+    useState("");
+  const [exportQuoteAppendixMarkdown, setExportQuoteAppendixMarkdown] =
+    useState("");
+  const [exportAuthorContributionMarkdown, setExportAuthorContributionMarkdown] =
     useState("");
   const [message, setMessage] = useState(
     "Browser-local Manuscript Desk draft.",
@@ -879,6 +910,42 @@ export function StudioManuscriptClient({
       : hasLocalChangesSinceServerSave
         ? "Yes"
         : "No";
+  const publishingSnapshotState = useMemo(
+    () => ({
+      serverConnectionState,
+      latestSnapshotTime: latestServerSnapshot?.updatedAt ?? null,
+      lastSnapshotId: lastSavedServerSnapshot?.id ?? null,
+      hasLocalChangesSinceServerSave,
+    }),
+    [
+      hasLocalChangesSinceServerSave,
+      lastSavedServerSnapshot?.id,
+      latestServerSnapshot?.updatedAt,
+      serverConnectionState,
+    ],
+  );
+  const publishReadinessReport = useMemo(
+    () =>
+      createPublishReadinessReport({
+        title,
+        sourceFileName,
+        editorJson: currentEditorJson,
+        structureRegions,
+        quoteReviews,
+        generatedAt: lastUpdatedAt ?? new Date().toISOString(),
+        snapshotState: publishingSnapshotState,
+        includeRecordingChecks: true,
+      }),
+    [
+      currentEditorJson,
+      lastUpdatedAt,
+      publishingSnapshotState,
+      quoteReviews,
+      sourceFileName,
+      structureRegions,
+      title,
+    ],
+  );
 
   useEffect(() => {
     setCurrentQuoteIndex((current) => {
@@ -1936,6 +2003,87 @@ export function StudioManuscriptClient({
     setMessage("Cited quotations Markdown downloaded.");
   }
 
+  function createPublishingExportInput(generatedAt = new Date().toISOString()) {
+    return {
+      title,
+      sourceFileName,
+      editorJson: currentEditorJson,
+      structureRegions,
+      quoteReviews,
+      generatedAt,
+      snapshotState: publishingSnapshotState,
+      includeRecordingChecks: true,
+    };
+  }
+
+  function generatePublishingPacket() {
+    setExportPublishingPacketMarkdown(
+      createPublishingPacketMarkdown(createPublishingExportInput()),
+    );
+    setMessage("Publishing packet Markdown generated.");
+  }
+
+  function downloadPublishingPacket() {
+    downloadBackup({
+      kind: "publishing-packet",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: createPublishingPacketMarkdown(createPublishingExportInput()),
+    });
+    setMessage("Publishing packet Markdown downloaded.");
+  }
+
+  function generateRecordingHandoff() {
+    setExportRecordingHandoffMarkdown(
+      createRecordingHandoffMarkdown(createPublishingExportInput()),
+    );
+    setMessage("Recording handoff Markdown generated.");
+  }
+
+  function downloadRecordingHandoff() {
+    downloadBackup({
+      kind: "recording-handoff",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: createRecordingHandoffMarkdown(createPublishingExportInput()),
+    });
+    setMessage("Recording handoff Markdown downloaded.");
+  }
+
+  function generateQuoteAppendix() {
+    setExportQuoteAppendixMarkdown(
+      createQuoteReviewAppendixMarkdown(createPublishingExportInput()),
+    );
+    setMessage("Quote appendix Markdown generated.");
+  }
+
+  function downloadQuoteAppendix() {
+    downloadBackup({
+      kind: "quote-appendix",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: createQuoteReviewAppendixMarkdown(createPublishingExportInput()),
+    });
+    setMessage("Quote appendix Markdown downloaded.");
+  }
+
+  function generateAuthorContribution() {
+    setExportAuthorContributionMarkdown(
+      createAuthorContributionMarkdown(createPublishingExportInput()),
+    );
+    setMessage("Author contribution Markdown generated.");
+  }
+
+  function downloadAuthorContribution() {
+    downloadBackup({
+      kind: "author-contribution",
+      extension: "md",
+      mimeType: "text/markdown",
+      content: createAuthorContributionMarkdown(createPublishingExportInput()),
+    });
+    setMessage("Author contribution Markdown downloaded.");
+  }
+
   function applyDraftToEditor(draft: ManuscriptDraft, nextMessage: string) {
     if (!editor) {
       return;
@@ -2425,6 +2573,7 @@ export function StudioManuscriptClient({
       ? "danger"
       : message.includes("exported") ||
           message.includes("downloaded") ||
+          message.includes("generated") ||
           message.includes("imported") ||
           message.includes("Marked") ||
           message.includes("Applied") ||
@@ -4590,6 +4739,294 @@ export function StudioManuscriptClient({
               </button>
             </section>
             ) : null}
+
+            {sidePanelMode === "publish" ? (
+              <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <HelpHeading noteId="publish-mode">
+                    Publish / handoff
+                  </HelpHeading>
+                  <StudioChip
+                    tone={
+                      publishReadinessReport.issues.some(
+                        (issue) => issue.severity === "blocker",
+                      )
+                        ? "danger"
+                        : publishReadinessReport.issues.some(
+                              (issue) => issue.severity === "warning",
+                            )
+                          ? "review"
+                          : "source"
+                    }
+                  >
+                    {publishReadinessReport.issues.length.toLocaleString()} note
+                    {publishReadinessReport.issues.length === 1 ? "" : "s"}
+                  </StudioChip>
+                </div>
+
+                <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                  <HelpLabel noteId="publish-readiness-report">
+                    Publish readiness summary
+                  </HelpLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    <StudioChip tone="tag">
+                      {publishReadinessReport.stats.words.toLocaleString()} words
+                    </StudioChip>
+                    <StudioChip tone="source">
+                      {publishReadinessReport.stats.blocks.toLocaleString()} blocks
+                    </StudioChip>
+                    <StudioChip tone="node">
+                      {publishReadinessReport.structure.chapterRegions.toLocaleString()} chapters
+                    </StudioChip>
+                    <StudioChip tone="node">
+                      {publishReadinessReport.structure.episodeRegions.toLocaleString()} episodes
+                    </StudioChip>
+                    <StudioChip tone="review">
+                      {publishReadinessReport.quoteReview.total.toLocaleString()} quotes
+                    </StudioChip>
+                    <StudioChip
+                      tone={
+                        publishReadinessReport.structure.uncoveredBlocks
+                          ? "review"
+                          : "source"
+                      }
+                    >
+                      {publishReadinessReport.structure.coveragePercent}% structured
+                    </StudioChip>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                  <p className={labelClassName}>Readiness issues</p>
+                  {publishReadinessReport.issues.map((issue) => (
+                    <article
+                      className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2"
+                      key={issue.id}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="m-0 text-[0.84rem] leading-snug text-studio-ink">
+                          {issue.title}
+                        </h3>
+                        <StudioChip tone={getReadinessIssueTone(issue.severity)}>
+                          {issue.severity}
+                        </StudioChip>
+                      </div>
+                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                        {issue.detail}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="grid gap-2 rounded-lg border border-studio-node/35 bg-studio-node/10 p-2.5">
+                  <HelpLabel noteId="server-snapshot">
+                    Snapshot caution
+                  </HelpLabel>
+                  <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                    {publishReadinessReport.snapshotCaution}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <StudioChip tone="source">
+                      Server {serverConnectionLabel}
+                    </StudioChip>
+                    <StudioChip
+                      tone={
+                        hasLocalChangesSinceServerSave
+                          ? "review"
+                          : hasLocalChangesSinceServerSave === false
+                            ? "source"
+                            : "default"
+                      }
+                    >
+                      Local changes: {localChangesSinceServerSaveLabel}
+                    </StudioChip>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
+                  <HelpLabel noteId="quote-review-appendix">
+                    Quote review status
+                  </HelpLabel>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    <StudioChip tone="review">
+                      Needs source{" "}
+                      {publishReadinessReport.quoteReview.needsSource.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="review">
+                      Needs verification{" "}
+                      {publishReadinessReport.quoteReview.needsVerification.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="tag">
+                      Verified{" "}
+                      {publishReadinessReport.quoteReview.verified.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="danger">
+                      Do not use{" "}
+                      {publishReadinessReport.quoteReview.doNotUse.toLocaleString()}
+                    </StudioChip>
+                    <StudioChip tone="source">
+                      No metadata{" "}
+                      {publishReadinessReport.quoteReview.noReviewMetadata.toLocaleString()}
+                    </StudioChip>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 rounded-lg border border-studio-tag/35 bg-studio-tag/10 p-2.5">
+                  <HelpLabel noteId="author-contribution-export">
+                    Author metadata
+                  </HelpLabel>
+                  <div className="grid gap-1.5">
+                    {publishReadinessReport.authors.map((author) => (
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-studio-line bg-black/20 px-2 py-1.5"
+                        key={author.authorId}
+                      >
+                        <span className="text-[0.76rem] font-extrabold text-studio-ink">
+                          {author.label}
+                        </span>
+                        <span className="text-[0.72rem] text-studio-muted">
+                          {author.spans.toLocaleString()} spans,{" "}
+                          {author.words.toLocaleString()} words
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
+                    These marks are editorial handoff metadata, not legal
+                    authorship truth.
+                  </p>
+                </div>
+
+                {!isRecordingMode ? (
+                  <>
+                    <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                      <HelpLabel noteId="publishing-packet">
+                        Publishing packet
+                      </HelpLabel>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={generatePublishingPacket}
+                        >
+                          Generate publishing packet Markdown
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={downloadPublishingPacket}
+                        >
+                          Download publishing packet Markdown
+                        </button>
+                      </div>
+                      <textarea
+                        className={cn(
+                          textareaClassName,
+                          "min-h-[150px] font-mono text-xs",
+                        )}
+                        readOnly
+                        value={exportPublishingPacketMarkdown}
+                      />
+                    </div>
+
+                    <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                      <HelpLabel noteId="recording-handoff-packet">
+                        Recording handoff
+                      </HelpLabel>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={generateRecordingHandoff}
+                        >
+                          Generate recording handoff Markdown
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={downloadRecordingHandoff}
+                        >
+                          Download recording handoff Markdown
+                        </button>
+                      </div>
+                      <textarea
+                        className={cn(
+                          textareaClassName,
+                          "min-h-[130px] font-mono text-xs",
+                        )}
+                        readOnly
+                        value={exportRecordingHandoffMarkdown}
+                      />
+                    </div>
+
+                    <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                      <HelpLabel noteId="quote-review-appendix">
+                        Quote appendix
+                      </HelpLabel>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={generateQuoteAppendix}
+                        >
+                          Generate quote appendix Markdown
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={downloadQuoteAppendix}
+                        >
+                          Download quote appendix Markdown
+                        </button>
+                      </div>
+                      <textarea
+                        className={cn(
+                          textareaClassName,
+                          "min-h-[130px] font-mono text-xs",
+                        )}
+                        readOnly
+                        value={exportQuoteAppendixMarkdown}
+                      />
+                    </div>
+
+                    <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                      <HelpLabel noteId="author-contribution-export">
+                        Author contribution
+                      </HelpLabel>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={generateAuthorContribution}
+                        >
+                          Generate author contribution Markdown
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={downloadAuthorContribution}
+                        >
+                          Download author contribution Markdown
+                        </button>
+                      </div>
+                      <textarea
+                        className={cn(
+                          textareaClassName,
+                          "min-h-[120px] font-mono text-xs",
+                        )}
+                        readOnly
+                        value={exportAuthorContributionMarkdown}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="m-0 rounded-lg border border-studio-node/35 bg-studio-node/10 p-2 text-[0.78rem] leading-relaxed text-studio-muted">
+                    Recording / Reading mode keeps export generation tucked away.
+                    Exit Recording mode before generating handoff files.
+                  </p>
+                )}
+              </section>
+            ) : null}
           </aside>
         </section>
 
@@ -4709,6 +5146,58 @@ export function StudioManuscriptClient({
               <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
                 {serverSnapshotStatus}
               </p>
+
+              <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <HelpLabel noteId="publish-mode">
+                    Publish handoff
+                  </HelpLabel>
+                  <StudioChip
+                    tone={
+                      publishReadinessReport.issues.some(
+                        (issue) => issue.severity === "blocker",
+                      )
+                        ? "danger"
+                        : "review"
+                    }
+                  >
+                    {publishReadinessReport.issues.length.toLocaleString()} notes
+                  </StudioChip>
+                </div>
+                <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
+                  {publishReadinessReport.snapshotCaution}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={downloadPublishingPacket}
+                  >
+                    Publishing packet
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={downloadRecordingHandoff}
+                  >
+                    Recording handoff
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={downloadQuoteAppendix}
+                  >
+                    Quote appendix
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={downloadAuthorContribution}
+                  >
+                    Author summary
+                  </button>
+                </div>
+              </div>
 
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">

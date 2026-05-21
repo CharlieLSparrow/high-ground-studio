@@ -43,6 +43,11 @@ High Ground Studio is a monorepo with:
 - Coaching request email notifications go to active users with `OWNER`, `TEAM_SCHEDULER`, or `COACH` roles and do not block the user success redirect if email fails.
 - The internal Learning to Lead Story Map can save database-backed Live Story Drafts attached to Story Candidates and Homer source blocks. These drafts are live app state, not canonical manuscript truth.
 - The private Studio `/manuscript` desk can save and load manual server snapshots through Cloud SQL-backed `StudioManuscriptSnapshot` rows. The browser-local draft remains the active working copy; server snapshots are cross-device checkpoints, not autosave, collaboration, or canonical manuscript truth.
+- The private Studio `/manuscript` desk now includes a Publish / handoff mode
+  that derives browser-only readiness reports and Markdown exports from the
+  existing browser-local draft, structure regions, author marks, cited
+  quotations, quote review metadata, and manual snapshot status. These exports
+  do not write server files or canonical public content.
 
 ## Current Coaching Workflow
 
@@ -70,6 +75,8 @@ High Ground Studio is a monorepo with:
 - Story Draft revision history is not active.
 - Studio Manuscript autosave is not active.
 - Studio Manuscript simultaneous editing / Yjs collaboration is not active.
+- Studio Manuscript publishing exports are working handoff artifacts, not a
+  canonical publishing database or public projection pipeline.
 
 ## Current Stabilization Decisions
 
