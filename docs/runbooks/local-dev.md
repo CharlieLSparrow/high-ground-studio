@@ -142,8 +142,9 @@ pnpm studio:local
 ## Run Studio Cut
 
 Studio Cut is a separate Vite app for the internal multicam podcast editor
-shell. It edits semantic decision events over source time and does not need a
-database in the first local slice.
+shell. It edits semantic decision events over source time. It uses
+`localStorage` by default and can enable Firestore-ready persistence from
+optional `VITE_FIREBASE_*` env vars in `apps/studio-cut-web/.env.local`.
 
 ```bash
 pnpm studio-cut

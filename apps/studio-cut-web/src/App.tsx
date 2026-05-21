@@ -1,18 +1,24 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import {
+  type ChangeEvent,
+  type CSSProperties,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  deriveSegments,
+  getCurrentDecisionEvent,
   PROGRAM_STATE_LABELS,
   PROGRAM_STATES,
+  sortDecisionEvents,
   SOURCE_ROLE_LABELS,
   type DecisionEvent,
   type DerivedSegment,
   type ProgramState,
   type SourceRole,
 } from "@high-ground/studio-cut-schema";
+import { useDecisionPersistence } from "./hooks/useDecisionPersistence";
 
-const STORAGE_KEY = "high-ground-studio.studio-cut.decisions.v1";
-const LOCAL_PROJECT_ID = "studio-cut-local-project";
-const LOCAL_BRANCH_ID = "local-main";
-const LOCAL_CREATED_BY = "local-web-editor";
 const SOURCE_DURATION_MS = 60 * 60 * 1000;
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
@@ -35,9 +41,18 @@ const MONITOR_COPY: Record<SourceRole, string> = {
 export function App() {
   const [sourceTimeMs, setSourceTimeMs] = useState(0);
   const [note, setNote] = useState("");
-  const [decisionEvents, setDecisionEvents] = useState<DecisionEvent[]>(
-    loadStoredDecisions,
-  );
+  const [importMessage, setImportMessage] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const {
+    config,
+    decisionEvents,
+    status,
+    createDecision,
+    removeDecision,
+    clearDecisions,
+    importDecisionEvents,
+    exportDecisionEvents,
+  } = useDecisionPersistence();
 
   const sortedEvents = useMemo(
     () => sortDecisionEvents(decisionEvents),
@@ -48,14 +63,9 @@ export function App() {
     [sortedEvents],
   );
   const currentEvent = useMemo(
-    () => getCurrentEvent(sortedEvents, sourceTimeMs),
+    () => getCurrentDecisionEvent(sortedEvents, sourceTimeMs),
     [sortedEvents, sourceTimeMs],
   );
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(decisionEvents));
-  }, [decisionEvents]);
-
   const currentState = currentEvent?.state;
 
   function setClampedSourceTime(nextValue: number) {
@@ -63,30 +73,56 @@ export function App() {
   }
 
   function addDecision(state: ProgramState) {
-    const createdAt = new Date().toISOString();
-    const trimmedNote = note.trim();
-    const event: DecisionEvent = {
-      id: createDecisionId(),
-      projectId: LOCAL_PROJECT_ID,
-      branchId: LOCAL_BRANCH_ID,
-      sourceTimeMs,
-      state,
-      createdBy: LOCAL_CREATED_BY,
-      createdAt,
-      ...(trimmedNote ? { note: trimmedNote } : {}),
-    };
-
-    setDecisionEvents((events) => [...events, event]);
+    createDecision(state, sourceTimeMs, note);
     setNote("");
   }
 
-  function removeDecision(eventId: string) {
-    setDecisionEvents((events) => events.filter((event) => event.id !== eventId));
+  function clearLocalDecisions() {
+    if (window.confirm("Clear this browser's Studio Cut decision events?")) {
+      clearDecisions();
+    }
   }
 
-  function clearDecisions() {
-    if (window.confirm("Clear all local Studio Cut decision events?")) {
-      setDecisionEvents([]);
+  function handleExportJson() {
+    const payload = exportDecisionEvents();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `studio-cut-${payload.projectId}-${payload.branchId}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportJson(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const result = importDecisionEvents(payload);
+      const normalizedCopy =
+        result.normalizedCount > 0
+          ? ` ${result.normalizedCount} event${
+              result.normalizedCount === 1 ? " was" : "s were"
+            } moved onto this project/branch.`
+          : "";
+
+      setImportMessage(
+        `Imported ${result.importedCount} event${
+          result.importedCount === 1 ? "" : "s"
+        }. Rejected ${result.rejectedCount}.${normalizedCopy}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setImportMessage(`Import failed: ${message}`);
+    } finally {
+      event.target.value = "";
     }
   }
 
@@ -97,9 +133,12 @@ export function App() {
           <p className="eyebrow">Internal semantic multicam editor</p>
           <h1>Studio Cut</h1>
         </div>
-        <div className="session-meta" aria-label="Local project metadata">
-          <span>{LOCAL_PROJECT_ID}</span>
-          <span>{LOCAL_BRANCH_ID}</span>
+        <div className="session-meta" aria-label="Project and persistence metadata">
+          <span>{config.projectId}</span>
+          <span>{config.branchId}</span>
+          <span className={`persistence-badge ${status.mode}`}>
+            {status.label}
+          </span>
         </div>
       </header>
 
@@ -127,6 +166,17 @@ export function App() {
         </section>
 
         <aside className="edit-panel" aria-label="Decision controls">
+          <section className="persistence-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Persistence Mode</h2>
+                <p>{status.detail}</p>
+              </div>
+              <strong>{status.label}</strong>
+            </div>
+            <p className="persistence-path">{status.path}</p>
+          </section>
+
           <section className="time-panel">
             <div className="panel-heading">
               <div>
@@ -146,7 +196,10 @@ export function App() {
               aria-label="Current source time"
             />
             <div className="time-row">
-              <button type="button" onClick={() => setClampedSourceTime(sourceTimeMs - 10000)}>
+              <button
+                type="button"
+                onClick={() => setClampedSourceTime(sourceTimeMs - 10000)}
+              >
                 -10s
               </button>
               <label>
@@ -161,7 +214,10 @@ export function App() {
                   }
                 />
               </label>
-              <button type="button" onClick={() => setClampedSourceTime(sourceTimeMs + 10000)}>
+              <button
+                type="button"
+                onClick={() => setClampedSourceTime(sourceTimeMs + 10000)}
+              >
                 +10s
               </button>
             </div>
@@ -184,7 +240,9 @@ export function App() {
               {PROGRAM_STATES.map((state) => (
                 <button
                   key={state}
-                  className={`state-button${currentState === state ? " is-current" : ""}`}
+                  className={`state-button${
+                    currentState === state ? " is-current" : ""
+                  }`}
                   style={{ "--accent": STATE_ACCENTS[state] } as CSSProperties}
                   type="button"
                   onClick={() => addDecision(state)}
@@ -202,17 +260,45 @@ export function App() {
             <div className="panel-heading">
               <div>
                 <h2>Decision Events</h2>
-                <p>{sortedEvents.length} local event{sortedEvents.length === 1 ? "" : "s"}</p>
+                <p>
+                  {sortedEvents.length} event
+                  {sortedEvents.length === 1 ? "" : "s"} in this working set
+                </p>
               </div>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={clearDecisions}
-                disabled={sortedEvents.length === 0}
-              >
-                Clear
-              </button>
+              <div className="toolbar-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  Import JSON
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={handleExportJson}
+                >
+                  Export JSON
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={clearLocalDecisions}
+                  disabled={sortedEvents.length === 0}
+                >
+                  Clear Local
+                </button>
+              </div>
             </div>
+            <input
+              ref={importInputRef}
+              className="file-input"
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImportJson}
+              aria-label="Import decision events JSON"
+            />
+            {importMessage ? <p className="import-message">{importMessage}</p> : null}
             <DecisionList
               events={sortedEvents}
               currentEventId={currentEvent?.id}
@@ -314,7 +400,7 @@ function DecisionList({
   onRemove: (eventId: string) => void;
 }) {
   if (events.length === 0) {
-    return <EmptyState text="No local decisions yet." />;
+    return <EmptyState text="No local or imported decisions yet." />;
   }
 
   return (
@@ -331,7 +417,10 @@ function DecisionList({
         </thead>
         <tbody>
           {events.map((event) => (
-            <tr key={event.id} className={event.id === currentEventId ? "is-current-row" : ""}>
+            <tr
+              key={event.id}
+              className={event.id === currentEventId ? "is-current-row" : ""}
+            >
               <td>{formatSourceTime(event.sourceTimeMs)}</td>
               <td>
                 <span
@@ -349,7 +438,7 @@ function DecisionList({
                     Jump
                   </button>
                   <button type="button" onClick={() => onRemove(event.id)}>
-                    Remove
+                    Remove Local
                   </button>
                 </div>
               </td>
@@ -407,42 +496,6 @@ function EmptyState({ text }: { text: string }) {
   return <p className="empty-state">{text}</p>;
 }
 
-function deriveSegments(events: DecisionEvent[]): DerivedSegment[] {
-  return events.map((event, index) => {
-    const nextEvent = events[index + 1];
-    return {
-      startSourceTimeMs: event.sourceTimeMs,
-      ...(nextEvent ? { endSourceTimeMs: nextEvent.sourceTimeMs } : {}),
-      state: event.state,
-      sourceEventId: event.id,
-    };
-  });
-}
-
-function getCurrentEvent(events: DecisionEvent[], sourceTimeMs: number) {
-  let currentEvent: DecisionEvent | undefined;
-
-  for (const event of events) {
-    if (event.sourceTimeMs <= sourceTimeMs) {
-      currentEvent = event;
-      continue;
-    }
-
-    break;
-  }
-
-  return currentEvent;
-}
-
-function sortDecisionEvents(events: DecisionEvent[]) {
-  return [...events].sort(
-    (left, right) =>
-      left.sourceTimeMs - right.sourceTimeMs ||
-      left.createdAt.localeCompare(right.createdAt) ||
-      left.id.localeCompare(right.id),
-  );
-}
-
 function isSourceActive(role: Exclude<SourceRole, "program">, state?: ProgramState) {
   if (!state || state === "cut") {
     return false;
@@ -453,10 +506,20 @@ function isSourceActive(role: Exclude<SourceRole, "program">, state?: ProgramSta
   }
 
   if (role === "charlie") {
-    return state === "charlie" || state === "both" || state === "charlie_clip" || state === "both_clip";
+    return (
+      state === "charlie" ||
+      state === "both" ||
+      state === "charlie_clip" ||
+      state === "both_clip"
+    );
   }
 
-  return state === "homer" || state === "both" || state === "homer_clip" || state === "both_clip";
+  return (
+    state === "homer" ||
+    state === "both" ||
+    state === "homer_clip" ||
+    state === "both_clip"
+  );
 }
 
 function formatSourceTime(sourceTimeMs: number) {
@@ -464,7 +527,8 @@ function formatSourceTime(sourceTimeMs: number) {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  const paddedMinutes = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
+  const paddedMinutes =
+    hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
   const paddedSeconds = String(seconds).padStart(2, "0");
 
   return hours > 0
@@ -472,58 +536,6 @@ function formatSourceTime(sourceTimeMs: number) {
     : `${paddedMinutes}:${paddedSeconds}`;
 }
 
-function createDecisionId() {
-  if ("randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `decision-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 function shortId(id: string) {
   return id.slice(0, 8);
-}
-
-function loadStoredDecisions() {
-  const rawValue = localStorage.getItem(STORAGE_KEY);
-
-  if (!rawValue) {
-    return [];
-  }
-
-  try {
-    const parsedValue: unknown = JSON.parse(rawValue);
-
-    if (!Array.isArray(parsedValue)) {
-      return [];
-    }
-
-    return parsedValue.filter(isDecisionEvent);
-  } catch {
-    return [];
-  }
-}
-
-function isDecisionEvent(value: unknown): value is DecisionEvent {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const event = value as Partial<DecisionEvent>;
-
-  return (
-    typeof event.id === "string" &&
-    typeof event.projectId === "string" &&
-    typeof event.branchId === "string" &&
-    typeof event.sourceTimeMs === "number" &&
-    Number.isFinite(event.sourceTimeMs) &&
-    isProgramState(event.state) &&
-    typeof event.createdBy === "string" &&
-    typeof event.createdAt === "string" &&
-    (event.note === undefined || typeof event.note === "string")
-  );
-}
-
-function isProgramState(value: unknown): value is ProgramState {
-  return PROGRAM_STATES.includes(value as ProgramState);
 }

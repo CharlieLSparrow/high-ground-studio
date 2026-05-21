@@ -14,7 +14,9 @@ Current slice:
 - `apps/studio-cut-web`: Vite + React + TypeScript editor shell
 - `packages/studio-cut-schema`: shared TypeScript schema for decision events and
   derived program segments
-- browser `localStorage`: temporary local persistence for the first shell
+- browser `localStorage`: always-on local/offline persistence
+- optional Firebase web config: enables Firestore-ready cloud persistence without
+  making Firebase mandatory for local dev
 
 ## Media Boundary
 
@@ -76,18 +78,99 @@ pnpm studio-cut:typecheck
 pnpm studio-cut:build
 ```
 
-The editor currently persists decisions in browser storage under:
+The editor always persists decisions in browser storage under:
 
 ```text
 high-ground-studio.studio-cut.decisions.v1
 ```
+
+Use `apps/studio-cut-web/.env.example` as the local env template. If Firebase
+env vars are absent or blank, the app shows `Local only` and continues to work.
+
+Current non-secret local context vars:
+
+```text
+VITE_STUDIO_CUT_PROJECT_ID
+VITE_STUDIO_CUT_BRANCH_ID
+VITE_STUDIO_CUT_CREATED_BY
+```
+
+Optional Firebase web config vars:
+
+```text
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_STORAGE_BUCKET
+```
+
+Firebase web config is not a service account and should not be confused with
+server credentials. Do not commit service-account JSON, private keys, media,
+proxy packages, or real recordings.
+
+## Persistence Boundary
+
+The web app now separates persistence from `App.tsx`:
+
+- local browser store: `localStorage`
+- cloud-ready store: Firestore adapter behind Firebase env vars
+- runtime schema checks: `packages/studio-cut-schema`
+
+When Firestore is configured, the adapter reads and upserts event documents by
+event id. It does not destructively overwrite a whole branch and it does not
+delete cloud events from the first shell.
+
+Firestore decision path:
+
+```text
+studioCutProjects/{projectId}/branches/{branchId}/decisionEvents/{eventId}
+```
+
+The document body uses the shared `DecisionEvent` shape:
+
+```text
+id
+projectId
+branchId
+sourceTimeMs
+state
+createdBy
+createdAt
+note
+```
+
+Local removal and `Clear Local` only change the current browser working set.
+They are not cloud delete operations.
+
+## JSON Handoff
+
+The editor supports `Export JSON` and `Import JSON` for decision handoff before
+live collaboration exists.
+
+Export shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-05-21T00:00:00.000Z",
+  "projectId": "studio-cut-local-project",
+  "branchId": "local-main",
+  "decisionEvents": []
+}
+```
+
+Import accepts either that object shape or a raw `DecisionEvent[]`. Events are
+validated against the shared schema. Valid imported events are normalized onto
+the active project and branch so the current Firestore path stays coherent.
 
 ## Cloud Shape
 
 Desired deployment shape:
 
 - Firebase Hosting for the static Studio Cut web editor
-- Firestore later for decision events, branches, comments, and project metadata
+- Firestore for decision events now, and later for branches, comments, and
+  project metadata
 - Cloud Storage later for lightweight proxy packages only
 - Cloud Run later for Python APIs and local-engine coordination services
 
@@ -117,6 +200,20 @@ firebase login
 firebase projects:list
 firebase deploy --project PROJECT_ID --only hosting
 ```
+
+For the currently observed local CLI state on 2026-05-21, `gcloud` is configured
+for `high-ground-odyssey`, but the Firebase CLI is not installed in PATH. The
+next operator step is:
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase projects:list
+firebase deploy --project high-ground-odyssey --only hosting
+```
+
+Run the deploy command only after confirming Firebase Hosting is enabled for
+that project and the desired Hosting site/target is correct.
 
 If the operator wants a dedicated non-default Hosting site, create the site and
 target mapping first, then update `firebase.json` to use that target:

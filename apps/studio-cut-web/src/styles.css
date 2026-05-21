@@ -95,6 +95,22 @@ h2 {
   background: rgba(12, 17, 17, 0.78);
 }
 
+.persistence-badge.local_only {
+  color: #f0c96a;
+}
+
+.persistence-badge.cloud_ready {
+  color: #72d6ff;
+}
+
+.persistence-badge.cloud_connected {
+  color: #91de72;
+}
+
+.persistence-badge.cloud_error {
+  color: #ff7474;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -231,9 +247,25 @@ h2 {
 }
 
 .time-panel,
-.state-panel {
+.state-panel,
+.persistence-panel {
   display: grid;
   gap: 14px;
+}
+
+.persistence-panel {
+  border: 1px solid rgba(238, 242, 238, 0.11);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px;
+}
+
+.persistence-path {
+  overflow-wrap: anywhere;
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
 }
 
 .panel-heading p {
@@ -264,6 +296,37 @@ h2 {
   background: rgba(255, 255, 255, 0.06);
   color: #eef2ee;
   font-weight: 750;
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.secondary-button {
+  padding: 0 10px;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.import-message {
+  margin-top: 12px;
+  border: 1px solid rgba(145, 219, 183, 0.24);
+  border-radius: 7px;
+  background: rgba(145, 219, 183, 0.08);
+  color: #d7e0dc;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .time-row label {
