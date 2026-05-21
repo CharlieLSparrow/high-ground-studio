@@ -131,7 +131,7 @@ export default async function ProjectionPreviewMapPage({
       </section>
 
       <section className="mx-auto max-w-[1200px] px-5 py-8 md:px-8">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {HGO_PROJECTION_FILTERS.map((filter) => {
             const href =
               filter.id === "all"
@@ -154,6 +154,12 @@ export default async function ProjectionPreviewMapPage({
               </Link>
             );
           })}
+          <Link
+            href="/projection-preview/import"
+            className="rounded-full border border-flare/35 bg-flare/12 px-4 py-2 text-sm font-bold text-flare no-underline transition hover:bg-flare/18"
+          >
+            Import JSON
+          </Link>
         </div>
       </section>
 

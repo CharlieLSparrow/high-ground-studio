@@ -88,6 +88,12 @@ export type HgoEpisodeProjection = {
     previousSlug?: string;
     nextSlug?: string;
   };
+  projectionSource?: {
+    bridgeVersion: "studio-browser-v1" | "synthetic-fixture-v1";
+    generatedAt: string;
+    sourceFileName?: string;
+    targetEpisodeRegionId?: string;
+  };
 };
 
 export type HgoProjectionMapStats = {

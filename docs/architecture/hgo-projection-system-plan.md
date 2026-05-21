@@ -115,13 +115,32 @@ Current synthetic preview routes:
 
 - `/projection-preview`: book/series map and filter surface.
 - `/projection-preview/[slug]`: visual-heavy projection renderer.
+- `/projection-preview/import`: browser-only pasted JSON import that validates a
+  Studio-generated projection draft and renders it with the same preview
+  component.
 - `/projection-preview/synthetic-episode`: now served by the shared dynamic
   renderer, preserving the original preview URL.
+
+## Studio Bridge
+
+The first Studio-to-HGO bridge is manual and browser-only. Studio's private
+`/manuscript` Publish mode can generate a public-safe HGO episode projection
+JSON draft from synthetic or tagged manuscript metadata. HGO can then paste that
+JSON into `/projection-preview/import` for renderer validation.
+
+The bridge does not create server artifacts, mutate content files, write Prisma
+data, or publish live pages. Its purpose is to prove the projection handoff:
+sources are preserved, spans remain addressable in Studio, tags stay
+actionable, and HGO renders only the projection.
+
+Detailed bridge notes:
+
+- `docs/architecture/studio-to-hgo-projection-bridge.md`
 
 ## What This Does Not Build Yet
 
 - Auth-gated staged preview access.
-- Real Studio export ingestion.
+- Server-side Studio export ingestion.
 - Live public episode replacement.
 - Canonical publishing database.
 - Real HGO content migration.

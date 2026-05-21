@@ -17,6 +17,7 @@ import {
   createBlockRangeSummary,
   createCitedQuotationMarkdown,
   createDefaultManuscriptQuoteReview,
+  createHgoEpisodeProjectionFromManuscript,
   ensureManuscriptBlockIds,
   createManuscriptDraftCheckpointKey,
   createFilteredBlockListMarkdown,
@@ -60,6 +61,9 @@ import {
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
 } from "../apps/studio/src/app/manuscript/manuscript-editor-model.ts";
+import {
+  validateHgoEpisodeProjection,
+} from "../apps/web/src/lib/hgo/projection-validation.ts";
 
 const editorJson = {
   type: "doc",
@@ -2233,4 +2237,87 @@ test("real manuscript readiness gate requires manual smoke confirmations", () =>
   assert.equal(ready.isReadyForRealManuscript, true);
   assert.equal(ready.status, "ready");
   assert.equal(ready.warnings.length, 0);
+});
+
+test("Studio creates a browser-only HGO projection from synthetic smoke data", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const projection = createHgoEpisodeProjectionFromManuscript({
+    title: draft.title,
+    editorJson: draft.editorJson,
+    structureRegions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+    sourceFileName: draft.sourceFileName,
+    generatedAt: "2026-05-21T14:00:00.000Z",
+    projectionStatus: "synthetic",
+    projectionVisibility: "private",
+    targetEpisodeRegionId: "synthetic-smoke-episode",
+  });
+  const serialized = JSON.stringify(projection);
+
+  assert.equal(projection.status, "synthetic");
+  assert.equal(projection.visibility, "private");
+  assert.equal(projection.title, "Synthetic Episode One");
+  assert.equal(projection.projectionSource.generatedAt, "2026-05-21T14:00:00.000Z");
+  assert.equal(
+    projection.projectionSource.sourceFileName,
+    "synthetic-studio-smoke.docx",
+  );
+  assert.ok(projection.beats.length >= 1);
+  assert.ok(projection.voiceCards.some((card) => card.speaker === "Charlie"));
+  assert.ok(projection.voiceCards.some((card) => card.speaker === "Homer"));
+  assert.deepEqual(
+    projection.pullQuotes.map((quote) => quote.citationState).sort(),
+    [
+      "do-not-use",
+      "needs-review",
+      "needs-review",
+      "needs-source",
+      "verified",
+    ],
+  );
+  assert.doesNotMatch(serialized, /"editorJson"/);
+  assert.doesNotMatch(serialized, /"quoteReviews"/);
+  assert.doesNotMatch(serialized, /"structureRegions"/);
+  assert.doesNotMatch(serialized, /"marks"/);
+});
+
+test("HGO projection validator accepts synthetic bridge output and warns on unresolved citations", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const projection = createHgoEpisodeProjectionFromManuscript({
+    title: draft.title,
+    editorJson: draft.editorJson,
+    structureRegions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+    sourceFileName: draft.sourceFileName,
+    generatedAt: "2026-05-21T14:05:00.000Z",
+    projectionStatus: "staged",
+    projectionVisibility: "staged",
+  });
+  const validation = validateHgoEpisodeProjection(projection);
+
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.errors, []);
+  assert.ok(
+    validation.warnings.some((warning) =>
+      warning.includes("would block live publishing"),
+    ),
+  );
+
+  const liveValidation = validateHgoEpisodeProjection({
+    ...projection,
+    status: "live",
+    visibility: "public",
+  });
+
+  assert.equal(liveValidation.ok, true);
+  assert.ok(
+    liveValidation.warnings.some((warning) =>
+      warning.includes("status is live"),
+    ),
+  );
+  assert.ok(
+    liveValidation.warnings.some((warning) =>
+      warning.includes("visibility is public"),
+    ),
+  );
 });

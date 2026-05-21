@@ -25,6 +25,7 @@ Inspected route files and nested routes show these current surfaces:
 - `/episodes/[[...slug]]`
 - `/projection-preview`
 - `/projection-preview/[slug]`
+- `/projection-preview/import`
 - `/coaching`
 - `/coaching/success`
 - `/coaching/cancel`
@@ -74,8 +75,10 @@ The synthetic projection preview system now lives under:
 
 - `apps/web/src/app/projection-preview/page.tsx`
 - `apps/web/src/app/projection-preview/[slug]/page.tsx`
+- `apps/web/src/app/projection-preview/import/page.tsx`
 - `apps/web/src/components/hgo/projection/EpisodeProjectionView.tsx`
 - `apps/web/src/lib/hgo/projection-types.ts`
+- `apps/web/src/lib/hgo/projection-validation.ts`
 - `apps/web/src/lib/hgo/synthetic-episode-projection.ts`
 
 Its behavior:
@@ -91,11 +94,15 @@ Its behavior:
   with verified quote and source state.
 - `/projection-preview/[slug]` renders each visual-heavy projection page using
   the same shared renderer.
+- `/projection-preview/import` parses pasted projection JSON in the browser,
+  validates it, warns on live/public/unresolved citation state, and renders
+  valid JSON through the same shared renderer.
 - `/projection-preview/synthetic-episode` is preserved through the dynamic
   route and no longer depends on one-off page code.
 
-This is synthetic-only. It does not publish real HGO pages, read from Studio,
-write content files, or depend on a database/API.
+This is synthetic/manual only. It does not publish real HGO pages, read from a
+server-side Studio feed, write content files, persist pasted JSON, or depend on
+a database/API.
 
 ## Current Design System And Components
 
@@ -140,6 +147,7 @@ table includes:
 
 - `/projection-preview`
 - `/projection-preview/[slug]`
+- `/projection-preview/import`
 - `/episodes/[[...slug]]`
 
 Known local friction:
@@ -197,13 +205,13 @@ When to reconsider:
 
 ## Recommended Next Architecture Step
 
-Next step: define how Studio produces this projection contract.
+Next step: harden how Studio produces this projection contract.
 
 Candidate path:
 
 1. Keep `/projection-preview` synthetic while the renderer evolves.
-2. Add a Studio export that emits projection JSON from approved browser-local
-   metadata.
+2. Use the browser-only Studio export/import route for synthetic staged review
+   and refine the contract.
 3. Add staged preview access rules before real work-in-progress pages become
    shareable.
 4. Replace or retire the old MDX episode shell only after real projection data

@@ -38,6 +38,7 @@ import {
   createDefaultManuscriptDraft,
   createDefaultManuscriptQuoteReview,
   createAuthorContributionMarkdown,
+  createHgoEpisodeProjectionFromManuscript,
   createPublishingPacketMarkdown,
   createPublishReadinessReport,
   createQuoteReviewAppendixMarkdown,
@@ -94,6 +95,8 @@ import {
   type ManuscriptQuoteReviewStatus,
   type ManuscriptQuoteReviewStatusFilter,
   type ManuscriptQuoteSourceType,
+  type StudioHgoProjectionStatus,
+  type StudioHgoProjectionVisibility,
   type ManuscriptStructureKind,
   type ManuscriptStructureLabelPreset,
   type ManuscriptStructureRegion,
@@ -564,6 +567,13 @@ export function StudioManuscriptClient({
     useState("");
   const [exportAuthorContributionMarkdown, setExportAuthorContributionMarkdown] =
     useState("");
+  const [exportHgoProjectionJson, setExportHgoProjectionJson] = useState("");
+  const [hgoProjectionStatus, setHgoProjectionStatus] =
+    useState<StudioHgoProjectionStatus>("synthetic");
+  const [hgoProjectionVisibility, setHgoProjectionVisibility] =
+    useState<StudioHgoProjectionVisibility>("private");
+  const [selectedHgoProjectionRegionId, setSelectedHgoProjectionRegionId] =
+    useState("");
   const [hasGeneratedSmokePublishingPacket, setHasGeneratedSmokePublishingPacket] =
     useState(false);
   const [hasGeneratedSmokeRecordingHandoff, setHasGeneratedSmokeRecordingHandoff] =
@@ -725,6 +735,22 @@ export function StudioManuscriptClient({
       }),
     [currentEditorJson, structureRegions],
   );
+  const hgoEpisodeRegionOptions = useMemo(
+    () => structureRegionSummaries.filter((region) => region.kind === "episode"),
+    [structureRegionSummaries],
+  );
+  const activeHgoProjectionRegionId = useMemo(() => {
+    if (
+      selectedHgoProjectionRegionId &&
+      hgoEpisodeRegionOptions.some(
+        (region) => region.id === selectedHgoProjectionRegionId,
+      )
+    ) {
+      return selectedHgoProjectionRegionId;
+    }
+
+    return hgoEpisodeRegionOptions[0]?.id ?? "";
+  }, [hgoEpisodeRegionOptions, selectedHgoProjectionRegionId]);
   const structureOutlineMarkdown = useMemo(
     () =>
       createStructureOutlineMarkdown({
@@ -2192,6 +2218,51 @@ export function StudioManuscriptClient({
       content: createAuthorContributionMarkdown(createPublishingExportInput()),
     });
     setMessage("Author contribution Markdown downloaded.");
+  }
+
+  function createHgoProjectionExportInput(generatedAt = new Date().toISOString()) {
+    return {
+      title,
+      editorJson: currentEditorJson,
+      structureRegions,
+      quoteReviews,
+      sourceFileName,
+      generatedAt,
+      projectionStatus: hgoProjectionStatus,
+      projectionVisibility: hgoProjectionVisibility,
+      targetEpisodeRegionId: activeHgoProjectionRegionId || undefined,
+    };
+  }
+
+  function createHgoProjectionJson(generatedAt = new Date().toISOString()) {
+    return JSON.stringify(
+      createHgoEpisodeProjectionFromManuscript(
+        createHgoProjectionExportInput(generatedAt),
+      ),
+      null,
+      2,
+    );
+  }
+
+  function generateHgoEpisodeProjection() {
+    setExportHgoProjectionJson(createHgoProjectionJson());
+    setMessage(
+      "HGO episode projection JSON generated. Review citations before staging or publishing.",
+    );
+  }
+
+  function downloadHgoEpisodeProjection() {
+    const generatedAt = new Date().toISOString();
+    const projectionJson = createHgoProjectionJson(generatedAt);
+
+    setExportHgoProjectionJson(projectionJson);
+    downloadBackup({
+      kind: "hgo-episode-projection",
+      extension: "json",
+      mimeType: "application/json",
+      content: projectionJson,
+    });
+    setMessage("HGO episode projection JSON downloaded.");
   }
 
   function resetSmokeReadinessConfirmations() {
@@ -5239,6 +5310,102 @@ export function StudioManuscriptClient({
 
                 {!isRecordingMode ? (
                   <>
+                    <div className="grid gap-2 rounded-lg border border-studio-source/35 bg-studio-source/10 p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className={labelClassName}>HGO projection bridge</p>
+                        <StudioChip tone="source">Browser only</StudioChip>
+                      </div>
+                      <div className="grid gap-1 text-[0.74rem] leading-relaxed text-studio-muted">
+                        <p className="m-0">
+                          This is a public-safe projection draft.
+                        </p>
+                        <p className="m-0">It is not a server publish.</p>
+                        <p className="m-0">It is not a live HGO page.</p>
+                        <p className="m-0">
+                          Review citations before staging or publishing.
+                        </p>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="grid gap-1">
+                          <span className={fieldLabelClassName}>Status</span>
+                          <select
+                            className={fieldClassName}
+                            value={hgoProjectionStatus}
+                            onChange={(event) =>
+                              setHgoProjectionStatus(
+                                event.target.value as StudioHgoProjectionStatus,
+                              )
+                            }
+                          >
+                            <option value="synthetic">Synthetic</option>
+                            <option value="staged">Staged</option>
+                          </select>
+                        </label>
+                        <label className="grid gap-1">
+                          <span className={fieldLabelClassName}>Visibility</span>
+                          <select
+                            className={fieldClassName}
+                            value={hgoProjectionVisibility}
+                            onChange={(event) =>
+                              setHgoProjectionVisibility(
+                                event.target.value as StudioHgoProjectionVisibility,
+                              )
+                            }
+                          >
+                            <option value="private">Private</option>
+                            <option value="staged">Staged</option>
+                          </select>
+                        </label>
+                      </div>
+                      {hgoEpisodeRegionOptions.length > 0 ? (
+                        <label className="grid gap-1">
+                          <span className={fieldLabelClassName}>Episode region</span>
+                          <select
+                            className={fieldClassName}
+                            value={activeHgoProjectionRegionId}
+                            onChange={(event) =>
+                              setSelectedHgoProjectionRegionId(event.target.value)
+                            }
+                          >
+                            {hgoEpisodeRegionOptions.map((region) => (
+                              <option key={region.id} value={region.id}>
+                                {region.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <p className="m-0 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2 text-[0.76rem] leading-relaxed text-studio-muted">
+                          No Episode region exists yet. The bridge will generate a
+                          whole-manuscript synthetic projection draft with a warning.
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={generateHgoEpisodeProjection}
+                        >
+                          Generate HGO episode projection JSON
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={downloadHgoEpisodeProjection}
+                        >
+                          Download HGO episode projection JSON
+                        </button>
+                      </div>
+                      <textarea
+                        className={cn(
+                          textareaClassName,
+                          "min-h-[150px] font-mono text-xs",
+                        )}
+                        readOnly
+                        value={exportHgoProjectionJson}
+                      />
+                    </div>
+
                     <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                       <HelpLabel noteId="publishing-packet">
                         Publishing packet

@@ -265,6 +265,27 @@ Use synthetic manuscript text only for this smoke.
     Publish controls remain inside the mobile Tools path, and no large
     publishing panel appears above the manuscript.
 
+## Studio To HGO Projection Bridge Smoke Steps
+
+Use synthetic manuscript text only for this smoke.
+
+1. Open Studio `/manuscript`.
+2. Switch to `Publish`.
+3. Load the synthetic smoke draft.
+4. In `HGO projection bridge`, select an Episode region if more than one is
+   available.
+5. Generate HGO episode projection JSON.
+6. Confirm the textarea contains projection JSON, not full draft JSON.
+7. Download HGO episode projection JSON.
+8. Open HGO `/projection-preview/import`.
+9. Paste the projection JSON.
+10. Confirm the visual episode page renders with the shared HGO projection
+    renderer.
+11. Confirm unresolved citation states are visible as warnings.
+12. Confirm no server snapshot is saved and no localStorage persistence is
+    created by the import page.
+13. Confirm no real manuscript text or real HGO content is used.
+
 ## Manual Smoke Script
 
 1. Open `/manuscript`.

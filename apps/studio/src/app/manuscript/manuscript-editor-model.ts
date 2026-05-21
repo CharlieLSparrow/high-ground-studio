@@ -358,6 +358,105 @@ export type ManuscriptPublishingExportInput = {
   includeRecordingChecks?: boolean;
 };
 
+export type StudioHgoProjectionStatus = "synthetic" | "staged";
+
+export type StudioHgoProjectionVisibility = "private" | "staged";
+
+export type StudioHgoContentScope =
+  | "book-only"
+  | "episode-only"
+  | "book-and-episode"
+  | "internal";
+
+export type StudioHgoCitationState =
+  | "synthetic"
+  | "needs-source"
+  | "needs-review"
+  | "verified"
+  | "do-not-use";
+
+export type StudioHgoSourceNoteStatus =
+  | "synthetic"
+  | "needs-review"
+  | "verified"
+  | "do-not-use";
+
+export type StudioHgoEpisodeProjection = {
+  id: string;
+  status: StudioHgoProjectionStatus;
+  visibility: StudioHgoProjectionVisibility;
+  slug: string;
+  episodeNumber: string;
+  title: string;
+  subtitle: string;
+  summary: string;
+  thesis: string;
+  lifecycleNote: string;
+  hero: {
+    eyebrow: string;
+    visualPrompt: string;
+    colorMood: string;
+  };
+  audio: {
+    state: "not-recorded" | "recorded" | "published";
+    placeholderLabel: string;
+    durationLabel?: string;
+    url?: string;
+  };
+  scopes: StudioHgoContentScope[];
+  beats: Array<{
+    title: string;
+    summary: string;
+    scope: StudioHgoContentScope;
+    timingHint?: string;
+  }>;
+  voiceCards: Array<{
+    speaker: "Charlie" | "Homer";
+    summary: string;
+  }>;
+  pullQuotes: Array<{
+    text: string;
+    attribution: string;
+    citationState: StudioHgoCitationState;
+  }>;
+  sourceNotes: Array<{
+    label: string;
+    detail: string;
+    status: StudioHgoSourceNoteStatus;
+  }>;
+  relatedBookChapter?: {
+    title: string;
+    summary: string;
+    status: StudioHgoProjectionStatus;
+  };
+  backstageNotes: Array<{
+    label: string;
+    note: string;
+  }>;
+  navigation?: {
+    previousSlug?: string;
+    nextSlug?: string;
+  };
+  projectionSource: {
+    bridgeVersion: "studio-browser-v1";
+    generatedAt: string;
+    sourceFileName?: string;
+    targetEpisodeRegionId?: string;
+  };
+};
+
+export type CreateHgoEpisodeProjectionFromManuscriptInput = {
+  title: string;
+  editorJson: ManuscriptEditorJson;
+  structureRegions: ManuscriptStructureRegion[];
+  quoteReviews: Record<string, ManuscriptQuoteReview>;
+  sourceFileName: string | null;
+  generatedAt: string;
+  projectionStatus: StudioHgoProjectionStatus;
+  projectionVisibility: StudioHgoProjectionVisibility;
+  targetEpisodeRegionId?: string;
+};
+
 export type ManuscriptChapterEpisodeExportOption = {
   id: string;
   kind: Extract<ManuscriptStructureKind, "chapter" | "episode">;
@@ -2231,6 +2330,284 @@ function createPublishingContext(input: ManuscriptPublishingExportInput) {
     structureRegions,
     citedQuotations,
     authorSummaries,
+  };
+}
+
+function createProjectionSlug(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "studio-hgo-projection";
+}
+
+function isSyntheticSafeSourceFileName(value: string | null) {
+  return Boolean(value && /synthetic/i.test(value));
+}
+
+function mapStructureKindToHgoScope(
+  kind: ManuscriptStructureKind,
+): StudioHgoContentScope {
+  if (kind === "chapter") {
+    return "book-and-episode";
+  }
+
+  if (kind === "episode") {
+    return "episode-only";
+  }
+
+  return "internal";
+}
+
+function mapQuoteReviewToHgoCitationState(
+  quotation: ManuscriptCitedQuotationSummary,
+): StudioHgoCitationState {
+  if (!quotation.hasReviewMetadata) {
+    return "needs-review";
+  }
+
+  if (quotation.review.reviewStatus === "needs-source") {
+    return "needs-source";
+  }
+
+  if (quotation.review.reviewStatus === "needs-verification") {
+    return "needs-review";
+  }
+
+  return quotation.review.reviewStatus;
+}
+
+function mapQuoteReviewToHgoSourceNoteStatus(
+  quotation: ManuscriptCitedQuotationSummary,
+): StudioHgoSourceNoteStatus {
+  if (!quotation.hasReviewMetadata) {
+    return "needs-review";
+  }
+
+  if (quotation.review.reviewStatus === "verified") {
+    return "verified";
+  }
+
+  if (quotation.review.reviewStatus === "do-not-use") {
+    return "do-not-use";
+  }
+
+  return "needs-review";
+}
+
+function uniqueHgoScopes(
+  scopes: StudioHgoContentScope[],
+): StudioHgoContentScope[] {
+  const preferredOrder: StudioHgoContentScope[] = [
+    "book-and-episode",
+    "episode-only",
+    "book-only",
+    "internal",
+  ];
+  const scopeSet = new Set(scopes);
+
+  return preferredOrder.filter((scope) => scopeSet.has(scope));
+}
+
+function createProjectionBeatTitle(region: ManuscriptStructureRegionSummary) {
+  const definition = getManuscriptStructureDefinition(region.kind);
+  return `${definition.label}: ${region.title}`;
+}
+
+function createProjectionBeatSummary(region: ManuscriptStructureRegionSummary) {
+  const blockLabel =
+    region.blockCount === 1 ? "1 addressable block" : `${region.blockCount} addressable blocks`;
+
+  return `${blockLabel} in Studio structure. Review source spans and citation state in Studio before this projection is staged or published.`;
+}
+
+function createProjectionSourceNoteDetail(
+  quotation: ManuscriptCitedQuotationSummary,
+) {
+  if (!quotation.hasReviewMetadata) {
+    return "No Studio quote-review metadata is attached yet.";
+  }
+
+  const review = quotation.review;
+  const details = [
+    review.citationText.trim(),
+    review.locator.trim() ? `Locator: ${review.locator.trim()}` : "",
+  ].filter(Boolean);
+
+  if (details.length) {
+    return details.join(" ");
+  }
+
+  return `${getManuscriptQuoteReviewStatusDefinition(review.reviewStatus).label} in Studio quote review.`;
+}
+
+export function createHgoEpisodeProjectionFromManuscript(
+  input: CreateHgoEpisodeProjectionFromManuscriptInput,
+): StudioHgoEpisodeProjection {
+  const context = createPublishingContext({
+    title: input.title,
+    sourceFileName: input.sourceFileName,
+    editorJson: input.editorJson,
+    structureRegions: input.structureRegions,
+    quoteReviews: input.quoteReviews,
+    generatedAt: input.generatedAt,
+    includeRecordingChecks: true,
+  });
+  const episodeRegions = context.structureRegions.filter(
+    (region) => region.kind === "episode",
+  );
+  const targetEpisodeRegion =
+    episodeRegions.find((region) => region.id === input.targetEpisodeRegionId) ??
+    episodeRegions[0] ??
+    null;
+  const targetBlockIds = targetEpisodeRegion
+    ? new Set(targetEpisodeRegion.blockIds)
+    : null;
+  const projectionTitle =
+    targetEpisodeRegion?.title.trim() || input.title.trim() || defaultTitle;
+  const slug = createProjectionSlug(projectionTitle);
+  const selectedBlocks = targetBlockIds
+    ? context.blocks.filter(
+        (block) => block.blockId && targetBlockIds.has(block.blockId),
+      )
+    : context.blocks;
+  const relevantRegions = context.structureRegions.filter((region) => {
+    if (!region.isRangeComplete) {
+      return false;
+    }
+
+    if (!targetBlockIds) {
+      return true;
+    }
+
+    return region.blockIds.some((blockId) => targetBlockIds.has(blockId));
+  });
+  const beatRegions = relevantRegions.length
+    ? relevantRegions
+    : targetEpisodeRegion
+      ? [targetEpisodeRegion]
+      : [];
+  const beats =
+    beatRegions.length > 0
+      ? beatRegions.slice(0, 8).map((region) => ({
+          title: createProjectionBeatTitle(region),
+          summary: createProjectionBeatSummary(region),
+          scope: mapStructureKindToHgoScope(region.kind),
+        }))
+      : [
+          {
+            title: "Whole manuscript projection draft",
+            summary:
+              "No Episode region is selected. This browser-only draft uses the whole tagged manuscript shape until an Episode region exists.",
+            scope: "internal" as const,
+          },
+        ];
+  const selectedBlockIdSet = new Set(
+    selectedBlocks.flatMap((block) => (block.blockId ? [block.blockId] : [])),
+  );
+  const selectedQuotations = context.citedQuotations.filter((quotation) => {
+    if (!targetBlockIds) {
+      return true;
+    }
+
+    return quotation.blockId ? selectedBlockIdSet.has(quotation.blockId) : false;
+  });
+  const sourceFileName = isSyntheticSafeSourceFileName(input.sourceFileName)
+    ? input.sourceFileName?.trim()
+    : undefined;
+  const chapterRegion = relevantRegions.find((region) => region.kind === "chapter");
+  const unresolvedCitationCount = selectedQuotations.filter(
+    (quotation) => mapQuoteReviewToHgoCitationState(quotation) !== "verified",
+  ).length;
+
+  return {
+    id: `studio-hgo-${slug}`,
+    status: input.projectionStatus,
+    visibility: input.projectionVisibility,
+    slug,
+    episodeNumber: targetEpisodeRegion
+      ? `STUDIO-${String(targetEpisodeRegion.order).padStart(3, "0")}`
+      : "STUDIO-DRAFT",
+    title: projectionTitle,
+    subtitle: "Browser-only HGO projection draft generated from Studio metadata.",
+    summary: targetEpisodeRegion
+      ? `Projection draft for ${targetEpisodeRegion.title}, derived from ${selectedBlocks.length.toLocaleString()} tagged Studio block${selectedBlocks.length === 1 ? "" : "s"}.`
+      : `Whole-manuscript projection draft derived from ${selectedBlocks.length.toLocaleString()} tagged Studio block${selectedBlocks.length === 1 ? "" : "s"}.`,
+    thesis:
+      "The final output is not the source. This page is a projection of tagged source material for staged review.",
+    lifecycleNote:
+      "Browser-only Studio export. It is not a server publish, not a live HGO page, and not canonical manuscript or content truth.",
+    hero: {
+      eyebrow: "Studio Projection Bridge",
+      visualPrompt:
+        "A private Studio workbench projecting safe episode cards onto a High Ground Odyssey preview wall.",
+      colorMood: "ember, slate, paper, signal green",
+    },
+    audio: {
+      state: "not-recorded",
+      placeholderLabel: "Projection audio placeholder",
+      durationLabel: targetEpisodeRegion
+        ? `${targetEpisodeRegion.blockCount.toLocaleString()} Studio block${targetEpisodeRegion.blockCount === 1 ? "" : "s"}`
+        : "Whole manuscript draft",
+    },
+    scopes: uniqueHgoScopes([
+      ...beats.map((beat) => beat.scope),
+      "internal",
+    ]),
+    beats,
+    voiceCards: context.authorSummaries
+      .filter((author) => author.authorId === "charlie" || author.authorId === "homer")
+      .map((author) => ({
+        speaker: author.authorId === "charlie" ? "Charlie" : "Homer",
+        summary: `${author.words.toLocaleString()} public-reviewable word${author.words === 1 ? "" : "s"} across ${author.spans.toLocaleString()} tagged span${author.spans === 1 ? "" : "s"} in the Studio draft.`,
+      })),
+    pullQuotes: selectedQuotations.map((quotation) => ({
+      text: quotation.text.trim(),
+      attribution:
+        quotation.review.attributedTo.trim() ||
+        quotation.review.sourceTitle.trim() ||
+        "Studio cited quotation",
+      citationState: mapQuoteReviewToHgoCitationState(quotation),
+    })),
+    sourceNotes: selectedQuotations.map((quotation) => ({
+      label:
+        quotation.review.sourceTitle.trim() ||
+        quotation.review.attributedTo.trim() ||
+        "Unreviewed Studio quote",
+      detail: createProjectionSourceNoteDetail(quotation),
+      status: mapQuoteReviewToHgoSourceNoteStatus(quotation),
+    })),
+    relatedBookChapter: chapterRegion
+      ? {
+          title: chapterRegion.title,
+          summary: `${chapterRegion.blockCount.toLocaleString()} addressable Studio block${chapterRegion.blockCount === 1 ? "" : "s"} are available in the related Chapter / book region.`,
+          status: input.projectionStatus,
+        }
+      : undefined,
+    backstageNotes: [
+      {
+        label: "Bridge boundary",
+        note: "Generated in the browser from Studio metadata. No server write, publish action, or canonical content file write is included.",
+      },
+      {
+        label: "Citation gate",
+        note: unresolvedCitationCount
+          ? `${unresolvedCitationCount.toLocaleString()} selected quote${unresolvedCitationCount === 1 ? "" : "s"} still need source, review, or removal before any future live publish.`
+          : "Selected cited quotations are verified in Studio quote review metadata.",
+      },
+      {
+        label: "Source safety",
+        note: "This projection omits full draft JSON, private editor notes, browser-local state, and manual snapshot metadata.",
+      },
+    ],
+    projectionSource: {
+      bridgeVersion: "studio-browser-v1",
+      generatedAt: input.generatedAt,
+      ...(sourceFileName ? { sourceFileName } : {}),
+      ...(targetEpisodeRegion ? { targetEpisodeRegionId: targetEpisodeRegion.id } : {}),
+    },
   };
 }
 

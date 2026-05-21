@@ -53,6 +53,13 @@ High Ground Studio is a monorepo with:
   to test marks, structure, quotes, quote reviews, manual snapshots,
   phone/second-browser loading, Recording / Reading mode, and Publish exports
   before real manuscript material enters Studio.
+- The private Studio `/manuscript` desk can generate a browser-only HGO episode
+  projection JSON draft from synthetic/tagged manuscript metadata in Publish
+  mode. The export is a projection draft, not raw manuscript draft JSON, not a
+  server publish, and not canonical public content.
+- HGO has a browser-only `/projection-preview/import` route that accepts pasted
+  projection JSON, validates lifecycle/visibility/citation state, and renders it
+  with the same projection preview component without persisting or publishing it.
 
 ## Current Coaching Workflow
 
@@ -85,6 +92,9 @@ High Ground Studio is a monorepo with:
 - Studio Manuscript synthetic readiness checks are browser-local safety
   guidance. They do not write canonical content and do not replace the manual
   judgment required for the first real manuscript import.
+- The Studio-to-HGO projection bridge is browser-only/manual. It does not create
+  a DB projection table, live publish API, public deployment pipeline, autosave,
+  collaboration layer, or server-side staged artifact store.
 
 ## Current Stabilization Decisions
 
