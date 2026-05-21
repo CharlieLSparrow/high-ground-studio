@@ -49,5 +49,6 @@ GIT
 .env.*
 !.env.example
 apps/web/.env.local
+apps/studio-cut-web/.env.production.local
 .firebase/
 .aider*

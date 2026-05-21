@@ -120,6 +120,17 @@ Firebase web config is not a service account and should not be confused with
 server credentials. Do not commit service-account JSON, private keys, media,
 proxy packages, or real recordings.
 
+Current Firebase Web App:
+
+```text
+Display name: studio-cut-web
+App ID: 1:659427658635:web:6a29892c9e4fba8dcebd8e
+Project: high-ground-odyssey
+```
+
+Do not create another Firebase Web App for Studio Cut unless the existing app
+has been intentionally deleted.
+
 ## Auth Gate
 
 Studio Cut now has a first internal-only auth boundary:
@@ -143,6 +154,16 @@ This app-level gate is not a substitute for Firestore security rules. Do not
 put private podcast data, proxy package references, or real collaboration data
 into Firestore until rules are scoped to approved internal users and explicit
 project/branch permissions.
+
+Firebase Auth provider setup is still an operator step in the Firebase Console:
+
+1. Open Firebase Console for `high-ground-odyssey`.
+2. Go to Authentication -> Sign-in method.
+3. Enable Google as a provider.
+4. Confirm the authorized domain includes `high-ground-odyssey.web.app`.
+
+Without the Google provider enabled, the deployed app can render the auth gate
+but Google sign-in will fail.
 
 ## Persistence Boundary
 
@@ -222,6 +243,59 @@ https://high-ground-odyssey.web.app
 ```
 
 Deploy command that worked:
+
+```bash
+pnpm studio-cut:build
+firebase deploy --project high-ground-odyssey --only hosting
+```
+
+Production env workflow:
+
+1. Confirm the Firebase Web App exists:
+
+```bash
+firebase apps:list --project high-ground-odyssey
+```
+
+Expected existing Web App:
+
+```text
+studio-cut-web
+1:659427658635:web:6a29892c9e4fba8dcebd8e
+```
+
+2. Only if the app is missing and the CLI confirms the project is
+   `high-ground-odyssey`, create it:
+
+```bash
+firebase apps:create WEB studio-cut-web --project high-ground-odyssey
+```
+
+3. Fetch the SDK config for the existing app:
+
+```bash
+firebase apps:sdkconfig WEB 1:659427658635:web:6a29892c9e4fba8dcebd8e --project high-ground-odyssey
+```
+
+4. Create `apps/studio-cut-web/.env.production.local` from that output:
+
+```bash
+VITE_STUDIO_CUT_PROJECT_ID=studio-cut-local-project
+VITE_STUDIO_CUT_BRANCH_ID=local-main
+VITE_STUDIO_CUT_CREATED_BY=local-web-editor
+VITE_STUDIO_CUT_ALLOWED_EMAILS=charlie@highgroundodyssey.com
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=high-ground-odyssey.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=high-ground-odyssey
+VITE_FIREBASE_APP_ID=1:659427658635:web:6a29892c9e4fba8dcebd8e
+VITE_FIREBASE_STORAGE_BUCKET=high-ground-odyssey.firebasestorage.app
+```
+
+`apps/studio-cut-web/.env.production.local` is ignored by git. Do not commit
+real Firebase config values, service-account files, private keys, media,
+proxies, or private podcast data.
+
+5. Build and deploy:
 
 ```bash
 pnpm studio-cut:build
