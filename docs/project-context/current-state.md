@@ -48,6 +48,11 @@ High Ground Studio is a monorepo with:
   existing browser-local draft, structure regions, author marks, cited
   quotations, quote review metadata, and manual snapshot status. These exports
   do not write server files or canonical public content.
+- The private Studio `/manuscript` desk now includes a synthetic smoke draft and
+  real-manuscript readiness gate. The smoke draft is fake text only and is meant
+  to test marks, structure, quotes, quote reviews, manual snapshots,
+  phone/second-browser loading, Recording / Reading mode, and Publish exports
+  before real manuscript material enters Studio.
 
 ## Current Coaching Workflow
 
@@ -77,6 +82,9 @@ High Ground Studio is a monorepo with:
 - Studio Manuscript simultaneous editing / Yjs collaboration is not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a
   canonical publishing database or public projection pipeline.
+- Studio Manuscript synthetic readiness checks are browser-local safety
+  guidance. They do not write canonical content and do not replace the manual
+  judgment required for the first real manuscript import.
 
 ## Current Stabilization Decisions
 

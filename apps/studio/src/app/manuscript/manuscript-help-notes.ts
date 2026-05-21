@@ -24,7 +24,11 @@ export type ManuscriptHelpNoteId =
   | "recording-handoff-packet"
   | "publish-readiness-report"
   | "quote-review-appendix"
-  | "author-contribution-export";
+  | "author-contribution-export"
+  | "synthetic-smoke-draft"
+  | "real-manuscript-readiness-gate"
+  | "phone-load-smoke"
+  | "first-real-manuscript-import";
 
 export type ManuscriptHelpNote = {
   id: ManuscriptHelpNoteId;
@@ -348,6 +352,54 @@ export const manuscriptHelpNotes = {
       "It is not legal authorship truth and does not change permissions or canonical status.",
     whenToUse:
       "Use it when the handoff needs a quick sense of whose material is where.",
+  },
+  "synthetic-smoke-draft": {
+    id: "synthetic-smoke-draft",
+    label: "Smoke draft",
+    title: "A fake manuscript built to trip every wire",
+    body: "The synthetic smoke draft is invented text designed to exercise author marks, structure, cited quotations, quote reviews, snapshots, Recording mode, and Publish exports before the real manuscript walks in wearing its good shoes.",
+    whatItDoes:
+      "It loads a complete fake Manuscript Desk draft into this browser so the whole workflow can be tested without real manuscript material.",
+    whatItDoesNot:
+      "It does not save itself to the server, replace canonical content, or prove the real manuscript is imported correctly.",
+    whenToUse:
+      "Use it before first real manuscript import, after deploys, and whenever the cross-device workflow needs a calm rehearsal.",
+  },
+  "real-manuscript-readiness-gate": {
+    id: "real-manuscript-readiness-gate",
+    label: "Real gate",
+    title: "The velvet rope before real words enter",
+    body: "The readiness gate is a browser-local checklist for proving the synthetic workflow first. It is less a guard dog than a doorperson with a clipboard and excellent memory.",
+    whatItDoes:
+      "It checks whether the synthetic draft is loaded, metadata paths are present, exports were generated, a snapshot was saved, phone load was confirmed, and a full draft JSON backup was downloaded.",
+    whatItDoesNot:
+      "It does not inspect private real manuscript quality, save to the server, or unlock any hidden publishing system.",
+    whenToUse:
+      "Use it immediately before importing the real manuscript for the first time.",
+  },
+  "phone-load-smoke": {
+    id: "phone-load-smoke",
+    label: "Phone smoke",
+    title: "Make the second device prove it was invited",
+    body: "Phone load smoke means saving a synthetic server snapshot on desktop, loading it on a phone or second browser, and confirming the text plus metadata survived the trip.",
+    whatItDoes:
+      "It verifies the manual snapshot path that Homer will depend on for Recording / Reading mode.",
+    whatItDoesNot:
+      "It is not simultaneous editing, not autosave, and not proof that two devices can edit at the same time.",
+    whenToUse:
+      "Use it before the first real manuscript save and before any real recording handoff.",
+  },
+  "first-real-manuscript-import": {
+    id: "first-real-manuscript-import",
+    label: "First import",
+    title: "Opening the door for the real manuscript",
+    body: "The first real manuscript import should happen only after the synthetic rehearsal works. The desk is sturdy, but real words deserve a clean floor and a spare key.",
+    whatItDoes:
+      "It reminds Charlie to download a JSON backup immediately after import, then save the first real server snapshot with a clear note.",
+    whatItDoesNot:
+      "It does not move material into canonical public content or turn snapshots into publication.",
+    whenToUse:
+      "Use it as the final checklist before and immediately after the real manuscript enters Studio.",
   },
 } satisfies Record<ManuscriptHelpNoteId, ManuscriptHelpNote>;
 

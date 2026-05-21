@@ -192,6 +192,35 @@ Use these steps when changing the desktop or tablet Manuscript Desk shell.
     marks, semantic marks, structure regions, cited quotations, quote review
     metadata, filters, or server snapshot state.
 
+## Real Manuscript Entry Checklist
+
+Use synthetic manuscript text only until this checklist is complete.
+
+1. Open `/manuscript`.
+2. Switch to `Publish`.
+3. In `Real manuscript readiness`, click `Load synthetic smoke draft`.
+4. Confirm the synthetic draft appears with fake-only text, headings, author
+   marks, semantic tags, cited quotations, quote reviews, and structure
+   regions.
+5. In `Backup`, save a synthetic server snapshot with a clear synthetic-only
+   note.
+6. Open a phone or second browser profile.
+7. Load the latest synthetic snapshot.
+8. Confirm the synthetic text, author marks, structure regions, cited
+   quotations, and quote review metadata survive the trip.
+9. Return to `Publish` and generate the publishing packet.
+10. Generate the recording handoff.
+11. Generate the quote appendix.
+12. Download a full draft JSON backup.
+13. Check the readiness confirmations for synthetic server snapshot save,
+    phone / second-browser load, and full draft JSON backup.
+14. Confirm the gate says `Ready to import real manuscript`.
+15. Only then import the real manuscript.
+16. Immediately download a full draft JSON backup after real import.
+17. Save the first real server snapshot with a clear note.
+18. Confirm no autosave, collaboration, canonical content write, or public
+    publishing action happened during the smoke.
+
 ## Publishing / Handoff Smoke Steps
 
 Use synthetic manuscript text only for this smoke.

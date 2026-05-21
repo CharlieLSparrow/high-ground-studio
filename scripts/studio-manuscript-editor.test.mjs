@@ -28,12 +28,15 @@ import {
   createPublishingPacketMarkdown,
   createPublishReadinessReport,
   createQuoteReviewAppendixMarkdown,
+  createRealManuscriptReadinessGate,
   createRecordingHandoffMarkdown,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
+  createSyntheticManuscriptSmokeDraft,
   filterCitedQuotationsByReviewStatus,
   filterManuscriptBlocks,
   hasMeaningfulManuscriptDraft,
+  isSyntheticManuscriptSmokeDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
@@ -142,6 +145,10 @@ test("manuscript help notes cover the confusing desk concepts", () => {
     "publish-readiness-report",
     "quote-review-appendix",
     "author-contribution-export",
+    "synthetic-smoke-draft",
+    "real-manuscript-readiness-gate",
+    "phone-load-smoke",
+    "first-real-manuscript-import",
   ];
 
   for (const id of requiredNoteIds) {
@@ -2084,4 +2091,146 @@ test("chapter and episode export options summarize handoff regions", () => {
   );
   assert.equal(options[0].title, "Chapter One");
   assert.equal(options[1].title, "Episode 1");
+});
+
+test("synthetic smoke draft parses and includes expected structures", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const parsed = safeManuscriptDraft(draft);
+
+  assert.ok(parsed);
+  assert.ok(isSyntheticManuscriptSmokeDraft(parsed));
+  assert.equal(parsed.title, "Synthetic Studio Smoke Draft");
+  assert.equal(parsed.sourceFileName, "synthetic-studio-smoke.docx");
+  assert.equal(collectBlockSummaries(parsed.editorJson).length, 10);
+  assert.deepEqual(
+    parsed.structureRegions.map((region) => region.kind),
+    ["chapter", "episode", "section"],
+  );
+});
+
+test("synthetic smoke draft has Charlie Homer and unassigned author material", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const authors = summarizeAuthorMarkedSpans(draft.editorJson);
+  const semanticTags = collectSemanticHighlights(draft.editorJson).map(
+    (highlight) => highlight.tagType,
+  );
+
+  assert.ok(authors.find((author) => author.authorId === "charlie").words > 0);
+  assert.ok(authors.find((author) => author.authorId === "homer").words > 0);
+  assert.ok(
+    authors.find((author) => author.authorId === "unassigned").words > 0,
+  );
+  assert.ok(semanticTags.includes("story"));
+  assert.ok(semanticTags.includes("insight"));
+  assert.ok(semanticTags.includes("question"));
+  assert.ok(semanticTags.includes("transition"));
+});
+
+test("synthetic smoke draft covers cited quote review statuses", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const quotations = collectCitedQuotationHighlights({
+    json: draft.editorJson,
+    regions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+  });
+  const progress = summarizeCitedQuotationReviewProgress(quotations);
+  const explicitStatuses = quotations
+    .filter((quotation) => quotation.hasReviewMetadata)
+    .map((quotation) => quotation.review.reviewStatus)
+    .sort();
+
+  assert.equal(quotations.length, 5);
+  assert.equal(progress.total, 5);
+  assert.equal(progress.noReviewMetadata, 1);
+  assert.deepEqual(explicitStatuses, [
+    "do-not-use",
+    "needs-source",
+    "needs-verification",
+    "verified",
+  ]);
+});
+
+test("publish readiness report detects synthetic smoke quote statuses", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const report = createPublishReadinessReport({
+    title: draft.title,
+    sourceFileName: draft.sourceFileName,
+    editorJson: draft.editorJson,
+    structureRegions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+    generatedAt: "2026-05-21T13:00:00.000Z",
+    includeRecordingChecks: true,
+  });
+
+  assert.equal(report.stats.blocks, 10);
+  assert.equal(report.structure.chapterRegions, 1);
+  assert.equal(report.structure.episodeRegions, 1);
+  assert.equal(report.structure.sectionRegions, 1);
+  assert.equal(report.quoteReview.needsSource, 1);
+  assert.equal(report.quoteReview.needsVerification, 1);
+  assert.equal(report.quoteReview.verified, 1);
+  assert.equal(report.quoteReview.doNotUse, 1);
+  assert.equal(report.quoteReview.noReviewMetadata, 1);
+});
+
+test("synthetic smoke publishing and recording Markdown exports work", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const exportInput = {
+    title: draft.title,
+    sourceFileName: draft.sourceFileName,
+    editorJson: draft.editorJson,
+    structureRegions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+    generatedAt: "2026-05-21T13:05:00.000Z",
+    includeRecordingChecks: true,
+  };
+  const packet = createPublishingPacketMarkdown(exportInput);
+  const handoff = createRecordingHandoffMarkdown(exportInput);
+
+  assert.match(packet, /Synthetic Studio Smoke Draft/);
+  assert.match(packet, /Synthetic Chapter One/);
+  assert.match(packet, /Quote Review Appendix/);
+  assert.match(handoff, /Synthetic Episode One/);
+  assert.match(handoff, /Before Recording Checklist/);
+});
+
+test("real manuscript readiness gate requires manual smoke confirmations", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const report = createPublishReadinessReport({
+    title: draft.title,
+    sourceFileName: draft.sourceFileName,
+    editorJson: draft.editorJson,
+    structureRegions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+    generatedAt: "2026-05-21T13:10:00.000Z",
+    includeRecordingChecks: true,
+  });
+  const notReady = createRealManuscriptReadinessGate({
+    currentDraft: draft,
+    publishReadinessReport: report,
+  });
+  const ready = createRealManuscriptReadinessGate({
+    currentDraft: draft,
+    publishReadinessReport: report,
+    manualSignals: {
+      publishingPacketGenerated: true,
+      recordingHandoffGenerated: true,
+      quoteAppendixGenerated: true,
+      serverSnapshotSaved: true,
+      phoneOrSecondBrowserLoaded: true,
+      fullDraftJsonBackupDownloaded: true,
+    },
+  });
+
+  assert.equal(notReady.isReadyForRealManuscript, false);
+  assert.equal(notReady.status, "not-ready");
+  assert.ok(
+    notReady.checklistItems.some(
+      (item) =>
+        item.id === "server-snapshot-saved" && item.isComplete === false,
+    ),
+  );
+  assert.equal(ready.isReadyForRealManuscript, true);
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.warnings.length, 0);
 });

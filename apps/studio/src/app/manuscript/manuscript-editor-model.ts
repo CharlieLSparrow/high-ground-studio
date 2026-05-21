@@ -296,6 +296,57 @@ export type ManuscriptPublishReadinessReport = {
   snapshotCaution: string;
 };
 
+export type ManuscriptRealReadinessChecklistItemId =
+  | "synthetic-draft-loaded"
+  | "structure-regions-tested"
+  | "author-marks-tested"
+  | "cited-quotations-tested"
+  | "quote-review-tested"
+  | "publishing-packet-generated"
+  | "recording-handoff-generated"
+  | "quote-appendix-generated"
+  | "server-snapshot-saved"
+  | "phone-load-smoke-tested"
+  | "full-draft-json-backup-downloaded";
+
+export type ManuscriptRealReadinessManualSignals = {
+  publishingPacketGenerated?: boolean;
+  recordingHandoffGenerated?: boolean;
+  quoteAppendixGenerated?: boolean;
+  serverSnapshotSaved?: boolean;
+  phoneOrSecondBrowserLoaded?: boolean;
+  fullDraftJsonBackupDownloaded?: boolean;
+};
+
+export type ManuscriptRealReadinessGateInput = {
+  currentDraft: ManuscriptDraft;
+  publishReadinessReport: ManuscriptPublishReadinessReport;
+  snapshotState?: ManuscriptPublishSnapshotState;
+  manualSignals?: ManuscriptRealReadinessManualSignals;
+};
+
+export type ManuscriptRealReadinessChecklistItem = {
+  id: ManuscriptRealReadinessChecklistItemId;
+  label: string;
+  description: string;
+  isComplete: boolean;
+  isManual: boolean;
+};
+
+export type ManuscriptRealReadinessGateStatus =
+  | "not-ready"
+  | "ready-after-phone-load"
+  | "ready";
+
+export type ManuscriptRealReadinessGate = {
+  isReadyForRealManuscript: boolean;
+  status: ManuscriptRealReadinessGateStatus;
+  statusLabel: string;
+  isSyntheticSmokeDraftLoaded: boolean;
+  checklistItems: ManuscriptRealReadinessChecklistItem[];
+  warnings: string[];
+};
+
 export type ManuscriptPublishingExportInput = {
   title: string;
   sourceFileName: string | null;
@@ -401,6 +452,14 @@ export type ManuscriptImportSummary = {
 };
 
 const defaultTitle = "Untitled manuscript";
+
+export const SYNTHETIC_MANUSCRIPT_SMOKE_TITLE =
+  "Synthetic Studio Smoke Draft";
+
+export const SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME =
+  "synthetic-studio-smoke.docx";
+
+const syntheticSmokeTimestamp = "2026-05-21T12:00:00.000Z";
 
 export function isManuscriptAuthorId(
   value: string,
@@ -547,6 +606,390 @@ export function createDefaultManuscriptDraft(
     quoteReviews: {},
     editorJson: createEmptyManuscriptDoc(),
     activeAuthorId: "homer",
+    showAuthorColors: true,
+    showSemanticColors: true,
+    lastUpdatedAt: timestamp,
+  };
+}
+
+function createSyntheticAuthorMark(authorId: ManuscriptAuthorId) {
+  const author = getManuscriptAuthorDefinition(authorId);
+
+  return {
+    type: "authorMark",
+    attrs: {
+      authorId: author.id,
+      authorLabel: author.label,
+    },
+  };
+}
+
+function createSyntheticSemanticMark(input: {
+  highlightId: string;
+  tagType: SemanticHighlightType;
+  note: string;
+  createdAt: string;
+}) {
+  const tag = getSemanticHighlightDefinition(input.tagType);
+
+  return {
+    type: "semanticHighlightMark",
+    attrs: {
+      highlightId: input.highlightId,
+      tagType: tag.id,
+      label: tag.label,
+      colorKey: tag.colorKey,
+      note: input.note,
+      createdAt: input.createdAt,
+    },
+  };
+}
+
+function createSyntheticTextNode(input: {
+  text: string;
+  authorId?: ManuscriptAuthorId;
+  semantic?: {
+    highlightId: string;
+    tagType: SemanticHighlightType;
+    note: string;
+  };
+}): ManuscriptEditorJson {
+  const marks = [];
+
+  if (input.authorId) {
+    marks.push(createSyntheticAuthorMark(input.authorId));
+  }
+
+  if (input.semantic) {
+    marks.push(
+      createSyntheticSemanticMark({
+        ...input.semantic,
+        createdAt: syntheticSmokeTimestamp,
+      }),
+    );
+  }
+
+  return {
+    type: "text",
+    text: input.text,
+    marks: marks.length ? marks : undefined,
+  };
+}
+
+function createSyntheticBlock(input: {
+  type: "heading" | "paragraph";
+  blockId: string;
+  level?: number;
+  content: ManuscriptEditorJson[];
+}): ManuscriptEditorJson {
+  return {
+    type: input.type,
+    attrs: {
+      blockId: input.blockId,
+      ...(input.type === "heading" ? { level: input.level ?? 2 } : {}),
+    },
+    content: input.content,
+  };
+}
+
+export function isSyntheticManuscriptSmokeDraft(
+  draft: Pick<ManuscriptDraft, "title" | "sourceFileName" | "importSummary">,
+) {
+  return (
+    draft.title.trim() === SYNTHETIC_MANUSCRIPT_SMOKE_TITLE &&
+    draft.sourceFileName === SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME &&
+    draft.importSummary?.sourceFileName ===
+      SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME
+  );
+}
+
+export function createSyntheticManuscriptSmokeDraft(
+  timestamp = syntheticSmokeTimestamp,
+): ManuscriptDraft {
+  const editorJson: ManuscriptEditorJson = {
+    type: "doc",
+    content: [
+      createSyntheticBlock({
+        type: "heading",
+        blockId: "synthetic-smoke-heading",
+        level: 1,
+        content: [
+          createSyntheticTextNode({
+            text: "Synthetic Smoke Chapter",
+            authorId: "unassigned",
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-homer-opening",
+        content: [
+          createSyntheticTextNode({
+            text: "Homer / Scott synthetic source material opens the rehearsal with a steady porch-light memory. ",
+            authorId: "homer",
+            semantic: {
+              highlightId: "synthetic-smoke-story",
+              tagType: "story",
+              note: "Fake story tag for smoke testing.",
+            },
+          }),
+          createSyntheticTextNode({
+            text: "The names, places, and stakes here are invented for Studio testing only.",
+            authorId: "homer",
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-charlie-bridge",
+        content: [
+          createSyntheticTextNode({
+            text: "Charlie synthetic bridge text explains why the next pass needs visible metadata. ",
+            authorId: "charlie",
+            semantic: {
+              highlightId: "synthetic-smoke-insight",
+              tagType: "insight",
+              note: "Fake insight tag for smoke testing.",
+            },
+          }),
+          createSyntheticTextNode({
+            text: "\"The test bell rings before the real bell.\"",
+            authorId: "charlie",
+            semantic: {
+              highlightId: "synthetic-smoke-quote-needs-source",
+              tagType: "cited-quotation",
+              note: "Fake quotation intentionally missing a source.",
+            },
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-unassigned-question",
+        content: [
+          createSyntheticTextNode({
+            text: "This unassigned synthetic sentence proves the desk can notice material that has not been attributed yet. ",
+          }),
+          createSyntheticTextNode({
+            text: "\"A rehearsal map is useful only if someone checks the roads.\"",
+            semantic: {
+              highlightId: "synthetic-smoke-quote-needs-verification",
+              tagType: "cited-quotation",
+              note: "Fake quotation that needs verification.",
+            },
+          }),
+          createSyntheticTextNode({
+            text: " What should the phone view show first?",
+            semantic: {
+              highlightId: "synthetic-smoke-question",
+              tagType: "question",
+              note: "Fake question tag for smoke testing.",
+            },
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "heading",
+        blockId: "synthetic-smoke-section-heading",
+        level: 2,
+        content: [
+          createSyntheticTextNode({
+            text: "Synthetic Quote Review Section",
+            authorId: "charlie",
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-verified-quote",
+        content: [
+          createSyntheticTextNode({
+            text: "Homer / Scott synthetic material gives the verified path something harmless to carry. ",
+            authorId: "homer",
+          }),
+          createSyntheticTextNode({
+            text: "\"The fake lantern is bright enough for a fake hallway.\"",
+            authorId: "homer",
+            semantic: {
+              highlightId: "synthetic-smoke-quote-verified",
+              tagType: "cited-quotation",
+              note: "Fake quotation with verified smoke metadata.",
+            },
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-do-not-use-quote",
+        content: [
+          createSyntheticTextNode({
+            text: "Charlie synthetic cleanup note marks one invented quotation as unsafe on purpose. ",
+            authorId: "charlie",
+          }),
+          createSyntheticTextNode({
+            text: "\"The imaginary witness signed the imaginary form.\"",
+            authorId: "charlie",
+            semantic: {
+              highlightId: "synthetic-smoke-quote-do-not-use",
+              tagType: "cited-quotation",
+              note: "Fake quotation marked do not use.",
+            },
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-no-review-metadata",
+        content: [
+          createSyntheticTextNode({
+            text: "The no-metadata path stays deliberately unfinished so Quotes mode has something to complain about politely. ",
+            authorId: "unassigned",
+          }),
+          createSyntheticTextNode({
+            text: "\"A blank ledger is still a ledger.\"",
+            authorId: "unassigned",
+            semantic: {
+              highlightId: "synthetic-smoke-quote-no-metadata",
+              tagType: "cited-quotation",
+              note: "Fake quotation with no review metadata.",
+            },
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "heading",
+        blockId: "synthetic-smoke-episode-heading",
+        level: 2,
+        content: [
+          createSyntheticTextNode({
+            text: "Synthetic Episode Cue",
+            authorId: "homer",
+            semantic: {
+              highlightId: "synthetic-smoke-transition",
+              tagType: "transition",
+              note: "Fake transition tag for smoke testing.",
+            },
+          }),
+        ],
+      }),
+      createSyntheticBlock({
+        type: "paragraph",
+        blockId: "synthetic-smoke-closing",
+        content: [
+          createSyntheticTextNode({
+            text: "The smoke draft closes with fake recording instructions: save a manual snapshot, load it on a second device, then export the handoff packets. ",
+            authorId: "charlie",
+          }),
+          createSyntheticTextNode({
+            text: "No real manuscript text has been used.",
+            authorId: "homer",
+          }),
+        ],
+      }),
+    ],
+  };
+  const importSummary = createManuscriptImportSummary({
+    sourceFileName: SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME,
+    editorJson,
+    importedAt: timestamp,
+  });
+
+  return {
+    schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
+    title: SYNTHETIC_MANUSCRIPT_SMOKE_TITLE,
+    sourceFileName: SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME,
+    importSummary,
+    structureRegions: [
+      {
+        id: "synthetic-smoke-chapter",
+        kind: "chapter",
+        title: "Synthetic Chapter One",
+        labelPreset: "chapter",
+        startBlockId: "synthetic-smoke-heading",
+        endBlockId: "synthetic-smoke-closing",
+        order: 1,
+        colorKey: "chapter",
+        notes: "Synthetic full-chapter range for testing structure, export grouping, and phone navigation.",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: "synthetic-smoke-episode",
+        kind: "episode",
+        title: "Synthetic Episode One",
+        startBlockId: "synthetic-smoke-homer-opening",
+        endBlockId: "synthetic-smoke-closing",
+        order: 2,
+        colorKey: "episode",
+        notes: "Synthetic recording range for testing Homer handoff and Recording / Reading mode.",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: "synthetic-smoke-section",
+        kind: "section",
+        title: "Synthetic Quote Review Section",
+        startBlockId: "synthetic-smoke-section-heading",
+        endBlockId: "synthetic-smoke-no-review-metadata",
+        order: 3,
+        colorKey: "section",
+        notes: "Synthetic section range for quote-review smoke testing.",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
+    quoteReviews: {
+      "synthetic-smoke-quote-needs-source": {
+        highlightId: "synthetic-smoke-quote-needs-source",
+        attributedTo: "Synthetic missing-source speaker",
+        sourceTitle: "Synthetic Source To Be Found",
+        sourceType: "unknown",
+        locator: "",
+        citationText: "Synthetic citation still missing locator.",
+        reviewStatus: "needs-source",
+        rightsNote: "Synthetic rights note intentionally incomplete.",
+        editorNote: "Smoke test path for missing source.",
+        updatedAt: timestamp,
+      },
+      "synthetic-smoke-quote-needs-verification": {
+        highlightId: "synthetic-smoke-quote-needs-verification",
+        attributedTo: "Synthetic verification speaker",
+        sourceTitle: "Synthetic Verification Binder",
+        sourceType: "book",
+        locator: "p. 12",
+        citationText: "Synthetic Verification Binder, p. 12",
+        reviewStatus: "needs-verification",
+        rightsNote: "Synthetic rights check pending.",
+        editorNote: "Smoke test path for verification.",
+        updatedAt: timestamp,
+      },
+      "synthetic-smoke-quote-verified": {
+        highlightId: "synthetic-smoke-quote-verified",
+        attributedTo: "Synthetic verified speaker",
+        sourceTitle: "Synthetic Verified Reference",
+        sourceType: "article",
+        locator: "section 4",
+        citationText: "Synthetic Verified Reference, section 4",
+        reviewStatus: "verified",
+        rightsNote: "Synthetic rights note says this is fake and safe.",
+        editorNote: "Smoke test path for verified quotation metadata.",
+        updatedAt: timestamp,
+      },
+      "synthetic-smoke-quote-do-not-use": {
+        highlightId: "synthetic-smoke-quote-do-not-use",
+        attributedTo: "Synthetic unsafe speaker",
+        sourceTitle: "Synthetic Do Not Use Source",
+        sourceType: "speech",
+        locator: "00:03",
+        citationText: "Synthetic Do Not Use Source, 00:03",
+        reviewStatus: "do-not-use",
+        rightsNote: "Synthetic warning path.",
+        editorNote: "Smoke test path for do-not-use quotation metadata.",
+        updatedAt: timestamp,
+      },
+    },
+    editorJson,
+    activeAuthorId: "charlie",
     showAuthorColors: true,
     showSemanticColors: true,
     lastUpdatedAt: timestamp,
@@ -2028,6 +2471,204 @@ export function createPublishReadinessReport(
     quoteReview,
     issues,
     snapshotCaution,
+  };
+}
+
+function createRealReadinessChecklistItem(input: {
+  id: ManuscriptRealReadinessChecklistItemId;
+  label: string;
+  description: string;
+  isComplete: boolean;
+  isManual?: boolean;
+}): ManuscriptRealReadinessChecklistItem {
+  return {
+    id: input.id,
+    label: input.label,
+    description: input.description,
+    isComplete: input.isComplete,
+    isManual: input.isManual ?? false,
+  };
+}
+
+export function createRealManuscriptReadinessGate(
+  input: ManuscriptRealReadinessGateInput,
+): ManuscriptRealReadinessGate {
+  const report = input.publishReadinessReport;
+  const manualSignals = input.manualSignals ?? {};
+  const isSyntheticSmokeDraftLoaded = isSyntheticManuscriptSmokeDraft(
+    input.currentDraft,
+  );
+  const hasStructureRegions =
+    report.structure.chapterRegions > 0 &&
+    report.structure.episodeRegions > 0 &&
+    report.structure.sectionRegions > 0;
+  const hasAuthorMarks = manuscriptAuthorDefinitions.every((author) => {
+    const summary = report.authors.find(
+      (item) => item.authorId === author.id,
+    );
+
+    return (summary?.words ?? 0) > 0;
+  });
+  const hasQuoteReviewStatuses =
+    report.quoteReview.needsSource > 0 &&
+    report.quoteReview.needsVerification > 0 &&
+    report.quoteReview.verified > 0 &&
+    report.quoteReview.doNotUse > 0 &&
+    report.quoteReview.noReviewMetadata > 0;
+  const checklistItems = [
+    createRealReadinessChecklistItem({
+      id: "synthetic-draft-loaded",
+      label: "Synthetic smoke draft loaded",
+      description:
+        "The current browser-local draft is the built-in fake rehearsal draft.",
+      isComplete: isSyntheticSmokeDraftLoaded,
+    }),
+    createRealReadinessChecklistItem({
+      id: "structure-regions-tested",
+      label: "Structure regions tested",
+      description:
+        "Chapter / book, Episode, and Section regions are present in the current draft.",
+      isComplete: isSyntheticSmokeDraftLoaded && hasStructureRegions,
+    }),
+    createRealReadinessChecklistItem({
+      id: "author-marks-tested",
+      label: "Author marks tested",
+      description:
+        "Charlie, Homer / Scott, and Unassigned material are all present.",
+      isComplete: isSyntheticSmokeDraftLoaded && hasAuthorMarks,
+    }),
+    createRealReadinessChecklistItem({
+      id: "cited-quotations-tested",
+      label: "Cited quotations tested",
+      description:
+        "The current draft includes multiple cited quotation highlights.",
+      isComplete: isSyntheticSmokeDraftLoaded && report.quoteReview.total >= 5,
+    }),
+    createRealReadinessChecklistItem({
+      id: "quote-review-tested",
+      label: "Quote review tested",
+      description:
+        "Needs source, needs verification, verified, do not use, and no-metadata paths are all visible.",
+      isComplete: isSyntheticSmokeDraftLoaded && hasQuoteReviewStatuses,
+    }),
+    createRealReadinessChecklistItem({
+      id: "publishing-packet-generated",
+      label: "Publishing packet generated",
+      description:
+        "A synthetic publishing packet has been generated or downloaded in this browser.",
+      isComplete:
+        isSyntheticSmokeDraftLoaded &&
+        Boolean(manualSignals.publishingPacketGenerated),
+      isManual: true,
+    }),
+    createRealReadinessChecklistItem({
+      id: "recording-handoff-generated",
+      label: "Recording handoff generated",
+      description:
+        "A synthetic Homer-friendly recording handoff has been generated or downloaded.",
+      isComplete:
+        isSyntheticSmokeDraftLoaded &&
+        Boolean(manualSignals.recordingHandoffGenerated),
+      isManual: true,
+    }),
+    createRealReadinessChecklistItem({
+      id: "quote-appendix-generated",
+      label: "Quote appendix generated",
+      description:
+        "A synthetic quote appendix has been generated or downloaded.",
+      isComplete:
+        isSyntheticSmokeDraftLoaded &&
+        Boolean(manualSignals.quoteAppendixGenerated),
+      isManual: true,
+    }),
+    createRealReadinessChecklistItem({
+      id: "server-snapshot-saved",
+      label: "Synthetic server snapshot saved",
+      description:
+        "A manual server snapshot of the synthetic draft has been saved.",
+      isComplete:
+        isSyntheticSmokeDraftLoaded &&
+        Boolean(manualSignals.serverSnapshotSaved),
+      isManual: true,
+    }),
+    createRealReadinessChecklistItem({
+      id: "phone-load-smoke-tested",
+      label: "Phone / second browser load tested",
+      description:
+        "The synthetic server snapshot has been loaded on a phone or second browser profile.",
+      isComplete:
+        isSyntheticSmokeDraftLoaded &&
+        Boolean(manualSignals.phoneOrSecondBrowserLoaded),
+      isManual: true,
+    }),
+    createRealReadinessChecklistItem({
+      id: "full-draft-json-backup-downloaded",
+      label: "Full draft JSON backup downloaded",
+      description:
+        "A full draft JSON backup has been downloaded before real manuscript entry.",
+      isComplete:
+        isSyntheticSmokeDraftLoaded &&
+        Boolean(manualSignals.fullDraftJsonBackupDownloaded),
+      isManual: true,
+    }),
+  ];
+  const isReadyForRealManuscript = checklistItems.every(
+    (item) => item.isComplete,
+  );
+  const isReadyExceptPhoneLoad =
+    !isReadyForRealManuscript &&
+    checklistItems
+      .filter((item) => item.id !== "phone-load-smoke-tested")
+      .every((item) => item.isComplete);
+  const warnings: string[] = [];
+
+  if (!isSyntheticSmokeDraftLoaded) {
+    warnings.push(
+      "Do not use real manuscript text before the synthetic smoke draft has been loaded and tested.",
+    );
+  }
+
+  if (
+    !manualSignals.serverSnapshotSaved ||
+    !manualSignals.phoneOrSecondBrowserLoaded
+  ) {
+    warnings.push(
+      "Do not use real manuscript text before synthetic server snapshot save and phone / second-browser load both work.",
+    );
+  }
+
+  if (!manualSignals.fullDraftJsonBackupDownloaded) {
+    warnings.push(
+      "Download a full draft JSON backup before the first real manuscript import.",
+    );
+  }
+
+  if (input.snapshotState?.hasLocalChangesSinceServerSave === true) {
+    warnings.push(
+      "Local changes exist since the last known server checkpoint; save a manual snapshot before handing this draft to another device.",
+    );
+  }
+
+  const status: ManuscriptRealReadinessGateStatus =
+    isReadyForRealManuscript
+      ? "ready"
+      : isReadyExceptPhoneLoad
+        ? "ready-after-phone-load"
+        : "not-ready";
+  const statusLabel =
+    status === "ready"
+      ? "Ready to import real manuscript"
+      : status === "ready-after-phone-load"
+        ? "Ready after manual phone-load confirmation"
+        : "Not ready for real manuscript yet";
+
+  return {
+    isReadyForRealManuscript,
+    status,
+    statusLabel,
+    isSyntheticSmokeDraftLoaded,
+    checklistItems,
+    warnings,
   };
 }
 

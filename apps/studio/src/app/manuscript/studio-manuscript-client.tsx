@@ -41,7 +41,9 @@ import {
   createPublishingPacketMarkdown,
   createPublishReadinessReport,
   createQuoteReviewAppendixMarkdown,
+  createRealManuscriptReadinessGate,
   createRecordingHandoffMarkdown,
+  createSyntheticManuscriptSmokeDraft,
   createManuscriptDraftCheckpointKey,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
@@ -58,6 +60,7 @@ import {
   getManuscriptStructureDefinition,
   getSemanticHighlightDefinition,
   hasMeaningfulManuscriptDraft,
+  isSyntheticManuscriptSmokeDraft,
   MANUSCRIPT_SCHEMA_VERSION,
   MANUSCRIPT_STORAGE_KEY,
   manuscriptAuthorDefinitions,
@@ -561,6 +564,24 @@ export function StudioManuscriptClient({
     useState("");
   const [exportAuthorContributionMarkdown, setExportAuthorContributionMarkdown] =
     useState("");
+  const [hasGeneratedSmokePublishingPacket, setHasGeneratedSmokePublishingPacket] =
+    useState(false);
+  const [hasGeneratedSmokeRecordingHandoff, setHasGeneratedSmokeRecordingHandoff] =
+    useState(false);
+  const [hasGeneratedSmokeQuoteAppendix, setHasGeneratedSmokeQuoteAppendix] =
+    useState(false);
+  const [
+    hasConfirmedSyntheticServerSnapshotSaved,
+    setHasConfirmedSyntheticServerSnapshotSaved,
+  ] = useState(false);
+  const [
+    hasConfirmedSyntheticPhoneLoad,
+    setHasConfirmedSyntheticPhoneLoad,
+  ] = useState(false);
+  const [
+    hasConfirmedFullDraftJsonBackup,
+    setHasConfirmedFullDraftJsonBackup,
+  ] = useState(false);
   const [message, setMessage] = useState(
     "Browser-local Manuscript Desk draft.",
   );
@@ -865,26 +886,25 @@ export function StudioManuscriptClient({
       title,
     ],
   );
-  const currentDraftCheckpointKey = useMemo(
+  const currentDraftForReadiness = useMemo(
     () =>
-      createManuscriptDraftCheckpointKey(
-        createDraftFromState({
-          title,
-          sourceFileName,
-          importSummary,
-          structureRegions,
-          quoteReviews,
-          editorJson: currentEditorJson,
-          activeAuthorId,
-          showAuthorColors,
-          showSemanticColors,
-          lastUpdatedAt: null,
-        }),
-      ),
+      createDraftFromState({
+        title,
+        sourceFileName,
+        importSummary,
+        structureRegions,
+        quoteReviews,
+        editorJson: currentEditorJson,
+        activeAuthorId,
+        showAuthorColors,
+        showSemanticColors,
+        lastUpdatedAt,
+      }),
     [
       activeAuthorId,
       currentEditorJson,
       importSummary,
+      lastUpdatedAt,
       quoteReviews,
       showAuthorColors,
       showSemanticColors,
@@ -892,6 +912,10 @@ export function StudioManuscriptClient({
       structureRegions,
       title,
     ],
+  );
+  const currentDraftCheckpointKey = useMemo(
+    () => createManuscriptDraftCheckpointKey(currentDraftForReadiness),
+    [currentDraftForReadiness],
   );
   const hasLocalChangesSinceServerSave =
     serverCheckpointKey === null
@@ -946,6 +970,37 @@ export function StudioManuscriptClient({
       title,
     ],
   );
+  const isSyntheticSmokeDraftLoaded = useMemo(
+    () => isSyntheticManuscriptSmokeDraft(currentDraftForReadiness),
+    [currentDraftForReadiness],
+  );
+  const realManuscriptReadinessGate = useMemo(
+    () =>
+      createRealManuscriptReadinessGate({
+        currentDraft: currentDraftForReadiness,
+        publishReadinessReport,
+        snapshotState: publishingSnapshotState,
+        manualSignals: {
+          publishingPacketGenerated: hasGeneratedSmokePublishingPacket,
+          recordingHandoffGenerated: hasGeneratedSmokeRecordingHandoff,
+          quoteAppendixGenerated: hasGeneratedSmokeQuoteAppendix,
+          serverSnapshotSaved: hasConfirmedSyntheticServerSnapshotSaved,
+          phoneOrSecondBrowserLoaded: hasConfirmedSyntheticPhoneLoad,
+          fullDraftJsonBackupDownloaded: hasConfirmedFullDraftJsonBackup,
+        },
+      }),
+    [
+      currentDraftForReadiness,
+      hasConfirmedFullDraftJsonBackup,
+      hasConfirmedSyntheticPhoneLoad,
+      hasConfirmedSyntheticServerSnapshotSaved,
+      hasGeneratedSmokePublishingPacket,
+      hasGeneratedSmokeQuoteAppendix,
+      hasGeneratedSmokeRecordingHandoff,
+      publishReadinessReport,
+      publishingSnapshotState,
+    ],
+  );
 
   useEffect(() => {
     setCurrentQuoteIndex((current) => {
@@ -978,6 +1033,19 @@ export function StudioManuscriptClient({
 
     void refreshServerSnapshots({ silent: true });
   }, [isHydrated, isRecordingMode, sidePanelMode]);
+
+  useEffect(() => {
+    if (isSyntheticSmokeDraftLoaded) {
+      return;
+    }
+
+    setHasGeneratedSmokePublishingPacket(false);
+    setHasGeneratedSmokeRecordingHandoff(false);
+    setHasGeneratedSmokeQuoteAppendix(false);
+    setHasConfirmedSyntheticServerSnapshotSaved(false);
+    setHasConfirmedSyntheticPhoneLoad(false);
+    setHasConfirmedFullDraftJsonBackup(false);
+  }, [isSyntheticSmokeDraftLoaded]);
 
   useEffect(() => {
     if (!editor) {
@@ -1909,6 +1977,9 @@ export function StudioManuscriptClient({
       mimeType: "application/json",
       content: JSON.stringify(draft, null, 2),
     });
+    if (isSyntheticManuscriptSmokeDraft(draft)) {
+      setHasConfirmedFullDraftJsonBackup(true);
+    }
     setMessage("Full draft JSON downloaded.");
   }
 
@@ -2016,10 +2087,34 @@ export function StudioManuscriptClient({
     };
   }
 
+  function createSyntheticSmokeExportInput(
+    generatedAt = new Date().toISOString(),
+  ) {
+    const currentDraft = createCurrentDraft(generatedAt);
+    const draft =
+      currentDraft && isSyntheticManuscriptSmokeDraft(currentDraft)
+        ? currentDraft
+        : createSyntheticManuscriptSmokeDraft(generatedAt);
+
+    return {
+      title: draft.title,
+      sourceFileName: draft.sourceFileName,
+      editorJson: draft.editorJson,
+      structureRegions: draft.structureRegions,
+      quoteReviews: draft.quoteReviews,
+      generatedAt,
+      snapshotState: publishingSnapshotState,
+      includeRecordingChecks: true,
+    };
+  }
+
   function generatePublishingPacket() {
     setExportPublishingPacketMarkdown(
       createPublishingPacketMarkdown(createPublishingExportInput()),
     );
+    if (isSyntheticSmokeDraftLoaded) {
+      setHasGeneratedSmokePublishingPacket(true);
+    }
     setMessage("Publishing packet Markdown generated.");
   }
 
@@ -2030,6 +2125,9 @@ export function StudioManuscriptClient({
       mimeType: "text/markdown",
       content: createPublishingPacketMarkdown(createPublishingExportInput()),
     });
+    if (isSyntheticSmokeDraftLoaded) {
+      setHasGeneratedSmokePublishingPacket(true);
+    }
     setMessage("Publishing packet Markdown downloaded.");
   }
 
@@ -2037,6 +2135,9 @@ export function StudioManuscriptClient({
     setExportRecordingHandoffMarkdown(
       createRecordingHandoffMarkdown(createPublishingExportInput()),
     );
+    if (isSyntheticSmokeDraftLoaded) {
+      setHasGeneratedSmokeRecordingHandoff(true);
+    }
     setMessage("Recording handoff Markdown generated.");
   }
 
@@ -2047,6 +2148,9 @@ export function StudioManuscriptClient({
       mimeType: "text/markdown",
       content: createRecordingHandoffMarkdown(createPublishingExportInput()),
     });
+    if (isSyntheticSmokeDraftLoaded) {
+      setHasGeneratedSmokeRecordingHandoff(true);
+    }
     setMessage("Recording handoff Markdown downloaded.");
   }
 
@@ -2054,6 +2158,9 @@ export function StudioManuscriptClient({
     setExportQuoteAppendixMarkdown(
       createQuoteReviewAppendixMarkdown(createPublishingExportInput()),
     );
+    if (isSyntheticSmokeDraftLoaded) {
+      setHasGeneratedSmokeQuoteAppendix(true);
+    }
     setMessage("Quote appendix Markdown generated.");
   }
 
@@ -2064,6 +2171,9 @@ export function StudioManuscriptClient({
       mimeType: "text/markdown",
       content: createQuoteReviewAppendixMarkdown(createPublishingExportInput()),
     });
+    if (isSyntheticSmokeDraftLoaded) {
+      setHasGeneratedSmokeQuoteAppendix(true);
+    }
     setMessage("Quote appendix Markdown downloaded.");
   }
 
@@ -2082,6 +2192,87 @@ export function StudioManuscriptClient({
       content: createAuthorContributionMarkdown(createPublishingExportInput()),
     });
     setMessage("Author contribution Markdown downloaded.");
+  }
+
+  function resetSmokeReadinessConfirmations() {
+    setHasGeneratedSmokePublishingPacket(false);
+    setHasGeneratedSmokeRecordingHandoff(false);
+    setHasGeneratedSmokeQuoteAppendix(false);
+    setHasConfirmedSyntheticServerSnapshotSaved(false);
+    setHasConfirmedSyntheticPhoneLoad(false);
+    setHasConfirmedFullDraftJsonBackup(false);
+  }
+
+  function loadSyntheticSmokeDraft() {
+    if (!editor) {
+      return;
+    }
+
+    if (!confirmDraftReplacement("Loading the synthetic smoke draft")) {
+      setMessage("Synthetic smoke draft load canceled. Current draft kept.");
+      return;
+    }
+
+    const syntheticDraft = createSyntheticManuscriptSmokeDraft(
+      new Date().toISOString(),
+    );
+
+    resetSmokeReadinessConfirmations();
+    applyDraftToEditor(
+      syntheticDraft,
+      "Synthetic smoke draft loaded. Nothing was saved to server until you click Save snapshot.",
+    );
+    setServerCheckpointKey(null);
+    setLastSavedServerSnapshot(null);
+    setServerSnapshotStatus(
+      "Synthetic smoke draft is browser-local until you save a manual server snapshot.",
+    );
+    setSidePanelMode("publish");
+  }
+
+  function downloadSyntheticSmokeDraftJson() {
+    const currentDraft = createCurrentDraft();
+    const draft =
+      currentDraft && isSyntheticManuscriptSmokeDraft(currentDraft)
+        ? currentDraft
+        : createSyntheticManuscriptSmokeDraft(new Date().toISOString());
+
+    downloadTextFile({
+      content: JSON.stringify(draft, null, 2),
+      fileName: createBackupFileName({
+        title: draft.title,
+        kind: "synthetic-smoke-draft",
+        extension: "json",
+        timestamp: new Date().toISOString(),
+      }),
+      mimeType: "application/json",
+    });
+    setHasConfirmedFullDraftJsonBackup(true);
+    setMessage("Synthetic smoke draft JSON downloaded.");
+  }
+
+  function generateSmokePublishingPacket() {
+    setExportPublishingPacketMarkdown(
+      createPublishingPacketMarkdown(createSyntheticSmokeExportInput()),
+    );
+    setHasGeneratedSmokePublishingPacket(true);
+    setMessage("Synthetic smoke publishing packet generated.");
+  }
+
+  function generateSmokeRecordingHandoff() {
+    setExportRecordingHandoffMarkdown(
+      createRecordingHandoffMarkdown(createSyntheticSmokeExportInput()),
+    );
+    setHasGeneratedSmokeRecordingHandoff(true);
+    setMessage("Synthetic smoke recording handoff generated.");
+  }
+
+  function generateSmokeQuoteAppendix() {
+    setExportQuoteAppendixMarkdown(
+      createQuoteReviewAppendixMarkdown(createSyntheticSmokeExportInput()),
+    );
+    setHasGeneratedSmokeQuoteAppendix(true);
+    setMessage("Synthetic smoke quote appendix generated.");
   }
 
   function applyDraftToEditor(draft: ManuscriptDraft, nextMessage: string) {
@@ -2107,6 +2298,10 @@ export function StudioManuscriptClient({
     setExportStructureMarkdown("");
     setExportFilteredMarkdown("");
     setExportCitedQuotationMarkdown("");
+    setExportPublishingPacketMarkdown("");
+    setExportRecordingHandoffMarkdown("");
+    setExportQuoteAppendixMarkdown("");
+    setExportAuthorContributionMarkdown("");
     setMessage(nextMessage);
   }
 
@@ -2216,6 +2411,9 @@ export function StudioManuscriptClient({
       setServerSnapshotStatus(
         `Saved server snapshot ${formatDateTime(payload.snapshot.updatedAt)}.`,
       );
+      if (isSyntheticManuscriptSmokeDraft(draft)) {
+        setHasConfirmedSyntheticServerSnapshotSaved(true);
+      }
       setMessage("Server manuscript snapshot saved.");
     } catch (error) {
       console.error("Server snapshot save failed.", error);
@@ -4764,6 +4962,148 @@ export function StudioManuscriptClient({
                   </StudioChip>
                 </div>
 
+                <div className="grid gap-2 rounded-lg border border-studio-source/35 bg-studio-source/10 p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <HelpLabel noteId="real-manuscript-readiness-gate">
+                      Real manuscript readiness
+                    </HelpLabel>
+                    <StudioChip
+                      tone={
+                        realManuscriptReadinessGate.status === "ready"
+                          ? "source"
+                          : realManuscriptReadinessGate.status ===
+                              "ready-after-phone-load"
+                            ? "review"
+                            : "danger"
+                      }
+                    >
+                      {realManuscriptReadinessGate.statusLabel}
+                    </StudioChip>
+                  </div>
+                  <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                    Test the whole Manuscript Desk with fake material before the
+                    real manuscript enters this browser.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={loadSyntheticSmokeDraft}
+                    >
+                      Load synthetic smoke draft
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={downloadSyntheticSmokeDraftJson}
+                    >
+                      Download synthetic smoke draft JSON
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={generateSmokePublishingPacket}
+                    >
+                      Generate smoke publishing packet
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={generateSmokeRecordingHandoff}
+                    >
+                      Generate smoke recording handoff
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={generateSmokeQuoteAppendix}
+                    >
+                      Generate smoke quote appendix
+                    </button>
+                  </div>
+                  <div className="grid gap-1.5 rounded-lg border border-studio-line bg-black/20 p-2">
+                    <label className="flex items-start gap-2 text-[0.78rem] leading-snug text-studio-muted">
+                      <input
+                        checked={hasConfirmedSyntheticServerSnapshotSaved}
+                        type="checkbox"
+                        onChange={(event) =>
+                          setHasConfirmedSyntheticServerSnapshotSaved(
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      I saved a synthetic server snapshot.
+                    </label>
+                    <label className="flex items-start gap-2 text-[0.78rem] leading-snug text-studio-muted">
+                      <input
+                        checked={hasConfirmedSyntheticPhoneLoad}
+                        type="checkbox"
+                        onChange={(event) =>
+                          setHasConfirmedSyntheticPhoneLoad(
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      I loaded the synthetic snapshot on phone / second browser.
+                    </label>
+                    <label className="flex items-start gap-2 text-[0.78rem] leading-snug text-studio-muted">
+                      <input
+                        checked={hasConfirmedFullDraftJsonBackup}
+                        type="checkbox"
+                        onChange={(event) =>
+                          setHasConfirmedFullDraftJsonBackup(
+                            event.target.checked,
+                          )
+                        }
+                      />
+                      I downloaded a full draft JSON backup.
+                    </label>
+                  </div>
+                  <div className="grid gap-1.5">
+                    {realManuscriptReadinessGate.checklistItems.map((item) => (
+                      <div
+                        className="flex items-start justify-between gap-2 rounded-lg border border-studio-line bg-black/20 px-2 py-1.5"
+                        key={item.id}
+                      >
+                        <div className="min-w-0">
+                          <p className="m-0 text-[0.76rem] font-extrabold leading-snug text-studio-ink">
+                            {item.label}
+                          </p>
+                          <p className="m-0 text-[0.7rem] leading-relaxed text-studio-muted">
+                            {item.description}
+                          </p>
+                        </div>
+                        <StudioChip tone={item.isComplete ? "source" : "default"}>
+                          {item.isComplete ? "Done" : item.isManual ? "Confirm" : "Missing"}
+                        </StudioChip>
+                      </div>
+                    ))}
+                  </div>
+                  {realManuscriptReadinessGate.warnings.length ? (
+                    <div className="grid gap-1 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2">
+                      {realManuscriptReadinessGate.warnings.map((warning) => (
+                        <p
+                          className="m-0 text-[0.74rem] leading-relaxed text-studio-muted"
+                          key={warning}
+                        >
+                          {warning}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <ManuscriptHelpTip
+                      note={getManuscriptHelpNote("synthetic-smoke-draft")}
+                    />
+                    <ManuscriptHelpTip
+                      note={getManuscriptHelpNote("phone-load-smoke")}
+                    />
+                    <ManuscriptHelpTip
+                      note={getManuscriptHelpNote("first-real-manuscript-import")}
+                    />
+                  </div>
+                </div>
+
                 <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                   <HelpLabel noteId="publish-readiness-report">
                     Publish readiness summary
@@ -5167,7 +5507,46 @@ export function StudioManuscriptClient({
                 <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
                   {publishReadinessReport.snapshotCaution}
                 </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StudioChip
+                    tone={
+                      realManuscriptReadinessGate.status === "ready"
+                        ? "source"
+                        : realManuscriptReadinessGate.status ===
+                            "ready-after-phone-load"
+                          ? "review"
+                          : "danger"
+                    }
+                  >
+                    {realManuscriptReadinessGate.statusLabel}
+                  </StudioChip>
+                  <StudioChip
+                    tone={
+                      realManuscriptReadinessGate.isSyntheticSmokeDraftLoaded
+                        ? "source"
+                        : "default"
+                    }
+                  >
+                    {realManuscriptReadinessGate.isSyntheticSmokeDraftLoaded
+                      ? "Smoke loaded"
+                      : "Smoke not loaded"}
+                  </StudioChip>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={loadSyntheticSmokeDraft}
+                  >
+                    Load smoke draft
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={downloadSyntheticSmokeDraftJson}
+                  >
+                    Smoke JSON
+                  </button>
                   <button
                     className={smallButtonClassName}
                     type="button"
