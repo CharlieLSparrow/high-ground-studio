@@ -142,6 +142,15 @@ export function App() {
         </div>
       </header>
 
+      <section className="prototype-notice" aria-label="Prototype public shell notice">
+        <strong>Prototype / Public shell</strong>
+        <span>
+          This deployed editor is visible before the auth gate is added. Do not
+          upload, paste, or reference real media, proxy paths, private podcast
+          details, credentials, or personal recordings here yet.
+        </span>
+      </section>
+
       <main className="workspace">
         <section className="monitor-grid" aria-label="Source and program monitors">
           <SourceMonitor

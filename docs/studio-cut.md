@@ -177,43 +177,47 @@ Desired deployment shape:
 Checked-in scaffold:
 
 - `firebase.json` serves `apps/studio-cut-web/dist` as a single-page app
-- no `.firebaserc` or Firebase Hosting site target is checked in yet
+- `.firebaserc` binds the default Firebase project alias to
+  `high-ground-odyssey`
 
-Deployment is intentionally not tied to a checked-in Firebase project ID yet.
-Do not create paid resources or bind a project from an agent session unless the
-operator has explicitly confirmed the Google Cloud/Firebase project, billing,
-auth, and site target.
+Live Firebase Hosting URL:
 
-Current local deployment blockers to resolve before first deploy:
+```text
+https://high-ground-odyssey.web.app
+```
 
-- install or provide the Firebase CLI
-- confirm the Firebase project ID and Hosting site target
-- confirm Firebase Hosting is enabled for that project
-- confirm billing/resource ownership before creating any new site, Firestore,
-  Cloud Storage, or Cloud Run resources
-
-Manual Firebase Hosting path once the project is confirmed:
+Deploy command that worked:
 
 ```bash
 pnpm studio-cut:build
-firebase login
-firebase projects:list
-firebase deploy --project PROJECT_ID --only hosting
-```
-
-For the currently observed local CLI state on 2026-05-21, `gcloud` is configured
-for `high-ground-odyssey`, but the Firebase CLI is not installed in PATH. The
-next operator step is:
-
-```bash
-npm install -g firebase-tools
-firebase login
-firebase projects:list
 firebase deploy --project high-ground-odyssey --only hosting
 ```
 
-Run the deploy command only after confirming Firebase Hosting is enabled for
-that project and the desired Hosting site/target is correct.
+Current safety state:
+
+- The deployed shell is public until Studio Cut has an auth gate.
+- Do not enter real media paths, private podcast details, proxy package
+  references, credentials, personal recordings, or production collaboration
+  data into the deployed shell yet.
+- Firestore-ready code exists, but real collaboration should wait for auth and
+  Firestore rules.
+
+Near-term internal-only task:
+
+- Add Google sign-in/auth gate.
+- Add Firestore security rules scoped to approved internal users and explicit
+  project/branch permissions.
+- Only then use live Firestore for real collaboration or private podcast data.
+
+Manual Firebase Hosting path after future build-verified changes:
+
+```bash
+pnpm studio-cut:build
+firebase deploy --project high-ground-odyssey --only hosting
+```
+
+Do not create paid resources, enable new Firebase products, or bind unexpected
+projects without clear operator confirmation.
 
 If the operator wants a dedicated non-default Hosting site, create the site and
 target mapping first, then update `firebase.json` to use that target:

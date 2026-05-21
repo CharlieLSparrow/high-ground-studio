@@ -49,4 +49,5 @@ GIT
 .env.*
 !.env.example
 apps/web/.env.local
+.firebase/
 .aider*

@@ -111,6 +111,32 @@ h2 {
   color: #ff7474;
 }
 
+.prototype-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  border: 1px solid rgba(240, 201, 106, 0.38);
+  border-radius: 8px;
+  background: rgba(240, 201, 106, 0.08);
+  padding: 12px 14px;
+  color: #d7e0dc;
+}
+
+.prototype-notice strong {
+  flex: 0 0 auto;
+  color: #f0c96a;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.prototype-notice span {
+  color: #d7e0dc;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
@@ -489,6 +515,7 @@ td {
   }
 
   .topbar,
+  .prototype-notice,
   .monitor-header,
   .panel-heading {
     flex-direction: column;
