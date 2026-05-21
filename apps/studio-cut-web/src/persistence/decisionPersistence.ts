@@ -4,6 +4,7 @@ import {
   sortDecisionEvents,
   type DecisionEvent,
 } from "@high-ground/studio-cut-schema";
+import { getStudioCutFirebaseApp } from "../firebase/studioCutFirebase";
 import type { StudioCutFirebaseConfig } from "../studioCutConfig";
 
 export const DECISION_EVENTS_STORAGE_KEY =
@@ -120,13 +121,8 @@ export async function createFirestoreDecisionStore({
   projectId: string;
   branchId: string;
 }): Promise<FirestoreDecisionStore> {
-  const [{ initializeApp, getApps }, firestore] = await Promise.all([
-    import("firebase/app"),
-    import("firebase/firestore"),
-  ]);
-  const app =
-    getApps().find((candidate) => candidate.name === "studio-cut") ??
-    initializeApp(firebaseConfig, "studio-cut");
+  const firestore = await import("firebase/firestore");
+  const app = getStudioCutFirebaseApp(firebaseConfig);
   const db = firestore.getFirestore(app);
   const path = buildFirestoreDecisionEventsPath(projectId, branchId);
   const collectionRef = firestore.collection(

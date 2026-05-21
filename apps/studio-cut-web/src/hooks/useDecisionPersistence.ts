@@ -28,7 +28,7 @@ export type DecisionImportResult = {
   normalizedCount: number;
 };
 
-export function useDecisionPersistence() {
+export function useDecisionPersistence(createdByOverride?: string) {
   const config = useMemo(getStudioCutRuntimeConfig, []);
   const [decisionEvents, setDecisionEvents] = useState<DecisionEvent[]>(
     loadLocalDecisionEvents,
@@ -103,7 +103,7 @@ export function useDecisionPersistence() {
       branchId: config.branchId,
       sourceTimeMs,
       state,
-      createdBy: config.createdBy,
+      createdBy: createdByOverride || config.createdBy,
       createdAt: new Date().toISOString(),
       ...(trimmedNote ? { note: trimmedNote } : {}),
     };

@@ -17,6 +17,8 @@ Current slice:
 - browser `localStorage`: always-on local/offline persistence
 - optional Firebase web config: enables Firestore-ready cloud persistence without
   making Firebase mandatory for local dev
+- Firebase Auth / Google sign-in gate when Firebase config and allowed emails
+  are provided at build time
 
 ## Media Boundary
 
@@ -84,8 +86,11 @@ The editor always persists decisions in browser storage under:
 high-ground-studio.studio-cut.decisions.v1
 ```
 
-Use `apps/studio-cut-web/.env.example` as the local env template. If Firebase
-env vars are absent or blank, the app shows `Local only` and continues to work.
+Use `apps/studio-cut-web/.env.example` as the local env template. In the Vite
+dev server, if Firebase env vars are absent or blank, the app shows local dev
+mode and continues to work with localStorage only. Production builds should use
+Firebase config and an allowed email list; if those are missing, the editor is
+hidden instead of becoming a public editor.
 
 Current non-secret local context vars:
 
@@ -93,21 +98,51 @@ Current non-secret local context vars:
 VITE_STUDIO_CUT_PROJECT_ID
 VITE_STUDIO_CUT_BRANCH_ID
 VITE_STUDIO_CUT_CREATED_BY
+VITE_STUDIO_CUT_ALLOWED_EMAILS
 ```
 
-Optional Firebase web config vars:
+Required production Firebase web config vars:
 
 ```text
 VITE_FIREBASE_API_KEY
 VITE_FIREBASE_AUTH_DOMAIN
 VITE_FIREBASE_PROJECT_ID
 VITE_FIREBASE_APP_ID
+```
+
+Optional Firebase web config vars:
+
+```text
 VITE_FIREBASE_STORAGE_BUCKET
 ```
 
 Firebase web config is not a service account and should not be confused with
 server credentials. Do not commit service-account JSON, private keys, media,
 proxy packages, or real recordings.
+
+## Auth Gate
+
+Studio Cut now has a first internal-only auth boundary:
+
+- Vite dev with missing Firebase env vars: local dev mode, auth disabled, editor
+  remains usable for prototype work.
+- Production build with missing Firebase env vars: editor hidden with an auth
+  configuration message.
+- Firebase config present: Google sign-in is required.
+- Signed-in email must appear in `VITE_STUDIO_CUT_ALLOWED_EMAILS`.
+- Non-allowed users see a clear not-authorized message and do not see the
+  editor.
+
+`VITE_STUDIO_CUT_ALLOWED_EMAILS` is comma-separated:
+
+```text
+VITE_STUDIO_CUT_ALLOWED_EMAILS="person@example.com,another@example.com"
+```
+
+This app-level gate is not a substitute for Firestore security rules. Do not
+put private podcast data, proxy package references, or real collaboration data
+into Firestore until rules are scoped to approved internal users and explicit
+project/branch permissions.
 
 ## Persistence Boundary
 
@@ -195,16 +230,16 @@ firebase deploy --project high-ground-odyssey --only hosting
 
 Current safety state:
 
-- The deployed shell is public until Studio Cut has an auth gate.
+- The deployed shell has an app-level Google sign-in/allowed-email gate when
+  Firebase config is supplied at build time.
+- If production Firebase env vars are missing, the editor is hidden instead of
+  falling back to public local mode.
 - Do not enter real media paths, private podcast details, proxy package
-  references, credentials, personal recordings, or production collaboration
-  data into the deployed shell yet.
-- Firestore-ready code exists, but real collaboration should wait for auth and
-  Firestore rules.
+  references, credentials, personal recordings, or production collaboration data
+  until Firestore rules are in place.
 
 Near-term internal-only task:
 
-- Add Google sign-in/auth gate.
 - Add Firestore security rules scoped to approved internal users and explicit
   project/branch permissions.
 - Only then use live Firestore for real collaboration or private podcast data.
@@ -212,6 +247,14 @@ Near-term internal-only task:
 Manual Firebase Hosting path after future build-verified changes:
 
 ```bash
+pnpm studio-cut:build
+firebase deploy --project high-ground-odyssey --only hosting
+```
+
+Rollback command for the latest Studio Cut deployment slice:
+
+```bash
+git revert HEAD
 pnpm studio-cut:build
 firebase deploy --project high-ground-odyssey --only hosting
 ```

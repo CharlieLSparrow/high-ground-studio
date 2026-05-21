@@ -143,8 +143,9 @@ pnpm studio:local
 
 Studio Cut is a separate Vite app for the internal multicam podcast editor
 shell. It edits semantic decision events over source time. It uses
-`localStorage` by default and can enable Firestore-ready persistence from
-optional `VITE_FIREBASE_*` env vars in `apps/studio-cut-web/.env.local`.
+`localStorage` by default in local dev and can enable Firebase Auth plus
+Firestore-ready persistence from `VITE_FIREBASE_*` env vars in
+`apps/studio-cut-web/.env.local`.
 
 ```bash
 pnpm studio-cut

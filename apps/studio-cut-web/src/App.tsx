@@ -18,6 +18,11 @@ import {
   type SourceRole,
 } from "@high-ground/studio-cut-schema";
 import { useDecisionPersistence } from "./hooks/useDecisionPersistence";
+import {
+  useStudioCutAuth,
+  type StudioCutAuthStatus,
+} from "./hooks/useStudioCutAuth";
+import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 
 const SOURCE_DURATION_MS = 60 * 60 * 1000;
 
@@ -39,6 +44,41 @@ const MONITOR_COPY: Record<SourceRole, string> = {
 };
 
 export function App() {
+  const config = useMemo(getStudioCutRuntimeConfig, []);
+  const { status: authStatus, signIn, signOut } = useStudioCutAuth(config);
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Internal semantic multicam editor</p>
+          <h1>Studio Cut</h1>
+        </div>
+        <div className="session-meta" aria-label="Project and auth metadata">
+          <span>{config.projectId}</span>
+          <span>{config.branchId}</span>
+          <span className={`auth-badge ${authStatus.mode}`}>
+            {authStatus.label}
+          </span>
+        </div>
+      </header>
+
+      <PrototypeNotice authStatus={authStatus} />
+
+      {authStatus.isEditorAllowed ? (
+        <EditorWorkspace createdBy={authStatus.userEmail} />
+      ) : (
+        <AuthGatePanel
+          authStatus={authStatus}
+          onSignIn={signIn}
+          onSignOut={signOut}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [sourceTimeMs, setSourceTimeMs] = useState(0);
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
@@ -52,7 +92,7 @@ export function App() {
     clearDecisions,
     importDecisionEvents,
     exportDecisionEvents,
-  } = useDecisionPersistence();
+  } = useDecisionPersistence(createdBy);
 
   const sortedEvents = useMemo(
     () => sortDecisionEvents(decisionEvents),
@@ -127,32 +167,8 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Internal semantic multicam editor</p>
-          <h1>Studio Cut</h1>
-        </div>
-        <div className="session-meta" aria-label="Project and persistence metadata">
-          <span>{config.projectId}</span>
-          <span>{config.branchId}</span>
-          <span className={`persistence-badge ${status.mode}`}>
-            {status.label}
-          </span>
-        </div>
-      </header>
-
-      <section className="prototype-notice" aria-label="Prototype public shell notice">
-        <strong>Prototype / Public shell</strong>
-        <span>
-          This deployed editor is visible before the auth gate is added. Do not
-          upload, paste, or reference real media, proxy paths, private podcast
-          details, credentials, or personal recordings here yet.
-        </span>
-      </section>
-
-      <main className="workspace">
-        <section className="monitor-grid" aria-label="Source and program monitors">
+    <main className="workspace">
+      <section className="monitor-grid" aria-label="Source and program monitors">
           <SourceMonitor
             role="homer"
             sourceTimeMs={sourceTimeMs}
@@ -327,7 +343,60 @@ export function App() {
           </div>
         </section>
       </main>
-    </div>
+  );
+}
+
+function PrototypeNotice({ authStatus }: { authStatus: StudioCutAuthStatus }) {
+  const isLocalDev = authStatus.mode === "local_dev";
+
+  return (
+    <section className="prototype-notice" aria-label="Prototype safety notice">
+      <strong>{isLocalDev ? "Local dev prototype" : "Protected prototype"}</strong>
+      <span>
+        {isLocalDev
+          ? "Local dev mode, auth disabled because Firebase env vars are missing. Do not use real media, proxy paths, private podcast details, credentials, or personal recordings here."
+          : "This internal shell is for semantic decision tests only. Do not upload, paste, or reference real media, proxy paths, private podcast details, credentials, or personal recordings yet."}
+      </span>
+    </section>
+  );
+}
+
+function AuthGatePanel({
+  authStatus,
+  onSignIn,
+  onSignOut,
+}: {
+  authStatus: StudioCutAuthStatus;
+  onSignIn: () => Promise<void>;
+  onSignOut: () => Promise<void>;
+}) {
+  const canSignIn =
+    authStatus.mode === "signed_out" || authStatus.mode === "auth_error";
+  const canSignOut = authStatus.mode === "not_authorized";
+
+  return (
+    <main className="auth-gate" aria-label="Studio Cut auth gate">
+      <section className="auth-card">
+        <p className="eyebrow">Studio Cut access</p>
+        <h2>{authStatus.label}</h2>
+        <p>{authStatus.detail}</p>
+        {authStatus.userEmail ? (
+          <p className="auth-email">{authStatus.userEmail}</p>
+        ) : null}
+        <div className="auth-actions">
+          {canSignIn ? (
+            <button type="button" onClick={() => void onSignIn()}>
+              Sign In With Google
+            </button>
+          ) : null}
+          {canSignOut ? (
+            <button type="button" onClick={() => void onSignOut()}>
+              Use A Different Account
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </main>
   );
 }
 

@@ -111,6 +111,25 @@ h2 {
   color: #ff7474;
 }
 
+.auth-badge.loading,
+.auth-badge.signed_out {
+  color: #72d6ff;
+}
+
+.auth-badge.local_dev,
+.auth-badge.auth_unconfigured {
+  color: #f0c96a;
+}
+
+.auth-badge.authorized {
+  color: #91de72;
+}
+
+.auth-badge.not_authorized,
+.auth-badge.auth_error {
+  color: #ff7474;
+}
+
 .prototype-notice {
   display: flex;
   align-items: flex-start;
@@ -135,6 +154,58 @@ h2 {
   color: #d7e0dc;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+
+.auth-gate {
+  display: grid;
+  min-height: 48vh;
+  place-items: center;
+}
+
+.auth-card {
+  display: grid;
+  width: min(100%, 560px);
+  gap: 14px;
+  border: 1px solid rgba(238, 242, 238, 0.14);
+  border-radius: 8px;
+  background: rgba(13, 18, 18, 0.9);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+  padding: 22px;
+}
+
+.auth-card h2 {
+  font-size: 1.5rem;
+}
+
+.auth-card p:not(.eyebrow) {
+  color: #d7e0dc;
+  line-height: 1.5;
+}
+
+.auth-email {
+  overflow-wrap: anywhere;
+  border: 1px solid rgba(238, 242, 238, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.auth-actions button {
+  min-height: 40px;
+  border: 1px solid rgba(145, 219, 183, 0.42);
+  border-radius: 6px;
+  background: rgba(145, 219, 183, 0.12);
+  color: #eef2ee;
+  font-weight: 800;
+  padding: 0 12px;
 }
 
 .workspace {
