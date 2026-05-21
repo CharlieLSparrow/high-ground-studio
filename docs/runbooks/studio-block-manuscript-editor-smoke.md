@@ -162,6 +162,36 @@ Use these steps when changing Manuscript Desk help copy or help UI.
 12. Confirm the help panels stay small enough for dense sidebars and do not
     cover the main manuscript surface on desktop.
 
+## Sticky Glass Shell Smoke Steps
+
+Use these steps when changing the desktop or tablet Manuscript Desk shell.
+
+1. Open `/manuscript` on a desktop-width browser.
+2. Load or create a long synthetic manuscript draft.
+3. Scroll deep into the manuscript and confirm the command bar stays visible as
+   a thin translucent rail, not a tall opaque panel.
+4. Confirm the command bar still shows the manuscript title, active author,
+   current mode, cited quote count, saved time, and any active Focus View or
+   Recording / Reading state.
+5. Confirm the Recording / Reading toggle, Full manuscript button when Focus
+   View is active, and Backup button remain available.
+6. Confirm the mode sidebar stays visible while the manuscript scrolls.
+7. Scroll long sidebar content in `Structure`, `Quotes`, and `Backup`; confirm
+   the sidebar scrolls internally and its top content does not disappear behind
+   the command bar.
+8. Use a block preview, `Jump to start`, `Jump to end`, and quote navigation;
+   confirm the focused block does not land hidden underneath the sticky command
+   bar.
+9. Open help footnotes near the command bar and near the top and bottom of the
+   sidebar; confirm the help panels appear above the sticky shell and are not
+   clipped by sidebar scrolling.
+10. Narrow the browser to phone width and confirm the manuscript remains the
+    first meaningful visible content, the desktop shell is hidden, and the
+    mobile bottom tools remain the control path.
+11. Confirm these shell interactions do not change manuscript text, author
+    marks, semantic marks, structure regions, cited quotations, quote review
+    metadata, filters, or server snapshot state.
+
 ## Manual Smoke Script
 
 1. Open `/manuscript`.

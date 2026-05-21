@@ -7,7 +7,6 @@ import StarterKit from "@tiptap/starter-kit";
 import mammoth from "mammoth";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import { StudioNav } from "../studio-nav";
 import {
   cardClassName,
   cn,
@@ -168,6 +167,12 @@ const textareaClassName =
 
 const smallButtonClassName =
   "min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.8rem] font-extrabold text-studio-source disabled:text-studio-dim sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
+
+const commandButtonClassName =
+  "min-h-7 rounded-md border border-studio-line bg-studio-ink/5 px-2 py-1 text-[0.72rem] font-extrabold leading-tight text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10 disabled:text-studio-dim";
+
+const commandChipClassName =
+  "min-h-6 shrink-0 rounded-md px-1.5 py-[3px] text-[0.66rem] leading-tight";
 
 const activeButtonClassName =
   "border-studio-tag/55 bg-studio-tag/15 text-studio-tag";
@@ -2439,63 +2444,75 @@ export function StudioManuscriptClient({
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
         <header
           className={cn(
-            panelClassName,
-            "sticky top-3 z-30 hidden gap-3 px-3 py-2.5 md:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center",
+            "sticky top-2 z-40 hidden overflow-visible rounded-lg border border-studio-line bg-studio-panel/68 px-2.5 py-1.5 shadow-[0_12px_34px_rgba(0,0,0,0.22)] backdrop-blur-md",
+            "md:grid md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-x-2 md:gap-y-1",
           )}
           aria-label="Manuscript command bar"
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <StudioGlyph className="size-9 text-base" />
-            <div className="min-w-[180px] flex-1">
-              <p className={labelClassName}>Manuscript Desk</p>
-              <h1 className="m-0 truncate text-[1.05rem] leading-tight tracking-normal text-studio-ink">
+          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+            <StudioGlyph className="size-7 rounded-md text-[0.9rem]" />
+            <div className="min-w-[6rem] max-w-[20rem] flex-1">
+              <p className="sr-only">Manuscript Desk</p>
+              <h1 className="m-0 truncate text-[0.95rem] leading-tight tracking-normal text-studio-ink">
                 {title || "Untitled manuscript"}
               </h1>
             </div>
-            <StudioChip tone="source">
+            <StudioChip className={commandChipClassName} tone="source">
               Active: {getManuscriptAuthorDefinition(activeAuthorId).label}
             </StudioChip>
-            <StudioChip tone="node">
+            <StudioChip className={commandChipClassName} tone="node">
               Mode: {getSidePanelModeLabel(sidePanelMode)}
             </StudioChip>
-            <StudioChip tone="review">
+            <StudioChip className={commandChipClassName} tone="review">
               Quotes {citedQuotations.length.toLocaleString()}
             </StudioChip>
             {blockFilterSummary.hasActiveFilters ? (
-              <StudioChip tone="review">
+              <StudioChip className={commandChipClassName} tone="review">
                 Focus {filteredBlockDetails.length.toLocaleString()} /{" "}
                 {blockDetails.length.toLocaleString()}
               </StudioChip>
             ) : null}
             {isRecordingMode ? (
-              <StudioChip tone="node">Recording view-only</StudioChip>
+              <StudioChip className={commandChipClassName} tone="node">
+                Recording
+              </StudioChip>
             ) : null}
-            <StudioChip tone="default">
+            <StudioChip className={commandChipClassName} tone="default">
               Saved: {formatDateTime(lastUpdatedAt)}
             </StudioChip>
+            <p
+              className={cn(
+                "m-0 hidden min-w-0 max-w-[18rem] truncate text-[0.7rem] leading-tight text-studio-muted lg:block",
+                statusTone === "tag" && "text-studio-tag",
+                statusTone === "danger" && "text-studio-danger",
+              )}
+            >
+              {message}
+            </p>
           </div>
 
-          <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-            <StudioNav />
+          <div className="flex shrink-0 items-center justify-end gap-1.5">
             <button
               className={cn(
-                smallButtonClassName,
+                commandButtonClassName,
                 isRecordingMode ? activeButtonClassName : "",
               )}
               type="button"
+              title="Toggle Recording / Reading mode"
               onClick={() => updateRecordingMode(!isRecordingMode)}
             >
               {isRecordingMode
-                ? "Exit Recording / Reading"
+                ? "Exit Reading"
                 : "Recording / Reading"}
             </button>
             <ManuscriptHelpTip
+              className="-ml-1"
               note={getManuscriptHelpNote("recording-reading-mode")}
             />
             {blockFilterSummary.hasActiveFilters ? (
               <div className="flex items-center gap-1.5">
                 <button
-                  className={smallButtonClassName}
+                  className={commandButtonClassName}
                   type="button"
                   onClick={exitFocusView}
                 >
@@ -2505,7 +2522,7 @@ export function StudioManuscriptClient({
               </div>
             ) : null}
             <button
-              className={smallButtonClassName}
+              className={commandButtonClassName}
               type="button"
               onClick={downloadFullDraftJson}
             >
@@ -2514,10 +2531,11 @@ export function StudioManuscriptClient({
           </div>
           <p
             className={cn(
-              "m-0 truncate text-[0.78rem] leading-relaxed text-studio-muted xl:col-span-2",
+              "sr-only",
               statusTone === "tag" && "text-studio-tag",
               statusTone === "danger" && "text-studio-danger",
             )}
+            aria-live="polite"
           >
             {message} Browser-local draft is active. Server writes happen only
             when you save a snapshot.
@@ -2526,7 +2544,7 @@ export function StudioManuscriptClient({
 
         <section
           className={cn(
-            "grid gap-[18px] md:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:grid-cols-[minmax(0,1fr)_400px]",
+            "grid gap-[18px] overflow-visible md:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] md:items-start xl:grid-cols-[minmax(0,1fr)_400px]",
           )}
           aria-label="Manuscript Desk workspace"
         >
@@ -2644,8 +2662,8 @@ export function StudioManuscriptClient({
 
           <aside
             className={cn(
-              panelClassName,
-              "order-2 hidden overflow-auto md:sticky md:top-[118px] md:block md:max-h-[calc(100vh-132px)] xl:top-[94px] xl:max-h-[calc(100vh-104px)]",
+              "order-2 hidden min-w-0 rounded-lg border border-studio-line bg-studio-panel/78 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.2)] backdrop-blur-md",
+              "md:sticky md:top-[68px] md:z-20 md:block md:max-h-[calc(100vh-80px)] md:self-start md:overflow-y-auto xl:top-[64px] xl:max-h-[calc(100vh-76px)]",
             )}
             aria-label="Manuscript tools sidebar"
           >
