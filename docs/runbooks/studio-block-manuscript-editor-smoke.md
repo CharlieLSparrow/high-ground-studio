@@ -69,6 +69,72 @@ saved in a configured environment. The Manuscript Desk does not write remote
 Studio document blocks, public projections, `.docx` exports, manuscript MDX, or
 imported archive files.
 
+## Manual Server Snapshot Workflow
+
+Use server snapshots only as deliberate checkpoints.
+
+Current behavior:
+
+- Browser-local draft is the active working copy.
+- Server snapshots are manual cross-device checkpoints.
+- Server snapshots are not autosave.
+- Server snapshots are not simultaneous editing.
+- Server snapshots are not canonical manuscript truth.
+- All currently saved server snapshots are `manual` snapshots.
+
+### Desktop Save
+
+Use this path when the desktop browser has the draft that should be available
+on another device:
+
+1. Open `/manuscript` on desktop and sign in with an authorized Studio account.
+2. Switch to `Backup`.
+3. Confirm `Server connected` reads connected.
+4. Confirm the visible browser-local draft is the draft you intend to
+   checkpoint.
+5. Add a short snapshot note, for example `synthetic phone load smoke`.
+6. Click `Save snapshot`.
+7. Confirm `Last saved snapshot id` updates.
+8. Confirm `Latest snapshot time` updates.
+9. Confirm `Local changes since last server save` reads `No`.
+10. Export a browser-local full draft JSON backup before moving to real
+    manuscript material.
+
+### Phone Load
+
+Use this path when a phone or second browser profile needs the saved checkpoint:
+
+1. Open `/manuscript` on the phone or second browser profile.
+2. Sign in with the same authorized Studio account.
+3. Switch to `Backup`, or use the mobile tools `Load latest snapshot` action.
+4. Click `Refresh` if the snapshot list is stale.
+5. Use `Load latest` for the newest checkpoint, or choose a snapshot and click
+   `Load selected snapshot`.
+6. Accept the replacement prompt only if the current browser-local draft on
+   that device can be replaced.
+7. Confirm text, block IDs, structure regions, cited quotations, and quote
+   review metadata are present.
+8. Confirm no server snapshot is saved until `Save snapshot` is clicked.
+
+### Real Manuscript First-Save Checklist
+
+Do not make the first real manuscript save until a synthetic smoke has already
+passed.
+
+Before the first real manuscript server snapshot:
+
+1. Confirm the Cloud Run health route is healthy.
+2. Confirm `/manuscript` is signed in as the intended Studio account.
+3. Confirm the local browser draft is the intended source.
+4. Download a full browser-local draft JSON backup.
+5. Use a snapshot note that identifies the source and operator.
+6. Click `Save snapshot` once.
+7. Record the `Last saved snapshot id` and latest snapshot time in the working
+   session note.
+8. Load the same snapshot on a second browser profile or phone.
+9. Confirm text and metadata survive the load.
+10. Confirm no autosave or repeated background saves occur.
+
 ## Manual Smoke Script
 
 1. Open `/manuscript`.
@@ -87,7 +153,9 @@ imported archive files.
    semantic marks, structure regions, quote reviews, or Focus View state unless
    a specific action button is clicked.
 8. In `Backup`, confirm the page says the draft is saved locally in this
-   browser and that server snapshots are explicit cross-device copies.
+   browser, that server snapshots are manual cross-device checkpoints, and that
+   the server status shows connection state, latest snapshot time, last saved
+   snapshot ID, and local changes since the last server save.
 9. Upload a `.docx` containing Scott/Homer manuscript text.
 10. If a browser-local draft already exists, confirm the replacement prompt
    appears. Cancel once if needed to verify the existing draft is preserved,

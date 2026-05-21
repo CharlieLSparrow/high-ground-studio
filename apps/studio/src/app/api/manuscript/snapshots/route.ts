@@ -5,6 +5,7 @@ import { getStudioAccessState } from "@/lib/server/studio-access";
 import { getStudioDatabaseUrl } from "@/lib/server/studio-persistence-guard";
 import {
   createStudioManuscriptSnapshot,
+  getStudioManuscriptSnapshot,
   listStudioManuscriptSnapshots,
 } from "@/lib/server/studio-manuscript-snapshots";
 
@@ -67,7 +68,7 @@ function assertSnapshotPersistenceConfigured() {
   );
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const unavailableResponse = assertSnapshotPersistenceConfigured();
 
   if (unavailableResponse) {
@@ -81,6 +82,17 @@ export async function GET() {
   }
 
   try {
+    const snapshotId = request.nextUrl.searchParams.get("id")?.trim() ?? "";
+
+    if (snapshotId) {
+      const snapshot = await getStudioManuscriptSnapshot({
+        ownerEmail: owner.ownerEmail,
+        snapshotId,
+      });
+
+      return NextResponse.json({ ok: true, snapshot });
+    }
+
     const snapshots = await listStudioManuscriptSnapshots({
       ownerEmail: owner.ownerEmail,
     });
@@ -114,12 +126,23 @@ export async function POST(request: NextRequest) {
 
   const requestBody =
     body && typeof body === "object" && !Array.isArray(body)
-      ? (body as { draft?: unknown; description?: unknown })
+      ? (body as {
+          draft?: unknown;
+          description?: unknown;
+          snapshotType?: unknown;
+        })
       : null;
   const draft = safeManuscriptDraft(requestBody?.draft);
 
   if (!draft) {
     return jsonError("Snapshot draft did not match ManuscriptDraft shape.", 400);
+  }
+
+  if (
+    typeof requestBody?.snapshotType === "string" &&
+    requestBody.snapshotType !== "manual"
+  ) {
+    return jsonError("Only manual manuscript snapshots are supported.", 400);
   }
 
   try {

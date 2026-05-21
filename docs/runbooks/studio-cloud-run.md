@@ -59,13 +59,12 @@ high-ground-studio.structure-mode.v1
 high-ground-studio.manuscript-editor.v1
 ```
 
-The Manuscript Desk now contains server snapshot routes for a future
-cross-device persistence slice, but those routes require a configured database
-and an applied Prisma schema before they can save or load snapshots. Do not
-configure a remote `DATABASE_URL` for this browser-local live MVP unless the
-operator is explicitly performing the approved manuscript persistence release.
-The existing local-only persistence guard should keep other development seed
-writes disabled in Cloud Run.
+The Manuscript Desk also has manual server snapshots for cross-device
+checkpoints when Cloud Run is configured with the Studio Cloud SQL
+`DATABASE_URL` secret and Cloud SQL attachment. These snapshots remain explicit:
+no autosave, no simultaneous editing, no Yjs collaboration, and no canonical
+manuscript/content writes. The existing local-only persistence guard should
+keep other development seed writes disabled in Cloud Run.
 
 ## Checked-In Deployment Files
 

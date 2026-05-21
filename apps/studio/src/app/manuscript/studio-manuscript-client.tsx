@@ -33,6 +33,7 @@ import {
   createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
   createDefaultManuscriptQuoteReview,
+  createManuscriptDraftCheckpointKey,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
   createFocusVisibleBlockIds,
@@ -97,6 +98,7 @@ type StudioManuscriptClientProps = {
 type ManuscriptServerSnapshotSummary = {
   id: string;
   ownerEmail: string;
+  snapshotType: "manual";
   title: string;
   description: string | null;
   schemaVersion: number;
@@ -126,6 +128,10 @@ type ManuscriptSnapshotSaveResponse =
   | { ok: false; message: string };
 
 type ManuscriptSnapshotLatestResponse =
+  | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
+  | { ok: false; message: string };
+
+type ManuscriptSnapshotDetailResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
 
@@ -425,11 +431,20 @@ export function StudioManuscriptClient({
   const [serverSnapshots, setServerSnapshots] = useState<
     ManuscriptServerSnapshotSummary[]
   >([]);
+  const [selectedServerSnapshotId, setSelectedServerSnapshotId] = useState("");
   const [serverSnapshotDescription, setServerSnapshotDescription] =
     useState("");
   const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
   const [isServerSnapshotUnavailable, setIsServerSnapshotUnavailable] =
     useState(false);
+  const [serverConnectionState, setServerConnectionState] = useState<
+    "unchecked" | "connected" | "unavailable"
+  >("unchecked");
+  const [lastSavedServerSnapshot, setLastSavedServerSnapshot] =
+    useState<ManuscriptServerSnapshotSummary | null>(null);
+  const [serverCheckpointKey, setServerCheckpointKey] = useState<string | null>(
+    null,
+  );
   const [serverSnapshotStatus, setServerSnapshotStatus] = useState(
     "Server snapshots not checked yet.",
   );
@@ -748,6 +763,51 @@ export function StudioManuscriptClient({
       title,
     ],
   );
+  const currentDraftCheckpointKey = useMemo(
+    () =>
+      createManuscriptDraftCheckpointKey(
+        createDraftFromState({
+          title,
+          sourceFileName,
+          importSummary,
+          structureRegions,
+          quoteReviews,
+          editorJson: currentEditorJson,
+          activeAuthorId,
+          showAuthorColors,
+          showSemanticColors,
+          lastUpdatedAt: null,
+        }),
+      ),
+    [
+      activeAuthorId,
+      currentEditorJson,
+      importSummary,
+      quoteReviews,
+      showAuthorColors,
+      showSemanticColors,
+      sourceFileName,
+      structureRegions,
+      title,
+    ],
+  );
+  const hasLocalChangesSinceServerSave =
+    serverCheckpointKey === null
+      ? null
+      : currentDraftCheckpointKey !== serverCheckpointKey;
+  const latestServerSnapshot = serverSnapshots[0] ?? null;
+  const serverConnectionLabel =
+    serverConnectionState === "connected"
+      ? "Connected"
+      : serverConnectionState === "unavailable"
+        ? "Unavailable"
+        : "Not checked";
+  const localChangesSinceServerSaveLabel =
+    hasLocalChangesSinceServerSave === null
+      ? "Unknown until a snapshot is saved or loaded"
+      : hasLocalChangesSinceServerSave
+        ? "Yes"
+        : "No";
 
   useEffect(() => {
     setCurrentQuoteIndex((current) => {
@@ -909,6 +969,13 @@ export function StudioManuscriptClient({
     return window.confirm(
       `${action} will replace the current browser-local Manuscript Desk draft. Export a backup first if you need to keep it. Continue?`,
     );
+  }
+
+  function markServerSnapshotResponseState(response: Response) {
+    const isUnavailable = response.status === 503;
+
+    setIsServerSnapshotUnavailable(isUnavailable);
+    setServerConnectionState(isUnavailable ? "unavailable" : "connected");
   }
 
   function getStructureRegionsForBlock(blockId: string | null) {
@@ -1842,7 +1909,7 @@ export function StudioManuscriptClient({
           !payload.ok && payload.message
             ? payload.message
             : "Server snapshots could not be listed.";
-        setIsServerSnapshotUnavailable(response.status === 503);
+        markServerSnapshotResponseState(response);
         setServerSnapshotStatus(message);
 
         if (!input?.silent) {
@@ -1853,7 +1920,14 @@ export function StudioManuscriptClient({
       }
 
       setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
       setServerSnapshots(payload.snapshots);
+      setSelectedServerSnapshotId((current) =>
+        current &&
+        payload.snapshots.some((snapshot) => snapshot.id === current)
+          ? current
+          : payload.snapshots[0]?.id ?? "",
+      );
       setServerSnapshotStatus(
         payload.snapshots.length
           ? `${payload.snapshots.length.toLocaleString()} server snapshot(s) available.`
@@ -1862,6 +1936,7 @@ export function StudioManuscriptClient({
     } catch (error) {
       console.error("Server snapshot list failed.", error);
       setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
       setServerSnapshotStatus("Server snapshots are unavailable right now.");
 
       if (!input?.silent) {
@@ -1879,6 +1954,8 @@ export function StudioManuscriptClient({
       return;
     }
 
+    const checkpointKey = createManuscriptDraftCheckpointKey(draft);
+
     setIsServerSnapshotBusy(true);
     setServerSnapshotStatus("Saving server snapshot...");
 
@@ -1891,6 +1968,7 @@ export function StudioManuscriptClient({
         body: JSON.stringify({
           draft,
           description: serverSnapshotDescription,
+          snapshotType: "manual",
         }),
       });
       const payload = (await response.json()) as ManuscriptSnapshotSaveResponse;
@@ -1900,17 +1978,21 @@ export function StudioManuscriptClient({
           !payload.ok && payload.message
             ? payload.message
             : "Server snapshot could not be saved.";
-        setIsServerSnapshotUnavailable(response.status === 503);
+        markServerSnapshotResponseState(response);
         setServerSnapshotStatus(message);
         setMessage(message);
         return;
       }
 
       setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
       setServerSnapshots((current) => [
         payload.snapshot,
         ...current.filter((snapshot) => snapshot.id !== payload.snapshot.id),
       ]);
+      setSelectedServerSnapshotId(payload.snapshot.id);
+      setLastSavedServerSnapshot(payload.snapshot);
+      setServerCheckpointKey(checkpointKey);
       setServerSnapshotDescription("");
       setServerSnapshotStatus(
         `Saved server snapshot ${formatDateTime(payload.snapshot.updatedAt)}.`,
@@ -1919,6 +2001,7 @@ export function StudioManuscriptClient({
     } catch (error) {
       console.error("Server snapshot save failed.", error);
       setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
       setServerSnapshotStatus("Server snapshot save failed.");
       setMessage("Server snapshot save failed.");
     } finally {
@@ -1951,13 +2034,14 @@ export function StudioManuscriptClient({
           !payload.ok && payload.message
             ? payload.message
             : "Latest server snapshot could not be loaded.";
-        setIsServerSnapshotUnavailable(response.status === 503);
+        markServerSnapshotResponseState(response);
         setServerSnapshotStatus(message);
         setMessage(message);
         return;
       }
 
       setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
       if (!payload.snapshot) {
         setServerSnapshotStatus("No server snapshots saved yet.");
         setMessage("No server snapshots saved yet.");
@@ -1978,6 +2062,9 @@ export function StudioManuscriptClient({
           payload.snapshot.updatedAt,
         )}.`,
       );
+      setSelectedServerSnapshotId(payload.snapshot.id);
+      setLastSavedServerSnapshot(payload.snapshot);
+      setServerCheckpointKey(createManuscriptDraftCheckpointKey(draft));
       setServerSnapshotStatus(
         `Loaded latest server snapshot from ${formatDateTime(
           payload.snapshot.updatedAt,
@@ -1987,8 +2074,95 @@ export function StudioManuscriptClient({
     } catch (error) {
       console.error("Latest server snapshot load failed.", error);
       setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
       setServerSnapshotStatus("Latest server snapshot load failed.");
       setMessage("Latest server snapshot load failed.");
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function loadSelectedServerSnapshot() {
+    if (!editor) {
+      return;
+    }
+
+    const snapshotId = selectedServerSnapshotId.trim();
+
+    if (!snapshotId) {
+      setMessage("Select a server snapshot first.");
+      return;
+    }
+
+    if (!confirmDraftReplacement("Loading the selected server snapshot")) {
+      setMessage(
+        "Server snapshot load canceled. Current browser-local draft kept.",
+      );
+      return;
+    }
+
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus("Loading selected server snapshot...");
+
+    try {
+      const response = await fetch(
+        `/api/manuscript/snapshots?id=${encodeURIComponent(snapshotId)}`,
+        {
+          cache: "no-store",
+        },
+      );
+      const payload =
+        (await response.json()) as ManuscriptSnapshotDetailResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Selected server snapshot could not be loaded.";
+        markServerSnapshotResponseState(response);
+        setServerSnapshotStatus(message);
+        setMessage(message);
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+      if (!payload.snapshot) {
+        setServerSnapshotStatus("Selected server snapshot was not found.");
+        setMessage("Selected server snapshot was not found.");
+        void refreshServerSnapshots({ silent: true });
+        return;
+      }
+
+      const draft = safeManuscriptDraft(payload.snapshot.draft);
+
+      if (!draft) {
+        setServerSnapshotStatus("Selected server snapshot failed draft validation.");
+        setMessage("Selected server snapshot failed draft validation.");
+        return;
+      }
+
+      applyDraftToEditor(
+        draft,
+        `Loaded selected server snapshot from ${formatDateTime(
+          payload.snapshot.updatedAt,
+        )}.`,
+      );
+      setSelectedServerSnapshotId(payload.snapshot.id);
+      setLastSavedServerSnapshot(payload.snapshot);
+      setServerCheckpointKey(createManuscriptDraftCheckpointKey(draft));
+      setServerSnapshotStatus(
+        `Loaded selected server snapshot from ${formatDateTime(
+          payload.snapshot.updatedAt,
+        )}.`,
+      );
+      void refreshServerSnapshots({ silent: true });
+    } catch (error) {
+      console.error("Selected server snapshot load failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerSnapshotStatus("Selected server snapshot load failed.");
+      setMessage("Selected server snapshot load failed.");
     } finally {
       setIsServerSnapshotBusy(false);
     }
@@ -3932,23 +4106,64 @@ export function StudioManuscriptClient({
                   <div>
                     <p className={labelClassName}>Server snapshots</p>
                     <h3 className="m-0 text-[0.98rem] leading-snug text-studio-ink">
-                      Cross-device manuscript copy
+                      Manual cross-device checkpoints
                     </h3>
                   </div>
-                  <StudioChip className="normal-case" tone="source">
-                    {actor.primaryEmail}
-                  </StudioChip>
+                  <div className="flex flex-wrap gap-1.5">
+                    <StudioChip tone="review">Manual</StudioChip>
+                    <StudioChip className="normal-case" tone="source">
+                      {actor.primaryEmail}
+                    </StudioChip>
+                  </div>
                 </div>
                 <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
-                  Save an explicit server snapshot when another device needs to
-                  load this manuscript. Browser-local draft remains the active
-                  working copy. Requires a configured Studio database and
-                  applied snapshot schema.
+                  Browser-local draft is the active working copy. Server
+                  snapshots are manual cross-device checkpoints for saving on
+                  desktop and loading on another signed-in device. They are not
+                  autosave, simultaneous editing, or canonical manuscript truth.
                 </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                    <p className={labelClassName}>Server connected</p>
+                    <p className="m-0 mt-1 text-[0.84rem] font-extrabold text-studio-ink">
+                      {serverConnectionLabel}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                    <p className={labelClassName}>Latest snapshot time</p>
+                    <p className="m-0 mt-1 text-[0.84rem] font-extrabold text-studio-ink">
+                      {latestServerSnapshot
+                        ? formatDateTime(latestServerSnapshot.updatedAt)
+                        : "No server snapshot yet"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                    <p className={labelClassName}>Last saved snapshot id</p>
+                    <p className="m-0 mt-1 break-all font-mono text-[0.72rem] text-studio-muted">
+                      {lastSavedServerSnapshot?.id ?? "None in this browser"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                    <p className={labelClassName}>
+                      Local changes since last server save
+                    </p>
+                    <div className="mt-1">
+                      <StudioChip
+                        tone={
+                          hasLocalChangesSinceServerSave === true
+                            ? "review"
+                            : hasLocalChangesSinceServerSave === false
+                              ? "source"
+                              : "default"
+                        }
+                      >
+                        {localChangesSinceServerSaveLabel}
+                      </StudioChip>
+                    </div>
+                  </div>
+                </div>
                 <label className="grid gap-2">
-                  <span className={fieldLabelClassName}>
-                    Snapshot note
-                  </span>
+                  <span className={fieldLabelClassName}>Snapshot note</span>
                   <textarea
                     className={cn(textareaClassName, "min-h-[70px]")}
                     disabled={isServerSnapshotBusy}
@@ -3985,6 +4200,40 @@ export function StudioManuscriptClient({
                     Refresh
                   </button>
                 </div>
+                <div className="grid gap-2">
+                  <label className="grid gap-2">
+                    <span className={fieldLabelClassName}>
+                      Select server snapshot
+                    </span>
+                    <select
+                      className={fieldClassName}
+                      disabled={!serverSnapshots.length || isServerSnapshotBusy}
+                      value={selectedServerSnapshotId}
+                      onChange={(event) =>
+                        setSelectedServerSnapshotId(event.target.value)
+                      }
+                    >
+                      <option value="">Select snapshot</option>
+                      {serverSnapshots.map((snapshot) => (
+                        <option key={snapshot.id} value={snapshot.id}>
+                          {formatDateTime(snapshot.updatedAt)} - {snapshot.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className={smallButtonClassName}
+                    disabled={
+                      !selectedServerSnapshotId ||
+                      isServerSnapshotBusy ||
+                      isServerSnapshotUnavailable
+                    }
+                    type="button"
+                    onClick={() => void loadSelectedServerSnapshot()}
+                  >
+                    Load selected snapshot
+                  </button>
+                </div>
                 <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
                   {serverSnapshotStatus}
                 </p>
@@ -3992,16 +4241,25 @@ export function StudioManuscriptClient({
                   <div className="grid gap-2">
                     {serverSnapshots.slice(0, 5).map((snapshot) => (
                       <article
-                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        className={cn(
+                          "grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5",
+                          selectedServerSnapshotId === snapshot.id &&
+                            "border-studio-tag/55 bg-studio-tag/10",
+                        )}
                         key={snapshot.id}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className="m-0 text-[0.88rem] leading-snug text-studio-ink">
                             {snapshot.title}
                           </h4>
-                          <span className="font-mono text-[0.68rem] text-studio-dim">
-                            {formatDateTime(snapshot.updatedAt)}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StudioChip tone="review">
+                              {snapshot.snapshotType}
+                            </StudioChip>
+                            <span className="font-mono text-[0.68rem] text-studio-dim">
+                              {formatDateTime(snapshot.updatedAt)}
+                            </span>
+                          </div>
                         </div>
                         <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
                           {snapshot.wordCount.toLocaleString()} words /{" "}
@@ -4011,11 +4269,22 @@ export function StudioManuscriptClient({
                           {snapshot.citedQuoteCount.toLocaleString()} cited
                           quotes
                         </p>
+                        <p className="m-0 break-all font-mono text-[0.68rem] leading-relaxed text-studio-dim">
+                          {snapshot.id}
+                        </p>
                         {snapshot.description ? (
                           <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
                             {snapshot.description}
                           </p>
                         ) : null}
+                        <button
+                          className={smallButtonClassName}
+                          disabled={isServerSnapshotBusy}
+                          type="button"
+                          onClick={() => setSelectedServerSnapshotId(snapshot.id)}
+                        >
+                          Select snapshot
+                        </button>
                       </article>
                     ))}
                   </div>

@@ -506,6 +506,13 @@ export function createManuscriptSnapshotMetadata(
   };
 }
 
+export function createManuscriptDraftCheckpointKey(draft: ManuscriptDraft) {
+  return JSON.stringify({
+    ...draft,
+    lastUpdatedAt: null,
+  });
+}
+
 export function countWordsAndCharacters(
   value: string | ManuscriptEditorJson,
 ): ManuscriptTextStats {

@@ -15,6 +15,7 @@ import {
   createCitedQuotationMarkdown,
   createDefaultManuscriptQuoteReview,
   ensureManuscriptBlockIds,
+  createManuscriptDraftCheckpointKey,
   createFilteredBlockListMarkdown,
   createFocusVisibleBlockIds,
   createManuscriptImportSummary,
@@ -296,6 +297,37 @@ test("createManuscriptSnapshotMetadata summarizes a synthetic draft", () => {
     citedQuotations: 1,
     quoteReviews: 1,
   });
+});
+
+test("createManuscriptDraftCheckpointKey ignores local save timestamp churn", () => {
+  const draft = {
+    schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
+    title: "Checkpoint draft",
+    sourceFileName: null,
+    importSummary: null,
+    structureRegions: [],
+    quoteReviews: {},
+    editorJson,
+    activeAuthorId: "homer",
+    showAuthorColors: true,
+    showSemanticColors: true,
+    lastUpdatedAt: "2026-05-20T12:05:00.000Z",
+  };
+
+  assert.equal(
+    createManuscriptDraftCheckpointKey(draft),
+    createManuscriptDraftCheckpointKey({
+      ...draft,
+      lastUpdatedAt: "2026-05-20T12:10:00.000Z",
+    }),
+  );
+  assert.notEqual(
+    createManuscriptDraftCheckpointKey(draft),
+    createManuscriptDraftCheckpointKey({
+      ...draft,
+      title: "Changed checkpoint draft",
+    }),
+  );
 });
 
 test("safeManuscriptDraft defaults older drafts to no structure regions", () => {

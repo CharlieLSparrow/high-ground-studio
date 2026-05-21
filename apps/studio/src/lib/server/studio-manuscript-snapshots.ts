@@ -16,10 +16,12 @@ const MAX_SNAPSHOT_DESCRIPTION_LENGTH = 500;
 const MAX_SNAPSHOT_LIST_LIMIT = 25;
 
 type StudioManuscriptSnapshotRecord = StudioManuscriptSnapshot;
+export type StudioManuscriptSnapshotType = "manual";
 
 export type StudioManuscriptSnapshotSummary = {
   id: string;
   ownerEmail: string;
+  snapshotType: StudioManuscriptSnapshotType;
   title: string;
   description: string | null;
   schemaVersion: number;
@@ -72,6 +74,7 @@ function mapSnapshotSummary(
   return {
     id: snapshot.id,
     ownerEmail: snapshot.ownerEmail,
+    snapshotType: "manual",
     title: snapshot.title,
     description: snapshot.description,
     schemaVersion: snapshot.schemaVersion,
@@ -149,6 +152,39 @@ export async function getLatestStudioManuscriptSnapshot(input: {
   const snapshot = await prisma.studioManuscriptSnapshot.findFirst({
     where: { ownerEmail },
     orderBy: { updatedAt: "desc" },
+  });
+
+  if (!snapshot) {
+    return null;
+  }
+
+  const draft = safeManuscriptDraft(snapshot.draftJson);
+
+  if (!draft) {
+    throw new Error("Stored manuscript snapshot failed draft validation.");
+  }
+
+  return {
+    ...mapSnapshotSummary(snapshot),
+    draft,
+  };
+}
+
+export async function getStudioManuscriptSnapshot(input: {
+  ownerEmail: string;
+  snapshotId: string;
+}): Promise<StudioManuscriptSnapshotDetail | null> {
+  const ownerEmail = normalizeOwnerEmail(input.ownerEmail);
+  const snapshotId = input.snapshotId.trim();
+
+  if (!snapshotId) {
+    return null;
+  }
+
+  const prisma = getPrismaClient();
+
+  const snapshot = await prisma.studioManuscriptSnapshot.findFirst({
+    where: { id: snapshotId, ownerEmail },
   });
 
   if (!snapshot) {
