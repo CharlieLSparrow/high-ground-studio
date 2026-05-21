@@ -53,6 +53,7 @@ import {
   safeManuscriptQuoteReviews,
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
+  STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
   summarizeCitedQuotationReviewProgress,
@@ -2262,6 +2263,7 @@ test("Studio creates a browser-only HGO projection from synthetic smoke data", (
     projection.projectionSource.sourceFileName,
     "synthetic-studio-smoke.docx",
   );
+  assert.equal("targetEpisodeRegionId" in projection.projectionSource, false);
   assert.ok(projection.beats.length >= 1);
   assert.ok(projection.voiceCards.some((card) => card.speaker === "Charlie"));
   assert.ok(projection.voiceCards.some((card) => card.speaker === "Homer"));
@@ -2279,6 +2281,41 @@ test("Studio creates a browser-only HGO projection from synthetic smoke data", (
   assert.doesNotMatch(serialized, /"quoteReviews"/);
   assert.doesNotMatch(serialized, /"structureRegions"/);
   assert.doesNotMatch(serialized, /"marks"/);
+  assert.doesNotMatch(serialized, /"targetEpisodeRegionId"/);
+});
+
+test("Studio projection bridge warning copy names staged review boundaries", () => {
+  assert.ok(
+    STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY.includes(
+      "Synthetic testing is safe.",
+    ),
+  );
+  assert.ok(
+    STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY.some((warning) =>
+      warning.includes("quoted text and structure titles"),
+    ),
+  );
+  assert.ok(
+    STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY.some((warning) =>
+      warning.includes("private/staged"),
+    ),
+  );
+});
+
+test("Studio HGO projection omits non-synthetic source file names", () => {
+  const draft = createSyntheticManuscriptSmokeDraft();
+  const projection = createHgoEpisodeProjectionFromManuscript({
+    title: draft.title,
+    editorJson: draft.editorJson,
+    structureRegions: draft.structureRegions,
+    quoteReviews: draft.quoteReviews,
+    sourceFileName: "real-manuscript-draft.docx",
+    generatedAt: "2026-05-21T14:03:00.000Z",
+    projectionStatus: "staged",
+    projectionVisibility: "private",
+  });
+
+  assert.equal("sourceFileName" in projection.projectionSource, false);
 });
 
 test("HGO projection validator accepts synthetic bridge output and warns on unresolved citations", () => {
@@ -2299,7 +2336,28 @@ test("HGO projection validator accepts synthetic bridge output and warns on unre
   assert.deepEqual(validation.errors, []);
   assert.ok(
     validation.warnings.some((warning) =>
-      warning.includes("would block live publishing"),
+      warning.includes("Studio browser bridge projections"),
+    ),
+  );
+  assert.ok(
+    validation.warnings.some((warning) =>
+      warning.includes("status is staged"),
+    ),
+  );
+  assert.ok(
+    validation.warnings.some((warning) =>
+      warning.includes("visibility is staged"),
+    ),
+  );
+  assert.ok(
+    validation.warnings.some((warning) =>
+      warning.includes("pull quote") &&
+      warning.includes("not live publication until reviewed"),
+    ),
+  );
+  assert.ok(
+    validation.warnings.some((warning) =>
+      warning.includes("unresolved citation state"),
     ),
   );
 

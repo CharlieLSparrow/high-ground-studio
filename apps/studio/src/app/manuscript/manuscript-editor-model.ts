@@ -441,7 +441,6 @@ export type StudioHgoEpisodeProjection = {
     bridgeVersion: "studio-browser-v1";
     generatedAt: string;
     sourceFileName?: string;
-    targetEpisodeRegionId?: string;
   };
 };
 
@@ -557,6 +556,13 @@ export const SYNTHETIC_MANUSCRIPT_SMOKE_TITLE =
 
 export const SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME =
   "synthetic-studio-smoke.docx";
+
+export const STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY = [
+  "Synthetic testing is safe.",
+  "Real manuscript projection drafts may include quoted text and structure titles.",
+  "Treat generated JSON as private/staged until citation and public-safety review is complete.",
+  "Do not paste real projection drafts into public places.",
+] as const;
 
 const syntheticSmokeTimestamp = "2026-05-21T12:00:00.000Z";
 
@@ -2542,7 +2548,7 @@ export function createHgoEpisodeProjectionFromManuscript(
     hero: {
       eyebrow: "Studio Projection Bridge",
       visualPrompt:
-        "A private Studio workbench projecting safe episode cards onto a High Ground Odyssey preview wall.",
+        "A private Studio workbench projecting staged episode cards onto a High Ground Odyssey preview wall.",
       colorMood: "ember, slate, paper, signal green",
     },
     audio: {
@@ -2561,7 +2567,7 @@ export function createHgoEpisodeProjectionFromManuscript(
       .filter((author) => author.authorId === "charlie" || author.authorId === "homer")
       .map((author) => ({
         speaker: author.authorId === "charlie" ? "Charlie" : "Homer",
-        summary: `${author.words.toLocaleString()} public-reviewable word${author.words === 1 ? "" : "s"} across ${author.spans.toLocaleString()} tagged span${author.spans === 1 ? "" : "s"} in the Studio draft.`,
+        summary: `${author.words.toLocaleString()} projection-review word${author.words === 1 ? "" : "s"} across ${author.spans.toLocaleString()} tagged span${author.spans === 1 ? "" : "s"} in the Studio draft.`,
       })),
     pullQuotes: selectedQuotations.map((quotation) => ({
       text: quotation.text.trim(),
@@ -2606,7 +2612,6 @@ export function createHgoEpisodeProjectionFromManuscript(
       bridgeVersion: "studio-browser-v1",
       generatedAt: input.generatedAt,
       ...(sourceFileName ? { sourceFileName } : {}),
-      ...(targetEpisodeRegion ? { targetEpisodeRegionId: targetEpisodeRegion.id } : {}),
     },
   };
 }

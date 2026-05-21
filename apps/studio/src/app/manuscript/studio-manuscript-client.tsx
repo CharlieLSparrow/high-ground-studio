@@ -77,6 +77,7 @@ import {
   safeManuscriptDraft,
   filterCitedQuotationsByReviewStatus,
   filterManuscriptBlocks,
+  STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
   summarizeCitedQuotationReviewProgress,
@@ -5317,13 +5318,23 @@ export function StudioManuscriptClient({
                       </div>
                       <div className="grid gap-1 text-[0.74rem] leading-relaxed text-studio-muted">
                         <p className="m-0">
-                          This is a public-safe projection draft.
+                          This is a projection draft for staged review.
                         </p>
                         <p className="m-0">It is not a server publish.</p>
                         <p className="m-0">It is not a live HGO page.</p>
                         <p className="m-0">
-                          Review citations before staging or publishing.
+                          It is not public-safe until reviewed.
                         </p>
+                      </div>
+                      <div className="grid gap-1.5 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2">
+                        {STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY.map((warning) => (
+                          <p
+                            className="m-0 text-[0.74rem] leading-relaxed text-studio-muted"
+                            key={warning}
+                          >
+                            {warning}
+                          </p>
+                        ))}
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2">
                         <label className="grid gap-1">

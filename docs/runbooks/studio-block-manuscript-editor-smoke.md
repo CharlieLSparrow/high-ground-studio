@@ -274,17 +274,25 @@ Use synthetic manuscript text only for this smoke.
 3. Load the synthetic smoke draft.
 4. In `HGO projection bridge`, select an Episode region if more than one is
    available.
-5. Generate HGO episode projection JSON.
-6. Confirm the textarea contains projection JSON, not full draft JSON.
-7. Download HGO episode projection JSON.
-8. Open HGO `/projection-preview/import`.
-9. Paste the projection JSON.
-10. Confirm the visual episode page renders with the shared HGO projection
+5. Confirm the bridge warning says synthetic testing is safe, real manuscript
+   projection drafts may include quoted text and structure titles, generated
+   JSON should be treated as private/staged until citation and public-safety
+   review is complete, and real projection drafts should not be pasted into
+   public places.
+6. Generate HGO episode projection JSON.
+7. Confirm the textarea contains projection JSON, not full draft JSON.
+8. Confirm the projection JSON omits `editorJson`, `quoteReviews`,
+   `structureRegions`, inline marks, and internal Studio structure IDs.
+9. Download HGO episode projection JSON.
+10. Open HGO `/projection-preview/import`.
+11. Paste the projection JSON.
+12. Confirm the visual episode page renders with the shared HGO projection
     renderer.
-11. Confirm unresolved citation states are visible as warnings.
-12. Confirm no server snapshot is saved and no localStorage persistence is
+13. Confirm unresolved citation states, pull quote presence, and staged review
+    status are visible as warnings.
+14. Confirm no server snapshot is saved and no localStorage persistence is
     created by the import page.
-13. Confirm no real manuscript text or real HGO content is used.
+15. Confirm no real manuscript text or real HGO content is used.
 
 ## Manual Smoke Script
 

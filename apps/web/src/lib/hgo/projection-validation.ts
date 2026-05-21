@@ -54,6 +54,12 @@ const liveBlockingCitationStates = new Set<HgoCitationState>([
   "do-not-use",
 ]);
 
+function addWarning(warnings: string[], warning: string) {
+  if (!warnings.includes(warning)) {
+    warnings.push(warning);
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -203,12 +209,39 @@ function collectWarnings(
   projection: HgoEpisodeProjection,
   warnings: string[],
 ) {
+  if (projection.projectionSource?.bridgeVersion === "studio-browser-v1") {
+    addWarning(
+      warnings,
+      "Studio browser bridge projections are suitable for staged review, not live publication.",
+    );
+  }
+
+  if (projection.status === "staged") {
+    addWarning(
+      warnings,
+      "Imported projection status is staged. Treat this as a staged review draft, not live publication.",
+    );
+  }
+
   if (projection.status === "live") {
-    warnings.push("Imported projection status is live. Use staged review before public promotion.");
+    addWarning(
+      warnings,
+      "Imported projection status is live. Confirm this passed staged review before public promotion.",
+    );
+  }
+
+  if (projection.visibility === "staged") {
+    addWarning(
+      warnings,
+      "Imported projection visibility is staged. Keep it in private/staged review until public-safety review is complete.",
+    );
   }
 
   if (projection.visibility === "public") {
-    warnings.push("Imported projection visibility is public. This import route does not publish.");
+    addWarning(
+      warnings,
+      "Imported projection visibility is public. This import route does not publish, but public projections need release review.",
+    );
   }
 
   const unresolvedQuotes = projection.pullQuotes.filter((quote) =>
@@ -218,16 +251,27 @@ function collectWarnings(
     (note) => note.status === "needs-review" || note.status === "do-not-use",
   );
 
+  if (projection.pullQuotes.length) {
+    addWarning(
+      warnings,
+      `${projection.pullQuotes.length.toLocaleString()} pull quote${
+        projection.pullQuotes.length === 1 ? "" : "s"
+      } are present. Quote text is suitable for staged review, not live publication until reviewed.`,
+    );
+  }
+
   if (unresolvedQuotes.length) {
-    warnings.push(
+    addWarning(
+      warnings,
       `${unresolvedQuotes.length.toLocaleString()} pull quote${
         unresolvedQuotes.length === 1 ? "" : "s"
-      } would block live publishing because citation state is unresolved.`,
+      } have unresolved citation state and are suitable for staged review, not live publication.`,
     );
   }
 
   if (blockedSourceNotes.length) {
-    warnings.push(
+    addWarning(
+      warnings,
       `${blockedSourceNotes.length.toLocaleString()} source note${
         blockedSourceNotes.length === 1 ? "" : "s"
       } need review or removal before live publishing.`,

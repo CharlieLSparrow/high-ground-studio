@@ -122,6 +122,10 @@ export default function ImportProjectionPreviewClient() {
               with the same HGO episode projection component. It does not save,
               stage, publish, or persist anything.
             </p>
+            <p className="mt-4 max-w-2xl text-sm font-bold leading-6 text-amber-100">
+              Treat real Studio projection drafts as private staged review
+              material until citation and public-safety review is complete.
+            </p>
           </div>
 
           <div className="grid gap-4 rounded-[28px] border border-white/12 bg-white/8 p-5 shadow-glass backdrop-blur">

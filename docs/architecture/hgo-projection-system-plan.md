@@ -124,14 +124,23 @@ Current synthetic preview routes:
 ## Studio Bridge
 
 The first Studio-to-HGO bridge is manual and browser-only. Studio's private
-`/manuscript` Publish mode can generate a public-safe HGO episode projection
-JSON draft from synthetic or tagged manuscript metadata. HGO can then paste that
-JSON into `/projection-preview/import` for renderer validation.
+`/manuscript` Publish mode can generate an HGO episode projection draft JSON
+from synthetic or tagged manuscript metadata. HGO can then paste that JSON into
+`/projection-preview/import` for renderer validation.
 
 The bridge does not create server artifacts, mutate content files, write Prisma
 data, or publish live pages. Its purpose is to prove the projection handoff:
 sources are preserved, spans remain addressable in Studio, tags stay
 actionable, and HGO renders only the projection.
+
+Hardening note:
+
+- A Studio-generated projection draft may contain quoted text, source titles,
+  citation text, structure titles, author summary counts, and block counts.
+- It is not public-safe until citation/public-safety review is complete.
+- The browser import validator warns on Studio browser bridge origin, staged
+  status/visibility, pull quote presence, unresolved citation states, live
+  status, and public visibility.
 
 Detailed bridge notes:
 

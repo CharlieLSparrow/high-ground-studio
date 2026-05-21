@@ -92,7 +92,6 @@ export type HgoEpisodeProjection = {
     bridgeVersion: "studio-browser-v1" | "synthetic-fixture-v1";
     generatedAt: string;
     sourceFileName?: string;
-    targetEpisodeRegionId?: string;
   };
 };
 
