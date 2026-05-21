@@ -1,6 +1,7 @@
 import {
   type ChangeEvent,
   type CSSProperties,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -80,6 +81,7 @@ export function App() {
 
 function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [sourceTimeMs, setSourceTimeMs] = useState(0);
+  const [isProgramPlaying, setIsProgramPlaying] = useState(false);
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -107,18 +109,78 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     [sortedEvents, sourceTimeMs],
   );
   const currentState = currentEvent?.state;
+  const playbackModeLabel = isProgramPlaying
+    ? "Program Playback"
+    : "Source Scrub";
+  const playbackModeDescription = isProgramPlaying
+    ? "Play is simulating program playback and skipping Cut spans."
+    : "Scrub controls use source time and show every span, including Cut.";
+
+  useEffect(() => {
+    if (!isProgramPlaying) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setSourceTimeMs((currentSourceTimeMs) => {
+        const nextSourceTimeMs = getNextProgramPlaybackSourceTime(
+          derivedSegments,
+          currentSourceTimeMs,
+          500,
+        );
+
+        if (nextSourceTimeMs === undefined) {
+          setIsProgramPlaying(false);
+          return currentSourceTimeMs;
+        }
+
+        if (nextSourceTimeMs >= SOURCE_DURATION_MS) {
+          setIsProgramPlaying(false);
+          return SOURCE_DURATION_MS;
+        }
+
+        return nextSourceTimeMs;
+      });
+    }, 500);
+
+    return () => window.clearInterval(intervalId);
+  }, [derivedSegments, isProgramPlaying]);
 
   function setClampedSourceTime(nextValue: number) {
-    setSourceTimeMs(Math.min(SOURCE_DURATION_MS, Math.max(0, nextValue)));
+    setSourceTimeMs(clampSourceTime(nextValue));
+  }
+
+  function scrubToSourceTime(nextValue: number) {
+    setIsProgramPlaying(false);
+    setClampedSourceTime(nextValue);
+  }
+
+  function toggleProgramPlayback() {
+    if (isProgramPlaying) {
+      setIsProgramPlaying(false);
+      return;
+    }
+
+    const playableSourceTimeMs = skipCutSourceTime(derivedSegments, sourceTimeMs);
+
+    if (playableSourceTimeMs === undefined) {
+      setIsProgramPlaying(false);
+      return;
+    }
+
+    setSourceTimeMs(playableSourceTimeMs);
+    setIsProgramPlaying(true);
   }
 
   function addDecision(state: ProgramState) {
+    setIsProgramPlaying(false);
     createDecision(state, sourceTimeMs, note);
     setNote("");
   }
 
   function clearLocalDecisions() {
     if (window.confirm("Clear this browser's Studio Cut decision events?")) {
+      setIsProgramPlaying(false);
       clearDecisions();
     }
   }
@@ -146,6 +208,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     try {
       const payload = JSON.parse(await file.text()) as unknown;
       const result = importDecisionEvents(payload);
+      setIsProgramPlaying(false);
       const normalizedCopy =
         result.normalizedCount > 0
           ? ` ${result.normalizedCount} event${
@@ -169,118 +232,127 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   return (
     <main className="workspace">
       <section className="monitor-grid" aria-label="Source and program monitors">
-          <SourceMonitor
-            role="homer"
-            sourceTimeMs={sourceTimeMs}
-            currentState={currentState}
-          />
-          <SourceMonitor
-            role="charlie"
-            sourceTimeMs={sourceTimeMs}
-            currentState={currentState}
-          />
-          <SourceMonitor
-            role="clip"
-            sourceTimeMs={sourceTimeMs}
-            currentState={currentState}
-          />
-          <ProgramMonitor
-            sourceTimeMs={sourceTimeMs}
-            currentEvent={currentEvent}
-          />
+        <SourceMonitor
+          role="homer"
+          sourceTimeMs={sourceTimeMs}
+          currentState={currentState}
+        />
+        <SourceMonitor
+          role="charlie"
+          sourceTimeMs={sourceTimeMs}
+          currentState={currentState}
+        />
+        <SourceMonitor
+          role="clip"
+          sourceTimeMs={sourceTimeMs}
+          currentState={currentState}
+        />
+        <ProgramMonitor
+          sourceTimeMs={sourceTimeMs}
+          currentEvent={currentEvent}
+        />
+      </section>
+
+      <aside className="edit-panel" aria-label="Decision controls">
+        <section className="persistence-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Persistence Mode</h2>
+              <p>{status.detail}</p>
+            </div>
+            <strong>{status.label}</strong>
+          </div>
+          <p className="persistence-path">{status.path}</p>
         </section>
 
-        <aside className="edit-panel" aria-label="Decision controls">
-          <section className="persistence-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>Persistence Mode</h2>
-                <p>{status.detail}</p>
-              </div>
-              <strong>{status.label}</strong>
+        <section className="time-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Source Time</h2>
+              <p>Scrub preserves source time; Play skips inactive spans</p>
             </div>
-            <p className="persistence-path">{status.path}</p>
-          </section>
+            <strong>{formatSourceTime(sourceTimeMs)}</strong>
+          </div>
+          <div className="playback-controls">
+            <button type="button" onClick={toggleProgramPlayback}>
+              {isProgramPlaying ? "Pause" : "Play"}
+            </button>
+            <div>
+              <strong>{playbackModeLabel}</strong>
+              <p>{playbackModeDescription}</p>
+            </div>
+          </div>
+          <input
+            className="source-slider"
+            type="range"
+            min={0}
+            max={SOURCE_DURATION_MS}
+            step={1000}
+            value={sourceTimeMs}
+            onChange={(event) => scrubToSourceTime(Number(event.target.value))}
+            aria-label="Current source time"
+          />
+          <div className="time-row">
+            <button
+              type="button"
+              onClick={() => scrubToSourceTime(sourceTimeMs - 10000)}
+            >
+              -10s
+            </button>
+            <label>
+              Seconds
+              <input
+                type="number"
+                min={0}
+                max={SOURCE_DURATION_MS / 1000}
+                value={Math.round(sourceTimeMs / 1000)}
+                onChange={(event) =>
+                  scrubToSourceTime(Number(event.target.value) * 1000)
+                }
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => scrubToSourceTime(sourceTimeMs + 10000)}
+            >
+              +10s
+            </button>
+          </div>
+        </section>
 
-          <section className="time-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>Source Time</h2>
-                <p>Fake synced timeline control</p>
-              </div>
-              <strong>{formatSourceTime(sourceTimeMs)}</strong>
+        <section className="state-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>State Decisions</h2>
+              <p>Each state holds until the next event</p>
             </div>
-            <input
-              className="source-slider"
-              type="range"
-              min={0}
-              max={SOURCE_DURATION_MS}
-              step={1000}
-              value={sourceTimeMs}
-              onChange={(event) => setClampedSourceTime(Number(event.target.value))}
-              aria-label="Current source time"
-            />
-            <div className="time-row">
+          </div>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Optional note for next decision"
+            aria-label="Optional note for next decision"
+          />
+          <div className="state-grid">
+            {PROGRAM_STATES.map((state) => (
               <button
+                key={state}
+                className={`state-button${
+                  currentState === state ? " is-current" : ""
+                }`}
+                style={{ "--accent": STATE_ACCENTS[state] } as CSSProperties}
                 type="button"
-                onClick={() => setClampedSourceTime(sourceTimeMs - 10000)}
+                onClick={() => addDecision(state)}
               >
-                -10s
+                <span>{PROGRAM_STATE_LABELS[state]}</span>
+                <small>{formatSourceTime(sourceTimeMs)}</small>
               </button>
-              <label>
-                Seconds
-                <input
-                  type="number"
-                  min={0}
-                  max={SOURCE_DURATION_MS / 1000}
-                  value={Math.round(sourceTimeMs / 1000)}
-                  onChange={(event) =>
-                    setClampedSourceTime(Number(event.target.value) * 1000)
-                  }
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => setClampedSourceTime(sourceTimeMs + 10000)}
-              >
-                +10s
-              </button>
-            </div>
-          </section>
+            ))}
+          </div>
+        </section>
+      </aside>
 
-          <section className="state-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>State Decisions</h2>
-                <p>Each state holds until the next event</p>
-              </div>
-            </div>
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Optional note for next decision"
-              aria-label="Optional note for next decision"
-            />
-            <div className="state-grid">
-              {PROGRAM_STATES.map((state) => (
-                <button
-                  key={state}
-                  className={`state-button${
-                    currentState === state ? " is-current" : ""
-                  }`}
-                  style={{ "--accent": STATE_ACCENTS[state] } as CSSProperties}
-                  type="button"
-                  onClick={() => addDecision(state)}
-                >
-                  <span>{PROGRAM_STATE_LABELS[state]}</span>
-                  <small>{formatSourceTime(sourceTimeMs)}</small>
-                </button>
-              ))}
-            </div>
-          </section>
-        </aside>
-
-        <section className="lists-panel" aria-label="Decision and segment lists">
+      <section className="lists-panel" aria-label="Decision and segment lists">
           <div className="list-section">
             <div className="panel-heading">
               <div>
@@ -327,8 +399,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             <DecisionList
               events={sortedEvents}
               currentEventId={currentEvent?.id}
-              onJump={setClampedSourceTime}
-              onRemove={removeDecision}
+              onJump={scrubToSourceTime}
+              onRemove={(eventId) => {
+                setIsProgramPlaying(false);
+                removeDecision(eventId);
+              }}
             />
           </div>
 
@@ -341,8 +416,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             </div>
             <SegmentList segments={derivedSegments} />
           </div>
-        </section>
-      </main>
+      </section>
+    </main>
   );
 }
 
@@ -572,6 +647,48 @@ function SegmentList({ segments }: { segments: DerivedSegment[] }) {
 
 function EmptyState({ text }: { text: string }) {
   return <p className="empty-state">{text}</p>;
+}
+
+function getNextProgramPlaybackSourceTime(
+  segments: readonly DerivedSegment[],
+  currentSourceTimeMs: number,
+  stepMs: number,
+) {
+  const nextSourceTimeMs = clampSourceTime(currentSourceTimeMs + stepMs);
+  return skipCutSourceTime(segments, nextSourceTimeMs);
+}
+
+function skipCutSourceTime(
+  segments: readonly DerivedSegment[],
+  sourceTimeMs: number,
+) {
+  const currentSegment = getSegmentAtSourceTime(segments, sourceTimeMs);
+
+  if (currentSegment?.state !== "cut") {
+    return sourceTimeMs;
+  }
+
+  return segments.find(
+    (segment) =>
+      segment.state !== "cut" && segment.startSourceTimeMs > sourceTimeMs,
+  )?.startSourceTimeMs;
+}
+
+function getSegmentAtSourceTime(
+  segments: readonly DerivedSegment[],
+  sourceTimeMs: number,
+) {
+  return segments.find((segment) => {
+    const endSourceTimeMs = segment.endSourceTimeMs ?? SOURCE_DURATION_MS;
+    return (
+      segment.startSourceTimeMs <= sourceTimeMs &&
+      sourceTimeMs < endSourceTimeMs
+    );
+  });
+}
+
+function clampSourceTime(sourceTimeMs: number) {
+  return Math.min(SOURCE_DURATION_MS, Math.max(0, sourceTimeMs));
 }
 
 function isSourceActive(role: Exclude<SourceRole, "program">, state?: ProgramState) {

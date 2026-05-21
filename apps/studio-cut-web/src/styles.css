@@ -377,6 +377,40 @@ h2 {
   accent-color: #91dbb7;
 }
 
+.playback-controls {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(238, 242, 238, 0.12);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 10px;
+}
+
+.playback-controls button {
+  min-height: 44px;
+  border: 1px solid rgba(145, 219, 183, 0.45);
+  border-radius: 6px;
+  background: rgba(145, 219, 183, 0.12);
+  color: #eef2ee;
+  font-weight: 850;
+}
+
+.playback-controls strong {
+  display: block;
+  color: #eef2ee;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.playback-controls p {
+  margin-top: 4px;
+  color: #aeb9b4;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .time-row {
   display: grid;
   grid-template-columns: 76px 1fr 76px;
@@ -604,6 +638,7 @@ td {
 
 @media (max-width: 520px) {
   .state-grid,
+  .playback-controls,
   .time-row {
     grid-template-columns: 1fr;
   }

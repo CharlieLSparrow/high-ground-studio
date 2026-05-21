@@ -60,6 +60,22 @@ The same semantic edit should eventually render differently for 16:9, 9:16,
 audio-only, and other profiles. Presentation choices belong in render profiles
 and FX passes, not in the core decision event.
 
+## Scrub Vs Playback
+
+Studio Cut separates source scrubbing from program playback:
+
+- Source Scrub: the slider, time input, event jumps, and manual time controls
+  always use canonical source time. They show the full source timeline,
+  including `Cut` / inactive spans.
+- Program Playback: the Play button uses the same source-time clock but
+  simulates final program playback. When playback reaches a segment whose state
+  is `Cut`, it jumps to the next non-`Cut` segment start. If there is no next
+  active segment, playback stops.
+
+This does not create destructive cuts or a new source timeline. Source time
+remains canonical; playback skipping is only a preview behavior for inactive
+ranges.
+
 ## Preview Truths
 
 - Source monitor proxies are for seeing and timing source material in the web
