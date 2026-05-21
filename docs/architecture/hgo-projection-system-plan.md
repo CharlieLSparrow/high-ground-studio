@@ -101,6 +101,14 @@ The current code-level contract lives at:
 It defines status, visibility, content scopes, audio state, citation state,
 source note status, filters, and `HgoEpisodeProjection`.
 
+Current citation state vocabulary:
+
+- `synthetic`
+- `needs-source`
+- `needs-review`
+- `verified`
+- `do-not-use`
+
 ## Preview Routes
 
 Current synthetic preview routes:

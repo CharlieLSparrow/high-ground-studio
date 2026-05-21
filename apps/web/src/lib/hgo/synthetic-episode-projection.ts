@@ -190,7 +190,7 @@ export const syntheticEpisodeProjections: HgoEpisodeProjection[] = [
       {
         text: "A loud signal can still leave everyone guessing.",
         attribution: "Synthetic Homer line",
-        citationState: "synthetic",
+        citationState: "needs-review",
       },
       {
         text: "The page is not public just because it looks finished.",
@@ -378,7 +378,7 @@ export const syntheticEpisodeProjections: HgoEpisodeProjection[] = [
       {
         text: "Not every good image deserves to become the page.",
         attribution: "Synthetic archive note",
-        citationState: "needs-source",
+        citationState: "do-not-use",
       },
     ],
     sourceNotes: [

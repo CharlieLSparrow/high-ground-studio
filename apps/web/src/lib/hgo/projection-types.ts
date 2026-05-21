@@ -14,7 +14,12 @@ export type HgoContentScope =
 
 export type HgoAudioState = "not-recorded" | "recorded" | "published";
 
-export type HgoCitationState = "synthetic" | "needs-source" | "verified";
+export type HgoCitationState =
+  | "synthetic"
+  | "needs-source"
+  | "needs-review"
+  | "verified"
+  | "do-not-use";
 
 export type HgoSourceNoteStatus =
   | "synthetic"

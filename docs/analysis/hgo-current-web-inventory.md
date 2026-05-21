@@ -129,6 +129,26 @@ What should be replaced or rethought:
 - Old episode page code should not be preserved out of sentiment once the
   projection model is ready to carry real staged/live content.
 
+## Current Build Behavior
+
+Current verified build path:
+
+- `pnpm --filter web build`
+
+Recent projection-preview validation shows the web build passes and the route
+table includes:
+
+- `/projection-preview`
+- `/projection-preview/[slug]`
+- `/episodes/[[...slug]]`
+
+Known local friction:
+
+- The repo has historical Turbopack/PostCSS sandbox friction in older sessions.
+- In this checkout, `pnpm --filter web build` passes when run normally in the
+  local environment.
+- Build artifacts such as Next output should not be treated as source changes.
+
 ## Content Structure
 
 Content folders inspected:

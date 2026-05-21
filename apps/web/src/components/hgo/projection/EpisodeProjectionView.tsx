@@ -24,7 +24,9 @@ const visibilityStyles: Record<HgoProjectionVisibility, string> = {
 const citationStyles: Record<HgoCitationState, string> = {
   synthetic: "border-sky-300/35 bg-sky-300/10 text-sky-100",
   "needs-source": "border-amber-300/35 bg-amber-300/10 text-amber-100",
+  "needs-review": "border-violet-300/35 bg-violet-300/10 text-violet-100",
   verified: "border-emerald-300/35 bg-emerald-300/10 text-emerald-100",
+  "do-not-use": "border-rose-300/35 bg-rose-300/10 text-rose-100",
 };
 
 const sourceStyles: Record<HgoSourceNoteStatus, string> = {
