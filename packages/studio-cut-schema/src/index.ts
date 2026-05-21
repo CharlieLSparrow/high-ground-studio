@@ -27,6 +27,50 @@ export type DerivedSegment = {
   sourceEventId: string;
 };
 
+export type EpisodeSource = {
+  role: SourceRole;
+  label: string;
+  fileName?: string;
+  notes?: string;
+};
+
+export type SourceMonitorPaneRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type SourceMonitorProxy = {
+  url?: string;
+  localPlaceholderPath?: string;
+  panes: {
+    homer: SourceMonitorPaneRect;
+    charlie: SourceMonitorPaneRect;
+    clip?: SourceMonitorPaneRect;
+  };
+};
+
+export type SyncBootstrap = {
+  source: "premiere";
+  xmlFileName?: string;
+  notes?: string;
+};
+
+export type EpisodeManifest = {
+  id: string;
+  title: string;
+  durationMs: number;
+  sources: {
+    homer: EpisodeSource;
+    charlie: EpisodeSource;
+    clip?: EpisodeSource;
+    program: EpisodeSource;
+  };
+  sourceMonitorProxy: SourceMonitorProxy;
+  syncBootstrap: SyncBootstrap;
+};
+
 export const SOURCE_ROLES: readonly SourceRole[] = [
   "homer",
   "charlie",
@@ -66,6 +110,10 @@ export type DecisionEventParseResult = {
   totalCount: number;
   rejectedCount: number;
 };
+
+export type EpisodeManifestParseResult =
+  | { ok: true; manifest: EpisodeManifest }
+  | { ok: false; reason: string };
 
 export function isProgramState(value: unknown): value is ProgramState {
   return PROGRAM_STATES.includes(value as ProgramState);
@@ -114,6 +162,46 @@ export function parseDecisionEventsPayload(
     totalCount: candidateEvents.length,
     rejectedCount: candidateEvents.length - events.length,
   };
+}
+
+export function parseEpisodeManifestPayload(
+  payload: unknown,
+): EpisodeManifestParseResult {
+  if (!isEpisodeManifest(payload)) {
+    return {
+      ok: false,
+      reason:
+        "Manifest must include id, title, durationMs, homer/charlie/program sources, sourceMonitorProxy panes, and syncBootstrap.source=premiere.",
+    };
+  }
+
+  return { ok: true, manifest: payload };
+}
+
+export function isEpisodeManifest(value: unknown): value is EpisodeManifest {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const manifest = value as Partial<EpisodeManifest>;
+
+  return (
+    typeof manifest.id === "string" &&
+    manifest.id.trim().length > 0 &&
+    typeof manifest.title === "string" &&
+    manifest.title.trim().length > 0 &&
+    typeof manifest.durationMs === "number" &&
+    Number.isFinite(manifest.durationMs) &&
+    manifest.durationMs > 0 &&
+    isRecord(manifest.sources) &&
+    isEpisodeSource(manifest.sources.homer, "homer") &&
+    isEpisodeSource(manifest.sources.charlie, "charlie") &&
+    (manifest.sources.clip === undefined ||
+      isEpisodeSource(manifest.sources.clip, "clip")) &&
+    isEpisodeSource(manifest.sources.program, "program") &&
+    isSourceMonitorProxy(manifest.sourceMonitorProxy) &&
+    isSyncBootstrap(manifest.syncBootstrap)
+  );
 }
 
 export function sortDecisionEvents(events: readonly DecisionEvent[]) {
@@ -165,6 +253,81 @@ export function getCurrentDecisionEvent(
   }
 
   return currentEvent;
+}
+
+function isEpisodeSource(value: unknown, role: SourceRole) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.role === role &&
+    typeof value.label === "string" &&
+    value.label.trim().length > 0 &&
+    optionalString(value.fileName) &&
+    optionalString(value.notes)
+  );
+}
+
+function isSourceMonitorProxy(value: unknown) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (!optionalString(value.url) || !optionalString(value.localPlaceholderPath)) {
+    return false;
+  }
+
+  if (!value.url && !value.localPlaceholderPath) {
+    return false;
+  }
+
+  if (!isRecord(value.panes)) {
+    return false;
+  }
+
+  return (
+    isPaneRect(value.panes.homer) &&
+    isPaneRect(value.panes.charlie) &&
+    (value.panes.clip === undefined || isPaneRect(value.panes.clip))
+  );
+}
+
+function isPaneRect(value: unknown) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isFiniteNonNegativeNumber(value.x) &&
+    isFiniteNonNegativeNumber(value.y) &&
+    isFinitePositiveNumber(value.width) &&
+    isFinitePositiveNumber(value.height)
+  );
+}
+
+function isSyncBootstrap(value: unknown) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.source === "premiere" &&
+    optionalString(value.xmlFileName) &&
+    optionalString(value.notes)
+  );
+}
+
+function optionalString(value: unknown) {
+  return value === undefined || typeof value === "string";
+}
+
+function isFiniteNonNegativeNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isFinitePositiveNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

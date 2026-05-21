@@ -11,10 +11,12 @@ import {
   getCurrentDecisionEvent,
   PROGRAM_STATE_LABELS,
   PROGRAM_STATES,
+  parseEpisodeManifestPayload,
   sortDecisionEvents,
   SOURCE_ROLE_LABELS,
   type DecisionEvent,
   type DerivedSegment,
+  type EpisodeManifest,
   type ProgramState,
   type SourceRole,
 } from "@high-ground/studio-cut-schema";
@@ -25,7 +27,9 @@ import {
 } from "./hooks/useStudioCutAuth";
 import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 
-const SOURCE_DURATION_MS = 60 * 60 * 1000;
+const DEFAULT_SOURCE_DURATION_MS = 60 * 60 * 1000;
+const EPISODE_MANIFEST_STORAGE_KEY =
+  "high-ground-studio.studio-cut.episode-manifest.v1";
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
@@ -82,9 +86,13 @@ export function App() {
 function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [sourceTimeMs, setSourceTimeMs] = useState(0);
   const [isProgramPlaying, setIsProgramPlaying] = useState(false);
+  const [episodeManifest, setEpisodeManifest] = useState<EpisodeManifest | null>(
+    loadStoredEpisodeManifest,
+  );
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const manifestInputRef = useRef<HTMLInputElement>(null);
   const {
     config,
     decisionEvents,
@@ -104,6 +112,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     () => deriveSegments(sortedEvents),
     [sortedEvents],
   );
+  const sourceDurationMs = episodeManifest?.durationMs ?? DEFAULT_SOURCE_DURATION_MS;
   const currentEvent = useMemo(
     () => getCurrentDecisionEvent(sortedEvents, sourceTimeMs),
     [sortedEvents, sourceTimeMs],
@@ -117,6 +126,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     : "Scrub controls use source time and show every span, including Cut.";
 
   useEffect(() => {
+    saveStoredEpisodeManifest(episodeManifest);
+  }, [episodeManifest]);
+
+  useEffect(() => {
     if (!isProgramPlaying) {
       return;
     }
@@ -127,6 +140,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           derivedSegments,
           currentSourceTimeMs,
           500,
+          sourceDurationMs,
         );
 
         if (nextSourceTimeMs === undefined) {
@@ -134,9 +148,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           return currentSourceTimeMs;
         }
 
-        if (nextSourceTimeMs >= SOURCE_DURATION_MS) {
+        if (nextSourceTimeMs >= sourceDurationMs) {
           setIsProgramPlaying(false);
-          return SOURCE_DURATION_MS;
+          return sourceDurationMs;
         }
 
         return nextSourceTimeMs;
@@ -144,10 +158,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }, 500);
 
     return () => window.clearInterval(intervalId);
-  }, [derivedSegments, isProgramPlaying]);
+  }, [derivedSegments, isProgramPlaying, sourceDurationMs]);
 
   function setClampedSourceTime(nextValue: number) {
-    setSourceTimeMs(clampSourceTime(nextValue));
+    setSourceTimeMs(clampSourceTime(nextValue, sourceDurationMs));
   }
 
   function scrubToSourceTime(nextValue: number) {
@@ -161,7 +175,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       return;
     }
 
-    const playableSourceTimeMs = skipCutSourceTime(derivedSegments, sourceTimeMs);
+    const playableSourceTimeMs = skipCutSourceTime(
+      derivedSegments,
+      sourceTimeMs,
+      sourceDurationMs,
+    );
 
     if (playableSourceTimeMs === undefined) {
       setIsProgramPlaying(false);
@@ -229,6 +247,38 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }
   }
 
+  async function handleImportManifestJson(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const result = parseEpisodeManifestPayload(payload);
+
+      if (!result.ok) {
+        setImportMessage(`Manifest import failed: ${result.reason}`);
+        return;
+      }
+
+      setEpisodeManifest(result.manifest);
+      setIsProgramPlaying(false);
+      setSourceTimeMs((currentSourceTimeMs) =>
+        clampSourceTime(currentSourceTimeMs, result.manifest.durationMs),
+      );
+      setImportMessage(
+        `Loaded manifest ${result.manifest.id}: ${result.manifest.title}.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setImportMessage(`Manifest import failed: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   return (
     <main className="workspace">
       <section className="monitor-grid" aria-label="Source and program monitors">
@@ -254,6 +304,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       </section>
 
       <aside className="edit-panel" aria-label="Decision controls">
+        <EpisodeManifestPanel
+          manifest={episodeManifest}
+          sourceDurationMs={sourceDurationMs}
+          onImport={() => manifestInputRef.current?.click()}
+        />
+        <input
+          ref={manifestInputRef}
+          className="file-input"
+          type="file"
+          accept="application/json,.json"
+          onChange={handleImportManifestJson}
+          aria-label="Import episode manifest JSON"
+        />
+
         <section className="persistence-panel">
           <div className="panel-heading">
             <div>
@@ -286,7 +350,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             className="source-slider"
             type="range"
             min={0}
-            max={SOURCE_DURATION_MS}
+            max={sourceDurationMs}
             step={1000}
             value={sourceTimeMs}
             onChange={(event) => scrubToSourceTime(Number(event.target.value))}
@@ -304,7 +368,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
               <input
                 type="number"
                 min={0}
-                max={SOURCE_DURATION_MS / 1000}
+                max={sourceDurationMs / 1000}
                 value={Math.round(sourceTimeMs / 1000)}
                 onChange={(event) =>
                   scrubToSourceTime(Number(event.target.value) * 1000)
@@ -418,6 +482,82 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           </div>
       </section>
     </main>
+  );
+}
+
+function EpisodeManifestPanel({
+  manifest,
+  sourceDurationMs,
+  onImport,
+}: {
+  manifest: EpisodeManifest | null;
+  sourceDurationMs: number;
+  onImport: () => void;
+}) {
+  const proxyPath =
+    manifest?.sourceMonitorProxy.url ??
+    manifest?.sourceMonitorProxy.localPlaceholderPath;
+
+  return (
+    <section className="manifest-panel">
+      <div className="panel-heading">
+        <div>
+          <h2>Episode Manifest</h2>
+          <p>
+            {manifest
+              ? "Premiere synced source truth is loaded for this browser."
+              : "Import JSON from the Premiere bootstrap workflow."}
+          </p>
+        </div>
+        <button className="secondary-button" type="button" onClick={onImport}>
+          Import Manifest JSON
+        </button>
+      </div>
+      <div className="manifest-summary">
+        <div>
+          <span>Episode</span>
+          <strong>{manifest ? manifest.title : "Local fake timeline"}</strong>
+          <small>{manifest ? manifest.id : "no-manifest-loaded"}</small>
+        </div>
+        <div>
+          <span>Duration</span>
+          <strong>{formatSourceTime(sourceDurationMs)}</strong>
+          <small>{sourceDurationMs.toLocaleString()} ms</small>
+        </div>
+      </div>
+      {manifest ? (
+        <div className="manifest-details">
+          <p>
+            <strong>Proxy:</strong> {proxyPath}
+          </p>
+          <p>
+            <strong>Panes:</strong>{" "}
+            {formatPane("Homer", manifest.sourceMonitorProxy.panes.homer)};{" "}
+            {formatPane("Charlie", manifest.sourceMonitorProxy.panes.charlie)}
+            {manifest.sourceMonitorProxy.panes.clip
+              ? `; ${formatPane("Clip", manifest.sourceMonitorProxy.panes.clip)}`
+              : ""}
+          </p>
+          <p>
+            <strong>Sources:</strong> {manifest.sources.homer.label},{" "}
+            {manifest.sources.charlie.label}
+            {manifest.sources.clip ? `, ${manifest.sources.clip.label}` : ""},{" "}
+            {manifest.sources.program.label}
+          </p>
+          <p>
+            <strong>Sync:</strong> {manifest.syncBootstrap.source}
+            {manifest.syncBootstrap.xmlFileName
+              ? ` / ${manifest.syncBootstrap.xmlFileName}`
+              : ""}
+          </p>
+          {manifest.syncBootstrap.notes ? (
+            <p>
+              <strong>Notes:</strong> {manifest.syncBootstrap.notes}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -653,16 +793,25 @@ function getNextProgramPlaybackSourceTime(
   segments: readonly DerivedSegment[],
   currentSourceTimeMs: number,
   stepMs: number,
+  sourceDurationMs: number,
 ) {
-  const nextSourceTimeMs = clampSourceTime(currentSourceTimeMs + stepMs);
-  return skipCutSourceTime(segments, nextSourceTimeMs);
+  const nextSourceTimeMs = clampSourceTime(
+    currentSourceTimeMs + stepMs,
+    sourceDurationMs,
+  );
+  return skipCutSourceTime(segments, nextSourceTimeMs, sourceDurationMs);
 }
 
 function skipCutSourceTime(
   segments: readonly DerivedSegment[],
   sourceTimeMs: number,
+  sourceDurationMs: number,
 ) {
-  const currentSegment = getSegmentAtSourceTime(segments, sourceTimeMs);
+  const currentSegment = getSegmentAtSourceTime(
+    segments,
+    sourceTimeMs,
+    sourceDurationMs,
+  );
 
   if (currentSegment?.state !== "cut") {
     return sourceTimeMs;
@@ -677,9 +826,10 @@ function skipCutSourceTime(
 function getSegmentAtSourceTime(
   segments: readonly DerivedSegment[],
   sourceTimeMs: number,
+  sourceDurationMs: number,
 ) {
   return segments.find((segment) => {
-    const endSourceTimeMs = segment.endSourceTimeMs ?? SOURCE_DURATION_MS;
+    const endSourceTimeMs = segment.endSourceTimeMs ?? sourceDurationMs;
     return (
       segment.startSourceTimeMs <= sourceTimeMs &&
       sourceTimeMs < endSourceTimeMs
@@ -687,8 +837,45 @@ function getSegmentAtSourceTime(
   });
 }
 
-function clampSourceTime(sourceTimeMs: number) {
-  return Math.min(SOURCE_DURATION_MS, Math.max(0, sourceTimeMs));
+function clampSourceTime(sourceTimeMs: number, sourceDurationMs: number) {
+  return Math.min(sourceDurationMs, Math.max(0, sourceTimeMs));
+}
+
+function formatPane(
+  label: string,
+  pane: { x: number; y: number; width: number; height: number },
+) {
+  return `${label} x:${pane.x} y:${pane.y} w:${pane.width} h:${pane.height}`;
+}
+
+function loadStoredEpisodeManifest() {
+  try {
+    const rawValue = localStorage.getItem(EPISODE_MANIFEST_STORAGE_KEY);
+
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+    const result = parseEpisodeManifestPayload(parsedValue);
+
+    return result.ok ? result.manifest : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredEpisodeManifest(manifest: EpisodeManifest | null) {
+  try {
+    if (!manifest) {
+      localStorage.removeItem(EPISODE_MANIFEST_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(EPISODE_MANIFEST_STORAGE_KEY, JSON.stringify(manifest));
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
 }
 
 function isSourceActive(role: Exclude<SourceRole, "program">, state?: ProgramState) {

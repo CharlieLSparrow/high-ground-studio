@@ -345,16 +345,70 @@ h2 {
 
 .time-panel,
 .state-panel,
-.persistence-panel {
+.persistence-panel,
+.manifest-panel {
   display: grid;
   gap: 14px;
 }
 
-.persistence-panel {
+.persistence-panel,
+.manifest-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
   padding: 12px;
+}
+
+.manifest-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.manifest-summary div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.11);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 10px;
+}
+
+.manifest-summary span {
+  color: #aeb9b4;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.manifest-summary strong {
+  color: #eef2ee;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.manifest-summary small {
+  overflow-wrap: anywhere;
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.manifest-details {
+  display: grid;
+  gap: 7px;
+  color: #aeb9b4;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.manifest-details p {
+  overflow-wrap: anywhere;
+}
+
+.manifest-details strong {
+  color: #d7e0dc;
 }
 
 .persistence-path {
@@ -639,6 +693,7 @@ td {
 @media (max-width: 520px) {
   .state-grid,
   .playback-controls,
+  .manifest-summary,
   .time-row {
     grid-template-columns: 1fr;
   }

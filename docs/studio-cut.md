@@ -76,6 +76,47 @@ This does not create destructive cuts or a new source timeline. Source time
 remains canonical; playback skipping is only a preview behavior for inactive
 ranges.
 
+## Episode Manifest
+
+Studio Cut can import an Episode Manifest JSON file for the temporary
+Premiere-synced bootstrap workflow. The manifest records:
+
+- episode id, title, and source duration
+- Homer, Charlie, optional Clip, and Program source labels
+- source-monitor proxy URL or local placeholder path
+- pane rectangles for Homer, Charlie, and optional Clip
+- Premiere XML/EDL bootstrap notes
+
+The web app uses the manifest duration as the source timeline length and
+displays the source-monitor proxy metadata. It does not play real video yet and
+does not require full-res media. A placeholder-only sample lives at:
+
+```text
+docs/studio-cut-episode-manifest.sample.json
+```
+
+Do not put real media paths, private podcast details, proxy package URLs, or
+personal recordings in checked-in manifest files.
+
+## Premiere Bootstrap Workflow
+
+Use Premiere only to create the temporary synced source truth:
+
+1. Sync the episode sources in Premiere.
+2. Export a lightweight source-monitor proxy that shows the Homer, Charlie, and
+   optional Clip panes.
+3. Export XML/EDL from Premiere if available.
+4. Create a Studio Cut Episode Manifest JSON with placeholder-safe source names,
+   duration, proxy metadata, pane rectangles, and XML file name.
+5. Import the manifest in Studio Cut.
+6. Tag semantic decisions in Studio Cut against source time.
+7. Export Studio Cut decision JSON.
+
+Tonight's boundary: Premiere owns temporary source sync. Studio Cut owns the
+semantic decision layer. The later local render engine should consume the
+Premiere-derived sync reference plus Studio Cut decisions and render full-res
+output locally.
+
 ## Preview Truths
 
 - Source monitor proxies are for seeing and timing source material in the web
