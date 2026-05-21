@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  manuscriptHelpNotes,
+} from "../apps/studio/src/app/manuscript/manuscript-help-notes.ts";
+import {
   collectBlockSummaries,
   collectCitedQuotationHighlights,
   collectManuscriptBlockDetails,
@@ -103,6 +106,43 @@ const editorJson = {
 test("manuscript storage key is stable", () => {
   assert.equal(MANUSCRIPT_STORAGE_KEY, "high-ground-studio.manuscript-editor.v1");
   assert.equal(MANUSCRIPT_SCHEMA_VERSION, 1);
+});
+
+test("manuscript help notes cover the confusing desk concepts", () => {
+  const requiredNoteIds = [
+    "browser-local-draft",
+    "full-draft-json-backup",
+    "server-snapshot",
+    "save-snapshot",
+    "load-latest-snapshot",
+    "load-selected-snapshot",
+    "local-changes-since-server-save",
+    "recording-reading-mode",
+    "focus-view",
+    "author-marks",
+    "semantic-meaning-tags",
+    "cited-quotation",
+    "quote-review-metadata",
+    "structure-region",
+    "chapter-book-region",
+    "episode-region",
+    "backup-mode",
+    "mark-mode",
+    "find-mode",
+    "quotes-mode",
+  ];
+
+  for (const id of requiredNoteIds) {
+    const note = manuscriptHelpNotes[id];
+
+    assert.equal(note.id, id);
+    assert.ok(note.label.length > 0);
+    assert.ok(note.title.length > 0);
+    assert.ok(note.body.length > 24);
+  }
+
+  assert.match(manuscriptHelpNotes["server-snapshot"].whatItDoesNot ?? "", /not autosave/i);
+  assert.match(manuscriptHelpNotes["focus-view"].whatItDoesNot ?? "", /does not delete/i);
 });
 
 test("author and semantic definitions contain the MVP options", () => {

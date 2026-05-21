@@ -5,7 +5,7 @@ import UniqueID from "@tiptap/extension-unique-id";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import mammoth from "mammoth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { StudioNav } from "../studio-nav";
 import {
@@ -19,6 +19,11 @@ import {
   StudioGlyph,
 } from "../studio-ui";
 import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
+import {
+  getManuscriptHelpNote,
+  type ManuscriptHelpNoteId,
+} from "./manuscript-help-notes";
+import { ManuscriptHelpTip } from "./manuscript-help-tip";
 import {
   collectBlockSummaries,
   collectCitedQuotationHighlights,
@@ -172,6 +177,45 @@ const dangerButtonClassName =
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 
+function HelpHeading({
+  children,
+  className,
+  noteId,
+}: {
+  children: ReactNode;
+  className?: string;
+  noteId: ManuscriptHelpNoteId;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <h2
+        className={cn(
+          "m-0 text-[1rem] leading-snug text-studio-ink",
+          className,
+        )}
+      >
+        {children}
+      </h2>
+      <ManuscriptHelpTip note={getManuscriptHelpNote(noteId)} />
+    </div>
+  );
+}
+
+function HelpLabel({
+  children,
+  noteId,
+}: {
+  children: ReactNode;
+  noteId: ManuscriptHelpNoteId;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={fieldLabelClassName}>{children}</span>
+      <ManuscriptHelpTip note={getManuscriptHelpNote(noteId)} />
+    </span>
+  );
+}
+
 function createId(prefix: string) {
   return (
     globalThis.crypto?.randomUUID?.() ??
@@ -225,6 +269,28 @@ function getSidePanelModeLabel(mode: ManuscriptSidePanelMode) {
     manuscriptSidePanelModes.find((definition) => definition.id === mode)
       ?.label ?? "Mark"
   );
+}
+
+function getSidePanelModeHelpNoteId(
+  mode: ManuscriptSidePanelMode,
+): ManuscriptHelpNoteId {
+  if (mode === "mark") {
+    return "mark-mode";
+  }
+
+  if (mode === "find") {
+    return "find-mode";
+  }
+
+  if (mode === "quotes") {
+    return "quotes-mode";
+  }
+
+  if (mode === "backup") {
+    return "backup-mode";
+  }
+
+  return "structure-region";
 }
 
 function getAuthorMarkAttrs(authorId: ManuscriptAuthorId) {
@@ -2423,14 +2489,20 @@ export function StudioManuscriptClient({
                 ? "Exit Recording / Reading"
                 : "Recording / Reading"}
             </button>
+            <ManuscriptHelpTip
+              note={getManuscriptHelpNote("recording-reading-mode")}
+            />
             {blockFilterSummary.hasActiveFilters ? (
-              <button
-                className={smallButtonClassName}
-                type="button"
-                onClick={exitFocusView}
-              >
-                Full manuscript
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={exitFocusView}
+                >
+                  Full manuscript
+                </button>
+                <ManuscriptHelpTip note={getManuscriptHelpNote("focus-view")} />
+              </div>
             ) : null}
             <button
               className={smallButtonClassName}
@@ -2447,7 +2519,8 @@ export function StudioManuscriptClient({
               statusTone === "danger" && "text-studio-danger",
             )}
           >
-            {message} Browser-local draft. No database writes.
+            {message} Browser-local draft is active. Server writes happen only
+            when you save a snapshot.
           </p>
         </header>
 
@@ -2584,9 +2657,9 @@ export function StudioManuscriptClient({
             </div>
 
             <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
-              <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+              <HelpHeading noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
                 Sidebar modes
-              </h2>
+              </HelpHeading>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {manuscriptSidePanelModes
                   .filter(
@@ -2595,17 +2668,26 @@ export function StudioManuscriptClient({
                       (mode.id !== "mark" && mode.id !== "backup"),
                   )
                   .map((mode) => (
-                    <button
-                      className={cn(
-                        smallButtonClassName,
-                        sidePanelMode === mode.id ? activeButtonClassName : "",
-                      )}
-                      key={mode.id}
-                      type="button"
-                      onClick={() => setSidePanelMode(mode.id)}
-                    >
-                      {mode.label}
-                    </button>
+                    <div className="flex items-center gap-1.5" key={mode.id}>
+                      <button
+                        className={cn(
+                          smallButtonClassName,
+                          "flex-1",
+                          sidePanelMode === mode.id
+                            ? activeButtonClassName
+                            : "",
+                        )}
+                        type="button"
+                        onClick={() => setSidePanelMode(mode.id)}
+                      >
+                        {mode.label}
+                      </button>
+                      <ManuscriptHelpTip
+                        note={getManuscriptHelpNote(
+                          getSidePanelModeHelpNoteId(mode.id),
+                        )}
+                      />
+                    </div>
                   ))}
               </div>
             </section>
@@ -2613,9 +2695,7 @@ export function StudioManuscriptClient({
             {sidePanelMode === "mark" ? (
               <>
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                    Author counts
-                  </h2>
+                  <HelpHeading noteId="author-marks">Author counts</HelpHeading>
                   <div className="grid gap-2">
                     {authorSummaries.map((summary) => (
                       <div
@@ -2640,16 +2720,16 @@ export function StudioManuscriptClient({
 
                 <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                    <HelpHeading noteId="mark-mode">
                       Mark selected text
-                    </h2>
+                    </HelpHeading>
                     <StudioChip tone="source">
                       {getManuscriptAuthorDefinition(activeAuthorId).label}
                     </StudioChip>
                   </div>
 
                   <div className="grid gap-2">
-                    <p className={labelClassName}>Active author</p>
+                    <HelpLabel noteId="author-marks">Active author</HelpLabel>
                     {manuscriptAuthorDefinitions.map((author) => (
                       <button
                         className={cn(
@@ -2699,7 +2779,9 @@ export function StudioManuscriptClient({
                   </div>
 
                   <label className="grid gap-2">
-                    <span className={fieldLabelClassName}>Semantic tag</span>
+                    <HelpLabel noteId="semantic-meaning-tags">
+                      Semantic tag
+                    </HelpLabel>
                     <select
                       className={fieldClassName}
                       value={semanticType}
@@ -2741,7 +2823,9 @@ export function StudioManuscriptClient({
 
                   <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className={labelClassName}>Cited quotation</p>
+                      <HelpLabel noteId="cited-quotation">
+                        Cited quotation
+                      </HelpLabel>
                       <StudioChip tone="review">
                         {citedQuotations.length.toLocaleString()} marked
                       </StudioChip>
@@ -2818,9 +2902,17 @@ export function StudioManuscriptClient({
               <>
                 <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                      Create structure
-                    </h2>
+                    <div className="flex items-center gap-1.5">
+                      <HelpHeading noteId="structure-region">
+                        Create structure
+                      </HelpHeading>
+                      <ManuscriptHelpTip
+                        note={getManuscriptHelpNote("chapter-book-region")}
+                      />
+                      <ManuscriptHelpTip
+                        note={getManuscriptHelpNote("episode-region")}
+                      />
+                    </div>
                     <StudioChip tone="node">
                       {selectedStructureRange
                         ? `${selectedStructureRange.blockCount.toLocaleString()} selected`
@@ -2828,7 +2920,7 @@ export function StudioManuscriptClient({
                     </StudioChip>
                   </div>
                   <label className="grid gap-2">
-                    <span className={fieldLabelClassName}>Region kind</span>
+                    <HelpLabel noteId="structure-region">Region kind</HelpLabel>
                     <select
                       className={fieldClassName}
                       value={structureKind}
@@ -2847,9 +2939,9 @@ export function StudioManuscriptClient({
                   </label>
                   {structureKind === "chapter" ? (
                     <label className="grid gap-2">
-                      <span className={fieldLabelClassName}>
+                      <HelpLabel noteId="chapter-book-region">
                         Book label preset
-                      </span>
+                      </HelpLabel>
                       <select
                         className={fieldClassName}
                         value={structureLabelPreset}
@@ -2880,7 +2972,9 @@ export function StudioManuscriptClient({
                     />
                   </label>
                   <label className="grid gap-2">
-                    <span className={fieldLabelClassName}>Structure notes</span>
+                    <HelpLabel noteId="structure-region">
+                      Structure notes
+                    </HelpLabel>
                     <textarea
                       className={cn(textareaClassName, "min-h-[76px]")}
                       value={structureNotes}
@@ -2951,9 +3045,9 @@ export function StudioManuscriptClient({
 
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                <HelpHeading noteId="structure-region">
                   Structure regions
-                </h2>
+                </HelpHeading>
                 <StudioChip tone="node">
                   {structureRegions.length.toLocaleString()} regions
                 </StudioChip>
@@ -3285,9 +3379,9 @@ export function StudioManuscriptClient({
             </section>
 
             <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-              <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+              <HelpHeading noteId="semantic-meaning-tags">
                 Semantic highlights
-              </h2>
+              </HelpHeading>
               <div className="grid max-h-[250px] gap-2 overflow-auto pr-1">
                 {semanticHighlights.length ? (
                   semanticHighlights.map((highlight, index) => (
@@ -3322,9 +3416,11 @@ export function StudioManuscriptClient({
             {sidePanelMode === "find" || sidePanelMode === "quotes" ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                  <HelpHeading
+                    noteId={sidePanelMode === "quotes" ? "quotes-mode" : "find-mode"}
+                  >
                     {sidePanelMode === "quotes" ? "Quote review" : "Filter lens"}
-                  </h2>
+                  </HelpHeading>
                   <StudioChip
                     tone={blockFilterSummary.hasActiveFilters ? "review" : "source"}
                   >
@@ -3343,7 +3439,7 @@ export function StudioManuscriptClient({
                 </label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="grid gap-1.5">
-                    <span className={fieldLabelClassName}>Author</span>
+                    <HelpLabel noteId="author-marks">Author</HelpLabel>
                     <select
                       className={fieldClassName}
                       value={filterAuthorId}
@@ -3360,7 +3456,9 @@ export function StudioManuscriptClient({
                     </select>
                   </label>
                   <label className="grid gap-1.5">
-                    <span className={fieldLabelClassName}>Semantic tag</span>
+                    <HelpLabel noteId="semantic-meaning-tags">
+                      Semantic tag
+                    </HelpLabel>
                     <select
                       className={fieldClassName}
                       value={filterSemanticType}
@@ -3379,7 +3477,9 @@ export function StudioManuscriptClient({
                     </select>
                   </label>
                   <label className="grid gap-1.5">
-                    <span className={fieldLabelClassName}>Structure region</span>
+                    <HelpLabel noteId="structure-region">
+                      Structure region
+                    </HelpLabel>
                     <select
                       className={fieldClassName}
                       value={filterStructureRegionId}
@@ -3430,9 +3530,9 @@ export function StudioManuscriptClient({
                     </select>
                   </label>
                   <label className="grid gap-1.5">
-                    <span className={fieldLabelClassName}>
+                    <HelpLabel noteId="quote-review-metadata">
                       Quote review status
-                    </span>
+                    </HelpLabel>
                     <select
                       className={fieldClassName}
                       value={filterQuoteReviewStatus}
@@ -3535,7 +3635,7 @@ export function StudioManuscriptClient({
                   </p>
                 )}
                 <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
-                  <p className={labelClassName}>Quote Review Focus</p>
+                  <HelpLabel noteId="focus-view">Quote Review Focus</HelpLabel>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       className={smallButtonClassName}
@@ -3603,9 +3703,17 @@ export function StudioManuscriptClient({
                 </div>
                 <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="m-0 text-[0.86rem] leading-snug text-studio-ink">
-                      Cited quotations
-                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="m-0 text-[0.86rem] leading-snug text-studio-ink">
+                        Cited quotations
+                      </h3>
+                      <ManuscriptHelpTip
+                        note={getManuscriptHelpNote("cited-quotation")}
+                      />
+                      <ManuscriptHelpTip
+                        note={getManuscriptHelpNote("quote-review-metadata")}
+                      />
+                    </div>
                     <StudioChip tone="review">
                       {filteredCitedQuotations.length.toLocaleString()} /{" "}
                       {citedQuotations.length.toLocaleString()}
@@ -3809,9 +3917,9 @@ export function StudioManuscriptClient({
                               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   <label className="grid gap-1.5">
-                                    <span className={fieldLabelClassName}>
+                                    <HelpLabel noteId="quote-review-metadata">
                                       Review status
-                                    </span>
+                                    </HelpLabel>
                                     <select
                                       className={fieldClassName}
                                       value={editingQuoteReviewStatus}
@@ -4049,16 +4157,16 @@ export function StudioManuscriptClient({
 
             {sidePanelMode === "backup" && !isRecordingMode ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-              <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                Export / backup
-              </h2>
+              <HelpHeading noteId="backup-mode">Export / backup</HelpHeading>
               <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
                 Download backups before serious editing. Downloads are browser
                 generated and do not write to the server or repo.
               </p>
               <div className="grid gap-3 rounded-lg border border-studio-line bg-black/20 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className={labelClassName}>Browser-local source</p>
+                  <HelpLabel noteId="browser-local-draft">
+                    Browser-local source
+                  </HelpLabel>
                   <StudioChip tone="review">No database writes</StudioChip>
                 </div>
                 <label className="grid gap-2">
@@ -4104,7 +4212,9 @@ export function StudioManuscriptClient({
               <div className="grid gap-3 rounded-lg border border-studio-node/35 bg-studio-node/10 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className={labelClassName}>Server snapshots</p>
+                    <HelpLabel noteId="server-snapshot">
+                      Server snapshots
+                    </HelpLabel>
                     <h3 className="m-0 text-[0.98rem] leading-snug text-studio-ink">
                       Manual cross-device checkpoints
                     </h3>
@@ -4144,9 +4254,9 @@ export function StudioManuscriptClient({
                     </p>
                   </div>
                   <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
-                    <p className={labelClassName}>
+                    <HelpLabel noteId="local-changes-since-server-save">
                       Local changes since last server save
-                    </p>
+                    </HelpLabel>
                     <div className="mt-1">
                       <StudioChip
                         tone={
@@ -4200,11 +4310,22 @@ export function StudioManuscriptClient({
                     Refresh
                   </button>
                 </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote("save-snapshot")}
+                  />
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote("load-latest-snapshot")}
+                  />
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote("load-selected-snapshot")}
+                  />
+                </div>
                 <div className="grid gap-2">
                   <label className="grid gap-2">
-                    <span className={fieldLabelClassName}>
+                    <HelpLabel noteId="load-selected-snapshot">
                       Select server snapshot
-                    </span>
+                    </HelpLabel>
                     <select
                       className={fieldClassName}
                       disabled={!serverSnapshots.length || isServerSnapshotBusy}
@@ -4291,13 +4412,18 @@ export function StudioManuscriptClient({
                 ) : null}
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={downloadFullDraftJson}
-                >
-                  Download full draft JSON
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    className={cn(smallButtonClassName, "flex-1")}
+                    type="button"
+                    onClick={downloadFullDraftJson}
+                  >
+                    Download full draft JSON
+                  </button>
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote("full-draft-json-backup")}
+                  />
+                </div>
                 <button
                   className={smallButtonClassName}
                   type="button"
@@ -4472,16 +4598,22 @@ export function StudioManuscriptClient({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  className={cn(
-                    smallButtonClassName,
-                    isRecordingMode ? activeButtonClassName : "",
-                  )}
-                  type="button"
-                  onClick={() => updateRecordingMode(!isRecordingMode)}
-                >
-                  {isRecordingMode ? "Exit Recording" : "Recording mode"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    className={cn(
+                      smallButtonClassName,
+                      "flex-1",
+                      isRecordingMode ? activeButtonClassName : "",
+                    )}
+                    type="button"
+                    onClick={() => updateRecordingMode(!isRecordingMode)}
+                  >
+                    {isRecordingMode ? "Exit Recording" : "Recording mode"}
+                  </button>
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote("recording-reading-mode")}
+                  />
+                </div>
                 <button
                   className={smallButtonClassName}
                   type="button"
@@ -4526,14 +4658,19 @@ export function StudioManuscriptClient({
                 >
                   Full manuscript
                 </button>
-                <button
-                  className={smallButtonClassName}
-                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                  type="button"
-                  onClick={() => void loadLatestServerSnapshot()}
-                >
-                  Load latest snapshot
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    className={cn(smallButtonClassName, "flex-1")}
+                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                    type="button"
+                    onClick={() => void loadLatestServerSnapshot()}
+                  >
+                    Load latest snapshot
+                  </button>
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote("load-latest-snapshot")}
+                  />
+                </div>
                 <button
                   className={smallButtonClassName}
                   type="button"

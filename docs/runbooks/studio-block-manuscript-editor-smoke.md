@@ -135,6 +135,33 @@ Before the first real manuscript server snapshot:
 9. Confirm text and metadata survive the load.
 10. Confirm no autosave or repeated background saves occur.
 
+## Footnote Help Smoke Steps
+
+Use these steps when changing Manuscript Desk help copy or help UI.
+
+1. Open `/manuscript`.
+2. Sign in with an authorized Studio account if prompted.
+3. Open several `?` help notes in the sidebar, including `Backup`,
+   `Server snapshots`, `Browser-local source`, `Local changes since last server
+   save`, `Create structure`, `Cited quotations`, and `Quote review`.
+4. Confirm each help note opens by mouse click.
+5. Use keyboard focus to tab to a help button, press Enter or Space, and confirm
+   the help note opens.
+6. Press Escape while a help button has focus and confirm the note closes.
+7. Use the note's `Close footnote` button and confirm focusable controls still
+   work afterward.
+8. On a phone or narrow viewport, open mobile `Tools` and confirm the Recording
+   mode and Load latest snapshot help buttons work by touch.
+9. Confirm opening and closing help notes does not change manuscript text,
+   author marks, semantic marks, structure regions, cited quotations, quote
+   review metadata, filters, or server snapshot state.
+10. Confirm the server snapshot help copy says snapshots are manual checkpoints,
+    not autosave and not collaboration.
+11. Confirm the Focus View help says hidden blocks are visually hidden only and
+    not deleted from the draft.
+12. Confirm the help panels stay small enough for dense sidebars and do not
+    cover the main manuscript surface on desktop.
+
 ## Manual Smoke Script
 
 1. Open `/manuscript`.

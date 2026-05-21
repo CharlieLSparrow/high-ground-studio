@@ -1,0 +1,278 @@
+export type ManuscriptHelpNoteId =
+  | "browser-local-draft"
+  | "full-draft-json-backup"
+  | "server-snapshot"
+  | "save-snapshot"
+  | "load-latest-snapshot"
+  | "load-selected-snapshot"
+  | "local-changes-since-server-save"
+  | "recording-reading-mode"
+  | "focus-view"
+  | "author-marks"
+  | "semantic-meaning-tags"
+  | "cited-quotation"
+  | "quote-review-metadata"
+  | "structure-region"
+  | "chapter-book-region"
+  | "episode-region"
+  | "backup-mode"
+  | "mark-mode"
+  | "find-mode"
+  | "quotes-mode";
+
+export type ManuscriptHelpNote = {
+  id: ManuscriptHelpNoteId;
+  label: string;
+  title: string;
+  body: string;
+  whatItDoes?: string;
+  whatItDoesNot?: string;
+  whenToUse?: string;
+};
+
+export const manuscriptHelpNotes = {
+  "browser-local-draft": {
+    id: "browser-local-draft",
+    label: "Local draft",
+    title: "The copy under this browser's floorboard",
+    body: "This is the manuscript copy living in this one browser. It is fast, private, and close at hand, like a marked-up draft tucked under a very specific floorboard.",
+    whatItDoes:
+      "It keeps the active working draft, including text, block IDs, author marks, structure regions, cited quotations, and quote review metadata.",
+    whatItDoesNot:
+      "It does not automatically appear on another device. Homer on a phone will not see it unless you export a full draft JSON backup or save a server snapshot.",
+    whenToUse:
+      "Use it for day-to-day editing. Use Backup mode before anything needs to travel.",
+  },
+  "full-draft-json-backup": {
+    id: "full-draft-json-backup",
+    label: "Full JSON",
+    title: "The whole desk in a bottle",
+    body: "A full draft JSON backup is a complete portable copy of the Manuscript Desk state. It is not glamorous, but neither is a spare key until the door is locked.",
+    whatItDoes:
+      "It preserves the full draft envelope: editor JSON, title, source file name, structure regions, cited quotation reviews, active author, and display settings.",
+    whatItDoesNot:
+      "It does not save to Studio's database and does not update any canonical manuscript file.",
+    whenToUse:
+      "Download one before a serious import, a risky edit, or the first real manuscript server snapshot.",
+  },
+  "server-snapshot": {
+    id: "server-snapshot",
+    label: "Snapshot",
+    title: "A sturdy envelope for another device",
+    body: "A server snapshot is a deliberate checkpoint saved to Studio's database. It is the manuscript equivalent of sealing an envelope and writing the date on it.",
+    whatItDoes:
+      "It lets another signed-in device load the saved draft, including text and metadata.",
+    whatItDoesNot:
+      "It is not autosave. It is not simultaneous editing. It is not canonical manuscript truth.",
+    whenToUse:
+      "Use it when a desktop draft needs to be available on a phone, tablet, or second browser profile.",
+  },
+  "save-snapshot": {
+    id: "save-snapshot",
+    label: "Save",
+    title: "Make the checkpoint on purpose",
+    body: "Save snapshot writes the current browser-local draft to Studio's database as a manual checkpoint. The button is intentionally plain because ceremony is cheaper than confusion.",
+    whatItDoes:
+      "It creates a new manual server snapshot for the signed-in Studio account.",
+    whatItDoesNot:
+      "It does not turn on autosave and does not merge with anyone else's browser.",
+    whenToUse:
+      "Click it after checking that the visible browser-local draft is the version another device should receive.",
+  },
+  "load-latest-snapshot": {
+    id: "load-latest-snapshot",
+    label: "Latest",
+    title: "Open the newest sealed envelope",
+    body: "Load latest fetches the most recently updated manual snapshot for this account and replaces this browser's active draft after confirmation.",
+    whatItDoes:
+      "It is the quickest phone-load path when the desktop has just saved a checkpoint.",
+    whatItDoesNot:
+      "It does not preserve unsaved local changes in this browser unless you export them first.",
+    whenToUse:
+      "Use it on the receiving device when you know the newest snapshot is the one you want.",
+  },
+  "load-selected-snapshot": {
+    id: "load-selected-snapshot",
+    label: "Selected",
+    title: "Choose the envelope before opening it",
+    body: "Load selected snapshot fetches the specific checkpoint chosen in the list. It is for moments when 'latest' is a little too trusting.",
+    whatItDoes:
+      "It replaces the active browser-local draft with the selected saved draft after confirmation.",
+    whatItDoesNot:
+      "It does not compare or merge drafts. The old local draft should be backed up first if it matters.",
+    whenToUse:
+      "Use it when there are several checkpoints and the timestamp or note matters.",
+  },
+  "local-changes-since-server-save": {
+    id: "local-changes-since-server-save",
+    label: "Local changes",
+    title: "Has this browser wandered off since the checkpoint?",
+    body: "This indicator compares the current browser-local draft to the last server snapshot saved or loaded in this browser. It ignores ordinary local timestamp churn.",
+    whatItDoes:
+      "It tells you whether text or metadata changed after the last known server checkpoint.",
+    whatItDoesNot:
+      "It cannot know what another browser has done unless you refresh or load server snapshots.",
+    whenToUse:
+      "Check it before handing the manuscript to another device or before deciding whether another manual save is needed.",
+  },
+  "recording-reading-mode": {
+    id: "recording-reading-mode",
+    label: "Read mode",
+    title: "The manuscript puts down the pen",
+    body: "Recording / Reading mode makes the manuscript easier to use while reading aloud or navigating on a smaller screen.",
+    whatItDoes:
+      "It makes the editor view-only, emphasizes outline and navigation controls, and keeps accidental edits out of the way.",
+    whatItDoesNot:
+      "It does not save, publish, rewrite, or remove manuscript data.",
+    whenToUse:
+      "Use it for phone reading, recording sessions, and review passes where navigation matters more than editing.",
+  },
+  "focus-view": {
+    id: "focus-view",
+    label: "Focus",
+    title: "The rest of the manuscript is behind a curtain",
+    body: "Focus View hides nonmatching blocks visually only. The manuscript has not been eaten. It is merely standing very still behind a curtain.",
+    whatItDoes:
+      "It narrows what you see by search, author, semantic tag, structure region, quote status, or quote focus.",
+    whatItDoesNot:
+      "It does not delete, split, rewrite, or remove hidden blocks from the draft JSON.",
+    whenToUse:
+      "Use it when the manuscript wall is too large and you need to work one pattern at a time.",
+  },
+  "author-marks": {
+    id: "author-marks",
+    label: "Authors",
+    title: "Colored thread through the prose",
+    body: "Author marks label spans as Charlie, Homer / Scott, or unassigned. They are editorial markings, not authorship law carved in stone.",
+    whatItDoes:
+      "It helps separate voices and see who a stretch of text currently belongs to.",
+    whatItDoesNot:
+      "It does not change file ownership, permissions, or canonical manuscript status.",
+    whenToUse:
+      "Use it after import, during voice cleanup, and when Charlie additions need to stay visibly distinct.",
+  },
+  "semantic-meaning-tags": {
+    id: "semantic-meaning-tags",
+    label: "Meaning tags",
+    title: "Labels for what the words are doing",
+    body: "Semantic tags mark why a span matters: quote, story, insight, research, question, thesis, transition, or review need.",
+    whatItDoes:
+      "It turns meaning into visible editorial metadata without moving the text.",
+    whatItDoesNot:
+      "It does not create public tags, public pages, or approved projection content.",
+    whenToUse:
+      "Use it to make important material findable before a later editorial decision.",
+  },
+  "cited-quotation": {
+    id: "cited-quotation",
+    label: "Citation",
+    title: "A quote that wants its papers checked",
+    body: "A cited quotation is a marked span that should carry source attention. Treat it as a bright ribbon saying: before this goes public, check me.",
+    whatItDoes:
+      "It makes quotation spans searchable, exportable, and available in Quote Focus.",
+    whatItDoesNot:
+      "It does not verify the quote by itself. The label is a request for care, not proof.",
+    whenToUse:
+      "Use it when a passage quotes, paraphrases closely, or needs source tracking.",
+  },
+  "quote-review-metadata": {
+    id: "quote-review-metadata",
+    label: "Quote review",
+    title: "The little ledger beside the quote",
+    body: "Quote review metadata stores the source title, locator, review status, rights note, and editor note for a cited quotation.",
+    whatItDoes:
+      "It tracks whether a quote needs a source, needs verification, is verified, or should not be used.",
+    whatItDoesNot:
+      "It does not change the quoted text or grant rights by magic.",
+    whenToUse:
+      "Use it during source review, permissions review, and final quote cleanup.",
+  },
+  "structure-region": {
+    id: "structure-region",
+    label: "Structure",
+    title: "A named stretch of manuscript road",
+    body: "A structure region names a range of blocks, such as a chapter, episode, or section. It is a map overlay, not a knife.",
+    whatItDoes:
+      "It helps navigate, outline, filter, and prepare reading or recording passes.",
+    whatItDoesNot:
+      "It does not split the manuscript, move paragraphs, or write canonical files.",
+    whenToUse:
+      "Use it when a block range has a useful editorial identity.",
+  },
+  "chapter-book-region": {
+    id: "chapter-book-region",
+    label: "Book region",
+    title: "Book-shaped scaffolding",
+    body: "A Chapter / book region marks manuscript ranges like Preface, Introduction, Chapter 0, Chapter One, or Appendix.",
+    whatItDoes:
+      "It helps the desk understand book-scale shape without committing public structure.",
+    whatItDoesNot:
+      "It does not publish a chapter or alter the living manuscript file.",
+    whenToUse:
+      "Use it when organizing the book manuscript for review, reading, or recording.",
+  },
+  "episode-region": {
+    id: "episode-region",
+    label: "Episode",
+    title: "A recording-sized path through the book",
+    body: "An Episode region marks the manuscript range that may support an episode or recording pass.",
+    whatItDoes:
+      "It helps a phone or recording view jump through episode-sized chunks.",
+    whatItDoesNot:
+      "It does not create a podcast episode, update arrangements, or publish content.",
+    whenToUse:
+      "Use it when a range has a practical show or reading purpose.",
+  },
+  "backup-mode": {
+    id: "backup-mode",
+    label: "Backup",
+    title: "The cautious drawer",
+    body: "Backup mode is where the desk puts travel papers, spare keys, and serious warnings in one place.",
+    whatItDoes:
+      "It handles local downloads, JSON import/export, manual server snapshots, and snapshot loading.",
+    whatItDoesNot:
+      "It does not autosave or turn server snapshots into collaboration.",
+    whenToUse:
+      "Use it before imports, before risky edits, and whenever the manuscript needs to move devices.",
+  },
+  "mark-mode": {
+    id: "mark-mode",
+    label: "Mark",
+    title: "Ink for meaning, not for panic",
+    body: "Mark mode is for applying author marks and meaning tags to selected text.",
+    whatItDoes:
+      "It adds inline editorial metadata that travels inside the browser-local draft and manual snapshots.",
+    whatItDoesNot:
+      "It does not rewrite the words, publish anything, or promote material to canonical truth.",
+    whenToUse:
+      "Use it while classifying voice, quotes, stories, insights, and review needs.",
+  },
+  "find-mode": {
+    id: "find-mode",
+    label: "Find",
+    title: "A lantern, not scissors",
+    body: "Find mode narrows what you can see so the manuscript becomes workable in pieces.",
+    whatItDoes:
+      "It searches and filters by text, author, semantic tag, structure, block type, and review state.",
+    whatItDoesNot:
+      "It does not change the draft unless you click a separate editing action.",
+    whenToUse:
+      "Use it when looking for a pattern, a missing mark, or a specific type of cleanup.",
+  },
+  "quotes-mode": {
+    id: "quotes-mode",
+    label: "Quotes",
+    title: "The citation desk with a sharper lamp",
+    body: "Quotes mode gathers cited quotations and their review state so source work can happen without hunting through the whole manuscript.",
+    whatItDoes:
+      "It focuses cited quotations, moves between them, edits review metadata, and exports quote Markdown.",
+    whatItDoesNot:
+      "It does not verify quotes automatically or change rights status by declaration.",
+    whenToUse:
+      "Use it for source cleanup, permissions review, and final quote triage.",
+  },
+} satisfies Record<ManuscriptHelpNoteId, ManuscriptHelpNote>;
+
+export function getManuscriptHelpNote(id: ManuscriptHelpNoteId) {
+  return manuscriptHelpNotes[id];
+}
