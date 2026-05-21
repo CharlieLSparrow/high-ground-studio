@@ -96,6 +96,31 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  apps/studio-cut-web:
+    dependencies:
+      '@high-ground/studio-cut-schema':
+        specifier: workspace:*
+        version: link:../../packages/studio-cut-schema
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 5.4.21
+        version: 5.4.21(@types/node@25.3.3)(lightningcss@1.32.0)
+
   apps/web:
     dependencies:
       '@prisma/adapter-pg':
@@ -165,6 +190,12 @@ importers:
         version: 0.183.1
       typescript:
         specifier: ^5.5.4
+        version: 5.9.3
+
+  packages/studio-cut-schema:
+    devDependencies:
+      typescript:
+        specifier: 5.9.3
         version: 5.9.3
 
   packages/studio-domain:

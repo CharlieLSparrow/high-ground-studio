@@ -27,6 +27,7 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `workflows/documentation-operating-system.md`: how to write and maintain public docs, team docs, agent docs, session notes, architecture docs, runbooks, and roadmap docs.
 - `plans/kanban-operating-model.md`: lightweight kanban model for visible progress, small cards, shipped proof, and weekly updates for Homer.
 - `architecture/episode-production-lifecycle.md`: lifecycle/source-of-truth model for Episode View, Everything View, Draft View, and Live publishing gates.
+- `studio-cut.md`: current Studio Cut web editor shell, semantic decision model, media safety boundary, and Firebase Hosting setup notes.
 - `project-context/season-one-production-state.md`: current Season One production truth across recording, OneNote prep, repo intake, living manuscript, arrangements, and public publish status.
 - `project-context/weekly-ship-log.md`: recurring proof-of-progress artifact Chuck can show Homer.
 - `analysis/episode-view-everything-draft-implementation-plan.md`: implementation plan for the next read-only Episode View cockpit slice.

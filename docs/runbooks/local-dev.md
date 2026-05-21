@@ -139,6 +139,25 @@ pnpm studio:local:bootstrap
 pnpm studio:local
 ```
 
+## Run Studio Cut
+
+Studio Cut is a separate Vite app for the internal multicam podcast editor
+shell. It edits semantic decision events over source time and does not need a
+database in the first local slice.
+
+```bash
+pnpm studio-cut
+```
+
+Verification:
+
+```bash
+pnpm studio-cut:typecheck
+pnpm studio-cut:build
+```
+
+Read `docs/studio-cut.md` before deploying or adding cloud persistence.
+
 ## Build Verification
 
 Default production build:
