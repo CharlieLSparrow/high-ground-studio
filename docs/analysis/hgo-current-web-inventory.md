@@ -23,6 +23,8 @@ Inspected route files and nested routes show these current surfaces:
 - `/`
 - `/library`
 - `/episodes/[[...slug]]`
+- `/projection-preview`
+- `/projection-preview/[slug]`
 - `/coaching`
 - `/coaching/success`
 - `/coaching/cancel`
@@ -66,6 +68,35 @@ Key supporting files:
 - `apps/web/src/lib/reading.ts`
 - `apps/web/content/publish`
 
+## Current Projection Preview Shape
+
+The synthetic projection preview system now lives under:
+
+- `apps/web/src/app/projection-preview/page.tsx`
+- `apps/web/src/app/projection-preview/[slug]/page.tsx`
+- `apps/web/src/components/hgo/projection/EpisodeProjectionView.tsx`
+- `apps/web/src/lib/hgo/projection-types.ts`
+- `apps/web/src/lib/hgo/synthetic-episode-projection.ts`
+
+Its behavior:
+
+- `/projection-preview` renders a synthetic book/series map.
+- `/projection-preview?scope=book-only` filters to book-only projections.
+- `/projection-preview?scope=episode-only` filters to episode-only projections.
+- `/projection-preview?scope=book-and-episode` filters to projections that
+  belong to both book and episode lenses.
+- `/projection-preview?scope=internal` filters to internal/private projection
+  work.
+- `/projection-preview?scope=public-safe` filters to live public projections
+  with verified quote and source state.
+- `/projection-preview/[slug]` renders each visual-heavy projection page using
+  the same shared renderer.
+- `/projection-preview/synthetic-episode` is preserved through the dynamic
+  route and no longer depends on one-off page code.
+
+This is synthetic-only. It does not publish real HGO pages, read from Studio,
+write content files, or depend on a database/API.
+
 ## Current Design System And Components
 
 Useful current patterns:
@@ -85,6 +116,9 @@ What is useful:
 - The dark cinematic palette is a good starting point.
 - Existing public app already supports a richer visual language than the old episode pages use.
 - MDX and content routes can coexist with a new projection preview route while the model is proven.
+- The new projection preview renderer proves that lifecycle state, visibility,
+  book/episode scopes, source notes, and voice cards can come from one typed
+  contract instead of bespoke page code.
 
 What should be replaced or rethought:
 
@@ -92,6 +126,8 @@ What should be replaced or rethought:
 - The episode route is coupled to MDX/content rendering instead of a public projection contract.
 - Current episode metadata is not enough to express Studio-derived structure, author voices, citation state, or recording handoff.
 - Previous/next/archive navigation is useful but too generic for story-forward projection.
+- Old episode page code should not be preserved out of sentiment once the
+  projection model is ready to carry real staged/live content.
 
 ## Content Structure
 
@@ -102,6 +138,26 @@ Content folders inspected:
 - `apps/web/content/_inbox`: raw manuscript/research inbox.
 
 No real manuscript or published HGO content should be copied into synthetic prototype data.
+
+## Current Projection Content Model
+
+The synthetic projection fixture is intentionally separate from real content:
+
+- status: `synthetic`, `staged`, `live`, or `archived`
+- visibility: `private`, `staged`, or `public`
+- scopes: `book-only`, `episode-only`, `book-and-episode`, or `internal`
+- hero prompt and color mood
+- audio state
+- beats
+- Homer/Charlie voice cards
+- pull quotes with citation state
+- source notes with review state
+- related book chapter
+- backstage notes
+- previous/next projection links
+
+This shape is the first code-level contract for HGO as public/staged projection
+surface.
 
 ## Should `apps/web` Remain The HGO App?
 
@@ -121,21 +177,14 @@ When to reconsider:
 
 ## Recommended Next Architecture Step
 
-Add a typed public episode projection contract that can be generated from Studio later:
+Next step: define how Studio produces this projection contract.
 
-- title,
-- subtitle,
-- slug,
-- episode number,
-- hero visual descriptor/media,
-- audio/player metadata,
-- summary,
-- thesis,
-- chapter/episode/section beats,
-- voice summaries,
-- pull quotes,
-- public-safe citation/source notes,
-- related book/chapter data,
-- next/previous/series navigation.
+Candidate path:
 
-The synthetic preview route in this sprint is the first low-risk proof of that direction.
+1. Keep `/projection-preview` synthetic while the renderer evolves.
+2. Add a Studio export that emits projection JSON from approved browser-local
+   metadata.
+3. Add staged preview access rules before real work-in-progress pages become
+   shareable.
+4. Replace or retire the old MDX episode shell only after real projection data
+   has a safe migration and rollback path.
