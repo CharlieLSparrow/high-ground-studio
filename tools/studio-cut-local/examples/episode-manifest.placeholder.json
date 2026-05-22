@@ -1,0 +1,59 @@
+{
+  "id": "episode-placeholder-local-render",
+  "title": "Episode Placeholder Local Render",
+  "durationMs": 120000,
+  "sources": {
+    "homer": {
+      "role": "homer",
+      "label": "Homer placeholder source",
+      "fileName": "homer-placeholder.mov",
+      "notes": "Placeholder only. Do not include real media paths."
+    },
+    "charlie": {
+      "role": "charlie",
+      "label": "Charlie placeholder source",
+      "fileName": "charlie-placeholder.mov",
+      "notes": "Placeholder only. Do not include real media paths."
+    },
+    "clip": {
+      "role": "clip",
+      "label": "Shared clip placeholder source",
+      "fileName": "clip-placeholder.mov",
+      "notes": "Optional watch-together placeholder."
+    },
+    "program": {
+      "role": "program",
+      "label": "Premiere synced program reference",
+      "fileName": "source-monitor-proxy-placeholder.mp4",
+      "notes": "Lightweight proxy reference only."
+    }
+  },
+  "sourceMonitorProxy": {
+    "localPlaceholderPath": "./source-monitor-proxy-placeholder.mp4",
+    "panes": {
+      "homer": {
+        "x": 0,
+        "y": 0,
+        "width": 0.5,
+        "height": 0.5
+      },
+      "charlie": {
+        "x": 0.5,
+        "y": 0,
+        "width": 0.5,
+        "height": 0.5
+      },
+      "clip": {
+        "x": 0,
+        "y": 0.5,
+        "width": 0.5,
+        "height": 0.5
+      }
+    }
+  },
+  "syncBootstrap": {
+    "source": "premiere",
+    "xmlFileName": "premiere-placeholder-export.xml",
+    "notes": "Premiere temporarily owns source sync. Studio Cut owns semantic decisions."
+  }
+}

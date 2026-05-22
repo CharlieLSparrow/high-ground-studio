@@ -162,6 +162,61 @@ output locally.
 The local engine should later sync source media, generate proxy packages, pull
 decision branches, and render final outputs locally.
 
+## Local Render Handoff
+
+The first local render handoff CLI lives at:
+
+```text
+tools/studio-cut-local/studio_cut_local.py
+```
+
+It is a local-only Python standard-library tool. It does not require Firebase,
+Firestore, Cloud Storage, or credentials. It reads local JSON files and, for
+proxy preview rendering, a local source-monitor proxy video. It does not upload
+media, mutate source files, or write private episode data to the repo.
+
+Tonight's handoff path:
+
+```text
+Premiere sync -> export source-monitor proxy -> import manifest -> load proxy locally -> tag decisions -> export decision JSON -> run local render CLI
+```
+
+The CLI supports:
+
+- `doctor`: checks Python, `ffmpeg`, and current-directory read/write access.
+- `plan-render`: validates the manifest and decision JSON, derives semantic
+  segments, removes `Cut` spans, prints a human-readable plan, and can write a
+  render-plan JSON file.
+- `render-proxy-preview`: uses the same active segment plan and `ffmpeg` to
+  trim/concatenate the local source-monitor proxy into a rough review MP4 that
+  skips `Cut` spans.
+
+Dry-run first:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py plan-render \
+  --manifest path/to/episode-manifest.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --profile proxy_preview \
+  --out /tmp/studio-cut-render-plan.json
+```
+
+Proxy preview second:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-proxy-preview \
+  --manifest path/to/episode-manifest.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --proxy path/to/source-monitor-proxy.mp4 \
+  --out /tmp/studio-cut-preview.mp4
+```
+
+Full-resolution rendering is still later. The first full-res pass should consume
+the same manifest and decision JSON, then map active source-time segments back
+onto Charlie/Homer/Clip full-res local media through the Premiere sync reference.
+Do not commit generated render plans, preview renders, full-res media, proxy
+media, or private episode manifests.
+
 ## Local Commands
 
 Run from the repo root:
@@ -170,6 +225,7 @@ Run from the repo root:
 pnpm studio-cut
 pnpm studio-cut:typecheck
 pnpm studio-cut:build
+pnpm studio-cut:local:doctor
 ```
 
 The editor always persists decisions in browser storage under:

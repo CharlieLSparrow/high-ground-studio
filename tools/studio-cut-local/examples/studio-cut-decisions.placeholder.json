@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-05-21T00:00:00.000Z",
+  "projectId": "studio-cut-local-project",
+  "branchId": "local-main",
+  "decisionEvents": [
+    {
+      "id": "placeholder-event-001",
+      "projectId": "studio-cut-local-project",
+      "branchId": "local-main",
+      "sourceTimeMs": 0,
+      "state": "both",
+      "createdBy": "local-web-editor",
+      "createdAt": "2026-05-21T00:00:00.000Z",
+      "note": "Open with both hosts."
+    },
+    {
+      "id": "placeholder-event-002",
+      "projectId": "studio-cut-local-project",
+      "branchId": "local-main",
+      "sourceTimeMs": 30000,
+      "state": "cut",
+      "createdBy": "local-web-editor",
+      "createdAt": "2026-05-21T00:01:00.000Z",
+      "note": "Skip inactive setup."
+    },
+    {
+      "id": "placeholder-event-003",
+      "projectId": "studio-cut-local-project",
+      "branchId": "local-main",
+      "sourceTimeMs": 45000,
+      "state": "homer",
+      "createdBy": "local-web-editor",
+      "createdAt": "2026-05-21T00:02:00.000Z",
+      "note": "Return on Homer."
+    },
+    {
+      "id": "placeholder-event-004",
+      "projectId": "studio-cut-local-project",
+      "branchId": "local-main",
+      "sourceTimeMs": 90000,
+      "state": "charlie_clip",
+      "createdBy": "local-web-editor",
+      "createdAt": "2026-05-21T00:03:00.000Z",
+      "note": "Charlie with shared clip."
+    }
+  ]
+}

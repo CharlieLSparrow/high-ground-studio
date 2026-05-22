@@ -17,6 +17,10 @@ pnpm-debug.log*
 yarn-debug.log*
 *.log
 
+# Python
+__pycache__/
+*.py[cod]
+
 # OS/editor
 .DS_Store
 **/.DS_Store
@@ -50,5 +54,6 @@ GIT
 !.env.example
 apps/web/.env.local
 apps/studio-cut-web/.env.production.local
+tools/studio-cut-local/output/
 .firebase/
 .aider*
