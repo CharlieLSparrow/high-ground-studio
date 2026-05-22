@@ -1,3 +1,8 @@
+import {
+  parseAllowedEmailDomains,
+  parseAllowedEmails,
+} from "./authAccess";
+
 export type StudioCutFirebaseConfig = {
   apiKey: string;
   authDomain: string;
@@ -11,6 +16,7 @@ export type StudioCutRuntimeConfig = {
   branchId: string;
   createdBy: string;
   allowedEmails: string[];
+  allowedEmailDomains: string[];
   isDev: boolean;
   isProduction: boolean;
   firebaseConfig?: StudioCutFirebaseConfig;
@@ -27,7 +33,12 @@ export function getStudioCutRuntimeConfig(): StudioCutRuntimeConfig {
     projectId: getEnvValue("VITE_STUDIO_CUT_PROJECT_ID") || DEFAULT_PROJECT_ID,
     branchId: getEnvValue("VITE_STUDIO_CUT_BRANCH_ID") || DEFAULT_BRANCH_ID,
     createdBy: getEnvValue("VITE_STUDIO_CUT_CREATED_BY") || DEFAULT_CREATED_BY,
-    allowedEmails: getAllowedEmails(),
+    allowedEmails: parseAllowedEmails(
+      getEnvValue("VITE_STUDIO_CUT_ALLOWED_EMAILS"),
+    ),
+    allowedEmailDomains: parseAllowedEmailDomains(
+      getEnvValue("VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS"),
+    ),
     isDev: import.meta.env.DEV,
     isProduction: import.meta.env.PROD,
     ...(firebaseConfig ? { firebaseConfig } : {}),
@@ -51,13 +62,6 @@ function getFirebaseConfig(): StudioCutFirebaseConfig | undefined {
     appId,
     storageBucket: getEnvValue("VITE_FIREBASE_STORAGE_BUCKET"),
   };
-}
-
-function getAllowedEmails() {
-  return (getEnvValue("VITE_STUDIO_CUT_ALLOWED_EMAILS") ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
 }
 
 function getEnvValue(key: string) {

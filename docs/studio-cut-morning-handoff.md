@@ -8,7 +8,8 @@ It contains no private paths, media, credentials, or real episode data.
 ## What Works Now
 
 - Deployed Studio Cut web editor: <https://high-ground-odyssey.web.app>
-- Firebase Auth gate with allowed-email build config.
+- Firebase Auth gate with exact-email and `@highgroundodyssey.com` domain
+  allow rules.
 - Episode Manifest import with Premiere bootstrap metadata.
 - Browser-local source-monitor proxy playback. The proxy file is not uploaded,
   persisted, or written into decision JSON.

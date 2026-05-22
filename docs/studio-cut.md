@@ -603,8 +603,8 @@ high-ground-studio.studio-cut.decisions.v1
 Use `apps/studio-cut-web/.env.example` as the local env template. In the Vite
 dev server, if Firebase env vars are absent or blank, the app shows local dev
 mode and continues to work with localStorage only. Production builds should use
-Firebase config and an allowed email list; if those are missing, the editor is
-hidden instead of becoming a public editor.
+Firebase config and allowed email or domain rules; if those are missing, the
+editor is hidden instead of becoming a public editor.
 
 Current non-secret local context vars:
 
@@ -613,6 +613,7 @@ VITE_STUDIO_CUT_PROJECT_ID
 VITE_STUDIO_CUT_BRANCH_ID
 VITE_STUDIO_CUT_CREATED_BY
 VITE_STUDIO_CUT_ALLOWED_EMAILS
+VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS
 ```
 
 Required production Firebase web config vars:
@@ -654,7 +655,8 @@ Studio Cut now has a first internal-only auth boundary:
 - Production build with missing Firebase env vars: editor hidden with an auth
   configuration message.
 - Firebase config present: Google sign-in is required.
-- Signed-in email must appear in `VITE_STUDIO_CUT_ALLOWED_EMAILS`.
+- Signed-in email must either appear in `VITE_STUDIO_CUT_ALLOWED_EMAILS` or use
+  a domain listed in `VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS`.
 - Non-allowed users see a clear not-authorized message and do not see the
   editor.
 
@@ -663,6 +665,16 @@ Studio Cut now has a first internal-only auth boundary:
 ```text
 VITE_STUDIO_CUT_ALLOWED_EMAILS="person@example.com,another@example.com"
 ```
+
+`VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS` is also comma-separated. Domains are
+normalized to lowercase and may include or omit the leading `@`:
+
+```text
+VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS="highgroundodyssey.com"
+```
+
+Access passes if either the exact email or domain rule matches. Keep exact
+email entries for outside-domain collaborators or temporary overrides.
 
 This app-level gate is not a substitute for Firestore security rules. Do not
 put private podcast data, proxy package references, or real collaboration data
@@ -802,6 +814,7 @@ VITE_STUDIO_CUT_PROJECT_ID=studio-cut-local-project
 VITE_STUDIO_CUT_BRANCH_ID=local-main
 VITE_STUDIO_CUT_CREATED_BY=local-web-editor
 VITE_STUDIO_CUT_ALLOWED_EMAILS=charlie@highgroundodyssey.com
+VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS=highgroundodyssey.com
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=high-ground-odyssey.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=high-ground-odyssey

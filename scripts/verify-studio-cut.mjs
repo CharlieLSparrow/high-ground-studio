@@ -18,6 +18,15 @@ const verificationSteps = [
     args: ["-m", "py_compile", "tools/studio-cut-local/studio_cut_local.py"],
   },
   {
+    label: "Studio Cut auth access test",
+    command: "node",
+    args: [
+      "--experimental-strip-types",
+      "--test",
+      "scripts/studio-cut-auth-access.test.mjs",
+    ],
+  },
+  {
     label: "Agent smoke test",
     command: pythonCommand,
     args: [

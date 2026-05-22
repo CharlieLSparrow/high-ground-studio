@@ -7,6 +7,13 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
+import {
+  checkStudioCutEmailAccess,
+  getAllowedAccessDescription,
+  isStudioCutAccessConfigured,
+  type StudioCutAuthAccessConfig,
+  type StudioCutAuthAccessResult,
+} from "../authAccess";
 import { getStudioCutFirebaseApp } from "../firebase/studioCutFirebase";
 import type { StudioCutRuntimeConfig } from "../studioCutConfig";
 
@@ -39,7 +46,7 @@ export function useStudioCutAuth(config: StudioCutRuntimeConfig) {
       return;
     }
 
-    if (config.allowedEmails.length === 0) {
+    if (!isStudioCutAccessConfigured(config)) {
       setStatus(createAllowedListMissingStatus());
       return;
     }
@@ -51,7 +58,7 @@ export function useStudioCutAuth(config: StudioCutRuntimeConfig) {
     return onAuthStateChanged(
       auth,
       (user) => {
-        setStatus(getSignedInStatus(user, config.allowedEmails));
+        setStatus(getSignedInStatus(user, config));
       },
       (error) => {
         setStatus(createAuthErrorStatus(error));
@@ -65,7 +72,7 @@ export function useStudioCutAuth(config: StudioCutRuntimeConfig) {
       return;
     }
 
-    if (config.allowedEmails.length === 0) {
+    if (!isStudioCutAccessConfigured(config)) {
       setStatus(createAllowedListMissingStatus());
       return;
     }
@@ -103,7 +110,7 @@ function getInitialAuthStatus(config: StudioCutRuntimeConfig): StudioCutAuthStat
     return getMissingFirebaseStatus(config);
   }
 
-  if (config.allowedEmails.length === 0) {
+  if (!isStudioCutAccessConfigured(config)) {
     return createAllowedListMissingStatus();
   }
 
@@ -137,9 +144,9 @@ function getMissingFirebaseStatus(
 function createAllowedListMissingStatus(): StudioCutAuthStatus {
   return {
     mode: "auth_unconfigured",
-    label: "Allowed emails required",
+    label: "Allowed access rule required",
     detail:
-      "Firebase Auth is configured, but VITE_STUDIO_CUT_ALLOWED_EMAILS is empty.",
+      "Firebase Auth is configured, but no allowed email or email-domain rule was provided.",
     isEditorAllowed: false,
     isFirebaseAuthEnabled: true,
   };
@@ -157,25 +164,28 @@ function createLoadingStatus(): StudioCutAuthStatus {
 
 function getSignedInStatus(
   user: User | null,
-  allowedEmails: readonly string[],
+  accessConfig: StudioCutAuthAccessConfig,
 ): StudioCutAuthStatus {
+  const accessDescription = getAllowedAccessDescription(accessConfig);
+
   if (!user) {
     return {
       mode: "signed_out",
       label: "Sign-in required",
-      detail: "Sign in with an allowed Google account to open Studio Cut.",
+      detail: `Sign in with ${accessDescription} to open Studio Cut.`,
       isEditorAllowed: false,
       isFirebaseAuthEnabled: true,
     };
   }
 
   const email = user.email?.trim().toLowerCase();
+  const accessResult = checkStudioCutEmailAccess(email, accessConfig);
 
-  if (!email || !allowedEmails.includes(email)) {
+  if (!accessResult.allowed) {
     return {
       mode: "not_authorized",
       label: "Not authorized",
-      detail: "This Google account is not on the Studio Cut allowed list.",
+      detail: getNotAuthorizedDetail(accessConfig, accessResult),
       isEditorAllowed: false,
       isFirebaseAuthEnabled: true,
       ...(email ? { userEmail: email } : {}),
@@ -185,11 +195,22 @@ function getSignedInStatus(
   return {
     mode: "authorized",
     label: "Signed in",
-    detail: "Google sign-in and allowed-email check passed.",
+    detail: "Google sign-in matched a Studio Cut access rule.",
     isEditorAllowed: true,
     isFirebaseAuthEnabled: true,
     userEmail: email,
   };
+}
+
+function getNotAuthorizedDetail(
+  accessConfig: StudioCutAuthAccessConfig,
+  accessResult: StudioCutAuthAccessResult,
+) {
+  if (accessResult.reason === "missing_email") {
+    return "This Google account did not provide an email address Studio Cut can verify.";
+  }
+
+  return `Use a Google account with ${getAllowedAccessDescription(accessConfig)}.`;
 }
 
 function createAuthErrorStatus(error: unknown): StudioCutAuthStatus {
