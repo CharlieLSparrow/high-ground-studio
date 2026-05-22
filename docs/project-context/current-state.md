@@ -94,6 +94,13 @@ High Ground Studio is a monorepo with:
   Manuscript adapter payload. The lab UI now leads with a shared long manuscript
   surface to reinforce that collaboration should happen over one manuscript
   stream, not disconnected cards.
+- Studio collaboration now has synthetic local presence and manuscript margin
+  awareness in `/manuscript/collaboration-lab`. Presence tracks Charlie and
+  Homer active block/span/mode/last action in React state only and renders
+  margin cues around the shared manuscript surface. Presence is explicitly not
+  durable manuscript content and is excluded from snapshots, checkpoints,
+  Manuscript adapter payloads, localStorage, server routes, and production
+  manual snapshots.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -211,6 +218,9 @@ High Ground Studio is a monorepo with:
   collaboration-enabled replacement for `/manuscript`.
 - Studio collaboration span semantics are synthetic text-offset lab semantics.
   They are not production comments, not real source spans, not DOM selections,
+  and not wired to production `/manuscript`.
+- Studio collaboration presence is local lab awareness only. It is not
+  provider-backed, not persisted, not checkpointed, not stored in localStorage,
   and not wired to production `/manuscript`.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.

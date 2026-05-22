@@ -29,8 +29,16 @@ import {
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   applySyntheticSpanTag,
+  listSyntheticSpanTags,
   summarizeSyntheticSpanTags,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+import {
+  createSyntheticPresenceState,
+  markSyntheticPresenceForBlock,
+  markSyntheticPresenceForSpan,
+  summarizeSyntheticPresence,
+  validateSyntheticPresenceState,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -57,6 +65,19 @@ function addStep(name, status, details = {}) {
     details,
     completedAt: new Date().toISOString(),
   });
+}
+
+function assertPresenceExcluded(payload, lastAction) {
+  const serialized = JSON.stringify(payload);
+
+  if (
+    serialized.includes('"presence"') ||
+    serialized.includes("activeBlockId") ||
+    serialized.includes("activeSpanId") ||
+    serialized.includes(lastAction)
+  ) {
+    throw new Error("Ephemeral synthetic presence leaked into durable payload.");
+  }
 }
 
 async function writeReport(status, extra = {}) {
@@ -128,6 +149,15 @@ async function runSmoke() {
     );
     addStep("apply synthetic edits and tags on separate clients", "passed");
 
+    let presence = createSyntheticPresenceState();
+    presence = markSyntheticPresenceForBlock(
+      presence,
+      "charlie",
+      "synthetic-collab-block-1",
+      "tagging",
+      "Charlie is tagging a synthetic block in the agent smoke.",
+    );
+
     const syncResult = syncCollaborationClients(charlie, homer);
 
     if (!syncResult.converged || !collaborationSummariesMatch(charlie, homer)) {
@@ -143,6 +173,29 @@ async function runSmoke() {
     if (summarizeSyntheticSpanTags(homer).spanCount !== 1) {
       throw new Error("Synthetic span did not sync to Homer.");
     }
+
+    const syncedSpan = listSyntheticSpanTags(homer)[0];
+    presence = markSyntheticPresenceForSpan(
+      presence,
+      "homer",
+      syncedSpan.spanId,
+      "reviewing",
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
+    const presenceValidation = validateSyntheticPresenceState(presence);
+    const presenceSummary = summarizeSyntheticPresence(presence);
+
+    if (!presenceValidation.ok) {
+      throw new Error(
+        `Synthetic presence validation failed: ${presenceValidation.errors.join(" ")}`,
+      );
+    }
+
+    addStep("model ephemeral synthetic presence", "passed", {
+      actors: presenceSummary.actorCount,
+      activeBlockPresence: presenceSummary.activeBlockPresenceCount,
+      activeSpanPresence: presenceSummary.activeSpanPresenceCount,
+    });
 
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
     const safety = assertSyntheticCollaborationSnapshot(exportedSnapshot);
@@ -161,6 +214,10 @@ async function runSmoke() {
       ),
       spans: exportedSnapshot.spans?.length ?? 0,
     });
+    assertPresenceExcluded(
+      exportedSnapshot,
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
 
     const imported = importCollaborationSnapshot(
       exportedSnapshot,
@@ -191,6 +248,10 @@ async function runSmoke() {
       tags: checkpointValidation.summary.tagCount,
       spans: checkpointValidation.summary.spanCount,
     });
+    assertPresenceExcluded(
+      checkpoint,
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
 
     const checkpointImport = importCollaborationCheckpointToClient(
       checkpoint,
@@ -237,6 +298,10 @@ async function runSmoke() {
     if (adapterValidation.summary.semanticMarkCount !== 1) {
       throw new Error("Synthetic Manuscript adapter did not create a span semantic mark.");
     }
+    assertPresenceExcluded(
+      adapterPayload,
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
 
     const adapterComparison = compareCollaborationCheckpointToManuscriptDraft(
       checkpoint,
@@ -307,6 +372,11 @@ async function runSmoke() {
       spanRoundtrip: true,
       spanCount: adapterSummary.spanCount,
       semanticMarkCount: adapterSummary.semanticMarkCount,
+      presenceModeled: true,
+      presenceActorCount: presenceSummary.actorCount,
+      activeBlockPresenceCount: presenceSummary.activeBlockPresenceCount,
+      activeSpanPresenceCount: presenceSummary.activeSpanPresenceCount,
+      presenceExcludedFromSnapshots: true,
       manuscriptFirstSurface: true,
       noServerWrites: true,
       noProductionManuscriptEditing: true,

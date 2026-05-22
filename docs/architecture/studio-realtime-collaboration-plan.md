@@ -83,6 +83,7 @@ Commands:
 - `pnpm studio:collab:checkpoint:test`
 - `pnpm studio:collab:adapter:test`
 - `pnpm studio:collab:span:test`
+- `pnpm studio:collab:presence:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -173,6 +174,23 @@ production collaboration should preserve one continuous manuscript stream with
 span overlays, margin presence, comments/tags/quotes in side panels, and
 explicit checkpoints.
 
+## Local Presence And Margin Awareness
+
+The collaboration lab now has synthetic local presence:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts`
+
+Presence tracks Charlie and Homer as ephemeral actors with active block, active
+span, mode, last action, and staleness summary. The shared manuscript surface
+uses this to show margin awareness cues, so the lab feels closer to two people
+working in one manuscript instead of a dashboard of cards.
+
+Presence is not document content. It is not written into collaboration
+snapshots, checkpoints, Manuscript adapter payloads, localStorage, server
+routes, or production manual snapshots. The agentic smoke reports presence
+summary fields, but generated document/checkpoint/adapter payloads explicitly
+exclude it.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -186,6 +204,7 @@ explicit checkpoints.
 - no production manual snapshot mutation
 - no production Manuscript Desk adapter import
 - no public publishing
+- no durable presence storage
 
 ## Rough 20-Sprint Path
 

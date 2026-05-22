@@ -236,6 +236,27 @@ Use synthetic manuscript text only until this checklist is complete.
 18. Confirm no autosave, collaboration, canonical content write, or public
     publishing action happened during the smoke.
 
+## Collaboration Lab Boundary Smoke
+
+Use this when changes touch the local collaboration lab. This route is not the
+production Manuscript Desk and must stay synthetic-only.
+
+1. Open `/manuscript/collaboration-lab`.
+2. Confirm the page says local collaboration lab, synthetic data only, no
+   server writes, no autosave, and no production manuscript editing.
+3. Confirm the shared manuscript surface appears before the Charlie and Homer
+   client panels.
+4. Add a synthetic span and run two-way sync.
+5. Set Charlie active on a synthetic block.
+6. Set Homer reviewing a synthetic span.
+7. Confirm margin presence cues appear around the shared manuscript surface.
+8. Export a synthetic snapshot and confirm presence is not serialized.
+9. Create a synthetic checkpoint and confirm presence is not serialized.
+10. Create the synthetic Manuscript adapter payload and confirm presence is not
+    serialized.
+11. Confirm no server snapshot is saved, no localStorage collaboration state is
+    written, and production `/manuscript` save/load behavior is untouched.
+
 ## Publishing / Handoff Smoke Steps
 
 Use synthetic manuscript text only for this smoke.

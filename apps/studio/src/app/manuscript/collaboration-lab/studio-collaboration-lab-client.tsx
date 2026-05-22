@@ -43,6 +43,18 @@ import {
   summarizeSyntheticSpanTags,
   type StudioCollaborationSpanTag,
 } from "./studio-collaboration-span-model";
+import {
+  createSyntheticPresenceState,
+  listPresenceActors,
+  listPresenceForBlock,
+  listPresenceForSpan,
+  markSyntheticPresenceForBlock,
+  markSyntheticPresenceForSpan,
+  summarizeSyntheticPresence,
+  type StudioCollaborationPresenceActorId,
+  type StudioCollaborationPresenceMode,
+  type StudioCollaborationPresenceState,
+} from "./studio-collaboration-presence-model";
 
 type LabState = {
   charlie: StudioCollaborationClient;
@@ -86,7 +98,11 @@ const buttonClassName =
 const dangerButtonClassName =
   "min-h-10 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 py-2 text-[0.8rem] font-extrabold text-studio-danger transition hover:bg-studio-danger/15";
 
-function renderTextWithSpans(block: { id: string; text: string }, spans: StudioCollaborationSpanTag[]) {
+function renderTextWithSpans(
+  block: { id: string; text: string },
+  spans: StudioCollaborationSpanTag[],
+  presenceState: StudioCollaborationPresenceState,
+) {
   const blockSpans = spans
     .filter((span) => span.blockId === block.id)
     .sort(
@@ -114,7 +130,11 @@ function renderTextWithSpans(block: { id: string; text: string }, spans: StudioC
     pieces.push(
       <mark
         key={span.spanId}
-        className="rounded-sm bg-studio-source/25 px-1 text-studio-ink ring-1 ring-studio-source/35"
+        className={cn(
+          "rounded-sm bg-studio-source/25 px-1 text-studio-ink ring-1 ring-studio-source/35",
+          listPresenceForSpan(presenceState, span.spanId).length > 0 &&
+            "bg-studio-review/20 ring-2 ring-studio-review/55",
+        )}
         title={`${span.label} - ${span.actor}`}
       >
         {block.text.slice(span.startOffset, span.endOffset)}
@@ -133,10 +153,14 @@ function renderTextWithSpans(block: { id: string; text: string }, spans: StudioC
 function SharedManuscriptSurface({
   summary,
   spansMatch,
+  presenceState,
 }: {
   summary: StudioCollaborationSummary;
   spansMatch: boolean;
+  presenceState: StudioCollaborationPresenceState;
 }) {
+  const presenceSummary = summarizeSyntheticPresence(presenceState);
+
   return (
     <section
       className={panelClassName}
@@ -159,6 +183,28 @@ function SharedManuscriptSurface({
             {spansMatch ? "span state synced" : "span state differs"}
           </StudioChip>
           <StudioChip tone="source">{summary.spanCount} spans</StudioChip>
+          <StudioChip tone="review">
+            {presenceSummary.activeBlockPresenceCount +
+              presenceSummary.activeSpanPresenceCount}{" "}
+            presence cues
+          </StudioChip>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 rounded-xl border border-studio-line bg-studio-ink/5 p-3 md:grid-cols-2">
+        <div>
+          <p className={labelClassName}>Presence boundary</p>
+          <p className="mt-1 text-xs font-bold leading-5 text-studio-muted">
+            Presence is ephemeral. It is not saved in checkpoints, not
+            manuscript content, and not provider-backed yet.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {listPresenceActors(presenceState).map((actor) => (
+            <StudioChip key={actor.actorId} tone={actor.colorLabel}>
+              {actor.displayName}: {actor.currentMode}
+            </StudioChip>
+          ))}
         </div>
       </div>
 
@@ -167,9 +213,46 @@ function SharedManuscriptSurface({
           const blockSpans = summary.spans.filter(
             (span) => span.blockId === block.id,
           );
+          const blockPresence = listPresenceForBlock(presenceState, block.id);
+          const spanPresence = blockSpans.flatMap((span) =>
+            listPresenceForSpan(presenceState, span.spanId).map((actor) => ({
+              actor,
+              span,
+            })),
+          );
 
           return (
-            <section key={block.id} className="border-b border-studio-line pb-4 last:border-b-0 last:pb-0">
+            <section
+              key={block.id}
+              className="grid gap-3 border-b border-studio-line pb-4 last:border-b-0 last:pb-0 md:grid-cols-[8.5rem_1fr]"
+            >
+              <aside className="flex flex-wrap items-start gap-2 md:flex-col">
+                {blockPresence.length || spanPresence.length ? (
+                  <>
+                    {blockPresence.map((actor) => (
+                      <StudioChip
+                        key={`${actor.actorId}-${block.id}`}
+                        tone={actor.colorLabel}
+                      >
+                        {actor.displayName} here: {actor.currentMode}
+                      </StudioChip>
+                    ))}
+                    {spanPresence.map(({ actor, span }) => (
+                      <StudioChip
+                        key={`${actor.actorId}-${span.spanId}`}
+                        tone={actor.colorLabel}
+                      >
+                        {actor.displayName} on span: {span.label}
+                      </StudioChip>
+                    ))}
+                  </>
+                ) : (
+                  <span className="text-xs font-bold text-studio-dim">
+                    margin clear
+                  </span>
+                )}
+              </aside>
+              <div>
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className={labelClassName}>Block {index + 1}</span>
                 <StudioChip>{block.id}</StudioChip>
@@ -180,8 +263,9 @@ function SharedManuscriptSurface({
                 ))}
               </div>
               <p className="text-[1.05rem] font-semibold text-studio-ink">
-                {renderTextWithSpans(block, summary.spans)}
+                {renderTextWithSpans(block, summary.spans, presenceState)}
               </p>
+              </div>
             </section>
           );
         })}
@@ -302,6 +386,9 @@ function ClientPanel({
 
 export default function StudioCollaborationLabClient() {
   const [lab, setLab] = useState<LabState>(() => createInitialLabState());
+  const [presence, setPresence] = useState<StudioCollaborationPresenceState>(() =>
+    createSyntheticPresenceState(),
+  );
   const [spanForm, setSpanForm] = useState({
     actor: "Charlie",
     blockId: "synthetic-collab-block-1",
@@ -333,6 +420,11 @@ export default function StudioCollaborationLabClient() {
     () => JSON.stringify(charlieSummary.spans) === JSON.stringify(homerSummary.spans),
     [charlieSummary.spans, homerSummary.spans],
   );
+  const presenceSummary = useMemo(
+    () => summarizeSyntheticPresence(presence),
+    [presence],
+  );
+  const firstSpan = charlieSummary.spans[0] ?? homerSummary.spans[0] ?? null;
 
   function refresh(message: string, exportedSnapshotJson = lab.exportedSnapshotJson) {
     setLab((current) => ({
@@ -341,6 +433,39 @@ export default function StudioCollaborationLabClient() {
       exportedSnapshotJson,
       lastAction: message,
     }));
+  }
+
+  function updatePresence(message: string, nextPresence: StudioCollaborationPresenceState) {
+    setPresence(nextPresence);
+    refresh(message);
+  }
+
+  function setPresenceForBlock(
+    actorId: StudioCollaborationPresenceActorId,
+    blockId: string,
+    mode: StudioCollaborationPresenceMode,
+    lastAction: string,
+  ) {
+    updatePresence(
+      lastAction,
+      markSyntheticPresenceForBlock(presence, actorId, blockId, mode, lastAction),
+    );
+  }
+
+  function setPresenceForFirstSpan(
+    actorId: StudioCollaborationPresenceActorId,
+    mode: StudioCollaborationPresenceMode,
+    lastAction: string,
+  ) {
+    if (!firstSpan) {
+      refresh("Create a synthetic span before assigning span presence.");
+      return;
+    }
+
+    updatePresence(
+      lastAction,
+      markSyntheticPresenceForSpan(presence, actorId, firstSpan.spanId, mode, lastAction),
+    );
   }
 
   function updateCheckpointState(input: {
@@ -660,6 +785,7 @@ export default function StudioCollaborationLabClient() {
           <SharedManuscriptSurface
             summary={charlieSummary}
             spansMatch={spansMatch}
+            presenceState={presence}
           />
 
           <SummaryGrid
@@ -737,10 +863,136 @@ export default function StudioCollaborationLabClient() {
                 type="button"
                 className={dangerButtonClassName}
                 data-testid="studio-collab-reset"
-                onClick={() => setLab(createInitialLabState())}
+                onClick={() => {
+                  setLab(createInitialLabState());
+                  setPresence(createSyntheticPresenceState());
+                }}
               >
                 Reset lab
               </button>
+            </div>
+            <div
+              className="mt-4 grid gap-3 rounded-xl border border-studio-line-strong bg-studio-ink/5 p-3"
+              data-testid="studio-collab-presence-controls"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={labelClassName}>Margin presence</p>
+                  <p className="mt-1 text-xs font-bold leading-5 text-studio-muted">
+                    Presence is ephemeral React state. It is not saved in
+                    checkpoints, not manuscript content, and future provider
+                    broadcasts stay deferred.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StudioChip tone="source">
+                    {presenceSummary.activeBlockPresenceCount} block cues
+                  </StudioChip>
+                  <StudioChip tone="review">
+                    {presenceSummary.activeSpanPresenceCount} span cues
+                  </StudioChip>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-presence-charlie-block"
+                  onClick={() =>
+                    setPresenceForBlock(
+                      "charlie",
+                      spanForm.blockId,
+                      "editing",
+                      `Charlie is editing ${spanForm.blockId}.`,
+                    )
+                  }
+                >
+                  Set Charlie active block
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-presence-homer-block"
+                  onClick={() =>
+                    setPresenceForBlock(
+                      "homer",
+                      spanForm.blockId,
+                      "reading",
+                      `Homer is reading ${spanForm.blockId}.`,
+                    )
+                  }
+                >
+                  Set Homer active block
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-presence-charlie-span"
+                  onClick={() =>
+                    setPresenceForFirstSpan(
+                      "charlie",
+                      "tagging",
+                      "Charlie is tagging the first synthetic span.",
+                    )
+                  }
+                >
+                  Set Charlie active span
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-presence-homer-span"
+                  onClick={() =>
+                    setPresenceForFirstSpan(
+                      "homer",
+                      "reviewing",
+                      "Homer is reviewing the first synthetic span.",
+                    )
+                  }
+                >
+                  Set Homer reviewing span
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-presence-homer-reviewing"
+                  onClick={() =>
+                    setPresenceForBlock(
+                      "homer",
+                      spanForm.blockId,
+                      "reviewing",
+                      `Homer is reviewing ${spanForm.blockId}.`,
+                    )
+                  }
+                >
+                  Mark Homer reviewing
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-presence-charlie-tagging"
+                  onClick={() =>
+                    setPresenceForBlock(
+                      "charlie",
+                      spanForm.blockId,
+                      "tagging",
+                      `Charlie is tagging ${spanForm.blockId}.`,
+                    )
+                  }
+                >
+                  Mark Charlie tagging
+                </button>
+              </div>
+              <p
+                className="text-xs font-bold leading-5 text-studio-muted"
+                data-testid="studio-collab-presence-summary"
+              >
+                Presence actors: {presenceSummary.actorCount}. Active block
+                cues: {presenceSummary.activeBlockPresenceCount}. Active span
+                cues: {presenceSummary.activeSpanPresenceCount}. Presence is
+                reported by the lab but excluded from document snapshots and
+                adapter payloads.
+              </p>
             </div>
             <div
               className="mt-4 grid gap-3 rounded-xl border border-studio-line-strong bg-studio-ink/5 p-3 md:grid-cols-[1.2fr_0.8fr_0.8fr_1fr_auto]"

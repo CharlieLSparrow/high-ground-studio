@@ -57,6 +57,12 @@ Span semantics tests:
 pnpm studio:collab:span:test
 ```
 
+Presence tests:
+
+```bash
+pnpm studio:collab:presence:test
+```
+
 Agentic helper smoke:
 
 ```bash
@@ -85,18 +91,24 @@ Generated reports are ignored and should not be committed.
 10. Confirm the shared manuscript surface shows an inline span overlay.
 11. Click `Two-way sync`.
 12. Confirm the span state says synced.
-13. Click `Export synthetic snapshot`.
-14. Confirm the JSON appears in the textarea and includes spans.
-15. Click `Create synthetic checkpoint`.
-16. Confirm the checkpoint summary and checkpoint JSON appear.
-17. Click `Import checkpoint back into new synthetic client`.
-18. Confirm the imported-client summary appears.
-19. Click `Create synthetic Manuscript adapter payload from checkpoint`.
-20. Confirm the adapter summary and adapter JSON appear.
-21. Click `Validate adapter payload`.
-22. Click `Convert adapter back to collaboration client`.
-23. Confirm the adapter roundtrip summary appears.
-24. Confirm the page says no server writes, no production manuscript editing,
+13. Use the presence controls to set Charlie active on a block.
+14. If a span exists, set Homer reviewing the first synthetic span.
+15. Confirm the shared manuscript surface shows margin presence cues.
+16. Confirm the page says presence is ephemeral, not manuscript content, and
+    not saved in checkpoints.
+17. Click `Export synthetic snapshot`.
+18. Confirm the JSON appears in the textarea and includes spans, but not
+    presence state.
+19. Click `Create synthetic checkpoint`.
+20. Confirm the checkpoint summary and checkpoint JSON appear.
+21. Click `Import checkpoint back into new synthetic client`.
+22. Confirm the imported-client summary appears.
+23. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+24. Confirm the adapter summary and adapter JSON appear without presence state.
+25. Click `Validate adapter payload`.
+26. Click `Convert adapter back to collaboration client`.
+27. Confirm the adapter roundtrip summary appears.
+28. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -115,6 +127,8 @@ Passing means:
 - adapter checkpoint/client roundtrip preserves synthetic blocks text and tags
 - synthetic span tags survive sync and checkpoint import
 - synthetic spans become Manuscript Desk semantic marks
+- synthetic presence can mark active blocks and spans in manuscript margins
+- presence is excluded from snapshots checkpoints and adapter payloads
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

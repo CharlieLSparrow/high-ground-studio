@@ -25,6 +25,17 @@ anxiety-lowering workflow:
 
 Sidebars should be inspectors and controls, not the main mental model.
 
+## Presence And Margins
+
+Presence belongs around the manuscript. It should show who is reading, editing,
+tagging, or reviewing without becoming manuscript content.
+
+For production, presence should live in margins, overlays, cursors, and
+side-panel awareness. It should not be written into the durable manuscript
+document, manual snapshots, checkpoints, or projection source data. A future
+provider may broadcast presence state, but that provider state must remain
+ephemeral unless an explicit audit/event feature is designed later.
+
 ## Spans
 
 Semantic spans are overlays on source text. They are the collaboration bridge
@@ -46,15 +57,16 @@ Charlie and Homer. Those panels are scaffolding for CRDT testing, not the final
 collaboration shape.
 
 The lab now also includes a shared manuscript surface near the top. That surface
-renders the synthetic document as one continuous manuscript stream and displays
-synthetic span overlays inline.
+renders the synthetic document as one continuous manuscript stream, displays
+synthetic span overlays inline, and shows local-only margin presence cues for
+Charlie and Homer.
 
 ## Production Constraints
 
 Before this direction reaches production `/manuscript`, Studio still needs:
 
 - authenticated collaboration rooms
-- presence/awareness state
+- provider-backed presence/awareness state
 - access-controlled provider/server architecture
 - span identity that survives real editing
 - comments and review state
