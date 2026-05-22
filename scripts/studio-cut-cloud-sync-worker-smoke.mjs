@@ -169,6 +169,10 @@ function findTrackOffset(trackOffsets, inputId) {
   return trackOffsets.find((offset) => offset.inputId === inputId);
 }
 
+function findSyncMapAsset(syncMap, inputId) {
+  return (syncMap.assets ?? []).find((asset) => asset.inputId === inputId);
+}
+
 function sum(values) {
   return values.reduce((total, value) => total + value, 0);
 }
@@ -244,6 +248,7 @@ async function runScenario(rootWorkdir, scenario) {
   const syncJobPath = path.join(scenarioDir, "sync-job.synthetic.json");
   const localMediaMapPath = path.join(scenarioDir, "local-media-map.synthetic.json");
   const reportPath = path.join(scenarioDir, "sync-report.synthetic.json");
+  const syncMapPath = path.join(scenarioDir, "sync-map.synthetic.json");
 
   await writeJson(syncJobPath, {
     syncJobId: `synthetic-rescue-sync-${scenario.name}`,
@@ -279,9 +284,12 @@ async function runScenario(rootWorkdir, scenario) {
     workerDir,
     "--out",
     reportPath,
+    "--out-sync-map",
+    syncMapPath,
   ]);
 
   const report = JSON.parse(await readFile(reportPath, "utf8"));
+  const syncMap = JSON.parse(await readFile(syncMapPath, "utf8"));
   const segments = report.referenceRail?.segments ?? [];
   const trackOffsets = report.trackOffsets ?? [];
   const extractedFiles = [
@@ -290,6 +298,7 @@ async function runScenario(rootWorkdir, scenario) {
   ].map((fileName) => path.join(workerDir, "audio", fileName));
 
   assert(report.status === "ready", `${scenario.name}: sync report should be ready`);
+  assert(syncMap.syncJobId === report.syncJobId, `${scenario.name}: sync map should match report job id`);
   assert(
     segments.length === scenario.referencePiecesMs.length,
     `${scenario.name}: reference rail should contain all phone segments`,
@@ -299,15 +308,54 @@ async function runScenario(rootWorkdir, scenario) {
     `${scenario.name}: reference rail total duration should be near ${scenario.referenceDurationMs}ms`,
   );
   assert(trackOffsets.length === 4, `${scenario.name}: non-reference track offsets should exist`);
+  assert(existsSync(syncMapPath), `${scenario.name}: sync map should be written`);
+  assert(
+    Math.abs((syncMap.canonicalTimeline?.durationMs ?? 0) - scenario.referenceDurationMs) <= durationToleranceMs,
+    `${scenario.name}: sync map canonical duration should be near ${scenario.referenceDurationMs}ms`,
+  );
+  assert(
+    syncMap.canonicalTimeline?.referenceRole === "phoneReferenceAudio",
+    `${scenario.name}: sync map should use phoneReferenceAudio as reference role`,
+  );
+  assert(
+    (syncMap.referenceRail?.segments ?? []).length === scenario.referencePiecesMs.length,
+    `${scenario.name}: sync map should embed multi-piece reference rail`,
+  );
+  const syncMapJson = JSON.stringify(syncMap);
+  for (const localPathFragment of [scenarioDir, mediaDir, workerDir]) {
+    assert(
+      !syncMapJson.includes(localPathFragment),
+      `${scenario.name}: sync map should not contain local temp path ${localPathFragment}`,
+    );
+  }
   for (const extractedFile of extractedFiles) {
     assert(existsSync(extractedFile), `${scenario.name}: expected extracted WAV: ${extractedFile}`);
   }
   for (const [inputId, expected] of Object.entries(scenario.tracks)) {
     const trackOffset = findTrackOffset(trackOffsets, inputId);
+    const syncMapAsset = findSyncMapAsset(syncMap, inputId);
     assert(trackOffset, `${scenario.name}: expected track offset for ${inputId}`);
+    assert(syncMapAsset, `${scenario.name}: expected sync map asset for ${inputId}`);
     assert(
       Math.abs(trackOffset.estimatedOffsetMs - expected.offsetMs) <= scenario.offsetToleranceMs,
       `${scenario.name}: ${inputId} estimated offset ${trackOffset.estimatedOffsetMs}ms should be near ${expected.offsetMs}ms`,
+    );
+    assert(
+      Math.abs(syncMapAsset.timelineStartMs - expected.offsetMs) <= scenario.offsetToleranceMs,
+      `${scenario.name}: ${inputId} sync map timelineStartMs ${syncMapAsset.timelineStartMs}ms should be near ${expected.offsetMs}ms`,
+    );
+    assert(
+      syncMapAsset.assetStartMs === 0,
+      `${scenario.name}: ${inputId} sync map assetStartMs should start at 0 for v0`,
+    );
+    assert(
+      typeof syncMapAsset.confidence === "number",
+      `${scenario.name}: ${inputId} sync map asset should include confidence`,
+    );
+    assert(
+      typeof syncMapAsset.originalStoragePath === "string" &&
+        syncMapAsset.originalStoragePath.startsWith("studioCutSyncJobs/"),
+      `${scenario.name}: ${inputId} sync map asset should keep path-safe storage metadata`,
     );
     assert(
       trackOffset.anchorCount >= scenario.minimumAnchorCount,
@@ -345,6 +393,7 @@ async function runScenario(rootWorkdir, scenario) {
     referenceRailSegments: segments.length,
     referenceRailTotalDurationMs: report.referenceRail.totalDurationMs,
     trackOffsets,
+    syncMapAssets: syncMap.assets.length,
     extractedWavCount: extractedFiles.length,
     workerOutputCaptured: Boolean(workerResult.stdout.trim()),
   };
@@ -375,6 +424,7 @@ async function main() {
           })
           .join(", ")}`,
       );
+      console.log(`    syncMapAssets: ${result.syncMapAssets}`);
       console.log(`    extractedWavs: ${result.extractedWavCount}`);
       if (result.workerOutputCaptured) {
         console.log("    workerOutput: captured");

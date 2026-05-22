@@ -83,6 +83,42 @@ and correlates each anchor against the reference rail. It writes
 starts after the reference rail starts. Negative offsets mean it appears to have
 started before the rail.
 
+## Sync Map
+
+The Sync Map is the new durable output that turns sync estimates into a render
+contract. It maps canonical episode timeline time to original asset-local time:
+
+```text
+original asset -> extracted audio/proxy -> waveform sync -> Sync Map -> synced proxy room -> semantic decisions -> original render
+```
+
+Each Sync Map includes:
+
+- `canonicalTimeline.durationMs`, `timebase`, and `referenceRole`
+- one asset mapping per uploaded input
+- path-safe Storage metadata such as `originalStoragePath`
+- `timelineStartMs`, `assetStartMs`, `durationMs`, `estimatedOffsetMs`,
+  optional `driftPpm`, confidence, and warnings
+- the multi-piece `referenceRail`
+
+It must not include local filesystem paths. Proxies and extracted WAV files are
+derivable. The Sync Map and semantic decisions are durable.
+
+For now, the worker can write a Sync Map with:
+
+```bash
+python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
+  --sync-job-json /path/to/sync-job.json \
+  --local-media-map /path/to/local-media-map.json \
+  --workdir /tmp/studio-cut-rescue-sync-work \
+  --out /tmp/studio-cut-rescue-sync-report.json \
+  --out-sync-map /tmp/studio-cut-sync-map.json
+```
+
+The web UI and current decision schema still say `sourceTimeMs` in several
+places. Architecturally, that value should be treated as canonical episode
+timeline time, not an individual asset's file time.
+
 ## Current Implementation
 
 Implemented now:
@@ -95,6 +131,8 @@ Implemented now:
 - local Worker v0 that validates a job, inspects local media when mapped,
   extracts mono 48 kHz WAV files, builds `reference-rail.wav`, and estimates
   offsets with anchor-based waveform correlation v0
+- Sync Map schema, validation, manifest drafting helper, worker output, and
+  synthetic smoke assertions
 - helper tests included in `pnpm studio-cut:verify`
 
 Scaffold only:
@@ -102,7 +140,7 @@ Scaffold only:
 - production-grade drift estimation
 - FFT/refined long-form correlation
 - source-monitor proxy generation
-- manifest generation
+- final manifest generation from generated proxy output
 - shared room metadata creation from worker output
 - Cloud Run deployment
 - retention/lifecycle cleanup
@@ -124,7 +162,8 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json /path/to/sync-job.json \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-rescue-sync-work \
-  --out /tmp/studio-cut-rescue-sync-report.json
+  --out /tmp/studio-cut-rescue-sync-report.json \
+  --out-sync-map /tmp/studio-cut-sync-map.json
 ```
 
 The local media map shape is:
@@ -150,7 +189,8 @@ pnpm studio-cut:cloud-sync-smoke
 This creates temporary synthetic files, runs the worker, verifies short and
 long-form phone/reference rail scenarios, checks extracted WAV outputs, asserts
 known +1000ms/+2000ms and +7000ms/+15000ms offset estimates, and verifies
-multiple anchors for long tracks.
+multiple anchors for long tracks. It also asserts Sync Map asset timeline starts
+and checks that no local temp paths appear in the Sync Map JSON.
 
 Do not upload sensitive/private footage until Firestore and Storage rules have
 passed emulator tests, rules have been intentionally deployed, and retention

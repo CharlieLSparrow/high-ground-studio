@@ -115,8 +115,15 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json /path/to/sync-job.json \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-rescue-sync-work \
-  --out /tmp/studio-cut-rescue-sync-report.json
+  --out /tmp/studio-cut-rescue-sync-report.json \
+  --out-sync-map /tmp/studio-cut-sync-map.json
 ```
+
+The `--out-sync-map` file is the durable bridge for the next render pipeline:
+canonical episode timeline time to original asset-local time. It should include
+Storage-path metadata and sync confidence, but no local filesystem paths. The
+web editor still labels some values as `sourceTimeMs`; treat those as canonical
+episode timeline time for Studio Cut architecture.
 
 Create bootstrap files after calculating the real duration in milliseconds:
 

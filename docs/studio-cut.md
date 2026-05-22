@@ -833,6 +833,24 @@ explicitly mapped local files to prefer real durations. In local-media mode, it
 also assembles `workdir/audio/reference-rail.wav` and estimates non-reference
 track offsets with anchor-based waveform correlation.
 
+The sync architecture is proxy-first:
+
+```text
+original asset -> extracted audio/proxy -> waveform sync -> Sync Map -> synced proxy room -> semantic edit tags -> original render
+```
+
+The Sync Map is the durable bridge between browser editing and original render.
+It maps canonical episode timeline time to each original asset's local time. It
+stores ids, path-safe Storage paths, `timelineStartMs`, `assetStartMs`,
+duration, estimated offsets, confidence, drift guidance, the reference rail, and
+warnings. It must not store local filesystem paths, browser object URLs, or
+private machine paths.
+
+Proxies and extracted audio are disposable/derivable. Sync Maps and semantic
+decision events are durable. Existing Studio Cut UI and JSON still use
+`sourceTimeMs` in some places; architecturally that should now be read as
+canonical episode timeline time until the naming is migrated.
+
 Raw intake job metadata lives at:
 
 ```text
@@ -851,6 +869,7 @@ Expected worker outputs are:
 studioCutSyncJobs/{syncJobId}/outputs/source-monitor-proxy.mp4
 studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json
 studioCutSyncJobs/{syncJobId}/outputs/sync-report.json
+studioCutSyncJobs/{syncJobId}/outputs/sync-map.json
 ```
 
 The current app can create/upload a sync job and mark it queued. The local
@@ -863,7 +882,8 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json /path/to/sync-job.json \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-cloud-sync-work \
-  --out /tmp/studio-cut-cloud-sync-report.json
+  --out /tmp/studio-cut-cloud-sync-report.json \
+  --out-sync-map /tmp/studio-cut-sync-map.json
 ```
 
 Run the synthetic local worker canary:
@@ -873,8 +893,9 @@ pnpm studio-cut:cloud-sync-smoke
 ```
 
 The actual Cloud Run sync worker remains scaffold only. FFT/refined drift
-analysis, proxy generation, manifest generation, and room metadata writes are
-not implemented yet. The worker contract is documented at:
+analysis, proxy generation, final manifest generation, and room metadata writes
+are not implemented yet. Sync Map generation is local-worker output now. The
+worker contract is documented at:
 
 ```text
 docs/studio-cut-cloud-sync.md

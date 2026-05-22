@@ -6,20 +6,28 @@ production Cloud Run worker yet. Worker v0 includes local anchor-based waveform
 correlation for longer files; Cloud deployment and production-grade drift
 handling are still future work.
 
-The intended flow is:
+The proxy-first intended flow is:
 
 1. Charlie creates a Studio Cut sync job in the web app.
-2. The web app uploads selected raw assets to Firebase Storage under
+2. The web app uploads selected original assets to Firebase Storage under
    `studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName}`.
-3. A future Cloud Run worker reads `studioCutSyncJobs/{syncJobId}` from
-   Firestore, downloads the uploaded inputs, builds a multi-piece
-   `phoneReferenceAudio` reference rail, syncs Homer/Charlie sources against
-   that rail, and writes:
+3. The worker extracts lightweight audio/proxy derivatives from those originals.
+4. The worker builds a multi-piece `phoneReferenceAudio` reference rail and
+   estimates offsets for Homer/Charlie/clip assets.
+5. The worker writes a durable Sync Map that maps canonical episode timeline
+   time to each original asset's local time.
+6. Future proxy generation writes:
    - `studioCutSyncJobs/{syncJobId}/outputs/source-monitor-proxy.mp4`
    - `studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json`
    - `studioCutSyncJobs/{syncJobId}/outputs/sync-report.json`
-4. The worker writes shared room metadata so Mako can open the room link and
+   - `studioCutSyncJobs/{syncJobId}/outputs/sync-map.json`
+7. The worker writes shared room metadata so Mako can open the room link and
    edit without local media or JSON import/export.
+
+Sync Maps and semantic decisions are durable. Proxies and extracted audio are
+derivable implementation artifacts. Final local render will use the Sync Map to
+translate canonical episode timeline decisions back into original asset-local
+time.
 
 ## Metadata-Only Mode
 
@@ -65,7 +73,8 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json /path/to/sync-job.json \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-cloud-sync-work \
-  --out /tmp/studio-cut-cloud-sync-report.json
+  --out /tmp/studio-cut-cloud-sync-report.json \
+  --out-sync-map /tmp/studio-cut-sync-map.json
 ```
 
 The worker writes `estimatedOffsetMs`, confidence, `anchorCount`,
@@ -74,9 +83,19 @@ correlated tracks. Positive offsets mean the input starts after the reference
 rail starts. Negative offsets mean the input appears to have started before the
 rail starts.
 
-The worker still does not generate proxies, write manifests, write Firestore
-room metadata, or start paid cloud resources. Drift is approximate and based on
-anchor agreement; FFT refinement is still future work.
+When `--out-sync-map` is provided, the worker writes a Sync Map with:
+
+- `canonicalTimeline.durationMs` from the reference rail
+- one asset mapping per uploaded input
+- `timelineStartMs` from the estimated offset or reference rail segment
+- `assetStartMs`, `durationMs`, `estimatedOffsetMs`, `driftPpm`, confidence,
+  and warnings
+- no local filesystem paths
+
+The worker still does not generate source-monitor proxies, write final
+manifests, write Firestore room metadata, or start paid cloud resources. Drift
+is approximate and based on anchor agreement; FFT refinement is still future
+work.
 
 ## Synthetic Smoke
 
@@ -89,7 +108,8 @@ pnpm studio-cut:cloud-sync-smoke
 The smoke creates synthetic media in a temporary directory, runs local-media
 mode, asserts short and long phone/reference rail scenarios, verifies extracted
 WAV files, checks known +1000ms/+2000ms and +7000ms/+15000ms offsets, checks
-long-form anchor counts, and removes the temporary files unless
+long-form anchor counts, verifies Sync Map asset timeline starts, confirms no
+temporary local paths leak into Sync Map JSON, and removes the temporary files unless
 `STUDIO_CUT_CLOUD_SYNC_SMOKE_KEEP_WORKDIR=1` is set.
 
 Keep real episode assets, generated proxies, private paths, and credentials out

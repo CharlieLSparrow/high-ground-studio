@@ -10,6 +10,8 @@ The worker runs without cloud credentials. It can:
 - assemble a local reference rail WAV from phone/reference pieces
 - estimate non-reference track offsets with anchor-based waveform correlation
 - emit a sync report JSON
+- emit a durable Sync Map JSON that bridges canonical episode timeline time
+  to original asset-local time
 
 Offset estimation v0 is anchor-based for long files. Drift estimates are
 approximate and intended as operator guidance, not final sync truth.
@@ -149,6 +151,10 @@ def main() -> int:
         help="Optional path to write a sync report JSON.",
     )
     parser.add_argument(
+        "--out-sync-map",
+        help="Optional path to write a durable Sync Map JSON.",
+    )
+    parser.add_argument(
         "--local-media-map",
         help="Optional JSON map of inputId to local media file path.",
     )
@@ -262,6 +268,13 @@ def main() -> int:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(f"\nWrote sync report: {report_path}")
+
+    if args.out_sync_map:
+        sync_map = build_sync_map(sync_job, uploaded_inputs, report)
+        sync_map_path = Path(args.out_sync_map)
+        sync_map_path.parent.mkdir(parents=True, exist_ok=True)
+        sync_map_path.write_text(json.dumps(sync_map, indent=2) + "\n", encoding="utf-8")
+        print(f"Wrote sync map: {sync_map_path}")
 
     return 0
 
@@ -1133,9 +1146,10 @@ def build_worker_plan(sync_job: dict[str, Any]) -> list[str]:
         "Select usable anchor windows from extracted non-reference audio.",
         "Cross-correlate each anchor against the reference rail WAV.",
         "Estimate per-input offsets, anchor agreement, and approximate drift.",
+        "Write a durable Sync Map from canonical episode timeline time to asset-local time.",
         "Generate timeline-aligned low-res intermediate proxies. (Future step.)",
         "Compose outputs/source-monitor-proxy.mp4 for browser editing. (Future step.)",
-        "Write outputs/episode-manifest.json and outputs/sync-report.json. (Report only in v0.)",
+        "Write outputs/episode-manifest.json and outputs/sync-report.json. (Manifest is future step.)",
         "Write shared room metadata under studioCutProjects/{projectId}/branches/{branchId}/room/meta. (Future step.)",
     ]
 
@@ -1210,6 +1224,129 @@ def build_sync_report(
         ],
         "globalWarnings": build_global_warnings(local_mode, reference_rail_audio),
     }
+
+
+def build_sync_map(
+    sync_job: dict[str, Any],
+    uploaded_inputs: list[dict[str, Any]],
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    generated_at = report.get("generatedAt") or datetime.now(timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
+    reference_rail = report.get("referenceRail") if isinstance(report.get("referenceRail"), dict) else {}
+    track_offsets = [
+        offset
+        for offset in report.get("trackOffsets", [])
+        if isinstance(offset, dict)
+    ]
+    offsets_by_input_id = {
+        str(offset.get("inputId")): offset
+        for offset in track_offsets
+        if isinstance(offset.get("inputId"), str)
+    }
+    reference_segments_by_input_id = {
+        str(segment.get("inputId")): segment
+        for segment in reference_rail.get("segments", [])
+        if isinstance(segment, dict) and isinstance(segment.get("inputId"), str)
+    }
+
+    assets = [
+        build_sync_map_asset(
+            entry,
+            offsets_by_input_id.get(entry["inputId"]),
+            reference_segments_by_input_id.get(entry["inputId"]),
+        )
+        for entry in uploaded_inputs
+    ]
+
+    return {
+        "syncMapId": f"{sync_job.get('syncJobId', 'unknown-sync-job')}-sync-map-v1",
+        "syncJobId": sync_job.get("syncJobId", "unknown-sync-job"),
+        "projectId": sync_job.get("projectId", "unknown-project"),
+        "branchId": sync_job.get("branchId", "main"),
+        "createdAt": generated_at,
+        "updatedAt": generated_at,
+        "canonicalTimeline": {
+            "durationMs": int(reference_rail.get("totalDurationMs") or 0),
+            "timebase": "milliseconds",
+            "referenceRole": "phoneReferenceAudio",
+        },
+        "assets": assets,
+        "referenceRail": reference_rail,
+        "globalWarnings": unique_strings(
+            [
+                *[
+                    warning
+                    for warning in report.get("globalWarnings", [])
+                    if isinstance(warning, str)
+                ],
+                "Sync Map maps canonical episode timeline time to asset-local time.",
+                "Local filesystem paths are intentionally omitted from Sync Map metadata.",
+                "Proxy and Episode Manifest generation are future worker outputs.",
+            ]
+        ),
+    }
+
+
+def build_sync_map_asset(
+    entry: dict[str, Any],
+    track_offset: dict[str, Any] | None,
+    reference_segment: dict[str, Any] | None,
+) -> dict[str, Any]:
+    input_id = entry["inputId"]
+    duration_ms = int(entry.get("durationMs") or 0)
+    warnings: list[str] = []
+    estimated_offset_ms = 0
+    timeline_start_ms = 0
+    asset_start_ms = 0
+    confidence = 0.05
+    drift_ppm: float | int | None = None
+
+    if entry.get("role") == "phoneReferenceAudio" and reference_segment:
+        timeline_start_ms = int(reference_segment.get("railStartMs") or 0)
+        asset_start_ms = int(reference_segment.get("sourceStartMs") or 0)
+        duration_ms = int(reference_segment.get("durationMs") or duration_ms)
+        estimated_offset_ms = timeline_start_ms - asset_start_ms
+        confidence = float(reference_segment.get("confidence") or confidence)
+        warnings.extend(
+            warning
+            for warning in reference_segment.get("warnings", [])
+            if isinstance(warning, str)
+        )
+    elif track_offset:
+        estimated_offset_ms = int(track_offset.get("estimatedOffsetMs") or 0)
+        timeline_start_ms = estimated_offset_ms
+        confidence = float(track_offset.get("confidence") or confidence)
+        drift_ppm = track_offset.get("driftPpm")
+        warnings.extend(
+            warning
+            for warning in track_offset.get("warnings", [])
+            if isinstance(warning, str)
+        )
+    else:
+        warnings.append("No track offset was available; timelineStartMs defaults to 0.")
+
+    storage_path = entry.get("storagePath")
+    asset = {
+        "assetId": input_id,
+        "inputId": input_id,
+        "role": entry["role"],
+        "fileName": entry.get("fileName", f"{entry['role']}.placeholder"),
+        "timelineStartMs": timeline_start_ms,
+        "assetStartMs": asset_start_ms,
+        "durationMs": duration_ms,
+        "estimatedOffsetMs": estimated_offset_ms,
+        "confidence": confidence,
+        "warnings": unique_strings(warnings),
+    }
+    if isinstance(storage_path, str) and is_public_storage_path(storage_path):
+        asset["originalStoragePath"] = storage_path
+    else:
+        asset["warnings"].append("Original storage path omitted because it was not path-safe.")
+    if drift_ppm is not None:
+        asset["driftPpm"] = drift_ppm
+    return asset
 
 
 def build_reference_segments(
@@ -1436,6 +1573,18 @@ def unique_strings(values: list[str]) -> list[str]:
 
 def safe_file_part(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "-", value).strip(".-_") or "input"
+
+
+def is_public_storage_path(value: str) -> bool:
+    return (
+        bool(value.strip())
+        and not value.startswith("/")
+        and not value.startswith("\\")
+        and not value.startswith(".")
+        and ".." not in value
+        and "://" not in value
+        and not value.lower().startswith("file:")
+    )
 
 
 if __name__ == "__main__":

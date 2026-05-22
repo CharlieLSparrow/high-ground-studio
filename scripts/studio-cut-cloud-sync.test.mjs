@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  draftEpisodeManifestFromSyncMap,
   isCloudSyncJob,
   isCloudSyncJobInputComplete,
   isCloudSyncReport,
+  isSyncMap,
+  parseSyncMapPayload,
 } from "../packages/studio-cut-schema/src/index.ts";
 import {
   buildCloudSyncJobPath,
@@ -226,6 +229,129 @@ test("cloud sync report validates reference rail and track offsets", () => {
       },
     }),
     false,
+  );
+});
+
+test("sync map validates canonical asset mappings and drafts manifest metadata", () => {
+  const syncMap = {
+    syncMapId: "episode-004-rescue-sync-sync-map-v1",
+    syncJobId: "episode-004-rescue-sync",
+    projectId: "episode-004",
+    branchId: "main",
+    createdAt: "2026-05-22T12:30:00.000Z",
+    updatedAt: "2026-05-22T12:30:00.000Z",
+    canonicalTimeline: {
+      durationMs: 12000,
+      timebase: "milliseconds",
+      referenceRole: "phoneReferenceAudio",
+    },
+    assets: [
+      {
+        assetId: "homer-video",
+        inputId: "homer-video",
+        role: "homerVideo",
+        fileName: "homer.mp4",
+        originalStoragePath:
+          "studioCutSyncJobs/episode-004/uploads/homerVideo/homer.mp4",
+        timelineStartMs: 700,
+        assetStartMs: 0,
+        durationMs: 10000,
+        estimatedOffsetMs: 700,
+        driftPpm: 0,
+        confidence: 0.82,
+        warnings: [],
+      },
+      {
+        assetId: "charlie-video",
+        inputId: "charlie-video",
+        role: "charlieVideo",
+        fileName: "charlie.mp4",
+        originalStoragePath:
+          "studioCutSyncJobs/episode-004/uploads/charlieVideo/charlie.mp4",
+        timelineStartMs: 1200,
+        assetStartMs: 0,
+        durationMs: 9500,
+        estimatedOffsetMs: 1200,
+        driftPpm: 0,
+        confidence: 0.8,
+        warnings: [],
+      },
+      {
+        assetId: "clip-video",
+        inputId: "clip-video",
+        role: "clipVideo",
+        fileName: "clip.mp4",
+        originalStoragePath:
+          "studioCutSyncJobs/episode-004/uploads/clipVideo/clip.mp4",
+        timelineStartMs: 2000,
+        assetStartMs: 0,
+        durationMs: 5000,
+        estimatedOffsetMs: 2000,
+        confidence: 0.7,
+        warnings: [],
+      },
+    ],
+    referenceRail: {
+      syncJobId: "episode-004-rescue-sync",
+      referenceRole: "phoneReferenceAudio",
+      segments: [
+        {
+          inputId: "phone-part-1",
+          fileName: "phone-part-1.m4a",
+          railStartMs: 0,
+          sourceStartMs: 0,
+          durationMs: 5000,
+          confidence: 0.6,
+          warnings: [],
+        },
+        {
+          inputId: "phone-part-2",
+          fileName: "phone-part-2.m4a",
+          railStartMs: 5000,
+          sourceStartMs: 0,
+          durationMs: 7000,
+          confidence: 0.6,
+          gapBeforeMs: 0,
+          warnings: [],
+        },
+      ],
+      totalDurationMs: 12000,
+      warnings: [],
+    },
+    globalWarnings: [
+      "Sync Map maps canonical episode timeline time to asset-local time.",
+    ],
+  };
+
+  assert.equal(isSyncMap(syncMap), true);
+  assert.deepEqual(parseSyncMapPayload(syncMap), { ok: true, syncMap });
+  assert.equal(
+    isSyncMap({
+      ...syncMap,
+      assets: [{ ...syncMap.assets[0], localDebugPath: "/tmp/homer.mp4" }],
+    }),
+    false,
+  );
+  assert.equal(
+    isSyncMap({
+      ...syncMap,
+      assets: [{ ...syncMap.assets[0], originalStoragePath: "/tmp/homer.mp4" }],
+    }),
+    false,
+  );
+
+  const manifest = draftEpisodeManifestFromSyncMap(syncMap, {
+    title: "Episode 004 Draft",
+  });
+
+  assert.equal(manifest.id, "episode-004");
+  assert.equal(manifest.durationMs, 12000);
+  assert.equal(manifest.sources.homer.fileName, "homer.mp4");
+  assert.equal(manifest.sources.charlie.fileName, "charlie.mp4");
+  assert.equal(manifest.sources.clip?.fileName, "clip.mp4");
+  assert.equal(
+    manifest.sourceMonitorProxy.localPlaceholderPath,
+    "PENDING_SOURCE_MONITOR_PROXY",
   );
 });
 

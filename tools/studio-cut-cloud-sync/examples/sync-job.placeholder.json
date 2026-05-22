@@ -95,6 +95,7 @@
     "manifestStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/episode-manifest.json",
     "sourceMonitorProxyStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/source-monitor-proxy.mp4",
     "syncReportStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/sync-report.json",
+    "syncMapStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/sync-map.json",
     "sharedRoomUrl": "https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main"
   },
   "syncReportSummary": {

@@ -8,13 +8,16 @@ production worker.
 
 ## Product Direction
 
-The primary future workflow is:
+The primary future workflow is proxy-first:
 
 1. Charlie uploads disparate episode assets into Studio Cut.
-2. A cloud sync/prep worker generates the lightweight browser editing package.
-3. Mako opens a shared room link and edits live.
-4. Charlie later renders locally from semantic decisions and local aligned
-   media.
+2. The sync worker extracts lightweight audio/proxy derivatives.
+3. The worker syncs those derivatives and writes a durable Sync Map.
+4. The worker generates the lightweight browser editing package.
+5. Mako opens a shared room link and edits live on canonical episode timeline
+   time.
+6. Charlie later renders original assets locally from Sync Map + semantic
+   decisions.
 
 JSON import/export and manual shared-room package upload remain backup/fallback
 paths. Full-resolution final render media remains local.
@@ -64,6 +67,7 @@ The job document shape is:
     "manifestStoragePath": "studioCutSyncJobs/.../outputs/episode-manifest.json",
     "sourceMonitorProxyStoragePath": "studioCutSyncJobs/.../outputs/source-monitor-proxy.mp4",
     "syncReportStoragePath": "studioCutSyncJobs/.../outputs/sync-report.json",
+    "syncMapStoragePath": "studioCutSyncJobs/.../outputs/sync-map.json",
     "sharedRoomUrl": "https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main"
   }
 }
@@ -106,6 +110,7 @@ Worker outputs are expected at:
 studioCutSyncJobs/{syncJobId}/outputs/source-monitor-proxy.mp4
 studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json
 studioCutSyncJobs/{syncJobId}/outputs/sync-report.json
+studioCutSyncJobs/{syncJobId}/outputs/sync-map.json
 ```
 
 Do not store local filesystem paths, browser object URLs, service account
@@ -123,12 +128,14 @@ The future Cloud Run worker should:
 5. Build a continuous reference rail.
 6. Cross-correlate Homer/Charlie sources against that rail.
 7. Estimate offsets and drift confidence per input.
-8. Generate timeline-aligned low-res intermediates.
-9. Compose the browser source-monitor proxy.
-10. Write `episode-manifest.json` and `sync-report.json`.
-11. Write shared room metadata at
+8. Write `sync-map.json`, mapping canonical episode timeline time to each
+   original asset's local time.
+9. Generate timeline-aligned low-res intermediates.
+10. Compose the browser source-monitor proxy.
+11. Write `episode-manifest.json` and `sync-report.json`.
+12. Write shared room metadata at
    `studioCutProjects/{projectId}/branches/{branchId}/room/meta`.
-12. Set job status to `ready`, or `failed` with `errorMessage`.
+13. Set job status to `ready`, or `failed` with `errorMessage`.
 
 The current local Worker v0 validates job JSON and prints this plan:
 
@@ -145,7 +152,8 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json /path/to/sync-job.json \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-cloud-sync-work \
-  --out /tmp/studio-cut-cloud-sync-report.json
+  --out /tmp/studio-cut-cloud-sync-report.json \
+  --out-sync-map /tmp/studio-cut-sync-map.json
 ```
 
 The local media map uses input ids:
@@ -169,11 +177,75 @@ summarizes `estimatedOffsetMs`, confidence, `anchorCount`, `anchorAgreementMs`,
 and approximate `driftPpm`. Proxy generation, manifest generation, and Firestore
 room metadata writes remain future work.
 
+## Sync Map Shape
+
+The Sync Map is the durable bridge between the lightweight synced proxy room and
+the original assets. It is safe to serialize to JSON/Firestore metadata because
+it links assets by ids and Storage paths, not local filesystem paths:
+
+```json
+{
+  "syncMapId": "episode-004-rescue-sync-sync-map-v1",
+  "syncJobId": "episode-004-rescue-sync",
+  "projectId": "episode-004",
+  "branchId": "main",
+  "createdAt": "2026-05-22T12:30:00.000Z",
+  "updatedAt": "2026-05-22T12:30:00.000Z",
+  "canonicalTimeline": {
+    "durationMs": 12000,
+    "timebase": "milliseconds",
+    "referenceRole": "phoneReferenceAudio"
+  },
+  "assets": [
+    {
+      "assetId": "homer-video",
+      "inputId": "homer-video",
+      "role": "homerVideo",
+      "fileName": "homer.mp4",
+      "originalStoragePath": "studioCutSyncJobs/.../uploads/homerVideo/homer.mp4",
+      "timelineStartMs": 7000,
+      "assetStartMs": 0,
+      "durationMs": 60000,
+      "estimatedOffsetMs": 7000,
+      "driftPpm": 0,
+      "confidence": 0.82,
+      "warnings": []
+    }
+  ],
+  "referenceRail": {
+    "syncJobId": "episode-004-rescue-sync",
+    "referenceRole": "phoneReferenceAudio",
+    "segments": [],
+    "totalDurationMs": 12000,
+    "warnings": []
+  },
+  "globalWarnings": []
+}
+```
+
+Semantic edit decisions should refer to canonical episode timeline time. The
+rough render path can then use `timelineStartMs`, `assetStartMs`, drift, and
+confidence to translate a canonical edit span into asset-local media ranges for
+original render. Existing web UI and schema still use `sourceTimeMs` in places;
+for Studio Cut architecture, read that as canonical episode timeline time until
+the naming is migrated.
+
+The worker can also draft an Episode Manifest from Sync Map metadata. In this
+pass that helper is a bridge scaffold: it sets duration from
+`canonicalTimeline.durationMs`, derives source labels from asset roles, and uses
+a placeholder source-monitor proxy path until proxy generation lands.
+
 Run the synthetic local-media canary:
 
 ```bash
 pnpm studio-cut:cloud-sync-smoke
 ```
+
+The smoke creates synthetic media in a temporary directory, runs local-media
+mode, asserts short and long phone/reference rail scenarios, verifies extracted
+WAV files, checks known +1000ms/+2000ms and +7000ms/+15000ms offsets, checks
+long-form anchor counts, asserts Sync Map timeline starts and confidence, and
+confirms no local temp paths appear in Sync Map JSON.
 
 ## Sync Report Shape
 

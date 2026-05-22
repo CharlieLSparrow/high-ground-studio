@@ -120,6 +120,7 @@ export type CloudSyncJobOutputs = {
   manifestStoragePath?: string;
   sourceMonitorProxyStoragePath?: string;
   syncReportStoragePath?: string;
+  syncMapStoragePath?: string;
   sharedRoomUrl?: string;
 };
 
@@ -193,6 +194,42 @@ export type CloudSyncReport = {
   status: CloudSyncJobStatus;
   referenceRail: CloudSyncReferenceRail;
   trackOffsets: CloudSyncTrackOffset[];
+  globalWarnings: string[];
+};
+
+export type SyncMapCanonicalTimeline = {
+  durationMs: number;
+  timebase: "milliseconds";
+  referenceRole: "phoneReferenceAudio";
+};
+
+export type SyncMapAsset = {
+  assetId: string;
+  inputId: string;
+  role: CloudSyncInputRole;
+  fileName: string;
+  originalStoragePath?: string;
+  proxyStoragePath?: string;
+  extractedAudioStoragePath?: string;
+  timelineStartMs: number;
+  assetStartMs: number;
+  durationMs: number;
+  estimatedOffsetMs: number;
+  driftPpm?: number;
+  confidence: number;
+  warnings: string[];
+};
+
+export type SyncMap = {
+  syncMapId: string;
+  syncJobId: string;
+  projectId: string;
+  branchId: string;
+  createdAt: string;
+  updatedAt: string;
+  canonicalTimeline: SyncMapCanonicalTimeline;
+  assets: SyncMapAsset[];
+  referenceRail: CloudSyncReferenceRail;
   globalWarnings: string[];
 };
 
@@ -274,6 +311,10 @@ export type CloudSyncJobParseResult =
 
 export type CloudSyncReportParseResult =
   | { ok: true; report: CloudSyncReport }
+  | { ok: false; reason: string };
+
+export type SyncMapParseResult =
+  | { ok: true; syncMap: SyncMap }
   | { ok: false; reason: string };
 
 export function isProgramState(value: unknown): value is ProgramState {
@@ -389,6 +430,18 @@ export function parseCloudSyncReportPayload(
   return { ok: true, report: payload };
 }
 
+export function parseSyncMapPayload(payload: unknown): SyncMapParseResult {
+  if (!isSyncMap(payload)) {
+    return {
+      ok: false,
+      reason:
+        "Sync Map must include ids, canonical timeline, path-safe assets, reference rail, timestamps, and warnings.",
+    };
+  }
+
+  return { ok: true, syncMap: payload };
+}
+
 export function isEpisodeManifest(value: unknown): value is EpisodeManifest {
   if (!isRecord(value)) {
     return false;
@@ -466,6 +519,33 @@ export function isCloudSyncReport(value: unknown): value is CloudSyncReport {
   );
 }
 
+export function isSyncMap(value: unknown): value is SyncMap {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const syncMap = value as Partial<SyncMap>;
+
+  return (
+    typeof syncMap.syncMapId === "string" &&
+    syncMap.syncMapId.trim().length > 0 &&
+    typeof syncMap.syncJobId === "string" &&
+    syncMap.syncJobId.trim().length > 0 &&
+    typeof syncMap.projectId === "string" &&
+    syncMap.projectId.trim().length > 0 &&
+    typeof syncMap.branchId === "string" &&
+    syncMap.branchId.trim().length > 0 &&
+    isIsoDateString(syncMap.createdAt) &&
+    isIsoDateString(syncMap.updatedAt) &&
+    isSyncMapCanonicalTimeline(syncMap.canonicalTimeline) &&
+    Array.isArray(syncMap.assets) &&
+    syncMap.assets.every(isSyncMapAsset) &&
+    isCloudSyncReferenceRail(syncMap.referenceRail) &&
+    Array.isArray(syncMap.globalWarnings) &&
+    syncMap.globalWarnings.every((warning) => typeof warning === "string")
+  );
+}
+
 export function getMissingRequiredCloudSyncInputs(job: CloudSyncJob) {
   const uploadedRoles = new Set(job.uploadedInputs.map((input) => input.role));
 
@@ -537,6 +617,66 @@ export function getActiveDecisionEvents(events: readonly DecisionEvent[]) {
 
 export function isDecisionEventRemoved(event: DecisionEvent) {
   return Boolean(event.removedAt);
+}
+
+export function draftEpisodeManifestFromSyncMap(
+  syncMap: SyncMap,
+  options: {
+    title?: string;
+    sourceMonitorProxyUrl?: string;
+    sourceMonitorProxyPlaceholderPath?: string;
+    sourceMonitorProxyFileName?: string;
+  } = {},
+): EpisodeManifest {
+  const homerAsset =
+    findSyncMapAsset(syncMap, "homerVideo") ??
+    findSyncMapAsset(syncMap, "homerAudio");
+  const charlieAsset =
+    findSyncMapAsset(syncMap, "charlieVideo") ??
+    findSyncMapAsset(syncMap, "charlieAudio");
+  const clipAsset = findSyncMapAsset(syncMap, "clipVideo");
+  const proxyFileName =
+    options.sourceMonitorProxyFileName ?? "source-monitor-proxy.pending.mp4";
+
+  return {
+    id: syncMap.projectId,
+    title: options.title ?? syncMap.projectId,
+    durationMs: syncMap.canonicalTimeline.durationMs,
+    sources: {
+      homer: syncMapAssetToEpisodeSource("homer", homerAsset),
+      charlie: syncMapAssetToEpisodeSource("charlie", charlieAsset),
+      ...(clipAsset
+        ? { clip: syncMapAssetToEpisodeSource("clip", clipAsset) }
+        : {}),
+      program: {
+        role: "program",
+        label: "Program preview",
+        fileName: proxyFileName,
+        notes:
+          "Drafted from Sync Map. Source-monitor proxy generation is a future worker output.",
+      },
+    },
+    sourceMonitorProxy: {
+      ...(options.sourceMonitorProxyUrl
+        ? { url: options.sourceMonitorProxyUrl }
+        : {
+            localPlaceholderPath:
+              options.sourceMonitorProxyPlaceholderPath ??
+              "PENDING_SOURCE_MONITOR_PROXY",
+          }),
+      panes: {
+        homer: { x: 0, y: 0, width: 0.5, height: 0.5 },
+        charlie: { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+        ...(clipAsset
+          ? { clip: { x: 0, y: 0.5, width: 0.5, height: 0.5 } }
+          : {}),
+      },
+    },
+    syncBootstrap: {
+      source: "premiere",
+      notes: `Drafted from Sync Map ${syncMap.syncMapId}. The Sync Map is the durable bridge from canonical episode timeline time to original asset-local time.`,
+    },
+  };
 }
 
 function isEpisodeSource(value: unknown, role: SourceRole) {
@@ -662,6 +802,7 @@ function isCloudSyncJobOutputs(
     optionalString(value.manifestStoragePath) &&
     optionalString(value.sourceMonitorProxyStoragePath) &&
     optionalString(value.syncReportStoragePath) &&
+    optionalString(value.syncMapStoragePath) &&
     optionalString(value.sharedRoomUrl)
   );
 }
@@ -758,6 +899,70 @@ function isCloudSyncTrackOffset(
   );
 }
 
+function isSyncMapCanonicalTimeline(
+  value: unknown,
+): value is SyncMapCanonicalTimeline {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isFiniteNonNegativeNumber(value.durationMs) &&
+    value.timebase === "milliseconds" &&
+    value.referenceRole === "phoneReferenceAudio"
+  );
+}
+
+function isSyncMapAsset(value: unknown): value is SyncMapAsset {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if ("localDebugPath" in value) {
+    return false;
+  }
+
+  return (
+    typeof value.assetId === "string" &&
+    value.assetId.trim().length > 0 &&
+    typeof value.inputId === "string" &&
+    value.inputId.trim().length > 0 &&
+    isCloudSyncInputRole(value.role) &&
+    typeof value.fileName === "string" &&
+    value.fileName.trim().length > 0 &&
+    optionalStoragePath(value.originalStoragePath) &&
+    optionalStoragePath(value.proxyStoragePath) &&
+    optionalStoragePath(value.extractedAudioStoragePath) &&
+    isFiniteNumber(value.timelineStartMs) &&
+    isFiniteNonNegativeNumber(value.assetStartMs) &&
+    isFiniteNonNegativeNumber(value.durationMs) &&
+    isFiniteNumber(value.estimatedOffsetMs) &&
+    (value.driftPpm === undefined ||
+      (typeof value.driftPpm === "number" && Number.isFinite(value.driftPpm))) &&
+    isConfidence(value.confidence) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string")
+  );
+}
+
+function findSyncMapAsset(syncMap: SyncMap, role: CloudSyncInputRole) {
+  return syncMap.assets.find((asset) => asset.role === role);
+}
+
+function syncMapAssetToEpisodeSource(
+  role: SourceRole,
+  asset: SyncMapAsset | undefined,
+): EpisodeSource {
+  return {
+    role,
+    label: SOURCE_ROLE_LABELS[role],
+    fileName: asset?.fileName ?? `${role}.pending`,
+    notes: asset
+      ? `Drafted from Sync Map asset ${asset.assetId}; timelineStartMs=${asset.timelineStartMs}.`
+      : "Drafted from Sync Map; source asset is not available yet.",
+  };
+}
+
 function isCloudSyncAnchorSummary(
   value: unknown,
 ): value is CloudSyncAnchorSummary {
@@ -780,6 +985,29 @@ function isCloudSyncAnchorSummary(
 
 function optionalString(value: unknown) {
   return value === undefined || typeof value === "string";
+}
+
+function optionalStoragePath(value: unknown) {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return false;
+  }
+
+  return (
+    !value.startsWith("/") &&
+    !value.startsWith("\\") &&
+    !value.startsWith(".") &&
+    !value.includes("..") &&
+    !value.includes("://") &&
+    !value.toLowerCase().startsWith("file:")
+  );
+}
+
+function isFiniteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function isFiniteNonNegativeNumber(value: unknown) {
