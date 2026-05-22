@@ -250,11 +250,17 @@ production Manuscript Desk and must stay synthetic-only.
 5. Set Charlie active on a synthetic block.
 6. Set Homer reviewing a synthetic span.
 7. Confirm margin presence cues appear around the shared manuscript surface.
-8. Export a synthetic snapshot and confirm presence is not serialized.
-9. Create a synthetic checkpoint and confirm presence is not serialized.
-10. Create the synthetic Manuscript adapter payload and confirm presence is not
+8. Add a synthetic review note to the span.
+9. Mark the review note addressed, then archive it.
+10. Confirm review notes appear as annotations around the manuscript, not as
+    edits to source text.
+11. Export a synthetic snapshot and confirm presence and review-note body text
+    are not serialized.
+12. Create a synthetic checkpoint and confirm presence and review notes are not
     serialized.
-11. Confirm no server snapshot is saved, no localStorage collaboration state is
+13. Create the synthetic Manuscript adapter payload and confirm presence and
+    review-note body text are not serialized.
+14. Confirm no server snapshot is saved, no localStorage collaboration state is
     written, and production `/manuscript` save/load behavior is untouched.
 
 ## Publishing / Handoff Smoke Steps

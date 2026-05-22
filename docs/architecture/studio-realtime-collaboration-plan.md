@@ -84,6 +84,7 @@ Commands:
 - `pnpm studio:collab:adapter:test`
 - `pnpm studio:collab:span:test`
 - `pnpm studio:collab:presence:test`
+- `pnpm studio:collab:review:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -191,6 +192,26 @@ routes, or production manual snapshots. The agentic smoke reports presence
 summary fields, but generated document/checkpoint/adapter payloads explicitly
 exclude it.
 
+## Local Span Review Notes
+
+The collaboration lab now has synthetic span-anchored review notes:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts`
+
+Review notes attach to synthetic spans, have Charlie/Homer authors, and can be
+`open`, `addressed`, or `archived`. The shared manuscript surface shows note
+counts as margin context, and the lab controls can add, address, and archive
+notes.
+
+For this sprint, review notes are React-state-only local annotations. They are
+not source text and they do not mutate block text. They are also deliberately
+excluded from Yjs snapshots, collaboration checkpoints, Manuscript adapter
+payloads, localStorage, server routes, and production manual snapshots.
+
+That exclusion is intentional until the production model decides whether review
+notes belong in durable annotation events, checkpoint metadata, or a separate
+annotation store. Manual snapshots remain sacred either way.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -205,6 +226,7 @@ exclude it.
 - no production Manuscript Desk adapter import
 - no public publishing
 - no durable presence storage
+- no durable review-note storage
 
 ## Rough 20-Sprint Path
 

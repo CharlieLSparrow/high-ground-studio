@@ -63,6 +63,12 @@ Presence tests:
 pnpm studio:collab:presence:test
 ```
 
+Review note tests:
+
+```bash
+pnpm studio:collab:review:test
+```
+
 Agentic helper smoke:
 
 ```bash
@@ -96,19 +102,28 @@ Generated reports are ignored and should not be committed.
 15. Confirm the shared manuscript surface shows margin presence cues.
 16. Confirm the page says presence is ephemeral, not manuscript content, and
     not saved in checkpoints.
-17. Click `Export synthetic snapshot`.
-18. Confirm the JSON appears in the textarea and includes spans, but not
+17. Add a span review note.
+18. Confirm the note appears as span-anchored margin/side-panel context.
+19. Mark the note addressed.
+20. Archive the note.
+21. Confirm the page says review notes are annotations, not source text, and
+    local-only for this sprint.
+22. Click `Export synthetic snapshot`.
+23. Confirm the JSON appears in the textarea and includes spans, but not
     presence state.
-19. Click `Create synthetic checkpoint`.
-20. Confirm the checkpoint summary and checkpoint JSON appear.
-21. Click `Import checkpoint back into new synthetic client`.
-22. Confirm the imported-client summary appears.
-23. Click `Create synthetic Manuscript adapter payload from checkpoint`.
-24. Confirm the adapter summary and adapter JSON appear without presence state.
-25. Click `Validate adapter payload`.
-26. Click `Convert adapter back to collaboration client`.
-27. Confirm the adapter roundtrip summary appears.
-28. Confirm the page says no server writes, no production manuscript editing,
+24. Confirm the snapshot JSON does not include review-note body text.
+25. Click `Create synthetic checkpoint`.
+26. Confirm the checkpoint summary and checkpoint JSON appear without review
+    notes.
+27. Click `Import checkpoint back into new synthetic client`.
+28. Confirm the imported-client summary appears.
+29. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+30. Confirm the adapter summary and adapter JSON appear without presence state
+    or review-note body text.
+31. Click `Validate adapter payload`.
+32. Click `Convert adapter back to collaboration client`.
+33. Confirm the adapter roundtrip summary appears.
+34. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -129,6 +144,11 @@ Passing means:
 - synthetic spans become Manuscript Desk semantic marks
 - synthetic presence can mark active blocks and spans in manuscript margins
 - presence is excluded from snapshots checkpoints and adapter payloads
+- synthetic review notes can attach to spans
+- review notes can be open addressed or archived
+- review notes do not mutate source text
+- review notes are excluded from snapshots checkpoints and adapter payloads in
+  this pass
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

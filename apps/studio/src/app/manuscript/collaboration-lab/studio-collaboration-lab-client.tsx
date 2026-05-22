@@ -55,6 +55,18 @@ import {
   type StudioCollaborationPresenceMode,
   type StudioCollaborationPresenceState,
 } from "./studio-collaboration-presence-model";
+import {
+  addSyntheticReviewNote,
+  createSyntheticReviewNote,
+  createSyntheticReviewNoteState,
+  listSyntheticReviewNotesForBlock,
+  listSyntheticReviewNotesForSpan,
+  summarizeSyntheticReviewNotes,
+  updateSyntheticReviewNoteStatus,
+  type StudioCollaborationReviewNoteAuthorId,
+  type StudioCollaborationReviewNoteState,
+  type StudioCollaborationReviewNoteStatus,
+} from "./studio-collaboration-review-note-model";
 
 type LabState = {
   charlie: StudioCollaborationClient;
@@ -102,6 +114,7 @@ function renderTextWithSpans(
   block: { id: string; text: string },
   spans: StudioCollaborationSpanTag[],
   presenceState: StudioCollaborationPresenceState,
+  reviewNoteState: StudioCollaborationReviewNoteState,
 ) {
   const blockSpans = spans
     .filter((span) => span.blockId === block.id)
@@ -134,6 +147,9 @@ function renderTextWithSpans(
           "rounded-sm bg-studio-source/25 px-1 text-studio-ink ring-1 ring-studio-source/35",
           listPresenceForSpan(presenceState, span.spanId).length > 0 &&
             "bg-studio-review/20 ring-2 ring-studio-review/55",
+          listSyntheticReviewNotesForSpan(reviewNoteState, span.spanId).some(
+            (note) => note.status === "open",
+          ) && "underline decoration-studio-tag decoration-2 underline-offset-4",
         )}
         title={`${span.label} - ${span.actor}`}
       >
@@ -154,12 +170,15 @@ function SharedManuscriptSurface({
   summary,
   spansMatch,
   presenceState,
+  reviewNoteState,
 }: {
   summary: StudioCollaborationSummary;
   spansMatch: boolean;
   presenceState: StudioCollaborationPresenceState;
+  reviewNoteState: StudioCollaborationReviewNoteState;
 }) {
   const presenceSummary = summarizeSyntheticPresence(presenceState);
+  const reviewNoteSummary = summarizeSyntheticReviewNotes(reviewNoteState);
 
   return (
     <section
@@ -188,6 +207,9 @@ function SharedManuscriptSurface({
               presenceSummary.activeSpanPresenceCount}{" "}
             presence cues
           </StudioChip>
+          <StudioChip tone="tag">
+            {reviewNoteSummary.openCount} open review notes
+          </StudioChip>
         </div>
       </div>
 
@@ -214,12 +236,19 @@ function SharedManuscriptSurface({
             (span) => span.blockId === block.id,
           );
           const blockPresence = listPresenceForBlock(presenceState, block.id);
+          const blockReviewNotes = listSyntheticReviewNotesForBlock(
+            reviewNoteState,
+            block.id,
+          );
           const spanPresence = blockSpans.flatMap((span) =>
             listPresenceForSpan(presenceState, span.spanId).map((actor) => ({
               actor,
               span,
             })),
           );
+          const openBlockReviewNoteCount = blockReviewNotes.filter(
+            (note) => note.status === "open",
+          ).length;
 
           return (
             <section
@@ -251,6 +280,21 @@ function SharedManuscriptSurface({
                     margin clear
                   </span>
                 )}
+                {blockReviewNotes.length ? (
+                  <div className="grid gap-1">
+                    <StudioChip tone={openBlockReviewNoteCount ? "tag" : "review"}>
+                      {blockReviewNotes.length} span notes
+                    </StudioChip>
+                    {blockReviewNotes.slice(0, 2).map((note) => (
+                      <span
+                        key={note.noteId}
+                        className="rounded-lg border border-studio-line bg-black/20 px-2 py-1 text-xs font-bold leading-5 text-studio-muted"
+                      >
+                        {note.authorId}: {note.status}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </aside>
               <div>
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -259,11 +303,25 @@ function SharedManuscriptSurface({
                 {blockSpans.map((span) => (
                   <StudioChip key={span.spanId} tone="tag">
                     {span.label}
+                    {listSyntheticReviewNotesForSpan(reviewNoteState, span.spanId)
+                      .length
+                      ? ` - ${
+                          listSyntheticReviewNotesForSpan(
+                            reviewNoteState,
+                            span.spanId,
+                          ).length
+                        } notes`
+                      : ""}
                   </StudioChip>
                 ))}
               </div>
               <p className="text-[1.05rem] font-semibold text-studio-ink">
-                {renderTextWithSpans(block, summary.spans, presenceState)}
+                {renderTextWithSpans(
+                  block,
+                  summary.spans,
+                  presenceState,
+                  reviewNoteState,
+                )}
               </p>
               </div>
             </section>
@@ -389,12 +447,25 @@ export default function StudioCollaborationLabClient() {
   const [presence, setPresence] = useState<StudioCollaborationPresenceState>(() =>
     createSyntheticPresenceState(),
   );
+  const [reviewNotes, setReviewNotes] =
+    useState<StudioCollaborationReviewNoteState>(() =>
+      createSyntheticReviewNoteState(),
+    );
   const [spanForm, setSpanForm] = useState({
     actor: "Charlie",
     blockId: "synthetic-collab-block-1",
     startOffset: "10",
     endOffset: "22",
     label: "Synthetic span insight",
+  });
+  const [reviewNoteForm, setReviewNoteForm] = useState<{
+    spanId: string;
+    authorId: StudioCollaborationReviewNoteAuthorId;
+    body: string;
+  }>({
+    spanId: "",
+    authorId: "charlie",
+    body: "Synthetic review note for this span.",
   });
   const charlieSummary = useMemo(
     () => summarizeCollaborationDocument(lab.charlie),
@@ -424,7 +495,27 @@ export default function StudioCollaborationLabClient() {
     () => summarizeSyntheticPresence(presence),
     [presence],
   );
+  const reviewNoteSummary = useMemo(
+    () => summarizeSyntheticReviewNotes(reviewNotes),
+    [reviewNotes],
+  );
+  const availableSpans = useMemo(() => {
+    const spansById = new Map<string, StudioCollaborationSpanTag>();
+
+    for (const span of [...charlieSummary.spans, ...homerSummary.spans]) {
+      spansById.set(span.spanId, span);
+    }
+
+    return [...spansById.values()];
+  }, [charlieSummary.spans, homerSummary.spans]);
   const firstSpan = charlieSummary.spans[0] ?? homerSummary.spans[0] ?? null;
+  const selectedReviewSpan =
+    availableSpans.find((span) => span.spanId === reviewNoteForm.spanId) ??
+    availableSpans[0] ??
+    null;
+  const selectedReviewNotes = selectedReviewSpan
+    ? listSyntheticReviewNotesForSpan(reviewNotes, selectedReviewSpan.spanId)
+    : [];
 
   function refresh(message: string, exportedSnapshotJson = lab.exportedSnapshotJson) {
     setLab((current) => ({
@@ -466,6 +557,45 @@ export default function StudioCollaborationLabClient() {
       lastAction,
       markSyntheticPresenceForSpan(presence, actorId, firstSpan.spanId, mode, lastAction),
     );
+  }
+
+  function addReviewNoteFromForm() {
+    if (!selectedReviewSpan) {
+      refresh("Create a synthetic span before adding a review note.");
+      return;
+    }
+
+    const note = createSyntheticReviewNote(
+      selectedReviewSpan,
+      reviewNoteForm.authorId,
+      reviewNoteForm.body,
+    );
+
+    if (!note) {
+      refresh("Synthetic review note was rejected. Choose a span and add note text.");
+      return;
+    }
+
+    const nextState = addSyntheticReviewNote(reviewNotes, note);
+    const added = nextState.notes.length > reviewNotes.notes.length;
+
+    setReviewNotes(nextState);
+    refresh(
+      added
+        ? "Synthetic review note added. It is an annotation, not source text."
+        : "Synthetic review note was not added. It may be invalid or a duplicate.",
+    );
+  }
+
+  function updateReviewNoteStatus(
+    noteId: string,
+    status: StudioCollaborationReviewNoteStatus,
+    actorId: StudioCollaborationReviewNoteAuthorId,
+  ) {
+    setReviewNotes((current) =>
+      updateSyntheticReviewNoteStatus(current, noteId, status, actorId),
+    );
+    refresh(`Synthetic review note marked ${status}. No source text changed.`);
   }
 
   function updateCheckpointState(input: {
@@ -786,6 +916,7 @@ export default function StudioCollaborationLabClient() {
             summary={charlieSummary}
             spansMatch={spansMatch}
             presenceState={presence}
+            reviewNoteState={reviewNotes}
           />
 
           <SummaryGrid
@@ -866,6 +997,7 @@ export default function StudioCollaborationLabClient() {
                 onClick={() => {
                   setLab(createInitialLabState());
                   setPresence(createSyntheticPresenceState());
+                  setReviewNotes(createSyntheticReviewNoteState());
                 }}
               >
                 Reset lab
@@ -1092,6 +1224,166 @@ export default function StudioCollaborationLabClient() {
               {homerSpanSummary.spanCount}. Span offsets are synthetic text
               offsets only; overlapping spans are flattened later by the adapter.
             </p>
+            <div
+              className="mt-4 grid gap-3 rounded-xl border border-studio-line-strong bg-studio-ink/5 p-3"
+              data-testid="studio-collab-review-note-controls"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={labelClassName}>Span review notes</p>
+                  <p className="mt-1 text-xs font-bold leading-5 text-studio-muted">
+                    Review notes are annotations, not source text. They are
+                    synthetic, local-only, separate from presence, and not saved
+                    to production Manuscript Desk.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StudioChip tone="tag">
+                    {reviewNoteSummary.openCount} open
+                  </StudioChip>
+                  <StudioChip tone="review">
+                    {reviewNoteSummary.addressedCount} addressed
+                  </StudioChip>
+                  <StudioChip>{reviewNoteSummary.archivedCount} archived</StudioChip>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[1.3fr_0.7fr_1.5fr_auto]">
+                <label className="grid gap-1">
+                  <span className={labelClassName}>Span</span>
+                  <select
+                    className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                    value={selectedReviewSpan?.spanId ?? ""}
+                    onChange={(event) =>
+                      setReviewNoteForm((current) => ({
+                        ...current,
+                        spanId: event.currentTarget.value,
+                      }))
+                    }
+                    disabled={!availableSpans.length}
+                  >
+                    {availableSpans.length ? (
+                      availableSpans.map((span) => (
+                        <option key={span.spanId} value={span.spanId}>
+                          {span.label} - {span.blockId}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">Create a synthetic span first</option>
+                    )}
+                  </select>
+                </label>
+                <label className="grid gap-1">
+                  <span className={labelClassName}>Author</span>
+                  <select
+                    className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                    value={reviewNoteForm.authorId}
+                    onChange={(event) =>
+                      setReviewNoteForm((current) => ({
+                        ...current,
+                        authorId: event.currentTarget
+                          .value as StudioCollaborationReviewNoteAuthorId,
+                      }))
+                    }
+                  >
+                    <option value="charlie">Charlie</option>
+                    <option value="homer">Homer</option>
+                  </select>
+                </label>
+                <label className="grid gap-1">
+                  <span className={labelClassName}>Note body</span>
+                  <textarea
+                    className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 py-2 text-sm font-bold text-studio-ink"
+                    value={reviewNoteForm.body}
+                    onChange={(event) =>
+                      setReviewNoteForm((current) => ({
+                        ...current,
+                        body: event.currentTarget.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="grid items-end">
+                  <button
+                    type="button"
+                    className={buttonClassName}
+                    data-testid="studio-collab-add-review-note"
+                    onClick={addReviewNoteFromForm}
+                    disabled={!selectedReviewSpan}
+                  >
+                    Add review note
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className="grid gap-2"
+                data-testid="studio-collab-review-note-list"
+              >
+                {selectedReviewSpan ? (
+                  <p className="text-xs font-bold leading-5 text-studio-muted">
+                    Selected span: {selectedReviewSpan.label}. Future durable
+                    annotation rules still need checkpoint and rollback design.
+                  </p>
+                ) : (
+                  <p className="text-xs font-bold leading-5 text-studio-muted">
+                    Add and sync a synthetic span before adding local review
+                    notes.
+                  </p>
+                )}
+                {selectedReviewNotes.length ? (
+                  selectedReviewNotes.map((note) => (
+                    <div
+                      key={note.noteId}
+                      className={cn(cardClassName, "grid gap-2 p-3")}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-bold leading-6 text-studio-ink">
+                          {note.authorId}: {note.body}
+                        </p>
+                        <StudioChip
+                          tone={note.status === "open" ? "tag" : "review"}
+                        >
+                          {note.status}
+                        </StudioChip>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className={buttonClassName}
+                          onClick={() =>
+                            updateReviewNoteStatus(
+                              note.noteId,
+                              "addressed",
+                              "homer",
+                            )
+                          }
+                        >
+                          Mark addressed
+                        </button>
+                        <button
+                          type="button"
+                          className={dangerButtonClassName}
+                          onClick={() =>
+                            updateReviewNoteStatus(
+                              note.noteId,
+                              "archived",
+                              "charlie",
+                            )
+                          }
+                        >
+                          Archive note
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs font-bold leading-5 text-studio-muted">
+                    No local review notes for the selected span.
+                  </p>
+                )}
+              </div>
+            </div>
             <p
               className="mt-3 text-sm font-bold text-studio-muted"
               data-testid="studio-collab-last-action"

@@ -39,6 +39,14 @@ import {
   summarizeSyntheticPresence,
   validateSyntheticPresenceState,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
+import {
+  addSyntheticReviewNote,
+  createSyntheticReviewNote,
+  createSyntheticReviewNoteState,
+  summarizeSyntheticReviewNotes,
+  updateSyntheticReviewNoteStatus,
+  validateSyntheticReviewNoteState,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -77,6 +85,18 @@ function assertPresenceExcluded(payload, lastAction) {
     serialized.includes(lastAction)
   ) {
     throw new Error("Ephemeral synthetic presence leaked into durable payload.");
+  }
+}
+
+function assertReviewNotesExcluded(payload, noteBody) {
+  const serialized = JSON.stringify(payload);
+
+  if (
+    serialized.includes(noteBody) ||
+    serialized.includes("reviewNotes") ||
+    serialized.includes("Synthetic review note")
+  ) {
+    throw new Error("Local synthetic review notes leaked into a durable payload.");
   }
 }
 
@@ -175,6 +195,9 @@ async function runSmoke() {
     }
 
     const syncedSpan = listSyntheticSpanTags(homer)[0];
+    const sourceTextBeforeReviewNotes = summarizeCollaborationDocument(charlie)
+      .blocks.map((block) => block.text)
+      .join("\n");
     presence = markSyntheticPresenceForSpan(
       presence,
       "homer",
@@ -195,6 +218,91 @@ async function runSmoke() {
       actors: presenceSummary.actorCount,
       activeBlockPresence: presenceSummary.activeBlockPresenceCount,
       activeSpanPresence: presenceSummary.activeSpanPresenceCount,
+    });
+
+    const reviewNoteBody = "Synthetic review note anchored to the agent span.";
+    const archivedReviewNoteBody =
+      "Synthetic archived review note for status coverage.";
+    const openReviewNoteBody =
+      "Synthetic open review note kept open for status coverage.";
+    const openNote = createSyntheticReviewNote(
+      syncedSpan,
+      "charlie",
+      reviewNoteBody,
+    );
+
+    if (!openNote) {
+      throw new Error("Synthetic review note was not created.");
+    }
+
+    let reviewNotes = addSyntheticReviewNote(
+      createSyntheticReviewNoteState(),
+      openNote,
+    );
+    reviewNotes = updateSyntheticReviewNoteStatus(
+      reviewNotes,
+      openNote.noteId,
+      "addressed",
+      "homer",
+    );
+    const archivedNote = createSyntheticReviewNote(
+      syncedSpan,
+      "homer",
+      archivedReviewNoteBody,
+    );
+
+    if (!archivedNote) {
+      throw new Error("Synthetic archived review note was not created.");
+    }
+
+    reviewNotes = addSyntheticReviewNote(reviewNotes, archivedNote);
+    reviewNotes = updateSyntheticReviewNoteStatus(
+      reviewNotes,
+      archivedNote.noteId,
+      "archived",
+      "charlie",
+    );
+    const secondOpenNote = createSyntheticReviewNote(
+      syncedSpan,
+      "charlie",
+      openReviewNoteBody,
+    );
+
+    if (!secondOpenNote) {
+      throw new Error("Synthetic open review note was not created.");
+    }
+
+    reviewNotes = addSyntheticReviewNote(reviewNotes, secondOpenNote);
+
+    const reviewNoteValidation = validateSyntheticReviewNoteState(reviewNotes);
+    const reviewNoteSummary = summarizeSyntheticReviewNotes(reviewNotes);
+    const sourceTextAfterReviewNotes = summarizeCollaborationDocument(charlie)
+      .blocks.map((block) => block.text)
+      .join("\n");
+
+    if (!reviewNoteValidation.ok) {
+      throw new Error(
+        `Synthetic review note validation failed: ${reviewNoteValidation.errors.join(" ")}`,
+      );
+    }
+
+    if (sourceTextAfterReviewNotes !== sourceTextBeforeReviewNotes) {
+      throw new Error("Synthetic review notes mutated source text.");
+    }
+
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+    ]) {
+      assertReviewNotesExcluded(presence, body);
+    }
+
+    addStep("model local span-anchored review notes", "passed", {
+      notes: reviewNoteSummary.noteCount,
+      addressed: reviewNoteSummary.addressedCount,
+      archived: reviewNoteSummary.archivedCount,
+      sourceTextUnchanged: true,
     });
 
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
@@ -218,6 +326,13 @@ async function runSmoke() {
       exportedSnapshot,
       "Homer is reviewing a synthetic span in the agent smoke.",
     );
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+    ]) {
+      assertReviewNotesExcluded(exportedSnapshot, body);
+    }
 
     const imported = importCollaborationSnapshot(
       exportedSnapshot,
@@ -252,6 +367,13 @@ async function runSmoke() {
       checkpoint,
       "Homer is reviewing a synthetic span in the agent smoke.",
     );
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+    ]) {
+      assertReviewNotesExcluded(checkpoint, body);
+    }
 
     const checkpointImport = importCollaborationCheckpointToClient(
       checkpoint,
@@ -302,6 +424,13 @@ async function runSmoke() {
       adapterPayload,
       "Homer is reviewing a synthetic span in the agent smoke.",
     );
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+    ]) {
+      assertReviewNotesExcluded(adapterPayload, body);
+    }
 
     const adapterComparison = compareCollaborationCheckpointToManuscriptDraft(
       checkpoint,
@@ -377,6 +506,14 @@ async function runSmoke() {
       activeBlockPresenceCount: presenceSummary.activeBlockPresenceCount,
       activeSpanPresenceCount: presenceSummary.activeSpanPresenceCount,
       presenceExcludedFromSnapshots: true,
+      reviewNotesModeled: true,
+      reviewNoteCount: reviewNoteSummary.noteCount,
+      openReviewNoteCount: reviewNoteSummary.openCount,
+      addressedReviewNoteCount: reviewNoteSummary.addressedCount,
+      archivedReviewNoteCount: reviewNoteSummary.archivedCount,
+      reviewNotesAnchoredToSpans: true,
+      reviewNotesMutateSourceText: false,
+      reviewNotesExcludedFromSnapshots: true,
       manuscriptFirstSurface: true,
       noServerWrites: true,
       noProductionManuscriptEditing: true,

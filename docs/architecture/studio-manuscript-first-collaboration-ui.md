@@ -36,6 +36,24 @@ document, manual snapshots, checkpoints, or projection source data. A future
 provider may broadcast presence state, but that provider state must remain
 ephemeral unless an explicit audit/event feature is designed later.
 
+## Review Notes
+
+Review notes and comments should be anchored to spans and shown as margin or
+side-panel context. They should not rewrite source text, replace the long
+manuscript stream, or become the primary surface.
+
+Presence and review notes are different:
+
+- presence is ephemeral awareness
+- review notes are annotations
+- source text remains separate from both
+
+For the current local lab, review notes are synthetic React state only. They are
+not written into Yjs snapshots, checkpoints, Manuscript adapter payloads,
+localStorage, server routes, or production manual snapshots. Future production
+work still needs a deliberate decision about whether review notes become
+durable annotation events, checkpoint metadata, or a separate annotation store.
+
 ## Spans
 
 Semantic spans are overlays on source text. They are the collaboration bridge
@@ -59,7 +77,8 @@ collaboration shape.
 The lab now also includes a shared manuscript surface near the top. That surface
 renders the synthetic document as one continuous manuscript stream, displays
 synthetic span overlays inline, and shows local-only margin presence cues for
-Charlie and Homer.
+Charlie and Homer. It can also show synthetic span-anchored review note counts
+as manuscript margin context.
 
 ## Production Constraints
 

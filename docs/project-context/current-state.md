@@ -101,6 +101,13 @@ High Ground Studio is a monorepo with:
   durable manuscript content and is excluded from snapshots, checkpoints,
   Manuscript adapter payloads, localStorage, server routes, and production
   manual snapshots.
+- Studio collaboration now has synthetic span-anchored review notes in
+  `/manuscript/collaboration-lab`. Notes can be authored by Charlie or Homer,
+  marked `open`, `addressed`, or `archived`, and shown as margin/side-panel
+  context around the shared manuscript surface. For this sprint they are
+  React-state-only local annotations: not source text, not presence, not Yjs
+  snapshot state, not collaboration checkpoints, not Manuscript adapter payloads,
+  not localStorage, not server routes, and not production manual snapshots.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -222,6 +229,11 @@ High Ground Studio is a monorepo with:
 - Studio collaboration presence is local lab awareness only. It is not
   provider-backed, not persisted, not checkpointed, not stored in localStorage,
   and not wired to production `/manuscript`.
+- Studio collaboration review notes are local lab annotations only. They are
+  not source text, not persisted, not checkpointed, not stored in localStorage,
+  and not wired to production `/manuscript`. A future production decision still
+  needs to choose durable annotation events, checkpoint metadata, or a separate
+  annotation store.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a
