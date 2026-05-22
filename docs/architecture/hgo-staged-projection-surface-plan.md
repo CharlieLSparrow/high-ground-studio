@@ -18,12 +18,15 @@ This pass adds a synthetic-only staged route family:
 - `/projection-stage`
 - `/projection-stage/[slug]`
 - `/projection-stage/review`
+- `/projection-stage/import`
 
 The routes use the same HGO projection contract and shared
 `EpisodeProjectionView` renderer already used by `/projection-preview`. The data
-source is still the synthetic fixture repository only. No real manuscript text,
-real HGO content, database persistence, Studio publish API, deployment, or
-public `/episodes` replacement is involved.
+source is still the synthetic fixture repository only, except for
+`/projection-stage/import`, which accepts pasted projection JSON in browser
+state for one review session. No real manuscript text, real HGO content,
+database persistence, Studio publish API, deployment, or public `/episodes`
+replacement is involved.
 
 ## Renderer Direction
 
@@ -90,10 +93,31 @@ present, unpublished audio, and Studio browser bridge origin.
 The gate is not a publish UI. It intentionally says that promotion to live will
 require a later approved workflow.
 
+## No-Persistence Import Review
+
+The staged surface also includes `/projection-stage/import`.
+
+This route lets an operator paste Studio-generated HGO projection JSON, validate
+it, run the same staged review gate, and render it through
+`EpisodeProjectionView` with staged route links. It is deliberately
+no-persistence:
+
+- no server route
+- no database write
+- no local storage
+- no public content file write
+- no publish action
+
+Real projection drafts may contain private/review-only projection text. The
+route keeps that warning visible and exists to demonstrate the future flow:
+
+`Studio projection JSON -> HGO staged import review -> review gate -> later
+private artifact store or promotion workflow`
+
 ## Future Path
 
 1. Synthetic staged surface.
-2. Browser import from Studio projection JSON.
+2. No-persistence browser import from Studio projection JSON.
 3. Private staged projection persistence.
 4. Manual approval gates for citation and public-safety review.
 5. Live public route promotion.

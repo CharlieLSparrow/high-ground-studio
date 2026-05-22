@@ -212,6 +212,20 @@ export default function ProjectionStageReviewPage() {
             <p className="mt-5 max-w-2xl text-sm font-black leading-6 text-amber-100">
               Promote to live will require a later approved workflow.
             </p>
+            <Link
+              href="/projection-stage/import"
+              className="mt-5 inline-flex rounded-full border border-sky-300/35 bg-sky-300/12 px-4 py-2 text-sm font-bold text-sky-100 no-underline transition hover:bg-sky-300/18"
+            >
+              Review pasted projection JSON
+            </Link>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Pill className="border-sky-300/25 bg-sky-300/8 text-sky-100">
+                No persistence
+              </Pill>
+              <Pill className="border-sky-300/25 bg-sky-300/8 text-sky-100">
+                No publish action
+              </Pill>
+            </div>
           </div>
 
           <div className="grid gap-4 rounded-[28px] border border-white/12 bg-white/8 p-6 shadow-glass backdrop-blur">

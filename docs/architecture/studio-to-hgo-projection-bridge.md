@@ -97,16 +97,21 @@ HGO now also has a synthetic-only staged surface:
 
 - `/projection-stage`
 - `/projection-stage/[slug]`
+- `/projection-stage/import`
+- `/projection-stage/review`
 
-This route family is separate from the browser-only import route. It uses a
-fixture-backed projection repository and the same shared renderer to demonstrate
-how HGO can become the browseable review stage for Studio projections.
+This route family complements the browser-only preview import route. Its map,
+detail, and review pages use a fixture-backed projection repository and the same
+shared renderer to demonstrate how HGO can become the browseable review stage
+for Studio projections.
 
-The staged surface does not ingest Studio exports yet, does not persist
-projection artifacts, does not publish, and does not replace public `/episodes`
-routes. It makes the future architecture visible: pasted/imported projection
-drafts can later become private staged artifacts, and only approved projections
-should move to live public pages.
+The staged import route accepts pasted Studio projection JSON in browser state,
+validates it, runs the staged review gate, and renders it with staged route base
+links. It does not persist projection artifacts, does not write local storage,
+does not publish, and does not replace public `/episodes` routes. It makes the
+future architecture visible: pasted/imported projection drafts can later become
+private staged artifacts, and only approved projections should move to live
+public pages.
 
 ## Citation Gates
 

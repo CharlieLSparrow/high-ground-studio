@@ -507,6 +507,49 @@ async function runVisualSmoke() {
       screenshot: relativePath(renderedScreenshotPath),
     });
 
+    await captureRoute(page, {
+      baseUrl: hgoBaseUrl,
+      routePath: "/projection-stage/import",
+      screenshotName: "projection-stage-import-empty.png",
+      waitFor: { testId: "hgo-stage-import-projection-json" },
+      notes: ["empty no-persistence staged import review form"],
+    });
+
+    await page
+      .getByTestId("hgo-stage-import-hydrated")
+      .waitFor({ state: "attached", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-import-projection-json")
+      .fill(projectionJson);
+    await page
+      .getByTestId("hgo-stage-import-review-gate")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-projection-rendered-root")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await assertNoRealContentMarkers(page, projectionJson);
+
+    const stagedImportRenderedScreenshotPath = path.join(
+      screenshotDir,
+      "projection-stage-import-rendered.png",
+    );
+    await page.screenshot({
+      path: stagedImportRenderedScreenshotPath,
+      fullPage: true,
+    });
+    screenshots.push(relativePath(stagedImportRenderedScreenshotPath));
+    routes.push({
+      path: "/projection-stage/import",
+      status: "passed",
+      screenshot: relativePath(stagedImportRenderedScreenshotPath),
+      title: await page.title(),
+      heading: await getHeading(page),
+      notes: ["synthetic projection JSON reviewed by staged gate and rendered"],
+    });
+    addStep("capture rendered staged import review", "passed", {
+      screenshot: relativePath(stagedImportRenderedScreenshotPath),
+    });
+
     for (const slug of syntheticSlugs) {
       await captureRoute(page, {
         baseUrl: hgoBaseUrl,

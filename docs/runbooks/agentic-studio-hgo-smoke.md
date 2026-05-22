@@ -48,7 +48,8 @@ artifacts/agentic-browser-smoke/hgo-projection-browser-smoke-report.json
 This command does not open Studio, does not require auth state, and does not
 write to a server. If `HGO_BASE_URL` is not provided, it starts the web app on
 an available local test port, waits for `/projection-preview/import`, runs the
-synthetic import/render smoke, and shuts the dev server down.
+synthetic import/render smoke plus staged review surfaces, and shuts the dev
+server down.
 
 For a no-auth visual artifact pass across the HGO projection preview surfaces,
 run:
@@ -136,10 +137,12 @@ For HGO no-auth browser reports:
 - `passed` means synthetic projection JSON was pasted into
   `/projection-preview/import`, validation warnings appeared, the projection
   renderer mounted, `/projection-stage` loaded, `/projection-stage/review`
-  showed blocked/needs-review/live-safe group text and blocker copy, a staged
-  detail route rendered through the shared projection component,
-  staged/readiness warnings appeared, known real-content markers were absent,
-  and no server write happened.
+  showed blocked/needs-review/live-safe group text and blocker copy,
+  `/projection-stage/import` accepted pasted synthetic JSON, showed the staged
+  review gate and no-publish/no-persistence boundary, a staged detail route
+  rendered through the shared projection component, staged/readiness warnings
+  appeared, known real-content markers were absent, and no server write
+  happened.
 - `blocked` means the browser or HGO route could not be made available safely,
   for example missing Chromium.
 - `failed` means the browser run started but route, validation, render, or
@@ -148,7 +151,8 @@ For HGO no-auth browser reports:
 For HGO visual smoke reports:
 
 - `passed` means the projection preview map, empty import route, rendered import
-  route, and discovered synthetic detail routes captured screenshots while known
+  route, empty staged import review route, rendered staged import review route,
+  and discovered synthetic detail routes captured screenshots while known
   real-content markers stayed absent.
 - `blocked` means Chromium or the HGO server path could not be made available
   safely.
@@ -177,7 +181,8 @@ Use the normal browser smoke after the helper harness passes:
 14. Confirm no autosave, publish, or collaboration action happens.
 
 The HGO no-auth smoke does not replace the Studio browser smoke. It covers only
-the projection import, staged review gate, staged surface, and renderer paths.
+the projection import, no-persistence staged import review, staged review gate,
+staged surface, and renderer paths.
 
 The HGO visual smoke also does not replace authenticated Studio browser smoke.
 It is a screenshot/report artifact pass for later human review of synthetic HGO

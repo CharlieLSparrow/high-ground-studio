@@ -77,6 +77,12 @@ High Ground Studio is a monorepo with:
   It groups projection fixtures into blocked, needs-review, and live-safe
   states using pure promotion-readiness helpers. It makes blockers and warnings
   visible but does not offer a real publish action.
+- HGO has a no-persistence staged import review route at
+  `/projection-stage/import`. It accepts pasted Studio/HGO projection JSON in
+  browser state only, validates it, runs the staged review gate against it, and
+  renders it through the shared projection renderer with staged links. It does
+  not persist, publish, write local storage, replace public `/episodes`, or use
+  real content.
 - The repo now has an agentic Studio/HGO smoke command,
   `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
   Studio manuscript helper payloads, HGO projection generation, HGO validation,
@@ -93,10 +99,12 @@ High Ground Studio is a monorepo with:
 - HGO has a no-auth browser smoke command,
   `pnpm hgo:projection:browser-smoke`, for the projection import/render path.
   It uses synthetic HGO projection JSON only, opens `/projection-preview/import`,
-  confirms validation warnings and the shared renderer, checks known
-  real-content markers are absent, writes a machine-readable report, and
-  performs no server writes. If `HGO_BASE_URL` is not set, it starts the web app
-  locally on an available test port and shuts it down after the run.
+  confirms validation warnings and the shared renderer, checks
+  `/projection-stage`, `/projection-stage/review`, `/projection-stage/import`,
+  and a staged detail route, verifies known real-content markers are absent,
+  writes a machine-readable report, and performs no server writes. If
+  `HGO_BASE_URL` is not set, it starts the web app locally on an available test
+  port and shuts it down after the run.
 - HGO also has a no-auth visual smoke command,
   `pnpm hgo:projection:visual-smoke`, for synthetic screenshot artifacts. It
   visits the projection preview map, import route, rendered import state, and
@@ -146,6 +154,9 @@ High Ground Studio is a monorepo with:
 - The HGO staged review gate is also synthetic-only. It prepares future
   staged-to-live promotion checks but does not publish, persist, or approve
   anything.
+- The HGO staged import review route is no-persistence. It prepares a later
+  private staged artifact store, but pasted JSON is not saved to local storage,
+  server state, content files, or Prisma.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a

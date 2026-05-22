@@ -125,6 +125,18 @@ export default function ProjectionStagePage() {
             Review gate
           </Link>
           <Link
+            href="/projection-stage/import"
+            className="inline-flex rounded-full border border-sky-300/35 bg-sky-300/12 px-4 py-2 text-sm font-bold text-sky-100 no-underline transition hover:bg-sky-300/18"
+          >
+            Review pasted projection JSON
+          </Link>
+          <Pill className="border-sky-300/25 bg-sky-300/8 text-sky-100">
+            No persistence
+          </Pill>
+          <Pill className="border-sky-300/25 bg-sky-300/8 text-sky-100">
+            No publish action
+          </Pill>
+          <Link
             href="/projection-preview/import"
             className="inline-flex rounded-full border border-flare/35 bg-flare/12 px-4 py-2 text-sm font-bold text-flare no-underline transition hover:bg-flare/18"
           >

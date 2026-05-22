@@ -129,13 +129,17 @@ Current synthetic staged routes:
   projection fixtures.
 - `/projection-stage/review`: synthetic-only review gate that groups projections
   by blocked, needs-review, and live-safe readiness.
+- `/projection-stage/import`: no-persistence staged review route for pasted
+  Studio projection JSON. It validates the draft, runs the review gate, and
+  renders through the shared projection renderer without saving or publishing.
 - `/projection-stage/[slug]`: staged detail route that wraps the shared
   projection renderer with review-boundary and citation-readiness warnings.
 
 The staged surface is not public publishing and does not replace `/episodes`.
 It exists to make the future HGO.com integration path visible: Studio produces
-projection artifacts, HGO stages them for review, and only a later approval
-workflow promotes them to live public routes.
+projection artifacts, HGO can review pasted drafts without persistence today,
+HGO stages approved artifacts later, and only a later approval workflow promotes
+them to live public routes.
 
 Current staged data comes from:
 
@@ -160,7 +164,8 @@ Detailed staged-surface notes:
 The first Studio-to-HGO bridge is manual and browser-only. Studio's private
 `/manuscript` Publish mode can generate an HGO episode projection draft JSON
 from synthetic or tagged manuscript metadata. HGO can then paste that JSON into
-`/projection-preview/import` for renderer validation.
+`/projection-preview/import` for renderer validation or `/projection-stage/import`
+for staged review-gate validation.
 
 The bridge does not create server artifacts, mutate content files, write Prisma
 data, or publish live pages. Its purpose is to prove the projection handoff:

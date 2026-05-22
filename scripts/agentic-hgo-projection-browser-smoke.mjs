@@ -154,6 +154,7 @@ async function writeReport(status, extra = {}) {
       "/projection-preview/import",
       "/projection-stage",
       "/projection-stage/review",
+      "/projection-stage/import",
       "/projection-stage/synthetic-field-radio",
     ],
     commitSha: getCommitSha(),
@@ -493,6 +494,42 @@ async function runSmoke() {
       );
     }
     addStep("confirm HGO staged projection review gate", "passed", {
+      url: page.url(),
+    });
+    await assertNoRealContentMarkers(page, projectionJson);
+
+    await page.goto(`${hgoBaseUrl}/projection-stage/import`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByTestId("hgo-stage-import-projection-json")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-import-hydrated")
+      .waitFor({ state: "attached", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-import-projection-json")
+      .fill(projectionJson);
+    await page
+      .getByTestId("hgo-stage-import-review-gate")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-projection-rendered-root")
+      .waitFor({ state: "visible", timeout: 20_000 });
+
+    const stagedImportText = await page.locator("body").innerText();
+
+    if (
+      !/staged import review/i.test(stagedImportText) ||
+      !/blocks live/i.test(stagedImportText) ||
+      !/No publish action/i.test(stagedImportText) ||
+      !/does not persist/i.test(stagedImportText)
+    ) {
+      throw new Error(
+        "HGO staged import review did not show expected staged-review, blocker, no-publish, and no-persistence copy.",
+      );
+    }
+    addStep("confirm HGO staged import review", "passed", {
       url: page.url(),
     });
     await assertNoRealContentMarkers(page, projectionJson);
