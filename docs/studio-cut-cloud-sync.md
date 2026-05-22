@@ -14,9 +14,11 @@ The primary future workflow is proxy-first:
 2. The sync worker extracts lightweight audio/proxy derivatives.
 3. The worker syncs those derivatives and writes a durable Sync Map.
 4. The worker generates the lightweight browser editing package.
-5. Mako opens a shared room link and edits live on canonical episode timeline
+5. Charlie publishes the generated package from Studio Cut web into a shared
+   room.
+6. Mako opens a shared room link and edits live on canonical episode timeline
    time.
-6. Charlie later renders original assets locally from Sync Map + semantic
+7. Charlie later renders original assets locally from Sync Map + semantic
    decisions.
 
 JSON import/export and manual shared-room package upload remain backup/fallback
@@ -249,10 +251,31 @@ original render. Existing web UI and schema still use `sourceTimeMs` in places;
 for Studio Cut architecture, read that as canonical episode timeline time until
 the naming is migrated.
 
-The worker can also draft an Episode Manifest from Sync Map metadata. In this
-pass that bridge is active in the local worker: it sets duration from
+The worker can also draft an Episode Manifest from Sync Map metadata. That
+bridge is active in the local worker: it sets duration from
 `canonicalTimeline.durationMs`, derives source labels from asset roles, and
 points at the generated source-monitor proxy file name.
+
+## Publishing Generated Packages
+
+The local worker writes files; Studio Cut web publishes them into a shared room.
+After generating the source-monitor proxy, Episode Manifest, Sync Map, and sync
+report, Charlie opens the deployed editor and uses `Publish Rescue Sync Package`.
+
+The publish step uploads:
+
+- the source-monitor proxy MP4 to
+  `studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName}`
+- the generated manifest JSON, Sync Map JSON, and optional sync report JSON to
+  `studioCutSyncJobs/{syncJobId}/outputs/{fileName}`
+
+Then Studio Cut writes `studioCutProjects/{projectId}/branches/{branchId}/room/meta`
+with `packageKind: rescue_sync_generated`, the manifest, proxy metadata, Sync
+Map storage path, sync report storage path if present, and package timestamp.
+Original full-resolution files are not uploaded by this publish flow.
+
+Mako opens the room URL, signs in, and edits the shared proxy room. JSON
+import/export remains backup and recovery.
 
 Run the synthetic local-media canary:
 

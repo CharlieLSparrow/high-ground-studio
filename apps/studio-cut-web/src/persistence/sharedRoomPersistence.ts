@@ -25,6 +25,12 @@ export type SharedRoomStore = {
     storagePath: string,
     onProgress: (progress: SharedRoomUploadProgress) => void,
   ) => Promise<string>;
+  uploadGeneratedPackageArtifact: (
+    file: File,
+    storagePath: string,
+    artifactKind: string,
+    onProgress: (progress: SharedRoomUploadProgress) => void,
+  ) => Promise<string>;
   getSourceMonitorProxyDownloadUrl: (storagePath: string) => Promise<string>;
 };
 
@@ -93,11 +99,71 @@ export async function createSharedRoomStore({
     storagePath: string,
     onProgress: (progress: SharedRoomUploadProgress) => void,
   ) {
-    const proxyRef = storage.ref(storageService, storagePath);
-    const uploadTask = storage.uploadBytesResumable(proxyRef, file, {
+    return uploadStorageFile({
+      file,
+      storagePath,
+      studioCutKind: "source-monitor-proxy",
       contentType: file.type || "video/mp4",
+      onProgress,
+    });
+  }
+
+  async function uploadGeneratedPackageArtifact(
+    file: File,
+    storagePath: string,
+    artifactKind: string,
+    onProgress: (progress: SharedRoomUploadProgress) => void,
+  ) {
+    return uploadStorageFile({
+      file,
+      storagePath,
+      studioCutKind: artifactKind,
+      contentType: file.type || inferArtifactContentType(file.name),
+      onProgress,
+    });
+  }
+
+  async function getSourceMonitorProxyDownloadUrl(storagePath: string) {
+    const proxyRef = storage.ref(storageService, storagePath);
+
+    try {
+      return await storage.getDownloadURL(proxyRef);
+    } catch (error) {
+      throw new Error(
+        `Could not load shared source-monitor proxy from Storage: ${getErrorMessage(
+          error,
+        )}`,
+      );
+    }
+  }
+
+  return {
+    roomMetadataPath,
+    subscribeToRoomMetadata,
+    saveRoomMetadata,
+    uploadSourceMonitorProxy,
+    uploadGeneratedPackageArtifact,
+    getSourceMonitorProxyDownloadUrl,
+  };
+
+  function uploadStorageFile({
+    file,
+    storagePath,
+    studioCutKind,
+    contentType,
+    onProgress,
+  }: {
+    file: File;
+    storagePath: string;
+    studioCutKind: string;
+    contentType: string;
+    onProgress: (progress: SharedRoomUploadProgress) => void;
+  }) {
+    const fileRef = storage.ref(storageService, storagePath);
+    const uploadTask = storage.uploadBytesResumable(fileRef, file, {
+      contentType,
       customMetadata: {
-        studioCutKind: "source-monitor-proxy",
+        studioCutKind,
       },
     });
 
@@ -126,28 +192,6 @@ export async function createSharedRoomStore({
       );
     });
   }
-
-  async function getSourceMonitorProxyDownloadUrl(storagePath: string) {
-    const proxyRef = storage.ref(storageService, storagePath);
-
-    try {
-      return await storage.getDownloadURL(proxyRef);
-    } catch (error) {
-      throw new Error(
-        `Could not load shared source-monitor proxy from Storage: ${getErrorMessage(
-          error,
-        )}`,
-      );
-    }
-  }
-
-  return {
-    roomMetadataPath,
-    subscribeToRoomMetadata,
-    saveRoomMetadata,
-    uploadSourceMonitorProxy,
-    getSourceMonitorProxyDownloadUrl,
-  };
 }
 
 function serializeRoomMetadata(metadata: SharedRoomMetadata) {
@@ -160,9 +204,34 @@ function serializeRoomMetadata(metadata: SharedRoomMetadata) {
     sourceMonitorProxyFileName: metadata.sourceMonitorProxyFileName,
     sourceMonitorProxyContentType: metadata.sourceMonitorProxyContentType,
     sourceMonitorProxySizeBytes: metadata.sourceMonitorProxySizeBytes,
+    ...(metadata.packageKind ? { packageKind: metadata.packageKind } : {}),
+    ...(metadata.syncJobId ? { syncJobId: metadata.syncJobId } : {}),
+    ...(metadata.manifestStoragePath
+      ? { manifestStoragePath: metadata.manifestStoragePath }
+      : {}),
+    ...(metadata.syncMapStoragePath
+      ? { syncMapStoragePath: metadata.syncMapStoragePath }
+      : {}),
+    ...(metadata.syncReportStoragePath
+      ? { syncReportStoragePath: metadata.syncReportStoragePath }
+      : {}),
+    ...(metadata.generatedByWorkerVersion
+      ? { generatedByWorkerVersion: metadata.generatedByWorkerVersion }
+      : {}),
+    ...(metadata.packageCreatedAt
+      ? { packageCreatedAt: metadata.packageCreatedAt }
+      : {}),
     createdBy: metadata.createdBy,
     createdAt: metadata.createdAt,
     updatedAt: metadata.updatedAt,
     ...(metadata.notes ? { notes: metadata.notes } : {}),
   };
+}
+
+function inferArtifactContentType(fileName: string) {
+  if (fileName.toLowerCase().endsWith(".json")) {
+    return "application/json";
+  }
+
+  return "application/octet-stream";
 }

@@ -140,8 +140,25 @@ The source-monitor proxy layout is:
 - Program placeholder bottom-right
 
 The generated proxy and manifest are disposable/derivable artifacts. The Sync
-Map and semantic decisions remain the durable outputs. Shared-room metadata
-writing is still future work.
+Map and semantic decisions remain the durable outputs. Studio Cut web now has a
+`Publish Rescue Sync Package` panel that uploads the generated proxy, manifest,
+Sync Map, and optional sync report into the selected shared room. The worker
+still does not write Firestore room metadata directly; Charlie publishes the
+generated package from the browser after reviewing the outputs.
+
+Publishing flow:
+
+1. Run the local Rescue Sync worker with `--out-sync-map`,
+   `--out-source-monitor-proxy`, and `--out-manifest`.
+2. Open Studio Cut and sign in with an approved High Ground account.
+3. Switch Collaboration Mode to the intended `projectId` and `branchId`.
+4. Select the generated Episode Manifest, source-monitor proxy MP4, Sync Map
+   JSON, and optional sync report JSON in `Publish Rescue Sync Package`.
+5. Click `Publish Generated Package`.
+6. Send the shared room link to Mako.
+
+Mako opens the link, signs in, and edits against the shared proxy room. Mako
+does not import JSON, load local media, or touch sync files in the primary path.
 
 ## Current Implementation
 
@@ -159,6 +176,7 @@ Implemented now:
   synthetic smoke assertions
 - aligned low-res proxy generation, 2x2 source-monitor proxy composition, and
   draft Episode Manifest output
+- browser publishing of generated worker packages into shared rooms
 - helper tests included in `pnpm studio-cut:verify`
 
 Scaffold only:
@@ -166,7 +184,7 @@ Scaffold only:
 - production-grade drift estimation
 - FFT/refined long-form correlation
 - production-grade proxy quality and labels
-- shared room metadata creation from worker output
+- direct Firestore room metadata creation from the worker
 - Cloud Run deployment
 - retention/lifecycle cleanup
 

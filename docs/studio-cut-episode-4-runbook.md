@@ -42,11 +42,13 @@ uploads:
 6. Charlie clicks `Create Sync Job / Upload Raw Assets`.
 7. Studio Cut writes `studioCutSyncJobs/{syncJobId}` and uploads files under
    `studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName}`.
-8. A future sync worker builds the reference rail from phone pieces, then writes
-   the source-monitor proxy, manifest, sync report,
-   and shared room metadata.
-9. Mako opens the shared room link and edits without JSON import/export or local
-   media files.
+8. The local Rescue Sync worker builds the reference rail from phone pieces and
+   writes the generated source-monitor proxy, manifest, Sync Map, and sync
+   report.
+9. Charlie opens Studio Cut and uses `Publish Rescue Sync Package` to publish
+   those generated artifacts into the shared room.
+10. Mako opens the shared room link and edits without JSON import/export or
+   local media files.
 
 Do not use this for sensitive/private footage until Firestore/Storage rules have
 passed emulator tests, have been deployed intentionally, and retention cleanup
@@ -197,6 +199,12 @@ The shared package writes manifest metadata to Firestore and uploads only the
 lightweight source-monitor proxy to Firebase Storage. It does not upload
 full-resolution aligned media, local filesystem paths, object URLs, credentials,
 or generated renders.
+
+If the package came from Rescue Sync, prefer `Publish Rescue Sync Package`
+instead of `Create Shared Room`. Select the generated Episode Manifest JSON,
+source-monitor proxy MP4, Sync Map JSON, and optional sync report JSON. Studio
+Cut uploads only those generated artifacts, attaches the Sync Map/report storage
+paths to room metadata, and creates the same room link for Mako.
 
 Before trusting private collaboration data in the shared room, confirm that
 Firestore and Storage rules have been emulator-tested and deployed. JSON

@@ -566,6 +566,7 @@ h2 {
 .collaboration-panel,
 .cloud-sync-panel,
 .shared-room-panel,
+.rescue-package-panel,
 .shared-room-diagnostics-panel {
   display: grid;
   gap: 14px;
@@ -579,6 +580,7 @@ h2 {
 .collaboration-panel,
 .cloud-sync-panel,
 .shared-room-panel,
+.rescue-package-panel,
 .shared-room-diagnostics-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
@@ -782,6 +784,46 @@ h2 {
 .shared-room-message.is-error {
   border-color: rgba(255, 116, 116, 0.34);
   color: #ffb7b7;
+}
+
+.rescue-package-panel {
+  border-color: rgba(255, 182, 107, 0.26);
+  background:
+    linear-gradient(135deg, rgba(255, 182, 107, 0.1), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.rescue-package-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rescue-package-file {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.rescue-package-file span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.rescue-package-file strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.rescue-package-file button {
+  justify-self: start;
 }
 
 .cloud-sync-panel {
@@ -1759,6 +1801,7 @@ td {
   .cloud-sync-controls,
   .cloud-sync-role-row,
   .cloud-sync-selected-file,
+  .rescue-package-grid,
   .proxy-program-layout.pane-count-2,
   .proxy-program-layout.both-clip,
   .current-segment-grid,

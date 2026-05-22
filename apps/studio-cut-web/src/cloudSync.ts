@@ -73,7 +73,11 @@ export function buildCloudSyncOutputStoragePath({
   fileName,
 }: {
   syncJobId: string;
-  fileName: "source-monitor-proxy.mp4" | "episode-manifest.json" | "sync-report.json";
+  fileName:
+    | "source-monitor-proxy.mp4"
+    | "episode-manifest.json"
+    | "sync-report.json"
+    | "sync-map.json";
 }) {
   return `studioCutSyncJobs/${sanitizeCloudSyncId(
     syncJobId,
@@ -118,6 +122,10 @@ export function createCloudSyncJob({
       syncReportStoragePath: buildCloudSyncOutputStoragePath({
         syncJobId,
         fileName: "sync-report.json",
+      }),
+      syncMapStoragePath: buildCloudSyncOutputStoragePath({
+        syncJobId,
+        fileName: "sync-map.json",
       }),
       sharedRoomUrl: buildSharedRoomUrl("https://high-ground-odyssey.web.app/", {
         projectId: roomSelection.projectId,

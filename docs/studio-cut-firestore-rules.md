@@ -52,6 +52,14 @@ studioCutProjects/{projectId}/branches/{branchId}/presence/{sessionId}
 - `sourceMonitorProxyFileName`
 - `sourceMonitorProxyContentType`
 - `sourceMonitorProxySizeBytes`
+- optional `packageKind`, currently `prepared_proxy` or
+  `rescue_sync_generated`
+- optional `syncJobId`
+- optional `manifestStoragePath`
+- optional `syncMapStoragePath`
+- optional `syncReportStoragePath`
+- optional `generatedByWorkerVersion`
+- optional `packageCreatedAt`
 - `createdBy`
 - `createdAt`
 - `updatedAt`
@@ -60,6 +68,11 @@ studioCutProjects/{projectId}/branches/{branchId}/presence/{sessionId}
 The manifest may include source labels and pane rectangles. It must not include
 local filesystem paths, object URLs, full-resolution media paths, credentials,
 or generated render paths.
+
+Generated Rescue Sync packages keep the browser proxy under the shared room
+source-monitor path and store generated JSON artifacts under
+`studioCutSyncJobs/{syncJobId}/outputs/{fileName}`. Room metadata points to
+those Storage paths and should never include local original paths.
 
 `decisionEvents` contain semantic edit events over source time. The first
 multiplayer version uses append/upsert and tombstone updates:

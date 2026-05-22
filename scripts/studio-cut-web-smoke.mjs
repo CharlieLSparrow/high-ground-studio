@@ -385,11 +385,13 @@ async function runBrowserSmoke() {
     ).toBeVisible();
 
     const sharedRoomSection = page.getByLabel("Shared episode room");
+    const rescuePackageSection = page.getByLabel("Publish Rescue Sync Package");
     const collaborationSection = page.getByLabel("Collaboration mode");
     const cloudSyncSection = page.getByLabel("Cloud Sync Intake");
 
     await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Episode Room" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Publish Rescue Sync Package" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Cloud Sync Intake" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Room Diagnostics" })).toBeVisible();
     await expect(cloudSyncSection).toContainText("Homer video");
@@ -407,7 +409,17 @@ async function runBrowserSmoke() {
     ).toBeDisabled();
     await expect(cloudSyncSection.getByRole("button", { name: "Queue Sync Job" })).toBeDisabled();
     await expect(sharedRoomSection.getByText(/shared rooms are disabled in local-only mode/i)).toBeVisible();
+    await expect(rescuePackageSection).toContainText("Manifest");
+    await expect(rescuePackageSection).toContainText("Source-monitor proxy");
+    await expect(rescuePackageSection).toContainText("Sync Map");
+    await expect(rescuePackageSection).toContainText("Sync report");
+    await expect(
+      rescuePackageSection.getByRole("button", { name: "Publish Generated Package" }),
+    ).toBeDisabled();
+    await expect(rescuePackageSection).toContainText(/local-only mode/i);
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Room metadata");
+    await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync Map");
+    await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync report");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Local only");
     await expect(sharedRoomSection.getByRole("button", { name: "Create Shared Room" })).toBeDisabled();
     await expect(sharedRoomSection.getByRole("button", { name: "Copy Room Link" })).toBeDisabled();

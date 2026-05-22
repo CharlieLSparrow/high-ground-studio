@@ -22,8 +22,9 @@ The proxy-first intended flow is:
    - `studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json`
    - `studioCutSyncJobs/{syncJobId}/outputs/sync-report.json`
    - `studioCutSyncJobs/{syncJobId}/outputs/sync-map.json`
-7. The worker writes shared room metadata so Mako can open the room link and
-   edit without local media or JSON import/export.
+7. Charlie publishes those generated files from Studio Cut web with
+   `Publish Rescue Sync Package`, which writes shared room metadata so Mako can
+   open the room link and edit without local media or JSON import/export.
 
 Sync Maps and semantic decisions are durable. Proxies and extracted audio are
 derivable implementation artifacts. Final local render will use the Sync Map to
@@ -130,6 +131,27 @@ temporary local paths leak into Sync Map JSON, generates a 640x360 2x2
 source-monitor proxy, validates the generated manifest pane rectangles, and
 removes the temporary files unless
 `STUDIO_CUT_CLOUD_SYNC_SMOKE_KEEP_WORKDIR=1` is set.
+
+## Publish The Generated Package
+
+After a real local worker run, Charlie publishes the generated package from the
+Studio Cut web app:
+
+1. Open `https://high-ground-odyssey.web.app` and sign in.
+2. Switch Collaboration Mode to the generated manifest `projectId` and intended
+   branch.
+3. In `Publish Rescue Sync Package`, select:
+   - the generated Episode Manifest JSON
+   - the generated source-monitor proxy MP4
+   - the generated Sync Map JSON
+   - the generated sync report JSON if available
+4. Click `Publish Generated Package`.
+5. Send the room link to Mako.
+
+The web app uploads only derived artifacts. It stores the proxy in the shared
+room proxy path and the manifest/Sync Map/report under
+`studioCutSyncJobs/{syncJobId}/outputs/{fileName}`. It does not upload original
+full-resolution assets or local filesystem paths.
 
 Keep real episode assets, generated proxies, private paths, and credentials out
 of git.

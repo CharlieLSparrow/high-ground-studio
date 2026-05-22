@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildGeneratedPackageStoragePath,
   buildSharedRoomMetadataPath,
   buildSharedRoomUrl,
   buildSourceMonitorProxyStoragePath,
   isSharedRoomMetadata,
+  isSafeSharedRoomStoragePath,
   parseSharedRoomQuery,
   sanitizeSharedRoomPart,
   sanitizeStorageFileName,
+  validateGeneratedPackageCompatibility,
 } from "../apps/studio-cut-web/src/sharedRoom.ts";
 
 const manifest = {
@@ -32,6 +35,76 @@ const manifest = {
   syncBootstrap: {
     source: "premiere",
   },
+};
+
+const referenceRail = {
+  syncJobId: "episode-004-rescue-sync",
+  referenceRole: "phoneReferenceAudio",
+  segments: [
+    {
+      inputId: "phone-reference-01",
+      fileName: "phone-reference-01.m4a",
+      railStartMs: 0,
+      sourceStartMs: 0,
+      durationMs: 600000,
+      confidence: 0.9,
+      warnings: [],
+    },
+  ],
+  totalDurationMs: 600000,
+  warnings: [],
+};
+
+const syncMap = {
+  syncMapId: "episode-004-sync-map",
+  syncJobId: "episode-004-rescue-sync",
+  projectId: "episode-004",
+  branchId: "main",
+  createdAt: "2026-05-22T12:00:00.000Z",
+  updatedAt: "2026-05-22T12:01:00.000Z",
+  canonicalTimeline: {
+    durationMs: 600000,
+    timebase: "milliseconds",
+    referenceRole: "phoneReferenceAudio",
+  },
+  assets: [
+    {
+      assetId: "homer-video-asset",
+      inputId: "homer-video",
+      role: "homerVideo",
+      fileName: "homer-video.mp4",
+      originalStoragePath:
+        "studioCutSyncJobs/episode-004-rescue-sync/uploads/homerVideo/homer-video.mp4",
+      proxyStoragePath:
+        "studioCutSyncJobs/episode-004-rescue-sync/outputs/homer-video-proxy.mp4",
+      timelineStartMs: 0,
+      assetStartMs: 0,
+      durationMs: 600000,
+      estimatedOffsetMs: 0,
+      confidence: 0.82,
+      warnings: [],
+    },
+  ],
+  referenceRail,
+  globalWarnings: [],
+};
+
+const syncReport = {
+  syncJobId: "episode-004-rescue-sync",
+  generatedAt: "2026-05-22T12:01:00.000Z",
+  status: "ready",
+  referenceRail,
+  trackOffsets: [
+    {
+      role: "homerVideo",
+      inputId: "homer-video",
+      fileName: "homer-video.mp4",
+      estimatedOffsetMs: 0,
+      confidence: 0.82,
+      warnings: [],
+    },
+  ],
+  globalWarnings: [],
 };
 
 test("shared room query parsing sanitizes project and branch IDs", () => {
@@ -76,6 +149,21 @@ test("shared room paths are stable and do not include raw file path separators",
     }),
     "studioCutProjects/episode-004/branches/main/source-monitor-proxy/episode-004-source-monitor.mp4",
   );
+  assert.equal(
+    buildGeneratedPackageStoragePath({
+      syncJobId: "Episode 004 Rescue Sync",
+      fileName: "../Sync Map.JSON",
+    }),
+    "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-map.json",
+  );
+  assert.equal(
+    isSafeSharedRoomStoragePath(
+      "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-map.json",
+    ),
+    true,
+  );
+  assert.equal(isSafeSharedRoomStoragePath("/tmp/sync-map.json"), false);
+  assert.equal(isSafeSharedRoomStoragePath("file:///tmp/sync-map.json"), false);
 });
 
 test("shared room URL builder preserves origin and replaces room query params", () => {
@@ -99,6 +187,16 @@ test("shared room metadata validates manifest and proxy storage fields", () => {
     sourceMonitorProxyFileName: "source-monitor.mp4",
     sourceMonitorProxyContentType: "video/mp4",
     sourceMonitorProxySizeBytes: 1024,
+    packageKind: "rescue_sync_generated",
+    syncJobId: "episode-004-rescue-sync",
+    manifestStoragePath:
+      "studioCutSyncJobs/episode-004-rescue-sync/outputs/episode-manifest.json",
+    syncMapStoragePath:
+      "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-map.json",
+    syncReportStoragePath:
+      "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-report.json",
+    generatedByWorkerVersion: "studio-cut-cloud-sync-worker-v0",
+    packageCreatedAt: "2026-05-22T12:01:00.000Z",
     createdBy: "charlie@highgroundodyssey.com",
     createdAt: "2026-05-22T12:00:00.000Z",
     updatedAt: "2026-05-22T12:01:00.000Z",
@@ -117,6 +215,70 @@ test("shared room metadata validates manifest and proxy storage fields", () => {
       ...metadata,
       manifest: { ...manifest, durationMs: 0 },
     }),
+    false,
+  );
+  assert.equal(
+    isSharedRoomMetadata({
+      ...metadata,
+      syncMapStoragePath: "/Users/charlie/sync-map.json",
+    }),
+    false,
+  );
+  assert.equal(
+    isSharedRoomMetadata({
+      ...metadata,
+      packageKind: "raw_original_upload",
+    }),
+    false,
+  );
+});
+
+test("generated Rescue Sync package compatibility validates durable metadata", () => {
+  assert.deepEqual(
+    validateGeneratedPackageCompatibility({
+      manifest,
+      syncMap,
+      syncReport,
+    }),
+    { ok: true, errors: [] },
+  );
+
+  assert.equal(
+    validateGeneratedPackageCompatibility({
+      manifest: { ...manifest, durationMs: 602500 },
+      syncMap,
+      syncReport,
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateGeneratedPackageCompatibility({
+      manifest: { ...manifest, id: "episode-005" },
+      syncMap,
+      syncReport,
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateGeneratedPackageCompatibility({
+      manifest,
+      syncMap,
+      syncReport: { ...syncReport, syncJobId: "other-job" },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateGeneratedPackageCompatibility({
+      manifest: {
+        ...manifest,
+        sourceMonitorProxy: {
+          ...manifest.sourceMonitorProxy,
+          localPlaceholderPath: "/Users/charlie/episode-004/source-monitor.mp4",
+        },
+      },
+      syncMap,
+      syncReport,
+    }).ok,
     false,
   );
 });

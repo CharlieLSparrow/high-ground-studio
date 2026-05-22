@@ -187,6 +187,15 @@ Firebase Storage and writes room metadata to Firestore. It does not upload
 full-resolution Canon/Insta360/DJI/Shure media, local filesystem paths, object
 URLs, or generated renders.
 
+The primary Rescue Sync handoff uses `Publish Rescue Sync Package` instead of
+manual import/export. Charlie selects the locally generated Episode Manifest,
+2x2 source-monitor proxy, Sync Map, and optional sync report. Studio Cut uploads
+only those generated artifacts, writes shared room metadata, and creates a room
+link. The proxy is stored under the shared room source-monitor path; the
+manifest, Sync Map, and sync report are stored under
+`studioCutSyncJobs/{syncJobId}/outputs/{fileName}`. Original full-resolution
+assets are not uploaded by this publish flow.
+
 The source-time slider seeks the local proxy video. Program Playback uses the
 same video but keeps the semantic preview behavior: when playback reaches a
 `Cut` span, it seeks the video to the next non-`Cut` segment start. Manual
@@ -898,6 +907,9 @@ Generated proxy package behavior:
   bottom-left, Program placeholder bottom-right
 - a draft Episode Manifest whose pane rectangles match that layout
 - no local original media paths in the Sync Map or Manifest
+- web publishing support through `Publish Rescue Sync Package`, which uploads
+  the generated proxy, manifest, Sync Map, and optional sync report into a
+  shared room for approved editors
 
 Run the synthetic local worker canary:
 
@@ -906,9 +918,10 @@ pnpm studio-cut:cloud-sync-smoke
 ```
 
 The actual Cloud Run sync worker remains scaffold only. FFT/refined drift
-analysis, production-grade labels/proxy quality, and room metadata writes are
-not implemented yet. Sync Map, proxy package, and manifest generation are
-local-worker outputs now. The worker contract is documented at:
+analysis and production-grade labels/proxy quality are not implemented yet. Sync
+Map, proxy package, and manifest generation are local-worker outputs now; the
+web editor can publish those outputs into shared room metadata. The worker
+contract is documented at:
 
 ```text
 docs/studio-cut-cloud-sync.md

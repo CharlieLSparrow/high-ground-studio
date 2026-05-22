@@ -130,8 +130,24 @@ episode timeline time for Studio Cut architecture.
 
 The proxy package flags now generate aligned low-res proxies, a 2x2
 source-monitor proxy, and a draft manifest for browser editing. These are
-derived artifacts. Shared-room metadata writing from the worker is still future
-work.
+derived artifacts. The worker still does not write shared-room metadata itself,
+but the Studio Cut web app now has `Publish Rescue Sync Package` to publish the
+generated proxy, manifest, Sync Map, and optional sync report into a shared
+room.
+
+To publish the generated package:
+
+1. Open `https://high-ground-odyssey.web.app` and sign in.
+2. Switch Collaboration Mode to the generated manifest `projectId` and target
+   branch.
+3. Use `Publish Rescue Sync Package`.
+4. Select the generated manifest JSON, source-monitor proxy MP4, Sync Map JSON,
+   and optional sync report JSON.
+5. Click `Publish Generated Package`.
+6. Send the room link to Mako.
+
+Mako opens the room link and edits live. Mako does not import JSON, load local
+media, or touch sync files in the primary path.
 
 Create bootstrap files after calculating the real duration in milliseconds:
 
@@ -252,5 +268,5 @@ Use the exact commit SHAs from the final Codex report for this sprint.
 Add aligned sync output generation:
 
 - refine correlation with FFT/chunked analysis and better drift estimation
-- generate a source-monitor proxy from aligned low-res intermediates
-- write manifest/proxy/report outputs and shared-room metadata
+- generate production-grade labels/proxy quality
+- render original assets from Sync Map + semantic decisions
