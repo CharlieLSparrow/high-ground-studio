@@ -93,11 +93,27 @@ local proxy are loaded:
 | `Space` | Play / Pause |
 | `Left` / `Right` | Scrub source time by 1 second |
 | `Shift+Left` / `Shift+Right` | Scrub source time by 10 seconds |
+| `Cmd/Ctrl+Z` | Undo last local decision edit |
+| `Cmd/Ctrl+Shift+Z` | Redo last undone local decision edit |
+| `Cmd/Ctrl+Y` | Redo last undone local decision edit |
+| `Backspace` / `Delete` | Remove the active decision, or latest decision if no active event applies |
 
 Shortcuts are ignored while typing in inputs or notes. The Current Segment panel
 shows the state that applies at the current source time, its in/out range, and
 whether Program Playback will include or skip that span. Decision export uses
 the manifest id when present, for example `episode-004-decisions.json`.
+
+Decision edits are reversible in the browser. Undo/redo covers adding,
+removing, clearing, and importing decisions. The undo stack is bounded and
+stored in localStorage with the current browser working set so a refresh does
+not immediately erase local edit history. This is still a local safety layer,
+not collaborative branching or a Firestore rollback system.
+
+`Export Checkpoint` writes the same decision-layer JSON payload as normal export
+with a timestamped filename such as
+`episode-004-checkpoint-2026-05-21-1730.json`. Checkpoints contain semantic
+decision events only; they do not include media, proxy files, object URLs, or
+source paths.
 
 ## Episode Manifest
 
@@ -656,6 +672,10 @@ Export shape:
 Import accepts either that object shape or a raw `DecisionEvent[]`. Events are
 validated against the shared schema. Valid imported events are normalized onto
 the active project and branch so the current Firestore path stays coherent.
+
+`Export Checkpoint` uses this same payload shape with a checkpoint filename.
+Use it before risky tagging passes or before clearing/importing a different
+decision set. Checkpoint files are lightweight decision snapshots only.
 
 ## Cloud Shape
 

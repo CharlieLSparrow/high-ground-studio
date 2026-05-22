@@ -10,9 +10,12 @@ import {
 import {
   deriveSegments,
   getCurrentDecisionEvent,
+  isDecisionEvent,
+  mergeDecisionEvents,
   PROGRAM_STATE_LABELS,
   PROGRAM_STATES,
   parseEpisodeManifestPayload,
+  parseDecisionEventsPayload,
   sortDecisionEvents,
   SOURCE_ROLE_LABELS,
   type DecisionEvent,
@@ -31,12 +34,15 @@ import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 const DEFAULT_SOURCE_DURATION_MS = 60 * 60 * 1000;
 const EPISODE_MANIFEST_STORAGE_KEY =
   "high-ground-studio.studio-cut.episode-manifest.v1";
+const DECISION_HISTORY_STORAGE_KEY =
+  "high-ground-studio.studio-cut.decision-history.v1";
 const LOCAL_PROXY_VIDEO_ACCEPT =
   "video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
 const PLAYBACK_TICK_MS = 250;
 const VIDEO_SEEK_DRIFT_TOLERANCE_MS = 350;
 const SMALL_SCRUB_STEP_MS = 1000;
 const LARGE_SCRUB_STEP_MS = 10000;
+const MAX_DECISION_HISTORY_ENTRIES = 40;
 
 const STATE_KEYBOARD_SHORTCUTS: Record<string, ProgramState> = {
   "1": "charlie",
@@ -59,6 +65,9 @@ const KEYBOARD_SHORTCUT_LEGEND = [
   { key: "Space", label: "Play/Pause" },
   { key: "Left/Right", label: "Scrub 1s" },
   { key: "Shift+Left/Right", label: "Scrub 10s" },
+  { key: "Cmd/Ctrl+Z", label: "Undo" },
+  { key: "Cmd/Ctrl+Shift+Z", label: "Redo" },
+  { key: "Delete", label: "Remove active/latest" },
 ];
 
 type LocalProxyVideo = {
@@ -77,6 +86,20 @@ type SourcePaneRect = {
 };
 
 type ProxyPreviewRole = Exclude<SourceRole, "program">;
+
+type DecisionHistoryEntry = {
+  id: string;
+  label: string;
+  before: DecisionEvent[];
+  after: DecisionEvent[];
+  createdAt: string;
+};
+
+type DecisionHistoryState = {
+  undoStack: DecisionHistoryEntry[];
+  redoStack: DecisionHistoryEntry[];
+  lastAction: string;
+};
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
@@ -138,6 +161,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   );
   const [localProxyVideo, setLocalProxyVideo] =
     useState<LocalProxyVideo | null>(null);
+  const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryState>(
+    loadStoredDecisionHistory,
+  );
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -151,6 +177,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     createDecision,
     removeDecision,
     clearDecisions,
+    replaceDecisionEvents,
     importDecisionEvents,
     exportDecisionEvents,
   } = useDecisionPersistence(createdBy);
@@ -177,6 +204,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   );
   const latestEventId = sortedEvents[sortedEvents.length - 1]?.id;
   const currentState = currentEvent?.state;
+  const canUndoDecisionChange = decisionHistory.undoStack.length > 0;
+  const canRedoDecisionChange = decisionHistory.redoStack.length > 0;
   const playbackModeLabel = isProgramPlaying
     ? "Program Playback"
     : "Source Scrub";
@@ -187,6 +216,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
   }, [episodeManifest]);
+
+  useEffect(() => {
+    saveStoredDecisionHistory(decisionHistory);
+  }, [decisionHistory]);
 
   useEffect(() => {
     return () => {
@@ -267,6 +300,30 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+
+        if (event.shiftKey) {
+          redoDecisionChange();
+        } else {
+          undoDecisionChange();
+        }
+
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoDecisionChange();
+        return;
+      }
+
+      if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        removeCurrentOrLatestDecision();
+        return;
+      }
+
       const shortcutState = STATE_KEYBOARD_SHORTCUTS[event.key.toLowerCase()];
 
       if (shortcutState) {
@@ -275,7 +332,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         return;
       }
 
-      if (event.key === " " || event.code === "Space") {
+      if (
+        !isButtonTarget(event.target) &&
+        (event.key === " " || event.code === "Space")
+      ) {
         event.preventDefault();
         toggleProgramPlayback();
         return;
@@ -326,30 +386,151 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     playProxyVideo();
   }
 
+  function recordDecisionMutation(
+    label: string,
+    beforeEvents: readonly DecisionEvent[],
+    afterEvents: readonly DecisionEvent[],
+  ) {
+    const before = cloneDecisionEvents(beforeEvents);
+    const after = cloneDecisionEvents(afterEvents);
+
+    if (areDecisionEventListsEqual(before, after)) {
+      return;
+    }
+
+    setDecisionHistory((currentHistory) => ({
+      undoStack: trimDecisionHistoryStack([
+        ...currentHistory.undoStack,
+        {
+          id: createHistoryEntryId(),
+          label,
+          before,
+          after,
+          createdAt: new Date().toISOString(),
+        },
+      ]),
+      redoStack: [],
+      lastAction: label,
+    }));
+  }
+
   function addDecision(state: ProgramState) {
     stopProgramPlayback();
-    createDecision(state, sourceTimeMs, note);
+    const event = createDecision(state, sourceTimeMs, note);
+    const nextEvents = mergeDecisionEvents([...decisionEvents, event]);
+    recordDecisionMutation(
+      `Added ${PROGRAM_STATE_LABELS[state]} at ${formatSourceTime(sourceTimeMs)}`,
+      decisionEvents,
+      nextEvents,
+    );
     setNote("");
+  }
+
+  function removeDecisionWithHistory(eventId: string) {
+    const eventToRemove = decisionEvents.find((event) => event.id === eventId);
+
+    if (!eventToRemove) {
+      return;
+    }
+
+    const nextEvents = decisionEvents.filter((event) => event.id !== eventId);
+
+    stopProgramPlayback();
+    recordDecisionMutation(
+      `Removed ${PROGRAM_STATE_LABELS[eventToRemove.state]} at ${formatSourceTime(
+        eventToRemove.sourceTimeMs,
+      )}`,
+      decisionEvents,
+      nextEvents,
+    );
+    removeDecision(eventId);
+  }
+
+  function removeCurrentOrLatestDecision() {
+    const eventToRemove = currentEvent ?? sortedEvents[sortedEvents.length - 1];
+
+    if (eventToRemove) {
+      removeDecisionWithHistory(eventToRemove.id);
+    }
   }
 
   function clearLocalDecisions() {
     if (window.confirm("Clear this browser's Studio Cut decision events?")) {
       stopProgramPlayback();
+      recordDecisionMutation(
+        `Cleared ${decisionEvents.length} decision${
+          decisionEvents.length === 1 ? "" : "s"
+        }`,
+        decisionEvents,
+        [],
+      );
       clearDecisions();
     }
   }
 
-  function handleExportJson() {
-    const payload = exportDecisionEvents();
+  function undoDecisionChange() {
+    const entry = decisionHistory.undoStack[decisionHistory.undoStack.length - 1];
+
+    if (!entry) {
+      return;
+    }
+
+    stopProgramPlayback();
+    replaceDecisionEvents(entry.before);
+    setDecisionHistory((currentHistory) => ({
+      undoStack: currentHistory.undoStack.slice(0, -1),
+      redoStack: trimDecisionHistoryStack([...currentHistory.redoStack, entry]),
+      lastAction: `Undid ${entry.label}`,
+    }));
+  }
+
+  function redoDecisionChange() {
+    const entry = decisionHistory.redoStack[decisionHistory.redoStack.length - 1];
+
+    if (!entry) {
+      return;
+    }
+
+    stopProgramPlayback();
+    replaceDecisionEvents(entry.after);
+    setDecisionHistory((currentHistory) => ({
+      undoStack: trimDecisionHistoryStack([...currentHistory.undoStack, entry]),
+      redoStack: currentHistory.redoStack.slice(0, -1),
+      lastAction: `Redid ${entry.label}`,
+    }));
+  }
+
+  function downloadDecisionPayload(
+    payload: ReturnType<typeof exportDecisionEvents>,
+    fileName: string,
+  ) {
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = getDecisionExportFileName(episodeManifest, payload);
+    anchor.download = fileName;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  function handleExportJson() {
+    const payload = exportDecisionEvents();
+    downloadDecisionPayload(payload, getDecisionExportFileName(episodeManifest, payload));
+  }
+
+  function handleExportCheckpoint() {
+    const payload = exportDecisionEvents();
+    const checkpointTimestamp = formatCheckpointTimestamp(new Date());
+    downloadDecisionPayload(
+      payload,
+      getDecisionCheckpointFileName(episodeManifest, payload, checkpointTimestamp),
+    );
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Exported checkpoint ${checkpointTimestamp}`,
+    }));
   }
 
   async function handleImportJson(event: ChangeEvent<HTMLInputElement>) {
@@ -361,8 +542,25 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
 
     try {
       const payload = JSON.parse(await file.text()) as unknown;
+      const parsedImport = parseDecisionEventsPayload(payload);
+      const normalizedImportedEvents = parsedImport.events.map((importedEvent) => ({
+        ...importedEvent,
+        projectId: config.projectId,
+        branchId: config.branchId,
+      }));
+      const nextEvents = mergeDecisionEvents([
+        ...decisionEvents,
+        ...normalizedImportedEvents,
+      ]);
       const result = importDecisionEvents(payload);
       stopProgramPlayback();
+      recordDecisionMutation(
+        `Imported ${normalizedImportedEvents.length} decision${
+          normalizedImportedEvents.length === 1 ? "" : "s"
+        }`,
+        decisionEvents,
+        nextEvents,
+      );
       const normalizedCopy =
         result.normalizedCount > 0
           ? ` ${result.normalizedCount} event${
@@ -695,8 +893,27 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
                 Jump preserves source time; Remove Local only changes this
                 browser/branch working set.
               </p>
+              <p className="last-action">
+                Last action: {decisionHistory.lastAction || "None yet"}
+              </p>
             </div>
             <div className="toolbar-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={undoDecisionChange}
+                disabled={!canUndoDecisionChange}
+              >
+                Undo
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={redoDecisionChange}
+                disabled={!canRedoDecisionChange}
+              >
+                Redo
+              </button>
               <button
                 className="secondary-button"
                 type="button"
@@ -710,6 +927,13 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
                 onClick={handleExportJson}
               >
                 Export Decisions
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={handleExportCheckpoint}
+              >
+                Export Checkpoint
               </button>
               <button
                 className="secondary-button"
@@ -736,8 +960,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             latestEventId={latestEventId}
             onJump={scrubToSourceTime}
             onRemove={(eventId) => {
-              stopProgramPlayback();
-              removeDecision(eventId);
+              removeDecisionWithHistory(eventId);
             }}
           />
         </div>
@@ -1595,6 +1818,111 @@ function saveStoredEpisodeManifest(manifest: EpisodeManifest | null) {
   }
 }
 
+function loadStoredDecisionHistory(): DecisionHistoryState {
+  try {
+    const rawValue = localStorage.getItem(DECISION_HISTORY_STORAGE_KEY);
+
+    if (!rawValue) {
+      return createEmptyDecisionHistory();
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+
+    if (!isStoredDecisionHistory(parsedValue)) {
+      return createEmptyDecisionHistory();
+    }
+
+    return {
+      undoStack: trimDecisionHistoryStack(parsedValue.undoStack),
+      redoStack: trimDecisionHistoryStack(parsedValue.redoStack),
+      lastAction: parsedValue.lastAction,
+    };
+  } catch {
+    return createEmptyDecisionHistory();
+  }
+}
+
+function saveStoredDecisionHistory(history: DecisionHistoryState) {
+  try {
+    localStorage.setItem(
+      DECISION_HISTORY_STORAGE_KEY,
+      JSON.stringify({
+        undoStack: trimDecisionHistoryStack(history.undoStack),
+        redoStack: trimDecisionHistoryStack(history.redoStack),
+        lastAction: history.lastAction,
+      }),
+    );
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
+function createEmptyDecisionHistory(): DecisionHistoryState {
+  return {
+    undoStack: [],
+    redoStack: [],
+    lastAction: "",
+  };
+}
+
+function isStoredDecisionHistory(value: unknown): value is DecisionHistoryState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as DecisionHistoryState;
+
+  return (
+    Array.isArray(candidate.undoStack) &&
+    Array.isArray(candidate.redoStack) &&
+    candidate.undoStack.every(isDecisionHistoryEntry) &&
+    candidate.redoStack.every(isDecisionHistoryEntry) &&
+    typeof candidate.lastAction === "string"
+  );
+}
+
+function isDecisionHistoryEntry(value: unknown): value is DecisionHistoryEntry {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as DecisionHistoryEntry;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.label === "string" &&
+    typeof candidate.createdAt === "string" &&
+    Array.isArray(candidate.before) &&
+    Array.isArray(candidate.after) &&
+    candidate.before.every(isDecisionEvent) &&
+    candidate.after.every(isDecisionEvent)
+  );
+}
+
+function trimDecisionHistoryStack(entries: readonly DecisionHistoryEntry[]) {
+  return entries.slice(-MAX_DECISION_HISTORY_ENTRIES);
+}
+
+function cloneDecisionEvents(events: readonly DecisionEvent[]) {
+  return sortDecisionEvents(events).map((event) => ({ ...event }));
+}
+
+function areDecisionEventListsEqual(
+  firstEvents: readonly DecisionEvent[],
+  secondEvents: readonly DecisionEvent[],
+) {
+  return JSON.stringify(cloneDecisionEvents(firstEvents)) ===
+    JSON.stringify(cloneDecisionEvents(secondEvents));
+}
+
+function createHistoryEntryId() {
+  if ("randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `history-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function shouldIgnoreKeyboardShortcut(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1606,9 +1934,12 @@ function shouldIgnoreKeyboardShortcut(target: EventTarget | null) {
     target.isContentEditable ||
     tagName === "input" ||
     tagName === "textarea" ||
-    tagName === "select" ||
-    tagName === "button"
+    tagName === "select"
   );
+}
+
+function isButtonTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement && target.tagName.toLowerCase() === "button";
 }
 
 function isSupportedLocalProxyVideo(file: File) {
@@ -1737,6 +2068,28 @@ function getDecisionExportFileName(
     : `studio-cut-${payload.projectId}-${payload.branchId}`;
 
   return `${sanitizeFileNamePart(baseName)}.json`;
+}
+
+function getDecisionCheckpointFileName(
+  manifest: EpisodeManifest | null,
+  payload: { projectId: string; branchId: string },
+  checkpointTimestamp: string,
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-checkpoint`
+    : `studio-cut-${payload.projectId}-${payload.branchId}-checkpoint`;
+
+  return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
+}
+
+function formatCheckpointTimestamp(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}-${hours}${minutes}`;
 }
 
 function sanitizeFileNamePart(value: string) {

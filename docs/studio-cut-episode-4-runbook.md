@@ -144,8 +144,9 @@ Steps:
    local source-monitor proxy into the current semantic layout.
 7. Use Program Playback to simulate output playback with `Cut` spans skipped.
 8. Tag semantic state decisions.
-9. Export decision JSON.
-10. Save or move the downloaded decision file to:
+9. Use `Export Checkpoint` before any risky cleanup/import pass.
+10. Export final decision JSON.
+11. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
@@ -167,11 +168,29 @@ X Cut
 Space Play/Pause
 Left/Right scrub 1s
 Shift+Left/Shift+Right scrub 10s
+Cmd/Ctrl+Z undo
+Cmd/Ctrl+Shift+Z redo
+Cmd/Ctrl+Y redo
+Backspace/Delete remove active or latest decision
 ```
 
 The Current Segment panel should match what Charlie expects before each tag.
 When the imported manifest id is `episode-004`, the export download name should
 default to `episode-004-decisions.json`.
+
+Undo/redo covers local decision edits: add, remove, clear, and import. The
+history stack is browser-local and bounded. It is meant to make a fast tagging
+pass less fragile, not to replace exported checkpoints.
+
+Checkpoint exports are decision-layer snapshots only. With manifest id
+`episode-004`, checkpoint filenames look like:
+
+```text
+episode-004-checkpoint-2026-05-21-1730.json
+```
+
+They do not include media, proxy files, object URLs, credentials, or full source
+paths.
 
 Browser proxy layouts:
 

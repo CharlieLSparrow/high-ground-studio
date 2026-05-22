@@ -41,6 +41,7 @@ const stateButtonLabels = [
   "Both/Clip",
   "Cut",
 ];
+const shortcutModifier = process.platform === "darwin" ? "Meta" : "Control";
 
 function startDevServer(devServerLog) {
   const child = spawn(
@@ -383,6 +384,7 @@ async function runBrowserSmoke() {
 
     await expect(page.locator(".shortcut-legend")).toContainText("Play/Pause");
     await expect(page.getByRole("button", { name: "Export Decisions" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export Checkpoint" })).toBeVisible();
     await page
       .getByLabel("Import episode manifest JSON")
       .setInputFiles(smokeFiles.manifestPath);
@@ -422,6 +424,13 @@ async function runBrowserSmoke() {
     ).toBeVisible();
     await expect(page.locator(".program-monitor .proxy-crop-homer")).toBeVisible();
     await expect(page.locator(".program-monitor .proxy-crop-charlie")).toBeVisible();
+    await page.keyboard.press(`${shortcutModifier}+Z`);
+    await expectSectionText(decisionSection, "0 events");
+    await expectSectionText(decisionSection, "No local or imported decisions yet");
+    await page.keyboard.press(`${shortcutModifier}+Shift+Z`);
+    await expectSectionText(decisionSection, "1 event");
+    await expectSectionText(decisionSection, "Both");
+    await expectSectionText(currentSegmentSection, "Both");
 
     await secondsInput.fill("10");
     await stateButton(page, "Cut").click();

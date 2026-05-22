@@ -783,6 +783,13 @@ h2 {
   gap: 8px;
 }
 
+.last-action {
+  margin-top: 8px;
+  color: #f0c96a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+}
+
 .secondary-button {
   padding: 0 10px;
 }

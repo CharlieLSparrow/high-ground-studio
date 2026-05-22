@@ -122,6 +122,10 @@ export function useDecisionPersistence(createdByOverride?: string) {
     setDecisionEvents([]);
   }
 
+  function replaceDecisionEvents(events: readonly DecisionEvent[]) {
+    setDecisionEvents(sortDecisionEvents(events));
+  }
+
   function importDecisionEvents(payload: unknown): DecisionImportResult {
     const result = parseDecisionEventsPayload(payload);
     const normalizedEvents = result.events.map((event) =>
@@ -200,6 +204,7 @@ export function useDecisionPersistence(createdByOverride?: string) {
     createDecision,
     removeDecision,
     clearDecisions,
+    replaceDecisionEvents,
     importDecisionEvents,
     exportDecisionEvents,
   };
