@@ -74,6 +74,13 @@ High Ground Studio is a monorepo with:
   and machine-readable report output. It is API/helper-level for now because
   authenticated browser automation needs a safe test-auth or private storage
   state path.
+- The repo also has an operator-assisted browser smoke command,
+  `pnpm studio:hgo:browser-smoke`. It requires a private Playwright storage
+  state at `artifacts/auth/studio-storage-state.json`; if that file is missing,
+  it writes a machine-readable `blocked` report without opening a browser or
+  performing server writes. When valid auth state is supplied, it may create
+  synthetic-only Studio manuscript/snapshot records and then preview the HGO
+  projection import.
 
 ## Current Coaching Workflow
 
@@ -111,9 +118,10 @@ High Ground Studio is a monorepo with:
 - The Studio-to-HGO projection bridge is browser-only/manual. It does not create
   a DB projection table, live publish API, public deployment pipeline, autosave,
   collaboration layer, or server-side staged artifact store.
-- Agentic Studio/HGO browser smoke automation is not active yet. The current
-  harness does not automate Google OAuth, click through Studio, create server
-  snapshots, or capture screenshots/traces.
+- Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
+  committed auth state. Operators must create private storage state locally
+  before a full browser run. Missing auth state is a `blocked` result, not a
+  product failure.
 
 ## Current Stabilization Decisions
 

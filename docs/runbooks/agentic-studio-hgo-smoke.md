@@ -18,6 +18,21 @@ artifacts/agentic-smoke/studio-hgo-smoke-report.json
 
 The report is generated output and should not be committed.
 
+There is also an operator-assisted browser smoke:
+
+```bash
+pnpm studio:hgo:browser-smoke
+```
+
+It writes:
+
+```text
+artifacts/agentic-browser-smoke/studio-hgo-browser-smoke-report.json
+```
+
+If private Studio auth state is missing, the browser smoke writes a `blocked`
+report and exits without opening a browser or writing server data.
+
 ## What It Tests
 
 The current harness is a local API/helper-level smoke. It does not open a
@@ -38,7 +53,7 @@ It verifies:
 
 ## What It Cannot Test Yet
 
-The harness does not currently automate:
+The helper harness does not currently automate:
 
 - Google OAuth / NextAuth sign-in
 - authenticated Studio browser clicks
@@ -47,9 +62,10 @@ The harness does not currently automate:
 - downloaded files
 - visual screenshots or traces
 
-Do not add OAuth workarounds. A browser smoke should wait for either a deliberate
-local test-auth mode or a private operator-generated Playwright storage-state
-file that is never committed.
+The browser harness can automate the synthetic workflow only when an operator
+has supplied a private storage-state file. Do not add OAuth workarounds. Use
+`docs/runbooks/agentic-browser-auth-state.md` to create or refresh private auth
+state.
 
 ## Reading The Report
 
@@ -66,6 +82,14 @@ Important report fields:
 - `confirms.noAutosave`: should be `true`
 
 If `status` is `failed`, inspect `errors` and the failed step before rerunning.
+
+For browser smoke reports:
+
+- `blocked` means private auth state is missing and no browser/server write ran.
+- `passed` means the browser used supplied auth state and may have created
+  synthetic-only manuscript/snapshot records.
+- `failed` means the browser run started but an auth, selector, server, render,
+  or content-safety expectation failed.
 
 ## Manual Follow-Up
 

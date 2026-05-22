@@ -42,8 +42,18 @@ anyone uses real manuscript material.
 ## Auth Strategy
 
 There is no committed Playwright setup and no safe pre-authenticated Studio
-browser storage state in the repo. The first harness is therefore API/helper
-level and local-only.
+browser storage state in the repo. The always-available harness is therefore
+API/helper level and local-only.
+
+The operator-assisted browser harness uses Playwright only when a private
+storage-state file exists at:
+
+```text
+artifacts/auth/studio-storage-state.json
+```
+
+When that file is missing, `pnpm studio:hgo:browser-smoke` writes a `blocked`
+report and exits without opening a browser or performing server writes.
 
 Future browser runs should use one of these safe paths:
 
@@ -66,12 +76,23 @@ or canonical content records.
 Synthetic server payloads may be shaped locally for validation, but the default
 agentic harness performs no network calls and no server writes.
 
+The operator-assisted browser harness may create synthetic-only
+`StudioManuscript` and manual `StudioManuscriptSnapshot` records when valid
+auth state is supplied. The report must say that clearly. It must not use real
+manuscript text or real HGO content.
+
 ## Report Strategy
 
 The command writes:
 
 ```text
 artifacts/agentic-smoke/studio-hgo-smoke-report.json
+```
+
+The browser command writes:
+
+```text
+artifacts/agentic-browser-smoke/studio-hgo-browser-smoke-report.json
 ```
 
 The report includes:
@@ -90,6 +111,9 @@ The report includes:
   action, no autosave, and no Yjs/collaboration
 
 The report directory is generated output and is ignored by git.
+
+Browser failure screenshots, when available, live under `artifacts/playwright/`
+and are also ignored.
 
 ## Future Path
 

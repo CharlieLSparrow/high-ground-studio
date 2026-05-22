@@ -22,6 +22,8 @@
     "studio:cloudrun:test": "node --test scripts/studio-cloud-run-readiness.test.mjs",
     "studio:manuscript:test": "node --experimental-strip-types --test scripts/studio-manuscript-editor.test.mjs",
     "studio:hgo:agentic-smoke": "node --experimental-strip-types scripts/agentic-studio-hgo-smoke.test.mjs",
+    "studio:hgo:browser-smoke": "node scripts/agentic-studio-hgo-browser-smoke.mjs",
+    "studio:hgo:capture-auth-state": "node scripts/capture-studio-auth-state.mjs",
     "studio:structure:test": "node --experimental-strip-types --test scripts/studio-structure-mode.test.mjs",
     "studio:smoke:persistence": "node scripts/smoke-studio-persistence.mjs",
     "web": "pnpm --filter web dev",
@@ -38,6 +40,7 @@
     "react-datepicker": "^9.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "prisma": "^7.7.0"
   }
 }

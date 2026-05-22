@@ -16,7 +16,10 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 *.log
+artifacts/auth/
 artifacts/agentic-smoke/
+artifacts/agentic-browser-smoke/
+artifacts/playwright/
 
 # OS/editor
 .DS_Store
