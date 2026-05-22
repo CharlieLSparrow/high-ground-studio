@@ -380,6 +380,17 @@ Future agents should run this before and after local renderer changes. Use
 structured planning. The `--json` report includes `goldenAssertionsPassed`,
 `goldenAssertionCount`, and `goldenAssertionFailures`.
 
+For CI-friendly pre-deploy verification, use the one-command runner:
+
+```bash
+pnpm studio-cut:verify
+```
+
+It runs Python syntax compilation, `agent-smoke-test --json`, Studio Cut
+typecheck, and Studio Cut build in order. It fails fast on the first nonzero
+command and prints a short smoke-test summary including golden assertion status,
+assertion count, output duration, and output resolution when available.
+
 ## Local Commands
 
 Run from the repo root:
@@ -387,6 +398,7 @@ Run from the repo root:
 ```bash
 pnpm studio-cut
 pnpm studio-cut:agent-smoke
+pnpm studio-cut:verify
 pnpm studio-cut:typecheck
 pnpm studio-cut:build
 pnpm studio-cut:local:doctor

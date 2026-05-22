@@ -119,6 +119,15 @@ python tools/studio-cut-local/studio_cut_local.py agent-smoke-test \
   --workdir tools/studio-cut-local/output/agent-smoke
 ```
 
+Run the full CI-friendly Studio Cut verification command from the repo root:
+
+```bash
+pnpm studio-cut:verify
+```
+
+This command compiles the local Python CLI, runs `agent-smoke-test --json`,
+runs Studio Cut typecheck, and builds the Studio Cut web app.
+
 ## Render Profiles
 
 `plan-render` now attaches profile-aware layout intent to each active segment:
@@ -197,6 +206,13 @@ not available and you only need to validate structured file generation and
 planning. The JSON report includes `goldenAssertionsPassed`,
 `goldenAssertionCount`, and `goldenAssertionFailures` so future agents can fail
 fast on semantic drift.
+
+For renderer or editor changes, future agents should run the combined command
+before deploy:
+
+```bash
+pnpm studio-cut:verify
+```
 
 ## Inputs
 

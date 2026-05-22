@@ -16,6 +16,7 @@
     "studio-cut:build": "pnpm --filter @high-ground/studio-cut-schema build && pnpm --filter studio-cut-web build",
     "studio-cut:local:doctor": "python tools/studio-cut-local/studio_cut_local.py doctor",
     "studio-cut:typecheck": "pnpm --filter @high-ground/studio-cut-schema typecheck && pnpm --filter studio-cut-web typecheck",
+    "studio-cut:verify": "node scripts/verify-studio-cut.mjs",
     "studio:db:up": "docker compose -f compose.studio.yml up -d --wait studio-postgres",
     "studio:db:down": "docker compose -f compose.studio.yml down",
     "studio:db:reset": "docker compose -f compose.studio.yml down -v && docker compose -f compose.studio.yml up -d --wait studio-postgres",
