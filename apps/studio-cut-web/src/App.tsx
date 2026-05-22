@@ -24,11 +24,18 @@ import {
   type ProgramState,
   type SourceRole,
 } from "@high-ground/studio-cut-schema";
-import { useDecisionPersistence } from "./hooks/useDecisionPersistence";
+import {
+  useDecisionPersistence,
+  type StudioCutRoomSelection,
+} from "./hooks/useDecisionPersistence";
 import {
   useStudioCutAuth,
   type StudioCutAuthStatus,
 } from "./hooks/useStudioCutAuth";
+import type {
+  CollaboratorPresence,
+  PersistenceStatus,
+} from "./persistence/decisionPersistence";
 import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 
 const DEFAULT_SOURCE_DURATION_MS = 60 * 60 * 1000;
@@ -40,6 +47,8 @@ const DECISION_HISTORY_STORAGE_KEY =
   "high-ground-studio.studio-cut.decision-history.v1";
 const LOCAL_CHECKPOINTS_STORAGE_KEY =
   "high-ground-studio.studio-cut.local-checkpoints.v1";
+const SELECTED_ROOM_STORAGE_KEY =
+  "high-ground-studio.studio-cut.selected-room.v1";
 const LOCAL_PROXY_VIDEO_ACCEPT =
   "video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
 const PLAYBACK_TICK_MS = 250;
@@ -48,6 +57,8 @@ const SMALL_SCRUB_STEP_MS = 1000;
 const LARGE_SCRUB_STEP_MS = 10000;
 const MAX_DECISION_HISTORY_ENTRIES = 40;
 const MAX_LOCAL_CHECKPOINTS = 12;
+const PRESENCE_UPDATE_INTERVAL_MS = 5000;
+const STALE_PRESENCE_MS = 30000;
 
 const STATE_KEYBOARD_SHORTCUTS: Record<string, ProgramState> = {
   "1": "charlie",
@@ -171,6 +182,13 @@ export function App() {
 }
 
 function EditorWorkspace({ createdBy }: { createdBy?: string }) {
+  const runtimeConfig = useMemo(getStudioCutRuntimeConfig, []);
+  const sessionId = useMemo(createSessionId, []);
+  const [selectedRoom, setSelectedRoom] = useState<StudioCutRoomSelection>(() =>
+    loadStoredRoomSelection(runtimeConfig),
+  );
+  const [roomDraft, setRoomDraft] =
+    useState<StudioCutRoomSelection>(selectedRoom);
   const [sourceTimeMs, setSourceTimeMs] = useState(0);
   const [isProgramPlaying, setIsProgramPlaying] = useState(false);
   const [episodeManifest, setEpisodeManifest] = useState<EpisodeManifest | null>(
@@ -192,9 +210,15 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const manifestInputRef = useRef<HTMLInputElement>(null);
   const proxyVideoInputRef = useRef<HTMLInputElement>(null);
   const proxyVideoRef = useRef<HTMLVideoElement>(null);
+  const latestPresenceRef = useRef<{
+    currentSourceTimeMs: number;
+    currentState?: ProgramState;
+  }>({ currentSourceTimeMs: 0 });
   const {
     config,
+    roomSelection,
     decisionEvents,
+    collaborators,
     status,
     createDecision,
     removeDecision,
@@ -202,7 +226,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     replaceDecisionEvents,
     importDecisionEvents,
     exportDecisionEvents,
-  } = useDecisionPersistence(createdBy);
+    updatePresence,
+  } = useDecisionPersistence(createdBy, selectedRoom, sessionId);
 
   const sortedEvents = useMemo(
     () => sortDecisionEvents(decisionEvents),
@@ -253,6 +278,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
   }, [episodeManifest]);
+
+  useEffect(() => {
+    saveStoredRoomSelection(selectedRoom);
+  }, [selectedRoom]);
 
   useEffect(() => {
     saveStoredEpisodeManifestBaseline(importedEpisodeManifestBaseline);
@@ -340,6 +369,22 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   }, [derivedSegments, isProgramPlaying, localProxyVideo, sourceDurationMs]);
 
   useEffect(() => {
+    latestPresenceRef.current = {
+      currentSourceTimeMs: sourceTimeMs,
+      ...(currentState ? { currentState } : {}),
+    };
+  }, [currentState, sourceTimeMs]);
+
+  useEffect(() => {
+    updatePresence(latestPresenceRef.current);
+    const intervalId = window.setInterval(() => {
+      updatePresence(latestPresenceRef.current);
+    }, PRESENCE_UPDATE_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [updatePresence]);
+
+  useEffect(() => {
     function handleKeyboardShortcut(event: KeyboardEvent) {
       if (shouldIgnoreKeyboardShortcut(event.target)) {
         return;
@@ -401,6 +446,26 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
 
   function setClampedSourceTime(nextValue: number) {
     setSourceTimeMs(clampSourceTime(nextValue, sourceDurationMs));
+  }
+
+  function applyRoomSelection() {
+    const nextRoom = normalizeRoomSelection(roomDraft, runtimeConfig);
+
+    setRoomDraft(nextRoom);
+
+    if (
+      nextRoom.projectId === selectedRoom.projectId &&
+      nextRoom.branchId === selectedRoom.branchId
+    ) {
+      return;
+    }
+
+    stopProgramPlayback();
+    setSelectedRoom(nextRoom);
+    setDecisionHistory(createEmptyDecisionHistory());
+    setImportMessage(
+      `Switched collaboration room to ${nextRoom.projectId} / ${nextRoom.branchId}.`,
+    );
   }
 
   function scrubToSourceTime(nextValue: number) {
@@ -931,16 +996,16 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onExportAdjustedManifest={handleExportAdjustedManifest}
         />
 
-        <section className="persistence-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Persistence Mode</h2>
-              <p>{status.detail}</p>
-            </div>
-            <strong>{status.label}</strong>
-          </div>
-          <p className="persistence-path">{status.path}</p>
-        </section>
+        <CollaborationModePanel
+          status={status}
+          roomSelection={roomSelection}
+          roomDraft={roomDraft}
+          sessionId={sessionId}
+          userEmail={createdBy ?? config.createdBy}
+          collaborators={collaborators}
+          onDraftChange={setRoomDraft}
+          onApplyRoom={applyRoomSelection}
+        />
 
         <EpisodeReadinessPanel
           manifest={episodeManifest}
@@ -1237,6 +1302,138 @@ function KeyboardShortcutLegend() {
           {shortcut.label}
         </span>
       ))}
+    </div>
+  );
+}
+
+function CollaborationModePanel({
+  status,
+  roomSelection,
+  roomDraft,
+  sessionId,
+  userEmail,
+  collaborators,
+  onDraftChange,
+  onApplyRoom,
+}: {
+  status: PersistenceStatus;
+  roomSelection: StudioCutRoomSelection;
+  roomDraft: StudioCutRoomSelection;
+  sessionId: string;
+  userEmail: string;
+  collaborators: CollaboratorPresence[];
+  onDraftChange: (roomSelection: StudioCutRoomSelection) => void;
+  onApplyRoom: () => void;
+}) {
+  const isRoomDirty =
+    roomDraft.projectId !== roomSelection.projectId ||
+    roomDraft.branchId !== roomSelection.branchId;
+
+  return (
+    <section className="collaboration-panel" aria-label="Collaboration mode">
+      <div className="panel-heading">
+        <div>
+          <h2>Collaboration Mode</h2>
+          <p>{status.detail}</p>
+        </div>
+        <strong>{status.label}</strong>
+      </div>
+      <div className="room-controls">
+        <label>
+          Project ID
+          <input
+            value={roomDraft.projectId}
+            onChange={(event) =>
+              onDraftChange({ ...roomDraft, projectId: event.target.value })
+            }
+            aria-label="Collaboration project ID"
+          />
+        </label>
+        <label>
+          Branch ID
+          <input
+            value={roomDraft.branchId}
+            onChange={(event) =>
+              onDraftChange({ ...roomDraft, branchId: event.target.value })
+            }
+            aria-label="Collaboration branch ID"
+          />
+        </label>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onApplyRoom}
+          disabled={!isRoomDirty}
+        >
+          Switch Room
+        </button>
+      </div>
+      <div className="collaboration-meta">
+        <span>Room</span>
+        <strong>
+          {roomSelection.projectId} / {roomSelection.branchId}
+        </strong>
+      </div>
+      <div className="collaboration-meta">
+        <span>User</span>
+        <strong>{userEmail}</strong>
+      </div>
+      <div className="collaboration-meta">
+        <span>Session</span>
+        <strong>{shortId(sessionId)}</strong>
+      </div>
+      <p className="persistence-path">{status.path}</p>
+      <CollaboratorPresenceList
+        collaborators={collaborators}
+        currentSessionId={sessionId}
+      />
+    </section>
+  );
+}
+
+function CollaboratorPresenceList({
+  collaborators,
+  currentSessionId,
+}: {
+  collaborators: CollaboratorPresence[];
+  currentSessionId: string;
+}) {
+  if (collaborators.length === 0) {
+    return (
+      <p className="panel-empty">
+        Collaborator presence appears here when Firestore is connected.
+      </p>
+    );
+  }
+
+  return (
+    <div className="presence-list" aria-label="Collaborator presence">
+      {collaborators.map((presence) => {
+        const isCurrentSession = presence.sessionId === currentSessionId;
+        const isStale =
+          Date.now() - new Date(presence.updatedAt).getTime() > STALE_PRESENCE_MS;
+
+        return (
+          <article
+            className={`presence-row${isStale ? " is-stale" : ""}`}
+            key={presence.sessionId}
+          >
+            <div>
+              <strong>
+                {presence.userEmail}
+                {isCurrentSession ? " (you)" : ""}
+              </strong>
+              <span>
+                {formatSourceTime(presence.currentSourceTimeMs)}
+                {presence.currentState
+                  ? ` · ${PROGRAM_STATE_LABELS[presence.currentState]}`
+                  : ""}
+              </span>
+            </div>
+            <small>{isStale ? "Stale" : "Live"}</small>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -2347,6 +2544,70 @@ function saveStoredDecisionHistory(history: DecisionHistoryState) {
   }
 }
 
+function loadStoredRoomSelection(
+  config: ReturnType<typeof getStudioCutRuntimeConfig>,
+): StudioCutRoomSelection {
+  try {
+    const rawValue = localStorage.getItem(SELECTED_ROOM_STORAGE_KEY);
+
+    if (!rawValue) {
+      return { projectId: config.projectId, branchId: config.branchId };
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+
+    if (!isStoredRoomSelection(parsedValue)) {
+      return { projectId: config.projectId, branchId: config.branchId };
+    }
+
+    return normalizeRoomSelection(parsedValue, config);
+  } catch {
+    return { projectId: config.projectId, branchId: config.branchId };
+  }
+}
+
+function saveStoredRoomSelection(roomSelection: StudioCutRoomSelection) {
+  try {
+    localStorage.setItem(
+      SELECTED_ROOM_STORAGE_KEY,
+      JSON.stringify(roomSelection),
+    );
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
+function isStoredRoomSelection(value: unknown): value is StudioCutRoomSelection {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as StudioCutRoomSelection;
+
+  return (
+    typeof candidate.projectId === "string" &&
+    typeof candidate.branchId === "string"
+  );
+}
+
+function normalizeRoomSelection(
+  roomSelection: StudioCutRoomSelection,
+  config: ReturnType<typeof getStudioCutRuntimeConfig>,
+): StudioCutRoomSelection {
+  return {
+    projectId: sanitizeRoomPart(roomSelection.projectId) || config.projectId,
+    branchId: sanitizeRoomPart(roomSelection.branchId) || config.branchId,
+  };
+}
+
+function sanitizeRoomPart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function loadStoredLocalCheckpoints(): LocalDecisionCheckpoint[] {
   try {
     const rawValue = localStorage.getItem(LOCAL_CHECKPOINTS_STORAGE_KEY);
@@ -2475,6 +2736,14 @@ function createLocalCheckpointId() {
   }
 
   return `checkpoint-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createSessionId() {
+  if ("randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function shouldIgnoreKeyboardShortcut(target: EventTarget | null) {

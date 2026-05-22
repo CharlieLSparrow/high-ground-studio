@@ -562,7 +562,8 @@ h2 {
 .manifest-panel,
 .current-segment-panel,
 .readiness-panel,
-.pane-calibration-panel {
+.pane-calibration-panel,
+.collaboration-panel {
   display: grid;
   gap: 14px;
 }
@@ -571,7 +572,8 @@ h2 {
 .manifest-panel,
 .current-segment-panel,
 .readiness-panel,
-.pane-calibration-panel {
+.pane-calibration-panel,
+.collaboration-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -678,6 +680,109 @@ h2 {
 
 .manifest-details strong {
   color: #d7e0dc;
+}
+
+.collaboration-panel {
+  background:
+    linear-gradient(135deg, rgba(114, 214, 255, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.room-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.room-controls label {
+  display: grid;
+  gap: 5px;
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.room-controls input {
+  min-height: 36px;
+  width: 100%;
+  border: 1px solid rgba(238, 242, 238, 0.16);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #eef2ee;
+  padding: 8px 9px;
+}
+
+.collaboration-meta {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.collaboration-meta span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.collaboration-meta strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.presence-list {
+  display: grid;
+  gap: 8px;
+}
+
+.presence-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(145, 219, 183, 0.18);
+  border-radius: 7px;
+  background: rgba(145, 219, 183, 0.06);
+  padding: 9px;
+}
+
+.presence-row.is-stale {
+  border-color: rgba(240, 201, 106, 0.24);
+  background: rgba(240, 201, 106, 0.07);
+}
+
+.presence-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.presence-row span {
+  display: block;
+  margin-top: 3px;
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.presence-row small {
+  flex: 0 0 auto;
+  border: 1px solid rgba(238, 242, 238, 0.14);
+  border-radius: 999px;
+  color: #d7e0dc;
+  padding: 3px 7px;
+  font-size: 0.66rem;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .pane-calibration-list {
@@ -1292,6 +1397,7 @@ td {
   .readiness-grid,
   .pane-calibration-row,
   .checkpoint-row,
+  .room-controls,
   .proxy-program-layout.pane-count-2,
   .proxy-program-layout.both-clip,
   .current-segment-grid,

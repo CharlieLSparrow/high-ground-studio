@@ -374,9 +374,16 @@ async function runBrowserSmoke() {
       page.getByText(/auth disabled because Firebase env vars are missing/i),
     ).toBeVisible();
 
-    await expect(page.getByRole("heading", { name: "Persistence Mode" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
     await expect(page.getByText("Local only", { exact: true })).toBeVisible();
     await expect(page.getByText("decisions are saved in this browser")).toBeVisible();
+    await expect(page.getByLabel("Collaboration project ID")).toHaveValue(
+      "studio-cut-local-project",
+    );
+    await expect(page.getByLabel("Collaboration branch ID")).toHaveValue(
+      "local-main",
+    );
+    await expect(page.getByText(/Collaborator presence appears here/i)).toBeVisible();
 
     for (const label of stateButtonLabels) {
       await expect(stateButton(page, label)).toBeVisible();

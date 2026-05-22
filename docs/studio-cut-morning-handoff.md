@@ -10,6 +10,8 @@ It contains no private paths, media, credentials, or real episode data.
 - Deployed Studio Cut web editor: <https://high-ground-odyssey.web.app>
 - Firebase Auth gate with exact-email and `@highgroundodyssey.com` domain
   allow rules.
+- Experimental Firestore collaboration rooms with realtime decision events,
+  tombstoned cloud removes, and presence.
 - Episode Manifest import with Premiere bootstrap metadata.
 - Browser-local source-monitor proxy playback. The proxy file is not uploaded,
   persisted, or written into decision JSON.
@@ -21,6 +23,8 @@ It contains no private paths, media, credentials, or real episode data.
 - Browser-local checkpoint library with restore, export, and delete actions.
 - Episode Readiness and Decision Timeline panels for handoff confidence.
 - Decision JSON import/export with manifest-aware filenames.
+- Collaboration Mode can switch project/branch rooms; selected room is stored
+  locally in the browser.
 - Local render CLI with bootstrap creation, file validation, render planning,
   proxy preview rendering, rough aligned `youtube_16x9` rendering, and synthetic
   agent smoke verification.
@@ -129,7 +133,9 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   starting at sequence time `00:00:00`.
 - The renderer does not parse Premiere XML/EDL yet.
 - Firestore collaboration and branch history are not live; do not put private
-  collaboration data into Firestore until rules and branch semantics are built.
+  collaboration data into Firestore until rules are reviewed and deployed.
+- Multiplayer undo is not global. Undo/redo remains browser-local; exported
+  checkpoints remain the durable rollback path.
 
 ## Rollback Pattern
 

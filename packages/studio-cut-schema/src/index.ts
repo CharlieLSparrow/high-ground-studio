@@ -17,7 +17,11 @@ export type DecisionEvent = {
   state: ProgramState;
   createdBy: string;
   createdAt: string;
+  clientId?: string;
+  operation?: "upsert" | "import" | "remove";
   note?: string;
+  removedAt?: string;
+  removedBy?: string;
 };
 
 export type DerivedSegment = {
@@ -142,7 +146,17 @@ export function isDecisionEvent(value: unknown): value is DecisionEvent {
     typeof event.createdAt === "string" &&
     event.createdAt.trim().length > 0 &&
     !Number.isNaN(Date.parse(event.createdAt)) &&
-    (event.note === undefined || typeof event.note === "string")
+    (event.clientId === undefined || typeof event.clientId === "string") &&
+    (event.operation === undefined ||
+      event.operation === "upsert" ||
+      event.operation === "import" ||
+      event.operation === "remove") &&
+    (event.note === undefined || typeof event.note === "string") &&
+    (event.removedAt === undefined ||
+      (typeof event.removedAt === "string" &&
+        event.removedAt.trim().length > 0 &&
+        !Number.isNaN(Date.parse(event.removedAt)))) &&
+    (event.removedBy === undefined || typeof event.removedBy === "string")
   );
 }
 
@@ -224,7 +238,7 @@ export function mergeDecisionEvents(events: readonly DecisionEvent[]) {
 }
 
 export function deriveSegments(events: readonly DecisionEvent[]): DerivedSegment[] {
-  const sortedEvents = sortDecisionEvents(events);
+  const sortedEvents = getActiveDecisionEvents(events);
 
   return sortedEvents.map((event, index) => {
     const nextEvent = sortedEvents[index + 1];
@@ -243,7 +257,7 @@ export function getCurrentDecisionEvent(
 ) {
   let currentEvent: DecisionEvent | undefined;
 
-  for (const event of sortDecisionEvents(events)) {
+  for (const event of getActiveDecisionEvents(events)) {
     if (event.sourceTimeMs <= sourceTimeMs) {
       currentEvent = event;
       continue;
@@ -253,6 +267,16 @@ export function getCurrentDecisionEvent(
   }
 
   return currentEvent;
+}
+
+export function getActiveDecisionEvents(events: readonly DecisionEvent[]) {
+  return sortDecisionEvents(events).filter(
+    (event) => !isDecisionEventRemoved(event),
+  );
+}
+
+export function isDecisionEventRemoved(event: DecisionEvent) {
+  return Boolean(event.removedAt);
 }
 
 function isEpisodeSource(value: unknown, role: SourceRole) {

@@ -699,9 +699,9 @@ The web app now separates persistence from `App.tsx`:
 - cloud-ready store: Firestore adapter behind Firebase env vars
 - runtime schema checks: `packages/studio-cut-schema`
 
-When Firestore is configured, the adapter reads and upserts event documents by
-event id. It does not destructively overwrite a whole branch and it does not
-delete cloud events from the first shell.
+When Firestore is configured, the adapter subscribes to shared event documents
+by event id. It does not destructively overwrite a whole branch and cloud
+removes use tombstone updates instead of hard deletes.
 
 Firestore decision path:
 
@@ -719,11 +719,71 @@ sourceTimeMs
 state
 createdBy
 createdAt
+clientId
+operation
 note
+removedAt
+removedBy
 ```
 
-Local removal and `Clear Local` only change the current browser working set.
-They are not cloud delete operations.
+In local-only mode, remove and clear still affect only the current browser
+working set. In cloud mode, remove and clear mark active shared events with
+`removedAt`, `removedBy`, and `operation=remove`. Tombstoned decisions are
+ignored by derived segments and Program Playback, but remain explainable shared
+history.
+
+## Realtime Collaboration
+
+Studio Cut now has an experimental simultaneous editing room model. The
+Collaboration Mode panel shows:
+
+- Local-only or Cloud-connected state
+- selected `projectId`
+- selected `branchId`
+- signed-in user / configured local editor
+- short session id
+- collaborator presence when Firestore is connected
+
+The editor defaults to the build-time project and branch ids, but the panel can
+switch the browser to another project/branch room. The selected room is stored
+in localStorage. In cloud mode, switching rooms subscribes to:
+
+```text
+studioCutProjects/{projectId}/branches/{branchId}/decisionEvents
+studioCutProjects/{projectId}/branches/{branchId}/presence
+```
+
+Decision events stream from Firestore in near real time and merge by id into
+the browser working set. Duplicate event ids are deduped. Adding a decision or
+importing decision JSON upserts event documents. Removing a decision updates a
+tombstone instead of deleting the document.
+
+Undo/redo remains a browser-local safety layer and should not be treated as
+global collaborative undo. Exported checkpoints and local checkpoints remain
+the recovery path for messy passes.
+
+Presence documents are best-effort:
+
+```text
+studioCutProjects/{projectId}/branches/{branchId}/presence/{sessionId}
+```
+
+They include session id, user email/configured editor, current source time,
+optional current state, and `updatedAt`. Stale presence is marked visually. The
+first collaboration version does not rely on perfect disconnect cleanup.
+
+Each collaborator must still load their own local source-monitor proxy. Proxy
+files, object URLs, full media, local filesystem paths, recordings,
+credentials, and generated renders are not stored in Firestore.
+
+Firestore rules are documented as a draft at:
+
+```text
+docs/studio-cut-firestore-rules.md
+```
+
+Do not put private collaboration data into Firestore until rules are reviewed,
+tested, and intentionally deployed.
 
 ## JSON Handoff
 
