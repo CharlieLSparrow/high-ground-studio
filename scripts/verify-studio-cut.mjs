@@ -33,6 +33,11 @@ const verificationSteps = [
     args: ["studio-cut:typecheck"],
   },
   {
+    label: "Studio Cut web smoke",
+    command: "pnpm",
+    args: ["studio-cut:web-smoke"],
+  },
+  {
     label: "Studio Cut build",
     command: "pnpm",
     args: ["studio-cut:build"],

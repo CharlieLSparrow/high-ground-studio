@@ -380,6 +380,19 @@ Future agents should run this before and after local renderer changes. Use
 structured planning. The `--json` report includes `goldenAssertionsPassed`,
 `goldenAssertionCount`, and `goldenAssertionFailures`.
 
+The CLI smoke canary tests the local render spine. The browser cockpit smoke
+test drives the Studio Cut web editor with Playwright in local dev mode:
+
+```bash
+pnpm studio-cut:web-smoke
+```
+
+It launches the Vite dev server without Firebase env vars, verifies the local
+dev editor is visible, creates `Both` and `Cut` decisions, checks derived
+segments, checks playback controls, and reloads to prove localStorage
+persistence. If a local machine has the Playwright package but no browser
+installed yet, run `pnpm exec playwright install chromium` once.
+
 For CI-friendly pre-deploy verification, use the one-command runner:
 
 ```bash
@@ -387,9 +400,10 @@ pnpm studio-cut:verify
 ```
 
 It runs Python syntax compilation, `agent-smoke-test --json`, Studio Cut
-typecheck, and Studio Cut build in order. It fails fast on the first nonzero
-command and prints a short smoke-test summary including golden assertion status,
-assertion count, output duration, and output resolution when available.
+typecheck, browser smoke, and Studio Cut build in order. It fails fast on the
+first nonzero command and prints a short smoke-test summary including golden
+assertion status, assertion count, output duration, and output resolution when
+available.
 
 GitHub Actions runs the same verifier from:
 
@@ -399,8 +413,8 @@ GitHub Actions runs the same verifier from:
 
 That workflow triggers on pushes and pull requests that touch Studio Cut web,
 schema, local renderer, verifier, package lock/config, this doc, or the workflow
-file. It installs dependencies, Python, and `ffmpeg`, then runs
-`pnpm studio-cut:verify`. It does not use secrets and does not deploy to
+file. It installs dependencies, Python, `ffmpeg`, and Playwright Chromium, then
+runs `pnpm studio-cut:verify`. It does not use secrets and does not deploy to
 Firebase Hosting; deployment remains a separate local/operator step for now.
 
 ## Local Commands
@@ -411,6 +425,7 @@ Run from the repo root:
 pnpm studio-cut
 pnpm studio-cut:agent-smoke
 pnpm studio-cut:verify
+pnpm studio-cut:web-smoke
 pnpm studio-cut:typecheck
 pnpm studio-cut:build
 pnpm studio-cut:local:doctor
