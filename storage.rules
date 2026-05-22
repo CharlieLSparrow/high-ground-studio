@@ -1,6 +1,6 @@
 // Studio Cut Storage rules draft.
-// This file is intentionally not referenced by firebase.json yet. Do not deploy
-// it without emulator/rules testing and explicit operator review.
+// This file is wired into firebase.json for emulator tests and explicit rules
+// deploys. Do not deploy it without passing rules tests and operator review.
 rules_version = '2';
 
 service firebase.storage {
@@ -11,6 +11,7 @@ service firebase.storage {
 
     function highGroundEmail() {
       return signedIn()
+        && request.auth.token.email_verified == true
         && request.auth.token.email.matches('^.+@highgroundodyssey\\.com$');
     }
 

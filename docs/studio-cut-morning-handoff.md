@@ -14,6 +14,10 @@ It contains no private paths, media, credentials, or real episode data.
   tombstoned cloud removes, and presence.
 - Primary shared-room workflow: Charlie can upload the Episode Manifest plus one
   lightweight source-monitor proxy package, then share a room link with Mako.
+- Shared Room Diagnostics shows metadata/proxy/listener/Storage status for the
+  active room.
+- Firestore and Storage rules are wired into `firebase.json` and have an
+  emulator test command, but rules deploy remains separate from Hosting.
 - Episode Manifest import with Premiere bootstrap metadata.
 - Browser-local source-monitor proxy playback for backup/local mode, plus
   Firebase Storage proxy loading for shared rooms.
@@ -53,6 +57,14 @@ Deploy is operator-local for now:
 
 ```bash
 firebase deploy --project high-ground-odyssey --only hosting
+```
+
+Rules deploy is separate and should happen only after the emulator rules test
+passes:
+
+```bash
+pnpm studio-cut:rules-test
+firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 ```
 
 ## Episode 4 Commands
@@ -141,10 +153,12 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   starting at sequence time `00:00:00`.
 - The renderer does not parse Premiere XML/EDL yet.
 - Firestore collaboration is experimental, and branch history is still shallow;
-  do not put sensitive collaboration data into Firestore/Storage until rules
-  are reviewed and deployed.
+  do not trust sensitive collaboration data in Firestore/Storage until
+  `pnpm studio-cut:rules-test` passes and rules are deployed.
 - Shared rooms upload only source-monitor proxies. Full-resolution aligned
   media remains local for render.
+- The emulator rules test requires Java. If Java is missing locally, install a
+  JRE/JDK before deploying rules.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
   checkpoints remain the durable rollback path.
 

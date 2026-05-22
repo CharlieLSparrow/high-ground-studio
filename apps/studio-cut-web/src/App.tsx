@@ -401,6 +401,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
                 const message =
                   error instanceof Error ? error.message : String(error);
                 setImportMessage(message);
+                setSharedRoomUploadState((currentState) => ({
+                  ...currentState,
+                  status: "error",
+                  message,
+                }));
               });
           },
           (error) => {
@@ -1261,6 +1266,13 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onCopyShareUrl={() => void handleCopySharedRoomUrl()}
         />
 
+        <SharedRoomDiagnosticsPanel
+          status={status}
+          metadata={sharedRoomMetadata}
+          localProxyVideo={localProxyVideo}
+          uploadState={sharedRoomUploadState}
+        />
+
         <EpisodeManifestPanel
           manifest={episodeManifest}
           sourceDurationMs={sourceDurationMs}
@@ -1725,6 +1737,73 @@ function SharedRoomPackagePanel({
             ? "Load a manifest and local source-monitor proxy, then create the shared room. Full-res media stays local."
             : "Firebase config is absent; shared rooms are disabled in local-only mode.")}
       </p>
+    </section>
+  );
+}
+
+function SharedRoomDiagnosticsPanel({
+  status,
+  metadata,
+  localProxyVideo,
+  uploadState,
+}: {
+  status: PersistenceStatus;
+  metadata: SharedRoomMetadata | null;
+  localProxyVideo: LocalProxyVideo | null;
+  uploadState: SharedRoomUploadState;
+}) {
+  const cloudConnectionLabel = getCloudConnectionLabel(status.mode);
+  const storageLabel =
+    uploadState.status === "error"
+      ? "Error"
+      : uploadState.status === "uploading"
+        ? `Uploading ${uploadState.progressPercent}%`
+        : localProxyVideo?.source === "cloud"
+          ? "Loaded"
+          : "Waiting";
+
+  return (
+    <section
+      className="shared-room-diagnostics-panel"
+      aria-label="Shared room diagnostics"
+    >
+      <div className="panel-heading">
+        <div>
+          <h2>Shared Room Diagnostics</h2>
+          <p>Compact health check for the active collaboration room.</p>
+        </div>
+        <strong>{status.mode === "cloud_error" ? "Check" : "Status"}</strong>
+      </div>
+      <div className="diagnostics-grid">
+        <ReadinessMetric
+          label="Room metadata"
+          value={metadata ? "Loaded" : "Missing"}
+        />
+        <ReadinessMetric
+          label="Shared proxy"
+          value={localProxyVideo?.source === "cloud" ? "Loaded" : "Not loaded"}
+        />
+        <ReadinessMetric
+          label="Decisions"
+          value={cloudConnectionLabel}
+        />
+        <ReadinessMetric
+          label="Presence"
+          value={cloudConnectionLabel}
+        />
+        <ReadinessMetric label="Storage" value={storageLabel} />
+      </div>
+      {status.mode === "cloud_error" || uploadState.status === "error" ? (
+        <p className="diagnostics-message is-error">
+          {uploadState.status === "error" ? uploadState.message : status.detail}
+        </p>
+      ) : (
+        <p className="diagnostics-message">
+          {metadata
+            ? "Room package metadata is available for approved collaborators."
+            : "Create or open a shared room to load cloud metadata and proxy."}
+        </p>
+      )}
     </section>
   );
 }
@@ -3232,6 +3311,19 @@ function isSupportedLocalProxyVideo(file: File) {
   return (
     file.type.startsWith("video/") || /\.(mp4|mov|m4v)$/i.test(file.name)
   );
+}
+
+function getCloudConnectionLabel(mode: PersistenceStatus["mode"]) {
+  switch (mode) {
+    case "cloud_connected":
+      return "Connected";
+    case "cloud_ready":
+      return "Connecting";
+    case "cloud_error":
+      return "Error";
+    case "local_only":
+      return "Local only";
+  }
 }
 
 function getProxyPreviewRoles(state: ProgramState): ProxyPreviewRole[] {

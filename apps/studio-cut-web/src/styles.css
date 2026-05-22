@@ -564,7 +564,8 @@ h2 {
 .readiness-panel,
 .pane-calibration-panel,
 .collaboration-panel,
-.shared-room-panel {
+.shared-room-panel,
+.shared-room-diagnostics-panel {
   display: grid;
   gap: 14px;
 }
@@ -575,7 +576,8 @@ h2 {
 .readiness-panel,
 .pane-calibration-panel,
 .collaboration-panel,
-.shared-room-panel {
+.shared-room-panel,
+.shared-room-diagnostics-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -776,6 +778,55 @@ h2 {
 }
 
 .shared-room-message.is-error {
+  border-color: rgba(255, 116, 116, 0.34);
+  color: #ffb7b7;
+}
+
+.shared-room-diagnostics-panel {
+  background:
+    linear-gradient(135deg, rgba(240, 201, 106, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.diagnostics-grid div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.diagnostics-grid span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.diagnostics-grid strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.diagnostics-message {
+  border: 1px dashed rgba(240, 201, 106, 0.24);
+  border-radius: 7px;
+  color: #d7e0dc;
+  padding: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.diagnostics-message.is-error {
   border-color: rgba(255, 116, 116, 0.34);
   color: #ffb7b7;
 }

@@ -45,6 +45,11 @@ const verificationSteps = [
     ],
   },
   {
+    label: "Studio Cut rules config test",
+    command: "pnpm",
+    args: ["studio-cut:rules-config-test"],
+  },
+  {
     label: "Agent smoke test",
     command: pythonCommand,
     args: [

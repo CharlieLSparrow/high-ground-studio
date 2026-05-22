@@ -600,6 +600,8 @@ pnpm studio-cut:verify
 pnpm studio-cut:web-smoke
 pnpm studio-cut:typecheck
 pnpm studio-cut:build
+pnpm studio-cut:rules-config-test
+pnpm studio-cut:rules-test
 pnpm studio-cut:local:doctor
 pnpm studio-cut:local:verify-episode -- --manifest path/to/manifest.json --media-map path/to/local-media.json
 ```
@@ -830,14 +832,22 @@ Mako does not need to import JSON, export JSON, or select local media in the
 primary flow. JSON import/export and local proxy loading remain backup and
 recovery paths.
 
+The Shared Room Diagnostics panel gives operators a compact room health check:
+
+- room metadata loaded yes/no
+- shared proxy loaded yes/no
+- decision listener status
+- presence listener status
+- Storage upload/load status and errors
+
 Firestore rules are documented as a draft at:
 
 ```text
 docs/studio-cut-firestore-rules.md
 ```
 
-Do not put private collaboration data into Firestore until rules are reviewed,
-tested, and intentionally deployed.
+Do not put private collaboration data into Firestore or Storage until rules
+tests pass and the rules are intentionally deployed.
 
 ## JSON Handoff
 
@@ -879,8 +889,8 @@ Checked-in scaffold:
 - `firebase.json` serves `apps/studio-cut-web/dist` as a single-page app
 - `.firebaserc` binds the default Firebase project alias to
   `high-ground-odyssey`
-- `firestore.rules` and `storage.rules` are draft scaffolds only and are not
-  referenced by `firebase.json` yet
+- `firebase.json` references `firestore.rules` and `storage.rules` for emulator
+  tests and explicit rules deploys
 
 Live Firebase Hosting URL:
 
@@ -894,6 +904,16 @@ Deploy command that worked:
 pnpm studio-cut:build
 firebase deploy --project high-ground-odyssey --only hosting
 ```
+
+Rules deploy is deliberately separate from Hosting:
+
+```bash
+pnpm studio-cut:rules-test
+firebase deploy --project high-ground-odyssey --only firestore:rules,storage
+```
+
+The emulator-backed rules test requires Java. If Java is unavailable locally,
+do not deploy rules; install Java and rerun the test first.
 
 Production env workflow:
 
@@ -955,16 +975,17 @@ Current safety state:
   Firebase config is supplied at build time.
 - If production Firebase env vars are missing, the editor is hidden instead of
   falling back to public local mode.
-- Do not enter real local media paths, credentials, personal recordings,
-  full-resolution media, or sensitive collaboration data until Firestore and
-  Storage rules are reviewed and deployed. Shared rooms should contain only the
-  lightweight source-monitor proxy and manifest metadata.
+- Do not enter real local media paths, credentials, personal recordings, or
+  full-resolution media. Do not trust private collaboration data in
+  Firestore/Storage until `pnpm studio-cut:rules-test` passes and rules are
+  deployed. Shared rooms should contain only the lightweight source-monitor
+  proxy and manifest metadata.
 
 Near-term internal-only task:
 
-- Add Firestore and Storage security rules scoped to approved internal users
-  and explicit project/branch permissions.
-- Only then use live Firestore/Storage for real collaboration or private
+- Run the emulator rules tests on a machine with Java.
+- Deploy Firestore and Storage rules with the explicit rules deploy command.
+- Only then trust live Firestore/Storage for real collaboration or private
   podcast data.
 
 Manual Firebase Hosting path after future build-verified changes:

@@ -389,7 +389,10 @@ async function runBrowserSmoke() {
 
     await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Episode Room" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Shared Room Diagnostics" })).toBeVisible();
     await expect(sharedRoomSection.getByText(/shared rooms are disabled in local-only mode/i)).toBeVisible();
+    await expect(page.getByLabel("Shared room diagnostics")).toContainText("Room metadata");
+    await expect(page.getByLabel("Shared room diagnostics")).toContainText("Local only");
     await expect(sharedRoomSection.getByRole("button", { name: "Create Shared Room" })).toBeDisabled();
     await expect(sharedRoomSection.getByRole("button", { name: "Copy Room Link" })).toBeDisabled();
     await expect(collaborationSection.getByText("Local only", { exact: true })).toBeVisible();

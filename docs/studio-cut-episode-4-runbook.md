@@ -143,18 +143,24 @@ Steps:
 5. Confirm `projectId=episode-004` and `branchId=main` in Collaboration Mode,
    or switch the room before uploading.
 6. Click `Create Shared Room`.
-7. Copy the generated room link. It should look like:
+7. Check `Shared Room Diagnostics`. It should show room metadata loaded, shared
+   proxy loaded, connected listeners, and no Storage errors.
+8. Copy the generated room link. It should look like:
 
 ```text
 https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main
 ```
 
-8. Send the link to Mako.
+9. Send the link to Mako.
 
 The shared package writes manifest metadata to Firestore and uploads only the
 lightweight source-monitor proxy to Firebase Storage. It does not upload
 full-resolution aligned media, local filesystem paths, object URLs, credentials,
 or generated renders.
+
+Before trusting private collaboration data in the shared room, confirm that
+Firestore and Storage rules have been emulator-tested and deployed. JSON
+checkpoints remain the recovery path.
 
 ## 6. Edit Together In Studio Cut
 
@@ -163,7 +169,9 @@ Charlie can keep editing in the same tab. Mako should:
 1. Open the shared room link.
 2. Sign in with an approved `@highgroundodyssey.com` Google account.
 3. Wait for the manifest, shared proxy, decisions, and presence to load.
-4. Scrub, play, and tag decisions in the shared room.
+4. Check Shared Room Diagnostics for loaded metadata/proxy and connected
+   listeners.
+5. Scrub, play, and tag decisions in the shared room.
 
 Neither Mako nor Charlie need JSON import/export for the primary collaboration
 flow. JSON export/checkpoint is still the recovery path before rendering.

@@ -2,9 +2,9 @@
 
 Date: 2026-05-22
 
-This is a rules and data-shape draft for Studio Cut collaboration. It is not a
-deployed security policy and should not be described as production-safe until it
-is reviewed, tested against the Firebase project, and deployed intentionally.
+This is the rules and data-shape draft for Studio Cut collaboration. It is not a
+deployed security policy and should not be described as production-safe until the
+emulator tests pass and the rules are deployed intentionally.
 
 Draft scaffold files exist at repo root:
 
@@ -13,8 +13,22 @@ firestore.rules
 storage.rules
 ```
 
-They are not referenced by `firebase.json` yet, so the normal Hosting deploy
-does not deploy them.
+They are wired into `firebase.json` for emulator tests and explicit rules
+deploys. The normal Studio Cut Hosting deploy remains separate because Codex and
+operators use:
+
+```bash
+firebase deploy --project high-ground-odyssey --only hosting
+```
+
+Rules deploy is intentionally explicit:
+
+```bash
+firebase deploy --project high-ground-odyssey --only firestore:rules,storage
+```
+
+Do not deploy rules until `pnpm studio-cut:rules-test` passes against the
+emulators.
 
 ## Collections
 
@@ -103,13 +117,13 @@ The deployed web app currently allows Google sign-in for:
 - email domains in `VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS`, currently intended
   for `highgroundodyssey.com`
 
-Firestore rules should independently enforce the same internal-only posture.
-Do not rely only on client-side checks before private collaboration data enters
-Firestore.
+Firestore and Storage rules should independently enforce verified signed-in
+emails on the High Ground Odyssey domain. Do not rely only on client-side checks
+before private collaboration data enters Firestore or Storage.
 
-## Draft Rule Shape
+## Rule Shape
 
-The following is illustrative only:
+The checked-in Firestore rule scaffold follows this shape:
 
 ```text
 rules_version = '2';
@@ -120,8 +134,9 @@ service cloud.firestore {
     }
 
     function highGroundEmail() {
-      return signedIn() &&
-        request.auth.token.email.matches('(?i)^.+@highgroundodyssey\\.com$');
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('^.+@highgroundodyssey\\.com$');
     }
 
     match /studioCutProjects/{projectId}/branches/{branchId}/decisionEvents/{eventId} {
@@ -152,7 +167,7 @@ service cloud.firestore {
 }
 ```
 
-Draft Storage shape:
+The checked-in Storage rule scaffold follows this shape:
 
 ```text
 rules_version = '2';
@@ -163,8 +178,9 @@ service firebase.storage {
     }
 
     function highGroundEmail() {
-      return signedIn() &&
-        request.auth.token.email.matches('(?i)^.+@highgroundodyssey\\.com$');
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('^.+@highgroundodyssey\\.com$');
     }
 
     match /studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName} {
@@ -181,14 +197,48 @@ service firebase.storage {
 The size limit is intentionally generous for a lightweight proxy but should be
 reviewed against real proxy export sizes before production collaboration.
 
+## Rules Tests
+
+Static config checks run inside the normal verifier:
+
+```bash
+pnpm studio-cut:rules-config-test
+pnpm studio-cut:verify
+```
+
+Full rules tests run under the Firebase Emulator Suite:
+
+```bash
+pnpm studio-cut:rules-test
+```
+
+The emulator test covers:
+
+- approved `@highgroundodyssey.com` users can read/write room metadata
+- approved users can read/write decision events and tombstone updates
+- approved users can read/write their own presence
+- approved users can upload/read source-monitor proxy files under the intended
+  Storage path
+- anonymous users are denied
+- non-HighGroundOdyssey users are denied
+- deletes are denied
+- wrong project/branch/document data is denied where practical
+
+The Firebase emulators require Java on the local machine. If Java is missing,
+install a JRE/JDK, then rerun `pnpm studio-cut:rules-test`.
+
 Before deploying rules:
 
 1. Confirm the Firebase project is `high-ground-odyssey`.
 2. Confirm Google sign-in emits verified email claims for the intended accounts.
 3. Decide whether outside-domain collaborators need explicit email allowlist
    support in rules, custom claims, or a separate membership document.
-4. Add emulator or rules-unit coverage for Firestore and Storage.
-5. Deploy rules separately from Hosting with explicit operator commands.
+4. Run `pnpm studio-cut:rules-test`.
+5. Deploy rules separately from Hosting with:
+
+```bash
+firebase deploy --project high-ground-odyssey --only firestore:rules,storage
+```
 
 ## Current Risks
 
