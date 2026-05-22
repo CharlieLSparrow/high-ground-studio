@@ -19,9 +19,28 @@ The current browser-only flow proves:
 2. HGO can generate a staged artifact packet from the projection and review gate.
 3. HGO can import that artifact packet back into the browser.
 4. HGO can validate the contract and render the embedded projection.
+5. HGO can model session-only private-store lifecycle state without persisting
+   the artifact.
 
 Only after that roundtrip is stable should HGO add a private store. Otherwise
 the database/API would be guessing at a contract that has not been exercised.
+
+## Browser Store Lab
+
+Before persistence, HGO now has a browser-session Store Lab:
+
+- `/projection-stage/store-lab`
+- `apps/web/src/lib/hgo/staged-artifact-store-lab.ts`
+- `pnpm hgo:store-lab:test`
+
+The Store Lab imports validated `hgo-staged-artifact-v1` packets into React
+state only. It models review status, promotion readiness, archive behavior,
+duplicate artifact handling, and event logs. It does not write localStorage,
+call a server route, mutate Prisma, or publish anything.
+
+The lab intentionally keeps persistence metadata outside the embedded artifact.
+The browser-created artifact remains unchanged with `persisted: false` and
+`published: false`.
 
 ## Proposed Future Model
 
@@ -124,6 +143,21 @@ The first persistence path can accept browser-created
 
 The stored record may say persisted in database metadata, but the embedded
 browser artifact should remain an immutable record of what the browser created.
+
+## Future Migration Checklist
+
+Before any DB/API work, confirm:
+
+- access control is explicit and private by default
+- schema adds no public reads or public publish behavior
+- server validation reuses the artifact validator
+- submitted artifact JSON is immutable after save
+- persistence metadata lives outside the artifact packet
+- duplicate artifact/version behavior is deliberate
+- archive is the default rollback path
+- promotion candidates remain separate from live public publishing
+- generated reports and screenshots stay out of stored records
+- operator approval is captured before applying schema or deploying
 
 ## Rollback And Retention
 

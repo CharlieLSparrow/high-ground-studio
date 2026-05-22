@@ -156,6 +156,7 @@ async function writeReport(status, extra = {}) {
       "/projection-stage/review",
       "/projection-stage/import",
       "/projection-stage/artifact",
+      "/projection-stage/store-lab",
       "/projection-stage/synthetic-field-radio",
     ],
     commitSha: getCommitSha(),
@@ -604,6 +605,116 @@ async function runSmoke() {
     });
     await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
 
+    await page.goto(`${hgoBaseUrl}/projection-stage/store-lab`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByTestId("hgo-stage-store-lab")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-hydrated")
+      .waitFor({ state: "attached", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-artifact-json")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const storeLabEmptyText = await page.locator("body").innerText();
+
+    if (
+      !/Session-only store lab/i.test(storeLabEmptyText) ||
+      !/No persistence/i.test(storeLabEmptyText) ||
+      !/No localStorage/i.test(storeLabEmptyText) ||
+      !/No server writes/i.test(storeLabEmptyText) ||
+      !/No publish action/i.test(storeLabEmptyText)
+    ) {
+      throw new Error(
+        "HGO staged Store Lab did not show expected session-only/no-persistence/no-publish boundary copy.",
+      );
+    }
+
+    await page.getByTestId("hgo-stage-store-lab-artifact-json").fill(artifactJson);
+    await page.getByTestId("hgo-stage-store-lab-import").click();
+    await page
+      .getByTestId("hgo-stage-store-lab-record")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-selected-record")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-review-gate")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-rendered-projection")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-projection-rendered-root")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const storeLabImportedText = await page.locator("body").innerText();
+
+    if (
+      !/Persisted\s+No/i.test(storeLabImportedText) ||
+      !/Published\s+No/i.test(storeLabImportedText)
+    ) {
+      throw new Error(
+        "HGO staged Store Lab did not show persisted false and published false for the imported artifact.",
+      );
+    }
+
+    await page.getByTestId("hgo-stage-store-lab-mark-human-review").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/human-review/i),
+    );
+    await page.getByTestId("hgo-stage-store-lab-mark-approved").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/approved-for-future-staging/i),
+    );
+    await page.getByTestId("hgo-stage-store-lab-create-candidate").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/Simulated promotion candidate/i),
+    );
+    const storeLabCandidateText = await page.locator("body").innerText();
+    const simulatedPromotionCandidate = /simulated promotion candidate created/i.test(
+      storeLabCandidateText,
+    );
+
+    if (
+      !/Simulated promotion candidate/i.test(storeLabCandidateText) ||
+      !/not public/i.test(storeLabCandidateText) ||
+      !/not published/i.test(storeLabCandidateText)
+    ) {
+      throw new Error(
+        "HGO staged Store Lab did not show simulated/not-public/not-published promotion boundary copy.",
+      );
+    }
+
+    await page.getByTestId("hgo-stage-store-lab-archive").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/archived/i),
+    );
+    const storeLabArchivedText = await page.locator("body").innerText();
+    const finalArchivedCount = /Archived\s+1/i.test(storeLabArchivedText) ? 1 : 0;
+
+    if (!/archived/i.test(storeLabArchivedText) || finalArchivedCount !== 1) {
+      throw new Error(
+        "HGO staged Store Lab did not show the archived lifecycle state after archive action.",
+      );
+    }
+
+    addStep("confirm HGO staged Store Lab session lifecycle", "passed", {
+      url: page.url(),
+      importedRecordCount: 1,
+      finalArchivedCount,
+      simulatedPromotionCandidate,
+    });
+    await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
+
     await page.goto(`${hgoBaseUrl}/projection-stage/synthetic-field-radio`, {
       waitUntil: "domcontentloaded",
     });
@@ -639,6 +750,11 @@ async function runSmoke() {
       recommendedNextAction: artifact.recommendedNextAction,
       artifactContainsRealContent: artifact.safety.containsRealContent,
       artifactJsonBytes: artifactJson.length,
+      storeLabRoundtrip: true,
+      importedRecordCount: 1,
+      finalArchivedCount,
+      simulatedPromotionCandidate,
+      noPersistence: true,
       projection: {
         id: projection.id,
         slug: projection.slug,

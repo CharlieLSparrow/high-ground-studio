@@ -627,6 +627,124 @@ async function runVisualSmoke() {
       screenshot: relativePath(stagedArtifactRenderedScreenshotPath),
     });
 
+    await captureRoute(page, {
+      baseUrl: hgoBaseUrl,
+      routePath: "/projection-stage/store-lab",
+      screenshotName: "projection-stage-store-lab-empty.png",
+      waitFor: { testId: "hgo-stage-store-lab-artifact-json" },
+      notes: ["empty browser-session Store Lab, no persistence"],
+    });
+
+    await page
+      .getByTestId("hgo-stage-store-lab-hydrated")
+      .waitFor({ state: "attached", timeout: 20_000 });
+    await page.getByTestId("hgo-stage-store-lab-artifact-json").fill(artifactJson);
+    await page.getByTestId("hgo-stage-store-lab-import").click();
+    await page
+      .getByTestId("hgo-stage-store-lab-record")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-selected-record")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-store-lab-review-gate")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-projection-rendered-root")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
+
+    const storeLabImportedScreenshotPath = path.join(
+      screenshotDir,
+      "projection-stage-store-lab-imported.png",
+    );
+    await page.screenshot({
+      path: storeLabImportedScreenshotPath,
+      fullPage: true,
+    });
+    screenshots.push(relativePath(storeLabImportedScreenshotPath));
+    routes.push({
+      path: "/projection-stage/store-lab",
+      status: "passed",
+      screenshot: relativePath(storeLabImportedScreenshotPath),
+      title: await page.title(),
+      heading: await getHeading(page),
+      notes: ["synthetic staged artifact imported into session-only Store Lab"],
+    });
+    addStep("capture Store Lab imported artifact", "passed", {
+      screenshot: relativePath(storeLabImportedScreenshotPath),
+    });
+
+    await page.getByTestId("hgo-stage-store-lab-mark-human-review").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/human-review/i),
+    );
+    await page.getByTestId("hgo-stage-store-lab-mark-approved").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/approved-for-future-staging/i),
+    );
+    await page.getByTestId("hgo-stage-store-lab-create-candidate").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/Simulated promotion candidate/i),
+    );
+    await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
+
+    const storeLabReviewedScreenshotPath = path.join(
+      screenshotDir,
+      "projection-stage-store-lab-reviewed.png",
+    );
+    await page.screenshot({
+      path: storeLabReviewedScreenshotPath,
+      fullPage: true,
+    });
+    screenshots.push(relativePath(storeLabReviewedScreenshotPath));
+    routes.push({
+      path: "/projection-stage/store-lab",
+      status: "passed",
+      screenshot: relativePath(storeLabReviewedScreenshotPath),
+      title: await page.title(),
+      heading: await getHeading(page),
+      notes: ["session-only Store Lab reviewed state and simulated candidate boundary"],
+    });
+    addStep("capture Store Lab reviewed artifact", "passed", {
+      screenshot: relativePath(storeLabReviewedScreenshotPath),
+    });
+
+    await page.getByTestId("hgo-stage-store-lab-archive").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('[data-testid="hgo-stage-store-lab-action-result"]')
+        ?.textContent?.match(/archived/i),
+    );
+    await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
+
+    const storeLabArchivedScreenshotPath = path.join(
+      screenshotDir,
+      "projection-stage-store-lab-archived.png",
+    );
+    await page.screenshot({
+      path: storeLabArchivedScreenshotPath,
+      fullPage: true,
+    });
+    screenshots.push(relativePath(storeLabArchivedScreenshotPath));
+    routes.push({
+      path: "/projection-stage/store-lab",
+      status: "passed",
+      screenshot: relativePath(storeLabArchivedScreenshotPath),
+      title: await page.title(),
+      heading: await getHeading(page),
+      notes: ["session-only Store Lab archived state"],
+    });
+    addStep("capture Store Lab archived artifact", "passed", {
+      screenshot: relativePath(storeLabArchivedScreenshotPath),
+    });
+
     for (const slug of syntheticSlugs) {
       await captureRoute(page, {
         baseUrl: hgoBaseUrl,

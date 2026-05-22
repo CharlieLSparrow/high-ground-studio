@@ -284,6 +284,12 @@ export default function ArtifactProjectionStageClient() {
                 Review fixture gate
               </Link>
               <Link
+                href="/projection-stage/store-lab"
+                className="inline-flex rounded-full border border-emerald-300/35 bg-emerald-300/12 px-4 py-2 text-sm font-bold text-emerald-100 no-underline transition hover:bg-emerald-300/18"
+              >
+                Session store lab
+              </Link>
+              <Link
                 href="/projection-stage"
                 className="inline-flex rounded-full border border-flare/35 bg-flare/12 px-4 py-2 text-sm font-bold text-flare no-underline transition hover:bg-flare/18"
               >

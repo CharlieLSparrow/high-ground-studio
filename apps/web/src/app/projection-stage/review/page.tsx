@@ -224,6 +224,12 @@ export default function ProjectionStageReviewPage() {
             >
               Inspect staged artifact JSON
             </Link>
+            <Link
+              href="/projection-stage/store-lab"
+              className="mt-3 inline-flex rounded-full border border-emerald-300/35 bg-emerald-300/12 px-4 py-2 text-sm font-bold text-emerald-100 no-underline transition hover:bg-emerald-300/18"
+            >
+              Session store lab
+            </Link>
             <div className="mt-3 flex flex-wrap gap-2">
               <Pill className="border-sky-300/25 bg-sky-300/8 text-sky-100">
                 No persistence

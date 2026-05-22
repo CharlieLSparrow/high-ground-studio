@@ -92,11 +92,23 @@ High Ground Studio is a monorepo with:
   safety flags, and renders the embedded projection. It does not persist,
   publish, write local storage, verify public safety, replace public
   `/episodes`, or use real content.
+- HGO has a browser-session staged artifact Store Lab at
+  `/projection-stage/store-lab`. It imports validated `hgo-staged-artifact-v1`
+  JSON into React state only, models future private-store lifecycle behavior,
+  shows review status, promotion readiness, archive behavior, event logs, and a
+  simulated promotion-candidate boundary. It does not persist, write
+  localStorage/sessionStorage, call a server route, publish, replace
+  `/episodes`, or use real content.
 - HGO has a pure staged artifact contract test command,
   `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
   validator state, invalid version, persisted/published safety failures,
   missing projection, review-gate mismatches, credential-marker rejection, safe
   file naming, and summary fields.
+- HGO has a pure staged artifact Store Lab test command,
+  `pnpm hgo:store-lab:test`, covering session-only import, invalid artifact
+  rejection, persisted/published rejection, duplicate active artifact behavior,
+  review status updates, simulated promotion-candidate gating, archive behavior,
+  summary counts, lookup, and status grouping.
 - HGO has a docs-only future private staged artifact store plan in
   `docs/architecture/hgo-private-staged-artifact-store-plan.md`. It deliberately
   does not add Prisma schema, API routes, server writes, Cloud SQL mutation, or
@@ -119,16 +131,18 @@ High Ground Studio is a monorepo with:
   It uses synthetic HGO projection JSON only, opens `/projection-preview/import`,
   confirms validation warnings and the shared renderer, checks
   `/projection-stage`, `/projection-stage/review`, `/projection-stage/import`,
-  `/projection-stage/artifact`, and a staged detail route, verifies known
-  real-content markers are absent, writes a machine-readable report, and
-  performs no server writes. If `HGO_BASE_URL` is not set, it starts the web app
-  locally on an available test port and shuts it down after the run.
+  `/projection-stage/artifact`, `/projection-stage/store-lab`, and a staged
+  detail route, verifies known real-content markers are absent, writes a
+  machine-readable report, and performs no server writes. If `HGO_BASE_URL` is
+  not set, it starts the web app locally on an available test port and shuts it
+  down after the run.
 - HGO also has a no-auth visual smoke command,
   `pnpm hgo:projection:visual-smoke`, for synthetic screenshot artifacts. It
   visits the projection preview map, import route, rendered import state, and
-  synthetic projection detail routes, writes a route-matrix report, captures
-  screenshots under `artifacts/playwright/hgo-projection-visual-smoke/`, checks
-  known real-content markers are absent, and performs no server writes.
+  synthetic projection detail routes, including Store Lab empty, imported,
+  reviewed, and archived states, writes a route-matrix report, captures screenshots
+  under `artifacts/playwright/hgo-projection-visual-smoke/`, checks known
+  real-content markers are absent, and performs no server writes.
 
 ## Current Coaching Workflow
 
@@ -179,6 +193,9 @@ High Ground Studio is a monorepo with:
 - The HGO staged artifact inspection route is also no-persistence. It validates
   browser-created artifact JSON and renders embedded projection state, but it
   does not save, approve, publish, or verify real public-safety status.
+- The HGO staged artifact Store Lab is session-only. It models private-store
+  lifecycle state without writing localStorage, server state, Prisma rows,
+  content files, or public routes.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a

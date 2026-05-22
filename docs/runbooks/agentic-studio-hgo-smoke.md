@@ -86,6 +86,18 @@ synthetic artifacts in memory and verifies the contract validator, parser,
 summary, file-name helper, safety flags, review-gate matching, and
 credential-marker rejection.
 
+For focused pure tests of the session-only staged artifact Store Lab, run:
+
+```bash
+pnpm hgo:store-lab:test
+```
+
+This command does not open a browser and does not write to a server. It creates
+synthetic staged artifacts in memory, imports them into the pure Store Lab
+state, verifies safety flags remain `persisted: false` and `published: false`,
+checks duplicate/import/archive/review behavior, and confirms simulated
+promotion candidates do not publish.
+
 ## What It Tests
 
 The current harness is a local API/helper-level smoke. It does not open a
@@ -155,12 +167,17 @@ For HGO no-auth browser reports:
   `persisted: false` / `published: false`, `/projection-stage/artifact`
   accepted the staged artifact JSON, validated it, showed the embedded review
   gate, showed persisted/published false safety state, rendered the embedded
-  projection, a staged detail route rendered through the shared projection
+  projection, `/projection-stage/store-lab` imported the generated artifact into
+  browser session state only, marked review lifecycle states, attempted a
+  simulated promotion candidate, archived the record, showed no-persistence and
+  no-publish copy, a staged detail route rendered through the shared projection
   component, staged/readiness warnings appeared, known real-content markers were
   absent, and no server write happened.
   The report also records `artifactRoundtrip`, `artifactVersion`,
   `artifactStatus`, `recommendedNextAction`, `artifactContainsRealContent`, and
-  `artifactJsonBytes`.
+  `artifactJsonBytes`, plus Store Lab fields such as `storeLabRoundtrip`,
+  `importedRecordCount`, `finalArchivedCount`, `simulatedPromotionCandidate`,
+  and `noPersistence`.
 - `blocked` means the browser or HGO route could not be made available safely,
   for example missing Chromium.
 - `failed` means the browser run started but route, validation, render, or
@@ -171,8 +188,9 @@ For HGO visual smoke reports:
 - `passed` means the projection preview map, empty import route, rendered import
   route, empty staged import review route, rendered staged import review route,
   staged artifact JSON route state, empty staged artifact inspection route,
-  rendered staged artifact inspection route, and discovered synthetic detail
-  routes captured screenshots while known real-content markers stayed absent.
+  rendered staged artifact inspection route, Store Lab empty, imported,
+  reviewed, and archived states, and discovered synthetic detail routes captured
+  screenshots while known real-content markers stayed absent.
 - `blocked` means Chromium or the HGO server path could not be made available
   safely.
 - `failed` means a route, selector, render, screenshot, or content-safety
@@ -186,6 +204,15 @@ For artifact helper tests:
   summary fields, and safe file naming behaved as expected.
 - `failed` means the in-memory contract changed and should be reconciled before
   trusting browser artifact roundtrips.
+
+For Store Lab helper tests:
+
+- `passed` means the session-only lifecycle model imports valid artifacts,
+  rejects invalid/persisted/published artifacts, handles duplicate active
+  artifact ids explicitly, marks review states, blocks or creates simulated
+  promotion candidates correctly, archives records, and preserves event logs.
+- `failed` means the future private-store model changed and should be resolved
+  before using the browser Store Lab as design evidence.
 
 ## Manual Follow-Up
 
@@ -208,7 +235,8 @@ Use the normal browser smoke after the helper harness passes:
 
 The HGO no-auth smoke does not replace the Studio browser smoke. It covers only
 the projection import, no-persistence staged import review, staged artifact
-inspection, staged review gate, staged surface, and renderer paths.
+inspection, session-only Store Lab, staged review gate, staged surface, and
+renderer paths.
 
 The HGO visual smoke also does not replace authenticated Studio browser smoke.
 It is a screenshot/report artifact pass for later human review of synthetic HGO

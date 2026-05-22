@@ -121,14 +121,41 @@ Focused node tests cover the artifact helper through:
 
 - `pnpm hgo:artifact:test`
 
+## Browser-Session Store Lab
+
+`/projection-stage/store-lab` models how a private staged artifact store might
+hold artifacts after browser import, but it keeps everything in React session
+state only.
+
+The Store Lab can:
+
+- import validated `hgo-staged-artifact-v1` JSON
+- reject invalid, persisted, published, credential-marked, or duplicate active
+  artifacts
+- mark records for human review
+- mark records approved for future staging
+- create simulated promotion candidates only when eligible
+- archive records
+- show an event log
+- render the embedded review gate and projection
+
+The Store Lab metadata is separate from the artifact packet. The embedded
+artifact still says `persisted: false` and `published: false`; the lab does not
+write localStorage, call a server route, or publish anything.
+
+Focused node tests cover the Store Lab through:
+
+- `pnpm hgo:store-lab:test`
+
 ## Future Flow
 
 1. Studio generates projection JSON.
 2. HGO staged import review creates a browser artifact.
 3. HGO staged artifact import validates the browser-created artifact.
-4. A human reviews blocker and warning state.
-5. A future private staged store saves approved artifacts.
-6. A later approved promotion workflow creates live public pages.
+4. HGO Store Lab models browser-session lifecycle state.
+5. A human reviews blocker and warning state.
+6. A future private staged store saves approved artifacts.
+7. A later approved promotion workflow creates live public pages.
 
 Future persistence planning lives in:
 
