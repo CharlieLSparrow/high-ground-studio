@@ -81,6 +81,13 @@ High Ground Studio is a monorepo with:
   performing server writes. When valid auth state is supplied, it may create
   synthetic-only Studio manuscript/snapshot records and then preview the HGO
   projection import.
+- HGO has a no-auth browser smoke command,
+  `pnpm hgo:projection:browser-smoke`, for the projection import/render path.
+  It uses synthetic HGO projection JSON only, opens `/projection-preview/import`,
+  confirms validation warnings and the shared renderer, checks known
+  real-content markers are absent, writes a machine-readable report, and
+  performs no server writes. If `HGO_BASE_URL` is not set, it starts the web app
+  locally on an available test port and shuts it down after the run.
 
 ## Current Coaching Workflow
 
@@ -122,6 +129,8 @@ High Ground Studio is a monorepo with:
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a
   product failure.
+- The HGO no-auth browser smoke does not exercise Studio auth, manuscript
+  library, or snapshot UI. It covers only HGO projection import and rendering.
 
 ## Current Stabilization Decisions
 

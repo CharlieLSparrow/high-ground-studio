@@ -33,6 +33,23 @@ artifacts/agentic-browser-smoke/studio-hgo-browser-smoke-report.json
 If private Studio auth state is missing, the browser smoke writes a `blocked`
 report and exits without opening a browser or writing server data.
 
+For a no-auth browser smoke of the HGO import/render path, run:
+
+```bash
+pnpm hgo:projection:browser-smoke
+```
+
+It writes:
+
+```text
+artifacts/agentic-browser-smoke/hgo-projection-browser-smoke-report.json
+```
+
+This command does not open Studio, does not require auth state, and does not
+write to a server. If `HGO_BASE_URL` is not provided, it starts the web app on
+an available local test port, waits for `/projection-preview/import`, runs the
+synthetic import/render smoke, and shuts the dev server down.
+
 ## What It Tests
 
 The current harness is a local API/helper-level smoke. It does not open a
@@ -91,6 +108,17 @@ For browser smoke reports:
 - `failed` means the browser run started but an auth, selector, server, render,
   or content-safety expectation failed.
 
+For HGO no-auth browser reports:
+
+- `passed` means synthetic projection JSON was pasted into
+  `/projection-preview/import`, validation warnings appeared, the projection
+  renderer mounted, known real-content markers were absent, and no server write
+  happened.
+- `blocked` means the browser or HGO route could not be made available safely,
+  for example missing Chromium.
+- `failed` means the browser run started but route, validation, render, or
+  content-safety expectations failed.
+
 ## Manual Follow-Up
 
 Use the normal browser smoke after the helper harness passes:
@@ -109,6 +137,9 @@ Use the normal browser smoke after the helper harness passes:
 12. Confirm the projection renderer appears.
 13. Confirm no real manuscript or real HGO content is used.
 14. Confirm no autosave, publish, or collaboration action happens.
+
+The HGO no-auth smoke does not replace the Studio browser smoke. It covers only
+the projection import and renderer path.
 
 ## Safety Boundary
 

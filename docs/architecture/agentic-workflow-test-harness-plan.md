@@ -55,6 +55,18 @@ artifacts/auth/studio-storage-state.json
 When that file is missing, `pnpm studio:hgo:browser-smoke` writes a `blocked`
 report and exits without opening a browser or performing server writes.
 
+The HGO-only browser harness does not need Studio auth. It runs:
+
+```bash
+pnpm hgo:projection:browser-smoke
+```
+
+The command uses synthetic HGO projection JSON, opens
+`/projection-preview/import`, confirms validation warnings, confirms the shared
+projection renderer mounts, checks known real-content markers are absent, and
+writes a JSON report. If `HGO_BASE_URL` is not provided, it starts the `web`
+app locally on an available test port and shuts it down after the run.
+
 Future browser runs should use one of these safe paths:
 
 - Local test auth if Studio gains a deliberate non-production test-auth mode.
@@ -95,6 +107,12 @@ The browser command writes:
 artifacts/agentic-browser-smoke/studio-hgo-browser-smoke-report.json
 ```
 
+The HGO no-auth browser command writes:
+
+```text
+artifacts/agentic-browser-smoke/hgo-projection-browser-smoke-report.json
+```
+
 The report includes:
 
 - `startedAt` / `finishedAt`
@@ -123,3 +141,5 @@ and are also ignored.
   availability without server writes.
 - Add CI-safe smoke that runs only helper-level checks and never depends on
   secrets, OAuth, Cloud SQL, or Cloud Run.
+- Extend the HGO no-auth browser smoke into CI once browser installation and
+  dev-server startup are stable in the CI runner.
