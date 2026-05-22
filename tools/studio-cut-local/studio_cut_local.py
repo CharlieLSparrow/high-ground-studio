@@ -19,7 +19,7 @@ import tempfile
 from typing import Any
 
 
-PROGRAM_STATES = {
+PROGRAM_STATE_ORDER = [
     "charlie",
     "homer",
     "both",
@@ -27,10 +27,166 @@ PROGRAM_STATES = {
     "homer_clip",
     "both_clip",
     "cut",
+]
+
+PROGRAM_STATES = set(PROGRAM_STATE_ORDER)
+
+RENDER_PROFILE_LAYOUTS = {
+    "youtube_16x9": {
+        "charlie": {
+            "behavior": "Charlie full frame",
+            "composition": "single_host_full_frame",
+            "videoSources": ["charlie"],
+            "audioPolicy": "Use synced program/clean mix later; proxy preview uses composite proxy audio.",
+            "futureFullResNotes": [
+                "Map source time to Charlie's synced Canon R8 full-res source.",
+                "Fill the 16:9 frame from Charlie's camera; crop/scale belongs to this render profile.",
+            ],
+        },
+        "homer": {
+            "behavior": "Homer full frame",
+            "composition": "single_host_full_frame",
+            "videoSources": ["homer"],
+            "audioPolicy": "Use synced program/clean mix later; proxy preview uses composite proxy audio.",
+            "futureFullResNotes": [
+                "Map source time to Homer's synced Insta360 export.",
+                "Fill the 16:9 frame from Homer's reframed source; crop/scale belongs to this render profile.",
+            ],
+        },
+        "both": {
+            "behavior": "Side-by-side hosts",
+            "composition": "two_host_split",
+            "videoSources": ["homer", "charlie"],
+            "audioPolicy": "Use synced program/clean mix later; proxy preview uses composite proxy audio.",
+            "futureFullResNotes": [
+                "Map the same source-time span to Homer and Charlie full-res sources.",
+                "Compose both hosts side by side in a 16:9 frame.",
+            ],
+        },
+        "charlie_clip": {
+            "behavior": "Charlie plus clip",
+            "composition": "host_plus_clip",
+            "videoSources": ["charlie", "clip"],
+            "audioPolicy": "Use synced program/clean mix later; proxy preview uses composite proxy audio.",
+            "futureFullResNotes": [
+                "Map source time to Charlie and Clip sources.",
+                "Compose Charlie with the shared clip in a 16:9 layout.",
+            ],
+        },
+        "homer_clip": {
+            "behavior": "Homer plus clip",
+            "composition": "host_plus_clip",
+            "videoSources": ["homer", "clip"],
+            "audioPolicy": "Use synced program/clean mix later; proxy preview uses composite proxy audio.",
+            "futureFullResNotes": [
+                "Map source time to Homer and Clip sources.",
+                "Compose Homer with the shared clip in a 16:9 layout.",
+            ],
+        },
+        "both_clip": {
+            "behavior": "Both hosts plus clip",
+            "composition": "two_hosts_plus_clip",
+            "videoSources": ["homer", "charlie", "clip"],
+            "audioPolicy": "Use synced program/clean mix later; proxy preview uses composite proxy audio.",
+            "futureFullResNotes": [
+                "Map source time to Homer, Charlie, and Clip sources.",
+                "Compose both hosts and shared clip in a 16:9 layout.",
+            ],
+        },
+        "cut": {
+            "behavior": "Skipped",
+            "composition": "inactive",
+            "videoSources": [],
+            "audioPolicy": "No program output for this source span.",
+            "futureFullResNotes": [
+                "Do not render this span in program playback or output.",
+            ],
+        },
+    },
+    "proxy_preview": {
+        "charlie": {
+            "behavior": "Whole source-monitor proxy span",
+            "composition": "composite_proxy_trim",
+            "videoSources": ["source_monitor_proxy"],
+            "audioPolicy": "Keep proxy audio as-is.",
+            "futureFullResNotes": [
+                "Proxy preview does not crop panes; use youtube_16x9 planning for full-res source choices.",
+            ],
+        },
+        "homer": {
+            "behavior": "Whole source-monitor proxy span",
+            "composition": "composite_proxy_trim",
+            "videoSources": ["source_monitor_proxy"],
+            "audioPolicy": "Keep proxy audio as-is.",
+            "futureFullResNotes": [
+                "Proxy preview does not crop panes; use youtube_16x9 planning for full-res source choices.",
+            ],
+        },
+        "both": {
+            "behavior": "Whole source-monitor proxy span",
+            "composition": "composite_proxy_trim",
+            "videoSources": ["source_monitor_proxy"],
+            "audioPolicy": "Keep proxy audio as-is.",
+            "futureFullResNotes": [
+                "Proxy preview does not crop panes; use youtube_16x9 planning for full-res source choices.",
+            ],
+        },
+        "charlie_clip": {
+            "behavior": "Whole source-monitor proxy span",
+            "composition": "composite_proxy_trim",
+            "videoSources": ["source_monitor_proxy"],
+            "audioPolicy": "Keep proxy audio as-is.",
+            "futureFullResNotes": [
+                "Proxy preview does not crop panes; use youtube_16x9 planning for full-res source choices.",
+            ],
+        },
+        "homer_clip": {
+            "behavior": "Whole source-monitor proxy span",
+            "composition": "composite_proxy_trim",
+            "videoSources": ["source_monitor_proxy"],
+            "audioPolicy": "Keep proxy audio as-is.",
+            "futureFullResNotes": [
+                "Proxy preview does not crop panes; use youtube_16x9 planning for full-res source choices.",
+            ],
+        },
+        "both_clip": {
+            "behavior": "Whole source-monitor proxy span",
+            "composition": "composite_proxy_trim",
+            "videoSources": ["source_monitor_proxy"],
+            "audioPolicy": "Keep proxy audio as-is.",
+            "futureFullResNotes": [
+                "Proxy preview does not crop panes; use youtube_16x9 planning for full-res source choices.",
+            ],
+        },
+        "cut": {
+            "behavior": "Skipped",
+            "composition": "inactive",
+            "videoSources": [],
+            "audioPolicy": "No proxy output for this source span.",
+            "futureFullResNotes": [
+                "Do not render this span in proxy preview or full-res output.",
+            ],
+        },
+    },
 }
 
-SUPPORTED_PROFILES = {"youtube_16x9", "proxy_preview"}
+SUPPORTED_PROFILES = set(RENDER_PROFILE_LAYOUTS)
 MINIMUM_PYTHON = (3, 10)
+
+PROFILE_DESCRIPTIONS = {
+    "youtube_16x9": "Future full-res 16:9 program layout planning.",
+    "proxy_preview": "Rough whole-proxy trimming for quick review output.",
+}
+
+PROGRAM_STATE_LABELS = {
+    "charlie": "Charlie",
+    "homer": "Homer",
+    "both": "Both",
+    "charlie_clip": "Charlie/Clip",
+    "homer_clip": "Homer/Clip",
+    "both_clip": "Both/Clip",
+    "cut": "Cut",
+}
 
 
 class StudioCutCliError(Exception):
@@ -83,6 +239,13 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--proxy", required=True, type=Path)
     render_parser.add_argument("--out", required=True, type=Path)
     render_parser.set_defaults(handler=run_render_proxy_preview)
+
+    explain_parser = subparsers.add_parser(
+        "explain-profile",
+        help="Print render behavior for each semantic state in a profile.",
+    )
+    explain_parser.add_argument("--profile", required=True, choices=sorted(SUPPORTED_PROFILES))
+    explain_parser.set_defaults(handler=run_explain_profile)
 
     return parser
 
@@ -199,6 +362,11 @@ def run_render_proxy_preview(args: argparse.Namespace) -> int:
         )
 
     print("\nProxy preview render complete.")
+    return 0
+
+
+def run_explain_profile(args: argparse.Namespace) -> int:
+    print_profile_mapping(args.profile)
     return 0
 
 
@@ -331,16 +499,20 @@ def build_render_plan(
 
     duration_ms = int(round(float(manifest["durationMs"])))
     derived_segments = derive_segments(decision_events, duration_ms)
-    active_segments = [
-        {
-            "index": len([segment for segment in derived_segments[:index] if segment["state"] != "cut"]),
-            **segment,
-        }
-        for index, segment in enumerate(derived_segments)
-        if segment["state"] != "cut"
-    ]
+    active_segments = []
+    cut_segments = []
+
+    for segment in derived_segments:
+        segment_plan = add_profile_planning(segment, profile)
+
+        if segment["state"] == "cut":
+            cut_segments.append(segment_plan)
+            continue
+
+        segment_plan["index"] = len(active_segments)
+        active_segments.append(segment_plan)
+
     active_duration_ms = sum(segment["durationMs"] for segment in active_segments)
-    cut_segments = [segment for segment in derived_segments if segment["state"] == "cut"]
     cut_duration_ms = sum(segment["durationMs"] for segment in cut_segments)
 
     return {
@@ -349,6 +521,7 @@ def build_render_plan(
         .isoformat()
         .replace("+00:00", "Z"),
         "profile": profile,
+        "profileDescription": PROFILE_DESCRIPTIONS[profile],
         "manifest": {
             "id": manifest["id"],
             "title": manifest["title"],
@@ -371,6 +544,43 @@ def build_render_plan(
         },
         "activeSegments": active_segments,
         "cutSegments": cut_segments,
+    }
+
+
+def add_profile_planning(segment: dict[str, Any], profile: str) -> dict[str, Any]:
+    state = str(segment["state"])
+    profile_plan = get_profile_plan(profile, state)
+
+    return {
+        **segment,
+        "programState": state,
+        "sourceTime": {
+            "inMs": segment["startSourceTimeMs"],
+            "outMs": segment["endSourceTimeMs"],
+            "durationMs": segment["durationMs"],
+            "in": format_time_ms(segment["startSourceTimeMs"]),
+            "out": format_time_ms(segment["endSourceTimeMs"]),
+            "duration": format_time_ms(segment["durationMs"]),
+        },
+        "layoutBehavior": profile_plan["behavior"],
+        "profilePlan": profile_plan,
+        "futureFullResNotes": profile_plan["futureFullResNotes"],
+    }
+
+
+def get_profile_plan(profile: str, state: str) -> dict[str, Any]:
+    try:
+        plan = RENDER_PROFILE_LAYOUTS[profile][state]
+    except KeyError as error:
+        raise StudioCutCliError(
+            f"no render profile mapping for profile={profile} state={state}"
+        ) from error
+
+    return {
+        "profile": profile,
+        "state": state,
+        "stateLabel": PROGRAM_STATE_LABELS[state],
+        **plan,
     }
 
 
@@ -415,7 +625,7 @@ def print_render_plan(plan: dict[str, Any]) -> None:
     print("Studio Cut Render Plan")
     print("======================")
     print(f"Episode: {manifest['title']} ({manifest['id']})")
-    print(f"Profile: {plan['profile']}")
+    print(f"Profile: {plan['profile']} - {plan['profileDescription']}")
     print(f"Source duration: {format_time_ms(summary['sourceDurationMs'])}")
     print(f"Decision events: {summary['decisionEventCount']}")
     print(
@@ -438,8 +648,30 @@ def print_render_plan(plan: dict[str, Any]) -> None:
             f"{format_time_ms(segment['startSourceTimeMs'])} -> "
             f"{format_time_ms(segment['endSourceTimeMs'])} "
             f"({format_time_ms(segment['durationMs'])}) "
-            f"{segment['state']} via {short_id(segment['sourceEventId'])}"
+            f"{segment['programState']} -> {segment['layoutBehavior']} "
+            f"via {short_id(segment['sourceEventId'])}"
         )
+        notes = segment["futureFullResNotes"]
+        if notes:
+            print(f"      full-res note: {notes[0]}")
+
+
+def print_profile_mapping(profile: str) -> None:
+    print(f"Studio Cut Render Profile: {profile}")
+    print("=" * (27 + len(profile)))
+    print(PROFILE_DESCRIPTIONS[profile])
+
+    for state in PROGRAM_STATE_ORDER:
+        plan = get_profile_plan(profile, state)
+        sources = ", ".join(plan["videoSources"]) if plan["videoSources"] else "none"
+        print(f"\n{PROGRAM_STATE_LABELS[state]} ({state})")
+        print(f"  behavior: {plan['behavior']}")
+        print(f"  composition: {plan['composition']}")
+        print(f"  video sources: {sources}")
+        print(f"  audio: {plan['audioPolicy']}")
+
+        for note in plan["futureFullResNotes"]:
+            print(f"  full-res note: {note}")
 
 
 def run_ffmpeg_trim(

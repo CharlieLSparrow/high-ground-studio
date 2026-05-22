@@ -24,7 +24,7 @@ Create a dry-run render plan from placeholder examples:
 python tools/studio-cut-local/studio_cut_local.py plan-render \
   --manifest tools/studio-cut-local/examples/episode-manifest.placeholder.json \
   --decisions tools/studio-cut-local/examples/studio-cut-decisions.placeholder.json \
-  --profile proxy_preview
+  --profile youtube_16x9
 ```
 
 Write a render plan JSON locally:
@@ -35,6 +35,13 @@ python tools/studio-cut-local/studio_cut_local.py plan-render \
   --decisions path/to/studio-cut-decisions.json \
   --profile youtube_16x9 \
   --out /tmp/studio-cut-render-plan.json
+```
+
+Explain a render profile without loading episode files:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py explain-profile \
+  --profile youtube_16x9
 ```
 
 Render a rough proxy preview that skips `Cut` spans:
@@ -50,6 +57,32 @@ python tools/studio-cut-local/studio_cut_local.py render-proxy-preview \
 `render-proxy-preview` requires `ffmpeg` on `PATH`. It trims active spans from
 the local source-monitor proxy and concatenates them into a rough review file.
 It does not crop Homer, Charlie, or Clip panes yet.
+
+## Render Profiles
+
+`plan-render` now attaches profile-aware layout intent to each active segment:
+
+- program state
+- source time in/out
+- duration
+- intended layout behavior
+- future full-resolution render notes
+
+Current `youtube_16x9` mapping:
+
+| State | 16:9 behavior |
+| --- | --- |
+| `charlie` | Charlie full frame |
+| `homer` | Homer full frame |
+| `both` | Side-by-side hosts |
+| `charlie_clip` | Charlie plus clip |
+| `homer_clip` | Homer plus clip |
+| `both_clip` | Both hosts plus clip |
+| `cut` | Skipped |
+
+`proxy_preview` remains intentionally simple. It trims and concatenates the
+whole source-monitor proxy for every active non-`Cut` span, without pane
+cropping. Use `youtube_16x9` planning to inspect future full-res layout intent.
 
 ## Inputs
 

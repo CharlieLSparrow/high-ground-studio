@@ -185,11 +185,29 @@ The CLI supports:
 
 - `doctor`: checks Python, `ffmpeg`, and current-directory read/write access.
 - `plan-render`: validates the manifest and decision JSON, derives semantic
-  segments, removes `Cut` spans, prints a human-readable plan, and can write a
-  render-plan JSON file.
+  segments, removes `Cut` spans, adds profile-specific layout intent, prints a
+  human-readable plan, and can write a render-plan JSON file.
 - `render-proxy-preview`: uses the same active segment plan and `ffmpeg` to
   trim/concatenate the local source-monitor proxy into a rough review MP4 that
   skips `Cut` spans.
+- `explain-profile`: prints the semantic state mapping for a render profile.
+
+Current `youtube_16x9` planning maps semantic states this way:
+
+| State | 16:9 layout intent |
+| --- | --- |
+| `charlie` | Charlie full frame |
+| `homer` | Homer full frame |
+| `both` | Side-by-side hosts |
+| `charlie_clip` | Charlie plus clip |
+| `homer_clip` | Homer plus clip |
+| `both_clip` | Both hosts plus clip |
+| `cut` | Skipped |
+
+The render plan stores each active segment's program state, source in/out,
+duration, layout behavior, source choices, audio policy, and notes for the
+future full-resolution renderer. `proxy_preview` still trims the whole
+source-monitor proxy for active spans and does not crop individual panes.
 
 Dry-run first:
 
@@ -197,8 +215,15 @@ Dry-run first:
 python tools/studio-cut-local/studio_cut_local.py plan-render \
   --manifest path/to/episode-manifest.json \
   --decisions path/to/studio-cut-decisions.json \
-  --profile proxy_preview \
+  --profile youtube_16x9 \
   --out /tmp/studio-cut-render-plan.json
+```
+
+Explain profile behavior:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py explain-profile \
+  --profile youtube_16x9
 ```
 
 Proxy preview second:
