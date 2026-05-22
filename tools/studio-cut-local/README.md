@@ -18,6 +18,26 @@ Run from the repo root.
 python tools/studio-cut-local/studio_cut_local.py doctor
 ```
 
+Create placeholder bootstrap files for a real episode:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py create-episode-bootstrap \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --duration-ms 600000 \
+  --out-dir tools/studio-cut-local/output/episode-004-bootstrap
+```
+
+This writes:
+
+- `episode-004-episode-manifest.json`
+- `episode-004-local-media.json`
+- `README.md`
+
+Use `--include-clip false` if the episode has no shared Clip track. Generated
+real-episode bootstrap directories should stay under `tools/studio-cut-local/output/`
+or `/tmp`; that output path is ignored by git.
+
 Create a dry-run render plan from placeholder examples:
 
 ```bash
@@ -173,6 +193,15 @@ planning.
 - Studio Cut decision JSON exported from the web app.
 - Optional local source-monitor proxy video for proxy preview rendering.
 - Optional local media map JSON for aligned full-output rendering.
+
+For real episodes, start with `create-episode-bootstrap` to avoid hand-writing
+the manifest and local media map. Fill in the generated media map with local
+timeline-aligned media paths before rendering:
+
+- `REPLACE_WITH_HOMER_ALIGNED_PATH`
+- `REPLACE_WITH_CHARLIE_ALIGNED_PATH`
+- `REPLACE_WITH_CLIP_ALIGNED_PATH`
+- `REPLACE_WITH_PROGRAM_AUDIO_PATH`
 
 Local media map shape:
 

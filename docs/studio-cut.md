@@ -190,6 +190,8 @@ Premiere sync -> export aligned Homer/Charlie/Clip/program-audio media -> export
 The CLI supports:
 
 - `doctor`: checks Python, `ffmpeg`, and current-directory read/write access.
+- `create-episode-bootstrap`: writes a placeholder Episode Manifest, local media
+  map, and README for a real episode so operators do not hand-write JSON.
 - `plan-render`: validates the manifest and decision JSON, derives semantic
   segments, removes `Cut` spans, adds profile-specific layout intent, prints a
   human-readable plan, and can write a render-plan JSON file.
@@ -234,6 +236,39 @@ The rough aligned renderer uses simple, robust 16:9 rectangles:
 This renderer intentionally does not parse Premiere XML/EDL yet. Premiere owns
 timeline alignment for now by exporting local media files that share sequence
 start and duration.
+
+Create Episode 4 bootstrap files:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py create-episode-bootstrap \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --duration-ms 600000 \
+  --out-dir tools/studio-cut-local/output/episode-004-bootstrap
+```
+
+Use the real source duration in `--duration-ms` when it is known. The generated
+directory contains:
+
+- `episode-004-episode-manifest.json`
+- `episode-004-local-media.json`
+- `README.md` with the next local commands
+
+The manifest includes placeholder-safe source names, a local source-monitor
+proxy placeholder, Homer/Charlie/Clip pane rectangles, and
+`syncBootstrap.source = premiere`. The local media map uses obvious placeholders:
+
+```text
+REPLACE_WITH_HOMER_ALIGNED_PATH
+REPLACE_WITH_CHARLIE_ALIGNED_PATH
+REPLACE_WITH_CLIP_ALIGNED_PATH
+REPLACE_WITH_PROGRAM_AUDIO_PATH
+```
+
+Fill those paths locally after Premiere exports timeline-aligned media. Keep
+generated real-episode bootstrap directories under `tools/studio-cut-local/output/`
+or `/tmp`; `tools/studio-cut-local/output/` and local media map filename patterns
+are ignored by git.
 
 Dry-run first:
 
