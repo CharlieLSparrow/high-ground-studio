@@ -1,6 +1,7 @@
 import {
   type ChangeEvent,
   type CSSProperties,
+  type RefObject,
   useEffect,
   useMemo,
   useRef,
@@ -30,6 +31,18 @@ import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 const DEFAULT_SOURCE_DURATION_MS = 60 * 60 * 1000;
 const EPISODE_MANIFEST_STORAGE_KEY =
   "high-ground-studio.studio-cut.episode-manifest.v1";
+const LOCAL_PROXY_VIDEO_ACCEPT =
+  "video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
+const PLAYBACK_TICK_MS = 250;
+const VIDEO_SEEK_DRIFT_TOLERANCE_MS = 350;
+
+type LocalProxyVideo = {
+  id: string;
+  name: string;
+  sizeBytes: number;
+  objectUrl: string;
+  durationMs?: number;
+};
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
@@ -89,10 +102,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [episodeManifest, setEpisodeManifest] = useState<EpisodeManifest | null>(
     loadStoredEpisodeManifest,
   );
+  const [localProxyVideo, setLocalProxyVideo] =
+    useState<LocalProxyVideo | null>(null);
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
   const manifestInputRef = useRef<HTMLInputElement>(null);
+  const proxyVideoInputRef = useRef<HTMLInputElement>(null);
+  const proxyVideoRef = useRef<HTMLVideoElement>(null);
   const {
     config,
     decisionEvents,
@@ -112,7 +129,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     () => deriveSegments(sortedEvents),
     [sortedEvents],
   );
-  const sourceDurationMs = episodeManifest?.durationMs ?? DEFAULT_SOURCE_DURATION_MS;
+  const sourceDurationMs =
+    episodeManifest?.durationMs ??
+    localProxyVideo?.durationMs ??
+    DEFAULT_SOURCE_DURATION_MS;
   const currentEvent = useMemo(
     () => getCurrentDecisionEvent(sortedEvents, sourceTimeMs),
     [sortedEvents, sourceTimeMs],
@@ -130,48 +150,90 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   }, [episodeManifest]);
 
   useEffect(() => {
+    return () => {
+      if (localProxyVideo) {
+        URL.revokeObjectURL(localProxyVideo.objectUrl);
+      }
+    };
+  }, [localProxyVideo?.objectUrl]);
+
+  useEffect(() => {
+    setSourceTimeMs((currentSourceTimeMs) =>
+      clampSourceTime(currentSourceTimeMs, sourceDurationMs),
+    );
+  }, [sourceDurationMs]);
+
+  useEffect(() => {
+    const video = proxyVideoRef.current;
+
+    if (!video || !localProxyVideo) {
+      return;
+    }
+
+    const driftMs = Math.abs(video.currentTime * 1000 - sourceTimeMs);
+
+    if (!isProgramPlaying || driftMs > VIDEO_SEEK_DRIFT_TOLERANCE_MS) {
+      seekProxyVideo(sourceTimeMs);
+    }
+  }, [isProgramPlaying, localProxyVideo, sourceTimeMs]);
+
+  useEffect(() => {
     if (!isProgramPlaying) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
       setSourceTimeMs((currentSourceTimeMs) => {
-        const nextSourceTimeMs = getNextProgramPlaybackSourceTime(
+        const measuredProxySourceTimeMs =
+          localProxyVideo && proxyVideoRef.current
+            ? getProxyVideoSourceTime(proxyVideoRef.current)
+            : undefined;
+        const candidateSourceTimeMs =
+          measuredProxySourceTimeMs === undefined
+            ? currentSourceTimeMs + PLAYBACK_TICK_MS
+            : Math.max(currentSourceTimeMs, measuredProxySourceTimeMs);
+        const nextSourceTimeMs = skipCutSourceTime(
           derivedSegments,
-          currentSourceTimeMs,
-          500,
+          clampSourceTime(candidateSourceTimeMs, sourceDurationMs),
           sourceDurationMs,
         );
 
         if (nextSourceTimeMs === undefined) {
-          setIsProgramPlaying(false);
+          stopProgramPlayback();
           return currentSourceTimeMs;
         }
 
         if (nextSourceTimeMs >= sourceDurationMs) {
-          setIsProgramPlaying(false);
+          stopProgramPlayback();
           return sourceDurationMs;
+        }
+
+        if (
+          Math.abs(nextSourceTimeMs - candidateSourceTimeMs) >
+          VIDEO_SEEK_DRIFT_TOLERANCE_MS
+        ) {
+          seekProxyVideo(nextSourceTimeMs);
         }
 
         return nextSourceTimeMs;
       });
-    }, 500);
+    }, PLAYBACK_TICK_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [derivedSegments, isProgramPlaying, sourceDurationMs]);
+  }, [derivedSegments, isProgramPlaying, localProxyVideo, sourceDurationMs]);
 
   function setClampedSourceTime(nextValue: number) {
     setSourceTimeMs(clampSourceTime(nextValue, sourceDurationMs));
   }
 
   function scrubToSourceTime(nextValue: number) {
-    setIsProgramPlaying(false);
+    stopProgramPlayback();
     setClampedSourceTime(nextValue);
   }
 
   function toggleProgramPlayback() {
     if (isProgramPlaying) {
-      setIsProgramPlaying(false);
+      stopProgramPlayback();
       return;
     }
 
@@ -187,18 +249,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }
 
     setSourceTimeMs(playableSourceTimeMs);
+    seekProxyVideo(playableSourceTimeMs);
     setIsProgramPlaying(true);
+    playProxyVideo();
   }
 
   function addDecision(state: ProgramState) {
-    setIsProgramPlaying(false);
+    stopProgramPlayback();
     createDecision(state, sourceTimeMs, note);
     setNote("");
   }
 
   function clearLocalDecisions() {
     if (window.confirm("Clear this browser's Studio Cut decision events?")) {
-      setIsProgramPlaying(false);
+      stopProgramPlayback();
       clearDecisions();
     }
   }
@@ -226,7 +290,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     try {
       const payload = JSON.parse(await file.text()) as unknown;
       const result = importDecisionEvents(payload);
-      setIsProgramPlaying(false);
+      stopProgramPlayback();
       const normalizedCopy =
         result.normalizedCount > 0
           ? ` ${result.normalizedCount} event${
@@ -264,7 +328,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       }
 
       setEpisodeManifest(result.manifest);
-      setIsProgramPlaying(false);
+      stopProgramPlayback();
       setSourceTimeMs((currentSourceTimeMs) =>
         clampSourceTime(currentSourceTimeMs, result.manifest.durationMs),
       );
@@ -279,24 +343,135 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }
   }
 
+  function handleLoadLocalProxyVideo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!isSupportedLocalProxyVideo(file)) {
+      setImportMessage(
+        "Local proxy load failed: choose an MP4, MOV, or M4V video file.",
+      );
+      event.target.value = "";
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+
+    stopProgramPlayback();
+    setLocalProxyVideo({
+      id: `${file.name}-${file.lastModified}-${file.size}-${Date.now()}`,
+      name: file.name,
+      sizeBytes: file.size,
+      objectUrl,
+    });
+    setImportMessage(
+      `Loaded local proxy video "${file.name}". The file stays in this browser tab and is not uploaded, persisted, or written to decisions.`,
+    );
+    event.target.value = "";
+  }
+
+  function clearLocalProxyVideo() {
+    stopProgramPlayback();
+    setLocalProxyVideo(null);
+    setImportMessage("Cleared the local proxy video from this browser tab.");
+  }
+
+  function handleProxyLoadedMetadata(durationSeconds: number) {
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      return;
+    }
+
+    const durationMs = Math.round(durationSeconds * 1000);
+
+    setLocalProxyVideo((currentLocalProxyVideo) =>
+      currentLocalProxyVideo
+        ? { ...currentLocalProxyVideo, durationMs }
+        : currentLocalProxyVideo,
+    );
+  }
+
+  function handleProxyVideoEnded() {
+    stopProgramPlayback();
+    setSourceTimeMs(sourceDurationMs);
+  }
+
+  function stopProgramPlayback() {
+    setIsProgramPlaying(false);
+    pauseProxyVideo();
+  }
+
+  function playProxyVideo() {
+    const video = proxyVideoRef.current;
+
+    if (!video || !localProxyVideo) {
+      return;
+    }
+
+    void video.play().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      setIsProgramPlaying(false);
+      setImportMessage(`Local proxy playback failed: ${message}`);
+    });
+  }
+
+  function pauseProxyVideo() {
+    proxyVideoRef.current?.pause();
+  }
+
+  function seekProxyVideo(nextSourceTimeMs: number) {
+    const video = proxyVideoRef.current;
+
+    if (!video || !localProxyVideo) {
+      return;
+    }
+
+    const nextSourceTimeSeconds = clampSourceTime(
+      nextSourceTimeMs,
+      sourceDurationMs,
+    ) / 1000;
+
+    if (Number.isFinite(nextSourceTimeSeconds)) {
+      video.currentTime = nextSourceTimeSeconds;
+    }
+  }
+
   return (
     <main className="workspace">
-      <section className="monitor-grid" aria-label="Source and program monitors">
-        <SourceMonitor
-          role="homer"
-          sourceTimeMs={sourceTimeMs}
-          currentState={currentState}
-        />
-        <SourceMonitor
-          role="charlie"
-          sourceTimeMs={sourceTimeMs}
-          currentState={currentState}
-        />
-        <SourceMonitor
-          role="clip"
-          sourceTimeMs={sourceTimeMs}
-          currentState={currentState}
-        />
+      <section
+        className={`monitor-grid${localProxyVideo ? " has-local-proxy" : ""}`}
+        aria-label="Source and program monitors"
+      >
+        {localProxyVideo ? (
+          <SourceProxyMonitor
+            localProxyVideo={localProxyVideo}
+            manifest={episodeManifest}
+            sourceTimeMs={sourceTimeMs}
+            videoRef={proxyVideoRef}
+            onLoadedMetadata={handleProxyLoadedMetadata}
+            onEnded={handleProxyVideoEnded}
+          />
+        ) : (
+          <>
+            <SourceMonitor
+              role="homer"
+              sourceTimeMs={sourceTimeMs}
+              currentState={currentState}
+            />
+            <SourceMonitor
+              role="charlie"
+              sourceTimeMs={sourceTimeMs}
+              currentState={currentState}
+            />
+            <SourceMonitor
+              role="clip"
+              sourceTimeMs={sourceTimeMs}
+              currentState={currentState}
+            />
+          </>
+        )}
         <ProgramMonitor
           sourceTimeMs={sourceTimeMs}
           currentEvent={currentEvent}
@@ -307,7 +482,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         <EpisodeManifestPanel
           manifest={episodeManifest}
           sourceDurationMs={sourceDurationMs}
+          localProxyVideo={localProxyVideo}
           onImport={() => manifestInputRef.current?.click()}
+          onLoadLocalProxy={() => proxyVideoInputRef.current?.click()}
+          onClearLocalProxy={clearLocalProxyVideo}
         />
         <input
           ref={manifestInputRef}
@@ -316,6 +494,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           accept="application/json,.json"
           onChange={handleImportManifestJson}
           aria-label="Import episode manifest JSON"
+        />
+        <input
+          ref={proxyVideoInputRef}
+          className="file-input"
+          type="file"
+          accept={LOCAL_PROXY_VIDEO_ACCEPT}
+          onChange={handleLoadLocalProxyVideo}
+          aria-label="Load local source-monitor proxy video"
         />
 
         <section className="persistence-panel">
@@ -465,7 +651,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
               currentEventId={currentEvent?.id}
               onJump={scrubToSourceTime}
               onRemove={(eventId) => {
-                setIsProgramPlaying(false);
+                stopProgramPlayback();
                 removeDecision(eventId);
               }}
             />
@@ -488,11 +674,17 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
 function EpisodeManifestPanel({
   manifest,
   sourceDurationMs,
+  localProxyVideo,
   onImport,
+  onLoadLocalProxy,
+  onClearLocalProxy,
 }: {
   manifest: EpisodeManifest | null;
   sourceDurationMs: number;
+  localProxyVideo: LocalProxyVideo | null;
   onImport: () => void;
+  onLoadLocalProxy: () => void;
+  onClearLocalProxy: () => void;
 }) {
   const proxyPath =
     manifest?.sourceMonitorProxy.url ??
@@ -557,6 +749,36 @@ function EpisodeManifestPanel({
           ) : null}
         </div>
       ) : null}
+      <div className="local-proxy-loader">
+        <div>
+          <strong>Local source-monitor proxy</strong>
+          <p>
+            {localProxyVideo
+              ? `${localProxyVideo.name} · ${formatFileSize(
+                  localProxyVideo.sizeBytes,
+                )}${
+                  localProxyVideo.durationMs
+                    ? ` · ${formatSourceTime(localProxyVideo.durationMs)}`
+                    : ""
+                }`
+              : "Choose a local MP4, MOV, or M4V from this Mac. It is not uploaded or persisted."}
+          </p>
+        </div>
+        <div className="local-proxy-actions">
+          <button className="secondary-button" type="button" onClick={onLoadLocalProxy}>
+            Load Local Proxy Video
+          </button>
+          {localProxyVideo ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onClearLocalProxy}
+            >
+              Clear Video
+            </button>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }
@@ -637,6 +859,78 @@ function SourceMonitor({
           <span>{role}</span>
         </div>
         <p>{MONITOR_COPY[role]}</p>
+      </div>
+    </article>
+  );
+}
+
+function SourceProxyMonitor({
+  localProxyVideo,
+  manifest,
+  sourceTimeMs,
+  videoRef,
+  onLoadedMetadata,
+  onEnded,
+}: {
+  localProxyVideo: LocalProxyVideo;
+  manifest: EpisodeManifest | null;
+  sourceTimeMs: number;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  onLoadedMetadata: (durationSeconds: number) => void;
+  onEnded: () => void;
+}) {
+  const panes = manifest?.sourceMonitorProxy.panes;
+
+  return (
+    <article className="monitor source-proxy-monitor">
+      <div className="monitor-header">
+        <div>
+          <h2>Source monitor proxy</h2>
+          <p>Local browser file only. No upload or persistence.</p>
+        </div>
+        <span>{formatSourceTime(sourceTimeMs)}</span>
+      </div>
+      <div className="source-proxy-body">
+        <div className="proxy-video-frame">
+          <video
+            key={localProxyVideo.id}
+            ref={videoRef}
+            className="proxy-video"
+            src={localProxyVideo.objectUrl}
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={(event) =>
+              onLoadedMetadata(event.currentTarget.duration)
+            }
+            onEnded={onEnded}
+            aria-label={`Local source-monitor proxy ${localProxyVideo.name}`}
+          />
+          <div className="proxy-pane-labels" aria-hidden="true">
+            <span>Homer</span>
+            <span>Charlie</span>
+            <span>Clip</span>
+          </div>
+        </div>
+        <div className="proxy-video-details">
+          <strong>{localProxyVideo.name}</strong>
+          <span>
+            {formatFileSize(localProxyVideo.sizeBytes)}
+            {localProxyVideo.durationMs
+              ? ` · ${formatSourceTime(localProxyVideo.durationMs)}`
+              : ""}
+          </span>
+        </div>
+        <div className="proxy-pane-metadata">
+          {panes ? (
+            <>
+              <span>{formatPane("Homer", panes.homer)}</span>
+              <span>{formatPane("Charlie", panes.charlie)}</span>
+              {panes.clip ? <span>{formatPane("Clip", panes.clip)}</span> : null}
+            </>
+          ) : (
+            <span>Import a manifest to show source pane rectangle metadata.</span>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -789,19 +1083,6 @@ function EmptyState({ text }: { text: string }) {
   return <p className="empty-state">{text}</p>;
 }
 
-function getNextProgramPlaybackSourceTime(
-  segments: readonly DerivedSegment[],
-  currentSourceTimeMs: number,
-  stepMs: number,
-  sourceDurationMs: number,
-) {
-  const nextSourceTimeMs = clampSourceTime(
-    currentSourceTimeMs + stepMs,
-    sourceDurationMs,
-  );
-  return skipCutSourceTime(segments, nextSourceTimeMs, sourceDurationMs);
-}
-
 function skipCutSourceTime(
   segments: readonly DerivedSegment[],
   sourceTimeMs: number,
@@ -841,6 +1122,12 @@ function clampSourceTime(sourceTimeMs: number, sourceDurationMs: number) {
   return Math.min(sourceDurationMs, Math.max(0, sourceTimeMs));
 }
 
+function getProxyVideoSourceTime(video: HTMLVideoElement) {
+  const sourceTimeMs = Math.round(video.currentTime * 1000);
+
+  return Number.isFinite(sourceTimeMs) ? sourceTimeMs : undefined;
+}
+
 function formatPane(
   label: string,
   pane: { x: number; y: number; width: number; height: number },
@@ -876,6 +1163,12 @@ function saveStoredEpisodeManifest(manifest: EpisodeManifest | null) {
   } catch {
     // Browser storage can be unavailable in private or restricted contexts.
   }
+}
+
+function isSupportedLocalProxyVideo(file: File) {
+  return (
+    file.type.startsWith("video/") || /\.(mp4|mov|m4v)$/i.test(file.name)
+  );
 }
 
 function isSourceActive(role: Exclude<SourceRole, "program">, state?: ProgramState) {
@@ -920,4 +1213,18 @@ function formatSourceTime(sourceTimeMs: number) {
 
 function shortId(id: string) {
   return id.slice(0, 8);
+}
+
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+
+  const sizeKilobytes = sizeBytes / 1024;
+
+  if (sizeKilobytes < 1024) {
+    return `${sizeKilobytes.toFixed(1)} KB`;
+  }
+
+  return `${(sizeKilobytes / 1024).toFixed(1)} MB`;
 }

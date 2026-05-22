@@ -88,8 +88,8 @@ Premiere-synced bootstrap workflow. The manifest records:
 - Premiere XML/EDL bootstrap notes
 
 The web app uses the manifest duration as the source timeline length and
-displays the source-monitor proxy metadata. It does not play real video yet and
-does not require full-res media. A placeholder-only sample lives at:
+displays the source-monitor proxy metadata. It does not require full-res media.
+A placeholder-only sample lives at:
 
 ```text
 docs/studio-cut-episode-manifest.sample.json
@@ -97,6 +97,34 @@ docs/studio-cut-episode-manifest.sample.json
 
 Do not put real media paths, private podcast details, proxy package URLs, or
 personal recordings in checked-in manifest files.
+
+## Local Proxy Playback
+
+Studio Cut can play a local source-monitor proxy video in the browser without
+uploading it anywhere. Use `Load Local Proxy Video` in the Episode Manifest
+panel and choose a local `.mp4`, `.mov`, or `.m4v` file from the operator's
+machine.
+
+Important boundaries:
+
+- the selected file is read only by the current browser tab
+- the app uses an in-memory `URL.createObjectURL()` URL
+- the file and object URL are not saved to localStorage
+- the file and object URL are not written to Firestore decision events
+- the file is not uploaded to Firebase Hosting, Cloud Storage, Firestore, or
+  any other service
+- the object URL is revoked when the video is replaced, cleared, or the app
+  unloads
+
+The source-time slider seeks the local proxy video. Program Playback uses the
+same video but keeps the semantic preview behavior: when playback reaches a
+`Cut` span, it seeks the video to the next non-`Cut` segment start. Manual
+scrubbing, event jumps, and time edits still show the full source timeline,
+including inactive spans.
+
+The current player shows the source-monitor proxy as one composite video. It
+uses the manifest's Homer, Charlie, and Clip pane rectangles as visible metadata
+only; individual pane cropping is intentionally deferred.
 
 ## Premiere Bootstrap Workflow
 
@@ -109,8 +137,15 @@ Use Premiere only to create the temporary synced source truth:
 4. Create a Studio Cut Episode Manifest JSON with placeholder-safe source names,
    duration, proxy metadata, pane rectangles, and XML file name.
 5. Import the manifest in Studio Cut.
-6. Tag semantic decisions in Studio Cut against source time.
-7. Export Studio Cut decision JSON.
+6. Load the local source-monitor proxy video from the operator's machine.
+7. Tag semantic decisions in Studio Cut against source time.
+8. Export Studio Cut decision JSON.
+
+Tonight's usable workflow is:
+
+```text
+Premiere sync -> proxy export -> manifest import -> local proxy load -> semantic tagging -> decision JSON export
+```
 
 Tonight's boundary: Premiere owns temporary source sync. Studio Cut owns the
 semantic decision layer. The later local render engine should consume the
@@ -120,7 +155,7 @@ output locally.
 ## Preview Truths
 
 - Source monitor proxies are for seeing and timing source material in the web
-  editor.
+  editor. Local proxy playback is browser-only and ephemeral.
 - The web Program Preview is an edit simulation from semantic state decisions.
 - The local render engine remains final truth for synced full-resolution output.
 

@@ -221,6 +221,10 @@ h2 {
   gap: 12px;
 }
 
+.monitor-grid.has-local-proxy {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
 .monitor,
 .edit-panel,
 .list-section {
@@ -297,6 +301,93 @@ h2 {
   color: #aeb9b4;
   font-size: 0.86rem;
   line-height: 1.45;
+}
+
+.source-proxy-monitor {
+  min-height: 532px;
+}
+
+.source-proxy-monitor .monitor-header p {
+  margin-top: 4px;
+  color: #aeb9b4;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.source-proxy-body {
+  display: grid;
+  min-height: 480px;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
+.proxy-video-frame {
+  position: relative;
+  display: grid;
+  min-height: 398px;
+  place-items: center;
+  margin: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(238, 242, 238, 0.12);
+  border-radius: 6px;
+  background: #030505;
+}
+
+.proxy-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: min(64vh, 620px);
+  object-fit: contain;
+  background: #030505;
+}
+
+.proxy-pane-labels {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.proxy-pane-labels span {
+  border: 1px solid rgba(145, 219, 183, 0.36);
+  border-radius: 999px;
+  background: rgba(3, 5, 5, 0.72);
+  color: #eef2ee;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.proxy-video-details,
+.proxy-pane-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 0 14px 10px;
+}
+
+.proxy-video-details strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.86rem;
+}
+
+.proxy-video-details span,
+.proxy-pane-metadata span {
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.proxy-pane-metadata {
+  padding-bottom: 14px;
 }
 
 .program-monitor {
@@ -409,6 +500,34 @@ h2 {
 
 .manifest-details strong {
   color: #d7e0dc;
+}
+
+.local-proxy-loader {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(145, 219, 183, 0.18);
+  border-radius: 7px;
+  background: rgba(145, 219, 183, 0.06);
+  padding: 10px;
+}
+
+.local-proxy-loader strong {
+  color: #eef2ee;
+  font-size: 0.86rem;
+}
+
+.local-proxy-loader p {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: #aeb9b4;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.local-proxy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .persistence-path {
@@ -685,6 +804,7 @@ td {
   }
 
   .monitor-grid,
+  .monitor-grid.has-local-proxy,
   .lists-panel {
     grid-template-columns: 1fr;
   }
