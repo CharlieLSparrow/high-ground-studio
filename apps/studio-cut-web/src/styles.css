@@ -394,6 +394,13 @@ h2 {
   background: rgba(10, 14, 15, 0.96);
 }
 
+.program-monitor .monitor-header p {
+  margin-top: 4px;
+  color: #aeb9b4;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .program-state {
   display: grid;
   min-height: 210px;
@@ -426,6 +433,121 @@ h2 {
   background:
     linear-gradient(135deg, rgba(255, 116, 116, 0.12), transparent 54%),
     rgba(10, 14, 15, 0.96);
+}
+
+.proxy-program-preview {
+  display: grid;
+  min-height: 210px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.proxy-program-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proxy-program-preview-meta strong {
+  color: #eef2ee;
+  font-size: 0.92rem;
+}
+
+.proxy-program-preview-meta span {
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.proxy-program-layout {
+  display: grid;
+  min-height: 188px;
+  gap: 8px;
+}
+
+.proxy-program-layout.pane-count-1 {
+  grid-template-columns: 1fr;
+}
+
+.proxy-program-layout.pane-count-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.proxy-program-layout.both-clip {
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+}
+
+.proxy-program-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.proxy-crop-frame {
+  position: relative;
+  min-height: 188px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 56%);
+  border-radius: 6px;
+  background: #030505;
+}
+
+.proxy-program-stack .proxy-crop-frame {
+  min-height: 88px;
+}
+
+.proxy-crop-video {
+  position: absolute;
+  top: var(--pane-top);
+  left: var(--pane-left);
+  display: block;
+  width: var(--pane-video-width);
+  height: var(--pane-video-height);
+  max-width: none;
+  object-fit: fill;
+  background: #030505;
+}
+
+.proxy-crop-label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  border: 1px solid rgba(238, 242, 238, 0.2);
+  border-radius: 999px;
+  background: rgba(3, 5, 5, 0.72);
+  color: #eef2ee;
+  padding: 3px 7px;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.proxy-program-placeholder {
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  gap: 8px;
+  padding: 22px;
+  text-align: center;
+}
+
+.proxy-program-placeholder strong {
+  color: #eef2ee;
+  font-size: clamp(1.8rem, 4vw, 3.8rem);
+  line-height: 0.95;
+}
+
+.proxy-program-placeholder span {
+  max-width: 360px;
+  color: #aeb9b4;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.proxy-program-placeholder.is-cut strong {
+  color: #ffb7b7;
 }
 
 .edit-panel {
@@ -930,6 +1052,8 @@ td {
   .state-grid,
   .playback-controls,
   .manifest-summary,
+  .proxy-program-layout.pane-count-2,
+  .proxy-program-layout.both-clip,
   .current-segment-grid,
   .time-row {
     grid-template-columns: 1fr;

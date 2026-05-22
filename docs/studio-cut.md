@@ -147,7 +147,25 @@ including inactive spans.
 
 The current player shows the source-monitor proxy as one composite video. It
 uses the manifest's Homer, Charlie, and Clip pane rectangles as visible metadata
-only; individual pane cropping is intentionally deferred.
+and as browser-only crop instructions for the Program Preview.
+
+When a local proxy and manifest are loaded, the Program Preview switches from a
+semantic text label to a `Proxy Program Preview`. The browser duplicates the
+local object URL into muted cropped panes and composes the semantic state this
+way:
+
+| State | Browser proxy preview |
+| --- | --- |
+| `charlie` | Charlie pane full preview |
+| `homer` | Homer pane full preview |
+| `both` | Homer and Charlie side by side |
+| `charlie_clip` | Charlie and Clip side by side |
+| `homer_clip` | Homer and Clip side by side |
+| `both_clip` | Homer/Charlie stacked left, Clip large right |
+| `cut` | Inactive/skipped visual state |
+
+The proxy file still stays local to the browser tab. The object URL is not
+persisted to localStorage or Firestore, and no video is uploaded.
 
 ## Premiere Bootstrap Workflow
 
@@ -180,6 +198,8 @@ output locally.
 - Source monitor proxies are for seeing and timing source material in the web
   editor. Local proxy playback is browser-only and ephemeral.
 - The web Program Preview is an edit simulation from semantic state decisions.
+  With a local source-monitor proxy loaded, it crops that proxy into a rough
+  visual layout for operator confidence. It is not final render truth.
 - The local render engine remains final truth for synced full-resolution output.
 
 The local engine should later sync source media, generate proxy packages, pull

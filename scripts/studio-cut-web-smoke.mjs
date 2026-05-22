@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import http from "node:http";
-import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -152,6 +153,82 @@ function createArtifactRunDir() {
   return path.join(artifactRoot, timestamp);
 }
 
+async function createProxyPreviewSmokeFiles() {
+  const workdir = await mkdtemp(path.join(tmpdir(), "studio-cut-web-smoke-"));
+  const manifestPath = path.join(workdir, "episode-manifest.web-smoke.json");
+  const proxyPath = path.join(workdir, "source-monitor-proxy.web-smoke.mp4");
+  const manifest = {
+    id: "web-smoke-episode",
+    title: "Web Smoke Episode",
+    durationMs: 12000,
+    sources: {
+      homer: {
+        role: "homer",
+        label: "Synthetic Homer source",
+        fileName: "homer.synthetic.mp4",
+      },
+      charlie: {
+        role: "charlie",
+        label: "Synthetic Charlie source",
+        fileName: "charlie.synthetic.mp4",
+      },
+      clip: {
+        role: "clip",
+        label: "Synthetic Clip source",
+        fileName: "clip.synthetic.mp4",
+      },
+      program: {
+        role: "program",
+        label: "Synthetic source monitor proxy",
+        fileName: "source-monitor-proxy.web-smoke.mp4",
+      },
+    },
+    sourceMonitorProxy: {
+      localPlaceholderPath: "./source-monitor-proxy.web-smoke.mp4",
+      panes: {
+        homer: { x: 0, y: 0, width: 0.5, height: 0.5 },
+        charlie: { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+        clip: { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+      },
+    },
+    syncBootstrap: {
+      source: "premiere",
+      xmlFileName: "web-smoke-premiere-export.xml",
+      notes: "Synthetic manifest for Playwright browser smoke only.",
+    },
+  };
+
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+  const ffmpegResult = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=640x360:r=24:d=12",
+      "-pix_fmt",
+      "yuv420p",
+      proxyPath,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+
+  if (ffmpegResult.status !== 0) {
+    const detail = ffmpegResult.stderr || ffmpegResult.stdout || "no ffmpeg output";
+    throw new Error(`ffmpeg could not create web smoke proxy video: ${detail}`);
+  }
+
+  return { workdir, manifestPath, proxyPath };
+}
+
 function getErrorStack(error) {
   if (error instanceof Error) {
     return error.stack ?? error.message;
@@ -250,8 +327,10 @@ async function runBrowserSmoke() {
   let browser;
   let context;
   let page;
+  let smokeFiles;
 
   try {
+    smokeFiles = await createProxyPreviewSmokeFiles();
     await waitForUrl(baseUrl);
 
     browser = await chromium.launch({ headless: true });
@@ -304,6 +383,17 @@ async function runBrowserSmoke() {
 
     await expect(page.locator(".shortcut-legend")).toContainText("Play/Pause");
     await expect(page.getByRole("button", { name: "Export Decisions" })).toBeVisible();
+    await page
+      .getByLabel("Import episode manifest JSON")
+      .setInputFiles(smokeFiles.manifestPath);
+    await expect(page.getByText(/Loaded manifest web-smoke-episode/i)).toBeVisible();
+    await page
+      .getByLabel("Load local source-monitor proxy video")
+      .setInputFiles(smokeFiles.proxyPath);
+    await expect(page.getByText(/Loaded local proxy video/i)).toBeVisible();
+    await expect(page.locator(".program-monitor .monitor-header")).toContainText(
+      "Proxy Program Preview",
+    );
 
     const secondsInput = page.getByLabel("Seconds");
     await secondsInput.fill("5");
@@ -327,6 +417,11 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "Newest");
     await expectSectionText(currentSegmentSection, "Both");
     await expectSectionText(currentSegmentSection, "Included");
+    await expect(
+      page.locator(".program-monitor .proxy-program-preview.layout-both"),
+    ).toBeVisible();
+    await expect(page.locator(".program-monitor .proxy-crop-homer")).toBeVisible();
+    await expect(page.locator(".program-monitor .proxy-crop-charlie")).toBeVisible();
 
     await secondsInput.fill("10");
     await stateButton(page, "Cut").click();
@@ -392,6 +487,10 @@ async function runBrowserSmoke() {
     }
 
     await stopDevServer(devServer);
+
+    if (smokeFiles) {
+      await rm(smokeFiles.workdir, { recursive: true, force: true });
+    }
   }
 }
 

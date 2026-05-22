@@ -140,10 +140,12 @@ Steps:
 3. Click `Load Local Proxy Video`.
 4. Select `episode-004_source-monitor-proxy.mp4` from the local export folder.
 5. Use Source Scrub to inspect the full source timeline, including `Cut` spans.
-6. Use Program Playback to simulate output playback with `Cut` spans skipped.
-7. Tag semantic state decisions.
-8. Export decision JSON.
-9. Save or move the downloaded decision file to:
+6. Confirm the Program Preview says `Proxy Program Preview`; it should crop the
+   local source-monitor proxy into the current semantic layout.
+7. Use Program Playback to simulate output playback with `Cut` spans skipped.
+8. Tag semantic state decisions.
+9. Export decision JSON.
+10. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
@@ -170,6 +172,19 @@ Shift+Left/Shift+Right scrub 10s
 The Current Segment panel should match what Charlie expects before each tag.
 When the imported manifest id is `episode-004`, the export download name should
 default to `episode-004-decisions.json`.
+
+Browser proxy layouts:
+
+- `Charlie`: Charlie pane full preview
+- `Homer`: Homer pane full preview
+- `Both`: Homer and Charlie side by side
+- `Charlie/Clip`: Charlie and Clip side by side
+- `Homer/Clip`: Homer and Clip side by side
+- `Both/Clip`: Homer/Charlie stacked left, Clip large right
+- `Cut`: inactive/skipped visual state
+
+This is a browser-only confidence preview from the local source-monitor proxy.
+The local render CLI remains final truth for rough 16:9 output.
 
 ## 6. Dry-Run Render
 

@@ -69,6 +69,15 @@ type LocalProxyVideo = {
   durationMs?: number;
 };
 
+type SourcePaneRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type ProxyPreviewRole = Exclude<SourceRole, "program">;
+
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
   homer: "#91de72",
@@ -538,6 +547,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         <ProgramMonitor
           sourceTimeMs={sourceTimeMs}
           currentEvent={currentEvent}
+          localProxyVideo={localProxyVideo}
+          manifest={episodeManifest}
+          isProgramPlaying={isProgramPlaying}
         />
       </section>
 
@@ -1091,11 +1103,18 @@ function SourceProxyMonitor({
 function ProgramMonitor({
   sourceTimeMs,
   currentEvent,
+  localProxyVideo,
+  manifest,
+  isProgramPlaying,
 }: {
   sourceTimeMs: number;
   currentEvent?: DecisionEvent;
+  localProxyVideo: LocalProxyVideo | null;
+  manifest: EpisodeManifest | null;
+  isProgramPlaying: boolean;
 }) {
   const state = currentEvent?.state;
+  const hasProxyProgramPreview = Boolean(localProxyVideo);
 
   return (
     <article
@@ -1104,26 +1123,240 @@ function ProgramMonitor({
       }`}
     >
       <div className="monitor-header">
-        <h2>{SOURCE_ROLE_LABELS.program}</h2>
+        <div>
+          <h2>{SOURCE_ROLE_LABELS.program}</h2>
+          <p>
+            {hasProxyProgramPreview
+              ? "Proxy Program Preview"
+              : "Semantic Program Preview"}
+          </p>
+        </div>
         <span>{formatSourceTime(sourceTimeMs)}</span>
       </div>
-      <div className="program-state">
-        {state ? (
-          <>
-            <strong>{PROGRAM_STATE_LABELS[state]}</strong>
-            <span>
-              From {formatSourceTime(currentEvent.sourceTimeMs)} via{" "}
-              {shortId(currentEvent.id)}
-            </span>
-          </>
-        ) : (
-          <>
-            <strong>No decision yet</strong>
-            <span>Add a state event at or before this source time.</span>
-          </>
-        )}
-      </div>
+      {localProxyVideo ? (
+        <ProxyProgramPreview
+          localProxyVideo={localProxyVideo}
+          manifest={manifest}
+          state={state}
+          sourceTimeMs={sourceTimeMs}
+          sourceEventId={currentEvent?.id}
+          isProgramPlaying={isProgramPlaying}
+        />
+      ) : (
+        <SemanticProgramPreview currentEvent={currentEvent} />
+      )}
     </article>
+  );
+}
+
+function SemanticProgramPreview({
+  currentEvent,
+}: {
+  currentEvent?: DecisionEvent;
+}) {
+  const state = currentEvent?.state;
+
+  return (
+    <div className="program-state">
+      {state ? (
+        <>
+          <strong>{PROGRAM_STATE_LABELS[state]}</strong>
+          <span>
+            From {formatSourceTime(currentEvent.sourceTimeMs)} via{" "}
+            {shortId(currentEvent.id)}
+          </span>
+        </>
+      ) : (
+        <>
+          <strong>No decision yet</strong>
+          <span>Add a state event at or before this source time.</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ProxyProgramPreview({
+  localProxyVideo,
+  manifest,
+  state,
+  sourceTimeMs,
+  sourceEventId,
+  isProgramPlaying,
+}: {
+  localProxyVideo: LocalProxyVideo;
+  manifest: EpisodeManifest | null;
+  state?: ProgramState;
+  sourceTimeMs: number;
+  sourceEventId?: string;
+  isProgramPlaying: boolean;
+}) {
+  if (!state) {
+    return (
+      <ProxyProgramPlaceholder
+        title="No decision yet"
+        detail="Add a semantic state at or before this source time to compose the proxy Program Preview."
+      />
+    );
+  }
+
+  if (state === "cut") {
+    return (
+      <ProxyProgramPlaceholder
+        title="Cut"
+        detail="This source span is inactive. Program Playback skips it; source scrub still shows it."
+        isCut
+      />
+    );
+  }
+
+  if (!manifest) {
+    return (
+      <ProxyProgramPlaceholder
+        title={PROGRAM_STATE_LABELS[state]}
+        detail="Import an Episode Manifest with source-monitor pane rectangles to crop the local proxy into Program Preview."
+      />
+    );
+  }
+
+  const roles = getProxyPreviewRoles(state);
+  const missingRoles = roles.filter(
+    (role) => !getManifestPaneRect(manifest, role),
+  );
+
+  if (missingRoles.length > 0) {
+    return (
+      <ProxyProgramPlaceholder
+        title={PROGRAM_STATE_LABELS[state]}
+        detail={`Missing manifest pane metadata for ${missingRoles
+          .map((role) => SOURCE_ROLE_LABELS[role])
+          .join(", ")}.`}
+      />
+    );
+  }
+
+  const renderPane = (role: ProxyPreviewRole) => {
+    const pane = getManifestPaneRect(manifest, role);
+
+    if (!pane) {
+      return null;
+    }
+
+    return (
+      <ProxyCropPane
+        key={role}
+        role={role}
+        pane={pane}
+        localProxyVideo={localProxyVideo}
+        sourceTimeMs={sourceTimeMs}
+        isProgramPlaying={isProgramPlaying}
+      />
+    );
+  };
+
+  return (
+    <div className={`proxy-program-preview layout-${state}`}>
+      <div className="proxy-program-preview-meta">
+        <strong>{PROGRAM_STATE_LABELS[state]}</strong>
+        <span>
+          {sourceEventId ? `via ${shortId(sourceEventId)} · ` : ""}
+          {formatSourceTime(sourceTimeMs)}
+        </span>
+      </div>
+      {state === "both_clip" ? (
+        <div className="proxy-program-layout both-clip">
+          <div className="proxy-program-stack">
+            {renderPane("homer")}
+            {renderPane("charlie")}
+          </div>
+          {renderPane("clip")}
+        </div>
+      ) : (
+        <div
+          className={`proxy-program-layout pane-count-${roles.length}`}
+          aria-label={`${PROGRAM_STATE_LABELS[state]} proxy layout`}
+        >
+          {roles.map(renderPane)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProxyProgramPlaceholder({
+  title,
+  detail,
+  isCut = false,
+}: {
+  title: string;
+  detail: string;
+  isCut?: boolean;
+}) {
+  return (
+    <div className={`proxy-program-placeholder${isCut ? " is-cut" : ""}`}>
+      <strong>{title}</strong>
+      <span>{detail}</span>
+    </div>
+  );
+}
+
+function ProxyCropPane({
+  role,
+  pane,
+  localProxyVideo,
+  sourceTimeMs,
+  isProgramPlaying,
+}: {
+  role: ProxyPreviewRole;
+  pane: SourcePaneRect;
+  localProxyVideo: LocalProxyVideo;
+  sourceTimeMs: number;
+  isProgramPlaying: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cropStyle = {
+    "--pane-left": `${(-pane.x / pane.width) * 100}%`,
+    "--pane-top": `${(-pane.y / pane.height) * 100}%`,
+    "--pane-video-width": `${100 / pane.width}%`,
+    "--pane-video-height": `${100 / pane.height}%`,
+    "--accent": STATE_ACCENTS[role === "clip" ? "both_clip" : role],
+  } as CSSProperties;
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
+    }
+
+    syncProxyPreviewVideo(video, sourceTimeMs, isProgramPlaying);
+  }, [isProgramPlaying, localProxyVideo.id, sourceTimeMs]);
+
+  return (
+    <div
+      className={`proxy-crop-frame proxy-crop-${role}`}
+      style={cropStyle}
+      aria-label={`${SOURCE_ROLE_LABELS[role]} proxy crop`}
+    >
+      <video
+        key={`${localProxyVideo.id}-${role}`}
+        ref={videoRef}
+        className="proxy-crop-video"
+        src={localProxyVideo.objectUrl}
+        muted
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={(event) =>
+          syncProxyPreviewVideo(
+            event.currentTarget,
+            sourceTimeMs,
+            isProgramPlaying,
+          )
+        }
+        aria-hidden="true"
+      />
+      <span className="proxy-crop-label">{SOURCE_ROLE_LABELS[role]}</span>
+    </div>
   );
 }
 
@@ -1382,6 +1615,73 @@ function isSupportedLocalProxyVideo(file: File) {
   return (
     file.type.startsWith("video/") || /\.(mp4|mov|m4v)$/i.test(file.name)
   );
+}
+
+function getProxyPreviewRoles(state: ProgramState): ProxyPreviewRole[] {
+  switch (state) {
+    case "charlie":
+      return ["charlie"];
+    case "homer":
+      return ["homer"];
+    case "both":
+      return ["homer", "charlie"];
+    case "charlie_clip":
+      return ["charlie", "clip"];
+    case "homer_clip":
+      return ["homer", "clip"];
+    case "both_clip":
+      return ["homer", "charlie", "clip"];
+    case "cut":
+      return [];
+  }
+}
+
+function getManifestPaneRect(
+  manifest: EpisodeManifest,
+  role: ProxyPreviewRole,
+): SourcePaneRect | undefined {
+  const panes = manifest.sourceMonitorProxy.panes;
+
+  if (role === "homer") {
+    return panes.homer;
+  }
+
+  if (role === "charlie") {
+    return panes.charlie;
+  }
+
+  return panes.clip;
+}
+
+function syncProxyPreviewVideo(
+  video: HTMLVideoElement,
+  sourceTimeMs: number,
+  shouldPlay: boolean,
+) {
+  const rawTargetSeconds = sourceTimeMs / 1000;
+  const targetSeconds =
+    Number.isFinite(video.duration) && video.duration > 0
+      ? Math.min(rawTargetSeconds, video.duration)
+      : rawTargetSeconds;
+  const driftMs = Math.abs(video.currentTime * 1000 - sourceTimeMs);
+
+  if (!shouldPlay || driftMs > VIDEO_SEEK_DRIFT_TOLERANCE_MS) {
+    try {
+      video.currentTime = targetSeconds;
+    } catch {
+      // Metadata may not be ready on every browser; the next sync will retry.
+    }
+  }
+
+  if (shouldPlay) {
+    void video.play().catch(() => {
+      // The main source monitor owns operator playback; cropped previews can
+      // fall back to tick-based seeking if autoplay is blocked.
+    });
+    return;
+  }
+
+  video.pause();
 }
 
 function isSourceActive(role: Exclude<SourceRole, "program">, state?: ProgramState) {
