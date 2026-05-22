@@ -2,6 +2,7 @@
 
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +16,11 @@ const repoRoot = path.resolve(
 const host = "127.0.0.1";
 const port = Number(process.env.STUDIO_CUT_WEB_SMOKE_PORT ?? 4187);
 const baseUrl = `http://${host}:${port}`;
+const artifactRoot = path.resolve(
+  repoRoot,
+  process.env.STUDIO_CUT_WEB_SMOKE_ARTIFACT_DIR ??
+    "tools/studio-cut-local/output/web-smoke-artifacts",
+);
 const localDevEnv = {
   ...process.env,
   VITE_FIREBASE_API_KEY: "",
@@ -35,7 +41,7 @@ const stateButtonLabels = [
   "Cut",
 ];
 
-function startDevServer() {
+function startDevServer(devServerLog) {
   const child = spawn(
     "pnpm",
     [
@@ -57,11 +63,15 @@ function startDevServer() {
   );
 
   child.stdout.on("data", (chunk) => {
-    process.stdout.write(chunk);
+    const text = chunk.toString();
+    devServerLog.push({ stream: "stdout", text });
+    process.stdout.write(text);
   });
 
   child.stderr.on("data", (chunk) => {
-    process.stderr.write(chunk);
+    const text = chunk.toString();
+    devServerLog.push({ stream: "stderr", text });
+    process.stderr.write(text);
   });
 
   return child;
@@ -137,27 +147,140 @@ async function expectSectionText(section, text) {
   await expect(section).toContainText(text, { timeout: 5000 });
 }
 
+function createArtifactRunDir() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return path.join(artifactRoot, timestamp);
+}
+
+function getErrorStack(error) {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+
+  return String(error);
+}
+
+async function writeFailureArtifacts({
+  artifactDir,
+  context,
+  page,
+  pageErrors,
+  devServerLog,
+  error,
+  traceState,
+}) {
+  await mkdir(artifactDir, { recursive: true });
+
+  const artifacts = [];
+
+  const failureSummaryPath = path.join(artifactDir, "failure.txt");
+  await writeFile(
+    failureSummaryPath,
+    [
+      "Studio Cut web smoke failure",
+      "============================",
+      `Time: ${new Date().toISOString()}`,
+      `URL: ${baseUrl}`,
+      "",
+      getErrorStack(error),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  artifacts.push(failureSummaryPath);
+
+  const errorsPath = path.join(artifactDir, "browser-errors.json");
+  await writeFile(
+    errorsPath,
+    JSON.stringify(pageErrors, null, 2) + "\n",
+    "utf8",
+  );
+  artifacts.push(errorsPath);
+
+  const devServerLogPath = path.join(artifactDir, "dev-server.log");
+  await writeFile(
+    devServerLogPath,
+    devServerLog.map((entry) => `[${entry.stream}] ${entry.text}`).join(""),
+    "utf8",
+  );
+  artifacts.push(devServerLogPath);
+
+  if (page) {
+    try {
+      const screenshotPath = path.join(artifactDir, "screenshot.png");
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      artifacts.push(screenshotPath);
+    } catch (screenshotError) {
+      artifacts.push(`screenshot failed: ${getErrorStack(screenshotError)}`);
+    }
+
+    try {
+      const htmlPath = path.join(artifactDir, "page.html");
+      await writeFile(htmlPath, await page.content(), "utf8");
+      artifacts.push(htmlPath);
+    } catch (htmlError) {
+      artifacts.push(`page HTML failed: ${getErrorStack(htmlError)}`);
+    }
+  }
+
+  if (context && traceState.started && !traceState.stopped) {
+    try {
+      const tracePath = path.join(artifactDir, "trace.zip");
+      await context.tracing.stop({ path: tracePath });
+      traceState.stopped = true;
+      artifacts.push(tracePath);
+    } catch (traceError) {
+      artifacts.push(`trace failed: ${getErrorStack(traceError)}`);
+    }
+  }
+
+  console.error("\nStudio Cut web smoke artifacts:");
+
+  for (const artifact of artifacts) {
+    console.error(`  ${artifact}`);
+  }
+}
+
 async function runBrowserSmoke() {
-  const devServer = startDevServer();
+  const devServerLog = [];
+  const pageErrors = [];
+  const traceState = { started: false, stopped: false };
+  const artifactDir = createArtifactRunDir();
+  const devServer = startDevServer(devServerLog);
   let browser;
+  let context;
+  let page;
 
   try {
     await waitForUrl(baseUrl);
 
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
+    context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
     });
-    const page = await context.newPage();
-    const pageErrors = [];
+    await context.tracing.start({
+      screenshots: true,
+      snapshots: true,
+      sources: true,
+    });
+    traceState.started = true;
+    page = await context.newPage();
 
     page.on("pageerror", (error) => {
-      pageErrors.push(error.message);
+      pageErrors.push({
+        type: "pageerror",
+        text: error.message,
+        stack: error.stack,
+      });
     });
 
     page.on("console", (message) => {
       if (message.type() === "error") {
-        pageErrors.push(message.text());
+        pageErrors.push({
+          type: "console",
+          text: message.text(),
+          location: message.location(),
+        });
       }
     });
 
@@ -217,11 +340,40 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "Cut");
 
     if (pageErrors.length > 0) {
-      throw new Error(`Browser console/page errors: ${pageErrors.join(" | ")}`);
+      throw new Error(
+        `Browser console/page errors: ${pageErrors
+          .map((entry) => entry.text)
+          .join(" | ")}`,
+      );
+    }
+
+    if (context && traceState.started && !traceState.stopped) {
+      await context.tracing.stop();
+      traceState.stopped = true;
     }
 
     console.log("\nStudio Cut web smoke passed.");
     console.log("Verified local dev editor load, state decisions, derived segments, playback controls, and localStorage persistence.");
+  } catch (error) {
+    try {
+      await writeFailureArtifacts({
+        artifactDir,
+        context,
+        page,
+        pageErrors,
+        devServerLog,
+        error,
+        traceState,
+      });
+    } catch (artifactError) {
+      console.error(
+        `\nStudio Cut web smoke artifact write failed: ${getErrorStack(
+          artifactError,
+        )}`,
+      );
+    }
+
+    throw error;
   } finally {
     if (browser) {
       await browser.close();

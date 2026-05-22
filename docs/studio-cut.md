@@ -393,6 +393,18 @@ segments, checks playback controls, and reloads to prove localStorage
 persistence. If a local machine has the Playwright package but no browser
 installed yet, run `pnpm exec playwright install chromium` once.
 
+On failure, the web smoke writes artifacts to:
+
+```text
+tools/studio-cut-local/output/web-smoke-artifacts
+```
+
+Each failed run gets a timestamped folder with `screenshot.png`, `page.html`,
+`browser-errors.json`, `dev-server.log`, `failure.txt`, and a Playwright
+`trace.zip` when tracing reaches the browser context. Override the location with
+`STUDIO_CUT_WEB_SMOKE_ARTIFACT_DIR=/path/to/artifacts` when needed. The default
+artifact directory is under ignored local output and should not be committed.
+
 For CI-friendly pre-deploy verification, use the one-command runner:
 
 ```bash

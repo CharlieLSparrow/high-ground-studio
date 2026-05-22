@@ -146,6 +146,18 @@ program playback controls, and preserve localStorage state after reload. If the
 Playwright browser is missing locally, run `pnpm exec playwright install chromium`
 once.
 
+On failure, it writes inspection artifacts to:
+
+```text
+tools/studio-cut-local/output/web-smoke-artifacts
+```
+
+Each failed run gets a timestamped directory with screenshot, page HTML,
+browser console/page errors, dev-server log, failure summary, and a Playwright
+trace when available. Override the location with
+`STUDIO_CUT_WEB_SMOKE_ARTIFACT_DIR=/path/to/artifacts`. The default path is
+ignored by git.
+
 ## Render Profiles
 
 `plan-render` now attaches profile-aware layout intent to each active segment:
