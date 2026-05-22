@@ -11,8 +11,16 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const pythonCommand = process.env.PYTHON ?? "python";
 const keepWorkdir = process.env.STUDIO_CUT_CLOUD_SYNC_SMOKE_KEEP_WORKDIR === "1";
 
+const sampleRate = 48000;
 const expectedReferenceDurationMs = 5000;
+const expectedOffsets = {
+  "homer-video": 1000,
+  "charlie-video": 2000,
+  "homer-audio": 1000,
+  "charlie-audio": 2000,
+};
 const durationToleranceMs = 250;
+const offsetToleranceMs = 120;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -44,25 +52,56 @@ async function fileSize(filePath) {
   return (await stat(filePath)).size;
 }
 
-async function generateAudio(filePath, { frequency, durationSeconds }) {
-  run("ffmpeg", [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-f",
-    "lavfi",
-    "-i",
-    `sine=frequency=${frequency}:duration=${durationSeconds}:sample_rate=48000`,
-    "-ac",
-    "1",
-    "-ar",
-    "48000",
-    filePath,
-  ]);
+function createReferenceRailSamples(durationMs) {
+  const totalSamples = Math.round((durationMs / 1000) * sampleRate);
+  const samples = new Int16Array(totalSamples);
+
+  for (let index = 0; index < totalSamples; index += 1) {
+    const t = index / sampleRate;
+    const chunk = Math.floor(t * 20);
+    const amplitude = 0.12 + (((chunk * 37 + 11) % 70) / 100);
+    const frequency = 120 + ((chunk * 29) % 420);
+    const modulator = Math.sin(2 * Math.PI * (0.75 + (chunk % 5) * 0.17) * t);
+    const carrier = Math.sin(2 * Math.PI * frequency * t);
+    const value = carrier * amplitude * (0.72 + 0.22 * modulator);
+    samples[index] = Math.max(-32767, Math.min(32767, Math.round(value * 32767)));
+  }
+
+  return samples;
 }
 
-async function generateVideoWithAudio(filePath, { color, frequency, durationSeconds }) {
+function sliceSamples(samples, startMs, durationMs) {
+  const start = Math.round((startMs / 1000) * sampleRate);
+  const length = Math.round((durationMs / 1000) * sampleRate);
+  return samples.slice(start, start + length);
+}
+
+async function writeWav(filePath, samples) {
+  const dataBytes = samples.length * 2;
+  const buffer = Buffer.alloc(44 + dataBytes);
+
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + dataBytes, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataBytes, 40);
+
+  for (let index = 0; index < samples.length; index += 1) {
+    buffer.writeInt16LE(samples[index], 44 + index * 2);
+  }
+
+  await writeFile(filePath, buffer);
+}
+
+async function generateVideoWithAudio(filePath, { color, audioPath, durationSeconds }) {
   run("ffmpeg", [
     "-hide_banner",
     "-loglevel",
@@ -72,10 +111,8 @@ async function generateVideoWithAudio(filePath, { color, frequency, durationSeco
     "lavfi",
     "-i",
     `color=c=${color}:s=320x180:r=24:d=${durationSeconds}`,
-    "-f",
-    "lavfi",
     "-i",
-    `sine=frequency=${frequency}:duration=${durationSeconds}:sample_rate=48000`,
+    audioPath,
     "-shortest",
     "-pix_fmt",
     "yuv420p",
@@ -107,6 +144,10 @@ function assert(condition, message) {
   }
 }
 
+function findTrackOffset(trackOffsets, inputId) {
+  return trackOffsets.find((offset) => offset.inputId === inputId);
+}
+
 async function main() {
   requireTool("ffmpeg");
   requireTool("ffprobe");
@@ -124,23 +165,28 @@ async function main() {
     charlieVideo: path.join(mediaDir, "charlie-video.mp4"),
     homerAudio: path.join(mediaDir, "homer-clean.wav"),
     charlieAudio: path.join(mediaDir, "charlie-clean.wav"),
+    homerVideoAudio: path.join(mediaDir, "homer-video-audio.wav"),
+    charlieVideoAudio: path.join(mediaDir, "charlie-video-audio.wav"),
   };
 
   try {
-    await generateAudio(files.phone1, { frequency: 440, durationSeconds: 2 });
-    await generateAudio(files.phone2, { frequency: 550, durationSeconds: 3 });
+    const railSamples = createReferenceRailSamples(expectedReferenceDurationMs);
+    await writeWav(files.phone1, sliceSamples(railSamples, 0, 2000));
+    await writeWav(files.phone2, sliceSamples(railSamples, 2000, 3000));
+    await writeWav(files.homerAudio, sliceSamples(railSamples, 1000, 4000));
+    await writeWav(files.charlieAudio, sliceSamples(railSamples, 2000, 3000));
+    await writeWav(files.homerVideoAudio, sliceSamples(railSamples, 1000, 4000));
+    await writeWav(files.charlieVideoAudio, sliceSamples(railSamples, 2000, 3000));
     await generateVideoWithAudio(files.homerVideo, {
       color: "green",
-      frequency: 220,
-      durationSeconds: 5,
+      audioPath: files.homerVideoAudio,
+      durationSeconds: 4,
     });
     await generateVideoWithAudio(files.charlieVideo, {
       color: "blue",
-      frequency: 330,
-      durationSeconds: 5,
+      audioPath: files.charlieVideoAudio,
+      durationSeconds: 3,
     });
-    await generateAudio(files.homerAudio, { frequency: 660, durationSeconds: 5 });
-    await generateAudio(files.charlieAudio, { frequency: 770, durationSeconds: 5 });
 
     const syncJobPath = path.join(workdir, "sync-job.synthetic.json");
     const localMediaMapPath = path.join(workdir, "local-media-map.synthetic.json");
@@ -188,7 +234,7 @@ async function main() {
           fileName: "homer-video.mp4",
           contentType: "video/mp4",
           sizeBytes: await fileSize(files.homerVideo),
-          durationMs: 5000,
+          durationMs: 4000,
         }),
         uploadedInput({
           inputId: "charlie-video",
@@ -196,7 +242,7 @@ async function main() {
           fileName: "charlie-video.mp4",
           contentType: "video/mp4",
           sizeBytes: await fileSize(files.charlieVideo),
-          durationMs: 5000,
+          durationMs: 3000,
         }),
         uploadedInput({
           inputId: "homer-audio",
@@ -204,7 +250,7 @@ async function main() {
           fileName: "homer-clean.wav",
           contentType: "audio/wav",
           sizeBytes: await fileSize(files.homerAudio),
-          durationMs: 5000,
+          durationMs: 4000,
         }),
         uploadedInput({
           inputId: "charlie-audio",
@@ -212,7 +258,7 @@ async function main() {
           fileName: "charlie-clean.wav",
           contentType: "audio/wav",
           sizeBytes: await fileSize(files.charlieAudio),
-          durationMs: 5000,
+          durationMs: 3000,
         }),
       ],
       outputs: {
@@ -254,6 +300,7 @@ async function main() {
       "charlie-video.wav",
       "homer-audio.wav",
       "charlie-audio.wav",
+      "reference-rail.wav",
     ].map((fileName) => path.join(workerDir, "audio", fileName));
 
     assert(report.status === "ready", "sync report should have ready status");
@@ -266,12 +313,35 @@ async function main() {
     for (const extractedFile of extractedFiles) {
       assert(existsSync(extractedFile), `expected extracted WAV: ${extractedFile}`);
     }
+    for (const [inputId, expectedOffset] of Object.entries(expectedOffsets)) {
+      const trackOffset = findTrackOffset(trackOffsets, inputId);
+      assert(trackOffset, `expected track offset for ${inputId}`);
+      assert(
+        Math.abs(trackOffset.estimatedOffsetMs - expectedOffset) <= offsetToleranceMs,
+        `${inputId} estimated offset ${trackOffset.estimatedOffsetMs}ms should be near ${expectedOffset}ms`,
+      );
+      assert(trackOffset.confidence >= 0.45, `${inputId} confidence should be useful`);
+    }
+    assert(
+      report.globalWarnings.every(
+        (warning) => !warning.includes("Offset estimation not implemented yet"),
+      ),
+      "global warnings should not claim all offset estimation is unimplemented",
+    );
 
     console.log("Studio Cut cloud sync worker smoke passed.");
     console.log(`  workdir: ${workdir}`);
     console.log(`  referenceRailSegments: ${segments.length}`);
     console.log(`  referenceRailTotalDurationMs: ${report.referenceRail.totalDurationMs}`);
     console.log(`  trackOffsets: ${trackOffsets.length}`);
+    console.log(
+      `  estimatedOffsets: ${Object.entries(expectedOffsets)
+        .map(([inputId, expectedOffset]) => {
+          const actual = findTrackOffset(trackOffsets, inputId);
+          return `${inputId}=${actual?.estimatedOffsetMs ?? "missing"}ms(expected ${expectedOffset}ms)`;
+        })
+        .join(", ")}`,
+    );
     console.log(`  extractedWavs: ${extractedFiles.length}`);
     if (workerResult.stdout.trim()) {
       console.log("  workerOutput: captured");

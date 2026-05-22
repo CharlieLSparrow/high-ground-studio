@@ -829,7 +829,9 @@ Episode 4 needs Rescue Sync because the phone/reference recording can arrive in
 multiple pieces. The intake model now supports multiple `phoneReferenceAudio`
 inputs. Each piece gets an `inputId`, optional `durationMs`, and an
 `orderIndex`. Worker v0 sorts those pieces into a reference rail and can inspect
-explicitly mapped local files to prefer real durations.
+explicitly mapped local files to prefer real durations. In local-media mode, it
+also assembles `workdir/audio/reference-rail.wav` and estimates non-reference
+track offsets with bounded waveform correlation.
 
 Raw intake job metadata lives at:
 
@@ -853,7 +855,8 @@ studioCutSyncJobs/{syncJobId}/outputs/sync-report.json
 
 The current app can create/upload a sync job and mark it queued. The local
 worker can inspect files, extract mono 48 kHz WAV audio, and emit a duration
-based reference rail report without cloud credentials:
+based reference rail report plus `estimatedOffsetMs` values without cloud
+credentials:
 
 ```bash
 python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
@@ -869,9 +872,10 @@ Run the synthetic local worker canary:
 pnpm studio-cut:cloud-sync-smoke
 ```
 
-The actual Cloud Run sync worker remains scaffold only. Offset estimation,
-proxy generation, manifest generation, and room metadata writes are not
-implemented yet. The worker contract is documented at:
+The actual Cloud Run sync worker remains scaffold only. Drift estimation,
+long-form chunked/FFT correlation, proxy generation, manifest generation, and
+room metadata writes are not implemented yet. The worker contract is documented
+at:
 
 ```text
 docs/studio-cut-cloud-sync.md

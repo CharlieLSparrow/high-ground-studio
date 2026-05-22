@@ -7,18 +7,24 @@ The worker runs without cloud credentials. It can:
 - inspect local media with ffprobe
 - extract normalized mono 48 kHz WAV files with ffmpeg
 - build an ordered phone-reference rail
+- assemble a local reference rail WAV from phone/reference pieces
+- estimate non-reference track offsets with bounded waveform correlation
 - emit a sync report JSON
 
-Offset estimation is intentionally not implemented yet.
+Offset estimation v0 is not drift-aware and is intentionally conservative for
+long files.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 import subprocess
+import wave
+from array import array
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +52,11 @@ VALID_STATUSES = {
 
 AUDIO_REQUIRED_ROLES = {"homerAudio", "charlieAudio", "phoneReferenceAudio"}
 VIDEO_REQUIRED_ROLES = {"homerVideo", "charlieVideo", "clipVideo"}
+REFERENCE_RAIL_WAV_FILE_NAME = "reference-rail.wav"
+ANALYSIS_TARGET_RATE_HZ = 100
+MAX_CORRELATION_SECONDS = 300
+MIN_CORRELATION_OVERLAP_SECONDS = 0.75
+LOW_CORRELATION_CONFIDENCE = 0.35
 
 
 @dataclass(frozen=True)
@@ -81,6 +92,22 @@ class MediaInspection:
 class AudioExtraction:
     input_id: str
     path: Path | None
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class ReferenceRailAudio:
+    path: Path | None
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class CorrelationEstimate:
+    input_id: str
+    estimated_offset_ms: int
+    confidence: float
+    score: float
+    second_best_score: float
     warnings: list[str]
 
 
@@ -150,6 +177,8 @@ def main() -> int:
     }
     inspections: dict[str, MediaInspection] = {}
     extractions: dict[str, AudioExtraction] = {}
+    reference_rail_audio = ReferenceRailAudio(path=None, warnings=[])
+    correlations: dict[str, CorrelationEstimate] = {}
 
     if local_mode:
         if not shutil.which("ffprobe"):
@@ -175,6 +204,18 @@ def main() -> int:
         elif local_mode:
             print("\nWarning: --workdir was not provided; audio extraction skipped.")
 
+        if workdir:
+            reference_rail_audio = build_reference_rail_audio(
+                uploaded_inputs,
+                extractions,
+                workdir,
+            )
+            correlations = estimate_track_offsets(
+                uploaded_inputs,
+                extractions,
+                reference_rail_audio,
+            )
+
     print("\nPlanned worker steps:")
     for index, step in enumerate(build_worker_plan(sync_job), start=1):
         print(f"  {index}. {step}")
@@ -189,6 +230,8 @@ def main() -> int:
         resolutions=resolutions,
         inspections=inspections,
         extractions=extractions,
+        reference_rail_audio=reference_rail_audio,
+        correlations=correlations,
         local_mode=local_mode,
     )
 
@@ -340,6 +383,21 @@ def get_uploaded_inputs(sync_job: dict[str, Any]) -> list[dict[str, Any]]:
         for entry in sync_job.get("uploadedInputs", [])
         if isinstance(entry, dict) and entry.get("role") in VALID_INPUT_ROLES
     ]
+
+
+def sort_reference_inputs(uploaded_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        [
+            entry
+            for entry in uploaded_inputs
+            if entry.get("role") == "phoneReferenceAudio"
+        ],
+        key=lambda entry: (
+            entry.get("orderIndex", 999_999),
+            entry.get("fileName", ""),
+            entry.get("inputId", ""),
+        ),
+    )
 
 
 def resolve_local_media(
@@ -495,6 +553,8 @@ def extract_audio(
         "1",
         "-ar",
         "48000",
+        "-acodec",
+        "pcm_s16le",
         str(output_path),
     ]
     result = run_command(command)
@@ -504,6 +564,292 @@ def extract_audio(
         return AudioExtraction(input_id=input_id, path=None, warnings=warnings)
 
     return AudioExtraction(input_id=input_id, path=output_path, warnings=warnings)
+
+
+def build_reference_rail_audio(
+    uploaded_inputs: list[dict[str, Any]],
+    extractions: dict[str, AudioExtraction],
+    workdir: Path,
+) -> ReferenceRailAudio:
+    ordered_reference_inputs = sort_reference_inputs(uploaded_inputs)
+    output_path = workdir / "audio" / REFERENCE_RAIL_WAV_FILE_NAME
+    warnings: list[str] = []
+    reference_paths: list[Path] = []
+
+    for entry in ordered_reference_inputs:
+        input_id = entry["inputId"]
+        extraction = extractions.get(input_id)
+        if extraction and extraction.path:
+            reference_paths.append(extraction.path)
+        else:
+            warnings.append(f"{input_id}: reference audio extraction unavailable")
+            if extraction:
+                warnings.extend(extraction.warnings)
+
+    if not reference_paths:
+        warnings.append("reference rail WAV was not built because no reference WAVs exist")
+        return ReferenceRailAudio(path=None, warnings=unique_strings(warnings))
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        concatenate_wavs(reference_paths, output_path)
+    except OSError as error:
+        warnings.append(f"reference rail WAV build failed: {error}")
+        return ReferenceRailAudio(path=None, warnings=unique_strings(warnings))
+
+    return ReferenceRailAudio(path=output_path, warnings=unique_strings(warnings))
+
+
+def concatenate_wavs(input_paths: list[Path], output_path: Path) -> None:
+    expected_params: tuple[int, int, int] | None = None
+
+    with wave.open(str(output_path), "wb") as output_wav:
+        for input_path in input_paths:
+            with wave.open(str(input_path), "rb") as input_wav:
+                params = (
+                    input_wav.getnchannels(),
+                    input_wav.getsampwidth(),
+                    input_wav.getframerate(),
+                )
+                if expected_params is None:
+                    expected_params = params
+                    output_wav.setnchannels(input_wav.getnchannels())
+                    output_wav.setsampwidth(input_wav.getsampwidth())
+                    output_wav.setframerate(input_wav.getframerate())
+                elif params != expected_params:
+                    raise OSError(
+                        "reference WAV parameters do not match "
+                        f"{expected_params}: {input_path}"
+                    )
+
+                output_wav.writeframes(input_wav.readframes(input_wav.getnframes()))
+
+
+def estimate_track_offsets(
+    uploaded_inputs: list[dict[str, Any]],
+    extractions: dict[str, AudioExtraction],
+    reference_rail_audio: ReferenceRailAudio,
+) -> dict[str, CorrelationEstimate]:
+    if reference_rail_audio.path is None:
+        return {}
+
+    estimates: dict[str, CorrelationEstimate] = {}
+    for entry in uploaded_inputs:
+        if entry.get("role") == "phoneReferenceAudio":
+            continue
+        input_id = entry["inputId"]
+        extraction = extractions.get(input_id)
+        if not extraction or not extraction.path:
+            continue
+        estimates[input_id] = estimate_offset_against_reference(
+            input_id=input_id,
+            input_audio_path=extraction.path,
+            reference_audio_path=reference_rail_audio.path,
+        )
+    return estimates
+
+
+def estimate_offset_against_reference(
+    *,
+    input_id: str,
+    input_audio_path: Path,
+    reference_audio_path: Path,
+) -> CorrelationEstimate:
+    warnings: list[str] = []
+
+    try:
+        reference = load_wav_envelope(reference_audio_path)
+        track = load_wav_envelope(input_audio_path)
+    except OSError as error:
+        return CorrelationEstimate(
+            input_id=input_id,
+            estimated_offset_ms=0,
+            confidence=0.02,
+            score=0,
+            second_best_score=0,
+            warnings=[f"correlation unavailable: {error}"],
+        )
+
+    if reference.duration_seconds > MAX_CORRELATION_SECONDS:
+        warnings.append(
+            f"reference rail is longer than {MAX_CORRELATION_SECONDS}s; "
+            "chunked/FFT correlation is required"
+        )
+    if track.duration_seconds > MAX_CORRELATION_SECONDS:
+        warnings.append(
+            f"{input_id} is longer than {MAX_CORRELATION_SECONDS}s; "
+            "chunked/FFT correlation is required"
+        )
+    if warnings:
+        return CorrelationEstimate(
+            input_id=input_id,
+            estimated_offset_ms=0,
+            confidence=0.03,
+            score=0,
+            second_best_score=0,
+            warnings=warnings,
+        )
+
+    if len(track.values) > len(reference.values):
+        warnings.append("track is longer than the reference rail")
+
+    estimate = normalized_offset_correlation(reference.values, track.values)
+    if estimate is None:
+        return CorrelationEstimate(
+            input_id=input_id,
+            estimated_offset_ms=0,
+            confidence=0.02,
+            score=0,
+            second_best_score=0,
+            warnings=["correlation unavailable: not enough analysis samples"],
+        )
+
+    offset_frames, score, second_best_score = estimate
+    estimated_offset_ms = round(offset_frames * reference.frame_duration_ms)
+    confidence = score_to_confidence(score, second_best_score)
+
+    if confidence < LOW_CORRELATION_CONFIDENCE:
+        warnings.append("correlation confidence is low")
+    if estimated_offset_ms <= round(reference.frame_duration_ms):
+        warnings.append("estimated offset is near the reference rail start")
+    reference_duration_ms = round(reference.duration_seconds * 1000)
+    track_duration_ms = round(track.duration_seconds * 1000)
+    if estimated_offset_ms + track_duration_ms >= reference_duration_ms - round(
+        reference.frame_duration_ms
+    ):
+        warnings.append("estimated offset is near the reference rail end")
+
+    return CorrelationEstimate(
+        input_id=input_id,
+        estimated_offset_ms=estimated_offset_ms,
+        confidence=confidence,
+        score=round(score, 4),
+        second_best_score=round(second_best_score, 4),
+        warnings=unique_strings(warnings),
+    )
+
+
+@dataclass(frozen=True)
+class WavEnvelope:
+    values: list[float]
+    frame_duration_ms: float
+    duration_seconds: float
+
+
+def load_wav_envelope(path: Path) -> WavEnvelope:
+    with wave.open(str(path), "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        sample_rate = wav_file.getframerate()
+        frame_count = wav_file.getnframes()
+        duration_seconds = frame_count / sample_rate if sample_rate else 0
+
+        if channels != 1:
+            raise OSError(f"{path} must be mono for v0 correlation")
+        if sample_width != 2:
+            raise OSError(f"{path} must be 16-bit PCM WAV for v0 correlation")
+        if sample_rate <= 0:
+            raise OSError(f"{path} has an invalid sample rate")
+
+        raw_frames = wav_file.readframes(frame_count)
+
+    samples = array("h")
+    samples.frombytes(raw_frames)
+
+    window_size = max(1, round(sample_rate / ANALYSIS_TARGET_RATE_HZ))
+    values: list[float] = []
+    max_sample = 32768.0
+
+    for start in range(0, len(samples), window_size):
+        window = samples[start : start + window_size]
+        if not window:
+            continue
+        values.append(sum(abs(sample) for sample in window) / (len(window) * max_sample))
+
+    return WavEnvelope(
+        values=values,
+        frame_duration_ms=(window_size / sample_rate) * 1000,
+        duration_seconds=duration_seconds,
+    )
+
+
+def normalized_offset_correlation(
+    reference: list[float],
+    track: list[float],
+) -> tuple[int, float, float] | None:
+    if not reference or not track:
+        return None
+
+    min_overlap = max(
+        3,
+        round(MIN_CORRELATION_OVERLAP_SECONDS * ANALYSIS_TARGET_RATE_HZ),
+    )
+    max_overlap = min(len(reference), len(track))
+    if max_overlap < min_overlap:
+        return None
+
+    best_lag = 0
+    best_score = -1.0
+    second_best_score = -1.0
+    exclusion_radius = round(0.25 * ANALYSIS_TARGET_RATE_HZ)
+
+    for lag in range(-len(track) + min_overlap, len(reference) - min_overlap + 1):
+        ref_start = max(0, lag)
+        track_start = max(0, -lag)
+        overlap = min(len(reference) - ref_start, len(track) - track_start)
+        if overlap < min_overlap:
+            continue
+
+        score = normalized_dot(
+            reference[ref_start : ref_start + overlap],
+            track[track_start : track_start + overlap],
+        )
+        if score > best_score:
+            if abs(lag - best_lag) > exclusion_radius:
+                second_best_score = best_score
+            best_score = score
+            best_lag = lag
+        elif (
+            score > second_best_score
+            and abs(lag - best_lag) > exclusion_radius
+        ):
+            second_best_score = score
+
+    if best_score < -0.5:
+        return None
+
+    return best_lag, best_score, max(second_best_score, 0)
+
+
+def normalized_dot(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right) or not left:
+        return 0
+
+    left_mean = sum(left) / len(left)
+    right_mean = sum(right) / len(right)
+    numerator = 0.0
+    left_energy = 0.0
+    right_energy = 0.0
+
+    for left_value, right_value in zip(left, right):
+        centered_left = left_value - left_mean
+        centered_right = right_value - right_mean
+        numerator += centered_left * centered_right
+        left_energy += centered_left * centered_left
+        right_energy += centered_right * centered_right
+
+    denominator = math.sqrt(left_energy * right_energy)
+    if denominator <= 0:
+        return 0
+    return numerator / denominator
+
+
+def score_to_confidence(score: float, second_best_score: float) -> float:
+    if score <= 0:
+        return 0.02
+    separation = max(0.0, score - second_best_score) / max(abs(score), 0.001)
+    confidence = (0.7 * min(score, 1.0)) + (0.3 * min(separation, 1.0))
+    return round(max(0.02, min(0.99, confidence)), 3)
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -537,9 +883,11 @@ def build_worker_plan(sync_job: dict[str, Any]) -> list[str]:
         "Inspect local media with ffprobe when a local media map/root is provided.",
         "Extract mono 48 kHz WAV audio with ffmpeg into workdir/audio.",
         "Sort phoneReferenceAudio pieces by orderIndex, then file name.",
-        "Build a continuous reference rail from ordered phone/reference pieces.",
-        "Cross-correlate Homer/Charlie video and clean audio against the reference rail. (Not implemented yet.)",
-        "Estimate per-input offsets and drift confidence. (Not implemented yet.)",
+        "Build a continuous metadata reference rail from ordered phone/reference pieces.",
+        "Assemble workdir/audio/reference-rail.wav from extracted phone/reference WAVs.",
+        "Cross-correlate extracted non-reference audio against the reference rail WAV.",
+        "Estimate per-input offsets with bounded waveform correlation v0.",
+        "Estimate drift confidence. (Future step.)",
         "Generate timeline-aligned low-res intermediate proxies. (Future step.)",
         "Compose outputs/source-monitor-proxy.mp4 for browser editing. (Future step.)",
         "Write outputs/episode-manifest.json and outputs/sync-report.json. (Report only in v0.)",
@@ -573,6 +921,8 @@ def build_sync_report(
     resolutions: dict[str, LocalMediaResolution],
     inspections: dict[str, MediaInspection],
     extractions: dict[str, AudioExtraction],
+    reference_rail_audio: ReferenceRailAudio,
+    correlations: dict[str, CorrelationEstimate],
     local_mode: bool,
 ) -> dict[str, Any]:
     reference_segments = build_reference_segments(
@@ -595,18 +945,25 @@ def build_sync_report(
             "referenceRole": "phoneReferenceAudio",
             "segments": reference_segments,
             "totalDurationMs": reference_total_duration_ms,
-            "warnings": build_reference_rail_warnings(reference_segments, local_mode),
+            "warnings": build_reference_rail_warnings(
+                reference_segments,
+                local_mode,
+                reference_rail_audio,
+            ),
         },
         "trackOffsets": [
-            build_track_offset(entry, resolutions, inspections, extractions)
+            build_track_offset(
+                entry,
+                resolutions,
+                inspections,
+                extractions,
+                reference_rail_audio,
+                correlations,
+            )
             for entry in uploaded_inputs
             if entry.get("role") != "phoneReferenceAudio"
         ],
-        "globalWarnings": [
-            "Offset estimation not implemented yet.",
-            "Reference rail built from ordered phone pieces.",
-            "Source-monitor proxy and Episode Manifest generation are not implemented yet.",
-        ],
+        "globalWarnings": build_global_warnings(local_mode, reference_rail_audio),
     }
 
 
@@ -617,18 +974,7 @@ def build_reference_segments(
     inspections: dict[str, MediaInspection],
     extractions: dict[str, AudioExtraction],
 ) -> list[dict[str, Any]]:
-    reference_inputs = sorted(
-        [
-            entry
-            for entry in uploaded_inputs
-            if entry.get("role") == "phoneReferenceAudio"
-        ],
-        key=lambda entry: (
-            entry.get("orderIndex", 999_999),
-            entry.get("fileName", ""),
-            entry.get("inputId", ""),
-        ),
-    )
+    reference_inputs = sort_reference_inputs(uploaded_inputs)
     rail_start_ms = 0
     segments: list[dict[str, Any]] = []
 
@@ -688,15 +1034,36 @@ def build_reference_segments(
 def build_reference_rail_warnings(
     reference_segments: list[dict[str, Any]],
     local_mode: bool,
+    reference_rail_audio: ReferenceRailAudio,
 ) -> list[str]:
     warnings = []
     if not local_mode:
         warnings.append("Metadata-only mode; media was not inspected.")
+    warnings.extend(reference_rail_audio.warnings)
     if any(segment["durationMs"] == 0 for segment in reference_segments):
         warnings.append("One or more reference rail segments has no duration.")
     if any(segment["warnings"] for segment in reference_segments):
         warnings.append("One or more reference rail segments has warnings.")
-    return warnings
+    return unique_strings(warnings)
+
+
+def build_global_warnings(
+    local_mode: bool,
+    reference_rail_audio: ReferenceRailAudio,
+) -> list[str]:
+    warnings = [
+        "Reference rail built from ordered phone pieces.",
+        "Offset estimation v0 uses local waveform correlation and is not drift-aware yet.",
+        "Long-form/chunked correlation and drift estimation are future work.",
+        "Source-monitor proxy and Episode Manifest generation are not implemented yet.",
+    ]
+
+    if not local_mode:
+        warnings.insert(1, "Metadata-only mode; offset estimation was not attempted.")
+    elif reference_rail_audio.path is None:
+        warnings.insert(1, "Offset estimation was blocked because reference rail audio was unavailable.")
+
+    return unique_strings(warnings)
 
 
 def build_track_offset(
@@ -704,10 +1071,13 @@ def build_track_offset(
     resolutions: dict[str, LocalMediaResolution],
     inspections: dict[str, MediaInspection],
     extractions: dict[str, AudioExtraction],
+    reference_rail_audio: ReferenceRailAudio,
+    correlations: dict[str, CorrelationEstimate],
 ) -> dict[str, Any]:
     input_id = entry["inputId"]
     inspection = inspections.get(input_id)
     extraction = extractions.get(input_id)
+    correlation = correlations.get(input_id)
     warnings = collect_input_warnings(
         entry,
         resolutions.get(input_id),
@@ -715,21 +1085,36 @@ def build_track_offset(
         extraction,
     )
 
-    if extraction and extraction.path:
-        warnings.append("audio extracted, offset estimation not implemented yet")
-        confidence = 0.1
+    if correlation:
+        warnings.extend(correlation.warnings)
+        estimated_offset_ms = correlation.estimated_offset_ms
+        confidence = correlation.confidence
+        if correlation.score > 0:
+            warnings.append(
+                "offset estimated with waveform correlation v0; drift not estimated"
+            )
+    elif extraction and extraction.path and reference_rail_audio.path is None:
+        warnings.append("offset estimation blocked because reference rail audio is missing")
+        estimated_offset_ms = 0
+        confidence = 0.04
+    elif extraction and extraction.path:
+        warnings.append("offset estimation unavailable")
+        estimated_offset_ms = 0
+        confidence = 0.06
     elif inspection and not inspection.has_audio:
         warnings.append("offset estimation blocked because no audio stream was found")
+        estimated_offset_ms = 0
         confidence = 0.02
     else:
-        warnings.append("offset estimation not implemented yet")
+        warnings.append("offset estimation blocked because no extracted audio is available")
+        estimated_offset_ms = 0
         confidence = 0.05
 
     return {
         "role": entry["role"],
         "inputId": input_id,
         "fileName": entry.get("fileName", f"{entry['role']}.placeholder"),
-        "estimatedOffsetMs": 0,
+        "estimatedOffsetMs": estimated_offset_ms,
         "confidence": confidence,
         "driftPpm": 0,
         "warnings": unique_strings(warnings),

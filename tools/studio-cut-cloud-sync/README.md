@@ -2,7 +2,8 @@
 
 This directory holds the first worker contract for raw-asset cloud intake and
 Episode 4 Rescue Sync. It runs locally without cloud credentials and is not a
-production Cloud Run worker yet.
+production Cloud Run worker yet. Worker v0 includes local waveform correlation;
+Cloud deployment and long-form drift handling are still future work.
 
 The intended flow is:
 
@@ -53,6 +54,8 @@ Relative paths resolve from the media map file location. The worker uses:
 - `ffprobe` to inspect duration, audio/video streams, and sample rate
 - `ffmpeg` to extract mono 48 kHz WAV files into `workdir/audio/{inputId}.wav`
 - inspected durations for the multi-piece phone/reference rail when available
+- `workdir/audio/reference-rail.wav` assembled from extracted phone pieces
+- bounded waveform-envelope correlation for non-reference extracted audio
 
 Example:
 
@@ -64,8 +67,14 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --out /tmp/studio-cut-cloud-sync-report.json
 ```
 
-The worker still does not estimate offsets, generate proxies, write manifests,
-write Firestore room metadata, or start paid cloud resources.
+The worker writes `estimatedOffsetMs` and confidence values for correlated
+tracks. Positive offsets mean the input starts after the reference rail starts.
+Negative offsets mean the input appears to have started before the rail starts.
+
+The worker still does not estimate drift, generate proxies, write manifests,
+write Firestore room metadata, or start paid cloud resources. Correlation v0 is
+intended for short/local test inputs and needs chunked or FFT-based analysis for
+long Episode 4 files.
 
 ## Synthetic Smoke
 
@@ -75,9 +84,9 @@ Run the deterministic synthetic smoke test:
 pnpm studio-cut:cloud-sync-smoke
 ```
 
-The smoke creates tiny synthetic media in a temporary directory, runs local-media
-mode, asserts two phone/reference rail segments, verifies extracted WAV files,
-and removes the temporary files unless
+The smoke creates tiny synthetic media in a temporary directory, runs
+local-media mode, asserts two phone/reference rail segments, verifies extracted
+WAV files, checks known +1000ms/+2000ms offsets, and removes the temporary files unless
 `STUDIO_CUT_CLOUD_SYNC_SMOKE_KEEP_WORKDIR=1` is set.
 
 Keep real episode assets, generated proxies, private paths, and credentials out

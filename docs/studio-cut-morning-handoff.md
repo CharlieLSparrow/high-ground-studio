@@ -41,7 +41,8 @@ It contains no private paths, media, credentials, or real episode data.
   agent smoke verification.
 - Local cloud sync Worker v0 that validates a sync job, optionally maps inputs
   to local files, inspects media with `ffprobe`, extracts mono 48 kHz WAV files
-  with `ffmpeg`, and emits a multi-piece reference rail report.
+  with `ffmpeg`, assembles `reference-rail.wav`, and estimates offsets with
+  waveform correlation v0.
 - One-command verifier: `pnpm studio-cut:verify`.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
@@ -102,6 +103,9 @@ Synthetic Worker v0 canary:
 ```bash
 pnpm studio-cut:cloud-sync-smoke
 ```
+
+The canary asserts two ordered phone/reference rail pieces and known
++1000ms/+2000ms offsets against synthetic tracks.
 
 Local-media Worker v0 shape:
 
@@ -203,9 +207,10 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   media remains local for render.
 - Rescue Sync raw uploads can be large and should not be used with sensitive
   footage until rules have passed emulator tests and lifecycle cleanup exists.
-- Rescue Sync Worker v0 extracts audio and builds a duration-based reference
-  rail, but it does not run waveform correlation, manifest generation, proxy
-  generation, or shared-room metadata writes yet.
+- Rescue Sync Worker v0 extracts audio, builds a duration-based reference rail,
+  and estimates offsets with bounded waveform correlation. It does not estimate
+  drift, handle long-form chunked/FFT correlation, generate manifests/proxies,
+  or write shared-room metadata yet.
 - The emulator rules test requires Java. If Java is missing locally, install a
   JRE/JDK before deploying rules.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
@@ -228,10 +233,9 @@ Use the exact commit SHAs from the final Codex report for this sprint.
 
 ## Recommended Next Sprint
 
-Add waveform correlation to Rescue Sync:
+Add long-form sync output generation:
 
-- cross-correlate Homer/Charlie clean audio and video audio against the
-  assembled phone/reference rail
-- estimate offsets, confidence, and drift
+- replace bounded v0 correlation with chunked or FFT-based long-form analysis
+- estimate drift as well as offsets/confidence
 - generate a source-monitor proxy from aligned low-res intermediates
 - write manifest/proxy/report outputs and shared-room metadata

@@ -60,8 +60,8 @@ pieces:
 
 In metadata-only mode, Worker v0 concatenates durations from sync job metadata.
 In local-media mode, it inspects files with `ffprobe`, prefers inspected
-durations, and warns when durations or audio streams are missing. It does not
-inspect waveform content for offset estimation yet.
+durations, extracts normalized WAVs, and assembles
+`workdir/audio/reference-rail.wav` from the ordered phone/reference pieces.
 
 ## Sync Report
 
@@ -74,9 +74,12 @@ The Rescue Sync report contains:
 - `trackOffsets`
 - `globalWarnings`
 
-`trackOffsets` already lists Homer video, Charlie video, clean audio tracks,
-clip video, and other non-reference inputs. `estimatedOffsetMs` remains `0` in
-Worker v0 because waveform correlation is not implemented yet.
+`trackOffsets` lists Homer video, Charlie video, clean audio tracks, clip video,
+and other non-reference inputs. When local extracted audio and a reference rail
+WAV are available, Worker v0 uses bounded waveform-envelope correlation to
+write `estimatedOffsetMs` and confidence. Positive offsets mean the input starts
+after the reference rail starts. Negative offsets mean it appears to have
+started before the rail.
 
 ## Current Implementation
 
@@ -88,13 +91,14 @@ Implemented now:
 - Firebase Storage path helpers with sanitized per-input file paths
 - Firestore sync job document scaffolding at `studioCutSyncJobs/{syncJobId}`
 - local Worker v0 that validates a job, inspects local media when mapped,
-  extracts mono 48 kHz WAV files, and emits a duration-based reference rail
+  extracts mono 48 kHz WAV files, builds `reference-rail.wav`, and estimates
+  offsets with waveform correlation v0
 - helper tests included in `pnpm studio-cut:verify`
 
 Scaffold only:
 
-- cross-correlation
-- offset/drift estimation
+- drift estimation
+- chunked/FFT long-form correlation
 - source-monitor proxy generation
 - manifest generation
 - shared room metadata creation from worker output
@@ -142,7 +146,8 @@ pnpm studio-cut:cloud-sync-smoke
 ```
 
 This creates temporary synthetic files, runs the worker, verifies two
-phone/reference rail segments, and checks extracted WAV outputs.
+phone/reference rail segments, checks extracted WAV outputs, and asserts known
++1000ms/+2000ms offset estimates.
 
 Do not upload sensitive/private footage until Firestore and Storage rules have
 passed emulator tests, rules have been intentionally deployed, and retention
