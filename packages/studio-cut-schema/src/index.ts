@@ -165,6 +165,15 @@ export type CloudSyncReferenceRail = {
   warnings: string[];
 };
 
+export type CloudSyncAnchorSummary = {
+  trackStartMs: number;
+  referenceStartMs: number;
+  estimatedOffsetMs: number;
+  score: number;
+  confidence: number;
+  warnings: string[];
+};
+
 export type CloudSyncTrackOffset = {
   role: CloudSyncInputRole;
   inputId: string;
@@ -172,6 +181,9 @@ export type CloudSyncTrackOffset = {
   estimatedOffsetMs: number;
   confidence: number;
   driftPpm?: number;
+  anchorCount?: number;
+  anchorAgreementMs?: number;
+  anchorSummaries?: CloudSyncAnchorSummary[];
   warnings: string[];
 };
 
@@ -733,6 +745,33 @@ function isCloudSyncTrackOffset(
     Number.isFinite(value.estimatedOffsetMs) &&
     (value.driftPpm === undefined ||
       (typeof value.driftPpm === "number" && Number.isFinite(value.driftPpm))) &&
+    (value.anchorCount === undefined ||
+      isFiniteNonNegativeNumber(value.anchorCount)) &&
+    (value.anchorAgreementMs === undefined ||
+      isFiniteNonNegativeNumber(value.anchorAgreementMs)) &&
+    (value.anchorSummaries === undefined ||
+      (Array.isArray(value.anchorSummaries) &&
+        value.anchorSummaries.every(isCloudSyncAnchorSummary))) &&
+    isConfidence(value.confidence) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string")
+  );
+}
+
+function isCloudSyncAnchorSummary(
+  value: unknown,
+): value is CloudSyncAnchorSummary {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isFiniteNonNegativeNumber(value.trackStartMs) &&
+    isFiniteNonNegativeNumber(value.referenceStartMs) &&
+    typeof value.estimatedOffsetMs === "number" &&
+    Number.isFinite(value.estimatedOffsetMs) &&
+    typeof value.score === "number" &&
+    Number.isFinite(value.score) &&
     isConfidence(value.confidence) &&
     Array.isArray(value.warnings) &&
     value.warnings.every((warning) => typeof warning === "string")

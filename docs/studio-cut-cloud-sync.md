@@ -163,10 +163,11 @@ In local-media mode, Worker v0 uses `ffprobe` to inspect duration and
 audio/video streams, then extracts mono 48 kHz WAV files with `ffmpeg` into
 `workdir/audio/{inputId}.wav`. It builds the phone/reference rail from inspected
 durations when available, assembles `workdir/audio/reference-rail.wav`, and
-correlates extracted non-reference audio against that rail to estimate
-`estimatedOffsetMs` plus confidence. Offset estimation v0 is not drift-aware and
-is bounded to avoid exploding memory on long recordings. Proxy generation,
-manifest generation, and Firestore room metadata writes remain future work.
+correlates extracted non-reference audio against that rail. For longer tracks it
+selects multiple anchor windows, scans those anchors against the rail, then
+summarizes `estimatedOffsetMs`, confidence, `anchorCount`, `anchorAgreementMs`,
+and approximate `driftPpm`. Proxy generation, manifest generation, and Firestore
+room metadata writes remain future work.
 
 Run the synthetic local-media canary:
 
@@ -208,9 +209,9 @@ tools/studio-cut-cloud-sync/examples/
 - The checked-in worker does not start Cloud Run or create paid resources.
 - Worker v0 can process explicitly mapped local files, but examples and tests
   use only synthetic or placeholder media.
-- Worker v0 estimates offsets with local waveform correlation, but long Episode
-  4 files still need chunked or FFT-based correlation before this becomes a
-  reliable production sync engine.
+- Worker v0 estimates offsets with local anchor-based waveform correlation.
+  Drift is approximate, and FFT/refined correlation is still needed before this
+  becomes a reliable production sync engine.
 - See `docs/studio-cut-rescue-sync.md` for the Episode 4 multi-piece reference
   model.
 - Storage rules are scaffolded for raw intake paths, but rules deploy remains a

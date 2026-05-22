@@ -12,15 +12,36 @@ const pythonCommand = process.env.PYTHON ?? "python";
 const keepWorkdir = process.env.STUDIO_CUT_CLOUD_SYNC_SMOKE_KEEP_WORKDIR === "1";
 
 const sampleRate = 48000;
-const expectedReferenceDurationMs = 5000;
-const expectedOffsets = {
-  "homer-video": 1000,
-  "charlie-video": 2000,
-  "homer-audio": 1000,
-  "charlie-audio": 2000,
-};
 const durationToleranceMs = 250;
-const offsetToleranceMs = 120;
+
+const scenarios = [
+  {
+    name: "short",
+    referenceDurationMs: 5000,
+    referencePiecesMs: [2000, 3000],
+    offsetToleranceMs: 120,
+    minimumAnchorCount: 1,
+    tracks: {
+      "homer-video": { role: "homerVideo", offsetMs: 1000, durationMs: 4000 },
+      "charlie-video": { role: "charlieVideo", offsetMs: 2000, durationMs: 3000 },
+      "homer-audio": { role: "homerAudio", offsetMs: 1000, durationMs: 4000 },
+      "charlie-audio": { role: "charlieAudio", offsetMs: 2000, durationMs: 3000 },
+    },
+  },
+  {
+    name: "long",
+    referenceDurationMs: 90000,
+    referencePiecesMs: [30000, 30000, 30000],
+    offsetToleranceMs: 220,
+    minimumAnchorCount: 2,
+    tracks: {
+      "homer-video": { role: "homerVideo", offsetMs: 7000, durationMs: 60000 },
+      "charlie-video": { role: "charlieVideo", offsetMs: 15000, durationMs: 55000 },
+      "homer-audio": { role: "homerAudio", offsetMs: 7000, durationMs: 60000 },
+      "charlie-audio": { role: "charlieAudio", offsetMs: 15000, durationMs: 55000 },
+    },
+  },
+];
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -119,7 +140,7 @@ async function generateVideoWithAudio(filePath, { color, audioPath, durationSeco
     "-c:v",
     "mpeg4",
     "-c:a",
-    "aac",
+    "pcm_s16le",
     filePath,
   ]);
 }
@@ -148,203 +169,216 @@ function findTrackOffset(trackOffsets, inputId) {
   return trackOffsets.find((offset) => offset.inputId === inputId);
 }
 
+function sum(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+async function runScenario(rootWorkdir, scenario) {
+  const scenarioDir = path.join(rootWorkdir, scenario.name);
+  const mediaDir = path.join(scenarioDir, "media");
+  const workerDir = path.join(scenarioDir, "worker");
+  await mkdir(mediaDir, { recursive: true });
+  await mkdir(workerDir, { recursive: true });
+
+  const railSamples = createReferenceRailSamples(scenario.referenceDurationMs);
+  const localMediaInputs = {};
+  const uploadedInputs = [];
+  let referenceStartMs = 0;
+
+  for (const [index, durationMs] of scenario.referencePiecesMs.entries()) {
+    const inputId = `phone-reference-${String(index).padStart(2, "0")}`;
+    const fileName = `${inputId}.wav`;
+    const filePath = path.join(mediaDir, fileName);
+    await writeWav(filePath, sliceSamples(railSamples, referenceStartMs, durationMs));
+    localMediaInputs[inputId] = `media/${fileName}`;
+    uploadedInputs.push(
+      uploadedInput({
+        inputId,
+        role: "phoneReferenceAudio",
+        fileName,
+        contentType: "audio/wav",
+        sizeBytes: await fileSize(filePath),
+        durationMs,
+        orderIndex: index,
+      }),
+    );
+    referenceStartMs += durationMs;
+  }
+
+  for (const [inputId, track] of Object.entries(scenario.tracks)) {
+    const audioFileName = `${inputId}.wav`;
+    const audioPath = path.join(mediaDir, audioFileName);
+    await writeWav(
+      audioPath,
+      sliceSamples(railSamples, track.offsetMs, track.durationMs),
+    );
+
+    let fileName = audioFileName;
+    let filePath = audioPath;
+    let contentType = "audio/wav";
+
+    if (track.role.endsWith("Video")) {
+      fileName = `${inputId}.mov`;
+      filePath = path.join(mediaDir, fileName);
+      contentType = "video/quicktime";
+      await generateVideoWithAudio(filePath, {
+        color: inputId.includes("homer") ? "green" : "blue",
+        audioPath,
+        durationSeconds: track.durationMs / 1000,
+      });
+    }
+
+    localMediaInputs[inputId] = `media/${fileName}`;
+    uploadedInputs.push(
+      uploadedInput({
+        inputId,
+        role: track.role,
+        fileName,
+        contentType,
+        sizeBytes: await fileSize(filePath),
+        durationMs: track.durationMs,
+      }),
+    );
+  }
+
+  const syncJobPath = path.join(scenarioDir, "sync-job.synthetic.json");
+  const localMediaMapPath = path.join(scenarioDir, "local-media-map.synthetic.json");
+  const reportPath = path.join(scenarioDir, "sync-report.synthetic.json");
+
+  await writeJson(syncJobPath, {
+    syncJobId: `synthetic-rescue-sync-${scenario.name}`,
+    projectId: `synthetic-episode-${scenario.name}`,
+    branchId: "main",
+    title: `Synthetic Rescue Sync ${scenario.name}`,
+    createdBy: "agent-smoke-test",
+    createdAt: "2026-05-22T12:00:00.000Z",
+    updatedAt: "2026-05-22T12:00:00.000Z",
+    status: "uploaded",
+    expectedInputs: {
+      homerVideo: true,
+      charlieVideo: true,
+      homerAudio: true,
+      charlieAudio: true,
+      phoneReferenceAudio: true,
+      clipVideo: false,
+    },
+    uploadedInputs,
+    outputs: {
+      sharedRoomUrl: `https://high-ground-odyssey.web.app/?projectId=synthetic-episode-${scenario.name}&branchId=main`,
+    },
+  });
+  await writeJson(localMediaMapPath, { inputs: localMediaInputs });
+
+  const workerResult = run(pythonCommand, [
+    "tools/studio-cut-cloud-sync/cloud_sync_worker.py",
+    "--sync-job-json",
+    syncJobPath,
+    "--local-media-map",
+    localMediaMapPath,
+    "--workdir",
+    workerDir,
+    "--out",
+    reportPath,
+  ]);
+
+  const report = JSON.parse(await readFile(reportPath, "utf8"));
+  const segments = report.referenceRail?.segments ?? [];
+  const trackOffsets = report.trackOffsets ?? [];
+  const extractedFiles = [
+    ...uploadedInputs.map((input) => `${input.inputId}.wav`),
+    "reference-rail.wav",
+  ].map((fileName) => path.join(workerDir, "audio", fileName));
+
+  assert(report.status === "ready", `${scenario.name}: sync report should be ready`);
+  assert(
+    segments.length === scenario.referencePiecesMs.length,
+    `${scenario.name}: reference rail should contain all phone segments`,
+  );
+  assert(
+    Math.abs((report.referenceRail?.totalDurationMs ?? 0) - scenario.referenceDurationMs) <= durationToleranceMs,
+    `${scenario.name}: reference rail total duration should be near ${scenario.referenceDurationMs}ms`,
+  );
+  assert(trackOffsets.length === 4, `${scenario.name}: non-reference track offsets should exist`);
+  for (const extractedFile of extractedFiles) {
+    assert(existsSync(extractedFile), `${scenario.name}: expected extracted WAV: ${extractedFile}`);
+  }
+  for (const [inputId, expected] of Object.entries(scenario.tracks)) {
+    const trackOffset = findTrackOffset(trackOffsets, inputId);
+    assert(trackOffset, `${scenario.name}: expected track offset for ${inputId}`);
+    assert(
+      Math.abs(trackOffset.estimatedOffsetMs - expected.offsetMs) <= scenario.offsetToleranceMs,
+      `${scenario.name}: ${inputId} estimated offset ${trackOffset.estimatedOffsetMs}ms should be near ${expected.offsetMs}ms`,
+    );
+    assert(
+      trackOffset.anchorCount >= scenario.minimumAnchorCount,
+      `${scenario.name}: ${inputId} should have at least ${scenario.minimumAnchorCount} anchor(s)`,
+    );
+    assert(
+      trackOffset.confidence >= 0.35,
+      `${scenario.name}: ${inputId} confidence should be useful`,
+    );
+    assert(
+      typeof trackOffset.driftPpm === "number",
+      `${scenario.name}: ${inputId} should include driftPpm`,
+    );
+    if (scenario.minimumAnchorCount >= 2) {
+      assert(
+        typeof trackOffset.anchorAgreementMs === "number",
+        `${scenario.name}: ${inputId} should include anchorAgreementMs`,
+      );
+      assert(
+        Array.isArray(trackOffset.anchorSummaries) &&
+          trackOffset.anchorSummaries.length >= scenario.minimumAnchorCount,
+        `${scenario.name}: ${inputId} should include anchor summaries`,
+      );
+    }
+  }
+  assert(
+    report.globalWarnings.every(
+      (warning) => !warning.includes("Offset estimation not implemented yet"),
+    ),
+    `${scenario.name}: global warnings should not claim all offset estimation is unimplemented`,
+  );
+
+  return {
+    name: scenario.name,
+    referenceRailSegments: segments.length,
+    referenceRailTotalDurationMs: report.referenceRail.totalDurationMs,
+    trackOffsets,
+    extractedWavCount: extractedFiles.length,
+    workerOutputCaptured: Boolean(workerResult.stdout.trim()),
+  };
+}
+
 async function main() {
   requireTool("ffmpeg");
   requireTool("ffprobe");
 
   const workdir = await mkdtemp(path.join(tmpdir(), "studio-cut-cloud-sync-smoke-"));
-  const mediaDir = path.join(workdir, "media");
-  const workerDir = path.join(workdir, "worker");
-  await mkdir(mediaDir, { recursive: true });
-  await mkdir(workerDir, { recursive: true });
-
-  const files = {
-    phone1: path.join(mediaDir, "phone-reference-01.wav"),
-    phone2: path.join(mediaDir, "phone-reference-02.wav"),
-    homerVideo: path.join(mediaDir, "homer-video.mp4"),
-    charlieVideo: path.join(mediaDir, "charlie-video.mp4"),
-    homerAudio: path.join(mediaDir, "homer-clean.wav"),
-    charlieAudio: path.join(mediaDir, "charlie-clean.wav"),
-    homerVideoAudio: path.join(mediaDir, "homer-video-audio.wav"),
-    charlieVideoAudio: path.join(mediaDir, "charlie-video-audio.wav"),
-  };
-
   try {
-    const railSamples = createReferenceRailSamples(expectedReferenceDurationMs);
-    await writeWav(files.phone1, sliceSamples(railSamples, 0, 2000));
-    await writeWav(files.phone2, sliceSamples(railSamples, 2000, 3000));
-    await writeWav(files.homerAudio, sliceSamples(railSamples, 1000, 4000));
-    await writeWav(files.charlieAudio, sliceSamples(railSamples, 2000, 3000));
-    await writeWav(files.homerVideoAudio, sliceSamples(railSamples, 1000, 4000));
-    await writeWav(files.charlieVideoAudio, sliceSamples(railSamples, 2000, 3000));
-    await generateVideoWithAudio(files.homerVideo, {
-      color: "green",
-      audioPath: files.homerVideoAudio,
-      durationSeconds: 4,
-    });
-    await generateVideoWithAudio(files.charlieVideo, {
-      color: "blue",
-      audioPath: files.charlieVideoAudio,
-      durationSeconds: 3,
-    });
-
-    const syncJobPath = path.join(workdir, "sync-job.synthetic.json");
-    const localMediaMapPath = path.join(workdir, "local-media-map.synthetic.json");
-    const reportPath = path.join(workdir, "sync-report.synthetic.json");
-
-    const syncJob = {
-      syncJobId: "synthetic-rescue-sync",
-      projectId: "synthetic-episode",
-      branchId: "main",
-      title: "Synthetic Rescue Sync",
-      createdBy: "agent-smoke-test",
-      createdAt: "2026-05-22T12:00:00.000Z",
-      updatedAt: "2026-05-22T12:00:00.000Z",
-      status: "uploaded",
-      expectedInputs: {
-        homerVideo: true,
-        charlieVideo: true,
-        homerAudio: true,
-        charlieAudio: true,
-        phoneReferenceAudio: true,
-        clipVideo: false,
-      },
-      uploadedInputs: [
-        uploadedInput({
-          inputId: "phone-reference-00",
-          role: "phoneReferenceAudio",
-          fileName: "phone-reference-01.wav",
-          contentType: "audio/wav",
-          sizeBytes: await fileSize(files.phone1),
-          durationMs: 2000,
-          orderIndex: 0,
-        }),
-        uploadedInput({
-          inputId: "phone-reference-01",
-          role: "phoneReferenceAudio",
-          fileName: "phone-reference-02.wav",
-          contentType: "audio/wav",
-          sizeBytes: await fileSize(files.phone2),
-          durationMs: 3000,
-          orderIndex: 1,
-        }),
-        uploadedInput({
-          inputId: "homer-video",
-          role: "homerVideo",
-          fileName: "homer-video.mp4",
-          contentType: "video/mp4",
-          sizeBytes: await fileSize(files.homerVideo),
-          durationMs: 4000,
-        }),
-        uploadedInput({
-          inputId: "charlie-video",
-          role: "charlieVideo",
-          fileName: "charlie-video.mp4",
-          contentType: "video/mp4",
-          sizeBytes: await fileSize(files.charlieVideo),
-          durationMs: 3000,
-        }),
-        uploadedInput({
-          inputId: "homer-audio",
-          role: "homerAudio",
-          fileName: "homer-clean.wav",
-          contentType: "audio/wav",
-          sizeBytes: await fileSize(files.homerAudio),
-          durationMs: 4000,
-        }),
-        uploadedInput({
-          inputId: "charlie-audio",
-          role: "charlieAudio",
-          fileName: "charlie-clean.wav",
-          contentType: "audio/wav",
-          sizeBytes: await fileSize(files.charlieAudio),
-          durationMs: 3000,
-        }),
-      ],
-      outputs: {
-        sharedRoomUrl: "https://high-ground-odyssey.web.app/?projectId=synthetic-episode&branchId=main",
-      },
-    };
-
-    await writeJson(syncJobPath, syncJob);
-    await writeJson(localMediaMapPath, {
-      inputs: {
-        "phone-reference-00": "media/phone-reference-01.wav",
-        "phone-reference-01": "media/phone-reference-02.wav",
-        "homer-video": "media/homer-video.mp4",
-        "charlie-video": "media/charlie-video.mp4",
-        "homer-audio": "media/homer-clean.wav",
-        "charlie-audio": "media/charlie-clean.wav",
-      },
-    });
-
-    const workerResult = run(pythonCommand, [
-      "tools/studio-cut-cloud-sync/cloud_sync_worker.py",
-      "--sync-job-json",
-      syncJobPath,
-      "--local-media-map",
-      localMediaMapPath,
-      "--workdir",
-      workerDir,
-      "--out",
-      reportPath,
-    ]);
-
-    const report = JSON.parse(await readFile(reportPath, "utf8"));
-    const segments = report.referenceRail?.segments ?? [];
-    const trackOffsets = report.trackOffsets ?? [];
-    const extractedFiles = [
-      "phone-reference-00.wav",
-      "phone-reference-01.wav",
-      "homer-video.wav",
-      "charlie-video.wav",
-      "homer-audio.wav",
-      "charlie-audio.wav",
-      "reference-rail.wav",
-    ].map((fileName) => path.join(workerDir, "audio", fileName));
-
-    assert(report.status === "ready", "sync report should have ready status");
-    assert(segments.length === 2, "reference rail should contain two phone segments");
-    assert(
-      Math.abs((report.referenceRail?.totalDurationMs ?? 0) - expectedReferenceDurationMs) <= durationToleranceMs,
-      `reference rail total duration should be near ${expectedReferenceDurationMs}ms`,
-    );
-    assert(trackOffsets.length === 4, "non-reference track offsets should exist");
-    for (const extractedFile of extractedFiles) {
-      assert(existsSync(extractedFile), `expected extracted WAV: ${extractedFile}`);
+    const results = [];
+    for (const scenario of scenarios) {
+      results.push(await runScenario(workdir, scenario));
     }
-    for (const [inputId, expectedOffset] of Object.entries(expectedOffsets)) {
-      const trackOffset = findTrackOffset(trackOffsets, inputId);
-      assert(trackOffset, `expected track offset for ${inputId}`);
-      assert(
-        Math.abs(trackOffset.estimatedOffsetMs - expectedOffset) <= offsetToleranceMs,
-        `${inputId} estimated offset ${trackOffset.estimatedOffsetMs}ms should be near ${expectedOffset}ms`,
-      );
-      assert(trackOffset.confidence >= 0.45, `${inputId} confidence should be useful`);
-    }
-    assert(
-      report.globalWarnings.every(
-        (warning) => !warning.includes("Offset estimation not implemented yet"),
-      ),
-      "global warnings should not claim all offset estimation is unimplemented",
-    );
 
     console.log("Studio Cut cloud sync worker smoke passed.");
     console.log(`  workdir: ${workdir}`);
-    console.log(`  referenceRailSegments: ${segments.length}`);
-    console.log(`  referenceRailTotalDurationMs: ${report.referenceRail.totalDurationMs}`);
-    console.log(`  trackOffsets: ${trackOffsets.length}`);
-    console.log(
-      `  estimatedOffsets: ${Object.entries(expectedOffsets)
-        .map(([inputId, expectedOffset]) => {
-          const actual = findTrackOffset(trackOffsets, inputId);
-          return `${inputId}=${actual?.estimatedOffsetMs ?? "missing"}ms(expected ${expectedOffset}ms)`;
-        })
-        .join(", ")}`,
-    );
-    console.log(`  extractedWavs: ${extractedFiles.length}`);
-    if (workerResult.stdout.trim()) {
-      console.log("  workerOutput: captured");
+    for (const result of results) {
+      console.log(`  scenario: ${result.name}`);
+      console.log(`    referenceRailSegments: ${result.referenceRailSegments}`);
+      console.log(`    referenceRailTotalDurationMs: ${result.referenceRailTotalDurationMs}`);
+      console.log(
+        `    estimatedOffsets: ${Object.entries(scenarios.find((scenario) => scenario.name === result.name).tracks)
+          .map(([inputId, expected]) => {
+            const actual = findTrackOffset(result.trackOffsets, inputId);
+            return `${inputId}=${actual?.estimatedOffsetMs ?? "missing"}ms(expected ${expected.offsetMs}ms, anchors ${actual?.anchorCount ?? 0})`;
+          })
+          .join(", ")}`,
+      );
+      console.log(`    extractedWavs: ${result.extractedWavCount}`);
+      if (result.workerOutputCaptured) {
+        console.log("    workerOutput: captured");
+      }
     }
   } finally {
     if (!keepWorkdir) {

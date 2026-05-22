@@ -8,11 +8,11 @@ The worker runs without cloud credentials. It can:
 - extract normalized mono 48 kHz WAV files with ffmpeg
 - build an ordered phone-reference rail
 - assemble a local reference rail WAV from phone/reference pieces
-- estimate non-reference track offsets with bounded waveform correlation
+- estimate non-reference track offsets with anchor-based waveform correlation
 - emit a sync report JSON
 
-Offset estimation v0 is not drift-aware and is intentionally conservative for
-long files.
+Offset estimation v0 is anchor-based for long files. Drift estimates are
+approximate and intended as operator guidance, not final sync truth.
 """
 
 from __future__ import annotations
@@ -53,10 +53,17 @@ VALID_STATUSES = {
 AUDIO_REQUIRED_ROLES = {"homerAudio", "charlieAudio", "phoneReferenceAudio"}
 VIDEO_REQUIRED_ROLES = {"homerVideo", "charlieVideo", "clipVideo"}
 REFERENCE_RAIL_WAV_FILE_NAME = "reference-rail.wav"
-ANALYSIS_TARGET_RATE_HZ = 100
-MAX_CORRELATION_SECONDS = 300
+ANALYSIS_TARGET_RATE_HZ = 50
+ANCHOR_ANALYSIS_TARGET_RATE_HZ = 20
+FULL_TRACK_CORRELATION_MAX_SECONDS = 30
+ANCHOR_WINDOW_SECONDS = 10
+MAX_ANCHORS = 8
 MIN_CORRELATION_OVERLAP_SECONDS = 0.75
 LOW_CORRELATION_CONFIDENCE = 0.35
+ANCHOR_DISAGREEMENT_WARNING_MS = 250
+POSSIBLE_DRIFT_WARNING_PPM = 500
+ANCHOR_MIN_MEAN_ENERGY = 0.001
+ANCHOR_MIN_STDDEV = 0.0002
 
 
 @dataclass(frozen=True)
@@ -102,12 +109,27 @@ class ReferenceRailAudio:
 
 
 @dataclass(frozen=True)
+class AnchorEstimate:
+    track_start_ms: int
+    reference_start_ms: int
+    estimated_offset_ms: int
+    confidence: float
+    score: float
+    second_best_score: float
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
 class CorrelationEstimate:
     input_id: str
     estimated_offset_ms: int
     confidence: float
     score: float
     second_best_score: float
+    drift_ppm: float
+    anchor_count: int
+    anchor_agreement_ms: int | None
+    anchor_summaries: list[AnchorEstimate]
     warnings: list[str]
 
 
@@ -658,8 +680,9 @@ def estimate_offset_against_reference(
     warnings: list[str] = []
 
     try:
-        reference = load_wav_envelope(reference_audio_path)
-        track = load_wav_envelope(input_audio_path)
+        analysis_rate_hz = choose_analysis_rate(reference_audio_path, input_audio_path)
+        reference = load_wav_envelope(reference_audio_path, analysis_rate_hz)
+        track = load_wav_envelope(input_audio_path, analysis_rate_hz)
     except OSError as error:
         return CorrelationEstimate(
             input_id=input_id,
@@ -667,47 +690,55 @@ def estimate_offset_against_reference(
             confidence=0.02,
             score=0,
             second_best_score=0,
+            drift_ppm=0,
+            anchor_count=0,
+            anchor_agreement_ms=None,
+            anchor_summaries=[],
             warnings=[f"correlation unavailable: {error}"],
-        )
-
-    if reference.duration_seconds > MAX_CORRELATION_SECONDS:
-        warnings.append(
-            f"reference rail is longer than {MAX_CORRELATION_SECONDS}s; "
-            "chunked/FFT correlation is required"
-        )
-    if track.duration_seconds > MAX_CORRELATION_SECONDS:
-        warnings.append(
-            f"{input_id} is longer than {MAX_CORRELATION_SECONDS}s; "
-            "chunked/FFT correlation is required"
-        )
-    if warnings:
-        return CorrelationEstimate(
-            input_id=input_id,
-            estimated_offset_ms=0,
-            confidence=0.03,
-            score=0,
-            second_best_score=0,
-            warnings=warnings,
         )
 
     if len(track.values) > len(reference.values):
         warnings.append("track is longer than the reference rail")
 
-    estimate = normalized_offset_correlation(reference.values, track.values)
-    if estimate is None:
+    anchors = estimate_anchor_offsets(reference, track)
+    usable_anchors = [anchor for anchor in anchors if anchor.score > 0]
+    if not usable_anchors:
         return CorrelationEstimate(
             input_id=input_id,
             estimated_offset_ms=0,
             confidence=0.02,
             score=0,
             second_best_score=0,
-            warnings=["correlation unavailable: not enough analysis samples"],
+            drift_ppm=0,
+            anchor_count=0,
+            anchor_agreement_ms=None,
+            anchor_summaries=anchors,
+            warnings=unique_strings(
+                [*warnings, "correlation unavailable: no usable anchors"]
+            ),
         )
 
-    offset_frames, score, second_best_score = estimate
-    estimated_offset_ms = round(offset_frames * reference.frame_duration_ms)
-    confidence = score_to_confidence(score, second_best_score)
+    estimated_offset_ms = weighted_median_offset(usable_anchors)
+    anchor_agreement_ms = max(
+        abs(anchor.estimated_offset_ms - estimated_offset_ms)
+        for anchor in usable_anchors
+    )
+    drift_ppm = estimate_drift_ppm(usable_anchors)
+    average_score = sum(anchor.score for anchor in usable_anchors) / len(usable_anchors)
+    second_best_score = max(anchor.second_best_score for anchor in usable_anchors)
+    confidence = combined_anchor_confidence(
+        usable_anchors,
+        anchor_agreement_ms,
+    )
 
+    if len(usable_anchors) < 2:
+        warnings.append("too few anchors for drift estimation")
+    if anchor_agreement_ms > ANCHOR_DISAGREEMENT_WARNING_MS:
+        warnings.append(
+            f"anchor offset disagreement is {anchor_agreement_ms}ms"
+        )
+    if abs(drift_ppm) > POSSIBLE_DRIFT_WARNING_PPM:
+        warnings.append(f"possible drift detected: {round(drift_ppm, 1)}ppm")
     if confidence < LOW_CORRELATION_CONFIDENCE:
         warnings.append("correlation confidence is low")
     if estimated_offset_ms <= round(reference.frame_duration_ms):
@@ -723,8 +754,12 @@ def estimate_offset_against_reference(
         input_id=input_id,
         estimated_offset_ms=estimated_offset_ms,
         confidence=confidence,
-        score=round(score, 4),
+        score=round(average_score, 4),
         second_best_score=round(second_best_score, 4),
+        drift_ppm=round(drift_ppm, 2),
+        anchor_count=len(usable_anchors),
+        anchor_agreement_ms=anchor_agreement_ms,
+        anchor_summaries=anchors,
         warnings=unique_strings(warnings),
     )
 
@@ -736,7 +771,23 @@ class WavEnvelope:
     duration_seconds: float
 
 
-def load_wav_envelope(path: Path) -> WavEnvelope:
+def choose_analysis_rate(reference_audio_path: Path, input_audio_path: Path) -> int:
+    reference_duration = get_wav_duration_seconds(reference_audio_path)
+    input_duration = get_wav_duration_seconds(input_audio_path)
+    if max(reference_duration, input_duration) > FULL_TRACK_CORRELATION_MAX_SECONDS:
+        return ANCHOR_ANALYSIS_TARGET_RATE_HZ
+    return ANALYSIS_TARGET_RATE_HZ
+
+
+def get_wav_duration_seconds(path: Path) -> float:
+    with wave.open(str(path), "rb") as wav_file:
+        frame_rate = wav_file.getframerate()
+        if frame_rate <= 0:
+            raise OSError(f"{path} has an invalid sample rate")
+        return wav_file.getnframes() / frame_rate
+
+
+def load_wav_envelope(path: Path, analysis_rate_hz: int) -> WavEnvelope:
     with wave.open(str(path), "rb") as wav_file:
         channels = wav_file.getnchannels()
         sample_width = wav_file.getsampwidth()
@@ -756,7 +807,7 @@ def load_wav_envelope(path: Path) -> WavEnvelope:
     samples = array("h")
     samples.frombytes(raw_frames)
 
-    window_size = max(1, round(sample_rate / ANALYSIS_TARGET_RATE_HZ))
+    window_size = max(1, round(sample_rate / analysis_rate_hz))
     values: list[float] = []
     max_sample = 32768.0
 
@@ -771,6 +822,200 @@ def load_wav_envelope(path: Path) -> WavEnvelope:
         frame_duration_ms=(window_size / sample_rate) * 1000,
         duration_seconds=duration_seconds,
     )
+
+
+def estimate_anchor_offsets(
+    reference: WavEnvelope,
+    track: WavEnvelope,
+) -> list[AnchorEstimate]:
+    anchor_ranges = select_anchor_ranges(track)
+    estimates: list[AnchorEstimate] = []
+
+    for track_start_frame, frame_count in anchor_ranges:
+        anchor_values = track.values[track_start_frame : track_start_frame + frame_count]
+        track_start_ms = round(track_start_frame * track.frame_duration_ms)
+        warnings: list[str] = []
+
+        if is_flat_anchor(anchor_values):
+            estimates.append(
+                AnchorEstimate(
+                    track_start_ms=track_start_ms,
+                    reference_start_ms=0,
+                    estimated_offset_ms=0,
+                    confidence=0.02,
+                    score=0,
+                    second_best_score=0,
+                    warnings=["anchor skipped because it is mostly silent or flat"],
+                )
+            )
+            continue
+
+        match = best_reference_window_match(reference.values, anchor_values)
+        if match is None:
+            estimates.append(
+                AnchorEstimate(
+                    track_start_ms=track_start_ms,
+                    reference_start_ms=0,
+                    estimated_offset_ms=0,
+                    confidence=0.02,
+                    score=0,
+                    second_best_score=0,
+                    warnings=["anchor correlation unavailable"],
+                )
+            )
+            continue
+
+        reference_start_frame, score, second_best_score = match
+        confidence = score_to_confidence(score, second_best_score)
+        if confidence < LOW_CORRELATION_CONFIDENCE:
+            warnings.append("anchor confidence is low")
+
+        reference_start_ms = round(reference_start_frame * reference.frame_duration_ms)
+        estimates.append(
+            AnchorEstimate(
+                track_start_ms=track_start_ms,
+                reference_start_ms=reference_start_ms,
+                estimated_offset_ms=reference_start_ms - track_start_ms,
+                confidence=confidence,
+                score=round(score, 4),
+                second_best_score=round(second_best_score, 4),
+                warnings=warnings,
+            )
+        )
+
+    return estimates
+
+
+def select_anchor_ranges(track: WavEnvelope) -> list[tuple[int, int]]:
+    if not track.values:
+        return []
+
+    if track.duration_seconds <= FULL_TRACK_CORRELATION_MAX_SECONDS:
+        return [(0, len(track.values))]
+
+    anchor_frames = min(
+        len(track.values),
+        max(
+            round(MIN_CORRELATION_OVERLAP_SECONDS * ANCHOR_ANALYSIS_TARGET_RATE_HZ),
+            round(ANCHOR_WINDOW_SECONDS * ANCHOR_ANALYSIS_TARGET_RATE_HZ),
+        ),
+    )
+    max_start = max(0, len(track.values) - anchor_frames)
+    if max_start == 0:
+        return [(0, anchor_frames)]
+
+    anchor_count = min(
+        MAX_ANCHORS,
+        max(3, math.ceil(track.duration_seconds / 30)),
+    )
+    if anchor_count <= 1:
+        starts = [0]
+    else:
+        starts = [
+            round((max_start * index) / (anchor_count - 1))
+            for index in range(anchor_count)
+        ]
+
+    return [(start, anchor_frames) for start in sorted(set(starts))]
+
+
+def is_flat_anchor(values: list[float]) -> bool:
+    if not values:
+        return True
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return mean < ANCHOR_MIN_MEAN_ENERGY or math.sqrt(variance) < ANCHOR_MIN_STDDEV
+
+
+def best_reference_window_match(
+    reference: list[float],
+    anchor: list[float],
+) -> tuple[int, float, float] | None:
+    if not reference or not anchor or len(anchor) > len(reference):
+        return None
+
+    best_start = 0
+    best_score = -1.0
+    second_best_score = -1.0
+    exclusion_radius = max(1, round(0.5 * ANCHOR_ANALYSIS_TARGET_RATE_HZ))
+
+    for reference_start in range(0, len(reference) - len(anchor) + 1):
+        score = normalized_dot(
+            reference[reference_start : reference_start + len(anchor)],
+            anchor,
+        )
+        if score > best_score:
+            if abs(reference_start - best_start) > exclusion_radius:
+                second_best_score = best_score
+            best_score = score
+            best_start = reference_start
+        elif (
+            score > second_best_score
+            and abs(reference_start - best_start) > exclusion_radius
+        ):
+            second_best_score = score
+
+    if best_score < -0.5:
+        return None
+    return best_start, best_score, max(second_best_score, 0)
+
+
+def weighted_median_offset(anchors: list[AnchorEstimate]) -> int:
+    ordered = sorted(anchors, key=lambda anchor: anchor.estimated_offset_ms)
+    total_weight = sum(max(anchor.confidence, 0.01) for anchor in ordered)
+    midpoint = total_weight / 2
+    cumulative = 0.0
+
+    for anchor in ordered:
+        cumulative += max(anchor.confidence, 0.01)
+        if cumulative >= midpoint:
+            return anchor.estimated_offset_ms
+
+    return ordered[-1].estimated_offset_ms
+
+
+def estimate_drift_ppm(anchors: list[AnchorEstimate]) -> float:
+    if len(anchors) < 2:
+        return 0
+
+    mean_x = sum(anchor.track_start_ms for anchor in anchors) / len(anchors)
+    mean_y = sum(anchor.estimated_offset_ms for anchor in anchors) / len(anchors)
+    denominator = sum((anchor.track_start_ms - mean_x) ** 2 for anchor in anchors)
+    if denominator <= 0:
+        return 0
+
+    slope = sum(
+        (anchor.track_start_ms - mean_x) * (anchor.estimated_offset_ms - mean_y)
+        for anchor in anchors
+    ) / denominator
+    return slope * 1_000_000
+
+
+def combined_anchor_confidence(
+    anchors: list[AnchorEstimate],
+    anchor_agreement_ms: int,
+) -> float:
+    if not anchors:
+        return 0.02
+
+    average_confidence = sum(anchor.confidence for anchor in anchors) / len(anchors)
+    count_factor = min(1.0, 0.5 + (len(anchors) * 0.18))
+    agreement_factor = max(
+        0.2,
+        1.0 - min(anchor_agreement_ms, 2000) / 2000,
+    )
+    return round(max(0.02, min(0.99, average_confidence * count_factor * agreement_factor)), 3)
+
+
+def anchor_summary_payload(anchor: AnchorEstimate) -> dict[str, Any]:
+    return {
+        "trackStartMs": anchor.track_start_ms,
+        "referenceStartMs": anchor.reference_start_ms,
+        "estimatedOffsetMs": anchor.estimated_offset_ms,
+        "score": anchor.score,
+        "confidence": anchor.confidence,
+        "warnings": anchor.warnings,
+    }
 
 
 def normalized_offset_correlation(
@@ -885,9 +1130,9 @@ def build_worker_plan(sync_job: dict[str, Any]) -> list[str]:
         "Sort phoneReferenceAudio pieces by orderIndex, then file name.",
         "Build a continuous metadata reference rail from ordered phone/reference pieces.",
         "Assemble workdir/audio/reference-rail.wav from extracted phone/reference WAVs.",
-        "Cross-correlate extracted non-reference audio against the reference rail WAV.",
-        "Estimate per-input offsets with bounded waveform correlation v0.",
-        "Estimate drift confidence. (Future step.)",
+        "Select usable anchor windows from extracted non-reference audio.",
+        "Cross-correlate each anchor against the reference rail WAV.",
+        "Estimate per-input offsets, anchor agreement, and approximate drift.",
         "Generate timeline-aligned low-res intermediate proxies. (Future step.)",
         "Compose outputs/source-monitor-proxy.mp4 for browser editing. (Future step.)",
         "Write outputs/episode-manifest.json and outputs/sync-report.json. (Report only in v0.)",
@@ -1053,8 +1298,8 @@ def build_global_warnings(
 ) -> list[str]:
     warnings = [
         "Reference rail built from ordered phone pieces.",
-        "Offset estimation v0 uses local waveform correlation and is not drift-aware yet.",
-        "Long-form/chunked correlation and drift estimation are future work.",
+        "Offset estimation v0 uses local anchor-based waveform correlation.",
+        "Drift estimates are approximate; FFT/chunked refinement is future work.",
         "Source-monitor proxy and Episode Manifest generation are not implemented yet.",
     ]
 
@@ -1089,36 +1334,64 @@ def build_track_offset(
         warnings.extend(correlation.warnings)
         estimated_offset_ms = correlation.estimated_offset_ms
         confidence = correlation.confidence
+        drift_ppm = correlation.drift_ppm
+        anchor_count = correlation.anchor_count
+        anchor_agreement_ms = correlation.anchor_agreement_ms
+        anchor_summaries = correlation.anchor_summaries
         if correlation.score > 0:
             warnings.append(
-                "offset estimated with waveform correlation v0; drift not estimated"
+                "offset estimated with anchor waveform correlation v0"
             )
     elif extraction and extraction.path and reference_rail_audio.path is None:
         warnings.append("offset estimation blocked because reference rail audio is missing")
         estimated_offset_ms = 0
         confidence = 0.04
+        drift_ppm = 0
+        anchor_count = 0
+        anchor_agreement_ms = None
+        anchor_summaries = []
     elif extraction and extraction.path:
         warnings.append("offset estimation unavailable")
         estimated_offset_ms = 0
         confidence = 0.06
+        drift_ppm = 0
+        anchor_count = 0
+        anchor_agreement_ms = None
+        anchor_summaries = []
     elif inspection and not inspection.has_audio:
         warnings.append("offset estimation blocked because no audio stream was found")
         estimated_offset_ms = 0
         confidence = 0.02
+        drift_ppm = 0
+        anchor_count = 0
+        anchor_agreement_ms = None
+        anchor_summaries = []
     else:
         warnings.append("offset estimation blocked because no extracted audio is available")
         estimated_offset_ms = 0
         confidence = 0.05
+        drift_ppm = 0
+        anchor_count = 0
+        anchor_agreement_ms = None
+        anchor_summaries = []
 
-    return {
+    track_offset: dict[str, Any] = {
         "role": entry["role"],
         "inputId": input_id,
         "fileName": entry.get("fileName", f"{entry['role']}.placeholder"),
         "estimatedOffsetMs": estimated_offset_ms,
         "confidence": confidence,
-        "driftPpm": 0,
+        "driftPpm": drift_ppm,
+        "anchorCount": anchor_count,
         "warnings": unique_strings(warnings),
     }
+    if anchor_agreement_ms is not None:
+        track_offset["anchorAgreementMs"] = anchor_agreement_ms
+    if anchor_summaries:
+        track_offset["anchorSummaries"] = [
+            anchor_summary_payload(anchor) for anchor in anchor_summaries
+        ]
+    return track_offset
 
 
 def get_best_duration_ms(entry: dict[str, Any], inspection: MediaInspection | None) -> int:

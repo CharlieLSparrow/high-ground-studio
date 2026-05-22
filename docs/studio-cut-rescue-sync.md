@@ -76,9 +76,11 @@ The Rescue Sync report contains:
 
 `trackOffsets` lists Homer video, Charlie video, clean audio tracks, clip video,
 and other non-reference inputs. When local extracted audio and a reference rail
-WAV are available, Worker v0 uses bounded waveform-envelope correlation to
-write `estimatedOffsetMs` and confidence. Positive offsets mean the input starts
-after the reference rail starts. Negative offsets mean it appears to have
+WAV are available, Worker v0 selects multiple anchor windows from longer tracks
+and correlates each anchor against the reference rail. It writes
+`estimatedOffsetMs`, confidence, `anchorCount`, `anchorAgreementMs`, approximate
+`driftPpm`, and optional `anchorSummaries`. Positive offsets mean the input
+starts after the reference rail starts. Negative offsets mean it appears to have
 started before the rail.
 
 ## Current Implementation
@@ -92,13 +94,13 @@ Implemented now:
 - Firestore sync job document scaffolding at `studioCutSyncJobs/{syncJobId}`
 - local Worker v0 that validates a job, inspects local media when mapped,
   extracts mono 48 kHz WAV files, builds `reference-rail.wav`, and estimates
-  offsets with waveform correlation v0
+  offsets with anchor-based waveform correlation v0
 - helper tests included in `pnpm studio-cut:verify`
 
 Scaffold only:
 
-- drift estimation
-- chunked/FFT long-form correlation
+- production-grade drift estimation
+- FFT/refined long-form correlation
 - source-monitor proxy generation
 - manifest generation
 - shared room metadata creation from worker output
@@ -145,9 +147,10 @@ Synthetic canary:
 pnpm studio-cut:cloud-sync-smoke
 ```
 
-This creates temporary synthetic files, runs the worker, verifies two
-phone/reference rail segments, checks extracted WAV outputs, and asserts known
-+1000ms/+2000ms offset estimates.
+This creates temporary synthetic files, runs the worker, verifies short and
+long-form phone/reference rail scenarios, checks extracted WAV outputs, asserts
+known +1000ms/+2000ms and +7000ms/+15000ms offset estimates, and verifies
+multiple anchors for long tracks.
 
 Do not upload sensitive/private footage until Firestore and Storage rules have
 passed emulator tests, rules have been intentionally deployed, and retention

@@ -42,7 +42,7 @@ It contains no private paths, media, credentials, or real episode data.
 - Local cloud sync Worker v0 that validates a sync job, optionally maps inputs
   to local files, inspects media with `ffprobe`, extracts mono 48 kHz WAV files
   with `ffmpeg`, assembles `reference-rail.wav`, and estimates offsets with
-  waveform correlation v0.
+  anchor-based waveform correlation v0.
 - One-command verifier: `pnpm studio-cut:verify`.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
@@ -104,8 +104,9 @@ Synthetic Worker v0 canary:
 pnpm studio-cut:cloud-sync-smoke
 ```
 
-The canary asserts two ordered phone/reference rail pieces and known
-+1000ms/+2000ms offsets against synthetic tracks.
+The canary asserts short and long synthetic rooms, ordered phone/reference rail
+pieces, known +1000ms/+2000ms and +7000ms/+15000ms offsets, and multiple anchor
+estimates for long tracks.
 
 Local-media Worker v0 shape:
 
@@ -208,9 +209,9 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
 - Rescue Sync raw uploads can be large and should not be used with sensitive
   footage until rules have passed emulator tests and lifecycle cleanup exists.
 - Rescue Sync Worker v0 extracts audio, builds a duration-based reference rail,
-  and estimates offsets with bounded waveform correlation. It does not estimate
-  drift, handle long-form chunked/FFT correlation, generate manifests/proxies,
-  or write shared-room metadata yet.
+  and estimates offsets with anchor-based waveform correlation. It includes
+  approximate drift guidance from anchor agreement, but it does not generate
+  manifests/proxies or write shared-room metadata yet.
 - The emulator rules test requires Java. If Java is missing locally, install a
   JRE/JDK before deploying rules.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
@@ -233,9 +234,8 @@ Use the exact commit SHAs from the final Codex report for this sprint.
 
 ## Recommended Next Sprint
 
-Add long-form sync output generation:
+Add aligned sync output generation:
 
-- replace bounded v0 correlation with chunked or FFT-based long-form analysis
-- estimate drift as well as offsets/confidence
+- refine correlation with FFT/chunked analysis and better drift estimation
 - generate a source-monitor proxy from aligned low-res intermediates
 - write manifest/proxy/report outputs and shared-room metadata

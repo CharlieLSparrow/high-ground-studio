@@ -186,6 +186,19 @@ test("cloud sync report validates reference rail and track offsets", () => {
         fileName: "homer.mp4",
         estimatedOffsetMs: 0,
         confidence: 0.8,
+        driftPpm: 12.5,
+        anchorCount: 3,
+        anchorAgreementMs: 40,
+        anchorSummaries: [
+          {
+            trackStartMs: 0,
+            referenceStartMs: 0,
+            estimatedOffsetMs: 0,
+            score: 0.92,
+            confidence: 0.86,
+            warnings: [],
+          },
+        ],
         warnings: [],
       },
       {

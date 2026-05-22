@@ -831,7 +831,7 @@ inputs. Each piece gets an `inputId`, optional `durationMs`, and an
 `orderIndex`. Worker v0 sorts those pieces into a reference rail and can inspect
 explicitly mapped local files to prefer real durations. In local-media mode, it
 also assembles `workdir/audio/reference-rail.wav` and estimates non-reference
-track offsets with bounded waveform correlation.
+track offsets with anchor-based waveform correlation.
 
 Raw intake job metadata lives at:
 
@@ -872,10 +872,9 @@ Run the synthetic local worker canary:
 pnpm studio-cut:cloud-sync-smoke
 ```
 
-The actual Cloud Run sync worker remains scaffold only. Drift estimation,
-long-form chunked/FFT correlation, proxy generation, manifest generation, and
-room metadata writes are not implemented yet. The worker contract is documented
-at:
+The actual Cloud Run sync worker remains scaffold only. FFT/refined drift
+analysis, proxy generation, manifest generation, and room metadata writes are
+not implemented yet. The worker contract is documented at:
 
 ```text
 docs/studio-cut-cloud-sync.md
