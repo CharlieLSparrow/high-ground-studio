@@ -828,8 +828,8 @@ config is absent.
 Episode 4 needs Rescue Sync because the phone/reference recording can arrive in
 multiple pieces. The intake model now supports multiple `phoneReferenceAudio`
 inputs. Each piece gets an `inputId`, optional `durationMs`, and an
-`orderIndex`. The future worker will sort those pieces into a reference rail,
-then sync Homer/Charlie sources against it.
+`orderIndex`. Worker v0 sorts those pieces into a reference rail and can inspect
+explicitly mapped local files to prefer real durations.
 
 Raw intake job metadata lives at:
 
@@ -851,8 +851,27 @@ studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json
 studioCutSyncJobs/{syncJobId}/outputs/sync-report.json
 ```
 
-The current app can create/upload a sync job and mark it queued. The actual
-Cloud Run sync worker is scaffold only. Its contract is documented at:
+The current app can create/upload a sync job and mark it queued. The local
+worker can inspect files, extract mono 48 kHz WAV audio, and emit a duration
+based reference rail report without cloud credentials:
+
+```bash
+python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
+  --sync-job-json /path/to/sync-job.json \
+  --local-media-map /path/to/local-media-map.json \
+  --workdir /tmp/studio-cut-cloud-sync-work \
+  --out /tmp/studio-cut-cloud-sync-report.json
+```
+
+Run the synthetic local worker canary:
+
+```bash
+pnpm studio-cut:cloud-sync-smoke
+```
+
+The actual Cloud Run sync worker remains scaffold only. Offset estimation,
+proxy generation, manifest generation, and room metadata writes are not
+implemented yet. The worker contract is documented at:
 
 ```text
 docs/studio-cut-cloud-sync.md

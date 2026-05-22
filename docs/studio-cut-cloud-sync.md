@@ -130,12 +130,45 @@ The future Cloud Run worker should:
    `studioCutProjects/{projectId}/branches/{branchId}/room/meta`.
 12. Set job status to `ready`, or `failed` with `errorMessage`.
 
-The current local stub validates job JSON and prints this plan:
+The current local Worker v0 validates job JSON and prints this plan:
 
 ```bash
 python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json tools/studio-cut-cloud-sync/examples/sync-job.placeholder.json \
   --out /tmp/studio-cut-cloud-sync-report.placeholder.json
+```
+
+Worker v0 also supports local-media mode without cloud credentials:
+
+```bash
+python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
+  --sync-job-json /path/to/sync-job.json \
+  --local-media-map /path/to/local-media-map.json \
+  --workdir /tmp/studio-cut-cloud-sync-work \
+  --out /tmp/studio-cut-cloud-sync-report.json
+```
+
+The local media map uses input ids:
+
+```json
+{
+  "inputs": {
+    "phone-reference-00": "./media/phone-part-01.m4a",
+    "homer-video": "./media/homer-video.mp4"
+  }
+}
+```
+
+In local-media mode, Worker v0 uses `ffprobe` to inspect duration and
+audio/video streams, then extracts mono 48 kHz WAV files with `ffmpeg` into
+`workdir/audio/{inputId}.wav`. It builds the phone/reference rail from inspected
+durations when available. Offset estimation, proxy generation, manifest
+generation, and Firestore room metadata writes remain future work.
+
+Run the synthetic local-media canary:
+
+```bash
+pnpm studio-cut:cloud-sync-smoke
 ```
 
 ## Sync Report Shape
@@ -169,8 +202,9 @@ tools/studio-cut-cloud-sync/examples/
 
 - The web app does not auto-upload; Charlie must explicitly click upload.
 - Local dev mode blocks raw upload because Firebase config is missing.
-- The checked-in worker stub does not start Cloud Run, create paid resources,
-  or process real media.
+- The checked-in worker does not start Cloud Run or create paid resources.
+- Worker v0 can process explicitly mapped local files, but examples and tests
+  use only synthetic or placeholder media.
 - See `docs/studio-cut-rescue-sync.md` for the Episode 4 multi-piece reference
   model.
 - Storage rules are scaffolded for raw intake paths, but rules deploy remains a

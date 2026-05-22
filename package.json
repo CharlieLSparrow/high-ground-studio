@@ -16,6 +16,7 @@
     "studio-cut:build": "pnpm --filter @high-ground/studio-cut-schema build && pnpm --filter studio-cut-web build",
     "studio-cut:local:doctor": "python tools/studio-cut-local/studio_cut_local.py doctor",
     "studio-cut:local:verify-episode": "python tools/studio-cut-local/studio_cut_local.py validate-episode-files",
+    "studio-cut:cloud-sync-smoke": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs",
     "studio-cut:rules-config-test": "node --test scripts/studio-cut-rules-config.test.mjs",
     "studio-cut:rules-test": "firebase emulators:exec --project demo-studio-cut-rules --only firestore,storage \"node --test scripts/studio-cut-rules.test.mjs\"",
     "studio-cut:typecheck": "pnpm --filter @high-ground/studio-cut-schema typecheck && pnpm --filter studio-cut-web typecheck",

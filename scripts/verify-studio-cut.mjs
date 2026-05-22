@@ -75,6 +75,11 @@ const verificationSteps = [
     ],
   },
   {
+    label: "Cloud sync worker synthetic smoke",
+    command: "pnpm",
+    args: ["studio-cut:cloud-sync-smoke"],
+  },
+  {
     label: "Agent smoke test",
     command: pythonCommand,
     args: [

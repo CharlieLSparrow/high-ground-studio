@@ -16,8 +16,9 @@ It contains no private paths, media, credentials, or real episode data.
   lightweight source-monitor proxy package, then share a room link with Mako.
 - Rescue Sync intake foundation: Charlie can model/upload raw Homer, Charlie,
   clean audio, multi-piece phone/reference audio, optional clip, and optional
-  other files into `studioCutSyncJobs/{syncJobId}`. The actual sync worker is
-  still scaffold only.
+  other files into `studioCutSyncJobs/{syncJobId}`. Worker v0 can inspect local
+  media, extract normalized audio, and build a duration-based reference rail,
+  but it is not deployed as a cloud worker.
 - Shared Room Diagnostics shows metadata/proxy/listener/Storage status for the
   active room.
 - Firestore and Storage rules are wired into `firebase.json` and have an
@@ -38,8 +39,9 @@ It contains no private paths, media, credentials, or real episode data.
 - Local render CLI with bootstrap creation, file validation, render planning,
   proxy preview rendering, rough aligned `youtube_16x9` rendering, and synthetic
   agent smoke verification.
-- Local cloud sync worker stub that validates a sync job and emits a placeholder
-  multi-piece reference rail report.
+- Local cloud sync Worker v0 that validates a sync job, optionally maps inputs
+  to local files, inspects media with `ffprobe`, extracts mono 48 kHz WAV files
+  with `ffmpeg`, and emits a multi-piece reference rail report.
 - One-command verifier: `pnpm studio-cut:verify`.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
@@ -83,15 +85,32 @@ uploads:
    Charlie clean audio, and every phone/reference piece.
 3. Set phone/reference `orderIndex` values in the intended rail order.
 4. Click `Create Sync Job / Upload Raw Assets`.
-5. Wait for a future worker to create the shared room. This worker is not live
-   yet, so use the prepared-package fallback below for real editing today.
+5. Wait for a future deployed worker to create the shared room. Worker v0 is
+   local-only and does not write manifests/proxies/room metadata yet, so use the
+   prepared-package fallback below for real editing today.
 
-Local worker stub:
+Local worker metadata-only run:
 
 ```bash
 python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --sync-job-json tools/studio-cut-cloud-sync/examples/sync-job.placeholder.json \
   --out /tmp/studio-cut-rescue-sync-report.placeholder.json
+```
+
+Synthetic Worker v0 canary:
+
+```bash
+pnpm studio-cut:cloud-sync-smoke
+```
+
+Local-media Worker v0 shape:
+
+```bash
+python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
+  --sync-job-json /path/to/sync-job.json \
+  --local-media-map /path/to/local-media-map.json \
+  --workdir /tmp/studio-cut-rescue-sync-work \
+  --out /tmp/studio-cut-rescue-sync-report.json
 ```
 
 Create bootstrap files after calculating the real duration in milliseconds:
@@ -184,8 +203,9 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   media remains local for render.
 - Rescue Sync raw uploads can be large and should not be used with sensitive
   footage until rules have passed emulator tests and lifecycle cleanup exists.
-- Rescue Sync worker output is placeholder-only; it does not run waveform
-  extraction, correlation, manifest generation, or proxy generation yet.
+- Rescue Sync Worker v0 extracts audio and builds a duration-based reference
+  rail, but it does not run waveform correlation, manifest generation, proxy
+  generation, or shared-room metadata writes yet.
 - The emulator rules test requires Java. If Java is missing locally, install a
   JRE/JDK before deploying rules.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
@@ -208,10 +228,10 @@ Use the exact commit SHAs from the final Codex report for this sprint.
 
 ## Recommended Next Sprint
 
-Build true branch/checkpoint management for the decision layer:
+Add waveform correlation to Rescue Sync:
 
-- named branches/checkpoints in JSON and localStorage
-- duplicate branch from current decisions
-- restore checkpoint into working set with undo history
-- Firestore branch history UX and security-rule tests
-- render plan references to branch/checkpoint ids
+- cross-correlate Homer/Charlie clean audio and video audio against the
+  assembled phone/reference rail
+- estimate offsets, confidence, and drift
+- generate a source-monitor proxy from aligned low-res intermediates
+- write manifest/proxy/report outputs and shared-room metadata
