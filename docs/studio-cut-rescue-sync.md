@@ -112,12 +112,36 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-rescue-sync-work \
   --out /tmp/studio-cut-rescue-sync-report.json \
-  --out-sync-map /tmp/studio-cut-sync-map.json
+  --out-sync-map /tmp/studio-cut-sync-map.json \
+  --out-proxy-dir /tmp/studio-cut-proxies \
+  --out-source-monitor-proxy /tmp/studio-cut-source-monitor-proxy.mp4 \
+  --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
 The web UI and current decision schema still say `sourceTimeMs` in several
 places. Architecturally, that value should be treated as canonical episode
 timeline time, not an individual asset's file time.
+
+## Generated Proxy Package
+
+Worker v0 can now turn Sync Map offsets into a local browser editing package:
+
+- aligned low-res proxy clips for Homer, Charlie, and Clip video roles
+- black padding where an asset starts after canonical time 0
+- black/slate panes where Clip or program preview material is not available
+- a 2x2 source-monitor proxy MP4
+- a draft Episode Manifest with pane rectangles for that 2x2 proxy
+
+The source-monitor proxy layout is:
+
+- Homer top-left
+- Charlie top-right
+- Clip bottom-left
+- Program placeholder bottom-right
+
+The generated proxy and manifest are disposable/derivable artifacts. The Sync
+Map and semantic decisions remain the durable outputs. Shared-room metadata
+writing is still future work.
 
 ## Current Implementation
 
@@ -133,14 +157,15 @@ Implemented now:
   offsets with anchor-based waveform correlation v0
 - Sync Map schema, validation, manifest drafting helper, worker output, and
   synthetic smoke assertions
+- aligned low-res proxy generation, 2x2 source-monitor proxy composition, and
+  draft Episode Manifest output
 - helper tests included in `pnpm studio-cut:verify`
 
 Scaffold only:
 
 - production-grade drift estimation
 - FFT/refined long-form correlation
-- source-monitor proxy generation
-- final manifest generation from generated proxy output
+- production-grade proxy quality and labels
 - shared room metadata creation from worker output
 - Cloud Run deployment
 - retention/lifecycle cleanup
@@ -163,7 +188,10 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-rescue-sync-work \
   --out /tmp/studio-cut-rescue-sync-report.json \
-  --out-sync-map /tmp/studio-cut-sync-map.json
+  --out-sync-map /tmp/studio-cut-sync-map.json \
+  --out-proxy-dir /tmp/studio-cut-proxies \
+  --out-source-monitor-proxy /tmp/studio-cut-source-monitor-proxy.mp4 \
+  --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
 The local media map shape is:
@@ -190,7 +218,9 @@ This creates temporary synthetic files, runs the worker, verifies short and
 long-form phone/reference rail scenarios, checks extracted WAV outputs, asserts
 known +1000ms/+2000ms and +7000ms/+15000ms offset estimates, and verifies
 multiple anchors for long tracks. It also asserts Sync Map asset timeline starts
-and checks that no local temp paths appear in the Sync Map JSON.
+and checks that no local temp paths appear in the Sync Map or Manifest JSON. It
+verifies that the generated source-monitor proxy exists, is 640x360, and
+matches the canonical duration within tolerance.
 
 Do not upload sensitive/private footage until Firestore and Storage rules have
 passed emulator tests, rules have been intentionally deployed, and retention

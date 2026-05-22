@@ -3,8 +3,9 @@
 This directory holds the first worker contract for raw-asset cloud intake and
 Episode 4 Rescue Sync. It runs locally without cloud credentials and is not a
 production Cloud Run worker yet. Worker v0 includes local anchor-based waveform
-correlation for longer files; Cloud deployment and production-grade drift
-handling are still future work.
+correlation for longer files and can now generate a local browser editing
+package. Cloud deployment and production-grade drift handling are still future
+work.
 
 The proxy-first intended flow is:
 
@@ -16,7 +17,7 @@ The proxy-first intended flow is:
    estimates offsets for Homer/Charlie/clip assets.
 5. The worker writes a durable Sync Map that maps canonical episode timeline
    time to each original asset's local time.
-6. Future proxy generation writes:
+6. Local package generation can now write:
    - `studioCutSyncJobs/{syncJobId}/outputs/source-monitor-proxy.mp4`
    - `studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json`
    - `studioCutSyncJobs/{syncJobId}/outputs/sync-report.json`
@@ -74,7 +75,10 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-cloud-sync-work \
   --out /tmp/studio-cut-cloud-sync-report.json \
-  --out-sync-map /tmp/studio-cut-sync-map.json
+  --out-sync-map /tmp/studio-cut-sync-map.json \
+  --out-proxy-dir /tmp/studio-cut-proxies \
+  --out-source-monitor-proxy /tmp/studio-cut-source-monitor-proxy.mp4 \
+  --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
 The worker writes `estimatedOffsetMs`, confidence, `anchorCount`,
@@ -92,10 +96,23 @@ When `--out-sync-map` is provided, the worker writes a Sync Map with:
   and warnings
 - no local filesystem paths
 
-The worker still does not generate source-monitor proxies, write final
-manifests, write Firestore room metadata, or start paid cloud resources. Drift
-is approximate and based on anchor agreement; FFT refinement is still future
-work.
+When proxy output flags are provided, the worker also:
+
+- creates aligned low-res proxy clips for Homer, Charlie, and Clip video roles
+- pads assets with black video so each proxy spans the canonical timeline
+- composes a 2x2 source-monitor proxy:
+  - Homer top-left
+  - Charlie top-right
+  - Clip bottom-left, or black if missing
+  - Program placeholder bottom-right
+- writes an Episode Manifest whose panes match that 2x2 layout
+
+The generated manifest references the generated source-monitor proxy file name
+only. It does not include local original media paths.
+
+The worker still does not upload generated proxies, write Firestore room
+metadata, or start paid cloud resources. Drift is approximate and based on
+anchor agreement; FFT refinement is still future work.
 
 ## Synthetic Smoke
 
@@ -109,7 +126,9 @@ The smoke creates synthetic media in a temporary directory, runs local-media
 mode, asserts short and long phone/reference rail scenarios, verifies extracted
 WAV files, checks known +1000ms/+2000ms and +7000ms/+15000ms offsets, checks
 long-form anchor counts, verifies Sync Map asset timeline starts, confirms no
-temporary local paths leak into Sync Map JSON, and removes the temporary files unless
+temporary local paths leak into Sync Map JSON, generates a 640x360 2x2
+source-monitor proxy, validates the generated manifest pane rectangles, and
+removes the temporary files unless
 `STUDIO_CUT_CLOUD_SYNC_SMOKE_KEEP_WORKDIR=1` is set.
 
 Keep real episode assets, generated proxies, private paths, and credentials out

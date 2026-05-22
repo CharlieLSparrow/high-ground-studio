@@ -3,8 +3,8 @@
 Date: 2026-05-22
 
 This is the first cloud raw-asset intake foundation for Studio Cut, now shaped
-around Episode 4 Rescue Sync. It is a contract and UI scaffold, not a paid
-production worker.
+around Episode 4 Rescue Sync. It is a local worker plus cloud contract, not a
+paid production worker.
 
 ## Product Direction
 
@@ -153,7 +153,10 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-cloud-sync-work \
   --out /tmp/studio-cut-cloud-sync-report.json \
-  --out-sync-map /tmp/studio-cut-sync-map.json
+  --out-sync-map /tmp/studio-cut-sync-map.json \
+  --out-proxy-dir /tmp/studio-cut-proxies \
+  --out-source-monitor-proxy /tmp/studio-cut-source-monitor-proxy.mp4 \
+  --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
 The local media map uses input ids:
@@ -174,8 +177,24 @@ durations when available, assembles `workdir/audio/reference-rail.wav`, and
 correlates extracted non-reference audio against that rail. For longer tracks it
 selects multiple anchor windows, scans those anchors against the rail, then
 summarizes `estimatedOffsetMs`, confidence, `anchorCount`, `anchorAgreementMs`,
-and approximate `driftPpm`. Proxy generation, manifest generation, and Firestore
-room metadata writes remain future work.
+and approximate `driftPpm`.
+
+When proxy output flags are present, Worker v0 uses the Sync Map mappings to
+generate aligned low-res video proxies. If an asset starts after canonical time
+0, the proxy is padded with black video. If a role is missing from the source
+monitor, the worker fills that pane with black. It then composes a browser
+source-monitor proxy as a 2x2 MP4:
+
+- Homer top-left
+- Charlie top-right
+- Clip bottom-left
+- Program placeholder bottom-right
+
+The generated Episode Manifest uses normalized pane rectangles matching that
+2x2 layout and points `sourceMonitorProxy.localPlaceholderPath` at the generated
+proxy file name. It does not include local original media paths.
+
+Firestore room metadata writes remain future work.
 
 ## Sync Map Shape
 
@@ -231,9 +250,9 @@ for Studio Cut architecture, read that as canonical episode timeline time until
 the naming is migrated.
 
 The worker can also draft an Episode Manifest from Sync Map metadata. In this
-pass that helper is a bridge scaffold: it sets duration from
-`canonicalTimeline.durationMs`, derives source labels from asset roles, and uses
-a placeholder source-monitor proxy path until proxy generation lands.
+pass that bridge is active in the local worker: it sets duration from
+`canonicalTimeline.durationMs`, derives source labels from asset roles, and
+points at the generated source-monitor proxy file name.
 
 Run the synthetic local-media canary:
 
@@ -245,7 +264,9 @@ The smoke creates synthetic media in a temporary directory, runs local-media
 mode, asserts short and long phone/reference rail scenarios, verifies extracted
 WAV files, checks known +1000ms/+2000ms and +7000ms/+15000ms offsets, checks
 long-form anchor counts, asserts Sync Map timeline starts and confidence, and
-confirms no local temp paths appear in Sync Map JSON.
+confirms no local temp paths appear in Sync Map JSON or Manifest JSON. It also
+verifies the generated source-monitor proxy exists, is 640x360, and is close to
+the canonical reference rail duration.
 
 ## Sync Report Shape
 
@@ -282,6 +303,8 @@ tools/studio-cut-cloud-sync/examples/
 - Worker v0 can process explicitly mapped local files, but examples and tests
   use only synthetic or placeholder media.
 - Worker v0 estimates offsets with local anchor-based waveform correlation.
+- Worker v0 can generate aligned low-res proxy clips, a 2x2 source-monitor
+  proxy, and a draft Episode Manifest locally.
   Drift is approximate, and FFT/refined correlation is still needed before this
   becomes a reliable production sync engine.
 - See `docs/studio-cut-rescue-sync.md` for the Episode 4 multi-piece reference

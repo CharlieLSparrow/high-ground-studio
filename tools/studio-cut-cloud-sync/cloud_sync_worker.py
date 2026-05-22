@@ -12,6 +12,8 @@ The worker runs without cloud credentials. It can:
 - emit a sync report JSON
 - emit a durable Sync Map JSON that bridges canonical episode timeline time
   to original asset-local time
+- generate local aligned low-res proxy clips and a 2x2 source-monitor proxy
+- draft an Episode Manifest for the generated source-monitor proxy
 
 Offset estimation v0 is anchor-based for long files. Drift estimates are
 approximate and intended as operator guidance, not final sync truth.
@@ -54,7 +56,11 @@ VALID_STATUSES = {
 
 AUDIO_REQUIRED_ROLES = {"homerAudio", "charlieAudio", "phoneReferenceAudio"}
 VIDEO_REQUIRED_ROLES = {"homerVideo", "charlieVideo", "clipVideo"}
+SOURCE_MONITOR_VIDEO_ROLES = ["homerVideo", "charlieVideo", "clipVideo"]
 REFERENCE_RAIL_WAV_FILE_NAME = "reference-rail.wav"
+PROXY_PANE_WIDTH = 320
+PROXY_PANE_HEIGHT = 180
+PROXY_FPS = 24
 ANALYSIS_TARGET_RATE_HZ = 50
 ANCHOR_ANALYSIS_TARGET_RATE_HZ = 20
 FULL_TRACK_CORRELATION_MAX_SECONDS = 30
@@ -153,6 +159,18 @@ def main() -> int:
     parser.add_argument(
         "--out-sync-map",
         help="Optional path to write a durable Sync Map JSON.",
+    )
+    parser.add_argument(
+        "--out-proxy-dir",
+        help="Optional directory for aligned low-res proxy clips.",
+    )
+    parser.add_argument(
+        "--out-source-monitor-proxy",
+        help="Optional path to write the 2x2 source-monitor proxy MP4.",
+    )
+    parser.add_argument(
+        "--out-manifest",
+        help="Optional path to write a draft Episode Manifest JSON.",
     )
     parser.add_argument(
         "--local-media-map",
@@ -269,8 +287,67 @@ def main() -> int:
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(f"\nWrote sync report: {report_path}")
 
-    if args.out_sync_map:
-        sync_map = build_sync_map(sync_job, uploaded_inputs, report)
+    sync_map_requested = any(
+        [
+            args.out_sync_map,
+            args.out_proxy_dir,
+            args.out_source_monitor_proxy,
+            args.out_manifest,
+        ]
+    )
+    sync_map = build_sync_map(sync_job, uploaded_inputs, report) if sync_map_requested else None
+    proxy_outputs: dict[str, Path] = {}
+
+    if sync_map and (args.out_proxy_dir or args.out_source_monitor_proxy):
+        if not local_mode:
+            raise SystemExit(
+                "Aligned proxy generation requires --local-media-map or --media-root."
+            )
+        ffmpeg_path = shutil.which("ffmpeg")
+        if not ffmpeg_path:
+            raise SystemExit("Aligned proxy generation requires ffmpeg on PATH.")
+
+        proxy_dir = (
+            Path(args.out_proxy_dir)
+            if args.out_proxy_dir
+            else default_proxy_dir(args.out_source_monitor_proxy, workdir)
+        ).resolve()
+        proxy_outputs = generate_aligned_proxy_clips(
+            sync_map=sync_map,
+            resolutions=resolutions,
+            inspections=inspections,
+            out_proxy_dir=proxy_dir,
+            ffmpeg_path=ffmpeg_path,
+        )
+        print(f"\nWrote aligned proxy clips: {proxy_dir}")
+
+    if sync_map and args.out_source_monitor_proxy:
+        ffmpeg_path = shutil.which("ffmpeg")
+        if not ffmpeg_path:
+            raise SystemExit("Source-monitor proxy generation requires ffmpeg on PATH.")
+        out_source_monitor_proxy = Path(args.out_source_monitor_proxy).resolve()
+        compose_source_monitor_proxy(
+            sync_map=sync_map,
+            proxy_outputs=proxy_outputs,
+            out_path=out_source_monitor_proxy,
+            ffmpeg_path=ffmpeg_path,
+        )
+        print(f"Wrote source-monitor proxy: {out_source_monitor_proxy}")
+
+    if sync_map and args.out_manifest:
+        manifest_path = Path(args.out_manifest)
+        manifest = build_episode_manifest(
+            sync_job=sync_job,
+            sync_map=sync_map,
+            source_monitor_proxy_path=Path(args.out_source_monitor_proxy)
+            if args.out_source_monitor_proxy
+            else None,
+        )
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        print(f"Wrote Episode Manifest: {manifest_path}")
+
+    if sync_map and args.out_sync_map:
         sync_map_path = Path(args.out_sync_map)
         sync_map_path.parent.mkdir(parents=True, exist_ok=True)
         sync_map_path.write_text(json.dumps(sync_map, indent=2) + "\n", encoding="utf-8")
@@ -1120,6 +1197,13 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def run_checked_command(command: list[str], label: str) -> None:
+    result = run_command(command)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no ffmpeg output"
+        raise SystemExit(f"{label} failed: {detail}")
+
+
 def parse_duration_ms(value: Any) -> int | None:
     try:
         duration_seconds = float(value)
@@ -1147,9 +1231,9 @@ def build_worker_plan(sync_job: dict[str, Any]) -> list[str]:
         "Cross-correlate each anchor against the reference rail WAV.",
         "Estimate per-input offsets, anchor agreement, and approximate drift.",
         "Write a durable Sync Map from canonical episode timeline time to asset-local time.",
-        "Generate timeline-aligned low-res intermediate proxies. (Future step.)",
-        "Compose outputs/source-monitor-proxy.mp4 for browser editing. (Future step.)",
-        "Write outputs/episode-manifest.json and outputs/sync-report.json. (Manifest is future step.)",
+        "Generate timeline-aligned low-res intermediate proxies when requested.",
+        "Compose outputs/source-monitor-proxy.mp4 for browser editing when requested.",
+        "Write outputs/episode-manifest.json and outputs/sync-report.json when requested.",
         "Write shared room metadata under studioCutProjects/{projectId}/branches/{branchId}/room/meta. (Future step.)",
     ]
 
@@ -1283,7 +1367,8 @@ def build_sync_map(
                 ],
                 "Sync Map maps canonical episode timeline time to asset-local time.",
                 "Local filesystem paths are intentionally omitted from Sync Map metadata.",
-                "Proxy and Episode Manifest generation are future worker outputs.",
+                "Source-monitor proxy and Episode Manifest outputs are derivable from this Sync Map.",
+                "Shared-room metadata generation remains a future worker output.",
             ]
         ),
     }
@@ -1347,6 +1432,320 @@ def build_sync_map_asset(
     if drift_ppm is not None:
         asset["driftPpm"] = drift_ppm
     return asset
+
+
+def default_proxy_dir(
+    source_monitor_proxy_path: str | None,
+    workdir: Path | None,
+) -> Path:
+    if source_monitor_proxy_path:
+        return Path(source_monitor_proxy_path).resolve().parent / "aligned-proxies"
+    if workdir:
+        return workdir / "proxies"
+    return Path("/tmp/studio-cut-cloud-sync-proxies")
+
+
+def generate_aligned_proxy_clips(
+    *,
+    sync_map: dict[str, Any],
+    resolutions: dict[str, LocalMediaResolution],
+    inspections: dict[str, MediaInspection],
+    out_proxy_dir: Path,
+    ffmpeg_path: str,
+) -> dict[str, Path]:
+    out_proxy_dir.mkdir(parents=True, exist_ok=True)
+    proxy_outputs: dict[str, Path] = {}
+
+    for role in SOURCE_MONITOR_VIDEO_ROLES:
+        asset = find_sync_map_asset_by_role(sync_map, role)
+        if not asset:
+            continue
+
+        input_id = str(asset["inputId"])
+        output_path = out_proxy_dir / f"{role}-{safe_file_part(input_id)}.mp4"
+        resolution = resolutions.get(input_id)
+        inspection = inspections.get(input_id)
+
+        if not resolution or resolution.path is None or (inspection and not inspection.has_video):
+            generate_blank_proxy_clip(
+                out_path=output_path,
+                duration_ms=get_canonical_duration_ms(sync_map),
+                ffmpeg_path=ffmpeg_path,
+            )
+        else:
+            generate_aligned_proxy_clip(
+                asset=asset,
+                source_path=resolution.path,
+                out_path=output_path,
+                canonical_duration_ms=get_canonical_duration_ms(sync_map),
+                ffmpeg_path=ffmpeg_path,
+            )
+
+        proxy_outputs[role] = output_path
+
+    return proxy_outputs
+
+
+def generate_aligned_proxy_clip(
+    *,
+    asset: dict[str, Any],
+    source_path: Path,
+    out_path: Path,
+    canonical_duration_ms: int,
+    ffmpeg_path: str,
+) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    timeline_start_ms = int(asset.get("timelineStartMs") or 0)
+    asset_start_ms = int(asset.get("assetStartMs") or 0)
+    asset_duration_ms = int(asset.get("durationMs") or 0)
+
+    visible_start_ms = max(0, timeline_start_ms)
+    visible_end_ms = min(canonical_duration_ms, timeline_start_ms + asset_duration_ms)
+    visible_duration_ms = max(0, visible_end_ms - visible_start_ms)
+
+    if visible_duration_ms <= 0:
+        generate_blank_proxy_clip(
+            out_path=out_path,
+            duration_ms=canonical_duration_ms,
+            ffmpeg_path=ffmpeg_path,
+        )
+        return
+
+    source_start_ms = asset_start_ms + (visible_start_ms - timeline_start_ms)
+    leading_ms = visible_start_ms
+    trailing_ms = max(0, canonical_duration_ms - visible_start_ms - visible_duration_ms)
+    filter_complex = (
+        f"[0:v]trim=start={seconds(source_start_ms)}:duration={seconds(visible_duration_ms)},"
+        "setpts=PTS-STARTPTS,"
+        f"scale={PROXY_PANE_WIDTH}:{PROXY_PANE_HEIGHT}:force_original_aspect_ratio=decrease,"
+        f"pad={PROXY_PANE_WIDTH}:{PROXY_PANE_HEIGHT}:(ow-iw)/2:(oh-ih)/2,"
+        f"fps={PROXY_FPS},format=yuv420p,"
+        f"tpad=start_duration={seconds(leading_ms)}:stop_duration={seconds(trailing_ms)}:color=black,"
+        f"trim=duration={seconds(canonical_duration_ms)},setpts=PTS-STARTPTS[outv]"
+    )
+    command = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(source_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[outv]",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "30",
+        "-movflags",
+        "+faststart",
+        str(out_path),
+    ]
+    run_checked_command(command, f"aligned proxy generation for {asset['inputId']}")
+
+
+def generate_blank_proxy_clip(
+    *,
+    out_path: Path,
+    duration_ms: int,
+    ffmpeg_path: str,
+) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=black:s={PROXY_PANE_WIDTH}x{PROXY_PANE_HEIGHT}:r={PROXY_FPS}:d={seconds(max(duration_ms, 1))}",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "30",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(out_path),
+    ]
+    run_checked_command(command, f"blank proxy generation for {out_path.name}")
+
+
+def compose_source_monitor_proxy(
+    *,
+    sync_map: dict[str, Any],
+    proxy_outputs: dict[str, Path],
+    out_path: Path,
+    ffmpeg_path: str,
+) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    duration_ms = get_canonical_duration_ms(sync_map)
+    blank_dir = out_path.parent / "aligned-proxies"
+    blank_dir.mkdir(parents=True, exist_ok=True)
+    inputs: list[Path] = []
+
+    for role in ["homerVideo", "charlieVideo", "clipVideo"]:
+        proxy_path = proxy_outputs.get(role)
+        if proxy_path and proxy_path.exists():
+            inputs.append(proxy_path)
+            continue
+        blank_path = blank_dir / f"{role}-blank.mp4"
+        generate_blank_proxy_clip(
+            out_path=blank_path,
+            duration_ms=duration_ms,
+            ffmpeg_path=ffmpeg_path,
+        )
+        inputs.append(blank_path)
+
+    program_blank_path = blank_dir / "program-placeholder-blank.mp4"
+    generate_blank_proxy_clip(
+        out_path=program_blank_path,
+        duration_ms=duration_ms,
+        ffmpeg_path=ffmpeg_path,
+    )
+    inputs.append(program_blank_path)
+
+    command = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+    ]
+    for input_path in inputs:
+        command.extend(["-i", str(input_path)])
+
+    filter_complex = (
+        "[0:v]setpts=PTS-STARTPTS[v0];"
+        "[1:v]setpts=PTS-STARTPTS[v1];"
+        "[2:v]setpts=PTS-STARTPTS[v2];"
+        "[3:v]setpts=PTS-STARTPTS[v3];"
+        f"[v0][v1][v2][v3]xstack=inputs=4:layout=0_0|{PROXY_PANE_WIDTH}_0|0_{PROXY_PANE_HEIGHT}|{PROXY_PANE_WIDTH}_{PROXY_PANE_HEIGHT}:fill=black,"
+        f"trim=duration={seconds(duration_ms)},setpts=PTS-STARTPTS[outv]"
+    )
+    command.extend(
+        [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[outv]",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "30",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+    )
+    run_checked_command(command, "source-monitor proxy composition")
+
+
+def build_episode_manifest(
+    *,
+    sync_job: dict[str, Any],
+    sync_map: dict[str, Any],
+    source_monitor_proxy_path: Path | None,
+) -> dict[str, Any]:
+    homer_asset = find_sync_map_asset_by_role(sync_map, "homerVideo") or find_sync_map_asset_by_role(sync_map, "homerAudio")
+    charlie_asset = find_sync_map_asset_by_role(sync_map, "charlieVideo") or find_sync_map_asset_by_role(sync_map, "charlieAudio")
+    clip_asset = find_sync_map_asset_by_role(sync_map, "clipVideo")
+    source_monitor_file_name = (
+        source_monitor_proxy_path.name if source_monitor_proxy_path else "source-monitor-proxy.mp4"
+    )
+
+    return {
+        "id": sync_map.get("projectId", sync_job.get("projectId", "unknown-project")),
+        "title": sync_job.get("title", sync_map.get("projectId", "Untitled Studio Cut Episode")),
+        "durationMs": get_canonical_duration_ms(sync_map),
+        "sources": {
+            "homer": episode_source_from_asset("homer", "Homer source", homer_asset),
+            "charlie": episode_source_from_asset("charlie", "Charlie source", charlie_asset),
+            **(
+                {"clip": episode_source_from_asset("clip", "Clip source", clip_asset)}
+                if clip_asset
+                else {}
+            ),
+            "program": {
+                "role": "program",
+                "label": "Program preview",
+                "fileName": source_monitor_file_name,
+                "notes": "Generated source-monitor proxy package. Local render still uses Sync Map plus original assets.",
+            },
+        },
+        "sourceMonitorProxy": {
+            "localPlaceholderPath": source_monitor_file_name,
+            "panes": {
+                "homer": {"x": 0, "y": 0, "width": 0.5, "height": 0.5},
+                "charlie": {"x": 0.5, "y": 0, "width": 0.5, "height": 0.5},
+                "clip": {"x": 0, "y": 0.5, "width": 0.5, "height": 0.5},
+            },
+        },
+        "syncBootstrap": {
+            "source": "premiere",
+            "notes": (
+                f"Generated by Studio Cut Rescue Sync from Sync Map {sync_map.get('syncMapId', 'unknown-sync-map')}. "
+                "Pane layout is 2x2: Homer top-left, Charlie top-right, Clip bottom-left, Program placeholder bottom-right."
+            ),
+        },
+    }
+
+
+def episode_source_from_asset(
+    role: str,
+    label: str,
+    asset: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "role": role,
+        "label": label,
+        "fileName": asset.get("fileName") if asset else f"{role}.pending",
+        "notes": (
+            f"Derived from Sync Map asset {asset.get('assetId')}; timelineStartMs={asset.get('timelineStartMs')}."
+            if asset
+            else "Source asset is not available in this Sync Map."
+        ),
+    }
+
+
+def find_sync_map_asset_by_role(
+    sync_map: dict[str, Any],
+    role: str,
+) -> dict[str, Any] | None:
+    assets = sync_map.get("assets", [])
+    if not isinstance(assets, list):
+        return None
+    for asset in assets:
+        if isinstance(asset, dict) and asset.get("role") == role:
+            return asset
+    return None
+
+
+def get_canonical_duration_ms(sync_map: dict[str, Any]) -> int:
+    canonical_timeline = sync_map.get("canonicalTimeline")
+    if isinstance(canonical_timeline, dict):
+        return int(canonical_timeline.get("durationMs") or 0)
+    return 0
+
+
+def seconds(duration_ms: int | float) -> str:
+    return f"{max(0, float(duration_ms)) / 1000:.6f}".rstrip("0").rstrip(".") or "0"
 
 
 def build_reference_segments(
@@ -1437,7 +1836,8 @@ def build_global_warnings(
         "Reference rail built from ordered phone pieces.",
         "Offset estimation v0 uses local anchor-based waveform correlation.",
         "Drift estimates are approximate; FFT/chunked refinement is future work.",
-        "Source-monitor proxy and Episode Manifest generation are not implemented yet.",
+        "Source-monitor proxy and Episode Manifest generation require explicit output flags.",
+        "Shared-room metadata writes are not implemented yet.",
     ]
 
     if not local_mode:

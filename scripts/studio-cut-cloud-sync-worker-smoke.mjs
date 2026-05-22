@@ -65,6 +65,30 @@ function requireTool(command) {
   }
 }
 
+function probeVideo(filePath) {
+  const result = run("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-show_entries",
+    "stream=codec_type,width,height",
+    "-of",
+    "json",
+    filePath,
+  ]);
+  const payload = JSON.parse(result.stdout);
+  const videoStream = (payload.streams ?? []).find(
+    (stream) => stream.codec_type === "video",
+  );
+
+  return {
+    durationMs: Math.round(Number(payload.format?.duration ?? 0) * 1000),
+    width: videoStream?.width ?? 0,
+    height: videoStream?.height ?? 0,
+  };
+}
+
 async function writeJson(filePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -165,6 +189,10 @@ function assert(condition, message) {
   }
 }
 
+function assertJsonEqual(actual, expected, message) {
+  assert(JSON.stringify(actual) === JSON.stringify(expected), message);
+}
+
 function findTrackOffset(trackOffsets, inputId) {
   return trackOffsets.find((offset) => offset.inputId === inputId);
 }
@@ -249,6 +277,9 @@ async function runScenario(rootWorkdir, scenario) {
   const localMediaMapPath = path.join(scenarioDir, "local-media-map.synthetic.json");
   const reportPath = path.join(scenarioDir, "sync-report.synthetic.json");
   const syncMapPath = path.join(scenarioDir, "sync-map.synthetic.json");
+  const proxyDir = path.join(workerDir, "aligned-proxies");
+  const sourceMonitorProxyPath = path.join(scenarioDir, "source-monitor-proxy.synthetic.mp4");
+  const manifestPath = path.join(scenarioDir, "episode-manifest.synthetic.json");
 
   await writeJson(syncJobPath, {
     syncJobId: `synthetic-rescue-sync-${scenario.name}`,
@@ -286,12 +317,20 @@ async function runScenario(rootWorkdir, scenario) {
     reportPath,
     "--out-sync-map",
     syncMapPath,
+    "--out-proxy-dir",
+    proxyDir,
+    "--out-source-monitor-proxy",
+    sourceMonitorProxyPath,
+    "--out-manifest",
+    manifestPath,
   ]);
 
   const report = JSON.parse(await readFile(reportPath, "utf8"));
   const syncMap = JSON.parse(await readFile(syncMapPath, "utf8"));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const segments = report.referenceRail?.segments ?? [];
   const trackOffsets = report.trackOffsets ?? [];
+  const sourceMonitorProbe = probeVideo(sourceMonitorProxyPath);
   const extractedFiles = [
     ...uploadedInputs.map((input) => `${input.inputId}.wav`),
     "reference-rail.wav",
@@ -309,9 +348,42 @@ async function runScenario(rootWorkdir, scenario) {
   );
   assert(trackOffsets.length === 4, `${scenario.name}: non-reference track offsets should exist`);
   assert(existsSync(syncMapPath), `${scenario.name}: sync map should be written`);
+  assert(existsSync(sourceMonitorProxyPath), `${scenario.name}: source-monitor proxy should be written`);
+  assert(existsSync(manifestPath), `${scenario.name}: Episode Manifest should be written`);
   assert(
     Math.abs((syncMap.canonicalTimeline?.durationMs ?? 0) - scenario.referenceDurationMs) <= durationToleranceMs,
     `${scenario.name}: sync map canonical duration should be near ${scenario.referenceDurationMs}ms`,
+  );
+  assert(
+    manifest.durationMs === syncMap.canonicalTimeline.durationMs,
+    `${scenario.name}: manifest duration should match Sync Map canonical duration`,
+  );
+  assert(
+    manifest.sourceMonitorProxy?.localPlaceholderPath === path.basename(sourceMonitorProxyPath),
+    `${scenario.name}: manifest should point at generated source-monitor proxy file name`,
+  );
+  assertJsonEqual(
+    manifest.sourceMonitorProxy?.panes?.homer,
+    { x: 0, y: 0, width: 0.5, height: 0.5 },
+    `${scenario.name}: Homer pane should be top-left 2x2`,
+  );
+  assertJsonEqual(
+    manifest.sourceMonitorProxy?.panes?.charlie,
+    { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+    `${scenario.name}: Charlie pane should be top-right 2x2`,
+  );
+  assertJsonEqual(
+    manifest.sourceMonitorProxy?.panes?.clip,
+    { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+    `${scenario.name}: Clip pane should be bottom-left 2x2`,
+  );
+  assert(
+    Math.abs(sourceMonitorProbe.durationMs - scenario.referenceDurationMs) <= 500,
+    `${scenario.name}: source-monitor proxy duration ${sourceMonitorProbe.durationMs}ms should be near ${scenario.referenceDurationMs}ms`,
+  );
+  assert(
+    sourceMonitorProbe.width === 640 && sourceMonitorProbe.height === 360,
+    `${scenario.name}: source-monitor proxy should be 640x360`,
   );
   assert(
     syncMap.canonicalTimeline?.referenceRole === "phoneReferenceAudio",
@@ -322,10 +394,15 @@ async function runScenario(rootWorkdir, scenario) {
     `${scenario.name}: sync map should embed multi-piece reference rail`,
   );
   const syncMapJson = JSON.stringify(syncMap);
+  const manifestJson = JSON.stringify(manifest);
   for (const localPathFragment of [scenarioDir, mediaDir, workerDir]) {
     assert(
       !syncMapJson.includes(localPathFragment),
       `${scenario.name}: sync map should not contain local temp path ${localPathFragment}`,
+    );
+    assert(
+      !manifestJson.includes(localPathFragment),
+      `${scenario.name}: manifest should not contain local temp path ${localPathFragment}`,
     );
   }
   for (const extractedFile of extractedFiles) {
@@ -394,6 +471,9 @@ async function runScenario(rootWorkdir, scenario) {
     referenceRailTotalDurationMs: report.referenceRail.totalDurationMs,
     trackOffsets,
     syncMapAssets: syncMap.assets.length,
+    manifestDurationMs: manifest.durationMs,
+    sourceMonitorDurationMs: sourceMonitorProbe.durationMs,
+    sourceMonitorResolution: `${sourceMonitorProbe.width}x${sourceMonitorProbe.height}`,
     extractedWavCount: extractedFiles.length,
     workerOutputCaptured: Boolean(workerResult.stdout.trim()),
   };
@@ -425,6 +505,10 @@ async function main() {
           .join(", ")}`,
       );
       console.log(`    syncMapAssets: ${result.syncMapAssets}`);
+      console.log(`    manifestDurationMs: ${result.manifestDurationMs}`);
+      console.log(
+        `    sourceMonitorProxy: ${result.sourceMonitorDurationMs}ms ${result.sourceMonitorResolution}`,
+      );
       console.log(`    extractedWavs: ${result.extractedWavCount}`);
       if (result.workerOutputCaptured) {
         console.log("    workerOutput: captured");

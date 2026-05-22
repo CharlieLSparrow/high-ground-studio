@@ -116,7 +116,10 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-rescue-sync-work \
   --out /tmp/studio-cut-rescue-sync-report.json \
-  --out-sync-map /tmp/studio-cut-sync-map.json
+  --out-sync-map /tmp/studio-cut-sync-map.json \
+  --out-proxy-dir /tmp/studio-cut-proxies \
+  --out-source-monitor-proxy /tmp/studio-cut-source-monitor-proxy.mp4 \
+  --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
 The `--out-sync-map` file is the durable bridge for the next render pipeline:
@@ -124,6 +127,11 @@ canonical episode timeline time to original asset-local time. It should include
 Storage-path metadata and sync confidence, but no local filesystem paths. The
 web editor still labels some values as `sourceTimeMs`; treat those as canonical
 episode timeline time for Studio Cut architecture.
+
+The proxy package flags now generate aligned low-res proxies, a 2x2
+source-monitor proxy, and a draft manifest for browser editing. These are
+derived artifacts. Shared-room metadata writing from the worker is still future
+work.
 
 Create bootstrap files after calculating the real duration in milliseconds:
 

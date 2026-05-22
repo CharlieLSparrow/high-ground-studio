@@ -875,7 +875,8 @@ studioCutSyncJobs/{syncJobId}/outputs/sync-map.json
 The current app can create/upload a sync job and mark it queued. The local
 worker can inspect files, extract mono 48 kHz WAV audio, and emit a duration
 based reference rail report plus `estimatedOffsetMs` values without cloud
-credentials:
+credentials. It can also generate a local browser editing package from the Sync
+Map:
 
 ```bash
 python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
@@ -883,8 +884,20 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --local-media-map /path/to/local-media-map.json \
   --workdir /tmp/studio-cut-cloud-sync-work \
   --out /tmp/studio-cut-cloud-sync-report.json \
-  --out-sync-map /tmp/studio-cut-sync-map.json
+  --out-sync-map /tmp/studio-cut-sync-map.json \
+  --out-proxy-dir /tmp/studio-cut-proxies \
+  --out-source-monitor-proxy /tmp/studio-cut-source-monitor-proxy.mp4 \
+  --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
+
+Generated proxy package behavior:
+
+- aligned low-res proxy clips for video roles
+- black padding before/after clips so they span canonical episode time
+- a 2x2 source-monitor proxy: Homer top-left, Charlie top-right, Clip
+  bottom-left, Program placeholder bottom-right
+- a draft Episode Manifest whose pane rectangles match that layout
+- no local original media paths in the Sync Map or Manifest
 
 Run the synthetic local worker canary:
 
@@ -893,9 +906,9 @@ pnpm studio-cut:cloud-sync-smoke
 ```
 
 The actual Cloud Run sync worker remains scaffold only. FFT/refined drift
-analysis, proxy generation, final manifest generation, and room metadata writes
-are not implemented yet. Sync Map generation is local-worker output now. The
-worker contract is documented at:
+analysis, production-grade labels/proxy quality, and room metadata writes are
+not implemented yet. Sync Map, proxy package, and manifest generation are
+local-worker outputs now. The worker contract is documented at:
 
 ```text
 docs/studio-cut-cloud-sync.md
