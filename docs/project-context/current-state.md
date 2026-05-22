@@ -73,6 +73,10 @@ High Ground Studio is a monorepo with:
   fixture-backed repository to show staged review/readiness architecture without
   replacing public `/episodes`, persisting projection artifacts, or using real
   HGO/manuscript content.
+- HGO has a synthetic-only staged review gate at `/projection-stage/review`.
+  It groups projection fixtures into blocked, needs-review, and live-safe
+  states using pure promotion-readiness helpers. It makes blockers and warnings
+  visible but does not offer a real publish action.
 - The repo now has an agentic Studio/HGO smoke command,
   `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
   Studio manuscript helper payloads, HGO projection generation, HGO validation,
@@ -139,13 +143,16 @@ High Ground Studio is a monorepo with:
 - The HGO staged projection surface is synthetic-only. It is a review-stage
   architecture prototype, not a public publishing system or real staged content
   store.
+- The HGO staged review gate is also synthetic-only. It prepares future
+  staged-to-live promotion checks but does not publish, persist, or approve
+  anything.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a
   product failure.
 - The HGO no-auth browser smoke does not exercise Studio auth, manuscript
-  library, or snapshot UI. It covers HGO projection import, staged projection
-  routes, and rendering.
+  library, or snapshot UI. It covers HGO projection import, staged review gate,
+  staged projection routes, and rendering.
 - The HGO no-auth visual smoke is a screenshot/report artifact pass for later
   human review. It does not exercise Studio auth, manuscript library, snapshot
   UI, real publishing, or real content.

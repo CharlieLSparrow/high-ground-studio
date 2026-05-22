@@ -17,6 +17,7 @@ This pass adds a synthetic-only staged route family:
 
 - `/projection-stage`
 - `/projection-stage/[slug]`
+- `/projection-stage/review`
 
 The routes use the same HGO projection contract and shared
 `EpisodeProjectionView` renderer already used by `/projection-preview`. The data
@@ -52,6 +53,42 @@ The staged surface must keep warning state visible for:
 
 The current implementation uses synthetic data only, but it keeps the warning
 shape visible so the later real workflow has a place to enforce review.
+
+## Review Gate
+
+The staged surface includes a synthetic-only review gate at
+`/projection-stage/review`.
+
+The gate groups projections into:
+
+- blocked
+- needs review
+- live-safe
+
+It uses pure helpers in:
+
+- `apps/web/src/lib/hgo/projection-review-gate.ts`
+
+The helper reports blocker, warning, and info issues. Blockers prevent future
+live promotion. Warnings keep review context visible without performing any
+real publish action.
+
+Blocking conditions include:
+
+- pull quotes marked `needs-source`
+- pull quotes marked `needs-review`
+- pull quotes marked `do-not-use`
+- source notes marked `needs-review`
+- source notes marked `do-not-use`
+- archived status
+- missing title or slug
+- live/public projections that still contain live-blocking issues
+
+Warnings include synthetic fixture data, staged/private visibility, pull quotes
+present, unpublished audio, and Studio browser bridge origin.
+
+The gate is not a publish UI. It intentionally says that promotion to live will
+require a later approved workflow.
 
 ## Future Path
 

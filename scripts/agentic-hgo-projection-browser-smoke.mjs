@@ -153,6 +153,7 @@ async function writeReport(status, extra = {}) {
     routesTested: [
       "/projection-preview/import",
       "/projection-stage",
+      "/projection-stage/review",
       "/projection-stage/synthetic-field-radio",
     ],
     commitSha: getCommitSha(),
@@ -464,6 +465,38 @@ async function runSmoke() {
     });
     await assertNoRealContentMarkers(page, projectionJson);
 
+    await page.goto(`${hgoBaseUrl}/projection-stage/review`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByTestId("hgo-stage-review-gate")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-review-group-blocked")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-review-group-needs-review")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-review-group-live-safe")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const reviewGateText = await page.locator("body").innerText();
+
+    if (
+      !/blocked/i.test(reviewGateText) ||
+      !/needs review/i.test(reviewGateText) ||
+      !/live-safe/i.test(reviewGateText) ||
+      !/blocks live/i.test(reviewGateText)
+    ) {
+      throw new Error(
+        "HGO staged review gate did not show expected blocked/needs review/live-safe groups and blocker text.",
+      );
+    }
+    addStep("confirm HGO staged projection review gate", "passed", {
+      url: page.url(),
+    });
+    await assertNoRealContentMarkers(page, projectionJson);
+
     await page.goto(`${hgoBaseUrl}/projection-stage/synthetic-field-radio`, {
       waitUntil: "domcontentloaded",
     });
@@ -481,7 +514,7 @@ async function runSmoke() {
       .getByTestId("hgo-stage-readiness-warnings")
       .innerText();
 
-    if (!/needs review/i.test(readinessText) || !/not a live public page/i.test(readinessText)) {
+    if (!/needs review/i.test(readinessText) || !/No publish action/i.test(readinessText)) {
       throw new Error(
         `HGO staged detail readiness warnings did not include expected review/live-safety copy. Text: ${readinessText}`,
       );

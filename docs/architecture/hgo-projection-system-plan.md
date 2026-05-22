@@ -127,6 +127,8 @@ Current synthetic staged routes:
 
 - `/projection-stage`: review-stage map for synthetic/staged/live/archived
   projection fixtures.
+- `/projection-stage/review`: synthetic-only review gate that groups projections
+  by blocked, needs-review, and live-safe readiness.
 - `/projection-stage/[slug]`: staged detail route that wraps the shared
   projection renderer with review-boundary and citation-readiness warnings.
 
@@ -141,6 +143,13 @@ Current staged data comes from:
 
 That repository is synthetic fixture backed only. It has no database, API,
 server write, or real content integration.
+
+Promotion-readiness checks come from:
+
+- `apps/web/src/lib/hgo/projection-review-gate.ts`
+
+That helper is pure. It surfaces blocker, warning, and info issues but does not
+publish or persist anything.
 
 Detailed staged-surface notes:
 

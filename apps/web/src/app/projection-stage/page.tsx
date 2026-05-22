@@ -5,8 +5,8 @@ import {
   listHgoEpisodeProjections,
   listHgoProjectionScopes,
   listHgoProjectionStatuses,
-  summarizeHgoProjectionReadiness,
 } from "@/lib/hgo/projection-repository";
+import { createHgoProjectionReviewGate } from "@/lib/hgo/projection-review-gate";
 import type {
   HgoProjectionStatus,
   HgoProjectionVisibility,
@@ -119,6 +119,12 @@ export default function ProjectionStagePage() {
             </Pill>
           ))}
           <Link
+            href="/projection-stage/review"
+            className="inline-flex rounded-full border border-amber-300/35 bg-amber-300/12 px-4 py-2 text-sm font-bold text-amber-100 no-underline transition hover:bg-amber-300/18"
+          >
+            Review gate
+          </Link>
+          <Link
             href="/projection-preview/import"
             className="inline-flex rounded-full border border-flare/35 bg-flare/12 px-4 py-2 text-sm font-bold text-flare no-underline transition hover:bg-flare/18"
           >
@@ -129,7 +135,10 @@ export default function ProjectionStagePage() {
 
       <section className="mx-auto grid max-w-[1200px] gap-5 px-5 pb-16 md:grid-cols-2 md:px-8">
         {projections.map((projection) => {
-          const readiness = summarizeHgoProjectionReadiness(projection);
+          const reviewGate = createHgoProjectionReviewGate(projection);
+          const topBlocker = reviewGate.issues.find(
+            (issue) => issue.blocksLivePromotion,
+          );
 
           return (
             <Link
@@ -146,12 +155,12 @@ export default function ProjectionStagePage() {
                 </Pill>
                 <Pill
                   className={
-                    readiness.isLiveSafe
+                    reviewGate.isLiveSafe
                       ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
                       : "border-amber-300/35 bg-amber-300/10 text-amber-100"
                   }
                 >
-                  {readiness.isLiveSafe ? "live-safe" : "review needed"}
+                  {reviewGate.isLiveSafe ? "live-safe" : "blocked"}
                 </Pill>
               </div>
 
@@ -168,24 +177,26 @@ export default function ProjectionStagePage() {
               <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-[18px] border border-white/10 bg-void-light/55 p-4">
                   <p className="text-xs font-bold uppercase text-subject-muted">
-                    Unresolved pull quotes
+                    Blockers
                   </p>
                   <p className="mt-2 text-2xl font-black">
-                    {readiness.unresolvedPullQuoteCount}
+                    {reviewGate.blockerCount}
                   </p>
                 </div>
                 <div className="rounded-[18px] border border-white/10 bg-void-light/55 p-4">
                   <p className="text-xs font-bold uppercase text-subject-muted">
-                    Do not use
+                    Warnings
                   </p>
                   <p className="mt-2 text-2xl font-black">
-                    {readiness.doNotUseCount}
+                    {reviewGate.warningCount}
                   </p>
                 </div>
               </div>
 
               <p className="mt-5 text-sm font-bold text-amber-100">
-                {readiness.warnings[0]}
+                {topBlocker
+                  ? topBlocker.detail
+                  : "No live-blocking issues under the current synthetic review gate."}
               </p>
             </Link>
           );
