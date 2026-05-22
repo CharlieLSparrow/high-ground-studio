@@ -63,6 +63,16 @@ High Ground Studio is a monorepo with:
   mode. The export is a projection draft/staged review draft, not raw
   manuscript draft JSON, not a server publish, not canonical public content,
   and not public-safe until citation/public-safety review is complete.
+- Studio now has a local-only synthetic collaboration lab at
+  `/manuscript/collaboration-lab`. It uses Yjs in browser/session memory to
+  model two manuscript-shaped clients, synthetic block edits, synthetic tags,
+  manual sync, snapshot export, and convergence checks. It is not connected to
+  production `/manuscript`, does not write localStorage, does not call server
+  routes, does not autosave, and does not enable real simultaneous editing.
+- Studio has pure collaboration lab validation through
+  `pnpm studio:collab:test` and `pnpm studio:collab:agentic-smoke`. These use
+  synthetic data only and write generated reports under ignored `artifacts/`
+  paths.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -169,7 +179,9 @@ High Ground Studio is a monorepo with:
 - Story Draft promotion into real `ManuscriptBlock` truth is not active.
 - Story Draft revision history is not active.
 - Studio Manuscript autosave is not active.
-- Studio Manuscript simultaneous editing / Yjs collaboration is not active.
+- Studio Manuscript production simultaneous editing is not active. A local-only
+  Yjs collaboration lab exists, but it is synthetic-only and not wired into the
+  real Manuscript Desk save/load path.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

@@ -748,7 +748,27 @@ material, not as the source of truth for the editing workflow.
 - `.docx` import favors clean text structure over exact Word layout.
 - `.docx` export is not implemented.
 - There is no database-backed revision history.
-- There is no Yjs or real-time collaboration.
+- There is no production Yjs or real-time collaboration in the Manuscript Desk.
+  A separate local-only synthetic lab exists at `/manuscript/collaboration-lab`
+  for CRDT testing; it does not touch production manuscript save/load behavior.
 - There are no import workers, embeddings, AI features, or public projections.
 - Structure regions are browser-local and block-range based.
 - There is no drag-reorder or database-backed structure history yet.
+
+## Optional Collaboration Lab Smoke
+
+This is separate from the production Manuscript Desk smoke.
+
+1. Open `/manuscript/collaboration-lab`.
+2. Edit a synthetic Charlie block.
+3. Edit a different synthetic Homer block.
+4. Add one synthetic tag from Charlie.
+5. Add one synthetic tag from Homer.
+6. Click `Two-way sync`.
+7. Confirm the convergence summary says the clients match.
+8. Click `Export synthetic snapshot`.
+9. Confirm exported JSON appears.
+10. Confirm the page still says no server writes, no production manuscript
+    editing, no autosave, and no localStorage.
+
+Do not use real manuscript text in the collaboration lab.

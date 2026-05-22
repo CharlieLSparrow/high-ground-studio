@@ -44,6 +44,10 @@ system. A future live room will still need checkpoints.
 
 ## Collaboration Phases
 
+Current implementation note: the first local-only Yjs lab now lives at
+`/manuscript/collaboration-lab`. The detailed current plan is
+`docs/architecture/studio-realtime-collaboration-plan.md`.
+
 ### 1. Manual Snapshots
 
 Current phase.

@@ -21,7 +21,8 @@
     "next-auth": "5.0.0-beta.30",
     "pg": "^8.20.0",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
