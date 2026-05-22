@@ -71,9 +71,9 @@ High Ground Studio is a monorepo with:
   routes, does not autosave, and does not enable real simultaneous editing.
 - Studio has pure collaboration lab validation through
   `pnpm studio:collab:test`, `pnpm studio:collab:checkpoint:test`,
-  `pnpm studio:collab:adapter:test`, and `pnpm studio:collab:agentic-smoke`.
-  These use synthetic data only and write generated reports under ignored
-  `artifacts/` paths.
+  `pnpm studio:collab:adapter:test`, `pnpm studio:collab:span:test`, and
+  `pnpm studio:collab:agentic-smoke`. These use synthetic data only and write
+  generated reports under ignored `artifacts/` paths.
 - Studio has a local-only collaboration checkpoint bridge. It exports a Yjs lab
   client into `studio-collaboration-checkpoint-v1`, validates safety flags,
   imports the checkpoint into a new synthetic client, and confirms blocks, text,
@@ -87,6 +87,13 @@ High Ground Studio is a monorepo with:
   reviews, then converts back into a collaboration checkpoint/client. It is not
   a production Manuscript Desk import, does not call snapshot APIs, does not
   write localStorage, does not autosave, and does not touch manual snapshots.
+- Studio collaboration now has synthetic span semantics. The local Yjs lab can
+  add addressable synthetic spans over block text, sync them between Charlie and
+  Homer clients, carry them through snapshots/checkpoints, and map
+  non-overlapping spans into `semanticHighlightMark` ranges in the synthetic
+  Manuscript adapter payload. The lab UI now leads with a shared long manuscript
+  surface to reinforce that collaboration should happen over one manuscript
+  stream, not disconnected cards.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -202,6 +209,9 @@ High Ground Studio is a monorepo with:
 - Studio collaboration Manuscript adapter payloads are synthetic bridge payloads
   only. They are not production imports, server snapshots, autosave state, or a
   collaboration-enabled replacement for `/manuscript`.
+- Studio collaboration span semantics are synthetic text-offset lab semantics.
+  They are not production comments, not real source spans, not DOM selections,
+  and not wired to production `/manuscript`.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

@@ -27,6 +27,7 @@
     "studio:collab:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-lab.test.mjs",
     "studio:collab:checkpoint:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-checkpoint-bridge.test.mjs",
     "studio:collab:adapter:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-manuscript-adapter.test.mjs",
+    "studio:collab:span:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-span-semantics.test.mjs",
     "studio:collab:agentic-smoke": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/agentic-studio-collab-lab-smoke.mjs",
     "hgo:projection:browser-smoke": "node --experimental-strip-types scripts/agentic-hgo-projection-browser-smoke.mjs",
     "hgo:projection:visual-smoke": "node scripts/agentic-hgo-projection-visual-smoke.mjs",

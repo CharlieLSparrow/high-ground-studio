@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
 import {
@@ -37,6 +38,11 @@ import {
   type StudioCollaborationClient,
   type StudioCollaborationSummary,
 } from "./studio-collaboration-lab-model";
+import {
+  applySyntheticSpanTag,
+  summarizeSyntheticSpanTags,
+  type StudioCollaborationSpanTag,
+} from "./studio-collaboration-span-model";
 
 type LabState = {
   charlie: StudioCollaborationClient;
@@ -80,6 +86,110 @@ const buttonClassName =
 const dangerButtonClassName =
   "min-h-10 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 py-2 text-[0.8rem] font-extrabold text-studio-danger transition hover:bg-studio-danger/15";
 
+function renderTextWithSpans(block: { id: string; text: string }, spans: StudioCollaborationSpanTag[]) {
+  const blockSpans = spans
+    .filter((span) => span.blockId === block.id)
+    .sort(
+      (first, second) =>
+        first.startOffset - second.startOffset ||
+        first.endOffset - second.endOffset ||
+        first.spanId.localeCompare(second.spanId),
+    );
+  const pieces: ReactNode[] = [];
+  let cursor = 0;
+
+  blockSpans.forEach((span) => {
+    if (span.startOffset < cursor) {
+      return;
+    }
+
+    if (span.startOffset > cursor) {
+      pieces.push(
+        <span key={`${span.spanId}-before`}>
+          {block.text.slice(cursor, span.startOffset)}
+        </span>,
+      );
+    }
+
+    pieces.push(
+      <mark
+        key={span.spanId}
+        className="rounded-sm bg-studio-source/25 px-1 text-studio-ink ring-1 ring-studio-source/35"
+        title={`${span.label} - ${span.actor}`}
+      >
+        {block.text.slice(span.startOffset, span.endOffset)}
+      </mark>,
+    );
+    cursor = span.endOffset;
+  });
+
+  if (cursor < block.text.length) {
+    pieces.push(<span key={`${block.id}-tail`}>{block.text.slice(cursor)}</span>);
+  }
+
+  return pieces.length ? pieces : block.text;
+}
+
+function SharedManuscriptSurface({
+  summary,
+  spansMatch,
+}: {
+  summary: StudioCollaborationSummary;
+  spansMatch: boolean;
+}) {
+  return (
+    <section
+      className={panelClassName}
+      data-testid="studio-collab-shared-manuscript-surface"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className={labelClassName}>Shared manuscript surface</p>
+          <h2 className={panelTitleClassName}>
+            One manuscript, many collaborators
+          </h2>
+          <p className={panelCopyClassName}>
+            This is the direction: one long manuscript stream with semantic span
+            overlays. The two-client panels below are scaffolding for local
+            CRDT testing, not the intended final product shape.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <StudioChip tone={spansMatch ? "tag" : "review"}>
+            {spansMatch ? "span state synced" : "span state differs"}
+          </StudioChip>
+          <StudioChip tone="source">{summary.spanCount} spans</StudioChip>
+        </div>
+      </div>
+
+      <article className="mt-5 grid gap-4 rounded-xl border border-studio-line-strong bg-[#101611] p-4 leading-8 shadow-inner">
+        {summary.blocks.map((block, index) => {
+          const blockSpans = summary.spans.filter(
+            (span) => span.blockId === block.id,
+          );
+
+          return (
+            <section key={block.id} className="border-b border-studio-line pb-4 last:border-b-0 last:pb-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className={labelClassName}>Block {index + 1}</span>
+                <StudioChip>{block.id}</StudioChip>
+                {blockSpans.map((span) => (
+                  <StudioChip key={span.spanId} tone="tag">
+                    {span.label}
+                  </StudioChip>
+                ))}
+              </div>
+              <p className="text-[1.05rem] font-semibold text-studio-ink">
+                {renderTextWithSpans(block, summary.spans)}
+              </p>
+            </section>
+          );
+        })}
+      </article>
+    </section>
+  );
+}
+
 function SummaryGrid({
   charlieSummary,
   homerSummary,
@@ -106,7 +216,7 @@ function SummaryGrid({
           {summariesMatch ? "converged" : "not synced"}
         </StudioChip>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
         <div className={cardClassName}>
           <div className="p-3">
             <p className={labelClassName}>Blocks</p>
@@ -128,6 +238,14 @@ function SummaryGrid({
             <p className={labelClassName}>Homer tags</p>
             <p className="mt-2 text-2xl font-black text-studio-ink">
               {homerSummary.tagCount}
+            </p>
+          </div>
+        </div>
+        <div className={cardClassName}>
+          <div className="p-3">
+            <p className={labelClassName}>Spans</p>
+            <p className="mt-2 text-2xl font-black text-studio-ink">
+              {charlieSummary.spanCount}
             </p>
           </div>
         </div>
@@ -184,6 +302,13 @@ function ClientPanel({
 
 export default function StudioCollaborationLabClient() {
   const [lab, setLab] = useState<LabState>(() => createInitialLabState());
+  const [spanForm, setSpanForm] = useState({
+    actor: "Charlie",
+    blockId: "synthetic-collab-block-1",
+    startOffset: "10",
+    endOffset: "22",
+    label: "Synthetic span insight",
+  });
   const charlieSummary = useMemo(
     () => summarizeCollaborationDocument(lab.charlie),
     [lab.charlie, lab.revision],
@@ -195,6 +320,18 @@ export default function StudioCollaborationLabClient() {
   const summariesMatch = useMemo(
     () => collaborationSummariesMatch(lab.charlie, lab.homer),
     [lab.charlie, lab.homer, lab.revision],
+  );
+  const charlieSpanSummary = useMemo(
+    () => summarizeSyntheticSpanTags(lab.charlie),
+    [lab.charlie, lab.revision],
+  );
+  const homerSpanSummary = useMemo(
+    () => summarizeSyntheticSpanTags(lab.homer),
+    [lab.homer, lab.revision],
+  );
+  const spansMatch = useMemo(
+    () => JSON.stringify(charlieSummary.spans) === JSON.stringify(homerSummary.spans),
+    [charlieSummary.spans, homerSummary.spans],
   );
 
   function refresh(message: string, exportedSnapshotJson = lab.exportedSnapshotJson) {
@@ -467,6 +604,23 @@ export default function StudioCollaborationLabClient() {
     });
   }
 
+  function applySpanFromForm() {
+    const targetClient = spanForm.actor === "Homer" ? lab.homer : lab.charlie;
+    const applied = applySyntheticSpanTag(
+      targetClient,
+      spanForm.blockId,
+      Number(spanForm.startOffset),
+      Number(spanForm.endOffset),
+      spanForm.label,
+    );
+
+    refresh(
+      applied
+        ? `${spanForm.actor} added a synthetic semantic span. Use two-way sync to share it.`
+        : "Synthetic span was rejected. Check block, offsets, and label.",
+    );
+  }
+
   return (
     <main
       className="min-h-screen bg-studio-bg px-5 py-6 text-studio-ink md:px-8"
@@ -503,6 +657,11 @@ export default function StudioCollaborationLabClient() {
         </div>
 
         <div className="mt-5 grid gap-5">
+          <SharedManuscriptSurface
+            summary={charlieSummary}
+            spansMatch={spansMatch}
+          />
+
           <SummaryGrid
             charlieSummary={charlieSummary}
             homerSummary={homerSummary}
@@ -583,6 +742,104 @@ export default function StudioCollaborationLabClient() {
                 Reset lab
               </button>
             </div>
+            <div
+              className="mt-4 grid gap-3 rounded-xl border border-studio-line-strong bg-studio-ink/5 p-3 md:grid-cols-[1.2fr_0.8fr_0.8fr_1fr_auto]"
+              data-testid="studio-collab-span-controls"
+            >
+              <label className="grid gap-1">
+                <span className={labelClassName}>Block</span>
+                <select
+                  className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                  value={spanForm.blockId}
+                  onChange={(event) =>
+                    setSpanForm((current) => ({
+                      ...current,
+                      blockId: event.currentTarget.value,
+                    }))
+                  }
+                >
+                  {charlieSummary.blocks.map((block) => (
+                    <option key={block.id} value={block.id}>
+                      {block.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1">
+                <span className={labelClassName}>Actor</span>
+                <select
+                  className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                  value={spanForm.actor}
+                  onChange={(event) =>
+                    setSpanForm((current) => ({
+                      ...current,
+                      actor: event.currentTarget.value,
+                    }))
+                  }
+                >
+                  <option value="Charlie">Charlie</option>
+                  <option value="Homer">Homer</option>
+                </select>
+              </label>
+              <label className="grid gap-1">
+                <span className={labelClassName}>Start / end</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                    type="number"
+                    value={spanForm.startOffset}
+                    onChange={(event) =>
+                      setSpanForm((current) => ({
+                        ...current,
+                        startOffset: event.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <input
+                    className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                    type="number"
+                    value={spanForm.endOffset}
+                    onChange={(event) =>
+                      setSpanForm((current) => ({
+                        ...current,
+                        endOffset: event.currentTarget.value,
+                      }))
+                    }
+                  />
+                </div>
+              </label>
+              <label className="grid gap-1">
+                <span className={labelClassName}>Span label</span>
+                <input
+                  className="min-h-10 rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 text-sm font-bold text-studio-ink"
+                  value={spanForm.label}
+                  onChange={(event) =>
+                    setSpanForm((current) => ({
+                      ...current,
+                      label: event.currentTarget.value,
+                    }))
+                  }
+                />
+              </label>
+              <div className="grid items-end">
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-apply-span"
+                  onClick={applySpanFromForm}
+                >
+                  Apply span tag
+                </button>
+              </div>
+            </div>
+            <p
+              className="mt-3 text-xs font-bold leading-5 text-studio-muted"
+              data-testid="studio-collab-span-summary"
+            >
+              Charlie spans: {charlieSpanSummary.spanCount}; Homer spans:{" "}
+              {homerSpanSummary.spanCount}. Span offsets are synthetic text
+              offsets only; overlapping spans are flattened later by the adapter.
+            </p>
             <p
               className="mt-3 text-sm font-bold text-studio-muted"
               data-testid="studio-collab-last-action"

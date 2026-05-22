@@ -27,6 +27,10 @@ The route is intentionally labeled:
 - No autosave
 - No DB, API route, server provider, or deploy
 
+The shared manuscript surface near the top is the intended direction: one long
+manuscript stream with semantic span overlays. The Charlie and Homer panels are
+scaffolding for CRDT testing.
+
 ## Commands
 
 Pure tests:
@@ -45,6 +49,12 @@ Manuscript adapter bridge tests:
 
 ```bash
 pnpm studio:collab:adapter:test
+```
+
+Span semantics tests:
+
+```bash
+pnpm studio:collab:span:test
 ```
 
 Agentic helper smoke:
@@ -70,18 +80,23 @@ Generated reports are ignored and should not be committed.
 5. Add a tag from Homer.
 6. Click `Two-way sync`.
 7. Confirm the convergence summary says the clients match.
-8. Click `Export synthetic snapshot`.
-9. Confirm the JSON appears in the textarea.
-10. Click `Create synthetic checkpoint`.
-11. Confirm the checkpoint summary and checkpoint JSON appear.
-12. Click `Import checkpoint back into new synthetic client`.
-13. Confirm the imported-client summary appears.
-14. Click `Create synthetic Manuscript adapter payload from checkpoint`.
-15. Confirm the adapter summary and adapter JSON appear.
-16. Click `Validate adapter payload`.
-17. Click `Convert adapter back to collaboration client`.
-18. Confirm the adapter roundtrip summary appears.
-19. Confirm the page says no server writes, no production manuscript editing,
+8. In span controls, choose a synthetic block, actor, offsets, and label.
+9. Click `Apply span tag`.
+10. Confirm the shared manuscript surface shows an inline span overlay.
+11. Click `Two-way sync`.
+12. Confirm the span state says synced.
+13. Click `Export synthetic snapshot`.
+14. Confirm the JSON appears in the textarea and includes spans.
+15. Click `Create synthetic checkpoint`.
+16. Confirm the checkpoint summary and checkpoint JSON appear.
+17. Click `Import checkpoint back into new synthetic client`.
+18. Confirm the imported-client summary appears.
+19. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+20. Confirm the adapter summary and adapter JSON appear.
+21. Click `Validate adapter payload`.
+22. Click `Convert adapter back to collaboration client`.
+23. Confirm the adapter roundtrip summary appears.
+24. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -98,6 +113,8 @@ Passing means:
 - checkpoint safety flags remain local-only
 - synthetic Manuscript adapter payload validates as a safe draft subset
 - adapter checkpoint/client roundtrip preserves synthetic blocks text and tags
+- synthetic span tags survive sync and checkpoint import
+- synthetic spans become Manuscript Desk semantic marks
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

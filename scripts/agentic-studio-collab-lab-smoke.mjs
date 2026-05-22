@@ -27,6 +27,10 @@ import {
   summarizeCollaborationDocument,
   syncCollaborationClients,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+import {
+  applySyntheticSpanTag,
+  summarizeSyntheticSpanTags,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -115,6 +119,13 @@ async function runSmoke() {
       "Charlie agent tag",
     );
     applySyntheticTag(homer, "synthetic-collab-block-1", "Homer agent tag");
+    applySyntheticSpanTag(
+      charlie,
+      "synthetic-collab-block-1",
+      10,
+      22,
+      "Charlie agent span",
+    );
     addStep("apply synthetic edits and tags on separate clients", "passed");
 
     const syncResult = syncCollaborationClients(charlie, homer);
@@ -126,7 +137,12 @@ async function runSmoke() {
     addStep("sync clients and confirm convergence", "passed", {
       charlieSyncCount: summarizeCollaborationDocument(charlie).syncCount,
       homerSyncCount: summarizeCollaborationDocument(homer).syncCount,
+      spanCount: summarizeSyntheticSpanTags(homer).spanCount,
     });
+
+    if (summarizeSyntheticSpanTags(homer).spanCount !== 1) {
+      throw new Error("Synthetic span did not sync to Homer.");
+    }
 
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
     const safety = assertSyntheticCollaborationSnapshot(exportedSnapshot);
@@ -143,6 +159,7 @@ async function runSmoke() {
         (count, block) => count + block.tags.length,
         0,
       ),
+      spans: exportedSnapshot.spans?.length ?? 0,
     });
 
     const imported = importCollaborationSnapshot(
@@ -172,6 +189,7 @@ async function runSmoke() {
       checkpointVersion: checkpoint.checkpointVersion,
       blocks: checkpointValidation.summary.blockCount,
       tags: checkpointValidation.summary.tagCount,
+      spans: checkpointValidation.summary.spanCount,
     });
 
     const checkpointImport = importCollaborationCheckpointToClient(
@@ -212,7 +230,13 @@ async function runSmoke() {
       adapterVersion: adapterPayload.adapterVersion,
       blocks: adapterValidation.summary.blockCount,
       tags: adapterValidation.summary.tagCount,
+      spans: adapterValidation.summary.spanCount,
+      semanticMarks: adapterValidation.summary.semanticMarkCount,
     });
+
+    if (adapterValidation.summary.semanticMarkCount !== 1) {
+      throw new Error("Synthetic Manuscript adapter did not create a span semantic mark.");
+    }
 
     const adapterComparison = compareCollaborationCheckpointToManuscriptDraft(
       checkpoint,
@@ -280,6 +304,10 @@ async function runSmoke() {
       adapterBlockCount: adapterSummary.blockCount,
       adapterTagCount: adapterSummary.tagCount,
       adapterRoundtripMatches,
+      spanRoundtrip: true,
+      spanCount: adapterSummary.spanCount,
+      semanticMarkCount: adapterSummary.semanticMarkCount,
+      manuscriptFirstSurface: true,
       noServerWrites: true,
       noProductionManuscriptEditing: true,
       noLocalStorage: true,

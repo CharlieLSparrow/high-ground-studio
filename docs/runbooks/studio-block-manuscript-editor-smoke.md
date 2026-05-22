@@ -751,6 +751,9 @@ material, not as the source of truth for the editing workflow.
 - There is no production Yjs or real-time collaboration in the Manuscript Desk.
   A separate local-only synthetic lab exists at `/manuscript/collaboration-lab`
   for CRDT testing; it does not touch production manuscript save/load behavior.
+- Collaboration lab span semantics are synthetic text-offset spans only. They
+  prove the future semantic-mark direction but are not production comments,
+  real source spans, or Manuscript Desk save/load wiring.
 - There are no import workers, embeddings, AI features, or public projections.
 - Structure regions are browser-local and block-range based.
 - There is no drag-reorder or database-backed structure history yet.
@@ -766,18 +769,23 @@ This is separate from the production Manuscript Desk smoke.
 5. Add one synthetic tag from Homer.
 6. Click `Two-way sync`.
 7. Confirm the convergence summary says the clients match.
-8. Click `Export synthetic snapshot`.
-9. Confirm exported JSON appears.
-10. Click `Create synthetic checkpoint`.
-11. Confirm checkpoint JSON appears.
-12. Click `Import checkpoint back into new synthetic client`.
-13. Confirm imported-client summary appears.
-14. Click `Create synthetic Manuscript adapter payload from checkpoint`.
-15. Confirm adapter JSON appears and says production import is `no`.
-16. Click `Validate adapter payload`.
-17. Click `Convert adapter back to collaboration client`.
-18. Confirm adapter roundtrip summary appears.
-19. Confirm the page still says no server writes, no production manuscript
+8. Confirm the shared manuscript surface is one continuous synthetic stream,
+   not the final product reduced to disconnected cards.
+9. Apply a synthetic span tag from the span controls.
+10. Confirm the shared manuscript surface shows an inline span overlay.
+11. Click `Two-way sync`.
+12. Click `Export synthetic snapshot`.
+13. Confirm exported JSON appears and includes spans.
+14. Click `Create synthetic checkpoint`.
+15. Confirm checkpoint JSON appears.
+16. Click `Import checkpoint back into new synthetic client`.
+17. Confirm imported-client summary appears.
+18. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+19. Confirm adapter JSON appears and says production import is `no`.
+20. Click `Validate adapter payload`.
+21. Click `Convert adapter back to collaboration client`.
+22. Confirm adapter roundtrip summary appears.
+23. Confirm the page still says no server writes, no production manuscript
     editing, no autosave, and no localStorage.
 
 Do not use real manuscript text in the collaboration lab.

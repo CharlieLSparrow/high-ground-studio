@@ -1,5 +1,7 @@
 import * as Y from "yjs";
 
+import type { StudioCollaborationSpanTag } from "./studio-collaboration-span-model";
+
 export const STUDIO_COLLABORATION_LAB_VERSION =
   "studio-collaboration-lab-v1";
 
@@ -25,6 +27,7 @@ export type StudioCollaborationLabSnapshot = {
   exportedAt: string;
   title: string;
   blocks: StudioCollaborationLabBlock[];
+  spans?: StudioCollaborationSpanTag[];
   safety: {
     syntheticDataOnly: true;
     serverWrites: false;
@@ -46,6 +49,7 @@ export type StudioCollaborationSummary = {
   title: string;
   blockCount: number;
   tagCount: number;
+  spanCount: number;
   emptyBlockCount: number;
   updateCount: number;
   syncCount: number;
@@ -55,11 +59,13 @@ export type StudioCollaborationSummary = {
     text: string;
     tags: string[];
   }>;
+  spans: StudioCollaborationSpanTag[];
 };
 
 const SYNTHETIC_TITLE = "Synthetic Collaboration Lab Draft";
 const ROOT_KEY = "studio-collaboration-lab";
 const BLOCKS_KEY = "blocks";
+const SPANS_KEY = "spans";
 const TITLE_KEY = "title";
 
 function nowIso() {
@@ -106,6 +112,18 @@ function getBlockMap(doc: Y.Doc, blockId: string) {
   return getBlocks(doc).get(blockId) ?? null;
 }
 
+function getSpans(doc: Y.Doc) {
+  const root = getRoot(doc);
+  let spans = root.get(SPANS_KEY) as Y.Map<Y.Map<unknown>> | undefined;
+
+  if (!spans) {
+    spans = new Y.Map<Y.Map<unknown>>();
+    root.set(SPANS_KEY, spans);
+  }
+
+  return spans;
+}
+
 function readTags(blockMap: Y.Map<unknown>) {
   const tags = blockMap.get("tags") as Y.Array<StudioCollaborationLabTag> | undefined;
 
@@ -120,6 +138,48 @@ function readBlock(blockMap: Y.Map<unknown>): StudioCollaborationLabBlock {
     updatedBy: String(blockMap.get("updatedBy") ?? "Synthetic"),
     updatedAt: String(blockMap.get("updatedAt") ?? ""),
   };
+}
+
+function createSpanMap(span: StudioCollaborationSpanTag) {
+  const spanMap = new Y.Map<unknown>();
+
+  spanMap.set("spanId", span.spanId);
+  spanMap.set("blockId", span.blockId);
+  spanMap.set("startOffset", span.startOffset);
+  spanMap.set("endOffset", span.endOffset);
+  spanMap.set("label", span.label);
+  spanMap.set("actor", span.actor);
+  spanMap.set("createdAt", span.createdAt);
+  spanMap.set("tagType", span.tagType);
+  spanMap.set("note", span.note);
+
+  return spanMap;
+}
+
+function readSpan(spanMap: Y.Map<unknown>): StudioCollaborationSpanTag {
+  return {
+    spanId: String(spanMap.get("spanId") ?? ""),
+    blockId: String(spanMap.get("blockId") ?? ""),
+    startOffset: Number(spanMap.get("startOffset") ?? 0),
+    endOffset: Number(spanMap.get("endOffset") ?? 0),
+    label: String(spanMap.get("label") ?? ""),
+    actor: String(spanMap.get("actor") ?? ""),
+    createdAt: String(spanMap.get("createdAt") ?? ""),
+    tagType: "insight",
+    note: String(spanMap.get("note") ?? ""),
+  };
+}
+
+function readSpans(doc: Y.Doc) {
+  return [...getSpans(doc).values()]
+    .map(readSpan)
+    .sort(
+      (first, second) =>
+        first.blockId.localeCompare(second.blockId) ||
+        first.startOffset - second.startOffset ||
+        first.endOffset - second.endOffset ||
+        first.spanId.localeCompare(second.spanId),
+    );
 }
 
 function normalizeTagId(tag: string) {
@@ -163,12 +223,17 @@ function createDocFromSnapshot(snapshot: StudioCollaborationLabSnapshot) {
   const doc = new Y.Doc();
   const root = getRoot(doc);
   const blocks = getBlocks(doc);
+  const spans = getSpans(doc);
 
   doc.transact(() => {
     root.set(TITLE_KEY, snapshot.title);
 
     for (const block of snapshot.blocks) {
       blocks.set(block.id, createBlockMap(block));
+    }
+
+    for (const span of snapshot.spans ?? []) {
+      spans.set(span.spanId, createSpanMap(span));
     }
   });
 
@@ -181,6 +246,7 @@ export function createSyntheticCollaborationDocument(): StudioCollaborationLabSn
     exportedAt: "2026-05-22T12:00:00.000Z",
     title: SYNTHETIC_TITLE,
     blocks: createSyntheticBlocks(),
+    spans: [],
     safety: {
       syntheticDataOnly: true,
       serverWrites: false,
@@ -241,7 +307,9 @@ export function syncCollaborationClients(
     clientB: summarizeCollaborationDocument(clientB),
     converged:
       JSON.stringify(exportCollaborationSnapshot(clientA).blocks) ===
-      JSON.stringify(exportCollaborationSnapshot(clientB).blocks),
+        JSON.stringify(exportCollaborationSnapshot(clientB).blocks) &&
+      JSON.stringify(exportCollaborationSnapshot(clientA).spans ?? []) ===
+        JSON.stringify(exportCollaborationSnapshot(clientB).spans ?? []),
   };
 }
 
@@ -260,7 +328,9 @@ export function syncCollaborationClientToClient(
     target: summarizeCollaborationDocument(target),
     converged:
       JSON.stringify(exportCollaborationSnapshot(source).blocks) ===
-      JSON.stringify(exportCollaborationSnapshot(target).blocks),
+        JSON.stringify(exportCollaborationSnapshot(target).blocks) &&
+      JSON.stringify(exportCollaborationSnapshot(source).spans ?? []) ===
+        JSON.stringify(exportCollaborationSnapshot(target).spans ?? []),
   };
 }
 
@@ -335,6 +405,7 @@ export function exportCollaborationSnapshot(
     blocks: [...blocks.values()]
       .map(readBlock)
       .sort((first, second) => first.id.localeCompare(second.id)),
+    spans: readSpans(client.doc),
     safety: {
       syntheticDataOnly: true,
       serverWrites: false,
@@ -360,12 +431,14 @@ export function summarizeCollaborationDocument(
     (count, block) => count + block.tags.length,
     0,
   );
+  const spans = snapshot.spans ?? [];
 
   return {
     clientName: client.name,
     title: snapshot.title,
     blockCount: snapshot.blocks.length,
     tagCount,
+    spanCount: spans.length,
     emptyBlockCount: snapshot.blocks.filter((block) => !block.text.trim()).length,
     updateCount: client.updateCount,
     syncCount: client.syncCount,
@@ -375,6 +448,7 @@ export function summarizeCollaborationDocument(
       text: block.text,
       tags: block.tags.map((tag) => tag.label),
     })),
+    spans,
   };
 }
 
@@ -385,7 +459,10 @@ export function collaborationSummariesMatch(
   const snapshotA = exportCollaborationSnapshot(clientA);
   const snapshotB = exportCollaborationSnapshot(clientB);
 
-  return JSON.stringify(snapshotA.blocks) === JSON.stringify(snapshotB.blocks);
+  return (
+    JSON.stringify(snapshotA.blocks) === JSON.stringify(snapshotB.blocks) &&
+    JSON.stringify(snapshotA.spans ?? []) === JSON.stringify(snapshotB.spans ?? [])
+  );
 }
 
 export function assertSyntheticCollaborationSnapshot(

@@ -19,6 +19,10 @@ import {
   type StudioCollaborationLabBlock,
   type StudioCollaborationLabSnapshot,
 } from "./studio-collaboration-lab-model";
+import {
+  validateSyntheticSpanTag,
+  type StudioCollaborationSpanTag,
+} from "./studio-collaboration-span-model";
 
 export const STUDIO_COLLABORATION_MANUSCRIPT_ADAPTER_VERSION =
   "studio-collaboration-manuscript-adapter-v1";
@@ -29,12 +33,14 @@ export type StudioCollaborationManuscriptAdapterPayload = {
   createdAt: string;
   title: string;
   blocks: StudioCollaborationLabBlock[];
+  spans: StudioCollaborationSpanTag[];
   syntheticDraft: ManuscriptDraft;
   checkpointSummary: StudioCollaborationCheckpointSummary;
   adaptedSubset: {
     fullProductionDraft: false;
     fields: string[];
     gaps: string[];
+    ignoredSpanIds: string[];
   };
   safety: {
     syntheticDataOnly: true;
@@ -54,6 +60,9 @@ export type StudioCollaborationManuscriptAdapterSummary = {
   blockCount: number;
   draftBlockCount: number;
   tagCount: number;
+  spanCount: number;
+  semanticMarkCount: number;
+  ignoredSpanCount: number;
   emptyBlockCount: number;
   createdAt: string;
   checkpointVersion: string;
@@ -83,6 +92,7 @@ export type StudioCollaborationManuscriptAdapterComparison = {
   blockCountMatches: boolean;
   textMatches: boolean;
   tagCountMatches: boolean;
+  spanCountMatches: boolean;
   missingBlockIds: string[];
   details: string[];
 };
@@ -102,6 +112,8 @@ const adaptedFields = [
   "block ids",
   "plain text",
   "synthetic collaboration tags",
+  "addressable synthetic spans",
+  "semanticHighlightMark ranges",
   "paragraph attrs collaborationTags metadata",
   "safe ManuscriptDraft envelope",
 ];
@@ -114,6 +126,7 @@ const adapterGaps = [
   "No cited quotations.",
   "No production snapshot metadata.",
   "No server-side ownership metadata.",
+  "Overlapping synthetic spans are ignored after the first non-overlapping span.",
 ];
 
 const forbiddenAdapterMarkers = [
@@ -152,6 +165,10 @@ function cloneBlocks(blocks: StudioCollaborationLabBlock[]) {
   }));
 }
 
+function cloneSpans(spans: StudioCollaborationSpanTag[] = []) {
+  return spans.map((span) => ({ ...span }));
+}
+
 function mapActorToAuthorId(actor: string) {
   if (/^charlie$/i.test(actor.trim())) {
     return "charlie";
@@ -183,63 +200,157 @@ function createAuthorMark(actor: string) {
 }
 
 function createSyntheticTagMark(input: {
-  blockId: string;
-  tagId: string;
+  spanId: string;
   label: string;
   actor: string;
   createdAt: string;
+  note: string;
 }) {
   const tagType: SemanticHighlightType = "insight";
 
   return {
     type: "semanticHighlightMark",
     attrs: {
-      highlightId: `collab-adapter-${input.blockId}-${input.tagId}`,
+      highlightId: input.spanId,
       tagType,
       label: input.label,
       colorKey: tagType,
-      note: `Synthetic collaboration tag from ${input.actor}.`,
+      note: input.note || `Synthetic collaboration span from ${input.actor}.`,
       createdAt: input.createdAt,
     },
   };
 }
 
+function createMarkedTextNode(input: {
+  text: string;
+  actor: string;
+  span?: StudioCollaborationSpanTag;
+}): ManuscriptEditorJson {
+  const marks: NonNullable<ManuscriptEditorJson["marks"]> = [
+    createAuthorMark(input.actor),
+  ];
+
+  if (input.span) {
+    marks.push(
+      createSyntheticTagMark({
+        spanId: input.span.spanId,
+        label: input.span.label,
+        actor: input.span.actor,
+        createdAt: input.span.createdAt,
+        note: input.span.note,
+      }),
+    );
+  }
+
+  return {
+    type: "text",
+    text: input.text,
+    marks,
+  };
+}
+
+function selectNonOverlappingSpans(input: {
+  block: StudioCollaborationLabBlock;
+  spans: StudioCollaborationSpanTag[];
+}) {
+  const usableSpans: StudioCollaborationSpanTag[] = [];
+  const ignoredSpanIds: string[] = [];
+  let cursor = 0;
+
+  const sortedSpans = input.spans
+    .filter((span) => span.blockId === input.block.id)
+    .map((span) => {
+      const validation = validateSyntheticSpanTag(input.block.text, span);
+
+      if (!validation.ok || !validation.span) {
+        ignoredSpanIds.push(span.spanId);
+        return null;
+      }
+
+      return validation.span;
+    })
+    .filter((span): span is StudioCollaborationSpanTag => Boolean(span))
+    .sort(
+      (first, second) =>
+        first.startOffset - second.startOffset ||
+        first.endOffset - second.endOffset ||
+        first.spanId.localeCompare(second.spanId),
+    );
+
+  for (const span of sortedSpans) {
+    if (span.startOffset < cursor) {
+      ignoredSpanIds.push(span.spanId);
+      continue;
+    }
+
+    usableSpans.push(span);
+    cursor = span.endOffset;
+  }
+
+  return {
+    usableSpans,
+    ignoredSpanIds,
+  };
+}
+
 function createTextNodesForBlock(
   block: StudioCollaborationLabBlock,
+  spans: StudioCollaborationSpanTag[],
 ): ManuscriptEditorJson[] | undefined {
   if (!block.text) {
     return undefined;
   }
 
-  const marks: NonNullable<ManuscriptEditorJson["marks"]> = [
-    createAuthorMark(block.updatedBy),
-  ];
-  const firstTag = block.tags[0];
+  const { usableSpans } = selectNonOverlappingSpans({ block, spans });
 
-  if (firstTag) {
-    marks.push(
-      createSyntheticTagMark({
-        blockId: block.id,
-        tagId: firstTag.id,
-        label: firstTag.label,
-        actor: String(firstTag.actor),
-        createdAt: firstTag.createdAt,
+  if (!usableSpans.length) {
+    return [
+      createMarkedTextNode({
+        text: block.text,
+        actor: block.updatedBy,
+      }),
+    ];
+  }
+
+  const nodes: ManuscriptEditorJson[] = [];
+  let cursor = 0;
+
+  for (const span of usableSpans) {
+    if (span.startOffset > cursor) {
+      nodes.push(
+        createMarkedTextNode({
+          text: block.text.slice(cursor, span.startOffset),
+          actor: block.updatedBy,
+        }),
+      );
+    }
+
+    nodes.push(
+      createMarkedTextNode({
+        text: block.text.slice(span.startOffset, span.endOffset),
+        actor: block.updatedBy,
+        span,
+      }),
+    );
+    cursor = span.endOffset;
+  }
+
+  if (cursor < block.text.length) {
+    nodes.push(
+      createMarkedTextNode({
+        text: block.text.slice(cursor),
+        actor: block.updatedBy,
       }),
     );
   }
 
-  return [
-    {
-      type: "text",
-      text: block.text,
-      marks,
-    },
-  ];
+  return nodes;
 }
 
 function createSyntheticDraftFromBlocks(input: {
   title: string;
   blocks: StudioCollaborationLabBlock[];
+  spans: StudioCollaborationSpanTag[];
   createdAt: string;
 }): ManuscriptDraft {
   const editorJson: ManuscriptEditorJson = {
@@ -249,10 +360,13 @@ function createSyntheticDraftFromBlocks(input: {
       attrs: {
         blockId: block.id,
         collaborationTags: block.tags.map((tag) => ({ ...tag })),
+        collaborationSpans: input.spans
+          .filter((span) => span.blockId === block.id)
+          .map((span) => ({ ...span })),
         collaborationUpdatedBy: block.updatedBy,
         collaborationUpdatedAt: block.updatedAt,
       },
-      content: createTextNodesForBlock(block),
+      content: createTextNodesForBlock(block, input.spans),
     })),
   };
 
@@ -273,6 +387,38 @@ function createSyntheticDraftFromBlocks(input: {
 
 function countTags(blocks: StudioCollaborationLabBlock[]) {
   return blocks.reduce((count, block) => count + block.tags.length, 0);
+}
+
+function countSemanticMarks(json: ManuscriptEditorJson) {
+  let count = 0;
+
+  function visit(node: ManuscriptEditorJson) {
+    if (node.marks?.some((mark) => mark.type === "semanticHighlightMark")) {
+      count += 1;
+    }
+
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) {
+        visit(child);
+      }
+    }
+  }
+
+  visit(json);
+  return count;
+}
+
+function collectIgnoredSpanIds(input: {
+  blocks: StudioCollaborationLabBlock[];
+  spans: StudioCollaborationSpanTag[];
+}) {
+  return input.blocks.flatMap(
+    (block) =>
+      selectNonOverlappingSpans({
+        block,
+        spans: input.spans,
+      }).ignoredSpanIds,
+  );
 }
 
 function validateBlocks(value: unknown, errors: string[]) {
@@ -303,6 +449,38 @@ function validateBlocks(value: unknown, errors: string[]) {
   });
 }
 
+function validateSpans(value: unknown, errors: string[]) {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push("Adapter spans must be an array.");
+    return [];
+  }
+
+  return value.flatMap((span, index) => {
+    if (!isRecord(span)) {
+      errors.push(`Adapter span ${index + 1} must be an object.`);
+      return [];
+    }
+
+    if (typeof span.spanId !== "string" || !span.spanId.trim()) {
+      errors.push(`Adapter span ${index + 1} is missing a spanId.`);
+    }
+
+    if (typeof span.blockId !== "string" || !span.blockId.trim()) {
+      errors.push(`Adapter span ${index + 1} is missing a blockId.`);
+    }
+
+    if (typeof span.label !== "string" || !span.label.trim()) {
+      errors.push(`Adapter span ${index + 1} is missing a label.`);
+    }
+
+    return [span as unknown as StudioCollaborationSpanTag];
+  });
+}
+
 export function summarizeSyntheticManuscriptDraftAdapterPayload(
   payload: StudioCollaborationManuscriptAdapterPayload,
 ): StudioCollaborationManuscriptAdapterSummary {
@@ -312,6 +490,9 @@ export function summarizeSyntheticManuscriptDraftAdapterPayload(
     blockCount: payload.blocks.length,
     draftBlockCount: collectBlockSummaries(payload.syntheticDraft.editorJson).length,
     tagCount: countTags(payload.blocks),
+    spanCount: payload.spans.length,
+    semanticMarkCount: countSemanticMarks(payload.syntheticDraft.editorJson),
+    ignoredSpanCount: payload.adaptedSubset.ignoredSpanIds.length,
     emptyBlockCount: payload.blocks.filter((block) => !block.text.trim()).length,
     createdAt: payload.createdAt,
     checkpointVersion: payload.checkpointSummary.checkpointVersion,
@@ -342,9 +523,12 @@ export function createSyntheticManuscriptDraftFromCollaborationCheckpoint(
 
   const createdAt = nowIso();
   const blocks = cloneBlocks(validation.checkpoint.blocks);
+  const spans = cloneSpans(validation.checkpoint.spans ?? []);
+  const ignoredSpanIds = collectIgnoredSpanIds({ blocks, spans });
   const syntheticDraft = createSyntheticDraftFromBlocks({
     title: validation.checkpoint.title,
     blocks,
+    spans,
     createdAt,
   });
 
@@ -354,12 +538,14 @@ export function createSyntheticManuscriptDraftFromCollaborationCheckpoint(
     createdAt,
     title: validation.checkpoint.title,
     blocks,
+    spans,
     syntheticDraft,
     checkpointSummary: summarizeCollaborationCheckpoint(validation.checkpoint),
     adaptedSubset: {
       fullProductionDraft: false,
       fields: [...adaptedFields],
       gaps: [...adapterGaps],
+      ignoredSpanIds,
     },
     safety: {
       syntheticDataOnly: true,
@@ -370,7 +556,12 @@ export function createSyntheticManuscriptDraftFromCollaborationCheckpoint(
       productionSnapshot: false,
       productionImport: false,
     },
-    warnings: [...adapterWarnings],
+    warnings: [
+      ...adapterWarnings,
+      ...(ignoredSpanIds.length
+        ? [`Ignored overlapping or invalid synthetic spans: ${ignoredSpanIds.join(", ")}.`]
+        : []),
+    ],
   };
 }
 
@@ -409,6 +600,7 @@ export function validateSyntheticManuscriptDraftAdapterPayload(
   }
 
   const blocks = validateBlocks(input.blocks, errors);
+  const spans = validateSpans(input.spans, errors);
   const syntheticDraft = safeManuscriptDraft(input.syntheticDraft);
 
   if (!syntheticDraft) {
@@ -446,6 +638,10 @@ export function validateSyntheticManuscriptDraftAdapterPayload(
 
     if (!Array.isArray(adaptedSubset.gaps)) {
       errors.push("Adapter adaptedSubset.gaps must be an array.");
+    }
+
+    if (!Array.isArray(adaptedSubset.ignoredSpanIds)) {
+      errors.push("Adapter adaptedSubset.ignoredSpanIds must be an array.");
     }
   }
 
@@ -485,6 +681,12 @@ export function validateSyntheticManuscriptDraftAdapterPayload(
     collectBlockSummaries(syntheticDraft.editorJson).length !== blocks.length
   ) {
     errors.push("Adapter syntheticDraft block count must match adapter blocks.");
+  }
+
+  if (syntheticDraft && countSemanticMarks(syntheticDraft.editorJson) > spans.length) {
+    errors.push(
+      "Adapter syntheticDraft cannot contain more semantic marks than adapter spans.",
+    );
   }
 
   const serialized = JSON.stringify(input);
@@ -535,6 +737,7 @@ export function createCollaborationCheckpointFromSyntheticManuscriptDraft(
     exportedAt: validation.payload.createdAt,
     title: validation.payload.title,
     blocks: cloneBlocks(validation.payload.blocks),
+    spans: cloneSpans(validation.payload.spans),
     safety: {
       syntheticDataOnly: true,
       serverWrites: false,
@@ -569,6 +772,7 @@ export function compareCollaborationCheckpointToManuscriptDraft(
       blockCountMatches: false,
       textMatches: false,
       tagCountMatches: false,
+      spanCountMatches: false,
       missingBlockIds: [],
       details: checkpointValidation.errors,
     };
@@ -580,6 +784,7 @@ export function compareCollaborationCheckpointToManuscriptDraft(
       blockCountMatches: false,
       textMatches: false,
       tagCountMatches: false,
+      spanCountMatches: false,
       missingBlockIds: [],
       details: draftValidation.errors,
     };
@@ -600,6 +805,9 @@ export function compareCollaborationCheckpointToManuscriptDraft(
   const tagCountMatches =
     countTags(checkpointValidation.checkpoint.blocks) ===
     countTags(draftValidation.payload.blocks);
+  const spanCountMatches =
+    (checkpointValidation.checkpoint.spans?.length ?? 0) ===
+    draftValidation.payload.spans.length;
 
   if (!blockCountMatches) {
     details.push("Block counts differ.");
@@ -613,6 +821,10 @@ export function compareCollaborationCheckpointToManuscriptDraft(
     details.push("Tag counts differ.");
   }
 
+  if (!spanCountMatches) {
+    details.push("Span counts differ.");
+  }
+
   if (missingBlockIds.length) {
     details.push(`Missing blocks: ${missingBlockIds.join(", ")}.`);
   }
@@ -622,10 +834,12 @@ export function compareCollaborationCheckpointToManuscriptDraft(
       blockCountMatches &&
       textMatches &&
       tagCountMatches &&
+      spanCountMatches &&
       missingBlockIds.length === 0,
     blockCountMatches,
     textMatches,
     tagCountMatches,
+    spanCountMatches,
     missingBlockIds,
     details,
   };

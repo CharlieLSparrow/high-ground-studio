@@ -82,6 +82,7 @@ Commands:
 - `pnpm studio:collab:test`
 - `pnpm studio:collab:checkpoint:test`
 - `pnpm studio:collab:adapter:test`
+- `pnpm studio:collab:span:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -150,6 +151,27 @@ It is not a production Manuscript Desk import. It does not call snapshot APIs,
 write localStorage, write server state, autosave, or mutate manual snapshots.
 Future production wiring still needs a deliberate checkpoint-to-manual-snapshot
 action with access control and rollback rules.
+
+## Span Semantics And Manuscript-First UI
+
+The collaboration lab now has synthetic span semantics:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts`
+
+Spans are local-only Yjs records with `blockId`, `startOffset`, `endOffset`,
+`label`, `actor`, `tagType`, and notes. They are synthetic text-offset ranges,
+not DOM selections and not production comments.
+
+This moves the lab from block-level tags toward addressable manuscript spans.
+The Manuscript adapter maps non-overlapping synthetic spans into
+`semanticHighlightMark` ranges in `ManuscriptDraft.editorJson`; overlapping
+later spans are ignored with explicit warnings for this pass.
+
+The route also now leads with a shared manuscript surface. The long manuscript
+is the product direction; the two-client panels are scaffolding. Future
+production collaboration should preserve one continuous manuscript stream with
+span overlays, margin presence, comments/tags/quotes in side panels, and
+explicit checkpoints.
 
 ## Non-Goals For This Sprint
 
