@@ -24,12 +24,19 @@ New pure helpers:
 - `validateHgoStagedProjectionArtifact`
 - `parseHgoStagedProjectionArtifactJson`
 - `summarizeHgoStagedProjectionArtifactImport`
+- `listKnownHgoStagedArtifactStatuses`
+- `listKnownHgoStagedArtifactNextActions`
 
 The validator checks artifact version, id, creation time, browser-import source
 metadata, projection identity, projection validation, review-gate identity,
-known recommended next action, `persisted: false`, `published: false`,
+review-gate title/status/visibility alignment, validation warnings/errors array
+shape, known recommended next action, `persisted: false`, `published: false`,
 `containsRealContent: "unknown"`, and absence of obvious browser storage,
-cookie, or credential-like keys.
+cookie, token, or credential-like keys.
+
+The validation result includes `ok`, `state`, `errors`, `warnings`, `artifact`,
+and `summary` so browser routes and tests can inspect the contract without
+guessing from UI state.
 
 ## Safety Boundary
 
@@ -64,6 +71,8 @@ Extended `pnpm hgo:projection:visual-smoke` to capture:
 
 - `projection-stage-artifact-empty.png`
 - `projection-stage-artifact-rendered.png`
+
+Added `pnpm hgo:artifact:test` for focused pure contract coverage.
 
 Generated reports and screenshots remain under ignored `artifacts/` paths.
 

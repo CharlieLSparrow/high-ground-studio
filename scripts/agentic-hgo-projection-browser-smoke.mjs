@@ -549,7 +549,8 @@ async function runSmoke() {
       artifact.source?.projectionSlug !== projection.slug ||
       !artifact.reviewGate ||
       artifact.safety?.persisted !== false ||
-      artifact.safety?.published !== false
+      artifact.safety?.published !== false ||
+      artifact.safety?.containsRealContent !== "unknown"
     ) {
       throw new Error(
         `Generated staged artifact JSON did not include the expected contract fields: ${artifactJson}`,
@@ -632,6 +633,12 @@ async function runSmoke() {
 
     const report = await writeReport("passed", {
       hgoBaseUrl,
+      artifactRoundtrip: true,
+      artifactVersion: artifact.artifactVersion,
+      artifactStatus: artifact.status,
+      recommendedNextAction: artifact.recommendedNextAction,
+      artifactContainsRealContent: artifact.safety.containsRealContent,
+      artifactJsonBytes: artifactJson.length,
       projection: {
         id: projection.id,
         slug: projection.slug,

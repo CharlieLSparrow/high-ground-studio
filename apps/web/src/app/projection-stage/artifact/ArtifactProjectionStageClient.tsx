@@ -29,6 +29,12 @@ type ParsedArtifact =
       errors: string[];
       warnings: string[];
       artifact: HgoStagedProjectionArtifact;
+    }
+  | {
+      state: "warning";
+      errors: string[];
+      warnings: string[];
+      artifact: HgoStagedProjectionArtifact;
     };
 
 function parseArtifactJson(value: string): ParsedArtifact {
@@ -53,7 +59,7 @@ function parseArtifactJson(value: string): ParsedArtifact {
   }
 
   return {
-    state: "valid",
+    state: result.state === "warning" ? "warning" : "valid",
     errors: [],
     warnings: result.warnings,
     artifact: result.artifact,
@@ -318,7 +324,7 @@ export default function ArtifactProjectionStageClient() {
                   tone="warning"
                 />
               </div>
-              {parsedArtifact.state === "valid" ? (
+              {parsedArtifact.artifact ? (
                 <div className="rounded-[20px] border border-emerald-300/35 bg-emerald-300/10 p-4 text-sm font-bold text-emerald-100">
                   Artifact contract is valid for browser-only staged inspection.
                 </div>

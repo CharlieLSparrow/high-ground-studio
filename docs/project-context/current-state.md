@@ -88,9 +88,19 @@ High Ground Studio is a monorepo with:
 - HGO has a browser-only staged artifact inspection route at
   `/projection-stage/artifact`. It accepts pasted `hgo-staged-artifact-v1`
   JSON, validates the artifact contract, validates the embedded projection,
-  checks embedded review-gate identity, shows safety flags, and renders the
-  embedded projection. It does not persist, publish, write local storage, verify
-  public safety, replace public `/episodes`, or use real content.
+  checks embedded review-gate id/slug/title/status/visibility identity, shows
+  safety flags, and renders the embedded projection. It does not persist,
+  publish, write local storage, verify public safety, replace public
+  `/episodes`, or use real content.
+- HGO has a pure staged artifact contract test command,
+  `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
+  validator state, invalid version, persisted/published safety failures,
+  missing projection, review-gate mismatches, credential-marker rejection, safe
+  file naming, and summary fields.
+- HGO has a docs-only future private staged artifact store plan in
+  `docs/architecture/hgo-private-staged-artifact-store-plan.md`. It deliberately
+  does not add Prisma schema, API routes, server writes, Cloud SQL mutation, or
+  publish behavior.
 - The repo now has an agentic Studio/HGO smoke command,
   `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
   Studio manuscript helper payloads, HGO projection generation, HGO validation,

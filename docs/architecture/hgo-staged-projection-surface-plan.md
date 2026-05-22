@@ -137,6 +137,10 @@ Detailed artifact notes:
 
 - `docs/architecture/hgo-staged-projection-artifact-contract.md`
 
+Docs-only future persistence plan:
+
+- `docs/architecture/hgo-private-staged-artifact-store-plan.md`
+
 ## No-Persistence Artifact Inspection
 
 The staged surface includes `/projection-stage/artifact` for validating a
@@ -146,7 +150,8 @@ This route:
 
 - validates the artifact contract
 - checks the embedded projection with the HGO projection validator
-- checks embedded review-gate projection identity against the projection
+- checks embedded review-gate projection id, slug, title, status, and visibility
+  against the projection
 - shows safety flags such as `persisted: false` and `published: false`
 - shows the embedded review gate through `ProjectionReviewGatePanel`
 - renders the embedded projection through `EpisodeProjectionView`
@@ -154,6 +159,10 @@ This route:
 It does not persist artifacts, save local storage, publish content, verify
 public safety, or create server state. It exists to make the future private
 staged artifact store contract testable before DB/API work.
+
+The pure artifact helper has a focused node test command:
+
+- `pnpm hgo:artifact:test`
 
 ## Future Path
 

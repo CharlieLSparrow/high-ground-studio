@@ -75,6 +75,17 @@ write to a server. If `HGO_BASE_URL` is not provided, it starts the web app on
 an available local test port, captures synthetic projection preview screenshots,
 and shuts the dev server down.
 
+For focused pure tests of the staged artifact contract, run:
+
+```bash
+pnpm hgo:artifact:test
+```
+
+This command does not open a browser and does not write to a server. It creates
+synthetic artifacts in memory and verifies the contract validator, parser,
+summary, file-name helper, safety flags, review-gate matching, and
+credential-marker rejection.
+
 ## What It Tests
 
 The current harness is a local API/helper-level smoke. It does not open a
@@ -147,6 +158,9 @@ For HGO no-auth browser reports:
   projection, a staged detail route rendered through the shared projection
   component, staged/readiness warnings appeared, known real-content markers were
   absent, and no server write happened.
+  The report also records `artifactRoundtrip`, `artifactVersion`,
+  `artifactStatus`, `recommendedNextAction`, `artifactContainsRealContent`, and
+  `artifactJsonBytes`.
 - `blocked` means the browser or HGO route could not be made available safely,
   for example missing Chromium.
 - `failed` means the browser run started but route, validation, render, or
@@ -165,6 +179,13 @@ For HGO visual smoke reports:
   expectation failed.
 - `routes[]` records the path, status, screenshot path, page title, heading, and
   notes for each captured surface.
+
+For artifact helper tests:
+
+- `passed` means synthetic artifact creation, parsing, validation failure modes,
+  summary fields, and safe file naming behaved as expected.
+- `failed` means the in-memory contract changed and should be reconciled before
+  trusting browser artifact roundtrips.
 
 ## Manual Follow-Up
 

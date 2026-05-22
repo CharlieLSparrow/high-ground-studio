@@ -22,6 +22,12 @@ export type HgoStagedProjectionArtifactNextAction =
   | "candidate-for-future-staging"
   | "do-not-use";
 
+export type HgoStagedProjectionArtifactImportState =
+  | "empty"
+  | "invalid"
+  | "valid"
+  | "warning";
+
 export type HgoStagedProjectionArtifact = {
   artifactVersion: "hgo-staged-artifact-v1";
   artifactId: string;
@@ -70,9 +76,11 @@ export type HgoStagedProjectionArtifactSafetyResult = {
 
 export type HgoStagedProjectionArtifactValidationResult = {
   ok: boolean;
+  state: HgoStagedProjectionArtifactImportState;
   errors: string[];
   warnings: string[];
   artifact: HgoStagedProjectionArtifact | null;
+  summary: HgoStagedProjectionArtifactImportSummary | null;
 };
 
 export type HgoStagedProjectionArtifactImportSummary =
@@ -98,19 +106,27 @@ export type CreateHgoStagedProjectionArtifactInput = {
 const artifactOperatorWarning =
   "Real projection drafts may contain private/review-only content. This browser artifact is not published, not persisted by HGO, and must stay private until human review is complete.";
 
-const artifactStatusValues = new Set<HgoStagedProjectionArtifactStatus>([
+const artifactStatusList: HgoStagedProjectionArtifactStatus[] = [
   "draft",
   "review-blocked",
   "review-ready",
   "live-candidate",
-]);
+];
 
-const artifactNextActionValues = new Set<HgoStagedProjectionArtifactNextAction>([
+const artifactNextActionList: HgoStagedProjectionArtifactNextAction[] = [
   "fix-blockers",
   "human-review",
   "candidate-for-future-staging",
   "do-not-use",
-]);
+];
+
+const artifactStatusValues = new Set<HgoStagedProjectionArtifactStatus>(
+  artifactStatusList,
+);
+
+const artifactNextActionValues = new Set<HgoStagedProjectionArtifactNextAction>(
+  artifactNextActionList,
+);
 
 const projectionStatusValues = new Set<HgoProjectionStatus>([
   "synthetic",
@@ -185,10 +201,18 @@ function validateStringArray(
 
 function hasBrowserStateOrSecretMarker(serialized: string) {
   return (
-    /"(?:cookie|cookies|localStorage|sessionStorage|storageState|authorization|accessToken|refreshToken|idToken|password|clientSecret|apiKey|secret)"\s*:/i.test(
+    /"(?:cookie|cookies|localStorage|sessionStorage|storageState|authorization|token|accessToken|refreshToken|idToken|password|clientSecret|apiKey|secret)"\s*:/i.test(
       serialized,
     ) || /document\.cookie|Bearer\s+[A-Za-z0-9._~+/=-]+/i.test(serialized)
   );
+}
+
+export function listKnownHgoStagedArtifactStatuses() {
+  return [...artifactStatusList];
+}
+
+export function listKnownHgoStagedArtifactNextActions() {
+  return [...artifactNextActionList];
 }
 
 function createArtifactId(projection: HgoEpisodeProjection, createdAt: string) {
@@ -386,6 +410,8 @@ export function validateHgoStagedProjectionArtifact(
       ],
       warnings,
       artifact: null,
+      state: "invalid",
+      summary: null,
     };
   }
 
@@ -529,6 +555,28 @@ export function validateHgoStagedProjectionArtifact(
           "Artifact reviewGate projection slug does not match projection.slug.",
         );
       }
+
+      if (
+        isNonEmptyString(gateProjection.title) &&
+        isNonEmptyString(projection.title) &&
+        gateProjection.title !== projection.title
+      ) {
+        errors.push(
+          "Artifact reviewGate projection title does not match projection.title.",
+        );
+      }
+    }
+
+    if (projection && reviewGate.status !== projection.status) {
+      errors.push(
+        "Artifact reviewGate.status does not match projection.status.",
+      );
+    }
+
+    if (projection && reviewGate.visibility !== projection.visibility) {
+      errors.push(
+        "Artifact reviewGate.visibility does not match projection.visibility.",
+      );
     }
 
     if (typeof reviewGate.blockerCount !== "number") {
@@ -574,16 +622,25 @@ export function validateHgoStagedProjectionArtifact(
     warnings,
     "Artifact may contain private/review-only projection text and should not be pasted into public places.",
   );
+  addUnique(
+    warnings,
+    "Artifact is a review packet, not source material or public content.",
+  );
 
   const artifact = errors.length
     ? null
     : (input as HgoStagedProjectionArtifact);
+  const summary = artifact
+    ? summarizeHgoStagedProjectionArtifactImport(artifact)
+    : null;
 
   return {
     ok: errors.length === 0,
+    state: errors.length ? "invalid" : warnings.length ? "warning" : "valid",
     errors,
     warnings,
     artifact,
+    summary,
   };
 }
 
@@ -593,9 +650,11 @@ export function parseHgoStagedProjectionArtifactJson(
   if (!json.trim()) {
     return {
       ok: false,
+      state: "empty",
       errors: [],
       warnings: [],
       artifact: null,
+      summary: null,
     };
   }
 
@@ -604,6 +663,7 @@ export function parseHgoStagedProjectionArtifactJson(
   } catch (error) {
     return {
       ok: false,
+      state: "invalid",
       errors: [
         error instanceof Error
           ? `Invalid JSON: ${error.message}`
@@ -611,6 +671,7 @@ export function parseHgoStagedProjectionArtifactJson(
       ],
       warnings: [],
       artifact: null,
+      summary: null,
     };
   }
 }

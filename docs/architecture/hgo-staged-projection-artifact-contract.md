@@ -84,20 +84,42 @@ The import helper validates:
 
 - `artifactVersion: "hgo-staged-artifact-v1"`
 - artifact id and creation timestamp
+- artifact status in the known contract vocabulary
 - browser-import source metadata
 - source projection id, slug, status, and visibility
 - embedded projection shape through `validateHgoEpisodeProjection`
-- embedded review gate presence and projection identity match
+- embedded review gate presence
+- review-gate projection id, slug, and title match the embedded projection
+- review-gate status and visibility match the embedded projection
+- validation warnings/errors are arrays
 - `persisted: false`
 - `published: false`
 - `containsRealContent: "unknown"`
 - known recommended next action
-- absence of obvious browser storage, cookie, or credential-like keys
+- absence of obvious browser storage, cookie, token, or credential-like keys
 
 The route shows artifact errors, warnings, summary fields, embedded review-gate
 state, and the embedded projection renderer. It does not persist, publish,
 verify public safety, write local storage, or call a server route. It is
 artifact inspection only and prepares a future private staged store.
+
+The validation result is machine-readable and includes:
+
+- `ok`
+- `state`: `empty`, `invalid`, `valid`, or `warning`
+- `errors`
+- `warnings`
+- `artifact`
+- `summary`
+
+Warnings are expected for valid browser artifacts because the contract keeps the
+review boundary visible: artifacts may contain private/review-only projection
+text, contain unknown real-content status, are review packets rather than
+source, and are not public content.
+
+Focused node tests cover the artifact helper through:
+
+- `pnpm hgo:artifact:test`
 
 ## Future Flow
 
@@ -107,6 +129,10 @@ artifact inspection only and prepares a future private staged store.
 4. A human reviews blocker and warning state.
 5. A future private staged store saves approved artifacts.
 6. A later approved promotion workflow creates live public pages.
+
+Future persistence planning lives in:
+
+- `docs/architecture/hgo-private-staged-artifact-store-plan.md`
 
 ## Deferred
 

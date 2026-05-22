@@ -98,6 +98,7 @@ HGO now also has a synthetic-only staged surface:
 - `/projection-stage`
 - `/projection-stage/[slug]`
 - `/projection-stage/import`
+- `/projection-stage/artifact`
 - `/projection-stage/review`
 
 This route family complements the browser-only preview import route. Its map,
@@ -116,6 +117,12 @@ publish, and does not replace public `/episodes` routes. It makes the future
 architecture visible: pasted/imported projection drafts can later become private
 staged artifacts, and only approved projections should move to live public
 pages.
+
+The staged artifact inspection route accepts a browser-created
+`hgo-staged-artifact-v1` JSON packet, validates the contract, inspects embedded
+projection/review-gate/safety state, and renders the embedded projection. It is
+still browser-only and no-persistence. The artifact remains a review packet, not
+source material and not public content.
 
 ## Citation Gates
 
