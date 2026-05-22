@@ -68,6 +68,12 @@ High Ground Studio is a monorepo with:
   with the same projection preview component without persisting or publishing it.
   It warns when Studio browser bridge drafts include pull quotes, staged
   status/visibility, unresolved citation state, or live/public state.
+- The repo now has an agentic Studio/HGO smoke command,
+  `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
+  Studio manuscript helper payloads, HGO projection generation, HGO validation,
+  and machine-readable report output. It is API/helper-level for now because
+  authenticated browser automation needs a safe test-auth or private storage
+  state path.
 
 ## Current Coaching Workflow
 
@@ -105,6 +111,9 @@ High Ground Studio is a monorepo with:
 - The Studio-to-HGO projection bridge is browser-only/manual. It does not create
   a DB projection table, live publish API, public deployment pipeline, autosave,
   collaboration layer, or server-side staged artifact store.
+- Agentic Studio/HGO browser smoke automation is not active yet. The current
+  harness does not automate Google OAuth, click through Studio, create server
+  snapshots, or capture screenshots/traces.
 
 ## Current Stabilization Decisions
 

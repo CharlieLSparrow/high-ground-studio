@@ -16,6 +16,7 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 *.log
+artifacts/agentic-smoke/
 
 # OS/editor
 .DS_Store

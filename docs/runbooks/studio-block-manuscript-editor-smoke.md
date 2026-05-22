@@ -309,6 +309,30 @@ Use synthetic manuscript text only for this smoke.
     created by the import page.
 15. Confirm no real manuscript text or real HGO content is used.
 
+## Agentic Helper Smoke
+
+Run this before or after manual synthetic smoke when changing the Studio
+manuscript, manuscript-library, HGO projection, or HGO import-preview workflow:
+
+```bash
+pnpm studio:hgo:agentic-smoke
+```
+
+The command uses synthetic data only and writes:
+
+```text
+artifacts/agentic-smoke/studio-hgo-smoke-report.json
+```
+
+This is currently an API/helper-level smoke. It does not automate Google OAuth,
+open a browser, write a server snapshot, publish content, or mutate cloud
+resources. It verifies synthetic draft creation, manuscript-library payload
+shape, manual snapshot payload shape, HGO projection JSON generation, omission
+of raw draft internals, HGO validation warnings, and machine-readable reporting.
+
+Use `docs/runbooks/agentic-studio-hgo-smoke.md` for report interpretation and
+future browser-auth notes.
+
 ## Manual Smoke Script
 
 1. Open `/manuscript`.

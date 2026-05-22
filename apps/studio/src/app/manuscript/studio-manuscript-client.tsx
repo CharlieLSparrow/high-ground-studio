@@ -3345,6 +3345,7 @@ export function StudioManuscriptClient({
                             ? activeButtonClassName
                             : "",
                         )}
+                        data-testid={`manuscript-mode-${mode.id}`}
                         type="button"
                         onClick={() => setSidePanelMode(mode.id)}
                       >
@@ -4877,7 +4878,10 @@ export function StudioManuscriptClient({
                   </p>
                 ) : null}
               </div>
-              <div className="grid gap-3 rounded-lg border border-studio-source/35 bg-studio-source/10 p-3">
+              <div
+                className="grid gap-3 rounded-lg border border-studio-source/35 bg-studio-source/10 p-3"
+                data-testid="manuscript-library-panel"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <HelpLabel noteId="manuscript-library">
@@ -4915,6 +4919,7 @@ export function StudioManuscriptClient({
                   <span className={fieldLabelClassName}>Current manuscript</span>
                   <select
                     className={fieldClassName}
+                    data-testid="manuscript-library-select"
                     disabled={isServerManuscriptBusy || isServerSnapshotBusy}
                     value={selectedServerManuscriptId}
                     onChange={(event) =>
@@ -4968,6 +4973,7 @@ export function StudioManuscriptClient({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     className={smallButtonClassName}
+                    data-testid="manuscript-library-create-current"
                     disabled={isServerManuscriptBusy || isServerSnapshotUnavailable}
                     type="button"
                     onClick={() => void createServerManuscriptFromCurrentDraft()}
@@ -5034,6 +5040,7 @@ export function StudioManuscriptClient({
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             className={smallButtonClassName}
+                            data-testid="manuscript-library-row-select"
                             disabled={isServerSnapshotBusy}
                             type="button"
                             onClick={() =>
@@ -5044,6 +5051,7 @@ export function StudioManuscriptClient({
                           </button>
                           <button
                             className={smallButtonClassName}
+                            data-testid="manuscript-library-row-load-latest"
                             disabled={
                               isServerSnapshotBusy ||
                               !manuscript.latestSnapshot
@@ -5065,7 +5073,10 @@ export function StudioManuscriptClient({
                   </div>
                 ) : null}
               </div>
-              <div className="grid gap-3 rounded-lg border border-studio-node/35 bg-studio-node/10 p-3">
+              <div
+                className="grid gap-3 rounded-lg border border-studio-node/35 bg-studio-node/10 p-3"
+                data-testid="manuscript-snapshot-panel"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <HelpLabel noteId="server-snapshot">
@@ -5144,6 +5155,7 @@ export function StudioManuscriptClient({
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     className={smallButtonClassName}
+                    data-testid="manuscript-snapshot-save"
                     disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
                     type="button"
                     onClick={saveServerSnapshot}
@@ -5154,6 +5166,7 @@ export function StudioManuscriptClient({
                   </button>
                   <button
                     className={smallButtonClassName}
+                    data-testid="manuscript-snapshot-load-latest"
                     disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
                     type="button"
                     onClick={() => void loadLatestServerSnapshot()}
@@ -5460,7 +5473,10 @@ export function StudioManuscriptClient({
                   </StudioChip>
                 </div>
 
-                <div className="grid gap-2 rounded-lg border border-studio-source/35 bg-studio-source/10 p-2.5">
+                <div
+                  className="grid gap-2 rounded-lg border border-studio-source/35 bg-studio-source/10 p-2.5"
+                  data-testid="manuscript-real-readiness-panel"
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <HelpLabel noteId="real-manuscript-readiness-gate">
                       Real manuscript readiness
@@ -5485,6 +5501,7 @@ export function StudioManuscriptClient({
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       className={smallButtonClassName}
+                      data-testid="manuscript-load-synthetic-smoke"
                       type="button"
                       onClick={loadSyntheticSmokeDraft}
                     >
@@ -5737,7 +5754,10 @@ export function StudioManuscriptClient({
 
                 {!isRecordingMode ? (
                   <>
-                    <div className="grid gap-2 rounded-lg border border-studio-source/35 bg-studio-source/10 p-2.5">
+                    <div
+                      className="grid gap-2 rounded-lg border border-studio-source/35 bg-studio-source/10 p-2.5"
+                      data-testid="hgo-projection-bridge-panel"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className={labelClassName}>HGO projection bridge</p>
                         <StudioChip tone="source">Browser only</StudioChip>
@@ -5767,6 +5787,7 @@ export function StudioManuscriptClient({
                           <span className={fieldLabelClassName}>Status</span>
                           <select
                             className={fieldClassName}
+                            data-testid="hgo-projection-status"
                             value={hgoProjectionStatus}
                             onChange={(event) =>
                               setHgoProjectionStatus(
@@ -5782,6 +5803,7 @@ export function StudioManuscriptClient({
                           <span className={fieldLabelClassName}>Visibility</span>
                           <select
                             className={fieldClassName}
+                            data-testid="hgo-projection-visibility"
                             value={hgoProjectionVisibility}
                             onChange={(event) =>
                               setHgoProjectionVisibility(
@@ -5799,6 +5821,7 @@ export function StudioManuscriptClient({
                           <span className={fieldLabelClassName}>Episode region</span>
                           <select
                             className={fieldClassName}
+                            data-testid="hgo-projection-episode-region"
                             value={activeHgoProjectionRegionId}
                             onChange={(event) =>
                               setSelectedHgoProjectionRegionId(event.target.value)
@@ -5820,6 +5843,7 @@ export function StudioManuscriptClient({
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           className={smallButtonClassName}
+                          data-testid="hgo-projection-generate"
                           type="button"
                           onClick={generateHgoEpisodeProjection}
                         >
@@ -5827,6 +5851,7 @@ export function StudioManuscriptClient({
                         </button>
                         <button
                           className={smallButtonClassName}
+                          data-testid="hgo-projection-download"
                           type="button"
                           onClick={downloadHgoEpisodeProjection}
                         >
@@ -5838,6 +5863,7 @@ export function StudioManuscriptClient({
                           textareaClassName,
                           "min-h-[150px] font-mono text-xs",
                         )}
+                        data-testid="hgo-projection-json"
                         readOnly
                         value={exportHgoProjectionJson}
                       />

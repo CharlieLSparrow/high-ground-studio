@@ -89,7 +89,12 @@ function ValidationList({
 
   return (
     <div className={`rounded-[20px] border p-4 ${toneClassName}`}>
-      <p className="text-sm font-black uppercase">{title}</p>
+      <p
+        className="text-sm font-black uppercase"
+        data-testid={`hgo-import-${tone}-heading`}
+      >
+        {title}
+      </p>
       <ul className="mt-3 grid gap-2 pl-5 text-sm leading-6">
         {items.map((item) => (
           <li key={item}>{item}</li>
@@ -135,6 +140,7 @@ export default function ImportProjectionPreviewClient() {
               </span>
               <textarea
                 className="min-h-[280px] w-full resize-y rounded-[18px] border border-white/12 bg-void-light/80 px-4 py-3 font-mono text-xs leading-6 text-subject outline-none focus:border-flare/45"
+                data-testid="hgo-import-projection-json"
                 value={rawProjectionJson}
                 onChange={(event) => setRawProjectionJson(event.target.value)}
                 spellCheck={false}
@@ -142,16 +148,20 @@ export default function ImportProjectionPreviewClient() {
             </label>
 
             <div className="grid gap-3">
-              <ValidationList
-                title="Errors"
-                items={parsedProjection.errors}
-                tone="error"
-              />
-              <ValidationList
-                title="Warnings"
-                items={parsedProjection.warnings}
-                tone="warning"
-              />
+              <div data-testid="hgo-import-validation-errors">
+                <ValidationList
+                  title="Errors"
+                  items={parsedProjection.errors}
+                  tone="error"
+                />
+              </div>
+              <div data-testid="hgo-import-validation-warnings">
+                <ValidationList
+                  title="Warnings"
+                  items={parsedProjection.warnings}
+                  tone="warning"
+                />
+              </div>
               {parsedProjection.state === "valid" &&
               !parsedProjection.warnings.length ? (
                 <div className="rounded-[20px] border border-emerald-300/35 bg-emerald-300/10 p-4 text-sm font-bold text-emerald-100">
@@ -164,11 +174,13 @@ export default function ImportProjectionPreviewClient() {
       </section>
 
       {parsedProjection.projection ? (
-        <EpisodeProjectionView
-          key={parsedProjection.projection.id}
-          projection={parsedProjection.projection}
-          allProjections={[parsedProjection.projection]}
-        />
+        <div data-testid="hgo-import-rendered-projection">
+          <EpisodeProjectionView
+            key={parsedProjection.projection.id}
+            projection={parsedProjection.projection}
+            allProjections={[parsedProjection.projection]}
+          />
+        </div>
       ) : null}
     </div>
   );

@@ -126,7 +126,10 @@ export default function EpisodeProjectionView({
   allProjections: HgoEpisodeProjection[];
 }) {
   return (
-    <main className="min-h-screen overflow-hidden bg-void text-subject">
+    <main
+      className="min-h-screen overflow-hidden bg-void text-subject"
+      data-testid="hgo-projection-rendered-root"
+    >
       <section className="relative isolate min-h-[calc(100vh-76px)] overflow-hidden">
         <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_16%_18%,rgba(255,122,24,0.26),transparent_31%),radial-gradient(circle_at_76%_24%,rgba(82,190,176,0.22),transparent_34%),linear-gradient(135deg,#050d10_0%,#10252a_50%,#22170f_100%)]" />
         <div className="absolute inset-x-0 bottom-0 -z-10 h-[45%] bg-[linear-gradient(180deg,transparent_0%,rgba(5,16,20,0.88)_72%,#051014_100%)]" />
