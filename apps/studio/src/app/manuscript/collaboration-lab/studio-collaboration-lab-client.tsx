@@ -12,6 +12,13 @@ import {
   StudioChip,
 } from "../../studio-ui";
 import {
+  createCollaborationCheckpointFromClient,
+  importCollaborationCheckpointToClient,
+  summarizeCollaborationCheckpoint,
+  validateCollaborationCheckpoint,
+  type StudioCollaborationCheckpointSummary,
+} from "./studio-collaboration-checkpoint-bridge";
+import {
   applySyntheticTag,
   applySyntheticTextEdit,
   collaborationSummariesMatch,
@@ -30,6 +37,9 @@ type LabState = {
   homer: StudioCollaborationClient;
   revision: number;
   exportedSnapshotJson: string;
+  checkpointJson: string;
+  checkpointSummary: StudioCollaborationCheckpointSummary | null;
+  importedCheckpointSummary: StudioCollaborationSummary | null;
   lastAction: string;
 };
 
@@ -45,6 +55,9 @@ function createInitialLabState(): LabState {
     homer,
     revision: 0,
     exportedSnapshotJson: "",
+    checkpointJson: "",
+    checkpointSummary: null,
+    importedCheckpointSummary: null,
     lastAction: "Synthetic collaboration lab initialized.",
   };
 }
@@ -181,6 +194,28 @@ export default function StudioCollaborationLabClient() {
     }));
   }
 
+  function updateCheckpointState(input: {
+    message: string;
+    checkpointJson?: string;
+    checkpointSummary?: StudioCollaborationCheckpointSummary | null;
+    importedCheckpointSummary?: StudioCollaborationSummary | null;
+  }) {
+    setLab((current) => ({
+      ...current,
+      revision: current.revision + 1,
+      checkpointJson: input.checkpointJson ?? current.checkpointJson,
+      checkpointSummary:
+        input.checkpointSummary === undefined
+          ? current.checkpointSummary
+          : input.checkpointSummary,
+      importedCheckpointSummary:
+        input.importedCheckpointSummary === undefined
+          ? current.importedCheckpointSummary
+          : input.importedCheckpointSummary,
+      lastAction: input.message,
+    }));
+  }
+
   function syncCharlieToHomer() {
     const update = syncCollaborationClientToClient(lab.charlie, lab.homer);
     refresh(
@@ -214,6 +249,63 @@ export default function StudioCollaborationLabClient() {
       "Synthetic collaboration snapshot exported from Charlie client. No server write happened.",
       JSON.stringify(snapshot, null, 2),
     );
+  }
+
+  function createCheckpoint() {
+    const checkpoint = createCollaborationCheckpointFromClient(lab.charlie);
+    const validation = validateCollaborationCheckpoint(checkpoint);
+
+    updateCheckpointState({
+      message: validation.ok
+        ? "Synthetic collaboration checkpoint created locally. Not a production snapshot."
+        : `Checkpoint validation failed: ${validation.errors.join(" ")}`,
+      checkpointJson: JSON.stringify(checkpoint, null, 2),
+      checkpointSummary: validation.summary ?? summarizeCollaborationCheckpoint(checkpoint),
+      importedCheckpointSummary: null,
+    });
+  }
+
+  function importCheckpoint() {
+    try {
+      const parsed = JSON.parse(lab.checkpointJson) as unknown;
+      const validation = validateCollaborationCheckpoint(parsed);
+
+      if (!validation.ok || !validation.checkpoint) {
+        updateCheckpointState({
+          message: `Checkpoint import rejected: ${validation.errors.join(" ")}`,
+        });
+        return;
+      }
+
+      const imported = importCollaborationCheckpointToClient(
+        validation.checkpoint,
+        "Imported checkpoint client",
+      );
+
+      updateCheckpointState({
+        message: imported.ok
+          ? "Checkpoint imported into a new synthetic client. Production snapshots were not touched."
+          : `Checkpoint import failed: ${imported.errors.join(" ")}`,
+        checkpointSummary: validation.summary,
+        importedCheckpointSummary: imported.summary,
+      });
+    } catch (error) {
+      updateCheckpointState({
+        message:
+          error instanceof Error
+            ? `Checkpoint JSON parse failed: ${error.message}`
+            : "Checkpoint JSON parse failed.",
+      });
+    }
+  }
+
+  function clearCheckpoint() {
+    updateCheckpointState({
+      message: "Local checkpoint bridge state cleared.",
+      checkpointJson: "",
+      checkpointSummary: null,
+      importedCheckpointSummary: null,
+    });
   }
 
   return (
@@ -369,6 +461,124 @@ export default function StudioCollaborationLabClient() {
               data-testid="studio-collab-exported-json"
               value={lab.exportedSnapshotJson}
               placeholder="Click Export synthetic snapshot to inspect the local-only checkpoint shape."
+            />
+          </label>
+        </section>
+
+        <section
+          className={cn(panelClassName, "mt-5")}
+          data-testid="studio-collab-checkpoint-bridge"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className={labelClassName}>Local checkpoint bridge</p>
+              <h2 className={panelTitleClassName}>
+                Collaboration checkpoint roundtrip
+              </h2>
+              <p className={panelCopyClassName}>
+                Create a synthetic checkpoint from the local Yjs lab, validate
+                it, and import it into a new synthetic client. This is not a
+                production manuscript snapshot, does not write server state,
+                does not touch manual snapshots, and does not autosave.
+              </p>
+            </div>
+            <StudioChip tone="review">not production snapshots</StudioChip>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={buttonClassName}
+              data-testid="studio-collab-create-checkpoint"
+              onClick={createCheckpoint}
+            >
+              Create synthetic checkpoint
+            </button>
+            <button
+              type="button"
+              className={buttonClassName}
+              data-testid="studio-collab-import-checkpoint"
+              onClick={importCheckpoint}
+              disabled={!lab.checkpointJson}
+            >
+              Import checkpoint back into new synthetic client
+            </button>
+            <button
+              type="button"
+              className={dangerButtonClassName}
+              data-testid="studio-collab-clear-checkpoint"
+              onClick={clearCheckpoint}
+            >
+              Clear checkpoint
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Checkpoint blocks</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.checkpointSummary?.blockCount ?? 0}
+                </p>
+              </div>
+            </div>
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Checkpoint tags</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.checkpointSummary?.tagCount ?? 0}
+                </p>
+              </div>
+            </div>
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Production snapshot</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.checkpointSummary?.productionSnapshot ? "yes" : "no"}
+                </p>
+              </div>
+            </div>
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Imported client tags</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.importedCheckpointSummary?.tagCount ?? 0}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {lab.importedCheckpointSummary ? (
+            <div
+              className={cn(cardClassName, "mt-4 p-3")}
+              data-testid="studio-collab-imported-checkpoint-summary"
+            >
+              <p className={labelClassName}>Imported-client summary</p>
+              <p className="mt-2 text-sm font-bold leading-6 text-studio-muted">
+                {lab.importedCheckpointSummary.clientName}:{" "}
+                {lab.importedCheckpointSummary.blockCount} blocks,{" "}
+                {lab.importedCheckpointSummary.tagCount} tags,{" "}
+                {lab.importedCheckpointSummary.emptyBlockCount} empty blocks.
+              </p>
+            </div>
+          ) : null}
+
+          <label className="mt-4 grid gap-2">
+            <span className={labelClassName}>Synthetic checkpoint JSON</span>
+            <textarea
+              className="min-h-[260px] w-full resize-y rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 py-2.5 font-mono text-xs leading-6 text-studio-ink"
+              data-testid="studio-collab-checkpoint-json"
+              value={lab.checkpointJson}
+              onChange={(event) =>
+                updateCheckpointState({
+                  message: "Local checkpoint JSON edited in browser state only.",
+                  checkpointJson: event.currentTarget.value,
+                  checkpointSummary: null,
+                  importedCheckpointSummary: null,
+                })
+              }
+              placeholder="Create a synthetic checkpoint to inspect the bridge shape."
+              spellCheck={false}
             />
           </label>
         </section>

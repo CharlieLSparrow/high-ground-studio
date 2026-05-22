@@ -35,6 +35,12 @@ Pure tests:
 pnpm studio:collab:test
 ```
 
+Checkpoint bridge tests:
+
+```bash
+pnpm studio:collab:checkpoint:test
+```
+
 Agentic helper smoke:
 
 ```bash
@@ -60,7 +66,11 @@ Generated reports are ignored and should not be committed.
 7. Confirm the convergence summary says the clients match.
 8. Click `Export synthetic snapshot`.
 9. Confirm the JSON appears in the textarea.
-10. Confirm the page says no server writes, no production manuscript editing,
+10. Click `Create synthetic checkpoint`.
+11. Confirm the checkpoint summary and checkpoint JSON appear.
+12. Click `Import checkpoint back into new synthetic client`.
+13. Confirm the imported-client summary appears.
+14. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -73,6 +83,8 @@ Passing means:
 - edits on different blocks converge
 - tags from both clients survive
 - export/import snapshot shape works
+- checkpoint export/import bridge works
+- checkpoint safety flags remain local-only
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

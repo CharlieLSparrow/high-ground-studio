@@ -80,12 +80,42 @@ Pure model:
 Commands:
 
 - `pnpm studio:collab:test`
+- `pnpm studio:collab:checkpoint:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
 detail matters: independently-created JSON-equivalent Yjs docs do not share the
 same CRDT history and can lose concurrent changes during sync. The lab tests
 prove the safer baseline seeding pattern before production code depends on it.
+
+## Local Checkpoint Bridge
+
+The collaboration lab also has a local-only checkpoint bridge:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts`
+
+Checkpoint version:
+
+- `studio-collaboration-checkpoint-v1`
+
+The bridge proves a Yjs lab client can export a manuscript-shaped checkpoint
+with blocks, text, tags, safety flags, and safe Yjs metadata, then import that
+checkpoint back into a new synthetic Yjs client.
+
+The checkpoint is not a production manual server snapshot. It does not call the
+snapshot API, write localStorage, write a server route, autosave, or mutate the
+real Manuscript Desk. It is a bridge contract for a future workflow where a
+live collaboration document can deliberately checkpoint into manual snapshots
+after access control and rollback rules exist.
+
+Checkpoint safety flags are explicit:
+
+- `syntheticDataOnly: true`
+- `serverWrites: false`
+- `localStorage: false`
+- `productionManuscriptEditing: false`
+- `autosave: false`
+- `productionSnapshot: false`
 
 ## Non-Goals For This Sprint
 
@@ -97,6 +127,7 @@ prove the safer baseline seeding pattern before production code depends on it.
 - no production `/manuscript` save/load change
 - no real manuscript text
 - no localStorage collaboration state
+- no production manual snapshot mutation
 - no public publishing
 
 ## Rough 20-Sprint Path

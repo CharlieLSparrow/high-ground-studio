@@ -70,9 +70,14 @@ High Ground Studio is a monorepo with:
   production `/manuscript`, does not write localStorage, does not call server
   routes, does not autosave, and does not enable real simultaneous editing.
 - Studio has pure collaboration lab validation through
-  `pnpm studio:collab:test` and `pnpm studio:collab:agentic-smoke`. These use
-  synthetic data only and write generated reports under ignored `artifacts/`
-  paths.
+  `pnpm studio:collab:test`, `pnpm studio:collab:checkpoint:test`, and
+  `pnpm studio:collab:agentic-smoke`. These use synthetic data only and write
+  generated reports under ignored `artifacts/` paths.
+- Studio has a local-only collaboration checkpoint bridge. It exports a Yjs lab
+  client into `studio-collaboration-checkpoint-v1`, validates safety flags,
+  imports the checkpoint into a new synthetic client, and confirms blocks, text,
+  tags, empty blocks, and summaries survive. It is not a production manual
+  server snapshot and does not touch production `/manuscript` save/load.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -182,6 +187,9 @@ High Ground Studio is a monorepo with:
 - Studio Manuscript production simultaneous editing is not active. A local-only
   Yjs collaboration lab exists, but it is synthetic-only and not wired into the
   real Manuscript Desk save/load path.
+- Studio collaboration checkpoints are local lab checkpoints only. They are not
+  production manual snapshots, autosave, server persistence, or a replacement
+  for rollback anchors.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

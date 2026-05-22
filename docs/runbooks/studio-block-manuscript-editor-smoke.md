@@ -768,7 +768,11 @@ This is separate from the production Manuscript Desk smoke.
 7. Confirm the convergence summary says the clients match.
 8. Click `Export synthetic snapshot`.
 9. Confirm exported JSON appears.
-10. Confirm the page still says no server writes, no production manuscript
+10. Click `Create synthetic checkpoint`.
+11. Confirm checkpoint JSON appears.
+12. Click `Import checkpoint back into new synthetic client`.
+13. Confirm imported-client summary appears.
+14. Confirm the page still says no server writes, no production manuscript
     editing, no autosave, and no localStorage.
 
 Do not use real manuscript text in the collaboration lab.
