@@ -383,6 +383,18 @@ export default function ImportProjectionStageClient() {
               >
                 Review fixture gate
               </Link>
+              <Link
+                href="/projection-stage/artifact"
+                className="inline-flex rounded-full border border-sky-300/35 bg-sky-300/12 px-4 py-2 text-sm font-bold text-sky-100 no-underline transition hover:bg-sky-300/18"
+              >
+                Inspect staged artifact JSON
+              </Link>
+              <span className="inline-flex rounded-full border border-sky-300/25 bg-sky-300/8 px-3 py-1 text-xs font-bold text-sky-100">
+                No persistence
+              </span>
+              <span className="inline-flex rounded-full border border-sky-300/25 bg-sky-300/8 px-3 py-1 text-xs font-bold text-sky-100">
+                No publish action
+              </span>
             </div>
           </div>
 

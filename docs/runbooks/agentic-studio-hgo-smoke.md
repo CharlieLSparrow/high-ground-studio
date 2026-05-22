@@ -141,9 +141,12 @@ For HGO no-auth browser reports:
   `/projection-stage/import` accepted pasted synthetic JSON, showed the staged
   review gate and no-publish/no-persistence boundary, generated staged artifact
   JSON containing `artifactVersion`, the projection slug, `reviewGate`, and
-  `persisted: false` / `published: false`, a staged detail route rendered
-  through the shared projection component, staged/readiness warnings appeared,
-  known real-content markers were absent, and no server write happened.
+  `persisted: false` / `published: false`, `/projection-stage/artifact`
+  accepted the staged artifact JSON, validated it, showed the embedded review
+  gate, showed persisted/published false safety state, rendered the embedded
+  projection, a staged detail route rendered through the shared projection
+  component, staged/readiness warnings appeared, known real-content markers were
+  absent, and no server write happened.
 - `blocked` means the browser or HGO route could not be made available safely,
   for example missing Chromium.
 - `failed` means the browser run started but route, validation, render, or
@@ -153,8 +156,9 @@ For HGO visual smoke reports:
 
 - `passed` means the projection preview map, empty import route, rendered import
   route, empty staged import review route, rendered staged import review route,
-  staged artifact JSON route state, and discovered synthetic detail routes
-  captured screenshots while known real-content markers stayed absent.
+  staged artifact JSON route state, empty staged artifact inspection route,
+  rendered staged artifact inspection route, and discovered synthetic detail
+  routes captured screenshots while known real-content markers stayed absent.
 - `blocked` means Chromium or the HGO server path could not be made available
   safely.
 - `failed` means a route, selector, render, screenshot, or content-safety
@@ -182,8 +186,8 @@ Use the normal browser smoke after the helper harness passes:
 14. Confirm no autosave, publish, or collaboration action happens.
 
 The HGO no-auth smoke does not replace the Studio browser smoke. It covers only
-the projection import, no-persistence staged import review, staged review gate,
-staged surface, and renderer paths.
+the projection import, no-persistence staged import review, staged artifact
+inspection, staged review gate, staged surface, and renderer paths.
 
 The HGO visual smoke also does not replace authenticated Studio browser smoke.
 It is a screenshot/report artifact pass for later human review of synthetic HGO

@@ -75,13 +75,38 @@ The operator can:
 HGO does not save the artifact. The route does not call a server action, write
 local storage, create public content, persist to Prisma, or publish a page.
 
+## Browser-Only Artifact Import
+
+`/projection-stage/artifact` can paste a staged artifact JSON file back into
+HGO for browser-only contract inspection.
+
+The import helper validates:
+
+- `artifactVersion: "hgo-staged-artifact-v1"`
+- artifact id and creation timestamp
+- browser-import source metadata
+- source projection id, slug, status, and visibility
+- embedded projection shape through `validateHgoEpisodeProjection`
+- embedded review gate presence and projection identity match
+- `persisted: false`
+- `published: false`
+- `containsRealContent: "unknown"`
+- known recommended next action
+- absence of obvious browser storage, cookie, or credential-like keys
+
+The route shows artifact errors, warnings, summary fields, embedded review-gate
+state, and the embedded projection renderer. It does not persist, publish,
+verify public safety, write local storage, or call a server route. It is
+artifact inspection only and prepares a future private staged store.
+
 ## Future Flow
 
 1. Studio generates projection JSON.
 2. HGO staged import review creates a browser artifact.
-3. A human reviews blocker and warning state.
-4. A future private staged store saves approved artifacts.
-5. A later approved promotion workflow creates live public pages.
+3. HGO staged artifact import validates the browser-created artifact.
+4. A human reviews blocker and warning state.
+5. A future private staged store saves approved artifacts.
+6. A later approved promotion workflow creates live public pages.
 
 ## Deferred
 

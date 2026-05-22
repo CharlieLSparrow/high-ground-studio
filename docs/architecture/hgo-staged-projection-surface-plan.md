@@ -19,14 +19,16 @@ This pass adds a synthetic-only staged route family:
 - `/projection-stage/[slug]`
 - `/projection-stage/review`
 - `/projection-stage/import`
+- `/projection-stage/artifact`
 
 The routes use the same HGO projection contract and shared
 `EpisodeProjectionView` renderer already used by `/projection-preview`. The data
 source is still the synthetic fixture repository only, except for
 `/projection-stage/import`, which accepts pasted projection JSON in browser
-state for one review session. No real manuscript text, real HGO content,
-database persistence, Studio publish API, deployment, or public `/episodes`
-replacement is involved.
+state for one review session, and `/projection-stage/artifact`, which accepts a
+browser-created staged artifact JSON packet for contract inspection. No real
+manuscript text, real HGO content, database persistence, Studio publish API,
+deployment, or public `/episodes` replacement is involved.
 
 ## Renderer Direction
 
@@ -135,14 +137,33 @@ Detailed artifact notes:
 
 - `docs/architecture/hgo-staged-projection-artifact-contract.md`
 
+## No-Persistence Artifact Inspection
+
+The staged surface includes `/projection-stage/artifact` for validating a
+browser-created staged artifact JSON file.
+
+This route:
+
+- validates the artifact contract
+- checks the embedded projection with the HGO projection validator
+- checks embedded review-gate projection identity against the projection
+- shows safety flags such as `persisted: false` and `published: false`
+- shows the embedded review gate through `ProjectionReviewGatePanel`
+- renders the embedded projection through `EpisodeProjectionView`
+
+It does not persist artifacts, save local storage, publish content, verify
+public safety, or create server state. It exists to make the future private
+staged artifact store contract testable before DB/API work.
+
 ## Future Path
 
 1. Synthetic staged surface.
 2. No-persistence browser import from Studio projection JSON.
 3. Browser-only staged artifact download.
-4. Private staged projection persistence.
-5. Manual approval gates for citation and public-safety review.
-6. Live public route promotion.
+4. Browser-only staged artifact import/validation.
+5. Private staged projection persistence.
+6. Manual approval gates for citation and public-safety review.
+7. Live public route promotion.
 
 ## Deferred
 

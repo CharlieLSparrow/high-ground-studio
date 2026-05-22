@@ -85,6 +85,12 @@ High Ground Studio is a monorepo with:
   containing the projection, validation warnings, review gate, and explicit
   `persisted: false` / `published: false` safety flags. It does not persist,
   publish, write local storage, replace public `/episodes`, or use real content.
+- HGO has a browser-only staged artifact inspection route at
+  `/projection-stage/artifact`. It accepts pasted `hgo-staged-artifact-v1`
+  JSON, validates the artifact contract, validates the embedded projection,
+  checks embedded review-gate identity, shows safety flags, and renders the
+  embedded projection. It does not persist, publish, write local storage, verify
+  public safety, replace public `/episodes`, or use real content.
 - The repo now has an agentic Studio/HGO smoke command,
   `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
   Studio manuscript helper payloads, HGO projection generation, HGO validation,
@@ -103,10 +109,10 @@ High Ground Studio is a monorepo with:
   It uses synthetic HGO projection JSON only, opens `/projection-preview/import`,
   confirms validation warnings and the shared renderer, checks
   `/projection-stage`, `/projection-stage/review`, `/projection-stage/import`,
-  and a staged detail route, verifies known real-content markers are absent,
-  writes a machine-readable report, and performs no server writes. If
-  `HGO_BASE_URL` is not set, it starts the web app locally on an available test
-  port and shuts it down after the run.
+  `/projection-stage/artifact`, and a staged detail route, verifies known
+  real-content markers are absent, writes a machine-readable report, and
+  performs no server writes. If `HGO_BASE_URL` is not set, it starts the web app
+  locally on an available test port and shuts it down after the run.
 - HGO also has a no-auth visual smoke command,
   `pnpm hgo:projection:visual-smoke`, for synthetic screenshot artifacts. It
   visits the projection preview map, import route, rendered import state, and
@@ -160,6 +166,9 @@ High Ground Studio is a monorepo with:
   private staged artifact store and can download browser-created artifact JSON,
   but pasted JSON and generated artifacts are not saved to local storage, server
   state, content files, or Prisma.
+- The HGO staged artifact inspection route is also no-persistence. It validates
+  browser-created artifact JSON and renders embedded projection state, but it
+  does not save, approve, publish, or verify real public-safety status.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a

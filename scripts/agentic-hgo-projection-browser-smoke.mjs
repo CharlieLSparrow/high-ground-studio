@@ -155,6 +155,7 @@ async function writeReport(status, extra = {}) {
       "/projection-stage",
       "/projection-stage/review",
       "/projection-stage/import",
+      "/projection-stage/artifact",
       "/projection-stage/synthetic-field-radio",
     ],
     commitSha: getCommitSha(),
@@ -559,6 +560,46 @@ async function runSmoke() {
       artifactVersion: artifact.artifactVersion,
       artifactStatus: artifact.status,
       recommendedNextAction: artifact.recommendedNextAction,
+    });
+    await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
+
+    await page.goto(`${hgoBaseUrl}/projection-stage/artifact`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByTestId("hgo-stage-artifact-json")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-artifact-hydrated")
+      .waitFor({ state: "attached", timeout: 20_000 });
+    await page.getByTestId("hgo-stage-artifact-json").fill(artifactJson);
+    await page
+      .getByTestId("hgo-stage-artifact-summary")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-artifact-review-gate")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-projection-rendered-root")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const artifactImportText = await page.locator("body").innerText();
+
+    if (
+      !/Artifact validation passed/i.test(artifactImportText) ||
+      !/Persisted\s+No/i.test(artifactImportText) ||
+      !/Published\s+No/i.test(artifactImportText) ||
+      !/does not persist/i.test(artifactImportText) ||
+      !/does not publish/i.test(artifactImportText) ||
+      !/verify public safety/i.test(artifactImportText)
+    ) {
+      throw new Error(
+        "HGO staged artifact import did not show expected validation, persisted/published false, no-publish, and public-safety boundary copy.",
+      );
+    }
+    addStep("confirm HGO staged artifact import", "passed", {
+      url: page.url(),
+      artifactVersion: artifact.artifactVersion,
+      artifactStatus: artifact.status,
     });
     await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
 
