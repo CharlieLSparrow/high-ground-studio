@@ -52,6 +52,19 @@ test("web Cloud Build config targets the web Dockerfile", () => {
   assert.match(cloudbuild, /_IMAGE_NAME: web/);
 });
 
+test("web runbook mounts OAuth client id from Secret Manager", () => {
+  const runbook = readFileSync("docs/runbooks/web-cloud-run.md", "utf8");
+  assert.match(runbook, /web-google-client-id/);
+  assert.match(
+    runbook,
+    /GOOGLE_CLIENT_ID=web-google-client-id:latest/,
+  );
+  assert.doesNotMatch(
+    runbook,
+    /--set-env-vars=GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID/,
+  );
+});
+
 test("web preflight script is read-only and completes repository checks", () => {
   const result = spawnSync("node", ["scripts/web-cloud-run-preflight.mjs"], {
     encoding: "utf8",

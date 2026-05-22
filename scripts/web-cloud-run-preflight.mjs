@@ -91,8 +91,10 @@ function checkOptionalGcloudResource(label, args) {
 
   if (value) {
     passed.push(`${label}: ${value.split("\n")[0]}`);
+    return true;
   } else {
     warnings.push(`${label} was not found or could not be read`);
+    return false;
   }
 }
 
@@ -181,6 +183,16 @@ if (hasGcloud) {
   }
 
   if (project) {
+    const webSecretNames = [
+      "web-database-url",
+      "web-auth-secret",
+      "web-google-client-id",
+      "web-google-client-secret",
+      "web-owner-emails",
+      "web-team-scheduler-emails",
+      "web-coach-emails",
+    ];
+
     checkOptionalGcloudResource("Artifact Registry repo high-ground-studio", [
       "artifacts",
       "repositories",
@@ -206,6 +218,30 @@ if (hasGcloud) {
       `web-cloud-run@${project}.iam.gserviceaccount.com`,
       "--format=value(email)",
     ]);
+
+    for (const secretName of webSecretNames) {
+      const secretExists = checkOptionalGcloudResource(
+        `Secret Manager secret ${secretName}`,
+        ["secrets", "describe", secretName, "--format=value(name)"],
+      );
+
+      if (!secretExists) {
+        continue;
+      }
+
+      checkOptionalGcloudResource(
+        `Secret Manager secret ${secretName} enabled version`,
+        [
+          "secrets",
+          "versions",
+          "list",
+          secretName,
+          "--filter=state:ENABLED",
+          "--format=value(name)",
+          "--limit=1",
+        ],
+      );
+    }
   }
 }
 

@@ -176,6 +176,7 @@ Create secrets without putting values in shell history:
 ```bash
 gcloud secrets create web-database-url --replication-policy=automatic
 gcloud secrets create web-auth-secret --replication-policy=automatic
+gcloud secrets create web-google-client-id --replication-policy=automatic
 gcloud secrets create web-google-client-secret --replication-policy=automatic
 gcloud secrets create web-owner-emails --replication-policy=automatic
 gcloud secrets create web-team-scheduler-emails --replication-policy=automatic
@@ -183,7 +184,9 @@ gcloud secrets create web-coach-emails --replication-policy=automatic
 ```
 
 Add secret versions through the console, or by piping from a secure local
-source. Do not commit values to the repo.
+source. Do not commit values to the repo. `GOOGLE_CLIENT_ID` is not a password,
+but Cloud Run deploy commands should still mount it from Secret Manager so
+operators do not need to paste OAuth identifiers into shell history.
 
 Create a dedicated Cloud Run service account:
 
@@ -200,6 +203,10 @@ gcloud secrets add-iam-policy-binding web-database-url \
   --role="roles/secretmanager.secretAccessor"
 
 gcloud secrets add-iam-policy-binding web-auth-secret \
+  --member="serviceAccount:web-cloud-run@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud secrets add-iam-policy-binding web-google-client-id \
   --member="serviceAccount:web-cloud-run@PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
@@ -257,8 +264,8 @@ gcloud run deploy web \
   --service-account=web-cloud-run@PROJECT_ID.iam.gserviceaccount.com \
   --allow-unauthenticated \
   --port=8080 \
-  --set-env-vars=GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID,HGO_SITE_URL=https://WEB_SERVICE_URL \
-  --set-secrets=DATABASE_URL=web-database-url:latest,AUTH_SECRET=web-auth-secret:latest,GOOGLE_CLIENT_SECRET=web-google-client-secret:latest,HGO_OWNER_EMAILS=web-owner-emails:latest,HGO_TEAM_SCHEDULER_EMAILS=web-team-scheduler-emails:latest,HGO_COACH_EMAILS=web-coach-emails:latest
+  --set-env-vars=HGO_SITE_URL=https://WEB_SERVICE_URL \
+  --set-secrets=DATABASE_URL=web-database-url:latest,AUTH_SECRET=web-auth-secret:latest,GOOGLE_CLIENT_ID=web-google-client-id:latest,GOOGLE_CLIENT_SECRET=web-google-client-secret:latest,HGO_OWNER_EMAILS=web-owner-emails:latest,HGO_TEAM_SCHEDULER_EMAILS=web-team-scheduler-emails:latest,HGO_COACH_EMAILS=web-coach-emails:latest
 ```
 
 `--allow-unauthenticated` allows public routes and NextAuth sign-in routes to be
