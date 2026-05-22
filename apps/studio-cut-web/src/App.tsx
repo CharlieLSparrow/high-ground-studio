@@ -38,6 +38,8 @@ const EPISODE_MANIFEST_BASELINE_STORAGE_KEY =
   "high-ground-studio.studio-cut.episode-manifest-baseline.v1";
 const DECISION_HISTORY_STORAGE_KEY =
   "high-ground-studio.studio-cut.decision-history.v1";
+const LOCAL_CHECKPOINTS_STORAGE_KEY =
+  "high-ground-studio.studio-cut.local-checkpoints.v1";
 const LOCAL_PROXY_VIDEO_ACCEPT =
   "video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
 const PLAYBACK_TICK_MS = 250;
@@ -45,6 +47,7 @@ const VIDEO_SEEK_DRIFT_TOLERANCE_MS = 350;
 const SMALL_SCRUB_STEP_MS = 1000;
 const LARGE_SCRUB_STEP_MS = 10000;
 const MAX_DECISION_HISTORY_ENTRIES = 40;
+const MAX_LOCAL_CHECKPOINTS = 12;
 
 const STATE_KEYBOARD_SHORTCUTS: Record<string, ProgramState> = {
   "1": "charlie",
@@ -104,6 +107,16 @@ type DecisionHistoryState = {
 };
 
 type PaneRectField = keyof SourcePaneRect;
+
+type LocalDecisionCheckpoint = {
+  id: string;
+  label: string;
+  episodeId?: string;
+  projectId: string;
+  branchId: string;
+  createdAt: string;
+  decisionEvents: DecisionEvent[];
+};
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
@@ -170,6 +183,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryState>(
     loadStoredDecisionHistory,
   );
+  const [localCheckpoints, setLocalCheckpoints] = useState<
+    LocalDecisionCheckpoint[]
+  >(loadStoredLocalCheckpoints);
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -245,6 +261,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredDecisionHistory(decisionHistory);
   }, [decisionHistory]);
+
+  useEffect(() => {
+    saveStoredLocalCheckpoints(localCheckpoints);
+  }, [localCheckpoints]);
 
   useEffect(() => {
     return () => {
@@ -548,6 +568,76 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       ...currentHistory,
       lastAction: `Exported checkpoint ${checkpointTimestamp}`,
     }));
+  }
+
+  function handleSaveLocalCheckpoint() {
+    if (sortedEvents.length === 0) {
+      setImportMessage("Add at least one decision before saving a checkpoint.");
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    const label = `${episodeManifest?.id ?? config.projectId} checkpoint ${formatCheckpointTimestamp(
+      new Date(createdAt),
+    )}`;
+    const checkpoint: LocalDecisionCheckpoint = {
+      id: createLocalCheckpointId(),
+      label,
+      episodeId: episodeManifest?.id,
+      projectId: config.projectId,
+      branchId: config.branchId,
+      createdAt,
+      decisionEvents: cloneDecisionEvents(sortedEvents),
+    };
+
+    setLocalCheckpoints((currentCheckpoints) =>
+      [checkpoint, ...currentCheckpoints].slice(0, MAX_LOCAL_CHECKPOINTS),
+    );
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Saved local checkpoint ${formatCheckpointTimestamp(
+        new Date(createdAt),
+      )}`,
+    }));
+  }
+
+  function handleRestoreLocalCheckpoint(checkpoint: LocalDecisionCheckpoint) {
+    stopProgramPlayback();
+    recordDecisionMutation(
+      `Restored local checkpoint ${checkpoint.label}`,
+      decisionEvents,
+      checkpoint.decisionEvents,
+    );
+    replaceDecisionEvents(checkpoint.decisionEvents);
+    setImportMessage(
+      `Restored local checkpoint "${checkpoint.label}" with ${checkpoint.decisionEvents.length} decision${
+        checkpoint.decisionEvents.length === 1 ? "" : "s"
+      }.`,
+    );
+  }
+
+  function handleExportLocalCheckpoint(checkpoint: LocalDecisionCheckpoint) {
+    const payload = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      projectId: checkpoint.projectId,
+      branchId: checkpoint.branchId,
+      decisionEvents: cloneDecisionEvents(checkpoint.decisionEvents),
+    };
+    const timestamp = formatCheckpointTimestamp(new Date(checkpoint.createdAt));
+    const fileName = getDecisionCheckpointFileName(
+      episodeManifest,
+      payload,
+      timestamp,
+    );
+
+    downloadJsonFile(payload, fileName);
+  }
+
+  function handleDeleteLocalCheckpoint(checkpointId: string) {
+    setLocalCheckpoints((currentCheckpoints) =>
+      currentCheckpoints.filter((checkpoint) => checkpoint.id !== checkpointId),
+    );
   }
 
   async function handleImportJson(event: ChangeEvent<HTMLInputElement>) {
@@ -1011,6 +1101,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
               <button
                 className="secondary-button"
                 type="button"
+                onClick={handleSaveLocalCheckpoint}
+                disabled={sortedEvents.length === 0}
+              >
+                Save Local Checkpoint
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
                 onClick={clearLocalDecisions}
                 disabled={sortedEvents.length === 0}
               >
@@ -1035,6 +1133,12 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             onRemove={(eventId) => {
               removeDecisionWithHistory(eventId);
             }}
+          />
+          <LocalCheckpointList
+            checkpoints={localCheckpoints}
+            onRestore={handleRestoreLocalCheckpoint}
+            onExport={handleExportLocalCheckpoint}
+            onDelete={handleDeleteLocalCheckpoint}
           />
         </div>
 
@@ -1928,6 +2032,59 @@ function DecisionList({
   );
 }
 
+function LocalCheckpointList({
+  checkpoints,
+  onRestore,
+  onExport,
+  onDelete,
+}: {
+  checkpoints: LocalDecisionCheckpoint[];
+  onRestore: (checkpoint: LocalDecisionCheckpoint) => void;
+  onExport: (checkpoint: LocalDecisionCheckpoint) => void;
+  onDelete: (checkpointId: string) => void;
+}) {
+  return (
+    <section className="local-checkpoints" aria-label="Local checkpoints">
+      <div className="timeline-header">
+        <strong>Local Checkpoints</strong>
+        <span>{checkpoints.length} saved in this browser</span>
+      </div>
+      {checkpoints.length === 0 ? (
+        <p className="panel-empty">
+          Save a local checkpoint during a tagging pass to restore or export it
+          later in this browser.
+        </p>
+      ) : (
+        <div className="checkpoint-list">
+          {checkpoints.map((checkpoint) => (
+            <article className="checkpoint-row" key={checkpoint.id}>
+              <div>
+                <strong>{checkpoint.label}</strong>
+                <span>
+                  {checkpoint.decisionEvents.length} decision
+                  {checkpoint.decisionEvents.length === 1 ? "" : "s"} ·{" "}
+                  {formatCheckpointTimestamp(new Date(checkpoint.createdAt))}
+                </span>
+              </div>
+              <div className="row-actions">
+                <button type="button" onClick={() => onRestore(checkpoint)}>
+                  Restore
+                </button>
+                <button type="button" onClick={() => onExport(checkpoint)}>
+                  Export
+                </button>
+                <button type="button" onClick={() => onDelete(checkpoint.id)}>
+                  Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SegmentList({
   segments,
   currentSegmentSourceEventId,
@@ -2190,6 +2347,39 @@ function saveStoredDecisionHistory(history: DecisionHistoryState) {
   }
 }
 
+function loadStoredLocalCheckpoints(): LocalDecisionCheckpoint[] {
+  try {
+    const rawValue = localStorage.getItem(LOCAL_CHECKPOINTS_STORAGE_KEY);
+
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue
+      .filter(isLocalDecisionCheckpoint)
+      .slice(0, MAX_LOCAL_CHECKPOINTS);
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredLocalCheckpoints(checkpoints: readonly LocalDecisionCheckpoint[]) {
+  try {
+    localStorage.setItem(
+      LOCAL_CHECKPOINTS_STORAGE_KEY,
+      JSON.stringify(checkpoints.slice(0, MAX_LOCAL_CHECKPOINTS)),
+    );
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
 function createEmptyDecisionHistory(): DecisionHistoryState {
   return {
     undoStack: [],
@@ -2232,6 +2422,29 @@ function isDecisionHistoryEntry(value: unknown): value is DecisionHistoryEntry {
   );
 }
 
+function isLocalDecisionCheckpoint(
+  value: unknown,
+): value is LocalDecisionCheckpoint {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as LocalDecisionCheckpoint;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.label === "string" &&
+    (candidate.episodeId === undefined ||
+      typeof candidate.episodeId === "string") &&
+    typeof candidate.projectId === "string" &&
+    typeof candidate.branchId === "string" &&
+    typeof candidate.createdAt === "string" &&
+    !Number.isNaN(Date.parse(candidate.createdAt)) &&
+    Array.isArray(candidate.decisionEvents) &&
+    candidate.decisionEvents.every(isDecisionEvent)
+  );
+}
+
 function trimDecisionHistoryStack(entries: readonly DecisionHistoryEntry[]) {
   return entries.slice(-MAX_DECISION_HISTORY_ENTRIES);
 }
@@ -2254,6 +2467,14 @@ function createHistoryEntryId() {
   }
 
   return `history-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createLocalCheckpointId() {
+  if ("randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `checkpoint-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function shouldIgnoreKeyboardShortcut(target: EventTarget | null) {

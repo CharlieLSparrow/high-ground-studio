@@ -17,6 +17,7 @@ It contains no private paths, media, credentials, or real episode data.
 - Keyboard tagging shortcuts, current segment summary, source scrub, and
   cut-skipping Program Playback.
 - Undo/redo for local decision edits and timestamped checkpoint exports.
+- Browser-local checkpoint library with restore, export, and delete actions.
 - Episode Readiness and Decision Timeline panels for handoff confidence.
 - Decision JSON import/export with manifest-aware filenames.
 - Local render CLI with bootstrap creation, file validation, render planning,
@@ -117,6 +118,8 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
 
 - Undo/redo is local/browser-only and bounded. Exported checkpoints are the
   durable rollback path.
+- Local checkpoint library entries are browser-local and capped to the newest
+  12 snapshots.
 - Pane calibration is metadata-only and localStorage-backed until an adjusted
   manifest is exported.
 - The web Program Preview is a browser confidence preview, not final render

@@ -385,6 +385,7 @@ async function runBrowserSmoke() {
     await expect(page.locator(".shortcut-legend")).toContainText("Play/Pause");
     await expect(page.getByRole("button", { name: "Export Decisions" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export Checkpoint" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save Local Checkpoint" })).toBeDisabled();
     await page
       .getByLabel("Import episode manifest JSON")
       .setInputFiles(smokeFiles.manifestPath);
@@ -441,6 +442,9 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "1 event");
     await expectSectionText(decisionSection, "Both");
     await expectSectionText(currentSegmentSection, "Both");
+    await page.getByRole("button", { name: "Save Local Checkpoint" }).click();
+    await expect(page.locator(".local-checkpoints")).toContainText("1 saved");
+    await expect(page.locator(".local-checkpoints")).toContainText("1 decision");
 
     await secondsInput.fill("10");
     await stateButton(page, "Cut").click();
@@ -464,6 +468,10 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "2 events");
     await expectSectionText(decisionSection, "Both");
     await expectSectionText(decisionSection, "Cut");
+    await expect(page.locator(".local-checkpoints")).toContainText("1 saved");
+    await page.locator(".local-checkpoints").getByRole("button", { name: "Restore" }).click();
+    await expectSectionText(decisionSection, "1 event");
+    await expectSectionText(decisionSection, "Both");
 
     if (pageErrors.length > 0) {
       throw new Error(

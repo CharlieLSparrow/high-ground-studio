@@ -151,9 +151,12 @@ Steps:
 10. Tag semantic state decisions.
 11. Watch the Decision Timeline. Colored source-time blocks should match the
    derived segments; click a block to jump to its in-point.
-12. Use `Export Checkpoint` before any risky cleanup/import pass.
-13. Export final decision JSON.
-14. Save or move the downloaded decision file to:
+12. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
+   restore point.
+13. Use `Export Checkpoint` before any risky cleanup/import pass or before
+   leaving the machine.
+14. Export final decision JSON.
+15. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
@@ -188,6 +191,10 @@ default to `episode-004-decisions.json`.
 Undo/redo covers local decision edits: add, remove, clear, and import. The
 history stack is browser-local and bounded. It is meant to make a fast tagging
 pass less fragile, not to replace exported checkpoints.
+
+Local checkpoints are also browser-local and capped to the newest 12 snapshots.
+Use them for quick restore during the session. Use exported checkpoints for
+durable rollback outside the current browser.
 
 Checkpoint exports are decision-layer snapshots only. With manifest id
 `episode-004`, checkpoint filenames look like:

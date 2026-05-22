@@ -115,6 +115,13 @@ with a timestamped filename such as
 decision events only; they do not include media, proxy files, object URLs, or
 source paths.
 
+`Save Local Checkpoint` stores the current decision list in this browser's
+localStorage so a messy pass can be restored without finding a downloaded file.
+The local checkpoint library is capped to the newest 12 snapshots. Each
+checkpoint can be restored into the current working set, exported as the same
+decision JSON shape, or deleted. Restoring a local checkpoint is itself
+undoable. This is still browser-local safety, not cloud branch history.
+
 The Episode Readiness panel gives a fast operator check before handoff:
 
 - manifest loaded
