@@ -70,14 +70,23 @@ High Ground Studio is a monorepo with:
   production `/manuscript`, does not write localStorage, does not call server
   routes, does not autosave, and does not enable real simultaneous editing.
 - Studio has pure collaboration lab validation through
-  `pnpm studio:collab:test`, `pnpm studio:collab:checkpoint:test`, and
-  `pnpm studio:collab:agentic-smoke`. These use synthetic data only and write
-  generated reports under ignored `artifacts/` paths.
+  `pnpm studio:collab:test`, `pnpm studio:collab:checkpoint:test`,
+  `pnpm studio:collab:adapter:test`, and `pnpm studio:collab:agentic-smoke`.
+  These use synthetic data only and write generated reports under ignored
+  `artifacts/` paths.
 - Studio has a local-only collaboration checkpoint bridge. It exports a Yjs lab
   client into `studio-collaboration-checkpoint-v1`, validates safety flags,
   imports the checkpoint into a new synthetic client, and confirms blocks, text,
   tags, empty blocks, and summaries survive. It is not a production manual
   server snapshot and does not touch production `/manuscript` save/load.
+- Studio has a synthetic-only collaboration Manuscript adapter bridge. It
+  converts `studio-collaboration-checkpoint-v1` into
+  `studio-collaboration-manuscript-adapter-v1`, creates a valid synthetic
+  `ManuscriptDraft` subset with title, ordered paragraph blocks, block ids,
+  text, synthetic author/tag metadata, empty structure regions, and empty quote
+  reviews, then converts back into a collaboration checkpoint/client. It is not
+  a production Manuscript Desk import, does not call snapshot APIs, does not
+  write localStorage, does not autosave, and does not touch manual snapshots.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -190,6 +199,9 @@ High Ground Studio is a monorepo with:
 - Studio collaboration checkpoints are local lab checkpoints only. They are not
   production manual snapshots, autosave, server persistence, or a replacement
   for rollback anchors.
+- Studio collaboration Manuscript adapter payloads are synthetic bridge payloads
+  only. They are not production imports, server snapshots, autosave state, or a
+  collaboration-enabled replacement for `/manuscript`.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

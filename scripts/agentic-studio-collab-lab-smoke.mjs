@@ -9,6 +9,13 @@ import {
   validateCollaborationCheckpoint,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 import {
+  compareCollaborationCheckpointToManuscriptDraft,
+  createCollaborationCheckpointFromSyntheticManuscriptDraft,
+  createSyntheticManuscriptDraftFromCollaborationCheckpoint,
+  summarizeSyntheticManuscriptDraftAdapterPayload,
+  validateSyntheticManuscriptDraftAdapterPayload,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
+import {
   applySyntheticTag,
   applySyntheticTextEdit,
   assertSyntheticCollaborationSnapshot,
@@ -190,12 +197,75 @@ async function runSmoke() {
       importedSummaryMatches,
     });
 
+    const adapterPayload =
+      createSyntheticManuscriptDraftFromCollaborationCheckpoint(checkpoint);
+    const adapterValidation =
+      validateSyntheticManuscriptDraftAdapterPayload(adapterPayload);
+
+    if (!adapterValidation.ok || !adapterValidation.summary) {
+      throw new Error(
+        `Synthetic Manuscript adapter validation failed: ${adapterValidation.errors.join(" ")}`,
+      );
+    }
+
+    addStep("convert checkpoint to synthetic Manuscript adapter payload", "passed", {
+      adapterVersion: adapterPayload.adapterVersion,
+      blocks: adapterValidation.summary.blockCount,
+      tags: adapterValidation.summary.tagCount,
+    });
+
+    const adapterComparison = compareCollaborationCheckpointToManuscriptDraft(
+      checkpoint,
+      adapterPayload,
+    );
+
+    if (!adapterComparison.matches) {
+      throw new Error(
+        `Synthetic Manuscript adapter comparison failed: ${adapterComparison.details.join(" ")}`,
+      );
+    }
+
+    const adapterRoundtrip =
+      createCollaborationCheckpointFromSyntheticManuscriptDraft(adapterPayload);
+
+    if (!adapterRoundtrip.ok || !adapterRoundtrip.checkpoint) {
+      throw new Error(
+        `Synthetic Manuscript adapter checkpoint roundtrip failed: ${adapterRoundtrip.errors.join(" ")}`,
+      );
+    }
+
+    const adapterImported = importCollaborationCheckpointToClient(
+      adapterRoundtrip.checkpoint,
+      "Imported adapter smoke client",
+    );
+
+    if (!adapterImported.ok || !adapterImported.summary) {
+      throw new Error(
+        `Synthetic Manuscript adapter client import failed: ${adapterImported.errors.join(" ")}`,
+      );
+    }
+
+    const adapterRoundtripMatches =
+      JSON.stringify(adapterImported.summary.blocks) ===
+      JSON.stringify(summarizeCollaborationDocument(charlie).blocks);
+
+    if (!adapterRoundtripMatches) {
+      throw new Error("Synthetic Manuscript adapter roundtrip summary mismatch.");
+    }
+
+    addStep("roundtrip synthetic Manuscript adapter back to collaboration client", "passed", {
+      adapterRoundtripMatches,
+    });
+
     const checkpointSummary = summarizeCollaborationCheckpoint(checkpoint);
+    const adapterSummary =
+      summarizeSyntheticManuscriptDraftAdapterPayload(adapterPayload);
     const convergenceSummary = {
       charlie: summarizeCollaborationDocument(charlie),
       homer: summarizeCollaborationDocument(homer),
       imported: summarizeCollaborationDocument(imported),
       checkpointImported: checkpointImport.summary,
+      adapterImported: adapterImported.summary,
       summariesMatch: collaborationSummariesMatch(charlie, homer),
     };
     const report = await writeReport("passed", {
@@ -205,8 +275,14 @@ async function runSmoke() {
       checkpointBlockCount: checkpointSummary.blockCount,
       checkpointTagCount: checkpointSummary.tagCount,
       importedSummaryMatches,
+      adapterRoundtrip: true,
+      adapterVersion: adapterPayload.adapterVersion,
+      adapterBlockCount: adapterSummary.blockCount,
+      adapterTagCount: adapterSummary.tagCount,
+      adapterRoundtripMatches,
       noServerWrites: true,
       noProductionManuscriptEditing: true,
+      noLocalStorage: true,
       routesTested: [],
       reportPath,
     });

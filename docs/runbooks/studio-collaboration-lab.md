@@ -41,6 +41,12 @@ Checkpoint bridge tests:
 pnpm studio:collab:checkpoint:test
 ```
 
+Manuscript adapter bridge tests:
+
+```bash
+pnpm studio:collab:adapter:test
+```
+
 Agentic helper smoke:
 
 ```bash
@@ -70,7 +76,12 @@ Generated reports are ignored and should not be committed.
 11. Confirm the checkpoint summary and checkpoint JSON appear.
 12. Click `Import checkpoint back into new synthetic client`.
 13. Confirm the imported-client summary appears.
-14. Confirm the page says no server writes, no production manuscript editing,
+14. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+15. Confirm the adapter summary and adapter JSON appear.
+16. Click `Validate adapter payload`.
+17. Click `Convert adapter back to collaboration client`.
+18. Confirm the adapter roundtrip summary appears.
+19. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -85,6 +96,8 @@ Passing means:
 - export/import snapshot shape works
 - checkpoint export/import bridge works
 - checkpoint safety flags remain local-only
+- synthetic Manuscript adapter payload validates as a safe draft subset
+- adapter checkpoint/client roundtrip preserves synthetic blocks text and tags
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

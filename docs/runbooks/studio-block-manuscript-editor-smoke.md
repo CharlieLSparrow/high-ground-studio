@@ -772,7 +772,12 @@ This is separate from the production Manuscript Desk smoke.
 11. Confirm checkpoint JSON appears.
 12. Click `Import checkpoint back into new synthetic client`.
 13. Confirm imported-client summary appears.
-14. Confirm the page still says no server writes, no production manuscript
+14. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+15. Confirm adapter JSON appears and says production import is `no`.
+16. Click `Validate adapter payload`.
+17. Click `Convert adapter back to collaboration client`.
+18. Confirm adapter roundtrip summary appears.
+19. Confirm the page still says no server writes, no production manuscript
     editing, no autosave, and no localStorage.
 
 Do not use real manuscript text in the collaboration lab.

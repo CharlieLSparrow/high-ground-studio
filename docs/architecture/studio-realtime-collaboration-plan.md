@@ -81,6 +81,7 @@ Commands:
 
 - `pnpm studio:collab:test`
 - `pnpm studio:collab:checkpoint:test`
+- `pnpm studio:collab:adapter:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -117,6 +118,39 @@ Checkpoint safety flags are explicit:
 - `autosave: false`
 - `productionSnapshot: false`
 
+## Synthetic Manuscript Adapter Bridge
+
+The collaboration lab now has a synthetic-only adapter bridge:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts`
+
+Adapter version:
+
+- `studio-collaboration-manuscript-adapter-v1`
+
+The adapter proves a local collaboration checkpoint can become a Manuscript
+Desk-compatible synthetic draft subset, validate as a `ManuscriptDraft`, and
+roundtrip back into a collaboration checkpoint/client without losing synthetic
+blocks, text, tags, empty blocks, or safety flags.
+
+The adapted subset is intentionally narrow:
+
+- title
+- ordered paragraph blocks
+- block ids
+- text
+- synthetic author marks
+- synthetic collaboration tag metadata
+- empty structure regions
+- empty quote reviews
+- no source file metadata
+- no production snapshot metadata
+
+It is not a production Manuscript Desk import. It does not call snapshot APIs,
+write localStorage, write server state, autosave, or mutate manual snapshots.
+Future production wiring still needs a deliberate checkpoint-to-manual-snapshot
+action with access control and rollback rules.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -128,6 +162,7 @@ Checkpoint safety flags are explicit:
 - no real manuscript text
 - no localStorage collaboration state
 - no production manual snapshot mutation
+- no production Manuscript Desk adapter import
 - no public publishing
 
 ## Rough 20-Sprint Path

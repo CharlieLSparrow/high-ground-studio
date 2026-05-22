@@ -19,6 +19,12 @@ import {
   type StudioCollaborationCheckpointSummary,
 } from "./studio-collaboration-checkpoint-bridge";
 import {
+  createCollaborationCheckpointFromSyntheticManuscriptDraft,
+  createSyntheticManuscriptDraftFromCollaborationCheckpoint,
+  validateSyntheticManuscriptDraftAdapterPayload,
+  type StudioCollaborationManuscriptAdapterSummary,
+} from "./studio-collaboration-manuscript-adapter";
+import {
   applySyntheticTag,
   applySyntheticTextEdit,
   collaborationSummariesMatch,
@@ -40,6 +46,9 @@ type LabState = {
   checkpointJson: string;
   checkpointSummary: StudioCollaborationCheckpointSummary | null;
   importedCheckpointSummary: StudioCollaborationSummary | null;
+  adapterJson: string;
+  adapterSummary: StudioCollaborationManuscriptAdapterSummary | null;
+  adapterRoundtripSummary: StudioCollaborationSummary | null;
   lastAction: string;
 };
 
@@ -58,6 +67,9 @@ function createInitialLabState(): LabState {
     checkpointJson: "",
     checkpointSummary: null,
     importedCheckpointSummary: null,
+    adapterJson: "",
+    adapterSummary: null,
+    adapterRoundtripSummary: null,
     lastAction: "Synthetic collaboration lab initialized.",
   };
 }
@@ -216,6 +228,35 @@ export default function StudioCollaborationLabClient() {
     }));
   }
 
+  function updateAdapterState(input: {
+    message: string;
+    adapterJson?: string;
+    adapterSummary?: StudioCollaborationManuscriptAdapterSummary | null;
+    adapterRoundtripSummary?: StudioCollaborationSummary | null;
+    checkpointJson?: string;
+    checkpointSummary?: StudioCollaborationCheckpointSummary | null;
+  }) {
+    setLab((current) => ({
+      ...current,
+      revision: current.revision + 1,
+      adapterJson: input.adapterJson ?? current.adapterJson,
+      adapterSummary:
+        input.adapterSummary === undefined
+          ? current.adapterSummary
+          : input.adapterSummary,
+      adapterRoundtripSummary:
+        input.adapterRoundtripSummary === undefined
+          ? current.adapterRoundtripSummary
+          : input.adapterRoundtripSummary,
+      checkpointJson: input.checkpointJson ?? current.checkpointJson,
+      checkpointSummary:
+        input.checkpointSummary === undefined
+          ? current.checkpointSummary
+          : input.checkpointSummary,
+      lastAction: input.message,
+    }));
+  }
+
   function syncCharlieToHomer() {
     const update = syncCollaborationClientToClient(lab.charlie, lab.homer);
     refresh(
@@ -305,6 +346,124 @@ export default function StudioCollaborationLabClient() {
       checkpointJson: "",
       checkpointSummary: null,
       importedCheckpointSummary: null,
+    });
+  }
+
+  function createAdapterPayloadFromCheckpoint() {
+    try {
+      const checkpoint = lab.checkpointJson
+        ? JSON.parse(lab.checkpointJson)
+        : createCollaborationCheckpointFromClient(lab.charlie);
+      const checkpointValidation = validateCollaborationCheckpoint(checkpoint);
+
+      if (!checkpointValidation.ok || !checkpointValidation.checkpoint) {
+        updateAdapterState({
+          message: `Adapter checkpoint rejected: ${checkpointValidation.errors.join(" ")}`,
+        });
+        return;
+      }
+
+      const adapterPayload =
+        createSyntheticManuscriptDraftFromCollaborationCheckpoint(
+          checkpointValidation.checkpoint,
+        );
+      const adapterValidation =
+        validateSyntheticManuscriptDraftAdapterPayload(adapterPayload);
+
+      updateAdapterState({
+        message: adapterValidation.ok
+          ? "Synthetic Manuscript adapter payload created. Not a production import."
+          : `Adapter validation failed: ${adapterValidation.errors.join(" ")}`,
+        adapterJson: JSON.stringify(adapterPayload, null, 2),
+        adapterSummary: adapterValidation.summary,
+        adapterRoundtripSummary: null,
+        checkpointJson: JSON.stringify(checkpointValidation.checkpoint, null, 2),
+        checkpointSummary: checkpointValidation.summary,
+      });
+    } catch (error) {
+      updateAdapterState({
+        message:
+          error instanceof Error
+            ? `Adapter creation failed: ${error.message}`
+            : "Adapter creation failed.",
+      });
+    }
+  }
+
+  function validateAdapterPayload() {
+    try {
+      const parsed = JSON.parse(lab.adapterJson) as unknown;
+      const validation = validateSyntheticManuscriptDraftAdapterPayload(parsed);
+
+      updateAdapterState({
+        message: validation.ok
+          ? "Synthetic Manuscript adapter payload validated. No server write happened."
+          : `Adapter validation rejected payload: ${validation.errors.join(" ")}`,
+        adapterSummary: validation.summary,
+        adapterRoundtripSummary: null,
+      });
+    } catch (error) {
+      updateAdapterState({
+        message:
+          error instanceof Error
+            ? `Adapter JSON parse failed: ${error.message}`
+            : "Adapter JSON parse failed.",
+      });
+    }
+  }
+
+  function roundtripAdapterPayload() {
+    try {
+      const parsed = JSON.parse(lab.adapterJson) as unknown;
+      const validation = validateSyntheticManuscriptDraftAdapterPayload(parsed);
+
+      if (!validation.ok || !validation.payload) {
+        updateAdapterState({
+          message: `Adapter roundtrip rejected payload: ${validation.errors.join(" ")}`,
+        });
+        return;
+      }
+
+      const checkpoint =
+        createCollaborationCheckpointFromSyntheticManuscriptDraft(
+          validation.payload,
+        );
+
+      if (!checkpoint.ok || !checkpoint.checkpoint) {
+        updateAdapterState({
+          message: `Adapter checkpoint roundtrip failed: ${checkpoint.errors.join(" ")}`,
+        });
+        return;
+      }
+
+      const imported = importCollaborationCheckpointToClient(
+        checkpoint.checkpoint,
+        "Imported adapter bridge client",
+      );
+
+      updateAdapterState({
+        message: imported.ok
+          ? "Adapter payload converted back into a synthetic collaboration client. Production Manuscript Desk was untouched."
+          : `Adapter client import failed: ${imported.errors.join(" ")}`,
+        adapterSummary: validation.summary,
+        adapterRoundtripSummary: imported.summary,
+      });
+    } catch (error) {
+      updateAdapterState({
+        message:
+          error instanceof Error
+            ? `Adapter roundtrip parse failed: ${error.message}`
+            : "Adapter roundtrip parse failed.",
+      });
+    }
+  }
+
+  function clearAdapterPayload() {
+    updateAdapterState({
+      message: "Synthetic Manuscript adapter bridge state cleared.",
+      adapterJson: "",
+      adapterSummary: null,
+      adapterRoundtripSummary: null,
     });
   }
 
@@ -578,6 +737,154 @@ export default function StudioCollaborationLabClient() {
                 })
               }
               placeholder="Create a synthetic checkpoint to inspect the bridge shape."
+              spellCheck={false}
+            />
+          </label>
+        </section>
+
+        <section
+          className={cn(panelClassName, "mt-5")}
+          data-testid="studio-collab-manuscript-adapter"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className={labelClassName}>Manuscript adapter bridge</p>
+              <h2 className={panelTitleClassName}>
+                Synthetic Manuscript Desk draft subset
+              </h2>
+              <p className={panelCopyClassName}>
+                Convert a local collaboration checkpoint into a synthetic
+                Manuscript Desk-compatible draft subset, validate it, and
+                convert it back into a synthetic collaboration checkpoint/client.
+                This is not production Manuscript Desk import, does not write
+                server state, does not touch manual snapshots, and does not
+                autosave.
+              </p>
+            </div>
+            <StudioChip tone="review">synthetic adapter only</StudioChip>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={buttonClassName}
+              data-testid="studio-collab-create-adapter"
+              onClick={createAdapterPayloadFromCheckpoint}
+            >
+              Create synthetic Manuscript adapter payload from checkpoint
+            </button>
+            <button
+              type="button"
+              className={buttonClassName}
+              data-testid="studio-collab-validate-adapter"
+              onClick={validateAdapterPayload}
+              disabled={!lab.adapterJson}
+            >
+              Validate adapter payload
+            </button>
+            <button
+              type="button"
+              className={buttonClassName}
+              data-testid="studio-collab-roundtrip-adapter"
+              onClick={roundtripAdapterPayload}
+              disabled={!lab.adapterJson}
+            >
+              Convert adapter back to collaboration client
+            </button>
+            <button
+              type="button"
+              className={dangerButtonClassName}
+              data-testid="studio-collab-clear-adapter"
+              onClick={clearAdapterPayload}
+            >
+              Clear adapter
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Adapter blocks</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.adapterSummary?.blockCount ?? 0}
+                </p>
+              </div>
+            </div>
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Adapter tags</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.adapterSummary?.tagCount ?? 0}
+                </p>
+              </div>
+            </div>
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Production import</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.adapterSummary?.productionImport ? "yes" : "no"}
+                </p>
+              </div>
+            </div>
+            <div className={cardClassName}>
+              <div className="p-3">
+                <p className={labelClassName}>Roundtrip tags</p>
+                <p className="mt-2 text-2xl font-black text-studio-ink">
+                  {lab.adapterRoundtripSummary?.tagCount ?? 0}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {lab.adapterSummary ? (
+            <div
+              className={cn(cardClassName, "mt-4 p-3")}
+              data-testid="studio-collab-adapter-summary"
+            >
+              <p className={labelClassName}>Adapter summary</p>
+              <p className="mt-2 text-sm font-bold leading-6 text-studio-muted">
+                {lab.adapterSummary.title}: {lab.adapterSummary.blockCount}{" "}
+                blocks, {lab.adapterSummary.tagCount} tags,{" "}
+                {lab.adapterSummary.emptyBlockCount} empty blocks. The adapted
+                draft is a subset only: title, ordered blocks, block IDs, text,
+                synthetic tags, and provenance metadata.
+              </p>
+              <p className="mt-2 text-xs font-bold leading-5 text-studio-muted">
+                Gaps: {lab.adapterSummary.gaps.join(" ")}
+              </p>
+            </div>
+          ) : null}
+
+          {lab.adapterRoundtripSummary ? (
+            <div
+              className={cn(cardClassName, "mt-4 p-3")}
+              data-testid="studio-collab-adapter-roundtrip-summary"
+            >
+              <p className={labelClassName}>Roundtrip synthetic client</p>
+              <p className="mt-2 text-sm font-bold leading-6 text-studio-muted">
+                {lab.adapterRoundtripSummary.clientName}:{" "}
+                {lab.adapterRoundtripSummary.blockCount} blocks,{" "}
+                {lab.adapterRoundtripSummary.tagCount} tags,{" "}
+                {lab.adapterRoundtripSummary.emptyBlockCount} empty blocks.
+              </p>
+            </div>
+          ) : null}
+
+          <label className="mt-4 grid gap-2">
+            <span className={labelClassName}>Synthetic Manuscript adapter JSON</span>
+            <textarea
+              className="min-h-[300px] w-full resize-y rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 py-2.5 font-mono text-xs leading-6 text-studio-ink"
+              data-testid="studio-collab-adapter-json"
+              value={lab.adapterJson}
+              onChange={(event) =>
+                updateAdapterState({
+                  message: "Synthetic adapter JSON edited in browser state only.",
+                  adapterJson: event.currentTarget.value,
+                  adapterSummary: null,
+                  adapterRoundtripSummary: null,
+                })
+              }
+              placeholder="Create a synthetic Manuscript adapter payload to inspect the safe subset."
               spellCheck={false}
             />
           </label>
