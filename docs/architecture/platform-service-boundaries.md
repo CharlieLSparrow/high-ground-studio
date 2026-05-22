@@ -17,6 +17,11 @@ The goal is to keep the platform honest as it grows toward:
 
 It is not an infrastructure-as-code plan yet.
 
+WorldHub is the future central infrastructure hub for cross-site offers,
+entitlements, provider connections, embeds, commerce, fulfillment, and coaching
+coordination. See `docs/architecture/worldhub-foundation.md` for the first
+provider-neutral WorldHub boundary before implementation work begins.
+
 ## Current Services
 
 ### `apps/studio`

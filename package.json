@@ -32,6 +32,8 @@
     "hgo:projection:visual-smoke": "node scripts/agentic-hgo-projection-visual-smoke.mjs",
     "hgo:artifact:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/hgo-staged-artifact.test.mjs",
     "hgo:store-lab:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/hgo-staged-artifact-store-lab.test.mjs",
+    "worldhub:domain:build": "pnpm --filter @high-ground/worldhub-domain build",
+    "worldhub:domain:typecheck": "pnpm --filter @high-ground/worldhub-domain typecheck",
     "studio:structure:test": "node --experimental-strip-types --test scripts/studio-structure-mode.test.mjs",
     "studio:smoke:persistence": "node scripts/smoke-studio-persistence.mjs",
     "web": "pnpm --filter web dev",

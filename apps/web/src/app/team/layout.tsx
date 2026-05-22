@@ -106,6 +106,13 @@ export default async function TeamLayout({
             </Link>
 
             <Link
+              href="/team/worldhub"
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+            >
+              WorldHub
+            </Link>
+
+            <Link
               href="/team/kanban"
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
             >
