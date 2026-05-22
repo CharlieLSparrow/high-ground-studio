@@ -50,6 +50,30 @@ write to a server. If `HGO_BASE_URL` is not provided, it starts the web app on
 an available local test port, waits for `/projection-preview/import`, runs the
 synthetic import/render smoke, and shuts the dev server down.
 
+For a no-auth visual artifact pass across the HGO projection preview surfaces,
+run:
+
+```bash
+pnpm hgo:projection:visual-smoke
+```
+
+It writes a route-matrix JSON report to:
+
+```text
+artifacts/agentic-browser-smoke/hgo-projection-visual-smoke-report.json
+```
+
+It writes latest screenshots to:
+
+```text
+artifacts/playwright/hgo-projection-visual-smoke/
+```
+
+This command does not open Studio, does not require auth state, and does not
+write to a server. If `HGO_BASE_URL` is not provided, it starts the web app on
+an available local test port, captures synthetic projection preview screenshots,
+and shuts the dev server down.
+
 ## What It Tests
 
 The current harness is a local API/helper-level smoke. It does not open a
@@ -77,7 +101,6 @@ The helper harness does not currently automate:
 - real server snapshot writes
 - browser replacement prompts
 - downloaded files
-- visual screenshots or traces
 
 The browser harness can automate the synthetic workflow only when an operator
 has supplied a private storage-state file. Do not add OAuth workarounds. Use
@@ -119,6 +142,18 @@ For HGO no-auth browser reports:
 - `failed` means the browser run started but route, validation, render, or
   content-safety expectations failed.
 
+For HGO visual smoke reports:
+
+- `passed` means the projection preview map, empty import route, rendered import
+  route, and discovered synthetic detail routes captured screenshots while known
+  real-content markers stayed absent.
+- `blocked` means Chromium or the HGO server path could not be made available
+  safely.
+- `failed` means a route, selector, render, screenshot, or content-safety
+  expectation failed.
+- `routes[]` records the path, status, screenshot path, page title, heading, and
+  notes for each captured surface.
+
 ## Manual Follow-Up
 
 Use the normal browser smoke after the helper harness passes:
@@ -140,6 +175,10 @@ Use the normal browser smoke after the helper harness passes:
 
 The HGO no-auth smoke does not replace the Studio browser smoke. It covers only
 the projection import and renderer path.
+
+The HGO visual smoke also does not replace authenticated Studio browser smoke.
+It is a screenshot/report artifact pass for later human review of synthetic HGO
+projection direction.
 
 ## Safety Boundary
 

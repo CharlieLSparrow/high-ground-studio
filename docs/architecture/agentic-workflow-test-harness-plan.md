@@ -67,6 +67,17 @@ projection renderer mounts, checks known real-content markers are absent, and
 writes a JSON report. If `HGO_BASE_URL` is not provided, it starts the `web`
 app locally on an available test port and shuts it down after the run.
 
+The HGO visual artifact harness also does not need Studio auth. It runs:
+
+```bash
+pnpm hgo:projection:visual-smoke
+```
+
+The command visits synthetic-only HGO projection preview surfaces, captures
+full-page screenshots, writes a route-matrix JSON report, and performs no
+server writes. It is for later human visual review of the renderer and staged
+preview direction, not for validating real publishing.
+
 Future browser runs should use one of these safe paths:
 
 - Local test auth if Studio gains a deliberate non-production test-auth mode.
@@ -113,6 +124,18 @@ The HGO no-auth browser command writes:
 artifacts/agentic-browser-smoke/hgo-projection-browser-smoke-report.json
 ```
 
+The HGO visual artifact command writes:
+
+```text
+artifacts/agentic-browser-smoke/hgo-projection-visual-smoke-report.json
+```
+
+Latest screenshots are written to:
+
+```text
+artifacts/playwright/hgo-projection-visual-smoke/
+```
+
 The report includes:
 
 - `startedAt` / `finishedAt`
@@ -128,15 +151,20 @@ The report includes:
 - safety confirmations for synthetic-only data, no server writes, no publish
   action, no autosave, and no Yjs/collaboration
 
+The visual report additionally includes `routes[]` entries with path, status,
+screenshot, title, heading, and notes for each captured preview surface.
+
 The report directory is generated output and is ignored by git.
 
-Browser failure screenshots, when available, live under `artifacts/playwright/`
-and are also ignored.
+Browser screenshots, when available, live under `artifacts/playwright/` and are
+also ignored.
 
 ## Future Path
 
 - Add a Playwright browser smoke once the repo has a safe auth strategy.
 - Add optional screenshots/traces for local authenticated browser runs.
+- Extend visual smoke coverage to mobile/tablet screenshots once the desktop
+  artifact pass stays stable.
 - Add a production read-only smoke that checks page health and static route
   availability without server writes.
 - Add CI-safe smoke that runs only helper-level checks and never depends on

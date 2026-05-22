@@ -88,6 +88,12 @@ High Ground Studio is a monorepo with:
   real-content markers are absent, writes a machine-readable report, and
   performs no server writes. If `HGO_BASE_URL` is not set, it starts the web app
   locally on an available test port and shuts it down after the run.
+- HGO also has a no-auth visual smoke command,
+  `pnpm hgo:projection:visual-smoke`, for synthetic screenshot artifacts. It
+  visits the projection preview map, import route, rendered import state, and
+  synthetic projection detail routes, writes a route-matrix report, captures
+  screenshots under `artifacts/playwright/hgo-projection-visual-smoke/`, checks
+  known real-content markers are absent, and performs no server writes.
 
 ## Current Coaching Workflow
 
@@ -131,6 +137,9 @@ High Ground Studio is a monorepo with:
   product failure.
 - The HGO no-auth browser smoke does not exercise Studio auth, manuscript
   library, or snapshot UI. It covers only HGO projection import and rendering.
+- The HGO no-auth visual smoke is a screenshot/report artifact pass for later
+  human review. It does not exercise Studio auth, manuscript library, snapshot
+  UI, real publishing, or real content.
 
 ## Current Stabilization Decisions
 
