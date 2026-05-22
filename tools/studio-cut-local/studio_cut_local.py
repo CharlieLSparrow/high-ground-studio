@@ -189,6 +189,29 @@ PROFILE_DESCRIPTIONS = {
     "proxy_preview": "Rough whole-proxy trimming for quick review output.",
 }
 
+AGENT_SMOKE_SOURCE_DURATION_MS = 12000
+AGENT_SMOKE_EXPECTED_CUT_DURATION_MS = 2000
+AGENT_SMOKE_EXPECTED_ACTIVE_DURATION_MS = (
+    AGENT_SMOKE_SOURCE_DURATION_MS - AGENT_SMOKE_EXPECTED_CUT_DURATION_MS
+)
+AGENT_SMOKE_EXPECTED_ACTIVE_STATES = [
+    "both",
+    "charlie",
+    "homer",
+    "charlie_clip",
+    "both_clip",
+]
+AGENT_SMOKE_EXPECTED_CUT_SEGMENT_COUNT = 1
+AGENT_SMOKE_EXPECTED_YOUTUBE_16X9_BEHAVIORS = {
+    "charlie": "Charlie full frame",
+    "homer": "Homer full frame",
+    "both": "Side-by-side hosts",
+    "charlie_clip": "Charlie plus clip",
+    "homer_clip": "Homer plus clip",
+    "both_clip": "Both hosts plus clip",
+    "cut": "Skipped",
+}
+
 PROGRAM_STATE_LABELS = {
     "charlie": "Charlie",
     "homer": "Homer",
@@ -442,12 +465,13 @@ def run_explain_profile(args: argparse.Namespace) -> int:
 def execute_agent_smoke_test(
     *, workdir: Path, workdir_kept: bool, skip_render: bool
 ) -> dict[str, Any]:
-    source_duration_ms = 12000
-    expected_cut_duration_ms = 2000
-    expected_output_duration_ms = source_duration_ms - expected_cut_duration_ms
+    source_duration_ms = AGENT_SMOKE_SOURCE_DURATION_MS
+    expected_cut_duration_ms = AGENT_SMOKE_EXPECTED_CUT_DURATION_MS
+    expected_output_duration_ms = AGENT_SMOKE_EXPECTED_ACTIVE_DURATION_MS
     commands_run: list[str] = []
     warnings: list[str] = []
     errors: list[str] = []
+    golden_assertion_failures: list[str] = []
     generated_files: dict[str, str] = {}
     script_path = Path(__file__).resolve()
     ffmpeg_path = shutil.which("ffmpeg")
@@ -467,12 +491,16 @@ def execute_agent_smoke_test(
         "generatedFiles": generated_files,
         "sourceDurationMs": source_duration_ms,
         "expectedCutDurationMs": expected_cut_duration_ms,
+        "expectedActiveDurationMs": expected_output_duration_ms,
         "expectedOutputDurationMs": expected_output_duration_ms,
         "actualOutputDurationMs": None,
         "outputPath": str(output_path),
         "commandsRun": commands_run,
         "warnings": warnings,
         "errors": errors,
+        "goldenAssertionsPassed": False,
+        "goldenAssertionCount": 0,
+        "goldenAssertionFailures": golden_assertion_failures,
     }
 
     try:
@@ -559,6 +587,17 @@ def execute_agent_smoke_test(
 
         if not render_plan_path.is_file():
             errors.append(f"render plan JSON was not written: {render_plan_path}")
+        else:
+            golden_result = assert_agent_smoke_golden_plan(render_plan_path)
+            report["goldenAssertionCount"] = golden_result["count"]
+            golden_assertion_failures.extend(golden_result["failures"])
+            report["goldenAssertionsPassed"] = not golden_assertion_failures
+
+            if golden_assertion_failures:
+                errors.extend(
+                    f"golden assertion failed: {failure}"
+                    for failure in golden_assertion_failures
+                )
 
         if not skip_render:
             run_command_capture(
@@ -761,6 +800,152 @@ def build_agent_smoke_media_map(
         },
         "audio": {"program": str(media_paths["programAudio"])},
     }
+
+
+def assert_agent_smoke_golden_plan(render_plan_path: Path) -> dict[str, Any]:
+    assertion_count = 0
+    failures: list[str] = []
+
+    def expect_equal(label: str, actual: Any, expected: Any) -> None:
+        nonlocal assertion_count
+        assertion_count += 1
+
+        if actual != expected:
+            failures.append(f"{label}: expected {expected!r}, got {actual!r}")
+
+    def expect_true(label: str, condition: bool) -> None:
+        nonlocal assertion_count
+        assertion_count += 1
+
+        if not condition:
+            failures.append(label)
+
+    try:
+        plan = json.loads(render_plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "count": 1,
+            "failures": [f"could not read render plan JSON: {error}"],
+        }
+
+    plan_object = plan if isinstance(plan, dict) else {}
+    summary = plan_object.get("summary")
+    active_segments = plan_object.get("activeSegments")
+    cut_segments = plan_object.get("cutSegments")
+
+    expect_true("render plan is an object", isinstance(plan, dict))
+    expect_true("render plan summary is an object", isinstance(summary, dict))
+    expect_true(
+        "render plan activeSegments is a list",
+        isinstance(active_segments, list),
+    )
+    expect_true("render plan cutSegments is a list", isinstance(cut_segments, list))
+
+    if not isinstance(summary, dict):
+        summary = {}
+
+    if not isinstance(active_segments, list):
+        active_segments = []
+
+    if not isinstance(cut_segments, list):
+        cut_segments = []
+
+    expect_equal("profile", plan_object.get("profile"), "youtube_16x9")
+    expect_equal(
+        "summary.sourceDurationMs",
+        summary.get("sourceDurationMs"),
+        AGENT_SMOKE_SOURCE_DURATION_MS,
+    )
+    expect_equal(
+        "summary.cutDurationMs",
+        summary.get("cutDurationMs"),
+        AGENT_SMOKE_EXPECTED_CUT_DURATION_MS,
+    )
+    expect_equal(
+        "summary.activeDurationMs",
+        summary.get("activeDurationMs"),
+        AGENT_SMOKE_EXPECTED_ACTIVE_DURATION_MS,
+    )
+    expect_equal(
+        "summary.activeSegmentCount",
+        summary.get("activeSegmentCount"),
+        len(AGENT_SMOKE_EXPECTED_ACTIVE_STATES),
+    )
+    expect_equal(
+        "summary.cutSegmentCount",
+        summary.get("cutSegmentCount"),
+        AGENT_SMOKE_EXPECTED_CUT_SEGMENT_COUNT,
+    )
+
+    active_states = [
+        segment.get("programState", segment.get("state"))
+        for segment in active_segments
+        if isinstance(segment, dict)
+    ]
+    expect_equal(
+        "active segment state order",
+        active_states,
+        AGENT_SMOKE_EXPECTED_ACTIVE_STATES,
+    )
+    expect_true("no active segment has state cut", "cut" not in active_states)
+
+    for index, segment in enumerate(active_segments):
+        label = f"active segment {index}"
+
+        if not isinstance(segment, dict):
+            expect_true(f"{label} is an object", False)
+            continue
+
+        state = segment.get("programState", segment.get("state"))
+        profile_plan = segment.get("profilePlan")
+        layout_behavior = segment.get("layoutBehavior")
+        expected_behavior = AGENT_SMOKE_EXPECTED_YOUTUBE_16X9_BEHAVIORS.get(state)
+
+        expect_true(f"{label} has profilePlan object", isinstance(profile_plan, dict))
+        expect_true(
+            f"{label} has layoutBehavior string",
+            isinstance(layout_behavior, str) and bool(layout_behavior.strip()),
+        )
+        expect_equal(f"{label} layoutBehavior", layout_behavior, expected_behavior)
+
+        if isinstance(profile_plan, dict):
+            expect_equal(
+                f"{label} profilePlan.profile",
+                profile_plan.get("profile"),
+                "youtube_16x9",
+            )
+            expect_equal(f"{label} profilePlan.state", profile_plan.get("state"), state)
+            expect_equal(
+                f"{label} profilePlan.behavior",
+                profile_plan.get("behavior"),
+                expected_behavior,
+            )
+
+    for index, segment in enumerate(cut_segments):
+        label = f"cut segment {index}"
+
+        if not isinstance(segment, dict):
+            expect_true(f"{label} is an object", False)
+            continue
+
+        profile_plan = segment.get("profilePlan")
+        expect_equal(f"{label} state", segment.get("programState"), "cut")
+        expect_equal(
+            f"{label} layoutBehavior",
+            segment.get("layoutBehavior"),
+            AGENT_SMOKE_EXPECTED_YOUTUBE_16X9_BEHAVIORS["cut"],
+        )
+
+        if isinstance(profile_plan, dict):
+            expect_equal(
+                f"{label} profilePlan.behavior",
+                profile_plan.get("behavior"),
+                AGENT_SMOKE_EXPECTED_YOUTUBE_16X9_BEHAVIORS["cut"],
+            )
+        else:
+            expect_true(f"{label} has profilePlan object", False)
+
+    return {"count": assertion_count, "failures": failures}
 
 
 def build_episode_bootstrap_manifest(
@@ -999,6 +1184,11 @@ def print_agent_smoke_report(report: dict[str, Any], *, json_mode: bool) -> None
         "Expected output duration: "
         f"{format_time_ms(report['expectedOutputDurationMs'])}"
     )
+    print(
+        "Golden assertions: "
+        f"{report['goldenAssertionCount']} checked, "
+        f"{'passed' if report['goldenAssertionsPassed'] else 'failed'}"
+    )
 
     if report.get("actualOutputDurationMs") is not None:
         print(f"Actual output duration: {format_time_ms(report['actualOutputDurationMs'])}")
@@ -1020,6 +1210,11 @@ def print_agent_smoke_report(report: dict[str, Any], *, json_mode: bool) -> None
         print("\nErrors:")
         for error in report["errors"]:
             print(f"  - {error}")
+
+    if report["goldenAssertionFailures"]:
+        print("\nGolden assertion failures:")
+        for failure in report["goldenAssertionFailures"]:
+            print(f"  - {failure}")
 
     print("\nCommands run:")
     for command in report["commandsRun"]:

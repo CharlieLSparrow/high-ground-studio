@@ -181,11 +181,22 @@ The generated decisions exercise:
 
 The validation checks that a render plan is written, the output MP4 exists, the
 rendered output is shorter than the source because the `Cut` span was skipped,
-and the output resolution is `1920x1080` when `ffprobe` is available.
+and the output resolution is `1920x1080` when `ffprobe` is available. It also
+checks embedded golden assertions for the semantic render plan:
+
+- source duration is `12000` ms
+- `Cut` duration is `2000` ms
+- active duration is `10000` ms
+- active states are `both`, `charlie`, `homer`, `charlie_clip`, `both_clip`
+- no active segment is `cut`
+- each active segment has profile planning and expected `youtube_16x9` layout
+  behavior
 
 Run this before and after renderer changes. Use `--skip-render` when `ffmpeg` is
 not available and you only need to validate structured file generation and
-planning.
+planning. The JSON report includes `goldenAssertionsPassed`,
+`goldenAssertionCount`, and `goldenAssertionFailures` so future agents can fail
+fast on semantic drift.
 
 ## Inputs
 

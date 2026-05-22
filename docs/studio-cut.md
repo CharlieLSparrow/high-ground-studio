@@ -363,9 +363,22 @@ exists, the output MP4 exists, the output is shorter than the source because the
 `Cut` span was skipped, and the rendered video is `1920x1080` when `ffprobe` is
 available.
 
+The smoke test is also a structural canary for agentic workflow compatibility.
+It verifies embedded golden expectations for the render plan:
+
+- source duration is `12000` ms
+- `Cut` duration is `2000` ms
+- active duration is `10000` ms
+- active segment states are `both`, `charlie`, `homer`, `charlie_clip`, and
+  `both_clip`
+- no active segment has state `cut`
+- every active segment has profile planning and the expected `youtube_16x9`
+  layout behavior
+
 Future agents should run this before and after local renderer changes. Use
 `--skip-render` only when `ffmpeg` is unavailable and the change is limited to
-structured planning.
+structured planning. The `--json` report includes `goldenAssertionsPassed`,
+`goldenAssertionCount`, and `goldenAssertionFailures`.
 
 ## Local Commands
 
