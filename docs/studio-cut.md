@@ -171,14 +171,20 @@ tools/studio-cut-local/studio_cut_local.py
 ```
 
 It is a local-only Python standard-library tool. It does not require Firebase,
-Firestore, Cloud Storage, or credentials. It reads local JSON files and, for
-proxy preview rendering, a local source-monitor proxy video. It does not upload
-media, mutate source files, or write private episode data to the repo.
+Firestore, Cloud Storage, or credentials. It reads local JSON files, local proxy
+video, and timeline-aligned local media exports. It does not upload media,
+mutate source files, or write private episode data to the repo.
 
 Tonight's handoff path:
 
 ```text
 Premiere sync -> export source-monitor proxy -> import manifest -> load proxy locally -> tag decisions -> export decision JSON -> run local render CLI
+```
+
+Tonight's rough full-output path:
+
+```text
+Premiere sync -> export aligned Homer/Charlie/Clip/program-audio media -> export source-monitor proxy -> Studio Cut tags decisions -> export decision JSON -> render-youtube-16x9-aligned
 ```
 
 The CLI supports:
@@ -191,6 +197,9 @@ The CLI supports:
   trim/concatenate the local source-monitor proxy into a rough review MP4 that
   skips `Cut` spans.
 - `explain-profile`: prints the semantic state mapping for a render profile.
+- `render-youtube-16x9-aligned`: uses timeline-aligned local media files that
+  all begin at sequence time `00:00:00`, applies the `youtube_16x9` semantic
+  layout plan, skips `Cut` spans, and writes a rough 16:9 MP4.
 
 Current `youtube_16x9` planning maps semantic states this way:
 
@@ -208,6 +217,20 @@ The render plan stores each active segment's program state, source in/out,
 duration, layout behavior, source choices, audio policy, and notes for the
 future full-resolution renderer. `proxy_preview` still trims the whole
 source-monitor proxy for active spans and does not crop individual panes.
+
+The rough aligned renderer uses simple, robust 16:9 rectangles:
+
+- `charlie`: Charlie full frame
+- `homer`: Homer full frame
+- `both`: Homer and Charlie side by side
+- `charlie_clip`: Charlie and Clip side by side
+- `homer_clip`: Homer and Clip side by side
+- `both_clip`: Homer/Charlie stacked on the left, Clip large on the right
+- `cut`: skipped
+
+This renderer intentionally does not parse Premiere XML/EDL yet. Premiere owns
+timeline alignment for now by exporting local media files that share sequence
+start and duration.
 
 Dry-run first:
 
@@ -236,11 +259,43 @@ python tools/studio-cut-local/studio_cut_local.py render-proxy-preview \
   --out /tmp/studio-cut-preview.mp4
 ```
 
-Full-resolution rendering is still later. The first full-res pass should consume
-the same manifest and decision JSON, then map active source-time segments back
-onto Charlie/Homer/Clip full-res local media through the Premiere sync reference.
+Rough aligned 16:9 render:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
+  --manifest path/to/episode-manifest.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --media-map path/to/episode-004-local-media.json \
+  --out /tmp/studio-cut-youtube-16x9.mp4
+```
+
+Use `--dry-run` first to print the segment commands without writing output.
+Use `--keep-temp` only when debugging generated segment files.
+
+Local media map shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "episodeId": "episode-004",
+  "timelineAligned": true,
+  "video": {
+    "homer": "/absolute/or/local/path/episode-004_homer_aligned.mp4",
+    "charlie": "/absolute/or/local/path/episode-004_charlie_aligned.mp4",
+    "clip": "/absolute/or/local/path/episode-004_clip_aligned.mp4"
+  },
+  "audio": {
+    "program": "/absolute/or/local/path/episode-004_program-audio_aligned.wav"
+  }
+}
+```
+
+`audio.program` is optional. If it is absent, the aligned renderer creates
+silent audio and prints a warning. Relative paths are resolved from the media map
+file's directory.
+
 Do not commit generated render plans, preview renders, full-res media, proxy
-media, or private episode manifests.
+media, real local media maps, private paths, or private episode manifests.
 
 ## Local Commands
 

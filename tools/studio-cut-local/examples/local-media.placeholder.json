@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "episodeId": "episode-placeholder-local-render",
+  "timelineAligned": true,
+  "video": {
+    "homer": "/Volumes/placeholder/episode-placeholder/homer_aligned.mp4",
+    "charlie": "/Volumes/placeholder/episode-placeholder/charlie_aligned.mp4",
+    "clip": "/Volumes/placeholder/episode-placeholder/clip_aligned.mp4"
+  },
+  "audio": {
+    "program": "/Volumes/placeholder/episode-placeholder/program_audio_aligned.wav"
+  }
+}

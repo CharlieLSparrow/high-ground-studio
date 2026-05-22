@@ -55,5 +55,8 @@ GIT
 apps/web/.env.local
 apps/studio-cut-web/.env.production.local
 tools/studio-cut-local/output/
+**/*.local-media.json
+**/*-local-media.json
+**/*_local-media.json
 .firebase/
 .aider*

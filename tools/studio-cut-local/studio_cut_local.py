@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -172,6 +173,16 @@ RENDER_PROFILE_LAYOUTS = {
 
 SUPPORTED_PROFILES = set(RENDER_PROFILE_LAYOUTS)
 MINIMUM_PYTHON = (3, 10)
+YOUTUBE_16X9_WIDTH = 1920
+YOUTUBE_16X9_HEIGHT = 1080
+YOUTUBE_16X9_STATE_INPUTS = {
+    "charlie": ["charlie"],
+    "homer": ["homer"],
+    "both": ["homer", "charlie"],
+    "charlie_clip": ["charlie", "clip"],
+    "homer_clip": ["homer", "clip"],
+    "both_clip": ["homer", "charlie", "clip"],
+}
 
 PROFILE_DESCRIPTIONS = {
     "youtube_16x9": "Future full-res 16:9 program layout planning.",
@@ -246,6 +257,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     explain_parser.add_argument("--profile", required=True, choices=sorted(SUPPORTED_PROFILES))
     explain_parser.set_defaults(handler=run_explain_profile)
+
+    aligned_parser = subparsers.add_parser(
+        "render-youtube-16x9-aligned",
+        help="Render a rough 16:9 output from timeline-aligned local media.",
+    )
+    aligned_parser.add_argument("--manifest", required=True, type=Path)
+    aligned_parser.add_argument("--decisions", required=True, type=Path)
+    aligned_parser.add_argument("--media-map", required=True, type=Path)
+    aligned_parser.add_argument("--out", required=True, type=Path)
+    aligned_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the segment plan and ffmpeg commands without rendering files.",
+    )
+    aligned_parser.add_argument(
+        "--keep-temp",
+        action="store_true",
+        help="Keep temporary segment files after a real render.",
+    )
+    aligned_parser.set_defaults(handler=run_render_youtube_16x9_aligned)
 
     return parser
 
@@ -370,6 +401,92 @@ def run_explain_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_render_youtube_16x9_aligned(args: argparse.Namespace) -> int:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path and not args.dry_run:
+        raise StudioCutCliError(
+            "ffmpeg is not available on PATH; install ffmpeg before rendering aligned media."
+        )
+
+    manifest, decision_events = load_inputs(args.manifest, args.decisions)
+    media_map = load_media_map(args.media_map)
+
+    if media_map["episodeId"] != manifest["id"]:
+        raise StudioCutCliError(
+            "media-map episodeId does not match manifest id: "
+            f"{media_map['episodeId']} != {manifest['id']}"
+        )
+
+    plan = build_render_plan(
+        manifest=manifest,
+        decision_events=decision_events,
+        profile="youtube_16x9",
+        manifest_path=args.manifest,
+        decisions_path=args.decisions,
+    )
+    segments = plan["activeSegments"]
+
+    if not segments:
+        raise StudioCutCliError("render plan has no active non-Cut segments to render.")
+
+    validate_aligned_media_for_plan(
+        media_map=media_map,
+        media_map_path=args.media_map,
+        segments=segments,
+        require_existing=not args.dry_run,
+    )
+
+    print_render_plan(plan)
+    print_media_map_summary(media_map, args.media_map)
+
+    if not media_map["audio"].get("program"):
+        print(
+            "\nwarning: media map has no audio.program file; aligned renderer will use silent audio.",
+            file=sys.stderr,
+        )
+
+    ffmpeg_bin = ffmpeg_path or "ffmpeg"
+
+    if args.dry_run:
+        print("\nDry run: no files will be rendered.")
+        print_aligned_render_commands(
+            ffmpeg_path=ffmpeg_bin,
+            media_map=media_map,
+            media_map_path=args.media_map,
+            segments=segments,
+            out_path=args.out,
+            temp_path=Path("<temp>"),
+        )
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.keep_temp:
+        temp_path = Path(tempfile.mkdtemp(prefix="studio-cut-youtube16x9-"))
+        render_youtube_16x9_segments(
+            ffmpeg_path=ffmpeg_bin,
+            media_map=media_map,
+            media_map_path=args.media_map,
+            segments=segments,
+            out_path=args.out,
+            temp_path=temp_path,
+        )
+        print(f"\nKept temporary segment directory: {temp_path}")
+    else:
+        with tempfile.TemporaryDirectory(prefix="studio-cut-youtube16x9-") as temp_dir:
+            render_youtube_16x9_segments(
+                ffmpeg_path=ffmpeg_bin,
+                media_map=media_map,
+                media_map_path=args.media_map,
+                segments=segments,
+                out_path=args.out,
+                temp_path=Path(temp_dir),
+            )
+
+    print(f"\nAligned 16:9 render complete: {args.out}")
+    return 0
+
+
 def load_inputs(
     manifest_path: Path, decisions_path: Path
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -395,6 +512,52 @@ def load_json_file(path: Path, label: str) -> Any:
         raise StudioCutCliError(f"{label} file is not valid JSON: {error}") from error
     except OSError as error:
         raise StudioCutCliError(f"could not read {label} file {path}: {error}") from error
+
+
+def load_media_map(path: Path) -> dict[str, Any]:
+    payload = load_json_file(path, "media map")
+
+    if not isinstance(payload, dict):
+        raise StudioCutCliError("media map must be a JSON object")
+
+    if payload.get("schemaVersion") != 1:
+        raise StudioCutCliError("media map schemaVersion must be 1")
+
+    if payload.get("timelineAligned") is not True:
+        raise StudioCutCliError("media map timelineAligned must be true")
+
+    require_non_empty_string(payload, "episodeId", "media map")
+
+    video = payload.get("video")
+    if not isinstance(video, dict):
+        raise StudioCutCliError("media map video must be an object")
+
+    for role in ("homer", "charlie"):
+        require_non_empty_string(video, role, "media map video")
+
+    if "clip" in video and video["clip"] is not None:
+        require_non_empty_string(video, "clip", "media map video")
+
+    audio = payload.get("audio", {})
+    if not isinstance(audio, dict):
+        raise StudioCutCliError("media map audio must be an object when present")
+
+    if "program" in audio and audio["program"] is not None:
+        require_non_empty_string(audio, "program", "media map audio")
+
+    return {
+        "schemaVersion": 1,
+        "episodeId": payload["episodeId"],
+        "timelineAligned": True,
+        "video": {
+            role: value
+            for role, value in video.items()
+            if role in {"homer", "charlie", "clip"} and value
+        },
+        "audio": {
+            role: value for role, value in audio.items() if role == "program" and value
+        },
+    }
 
 
 def validate_manifest(manifest: Any) -> None:
@@ -674,6 +837,288 @@ def print_profile_mapping(profile: str) -> None:
             print(f"  full-res note: {note}")
 
 
+def validate_aligned_media_for_plan(
+    *,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segments: list[dict[str, Any]],
+    require_existing: bool,
+) -> None:
+    required_roles = sorted(
+        {
+            role
+            for segment in segments
+            for role in get_youtube_16x9_video_roles(segment["programState"])
+        }
+    )
+    missing_roles = [role for role in required_roles if role not in media_map["video"]]
+
+    if missing_roles:
+        raise StudioCutCliError(
+            "media map is missing video path(s) required by active states: "
+            + ", ".join(missing_roles)
+        )
+
+    paths_to_check = [
+        resolve_media_path(media_map["video"][role], media_map_path)
+        for role in required_roles
+    ]
+
+    if media_map["audio"].get("program"):
+        paths_to_check.append(resolve_media_path(media_map["audio"]["program"], media_map_path))
+
+    missing_paths = [path for path in paths_to_check if not path.is_file()]
+
+    if missing_paths and require_existing:
+        raise StudioCutCliError(
+            "aligned media file(s) not found: "
+            + ", ".join(str(path) for path in missing_paths)
+        )
+
+    if missing_paths:
+        for path in missing_paths:
+            print(f"warning: dry-run media path does not exist: {path}", file=sys.stderr)
+
+
+def render_youtube_16x9_segments(
+    *,
+    ffmpeg_path: str,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segments: list[dict[str, Any]],
+    out_path: Path,
+    temp_path: Path,
+) -> None:
+    temp_path.mkdir(parents=True, exist_ok=True)
+    segment_files = []
+
+    for segment in segments:
+        segment_file = temp_path / f"youtube16x9-segment-{int(segment['index']):04d}.mp4"
+        segment_files.append(segment_file)
+        command = build_youtube_16x9_segment_command(
+            ffmpeg_path=ffmpeg_path,
+            media_map=media_map,
+            media_map_path=media_map_path,
+            segment=segment,
+            out_path=segment_file,
+        )
+        run_command(command, f"ffmpeg render aligned segment {int(segment['index']) + 1}")
+
+    concat_file = temp_path / "segments.txt"
+    concat_file.write_text(
+        "\n".join(f"file '{escape_ffmpeg_concat_path(path)}'" for path in segment_files)
+        + "\n",
+        encoding="utf-8",
+    )
+    run_ffmpeg_concat(
+        ffmpeg_path=ffmpeg_path,
+        concat_file=concat_file,
+        out_path=out_path,
+    )
+
+
+def print_aligned_render_commands(
+    *,
+    ffmpeg_path: str,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segments: list[dict[str, Any]],
+    out_path: Path,
+    temp_path: Path,
+) -> None:
+    segment_files = []
+
+    print("\nAligned 16:9 ffmpeg segment plan:")
+    for segment in segments:
+        segment_file = temp_path / f"youtube16x9-segment-{int(segment['index']):04d}.mp4"
+        segment_files.append(segment_file)
+        roles = ", ".join(get_youtube_16x9_video_roles(segment["programState"]))
+        print(
+            f"\nSegment {int(segment['index']) + 1}: "
+            f"{segment['programState']} / {segment['layoutBehavior']} / sources: {roles}"
+        )
+        print(
+            format_shell_command(
+                build_youtube_16x9_segment_command(
+                    ffmpeg_path=ffmpeg_path,
+                    media_map=media_map,
+                    media_map_path=media_map_path,
+                    segment=segment,
+                    out_path=segment_file,
+                )
+            )
+        )
+
+    concat_file = temp_path / "segments.txt"
+    print("\nFinal concat:")
+    print(
+        format_shell_command(
+            build_ffmpeg_concat_command(
+                ffmpeg_path=ffmpeg_path,
+                concat_file=concat_file,
+                out_path=out_path,
+            )
+        )
+    )
+    print(f"\nConcat list would include {len(segment_files)} rendered segment file(s).")
+
+
+def build_youtube_16x9_segment_command(
+    *,
+    ffmpeg_path: str,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segment: dict[str, Any],
+    out_path: Path,
+) -> list[str]:
+    state = segment["programState"]
+    video_roles = get_youtube_16x9_video_roles(state)
+    start_seconds = float(segment["startSourceTimeMs"]) / 1000
+    duration_seconds = float(segment["durationMs"]) / 1000
+    command = [ffmpeg_path, "-hide_banner", "-loglevel", "error", "-y"]
+
+    for role in video_roles:
+        command.extend(
+            [
+                "-ss",
+                format_seconds(start_seconds),
+                "-t",
+                format_seconds(duration_seconds),
+                "-i",
+                str(resolve_media_path(media_map["video"][role], media_map_path)),
+            ]
+        )
+
+    audio_input_index = len(video_roles)
+    program_audio = media_map["audio"].get("program")
+
+    if program_audio:
+        command.extend(
+            [
+                "-ss",
+                format_seconds(start_seconds),
+                "-t",
+                format_seconds(duration_seconds),
+                "-i",
+                str(resolve_media_path(program_audio, media_map_path)),
+            ]
+        )
+        audio_filter = f"[{audio_input_index}:a]aresample=48000,asetpts=PTS-STARTPTS[aout]"
+    else:
+        command.extend(
+            [
+                "-f",
+                "lavfi",
+                "-t",
+                format_seconds(duration_seconds),
+                "-i",
+                "anullsrc=channel_layout=stereo:sample_rate=48000",
+            ]
+        )
+        audio_filter = f"[{audio_input_index}:a]anull[aout]"
+
+    filter_complex = ";".join(
+        [build_youtube_16x9_video_filter(state), audio_filter]
+    )
+    command.extend(
+        [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "22",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+    )
+
+    return command
+
+
+def build_youtube_16x9_video_filter(state: str) -> str:
+    if state in {"charlie", "homer"}:
+        return video_scale_filter(0, YOUTUBE_16X9_WIDTH, YOUTUBE_16X9_HEIGHT, "vout")
+
+    if state in {"both", "charlie_clip", "homer_clip"}:
+        return ";".join(
+            [
+                video_scale_filter(0, 960, 1080, "left"),
+                video_scale_filter(1, 960, 1080, "right"),
+                "[left][right]hstack=inputs=2[vout]",
+            ]
+        )
+
+    if state == "both_clip":
+        return ";".join(
+            [
+                video_scale_filter(0, 640, 540, "homer"),
+                video_scale_filter(1, 640, 540, "charlie"),
+                "[homer][charlie]vstack=inputs=2[left]",
+                video_scale_filter(2, 1280, 1080, "clip"),
+                "[left][clip]hstack=inputs=2[vout]",
+            ]
+        )
+
+    raise StudioCutCliError(f"cannot render state in youtube_16x9 renderer: {state}")
+
+
+def video_scale_filter(input_index: int, width: int, height: int, label: str) -> str:
+    return (
+        f"[{input_index}:v]"
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},setsar=1,setpts=PTS-STARTPTS"
+        f"[{label}]"
+    )
+
+
+def get_youtube_16x9_video_roles(state: str) -> list[str]:
+    try:
+        return YOUTUBE_16X9_STATE_INPUTS[state]
+    except KeyError as error:
+        raise StudioCutCliError(
+            f"state is not renderable in youtube_16x9 aligned renderer: {state}"
+        ) from error
+
+
+def resolve_media_path(raw_path: str, media_map_path: Path) -> Path:
+    path = Path(raw_path).expanduser()
+
+    if path.is_absolute():
+        return path
+
+    return (media_map_path.parent / path).resolve()
+
+
+def print_media_map_summary(media_map: dict[str, Any], media_map_path: Path) -> None:
+    print("\nAligned media map")
+    print("=================")
+    print(f"Episode: {media_map['episodeId']}")
+    print(f"Path: {media_map_path}")
+    print("Video:")
+    for role in ("homer", "charlie", "clip"):
+        if role in media_map["video"]:
+            print(f"  {role}: {resolve_media_path(media_map['video'][role], media_map_path)}")
+    if media_map["audio"].get("program"):
+        print(f"Audio program: {resolve_media_path(media_map['audio']['program'], media_map_path)}")
+    else:
+        print("Audio program: none; renderer will use silent audio")
+
+
 def run_ffmpeg_trim(
     *,
     ffmpeg_path: str,
@@ -718,7 +1163,18 @@ def run_ffmpeg_trim(
 
 
 def run_ffmpeg_concat(*, ffmpeg_path: str, concat_file: Path, out_path: Path) -> None:
-    command = [
+    command = build_ffmpeg_concat_command(
+        ffmpeg_path=ffmpeg_path,
+        concat_file=concat_file,
+        out_path=out_path,
+    )
+    run_command(command, "ffmpeg concatenate segments")
+
+
+def build_ffmpeg_concat_command(
+    *, ffmpeg_path: str, concat_file: Path, out_path: Path
+) -> list[str]:
+    return [
         ffmpeg_path,
         "-hide_banner",
         "-loglevel",
@@ -736,7 +1192,6 @@ def run_ffmpeg_concat(*, ffmpeg_path: str, concat_file: Path, out_path: Path) ->
         "+faststart",
         str(out_path),
     ]
-    run_command(command, "ffmpeg concatenate proxy segments")
 
 
 def run_command(command: list[str], label: str) -> None:
@@ -836,6 +1291,10 @@ def format_time_ms(value: int | float) -> str:
 
 def format_seconds(value: float) -> str:
     return f"{value:.3f}"
+
+
+def format_shell_command(command: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in command)
 
 
 def short_id(value: str) -> str:
