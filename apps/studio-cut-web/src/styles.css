@@ -560,14 +560,18 @@ h2 {
 .state-panel,
 .persistence-panel,
 .manifest-panel,
-.current-segment-panel {
+.current-segment-panel,
+.readiness-panel,
+.pane-calibration-panel {
   display: grid;
   gap: 14px;
 }
 
 .persistence-panel,
 .manifest-panel,
-.current-segment-panel {
+.current-segment-panel,
+.readiness-panel,
+.pane-calibration-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -674,6 +678,108 @@ h2 {
 
 .manifest-details strong {
   color: #d7e0dc;
+}
+
+.pane-calibration-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pane-calibration-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) repeat(4, minmax(58px, 0.72fr));
+  gap: 8px;
+  align-items: end;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.13);
+  padding: 9px;
+}
+
+.pane-calibration-row strong {
+  color: #eef2ee;
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.pane-calibration-row label {
+  display: grid;
+  gap: 4px;
+  color: #aeb9b4;
+  font-size: 0.66rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.pane-calibration-row input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(238, 242, 238, 0.16);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #eef2ee;
+  padding: 6px 7px;
+}
+
+.readiness-panel {
+  background:
+    linear-gradient(135deg, rgba(145, 219, 183, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.readiness-grid div,
+.readiness-export {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.readiness-grid span,
+.readiness-export span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.readiness-grid strong,
+.readiness-export strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.readiness-warnings {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid rgba(240, 201, 106, 0.24);
+  border-radius: 7px;
+  background: rgba(240, 201, 106, 0.08);
+  color: #f3dfaa;
+  padding: 10px 12px 10px 28px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.readiness-ok,
+.panel-empty {
+  border: 1px dashed rgba(238, 242, 238, 0.16);
+  border-radius: 7px;
+  color: #aeb9b4;
+  padding: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .local-proxy-loader {
@@ -1026,6 +1132,88 @@ td {
   text-align: center;
 }
 
+.decision-timeline {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 10px;
+}
+
+.timeline-header,
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timeline-header strong {
+  color: #eef2ee;
+  font-size: 0.86rem;
+}
+
+.timeline-header span,
+.timeline-legend span {
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.timeline-strip {
+  display: flex;
+  width: 100%;
+  min-height: 46px;
+  overflow: hidden;
+  border: 1px solid rgba(238, 242, 238, 0.12);
+  border-radius: 6px;
+  background: #030505;
+}
+
+.timeline-segment {
+  flex: 0 0 var(--segment-width);
+  min-width: 22px;
+  overflow: hidden;
+  border: 0;
+  border-right: 1px solid rgba(3, 5, 5, 0.8);
+  border-radius: 0;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent), transparent 46%), color-mix(in srgb, var(--accent), transparent 72%)),
+    #182022;
+  color: #06100d;
+  padding: 0 6px;
+  text-align: left;
+}
+
+.timeline-segment.is-cut {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.08) 6px,
+      transparent 6px,
+      transparent 12px
+    ),
+    color-mix(in srgb, var(--accent), transparent 52%);
+}
+
+.timeline-segment.is-current {
+  box-shadow: inset 0 0 0 3px rgba(238, 242, 238, 0.88);
+}
+
+.timeline-segment span {
+  display: block;
+  overflow: hidden;
+  color: #06100d;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 46px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 1fr;
@@ -1059,6 +1247,8 @@ td {
   .state-grid,
   .playback-controls,
   .manifest-summary,
+  .readiness-grid,
+  .pane-calibration-row,
   .proxy-program-layout.pane-count-2,
   .proxy-program-layout.both-clip,
   .current-segment-grid,

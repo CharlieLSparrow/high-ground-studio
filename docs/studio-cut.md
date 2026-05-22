@@ -1,6 +1,6 @@
 # Studio Cut
 
-Date: 2026-05-21
+Date: 2026-05-22
 
 ## Purpose
 
@@ -115,6 +115,25 @@ with a timestamped filename such as
 decision events only; they do not include media, proxy files, object URLs, or
 source paths.
 
+The Episode Readiness panel gives a fast operator check before handoff:
+
+- manifest loaded
+- local proxy loaded
+- decision count
+- `Cut` count
+- current export filename preview
+
+It warns when there are no decisions, when the first decision starts after
+`0:00`, and when a Clip state is used but the imported manifest has no Clip
+pane. These are confidence checks only; they do not change source media or
+decision semantics.
+
+The Decision Timeline is a source-duration-aware strip built from derived
+segments. Colored blocks show the active semantic state, `Cut` blocks are
+visually distinct, the current segment is highlighted, and clicking a block
+jumps to that segment's source in-point. The strip is still source-time based;
+it does not create destructive cuts or a separate program timeline.
+
 ## Episode Manifest
 
 Studio Cut can import an Episode Manifest JSON file for the temporary
@@ -183,6 +202,22 @@ way:
 The proxy file still stays local to the browser tab. The object URL is not
 persisted to localStorage or Firestore, and no video is uploaded.
 
+If the source-monitor proxy export does not match the manifest pane rectangles,
+use `Proxy Pane Calibration` in the editor:
+
+- edit Homer, Charlie, and optional Clip `x`, `y`, `width`, and `height`
+  normalized values
+- values are clamped to the `0` to `1` proxy coordinate space
+- changes apply immediately to the browser Program Preview
+- the imported manifest file is not mutated
+- adjusted pane rectangles are stored in this browser's localStorage
+- `Reset Panes` restores the last imported manifest rectangles
+- `Export Adjusted Manifest` downloads a decision-safe manifest file such as
+  `episode-004-adjusted-manifest.json`
+
+Adjusted manifests contain metadata only. They must not include real private
+paths, media, credentials, or proxy files.
+
 ## Premiere Bootstrap Workflow
 
 Use Premiere only to create the temporary synced source truth:
@@ -250,6 +285,12 @@ The Episode 4 operator runbook for that path lives at:
 
 ```text
 docs/studio-cut-episode-4-runbook.md
+```
+
+The concise morning operator handoff lives at:
+
+```text
+docs/studio-cut-morning-handoff.md
 ```
 
 The CLI supports:
@@ -345,6 +386,19 @@ pnpm studio-cut:local:verify-episode -- \
   --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
   --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json
 ```
+
+After decisions are exported, rerun validation with decision readiness:
+
+```bash
+pnpm studio-cut:local:verify-episode -- \
+  --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
+  --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json \
+  --decisions tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
+```
+
+With `--decisions`, the report adds decision count, `Cut` count, active
+duration, expected output duration, first-decision-at-zero status, Clip-state
+warnings, and the exact rough `render-youtube-16x9-aligned` command when ready.
 
 Dry-run first:
 

@@ -347,6 +347,20 @@ def build_parser() -> argparse.ArgumentParser:
     validate_episode_parser.add_argument("--manifest", required=True, type=Path)
     validate_episode_parser.add_argument("--media-map", required=True, type=Path)
     validate_episode_parser.add_argument(
+        "--decisions",
+        type=Path,
+        help=(
+            "Optional Studio Cut decision JSON. When present, validate render "
+            "readiness and print the exact rough 16:9 render command."
+        ),
+    )
+    validate_episode_parser.add_argument(
+        "--profile",
+        default="youtube_16x9",
+        choices=sorted(SUPPORTED_PROFILES),
+        help="Render profile to use for decision readiness. Default: youtube_16x9.",
+    )
+    validate_episode_parser.add_argument(
         "--duration-tolerance-ms",
         default=DEFAULT_EPISODE_VALIDATION_TOLERANCE_MS,
         type=int,
@@ -595,6 +609,8 @@ def execute_agent_smoke_test(
                     str(manifest_path),
                     "--media-map",
                     str(media_map_path),
+                    "--decisions",
+                    str(decisions_path),
                 ],
                 "agent smoke validate-episode-files",
                 commands_run,
@@ -1122,6 +1138,19 @@ python tools/studio-cut-local/studio_cut_local.py validate-episode-files \\
   --media-map {media_map_path}
 ```
 
+After exporting decisions from Studio Cut, rerun validation with render
+readiness checks:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-episode-files \\
+  --manifest {manifest_path} \\
+  --media-map {media_map_path} \\
+  --decisions {decisions_path}
+```
+
+The readiness report should say `Status: READY` before rendering and will print
+the exact rough 16:9 render command.
+
 ## Studio Cut Web
 
 1. Open Studio Cut.
@@ -1457,6 +1486,8 @@ def run_validate_episode_files(args: argparse.Namespace) -> int:
     report = build_episode_file_validation_report(
         manifest_path=args.manifest,
         media_map_path=args.media_map,
+        decisions_path=args.decisions,
+        profile=args.profile,
         duration_tolerance_ms=args.duration_tolerance_ms,
     )
     print_episode_file_validation_report(report)
@@ -1467,15 +1498,22 @@ def build_episode_file_validation_report(
     *,
     manifest_path: Path,
     media_map_path: Path,
+    decisions_path: Path | None,
+    profile: str,
     duration_tolerance_ms: int,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
         "status": "blocked",
         "manifestPath": str(manifest_path),
         "mediaMapPath": str(media_map_path),
+        "decisionsPath": str(decisions_path) if decisions_path else None,
+        "profile": profile,
         "episodeId": None,
         "title": None,
         "manifestDurationMs": None,
+        "renderReadiness": None,
+        "missingPaths": [],
+        "renderCommand": None,
         "durationToleranceMs": duration_tolerance_ms,
         "ffmpegPath": shutil.which("ffmpeg"),
         "ffprobePath": shutil.which("ffprobe"),
@@ -1522,7 +1560,9 @@ def build_episode_file_validation_report(
         path = Path(entry["path"])
         if not path.is_file():
             entry["exists"] = False
-            errors.append(f"{entry['label']} file not found: {path}")
+            missing_path = f"{entry['label']} file not found: {path}"
+            report["missingPaths"].append(str(path))
+            errors.append(missing_path)
             continue
 
         entry["exists"] = True
@@ -1548,8 +1588,114 @@ def build_episode_file_validation_report(
                     f"{format_time_ms(int(report['manifestDurationMs']))})."
                 )
 
+    if decisions_path:
+        add_decision_readiness_to_report(
+            report=report,
+            manifest=manifest,
+            media_map=media_map,
+            manifest_path=manifest_path,
+            media_map_path=media_map_path,
+            decisions_path=decisions_path,
+            profile=profile,
+        )
+    else:
+        warnings.append(
+            "No --decisions file supplied; file validation is complete, but render readiness was not checked."
+        )
+
     report["status"] = "ready" if not errors else "blocked"
     return report
+
+
+def add_decision_readiness_to_report(
+    *,
+    report: dict[str, Any],
+    manifest: dict[str, Any],
+    media_map: dict[str, Any],
+    manifest_path: Path,
+    media_map_path: Path,
+    decisions_path: Path,
+    profile: str,
+) -> None:
+    warnings: list[str] = report["warnings"]
+    errors: list[str] = report["errors"]
+
+    try:
+        decisions_payload = load_json_file(decisions_path, "decisions")
+        decision_events = parse_decision_events(decisions_payload)
+    except StudioCutCliError as error:
+        errors.append(str(error))
+        return
+
+    render_readiness: dict[str, Any] = {
+        "decisionCount": len(decision_events),
+        "cutCount": sum(1 for event in decision_events if event["state"] == "cut"),
+        "activeDurationMs": None,
+        "cutDurationMs": None,
+        "expectedOutputDurationMs": None,
+        "activeSegmentCount": None,
+        "cutSegmentCount": None,
+        "firstDecisionAtZero": False,
+        "clipStatesPresent": any(
+            state_requires_clip(str(event["state"])) for event in decision_events
+        ),
+    }
+    report["renderReadiness"] = render_readiness
+
+    if not decision_events:
+        errors.append("decision file contains no valid decision events; render would have no active segments.")
+        return
+
+    first_event = decision_events[0]
+    render_readiness["firstDecisionAtZero"] = first_event["sourceTimeMs"] == 0
+
+    if first_event["sourceTimeMs"] != 0:
+        warnings.append(
+            "First decision starts after 0:00; source time before that has no program state."
+        )
+
+    if render_readiness["clipStatesPresent"] and "clip" not in media_map["video"]:
+        warnings.append(
+            "Decision file uses Clip states, but media map has no video.clip path."
+        )
+
+    plan = build_render_plan(
+        manifest=manifest,
+        decision_events=decision_events,
+        profile=profile,
+        manifest_path=manifest_path,
+        decisions_path=decisions_path,
+    )
+    summary = plan["summary"]
+    render_readiness.update(
+        {
+            "activeDurationMs": summary["activeDurationMs"],
+            "cutDurationMs": summary["cutDurationMs"],
+            "expectedOutputDurationMs": summary["activeDurationMs"],
+            "activeSegmentCount": summary["activeSegmentCount"],
+            "cutSegmentCount": summary["cutSegmentCount"],
+        }
+    )
+
+    if summary["activeSegmentCount"] == 0:
+        errors.append("render plan has no active non-Cut segments.")
+
+    output_path = media_map_path.parent / f"{manifest['id']}-youtube-16x9.mp4"
+    report["renderCommand"] = format_shell_command(
+        [
+            sys.executable,
+            str(Path(__file__)),
+            "render-youtube-16x9-aligned",
+            "--manifest",
+            str(manifest_path),
+            "--decisions",
+            str(decisions_path),
+            "--media-map",
+            str(media_map_path),
+            "--out",
+            str(output_path),
+        ]
+    )
 
 
 def collect_media_map_entries(
@@ -1627,9 +1773,12 @@ def probe_media_duration_ms(
 def print_episode_file_validation_report(report: dict[str, Any]) -> None:
     print("Studio Cut Episode File Validation")
     print("==================================")
-    print(f"Status: {report['status']}")
+    status_label = "READY" if report["status"] == "ready" else "BLOCKED"
+    print(f"Status: {status_label}")
     print(f"Manifest: {report['manifestPath']}")
     print(f"Media map: {report['mediaMapPath']}")
+    if report.get("decisionsPath"):
+        print(f"Decisions: {report['decisionsPath']}")
 
     if report["episodeId"]:
         print(f"Episode: {report['title']} ({report['episodeId']})")
@@ -1663,6 +1812,31 @@ def print_episode_file_validation_report(report: dict[str, Any]) -> None:
             print(f"    path: {entry['path']}")
             print(f"    duration: {duration}; drift: {drift}")
 
+    if report.get("missingPaths"):
+        print("\nMissing paths:")
+        for path in report["missingPaths"]:
+            print(f"  - {path}")
+
+    if report.get("renderReadiness"):
+        readiness = report["renderReadiness"]
+        print("\nRender readiness:")
+        print(f"  decisions: {readiness['decisionCount']}")
+        print(f"  cut decisions: {readiness['cutCount']}")
+        print(f"  active segments: {readiness['activeSegmentCount']}")
+        print(f"  cut segments: {readiness['cutSegmentCount']}")
+        print(
+            "  active duration: "
+            f"{format_time_ms(readiness['activeDurationMs'] or 0)}"
+        )
+        print(
+            "  expected output duration: "
+            f"{format_time_ms(readiness['expectedOutputDurationMs'] or 0)}"
+        )
+        print(
+            "  first decision at 0: "
+            f"{'yes' if readiness['firstDecisionAtZero'] else 'no'}"
+        )
+
     if report["warnings"]:
         print("\nWarnings:")
         for warning in report["warnings"]:
@@ -1672,6 +1846,13 @@ def print_episode_file_validation_report(report: dict[str, Any]) -> None:
         print("\nErrors:")
         for error in report["errors"]:
             print(f"  - {error}")
+
+    if report.get("renderCommand"):
+        if report["status"] == "ready":
+            print("\nRender command:")
+        else:
+            print("\nRender command after blockers are fixed:")
+        print(f"  {report['renderCommand']}")
 
 
 def load_inputs(
@@ -1832,6 +2013,10 @@ def parse_decision_events(payload: Any) -> list[dict[str, Any]]:
             str(event["id"]),
         ),
     )
+
+
+def state_requires_clip(state: str) -> bool:
+    return state in {"charlie_clip", "homer_clip", "both_clip"}
 
 
 def build_render_plan(

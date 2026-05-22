@@ -389,6 +389,14 @@ async function runBrowserSmoke() {
       .getByLabel("Import episode manifest JSON")
       .setInputFiles(smokeFiles.manifestPath);
     await expect(page.getByText(/Loaded manifest web-smoke-episode/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Episode Readiness" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Proxy Pane Calibration" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export Adjusted Manifest" })).toBeVisible();
+    await expect(page.getByText(/No decisions yet/i)).toBeVisible();
+    await page.getByLabel("Homer source pane width").fill("0.49");
+    await expect(page.getByRole("button", { name: "Reset Panes" })).toBeEnabled();
+    await page.getByRole("button", { name: "Reset Panes" }).click();
+    await expect(page.getByLabel("Homer source pane width")).toHaveValue("0.5");
     await page
       .getByLabel("Load local source-monitor proxy video")
       .setInputFiles(smokeFiles.proxyPath);
@@ -417,6 +425,8 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "0:05");
     await expectSectionText(decisionSection, "Active");
     await expectSectionText(decisionSection, "Newest");
+    await expect(page.locator(".decision-timeline")).toContainText("Decision Timeline");
+    await expect(page.locator(".decision-timeline")).toContainText("Both");
     await expectSectionText(currentSegmentSection, "Both");
     await expectSectionText(currentSegmentSection, "Included");
     await expect(

@@ -34,6 +34,8 @@ import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 const DEFAULT_SOURCE_DURATION_MS = 60 * 60 * 1000;
 const EPISODE_MANIFEST_STORAGE_KEY =
   "high-ground-studio.studio-cut.episode-manifest.v1";
+const EPISODE_MANIFEST_BASELINE_STORAGE_KEY =
+  "high-ground-studio.studio-cut.episode-manifest-baseline.v1";
 const DECISION_HISTORY_STORAGE_KEY =
   "high-ground-studio.studio-cut.decision-history.v1";
 const LOCAL_PROXY_VIDEO_ACCEPT =
@@ -101,6 +103,8 @@ type DecisionHistoryState = {
   lastAction: string;
 };
 
+type PaneRectField = keyof SourcePaneRect;
+
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
   homer: "#91de72",
@@ -159,6 +163,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [episodeManifest, setEpisodeManifest] = useState<EpisodeManifest | null>(
     loadStoredEpisodeManifest,
   );
+  const [importedEpisodeManifestBaseline, setImportedEpisodeManifestBaseline] =
+    useState<EpisodeManifest | null>(loadStoredEpisodeManifestBaseline);
   const [localProxyVideo, setLocalProxyVideo] =
     useState<LocalProxyVideo | null>(null);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryState>(
@@ -212,10 +218,29 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const playbackModeDescription = isProgramPlaying
     ? "Play is simulating program playback and skipping Cut spans."
     : "Scrub controls use source time and show every span, including Cut.";
+  const cutDecisionCount = sortedEvents.filter(
+    (event) => event.state === "cut",
+  ).length;
+  const exportFileNamePreview = getDecisionExportFileName(episodeManifest, {
+    projectId: config.projectId,
+    branchId: config.branchId,
+  });
+  const readinessWarnings = useMemo(
+    () =>
+      buildEpisodeReadinessWarnings({
+        manifest: episodeManifest,
+        events: sortedEvents,
+      }),
+    [episodeManifest, sortedEvents],
+  );
 
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
   }, [episodeManifest]);
+
+  useEffect(() => {
+    saveStoredEpisodeManifestBaseline(importedEpisodeManifestBaseline);
+  }, [importedEpisodeManifestBaseline]);
 
   useEffect(() => {
     saveStoredDecisionHistory(decisionHistory);
@@ -504,15 +529,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     payload: ReturnType<typeof exportDecisionEvents>,
     fileName: string,
   ) {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadJsonFile(payload, fileName);
   }
 
   function handleExportJson() {
@@ -598,6 +615,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       }
 
       setEpisodeManifest(result.manifest);
+      setImportedEpisodeManifestBaseline(cloneEpisodeManifest(result.manifest));
       stopProgramPlayback();
       setSourceTimeMs((currentSourceTimeMs) =>
         clampSourceTime(currentSourceTimeMs, result.manifest.durationMs),
@@ -666,6 +684,44 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   function handleProxyVideoEnded() {
     stopProgramPlayback();
     setSourceTimeMs(sourceDurationMs);
+  }
+
+  function handlePaneRectChange(role: ProxyPreviewRole, nextPane: SourcePaneRect) {
+    setEpisodeManifest((currentManifest) =>
+      currentManifest
+        ? updateManifestPaneRect(currentManifest, role, nextPane)
+        : currentManifest,
+    );
+  }
+
+  function handleResetPaneRectsToImported() {
+    if (!importedEpisodeManifestBaseline) {
+      return;
+    }
+
+    setEpisodeManifest((currentManifest) =>
+      currentManifest
+        ? {
+            ...currentManifest,
+            sourceMonitorProxy: {
+              ...currentManifest.sourceMonitorProxy,
+              panes: cloneEpisodeManifest(importedEpisodeManifestBaseline)
+                .sourceMonitorProxy.panes,
+            },
+          }
+        : currentManifest,
+    );
+  }
+
+  function handleExportAdjustedManifest() {
+    if (!episodeManifest) {
+      return;
+    }
+
+    const fileName = getAdjustedManifestFileName(episodeManifest);
+
+    downloadJsonFile(episodeManifest, fileName);
+    setImportMessage(`Exported adjusted manifest ${fileName}.`);
   }
 
   function stopProgramPlayback() {
@@ -777,6 +833,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           aria-label="Load local source-monitor proxy video"
         />
 
+        <ProxyPaneCalibrationPanel
+          manifest={episodeManifest}
+          importedManifestBaseline={importedEpisodeManifestBaseline}
+          onPaneChange={handlePaneRectChange}
+          onReset={handleResetPaneRectsToImported}
+          onExportAdjustedManifest={handleExportAdjustedManifest}
+        />
+
         <section className="persistence-panel">
           <div className="panel-heading">
             <div>
@@ -787,6 +851,15 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           </div>
           <p className="persistence-path">{status.path}</p>
         </section>
+
+        <EpisodeReadinessPanel
+          manifest={episodeManifest}
+          localProxyVideo={localProxyVideo}
+          decisionCount={sortedEvents.length}
+          cutDecisionCount={cutDecisionCount}
+          exportFileNamePreview={exportFileNamePreview}
+          warnings={readinessWarnings}
+        />
 
         <section className="time-panel">
           <div className="panel-heading">
@@ -972,6 +1045,12 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
               <p>Program state over source time</p>
             </div>
           </div>
+          <DecisionTimeline
+            segments={derivedSegments}
+            sourceDurationMs={sourceDurationMs}
+            currentSegmentSourceEventId={currentSegment?.sourceEventId}
+            onJump={scrubToSourceTime}
+          />
           <SegmentList
             segments={derivedSegments}
             currentSegmentSourceEventId={currentSegment?.sourceEventId}
@@ -1167,6 +1246,178 @@ function EpisodeManifestPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function ProxyPaneCalibrationPanel({
+  manifest,
+  importedManifestBaseline,
+  onPaneChange,
+  onReset,
+  onExportAdjustedManifest,
+}: {
+  manifest: EpisodeManifest | null;
+  importedManifestBaseline: EpisodeManifest | null;
+  onPaneChange: (role: ProxyPreviewRole, nextPane: SourcePaneRect) => void;
+  onReset: () => void;
+  onExportAdjustedManifest: () => void;
+}) {
+  const paneRoles = getCalibratablePaneRoles(manifest);
+  const canReset =
+    Boolean(manifest && importedManifestBaseline) &&
+    !arePaneSetsEqual(
+      manifest?.sourceMonitorProxy.panes,
+      importedManifestBaseline?.sourceMonitorProxy.panes,
+    );
+
+  return (
+    <section className="pane-calibration-panel" aria-label="Proxy pane calibration">
+      <div className="panel-heading">
+        <div>
+          <h2>Proxy Pane Calibration</h2>
+          <p>
+            Adjust normalized source-monitor panes when the proxy crops are off.
+          </p>
+        </div>
+        <div className="toolbar-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onReset}
+            disabled={!canReset}
+          >
+            Reset Panes
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onExportAdjustedManifest}
+            disabled={!manifest}
+          >
+            Export Adjusted Manifest
+          </button>
+        </div>
+      </div>
+      {manifest ? (
+        <div className="pane-calibration-list">
+          {paneRoles.map((role) => {
+            const pane = getManifestPaneRect(manifest, role);
+
+            return pane ? (
+              <PaneCalibrationRow
+                key={role}
+                role={role}
+                pane={pane}
+                onChange={(nextPane) => onPaneChange(role, nextPane)}
+              />
+            ) : null;
+          })}
+        </div>
+      ) : (
+        <p className="panel-empty">
+          Import a manifest to inspect and adjust source-monitor pane rectangles.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function PaneCalibrationRow({
+  role,
+  pane,
+  onChange,
+}: {
+  role: ProxyPreviewRole;
+  pane: SourcePaneRect;
+  onChange: (nextPane: SourcePaneRect) => void;
+}) {
+  function updateField(field: PaneRectField, rawValue: string) {
+    const parsedValue = Number(rawValue);
+
+    if (!Number.isFinite(parsedValue)) {
+      return;
+    }
+
+    onChange(normalizePaneRect({ ...pane, [field]: parsedValue }));
+  }
+
+  return (
+    <div className="pane-calibration-row">
+      <strong>{SOURCE_ROLE_LABELS[role]}</strong>
+      {(["x", "y", "width", "height"] as PaneRectField[]).map((field) => (
+        <label key={field}>
+          {field}
+          <input
+            type="number"
+            min={field === "width" || field === "height" ? 0.01 : 0}
+            max={1}
+            step={0.01}
+            value={pane[field]}
+            onChange={(event) => updateField(field, event.target.value)}
+            aria-label={`${SOURCE_ROLE_LABELS[role]} pane ${field}`}
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function EpisodeReadinessPanel({
+  manifest,
+  localProxyVideo,
+  decisionCount,
+  cutDecisionCount,
+  exportFileNamePreview,
+  warnings,
+}: {
+  manifest: EpisodeManifest | null;
+  localProxyVideo: LocalProxyVideo | null;
+  decisionCount: number;
+  cutDecisionCount: number;
+  exportFileNamePreview: string;
+  warnings: string[];
+}) {
+  return (
+    <section className="readiness-panel" aria-label="Episode readiness">
+      <div className="panel-heading">
+        <div>
+          <h2>Episode Readiness</h2>
+          <p>Quick checks before export or local render handoff.</p>
+        </div>
+        <strong>{warnings.length === 0 ? "Ready" : "Check"}</strong>
+      </div>
+      <div className="readiness-grid">
+        <ReadinessMetric label="Manifest" value={manifest ? "Loaded" : "Missing"} />
+        <ReadinessMetric
+          label="Local proxy"
+          value={localProxyVideo ? "Loaded" : "Missing"}
+        />
+        <ReadinessMetric label="Decisions" value={String(decisionCount)} />
+        <ReadinessMetric label="Cuts" value={String(cutDecisionCount)} />
+      </div>
+      <div className="readiness-export">
+        <span>Export filename</span>
+        <strong>{exportFileNamePreview}</strong>
+      </div>
+      {warnings.length > 0 ? (
+        <ul className="readiness-warnings">
+          {warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="readiness-ok">No readiness warnings for the current edit.</p>
+      )}
+    </section>
+  );
+}
+
+function ReadinessMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 
@@ -1732,6 +1983,72 @@ function SegmentList({
   );
 }
 
+function DecisionTimeline({
+  segments,
+  sourceDurationMs,
+  currentSegmentSourceEventId,
+  onJump,
+}: {
+  segments: DerivedSegment[];
+  sourceDurationMs: number;
+  currentSegmentSourceEventId?: string;
+  onJump: (sourceTimeMs: number) => void;
+}) {
+  if (segments.length === 0) {
+    return <EmptyState text="Decision Timeline appears after the first decision." />;
+  }
+
+  return (
+    <section className="decision-timeline" aria-label="Decision Timeline">
+      <div className="timeline-header">
+        <strong>Decision Timeline</strong>
+        <span>{formatSourceTime(sourceDurationMs)} source duration</span>
+      </div>
+      <div className="timeline-strip">
+        {segments.map((segment) => {
+          const endSourceTimeMs = segment.endSourceTimeMs ?? sourceDurationMs;
+          const durationMs = Math.max(
+            0,
+            endSourceTimeMs - segment.startSourceTimeMs,
+          );
+          const widthPercent =
+            sourceDurationMs > 0 ? (durationMs / sourceDurationMs) * 100 : 0;
+          const isCurrent = segment.sourceEventId === currentSegmentSourceEventId;
+
+          return (
+            <button
+              key={segment.sourceEventId}
+              className={`timeline-segment${
+                segment.state === "cut" ? " is-cut" : ""
+              }${isCurrent ? " is-current" : ""}`}
+              style={
+                {
+                  "--accent": STATE_ACCENTS[segment.state],
+                  "--segment-width": `${Math.max(widthPercent, 1.5)}%`,
+                } as CSSProperties
+              }
+              type="button"
+              onClick={() => onJump(segment.startSourceTimeMs)}
+              title={`${PROGRAM_STATE_LABELS[segment.state]} ${formatSourceTime(
+                segment.startSourceTimeMs,
+              )} to ${formatSourceTime(endSourceTimeMs)}`}
+              aria-label={`Jump to ${PROGRAM_STATE_LABELS[
+                segment.state
+              ]} segment at ${formatSourceTime(segment.startSourceTimeMs)}`}
+            >
+              <span>{PROGRAM_STATE_LABELS[segment.state]}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="timeline-legend">
+        <span>Click a block to jump to its source in-point.</span>
+        <span>Cut spans are inactive in playback, not deleted.</span>
+      </div>
+    </section>
+  );
+}
+
 function EmptyState({ text }: { text: string }) {
   return <p className="empty-state">{text}</p>;
 }
@@ -1789,8 +2106,16 @@ function formatPane(
 }
 
 function loadStoredEpisodeManifest() {
+  return loadStoredManifest(EPISODE_MANIFEST_STORAGE_KEY);
+}
+
+function loadStoredEpisodeManifestBaseline() {
+  return loadStoredManifest(EPISODE_MANIFEST_BASELINE_STORAGE_KEY);
+}
+
+function loadStoredManifest(storageKey: string) {
   try {
-    const rawValue = localStorage.getItem(EPISODE_MANIFEST_STORAGE_KEY);
+    const rawValue = localStorage.getItem(storageKey);
 
     if (!rawValue) {
       return null;
@@ -1806,13 +2131,21 @@ function loadStoredEpisodeManifest() {
 }
 
 function saveStoredEpisodeManifest(manifest: EpisodeManifest | null) {
+  saveStoredManifest(EPISODE_MANIFEST_STORAGE_KEY, manifest);
+}
+
+function saveStoredEpisodeManifestBaseline(manifest: EpisodeManifest | null) {
+  saveStoredManifest(EPISODE_MANIFEST_BASELINE_STORAGE_KEY, manifest);
+}
+
+function saveStoredManifest(storageKey: string, manifest: EpisodeManifest | null) {
   try {
     if (!manifest) {
-      localStorage.removeItem(EPISODE_MANIFEST_STORAGE_KEY);
+      localStorage.removeItem(storageKey);
       return;
     }
 
-    localStorage.setItem(EPISODE_MANIFEST_STORAGE_KEY, JSON.stringify(manifest));
+    localStorage.setItem(storageKey, JSON.stringify(manifest));
   } catch {
     // Browser storage can be unavailable in private or restricted contexts.
   }
@@ -1934,7 +2267,8 @@ function shouldIgnoreKeyboardShortcut(target: EventTarget | null) {
     target.isContentEditable ||
     tagName === "input" ||
     tagName === "textarea" ||
-    tagName === "select"
+    tagName === "select" ||
+    tagName === "button"
   );
 }
 
@@ -1982,6 +2316,106 @@ function getManifestPaneRect(
   }
 
   return panes.clip;
+}
+
+function getCalibratablePaneRoles(
+  manifest: EpisodeManifest | null,
+): ProxyPreviewRole[] {
+  if (!manifest) {
+    return [];
+  }
+
+  return manifest.sourceMonitorProxy.panes.clip
+    ? ["homer", "charlie", "clip"]
+    : ["homer", "charlie"];
+}
+
+function updateManifestPaneRect(
+  manifest: EpisodeManifest,
+  role: ProxyPreviewRole,
+  nextPane: SourcePaneRect,
+) {
+  return {
+    ...manifest,
+    sourceMonitorProxy: {
+      ...manifest.sourceMonitorProxy,
+      panes: {
+        ...manifest.sourceMonitorProxy.panes,
+        [role]: normalizePaneRect(nextPane),
+      },
+    },
+  };
+}
+
+function normalizePaneRect(pane: SourcePaneRect): SourcePaneRect {
+  const width = clampNormalizedPaneValue(pane.width, 0.01);
+  const height = clampNormalizedPaneValue(pane.height, 0.01);
+  const x = clampNormalizedPaneValue(pane.x, 0, 1 - width);
+  const y = clampNormalizedPaneValue(pane.y, 0, 1 - height);
+
+  return {
+    x: roundPaneValue(x),
+    y: roundPaneValue(y),
+    width: roundPaneValue(width),
+    height: roundPaneValue(height),
+  };
+}
+
+function clampNormalizedPaneValue(value: number, min = 0, max = 1) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundPaneValue(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function arePaneSetsEqual(
+  firstPanes?: EpisodeManifest["sourceMonitorProxy"]["panes"],
+  secondPanes?: EpisodeManifest["sourceMonitorProxy"]["panes"],
+) {
+  return JSON.stringify(firstPanes ?? null) === JSON.stringify(secondPanes ?? null);
+}
+
+function cloneEpisodeManifest(manifest: EpisodeManifest): EpisodeManifest {
+  return JSON.parse(JSON.stringify(manifest)) as EpisodeManifest;
+}
+
+function buildEpisodeReadinessWarnings({
+  manifest,
+  events,
+}: {
+  manifest: EpisodeManifest | null;
+  events: readonly DecisionEvent[];
+}) {
+  const warnings: string[] = [];
+  const sortedEvents = sortDecisionEvents(events);
+
+  if (!manifest) {
+    warnings.push("No Episode Manifest loaded; source duration and pane metadata are still fake/local.");
+  }
+
+  if (sortedEvents.length === 0) {
+    warnings.push("No decisions yet; export/render handoff will not produce an edit plan.");
+  } else if (sortedEvents[0].sourceTimeMs > 0) {
+    warnings.push(
+      `First decision starts at ${formatSourceTime(
+        sortedEvents[0].sourceTimeMs,
+      )}; source time before that has no program state.`,
+    );
+  }
+
+  if (
+    sortedEvents.some((event) => stateRequiresClip(event.state)) &&
+    !manifest?.sourceMonitorProxy.panes.clip
+  ) {
+    warnings.push("Clip states are used, but the manifest has no Clip pane.");
+  }
+
+  return warnings;
+}
+
+function stateRequiresClip(state: ProgramState) {
+  return state === "charlie_clip" || state === "homer_clip" || state === "both_clip";
 }
 
 function syncProxyPreviewVideo(
@@ -2080,6 +2514,22 @@ function getDecisionCheckpointFileName(
     : `studio-cut-${payload.projectId}-${payload.branchId}-checkpoint`;
 
   return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
+}
+
+function getAdjustedManifestFileName(manifest: EpisodeManifest) {
+  return `${sanitizeFileNamePart(`${manifest.id}-adjusted-manifest`)}.json`;
+}
+
+function downloadJsonFile(payload: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function formatCheckpointTimestamp(date: Date) {

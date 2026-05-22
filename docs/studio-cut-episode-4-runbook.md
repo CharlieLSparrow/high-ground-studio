@@ -1,6 +1,6 @@
 # Studio Cut Episode 4 Runbook
 
-Date: 2026-05-21
+Date: 2026-05-22
 
 This is the real-use path for Episode 4 tonight:
 
@@ -122,7 +122,7 @@ pnpm studio-cut:local:verify-episode -- \
   --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json
 ```
 
-The report should say `Status: ready`. Duration warnings mean a file does not
+The report should say `Status: READY`. Duration warnings mean a file does not
 match the manifest closely enough; review the export before rendering.
 
 ## 5. Edit In Studio Cut
@@ -142,11 +142,18 @@ Steps:
 5. Use Source Scrub to inspect the full source timeline, including `Cut` spans.
 6. Confirm the Program Preview says `Proxy Program Preview`; it should crop the
    local source-monitor proxy into the current semantic layout.
-7. Use Program Playback to simulate output playback with `Cut` spans skipped.
-8. Tag semantic state decisions.
-9. Use `Export Checkpoint` before any risky cleanup/import pass.
-10. Export final decision JSON.
-11. Save or move the downloaded decision file to:
+7. Check the Episode Readiness panel. It should show the manifest and local
+   proxy loaded, decision and `Cut` counts, and the expected export filename.
+8. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
+   normalized pane rectangles, then use `Export Adjusted Manifest` and keep that
+   adjusted manifest with the local Episode 4 bootstrap files.
+9. Use Program Playback to simulate output playback with `Cut` spans skipped.
+10. Tag semantic state decisions.
+11. Watch the Decision Timeline. Colored source-time blocks should match the
+   derived segments; click a block to jump to its in-point.
+12. Use `Export Checkpoint` before any risky cleanup/import pass.
+13. Export final decision JSON.
+14. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
@@ -192,6 +199,16 @@ episode-004-checkpoint-2026-05-21-1730.json
 They do not include media, proxy files, object URLs, credentials, or full source
 paths.
 
+Pane calibration exports are manifest metadata only. With manifest id
+`episode-004`, the adjusted manifest download is:
+
+```text
+episode-004-adjusted-manifest.json
+```
+
+Use that adjusted manifest in later sessions if it makes the browser Program
+Preview crop correctly.
+
 Browser proxy layouts:
 
 - `Charlie`: Charlie pane full preview
@@ -206,6 +223,19 @@ This is a browser-only confidence preview from the local source-monitor proxy.
 The local render CLI remains final truth for rough 16:9 output.
 
 ## 6. Dry-Run Render
+
+First rerun validation with decisions:
+
+```bash
+pnpm studio-cut:local:verify-episode -- \
+  --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
+  --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json \
+  --decisions tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
+```
+
+The report should say `Status: READY`, include decision and active-duration
+metrics, and print the exact render command. If it says `Status: BLOCKED`, fix
+the listed missing paths or JSON issues before rendering.
 
 Run this first:
 
@@ -238,7 +268,7 @@ This renders simple 16:9 layouts from timeline-aligned local media and skips
 
 ## Troubleshooting
 
-- `Status: blocked` in validation: fix the listed missing files, JSON parse
+- `Status: BLOCKED` in validation: fix the listed missing files, JSON parse
   errors, or episode id mismatch before rendering.
 - Duration warnings: confirm every Premiere export starts at sequence time
   `00:00:00` and uses the same sequence end. Small encoder rounding is expected;

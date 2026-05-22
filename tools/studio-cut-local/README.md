@@ -60,6 +60,20 @@ media durations against the manifest duration with a default `1500` ms
 tolerance. Duration drift is a warning so operators can decide whether encoder
 rounding is acceptable before rendering.
 
+After Studio Cut decisions are exported, include `--decisions` to check render
+readiness and print the exact rough 16:9 render command:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-episode-files \
+  --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
+  --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json \
+  --decisions tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
+```
+
+The readiness report prints `Status: READY` or `Status: BLOCKED`, exact missing
+paths, decision count, `Cut` count, active duration, expected output duration,
+and warnings for no decision at `0:00` or Clip states without `video.clip`.
+
 Create a dry-run render plan from placeholder examples:
 
 ```bash
