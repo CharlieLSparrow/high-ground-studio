@@ -9,6 +9,10 @@ code, but the Prisma schema has not been applied to any database in this
 session and the live Studio Cloud Run service has not been configured for
 manuscript persistence.
 
+Update: the Manuscript Library MVP adds a named `StudioManuscript` parent for
+manual snapshots. Existing `StudioManuscriptSnapshot` rows without a
+`manuscriptId` remain loadable as legacy/orphan snapshots.
+
 ## Context
 
 The redesigned Studio Manuscript Desk at `/manuscript` now treats the

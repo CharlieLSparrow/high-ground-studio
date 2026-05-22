@@ -33,7 +33,9 @@ import {
   createRecordingHandoffMarkdown,
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
+  createStudioManuscriptLibraryInputFromDraft,
   createSyntheticManuscriptSmokeDraft,
+  getStudioManuscriptLibraryKindForDraft,
   filterCitedQuotationsByReviewStatus,
   filterManuscriptBlocks,
   hasMeaningfulManuscriptDraft,
@@ -54,6 +56,7 @@ import {
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
   STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY,
+  studioManuscriptLibraryKindDefinitions,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
   summarizeCitedQuotationReviewProgress,
@@ -126,6 +129,7 @@ test("manuscript help notes cover the confusing desk concepts", () => {
   const requiredNoteIds = [
     "browser-local-draft",
     "full-draft-json-backup",
+    "manuscript-library",
     "server-snapshot",
     "save-snapshot",
     "load-latest-snapshot",
@@ -226,6 +230,10 @@ test("author and semantic definitions contain the MVP options", () => {
   assert.deepEqual(
     manuscriptFilterVisualModeDefinitions.map((mode) => mode.id),
     ["highlight-matches", "dim-nonmatches", "hide-nonmatches"],
+  );
+  assert.deepEqual(
+    studioManuscriptLibraryKindDefinitions.map((kind) => kind.id),
+    ["WORKING", "SYNTHETIC"],
   );
 });
 
@@ -361,6 +369,47 @@ test("createManuscriptSnapshotMetadata summarizes a synthetic draft", () => {
     citedQuotations: 1,
     quoteReviews: 1,
   });
+});
+
+test("Studio manuscript library input keeps only named manuscript metadata", () => {
+  const draft = createSyntheticManuscriptSmokeDraft(
+    "2026-05-21T12:00:00.000Z",
+  );
+  const input = createStudioManuscriptLibraryInputFromDraft({
+    draft,
+    description: " Synthetic smoke library entry ",
+  });
+  const serialized = JSON.stringify(input);
+
+  assert.equal(input.title, draft.title);
+  assert.equal(input.description, "Synthetic smoke library entry");
+  assert.equal(input.sourceFileName, draft.sourceFileName);
+  assert.equal(input.kind, "SYNTHETIC");
+  assert.equal("editorJson" in input, false);
+  assert.equal("quoteReviews" in input, false);
+  assert.equal("structureRegions" in input, false);
+  assert.equal(serialized.includes("editorJson"), false);
+  assert.equal(serialized.includes("quoteReviews"), false);
+  assert.equal(serialized.includes("structureRegions"), false);
+  assert.equal(serialized.includes("marks"), false);
+});
+
+test("Studio manuscript library separates synthetic and working drafts", () => {
+  const syntheticDraft = createSyntheticManuscriptSmokeDraft(
+    "2026-05-21T12:00:00.000Z",
+  );
+  const workingDraft = {
+    ...syntheticDraft,
+    title: "Working Draft",
+    sourceFileName: "working-draft.docx",
+    importSummary: {
+      ...syntheticDraft.importSummary,
+      sourceFileName: "working-draft.docx",
+    },
+  };
+
+  assert.equal(getStudioManuscriptLibraryKindForDraft(syntheticDraft), "SYNTHETIC");
+  assert.equal(getStudioManuscriptLibraryKindForDraft(workingDraft), "WORKING");
 });
 
 test("createManuscriptDraftCheckpointKey ignores local save timestamp churn", () => {

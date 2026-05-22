@@ -45,6 +45,7 @@ import {
   createRealManuscriptReadinessGate,
   createRecordingHandoffMarkdown,
   createSyntheticManuscriptSmokeDraft,
+  createStudioManuscriptLibraryInputFromDraft,
   createManuscriptDraftCheckpointKey,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
@@ -78,6 +79,7 @@ import {
   filterCitedQuotationsByReviewStatus,
   filterManuscriptBlocks,
   STUDIO_HGO_PROJECTION_BRIDGE_WARNING_COPY,
+  studioManuscriptLibraryKindDefinitions,
   suggestBookStructureRegionsFromHeadings,
   summarizeBlockFilterResults,
   summarizeCitedQuotationReviewProgress,
@@ -98,6 +100,7 @@ import {
   type ManuscriptQuoteSourceType,
   type StudioHgoProjectionStatus,
   type StudioHgoProjectionVisibility,
+  type StudioManuscriptLibraryKind,
   type ManuscriptStructureKind,
   type ManuscriptStructureLabelPreset,
   type ManuscriptStructureRegion,
@@ -113,6 +116,7 @@ type StudioManuscriptClientProps = {
 
 type ManuscriptServerSnapshotSummary = {
   id: string;
+  manuscriptId: string | null;
   ownerEmail: string;
   snapshotType: "manual";
   title: string;
@@ -134,6 +138,29 @@ type ManuscriptServerSnapshotSummary = {
 type ManuscriptServerSnapshotDetail = ManuscriptServerSnapshotSummary & {
   draft: ManuscriptDraft;
 };
+
+type ManuscriptLibrarySummary = {
+  id: string;
+  ownerEmail: string;
+  title: string;
+  description: string | null;
+  sourceFileName: string | null;
+  kind: StudioManuscriptLibraryKind;
+  snapshotCount: number;
+  latestSnapshot: ManuscriptServerSnapshotSummary | null;
+  lastSnapshotAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+type ManuscriptLibraryListResponse =
+  | { ok: true; manuscripts: ManuscriptLibrarySummary[] }
+  | { ok: false; message: string };
+
+type ManuscriptLibraryCreateResponse =
+  | { ok: true; manuscript: ManuscriptLibrarySummary }
+  | { ok: false; message: string };
 
 type ManuscriptSnapshotListResponse =
   | { ok: true; snapshots: ManuscriptServerSnapshotSummary[] }
@@ -529,6 +556,17 @@ export function StudioManuscriptClient({
   const [editingQuoteRightsNote, setEditingQuoteRightsNote] = useState("");
   const [editingQuoteEditorNote, setEditingQuoteEditorNote] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [serverManuscripts, setServerManuscripts] = useState<
+    ManuscriptLibrarySummary[]
+  >([]);
+  const [selectedServerManuscriptId, setSelectedServerManuscriptId] =
+    useState("");
+  const [serverManuscriptDescription, setServerManuscriptDescription] =
+    useState("");
+  const [serverManuscriptStatus, setServerManuscriptStatus] = useState(
+    "Manuscript library not checked yet.",
+  );
+  const [isServerManuscriptBusy, setIsServerManuscriptBusy] = useState(false);
   const [serverSnapshots, setServerSnapshots] = useState<
     ManuscriptServerSnapshotSummary[]
   >([]);
@@ -948,7 +986,15 @@ export function StudioManuscriptClient({
     serverCheckpointKey === null
       ? null
       : currentDraftCheckpointKey !== serverCheckpointKey;
+  const selectedServerManuscript =
+    serverManuscripts.find(
+      (manuscript) => manuscript.id === selectedServerManuscriptId,
+    ) ?? null;
   const latestServerSnapshot = serverSnapshots[0] ?? null;
+  const selectedServerManuscriptKindDefinition =
+    studioManuscriptLibraryKindDefinitions.find(
+      (definition) => definition.id === selectedServerManuscript?.kind,
+    ) ?? null;
   const serverConnectionLabel =
     serverConnectionState === "connected"
       ? "Connected"
@@ -1058,8 +1104,17 @@ export function StudioManuscriptClient({
       return;
     }
 
+    void refreshManuscriptLibrary({ silent: true });
     void refreshServerSnapshots({ silent: true });
   }, [isHydrated, isRecordingMode, sidePanelMode]);
+
+  useEffect(() => {
+    if (!isHydrated || isRecordingMode || sidePanelMode !== "backup") {
+      return;
+    }
+
+    void refreshServerSnapshots({ silent: true });
+  }, [isHydrated, isRecordingMode, selectedServerManuscriptId, sidePanelMode]);
 
   useEffect(() => {
     if (isSyntheticSmokeDraftLoaded) {
@@ -2377,6 +2432,141 @@ export function StudioManuscriptClient({
     setMessage(nextMessage);
   }
 
+  function createSnapshotListUrl() {
+    if (!selectedServerManuscriptId) {
+      return "/api/manuscript/snapshots";
+    }
+
+    return `/api/manuscript/snapshots?manuscriptId=${encodeURIComponent(
+      selectedServerManuscriptId,
+    )}`;
+  }
+
+  function createLatestSnapshotUrl(manuscriptId = selectedServerManuscriptId) {
+    if (!manuscriptId) {
+      return "/api/manuscript/snapshots/latest";
+    }
+
+    return `/api/manuscript/snapshots/latest?manuscriptId=${encodeURIComponent(
+      manuscriptId,
+    )}`;
+  }
+
+  async function refreshManuscriptLibrary(input?: { silent?: boolean }) {
+    setIsServerManuscriptBusy(true);
+
+    if (!input?.silent) {
+      setServerManuscriptStatus("Checking manuscript library...");
+    }
+
+    try {
+      const response = await fetch("/api/manuscript/library", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ManuscriptLibraryListResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Manuscript library could not be listed.";
+        markServerSnapshotResponseState(response);
+        setServerManuscriptStatus(message);
+
+        if (!input?.silent) {
+          setMessage(message);
+        }
+
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+      setServerManuscripts(payload.manuscripts);
+      setSelectedServerManuscriptId((current) =>
+        current &&
+        payload.manuscripts.some((manuscript) => manuscript.id === current)
+          ? current
+          : "",
+      );
+      setServerManuscriptStatus(
+        payload.manuscripts.length
+          ? `${payload.manuscripts.length.toLocaleString()} manuscript(s) available.`
+          : "No named manuscripts saved yet.",
+      );
+    } catch (error) {
+      console.error("Manuscript library list failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerManuscriptStatus("Manuscript library is unavailable right now.");
+
+      if (!input?.silent) {
+        setMessage("Manuscript library is unavailable right now.");
+      }
+    } finally {
+      setIsServerManuscriptBusy(false);
+    }
+  }
+
+  async function createServerManuscriptFromCurrentDraft() {
+    const draft = createCurrentDraft();
+
+    if (!draft) {
+      return;
+    }
+
+    const manuscriptInput = createStudioManuscriptLibraryInputFromDraft({
+      draft,
+      description: serverManuscriptDescription,
+    });
+
+    setIsServerManuscriptBusy(true);
+    setServerManuscriptStatus("Creating named manuscript...");
+
+    try {
+      const response = await fetch("/api/manuscript/library", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(manuscriptInput),
+      });
+      const payload = (await response.json()) as ManuscriptLibraryCreateResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Named manuscript could not be created.";
+        markServerSnapshotResponseState(response);
+        setServerManuscriptStatus(message);
+        setMessage(message);
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+      setServerManuscripts((current) => [
+        payload.manuscript,
+        ...current.filter((manuscript) => manuscript.id !== payload.manuscript.id),
+      ]);
+      setSelectedServerManuscriptId(payload.manuscript.id);
+      setServerManuscriptDescription("");
+      setServerManuscriptStatus(
+        `Created manuscript ${payload.manuscript.title}.`,
+      );
+      setMessage("Named manuscript created. Save a manual snapshot when ready.");
+    } catch (error) {
+      console.error("Manuscript library create failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerManuscriptStatus("Named manuscript create failed.");
+      setMessage("Named manuscript create failed.");
+    } finally {
+      setIsServerManuscriptBusy(false);
+    }
+  }
+
   async function refreshServerSnapshots(input?: { silent?: boolean }) {
     setIsServerSnapshotBusy(true);
 
@@ -2385,7 +2575,7 @@ export function StudioManuscriptClient({
     }
 
     try {
-      const response = await fetch("/api/manuscript/snapshots", {
+      const response = await fetch(createSnapshotListUrl(), {
         cache: "no-store",
       });
       const payload = (await response.json()) as ManuscriptSnapshotListResponse;
@@ -2441,9 +2631,14 @@ export function StudioManuscriptClient({
     }
 
     const checkpointKey = createManuscriptDraftCheckpointKey(draft);
+    const manuscriptTitle = selectedServerManuscript?.title ?? null;
 
     setIsServerSnapshotBusy(true);
-    setServerSnapshotStatus("Saving server snapshot...");
+    setServerSnapshotStatus(
+      manuscriptTitle
+        ? `Saving snapshot under ${manuscriptTitle}...`
+        : "Saving legacy server snapshot...",
+    );
 
     try {
       const response = await fetch("/api/manuscript/snapshots", {
@@ -2454,6 +2649,7 @@ export function StudioManuscriptClient({
         body: JSON.stringify({
           draft,
           description: serverSnapshotDescription,
+          manuscriptId: selectedServerManuscriptId || null,
           snapshotType: "manual",
         }),
       });
@@ -2481,12 +2677,25 @@ export function StudioManuscriptClient({
       setServerCheckpointKey(checkpointKey);
       setServerSnapshotDescription("");
       setServerSnapshotStatus(
-        `Saved server snapshot ${formatDateTime(payload.snapshot.updatedAt)}.`,
+        manuscriptTitle
+          ? `Saved ${manuscriptTitle} snapshot ${formatDateTime(
+              payload.snapshot.updatedAt,
+            )}.`
+          : `Saved legacy server snapshot ${formatDateTime(
+              payload.snapshot.updatedAt,
+            )}.`,
       );
+      if (selectedServerManuscriptId) {
+        void refreshManuscriptLibrary({ silent: true });
+      }
       if (isSyntheticManuscriptSmokeDraft(draft)) {
         setHasConfirmedSyntheticServerSnapshotSaved(true);
       }
-      setMessage("Server manuscript snapshot saved.");
+      setMessage(
+        manuscriptTitle
+          ? "Named manuscript snapshot saved."
+          : "Legacy server manuscript snapshot saved.",
+      );
     } catch (error) {
       console.error("Server snapshot save failed.", error);
       setIsServerSnapshotUnavailable(true);
@@ -2498,7 +2707,10 @@ export function StudioManuscriptClient({
     }
   }
 
-  async function loadLatestServerSnapshot() {
+  async function loadLatestServerSnapshot(input?: {
+    manuscriptId?: string;
+    manuscriptTitle?: string;
+  }) {
     if (!editor) {
       return;
     }
@@ -2509,10 +2721,18 @@ export function StudioManuscriptClient({
     }
 
     setIsServerSnapshotBusy(true);
-    setServerSnapshotStatus("Loading latest server snapshot...");
+    const manuscriptTitle =
+      input?.manuscriptTitle ?? selectedServerManuscript?.title ?? null;
+    const manuscriptId = input?.manuscriptId ?? selectedServerManuscriptId;
+
+    setServerSnapshotStatus(
+      manuscriptTitle
+        ? `Loading latest snapshot for ${manuscriptTitle}...`
+        : "Loading latest server snapshot...",
+    );
 
     try {
-      const response = await fetch("/api/manuscript/snapshots/latest", {
+      const response = await fetch(createLatestSnapshotUrl(manuscriptId), {
         cache: "no-store",
       });
       const payload =
@@ -2532,8 +2752,11 @@ export function StudioManuscriptClient({
       setIsServerSnapshotUnavailable(false);
       setServerConnectionState("connected");
       if (!payload.snapshot) {
-        setServerSnapshotStatus("No server snapshots saved yet.");
-        setMessage("No server snapshots saved yet.");
+        const message = manuscriptTitle
+          ? `No snapshots saved for ${manuscriptTitle} yet.`
+          : "No server snapshots saved yet.";
+        setServerSnapshotStatus(message);
+        setMessage(message);
         return;
       }
 
@@ -2547,17 +2770,25 @@ export function StudioManuscriptClient({
 
       applyDraftToEditor(
         draft,
-        `Loaded latest server snapshot from ${formatDateTime(
-          payload.snapshot.updatedAt,
-        )}.`,
+        manuscriptTitle
+          ? `Loaded latest ${manuscriptTitle} snapshot from ${formatDateTime(
+              payload.snapshot.updatedAt,
+            )}.`
+          : `Loaded latest server snapshot from ${formatDateTime(
+              payload.snapshot.updatedAt,
+            )}.`,
       );
       setSelectedServerSnapshotId(payload.snapshot.id);
       setLastSavedServerSnapshot(payload.snapshot);
       setServerCheckpointKey(createManuscriptDraftCheckpointKey(draft));
       setServerSnapshotStatus(
-        `Loaded latest server snapshot from ${formatDateTime(
-          payload.snapshot.updatedAt,
-        )}.`,
+        manuscriptTitle
+          ? `Loaded latest ${manuscriptTitle} snapshot from ${formatDateTime(
+              payload.snapshot.updatedAt,
+            )}.`
+          : `Loaded latest server snapshot from ${formatDateTime(
+              payload.snapshot.updatedAt,
+            )}.`,
       );
       void refreshServerSnapshots({ silent: true });
     } catch (error) {
@@ -4646,6 +4877,194 @@ export function StudioManuscriptClient({
                   </p>
                 ) : null}
               </div>
+              <div className="grid gap-3 rounded-lg border border-studio-source/35 bg-studio-source/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <HelpLabel noteId="manuscript-library">
+                      Manuscript library
+                    </HelpLabel>
+                    <h3 className="m-0 text-[0.98rem] leading-snug text-studio-ink">
+                      Named manuscripts above the snapshot stack
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <StudioChip tone="source">
+                      {serverManuscripts.length.toLocaleString()} manuscripts
+                    </StudioChip>
+                    {selectedServerManuscriptKindDefinition ? (
+                      <StudioChip
+                        tone={
+                          selectedServerManuscript?.kind === "SYNTHETIC"
+                            ? "review"
+                            : "tag"
+                        }
+                      >
+                        {selectedServerManuscriptKindDefinition.label}
+                      </StudioChip>
+                    ) : (
+                      <StudioChip tone="review">Legacy / all</StudioChip>
+                    )}
+                  </div>
+                </div>
+                <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                  Choose a named manuscript before saving real work. Synthetic
+                  smoke drafts are labeled separately, while old snapshots
+                  without a manuscript remain loadable as legacy snapshots.
+                </p>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>Current manuscript</span>
+                  <select
+                    className={fieldClassName}
+                    disabled={isServerManuscriptBusy || isServerSnapshotBusy}
+                    value={selectedServerManuscriptId}
+                    onChange={(event) =>
+                      setSelectedServerManuscriptId(event.target.value)
+                    }
+                  >
+                    <option value="">
+                      No manuscript selected - legacy / all snapshots
+                    </option>
+                    {serverManuscripts.map((manuscript) => (
+                      <option key={manuscript.id} value={manuscript.id}>
+                        {manuscript.kind === "SYNTHETIC" ? "Synthetic: " : ""}
+                        {manuscript.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                    <p className={labelClassName}>Selected manuscript</p>
+                    <p className="m-0 mt-1 text-[0.84rem] font-extrabold text-studio-ink">
+                      {selectedServerManuscript?.title ??
+                        "None selected - legacy snapshots"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                    <p className={labelClassName}>Latest in manuscript</p>
+                    <p className="m-0 mt-1 text-[0.84rem] font-extrabold text-studio-ink">
+                      {selectedServerManuscript?.latestSnapshot
+                        ? formatDateTime(
+                            selectedServerManuscript.latestSnapshot.updatedAt,
+                          )
+                        : "No manuscript snapshot yet"}
+                    </p>
+                  </div>
+                </div>
+                <label className="grid gap-2">
+                  <span className={fieldLabelClassName}>
+                    New manuscript description
+                  </span>
+                  <textarea
+                    className={cn(textareaClassName, "min-h-[64px]")}
+                    disabled={isServerManuscriptBusy}
+                    value={serverManuscriptDescription}
+                    onChange={(event) =>
+                      setServerManuscriptDescription(event.target.value)
+                    }
+                    placeholder="Optional note, for example: synthetic smoke tests or working draft."
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    disabled={isServerManuscriptBusy || isServerSnapshotUnavailable}
+                    type="button"
+                    onClick={() => void createServerManuscriptFromCurrentDraft()}
+                  >
+                    Create from current draft
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    disabled={isServerManuscriptBusy}
+                    type="button"
+                    onClick={() => void refreshManuscriptLibrary()}
+                  >
+                    Refresh library
+                  </button>
+                </div>
+                <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                  {serverManuscriptStatus}
+                </p>
+                {serverManuscripts.length ? (
+                  <div className="grid gap-2">
+                    {serverManuscripts.slice(0, 5).map((manuscript) => (
+                      <article
+                        className={cn(
+                          "grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5",
+                          selectedServerManuscriptId === manuscript.id &&
+                            "border-studio-source/60 bg-studio-source/10",
+                        )}
+                        key={manuscript.id}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <h4 className="m-0 text-[0.88rem] leading-snug text-studio-ink">
+                              {manuscript.title}
+                            </h4>
+                            <p className="m-0 mt-1 text-[0.72rem] leading-snug text-studio-muted">
+                              {manuscript.snapshotCount.toLocaleString()} snapshots
+                              {manuscript.sourceFileName
+                                ? ` / ${manuscript.sourceFileName}`
+                                : ""}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StudioChip
+                              tone={
+                                manuscript.kind === "SYNTHETIC"
+                                  ? "review"
+                                  : "tag"
+                              }
+                            >
+                              {manuscript.kind === "SYNTHETIC"
+                                ? "Synthetic"
+                                : "Working"}
+                            </StudioChip>
+                            <span className="font-mono text-[0.68rem] text-studio-dim">
+                              {formatDateTime(manuscript.updatedAt)}
+                            </span>
+                          </div>
+                        </div>
+                        {manuscript.description ? (
+                          <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
+                            {manuscript.description}
+                          </p>
+                        ) : null}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className={smallButtonClassName}
+                            disabled={isServerSnapshotBusy}
+                            type="button"
+                            onClick={() =>
+                              setSelectedServerManuscriptId(manuscript.id)
+                            }
+                          >
+                            Select manuscript
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            disabled={
+                              isServerSnapshotBusy ||
+                              !manuscript.latestSnapshot
+                            }
+                            type="button"
+                            onClick={() => {
+                              setSelectedServerManuscriptId(manuscript.id);
+                              void loadLatestServerSnapshot({
+                                manuscriptId: manuscript.id,
+                                manuscriptTitle: manuscript.title,
+                              });
+                            }}
+                          >
+                            Load latest
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <div className="grid gap-3 rounded-lg border border-studio-node/35 bg-studio-node/10 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -4665,9 +5084,10 @@ export function StudioManuscriptClient({
                 </div>
                 <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
                   Browser-local draft is the active working copy. Server
-                  snapshots are manual cross-device checkpoints for saving on
-                  desktop and loading on another signed-in device. They are not
-                  autosave, simultaneous editing, or canonical manuscript truth.
+                  snapshots are manual cross-device checkpoints. When a
+                  manuscript is selected, new snapshots are saved under that
+                  named manuscript. With no manuscript selected, this panel
+                  falls back to the legacy account-wide snapshot stack.
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
@@ -4728,15 +5148,19 @@ export function StudioManuscriptClient({
                     type="button"
                     onClick={saveServerSnapshot}
                   >
-                    Save snapshot
+                    {selectedServerManuscript
+                      ? "Save to manuscript"
+                      : "Save legacy snapshot"}
                   </button>
                   <button
                     className={smallButtonClassName}
                     disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
                     type="button"
-                    onClick={loadLatestServerSnapshot}
+                    onClick={() => void loadLatestServerSnapshot()}
                   >
-                    Load latest
+                    {selectedServerManuscript
+                      ? "Load latest manuscript"
+                      : "Load latest"}
                   </button>
                   <button
                     className={smallButtonClassName}
@@ -4828,7 +5252,9 @@ export function StudioManuscriptClient({
                           quotes
                         </p>
                         <p className="m-0 break-all font-mono text-[0.68rem] leading-relaxed text-studio-dim">
-                          {snapshot.id}
+                          {snapshot.manuscriptId
+                            ? `snapshot ${snapshot.id}`
+                            : `legacy snapshot ${snapshot.id}`}
                         </p>
                         {snapshot.description ? (
                           <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">

@@ -41,10 +41,12 @@ The draft includes:
 - last updated timestamp
 
 Server snapshots are optional and explicit. When a Studio database is
-configured and the Prisma schema has been applied, `Backup` mode can save or
-load a full `ManuscriptDraft` JSON snapshot. Opening `/manuscript`, editing,
-filtering, entering Focus View, or entering Recording / Reading mode must not
-automatically write a server snapshot.
+configured and the Prisma schema has been applied, `Backup` mode can create a
+named manuscript record, save a full `ManuscriptDraft` JSON snapshot under that
+manuscript, or load the latest snapshot for a selected manuscript. Existing
+snapshots without a manuscript id remain loadable as legacy/orphan snapshots.
+Opening `/manuscript`, editing, filtering, entering Focus View, or entering
+Recording / Reading mode must not automatically write a server snapshot.
 
 Filter/lens controls are view state only. They do not change the browser-local
 draft source data, the localStorage schema, or saved server snapshots unless an
@@ -64,10 +66,11 @@ structure regions, author marks, semantic marks, quote reviews, or the
 localStorage schema.
 
 The full manuscript editor is not a canonical database document yet. Optional
-server snapshots write only `StudioManuscriptSnapshot` rows when explicitly
-saved in a configured environment. The Manuscript Desk does not write remote
-Studio document blocks, public projections, `.docx` exports, manuscript MDX, or
-imported archive files.
+server snapshots write `StudioManuscriptSnapshot` rows only when explicitly
+saved in a configured environment. The Manuscript Library can write
+`StudioManuscript` metadata rows, but it does not write remote Studio document
+blocks, public projections, `.docx` exports, manuscript MDX, or imported
+archive files.
 
 ## Manual Server Snapshot Workflow
 
@@ -76,11 +79,15 @@ Use server snapshots only as deliberate checkpoints.
 Current behavior:
 
 - Browser-local draft is the active working copy.
+- Named manuscripts are library parents for manual snapshots.
+- Synthetic smoke manuscripts are marked separately from working manuscripts.
 - Server snapshots are manual cross-device checkpoints.
 - Server snapshots are not autosave.
 - Server snapshots are not simultaneous editing.
 - Server snapshots are not canonical manuscript truth.
 - All currently saved server snapshots are `manual` snapshots.
+- Existing snapshots without a manuscript id remain loadable as legacy/orphan
+  snapshots.
 
 ### Desktop Save
 
@@ -90,14 +97,18 @@ on another device:
 1. Open `/manuscript` on desktop and sign in with an authorized Studio account.
 2. Switch to `Backup`.
 3. Confirm `Server connected` reads connected.
-4. Confirm the visible browser-local draft is the draft you intend to
+4. In `Manuscript library`, create or select the named manuscript that should
+   own the checkpoint.
+5. Confirm synthetic smoke drafts are labeled `Synthetic` and real working
+   drafts are not mixed into the synthetic record.
+6. Confirm the visible browser-local draft is the draft you intend to
    checkpoint.
-5. Add a short snapshot note, for example `synthetic phone load smoke`.
-6. Click `Save snapshot`.
-7. Confirm `Last saved snapshot id` updates.
-8. Confirm `Latest snapshot time` updates.
-9. Confirm `Local changes since last server save` reads `No`.
-10. Export a browser-local full draft JSON backup before moving to real
+7. Add a short snapshot note, for example `synthetic phone load smoke`.
+8. Click `Save to manuscript`.
+9. Confirm `Last saved snapshot id` updates.
+10. Confirm `Latest snapshot time` updates.
+11. Confirm `Local changes since last server save` reads `No`.
+12. Export a browser-local full draft JSON backup before moving to real
     manuscript material.
 
 ### Phone Load
@@ -107,14 +118,16 @@ Use this path when a phone or second browser profile needs the saved checkpoint:
 1. Open `/manuscript` on the phone or second browser profile.
 2. Sign in with the same authorized Studio account.
 3. Switch to `Backup`, or use the mobile tools `Load latest snapshot` action.
-4. Click `Refresh` if the snapshot list is stale.
-5. Use `Load latest` for the newest checkpoint, or choose a snapshot and click
+4. Click `Refresh library` and select the intended named manuscript.
+5. Click `Refresh` if the snapshot list is stale.
+6. Use `Load latest manuscript` for the newest checkpoint under the selected
+   manuscript, or choose a snapshot and click
    `Load selected snapshot`.
-6. Accept the replacement prompt only if the current browser-local draft on
+7. Accept the replacement prompt only if the current browser-local draft on
    that device can be replaced.
-7. Confirm text, block IDs, structure regions, cited quotations, and quote
+8. Confirm text, block IDs, structure regions, cited quotations, and quote
    review metadata are present.
-8. Confirm no server snapshot is saved until `Save snapshot` is clicked.
+9. Confirm no server snapshot is saved until `Save to manuscript` is clicked.
 
 ### Real Manuscript First-Save Checklist
 
@@ -127,13 +140,15 @@ Before the first real manuscript server snapshot:
 2. Confirm `/manuscript` is signed in as the intended Studio account.
 3. Confirm the local browser draft is the intended source.
 4. Download a full browser-local draft JSON backup.
-5. Use a snapshot note that identifies the source and operator.
-6. Click `Save snapshot` once.
-7. Record the `Last saved snapshot id` and latest snapshot time in the working
+5. Create or select the intended named manuscript in `Manuscript library`.
+6. Confirm it is not a synthetic manuscript record.
+7. Use a snapshot note that identifies the source and operator.
+8. Click `Save to manuscript` once.
+9. Record the `Last saved snapshot id` and latest snapshot time in the working
    session note.
-8. Load the same snapshot on a second browser profile or phone.
-9. Confirm text and metadata survive the load.
-10. Confirm no autosave or repeated background saves occur.
+10. Load the same manuscript snapshot on a second browser profile or phone.
+11. Confirm text and metadata survive the load.
+12. Confirm no autosave or repeated background saves occur.
 
 ## Footnote Help Smoke Steps
 
@@ -582,32 +597,37 @@ Use synthetic manuscript text only for this smoke.
 ## Server Snapshot Smoke Steps
 
 Run these only in an environment where the Studio database is intentionally
-configured and the `StudioManuscriptSnapshot` schema has been applied. Do not
-run `db:push`, migrations, or Cloud Run env/secret changes as part of this
-smoke checklist unless that work has been separately approved.
+configured and the `StudioManuscript` / `StudioManuscriptSnapshot` schema has
+been applied. Do not run `db:push`, migrations, or Cloud Run env/secret changes
+as part of this smoke checklist unless that work has been separately approved.
 
 1. Open `/manuscript`.
 2. Import or create a synthetic manuscript draft.
 3. Switch the sticky sidebar to `Backup`.
-4. Confirm the server snapshot panel is visible below the browser-local source
-   controls, not before the manuscript.
-5. Add a short synthetic snapshot note.
-6. Click `Save snapshot`.
-7. Confirm the UI reports that a server manuscript snapshot was saved.
-8. Confirm the recent snapshot list shows title, saved time, word count, block
+4. Confirm the Manuscript Library panel is visible below the browser-local
+   source controls and above server snapshots.
+5. Create a named manuscript from the current synthetic draft.
+6. Confirm the manuscript is labeled `Synthetic`.
+7. Add a short synthetic snapshot note.
+8. Click `Save to manuscript`.
+9. Confirm the UI reports that a named manuscript snapshot was saved.
+10. Confirm the recent snapshot list shows title, saved time, word count, block
    count, structure count, and cited quote count.
-9. Open `/manuscript` in another browser profile, phone, tablet, or simulator
+11. Open `/manuscript` in another browser profile, phone, tablet, or simulator
    signed in as the same Studio actor.
-10. Switch to `Backup` and click `Load latest`.
-11. Confirm the replacement prompt appears if the second device has a meaningful
+12. Switch to `Backup`, refresh the library, select the named manuscript, and
+    click `Load latest manuscript`.
+13. Confirm the replacement prompt appears if the second device has a meaningful
     browser-local draft.
-12. Confirm the loaded manuscript text, block IDs, structure regions, cited
+14. Confirm the loaded manuscript text, block IDs, structure regions, cited
     quotations, and quote review metadata match the saved snapshot.
-13. Confirm the second device now has its own browser-local copy after loading.
-14. On a phone/narrow viewport, open `Tools` and confirm `Load latest
+15. Confirm the second device now has its own browser-local copy after loading.
+16. On a phone/narrow viewport, open `Tools` and confirm `Load latest
     snapshot` is available inside the collapsed tools drawer, not above the
     first manuscript viewport.
-15. Confirm no autosave occurs unless `Save snapshot` is clicked again.
+17. Confirm old snapshots without a selected manuscript remain loadable from
+    the legacy/all snapshot path.
+18. Confirm no autosave occurs unless a manual save button is clicked again.
 
 If the database is not configured, the server snapshot panel should report that
 server snapshots are unavailable while the browser-local backup/download path

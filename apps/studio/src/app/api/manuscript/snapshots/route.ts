@@ -95,6 +95,8 @@ export async function GET(request: NextRequest) {
 
     const snapshots = await listStudioManuscriptSnapshots({
       ownerEmail: owner.ownerEmail,
+      manuscriptId: request.nextUrl.searchParams.get("manuscriptId"),
+      legacyOnly: request.nextUrl.searchParams.get("legacy") === "1",
     });
 
     return NextResponse.json({ ok: true, snapshots });
@@ -130,6 +132,7 @@ export async function POST(request: NextRequest) {
           draft?: unknown;
           description?: unknown;
           snapshotType?: unknown;
+          manuscriptId?: unknown;
         })
       : null;
   const draft = safeManuscriptDraft(requestBody?.draft);
@@ -153,7 +156,15 @@ export async function POST(request: NextRequest) {
         typeof requestBody?.description === "string"
           ? requestBody.description
           : null,
+      manuscriptId:
+        typeof requestBody?.manuscriptId === "string"
+          ? requestBody.manuscriptId
+          : null,
     });
+
+    if (!snapshot) {
+      return jsonError("Selected manuscript was not found.", 404);
+    }
 
     return NextResponse.json({ ok: true, snapshot }, { status: 201 });
   } catch (error) {

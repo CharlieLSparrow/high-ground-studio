@@ -181,6 +181,32 @@ Notification behavior:
 
 ## Studio Manuscript Snapshots
 
+### `StudioManuscript`
+
+Private Studio manuscript library record.
+
+Current intended usage:
+- gives `/manuscript` a named manuscript/project layer above the flat snapshot
+  stack
+- separates `WORKING` manuscripts from `SYNTHETIC` smoke/test drafts
+- lets manual snapshots belong to a selected manuscript when possible
+- keeps old snapshots loadable when they do not have a manuscript parent
+
+Key fields:
+- `ownerEmail`
+- `title`
+- `description`
+- `sourceFileName`
+- `kind`
+- `lastSnapshotAt`
+- `archivedAt`
+
+Current reality:
+- the browser-local draft remains the active working copy
+- creating a library record stores metadata only, not the full draft JSON
+- snapshots are still the explicit server write for manuscript content
+- deletion, ownership transfer, autosave, and collaboration are not active
+
 ### `StudioManuscriptSnapshot`
 
 Private Studio manuscript snapshot row.
@@ -193,6 +219,7 @@ Current intended usage:
   projections
 
 Key fields:
+- `manuscriptId` optional parent link
 - `ownerEmail`
 - `title`
 - `description`
@@ -205,6 +232,8 @@ Key fields:
 
 Current reality:
 - snapshots are manual, not autosaved
+- snapshots can belong to a `StudioManuscript`, but legacy/orphan snapshots
+  without a manuscript id remain valid and loadable
 - the browser-local draft remains the active working copy
 - the schema must be applied to a safe Studio database before snapshot routes can
   persist data

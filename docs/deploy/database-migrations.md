@@ -218,7 +218,8 @@ The Studio Writing Desk block-management slice later added archive metadata to
 - `archivedByLabel`
 
 Those fields support private draft block archive behavior. They are not public
-projection state and should not be interpreted as manuscript deletion.
+content publication controls or public projection state and should not be
+interpreted as manuscript deletion.
 
 If a target environment should run the Studio persistence slice, apply the
 schema deliberately:
@@ -251,6 +252,55 @@ where table_schema = 'public'
 Expected result:
 
 - one row for each Studio table above
+
+## Studio Manuscript Library Change
+
+The Studio Manuscript Library MVP added:
+
+- `StudioManuscriptKind` enum
+- `StudioManuscript` model
+- optional `StudioManuscriptSnapshot.manuscriptId`
+- relation from `StudioManuscriptSnapshot` to `StudioManuscript`
+- indexes for owner/manuscript snapshot lookup
+
+This is an additive private Studio schema change. Existing snapshots with a
+null `manuscriptId` remain valid legacy/orphan snapshots.
+
+As with the earlier Studio persistence changes, this repo still has no
+checked-in Prisma migration history. Apply the schema to a target database only
+through the approved operator path for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+Do not run this as part of ordinary local UI smoke testing unless the database
+target and rollback path are deliberate.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in (
+    'StudioManuscript',
+    'StudioManuscriptSnapshot'
+  );
+```
+
+Expected result:
+
+- one row for each Studio manuscript table above
+
+Enum verification:
+
+```sql
+select typname
+from pg_type
+where typname = 'StudioManuscriptKind';
+```
 
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:

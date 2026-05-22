@@ -154,6 +154,27 @@ export type ManuscriptSnapshotMetadata = {
   quoteReviews: number;
 };
 
+export const studioManuscriptLibraryKindDefinitions = [
+  {
+    id: "WORKING",
+    label: "Working",
+  },
+  {
+    id: "SYNTHETIC",
+    label: "Synthetic",
+  },
+] as const;
+
+export type StudioManuscriptLibraryKind =
+  (typeof studioManuscriptLibraryKindDefinitions)[number]["id"];
+
+export type StudioManuscriptLibraryCreateInput = {
+  title: string;
+  description: string | null;
+  sourceFileName: string | null;
+  kind: StudioManuscriptLibraryKind;
+};
+
 export type ManuscriptTextStats = {
   words: number;
   characters: number;
@@ -1123,6 +1144,24 @@ export function createManuscriptSnapshotMetadata(
     structureRegions: draft.structureRegions.length,
     citedQuotations: citedQuotations.length,
     quoteReviews: Object.keys(draft.quoteReviews).length,
+  };
+}
+
+export function getStudioManuscriptLibraryKindForDraft(
+  draft: Pick<ManuscriptDraft, "title" | "sourceFileName" | "importSummary">,
+): StudioManuscriptLibraryKind {
+  return isSyntheticManuscriptSmokeDraft(draft) ? "SYNTHETIC" : "WORKING";
+}
+
+export function createStudioManuscriptLibraryInputFromDraft(input: {
+  draft: ManuscriptDraft;
+  description?: string | null;
+}): StudioManuscriptLibraryCreateInput {
+  return {
+    title: input.draft.title.trim() || defaultTitle,
+    description: input.description?.trim() || null,
+    sourceFileName: input.draft.sourceFileName,
+    kind: getStudioManuscriptLibraryKindForDraft(input.draft),
   };
 }
 

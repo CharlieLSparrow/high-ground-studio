@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { getStudioAccessState } from "@/lib/server/studio-access";
 import { getStudioDatabaseUrl } from "@/lib/server/studio-persistence-guard";
@@ -10,7 +10,7 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ ok: false, message }, { status });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!getStudioDatabaseUrl()) {
     return jsonError(
       "Server manuscript snapshots need a configured Studio database.",
@@ -38,6 +38,7 @@ export async function GET() {
   try {
     const snapshot = await getLatestStudioManuscriptSnapshot({
       ownerEmail,
+      manuscriptId: request.nextUrl.searchParams.get("manuscriptId"),
     });
 
     return NextResponse.json({ ok: true, snapshot });

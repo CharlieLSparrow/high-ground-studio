@@ -154,6 +154,11 @@ enum StudioKnowledgeNodeType {
   source_note
 }
 
+enum StudioManuscriptKind {
+  WORKING
+  SYNTHETIC
+}
+
 // The canonical human/app identity record.
 //
 // Source of truth:
@@ -505,8 +510,28 @@ model StudioDocument {
   @@index([projectId, projectionStatus])
 }
 
+model StudioManuscript {
+  id             String                 @id @default(cuid())
+  ownerEmail     String
+  title          String
+  description    String?
+  sourceFileName String?
+  kind           StudioManuscriptKind   @default(WORKING)
+  lastSnapshotAt DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  archivedAt     DateTime?
+
+  snapshots      StudioManuscriptSnapshot[]
+
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, kind, updatedAt])
+  @@index([ownerEmail, lastSnapshotAt])
+}
+
 model StudioManuscriptSnapshot {
   id              String   @id @default(cuid())
+  manuscriptId    String?
   ownerEmail      String
   title           String
   description     String?
@@ -524,8 +549,12 @@ model StudioManuscriptSnapshot {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  manuscript        StudioManuscript? @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+
   @@index([ownerEmail, updatedAt])
   @@index([ownerEmail, createdAt])
+  @@index([ownerEmail, manuscriptId, updatedAt])
+  @@index([manuscriptId, updatedAt])
 }
 
 model StudioDocumentBlock {

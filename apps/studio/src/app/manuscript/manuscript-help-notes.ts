@@ -1,6 +1,7 @@
 export type ManuscriptHelpNoteId =
   | "browser-local-draft"
   | "full-draft-json-backup"
+  | "manuscript-library"
   | "server-snapshot"
   | "save-snapshot"
   | "load-latest-snapshot"
@@ -64,6 +65,18 @@ export const manuscriptHelpNotes = {
       "It does not save to Studio's database and does not update any canonical manuscript file.",
     whenToUse:
       "Download one before a serious import, a risky edit, or the first real manuscript server snapshot.",
+  },
+  "manuscript-library": {
+    id: "manuscript-library",
+    label: "Library",
+    title: "Named manuscripts above the snapshot stack",
+    body: "The manuscript library is the named shelf above manual snapshots. Pick a manuscript first, then save or load checkpoints under that manuscript.",
+    whatItDoes:
+      "It separates working manuscripts from synthetic smoke drafts and makes recent named projects easier to find.",
+    whatItDoesNot:
+      "It does not autosave, merge devices, delete legacy snapshots, publish content, or turn a snapshot into canonical manuscript truth.",
+    whenToUse:
+      "Use it before saving real work so a checkpoint belongs to the right named manuscript instead of a flat account-wide stack.",
   },
   "server-snapshot": {
     id: "server-snapshot",
