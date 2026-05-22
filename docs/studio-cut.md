@@ -391,6 +391,18 @@ typecheck, and Studio Cut build in order. It fails fast on the first nonzero
 command and prints a short smoke-test summary including golden assertion status,
 assertion count, output duration, and output resolution when available.
 
+GitHub Actions runs the same verifier from:
+
+```text
+.github/workflows/studio-cut-verify.yml
+```
+
+That workflow triggers on pushes and pull requests that touch Studio Cut web,
+schema, local renderer, verifier, package lock/config, this doc, or the workflow
+file. It installs dependencies, Python, and `ffmpeg`, then runs
+`pnpm studio-cut:verify`. It does not use secrets and does not deploy to
+Firebase Hosting; deployment remains a separate local/operator step for now.
+
 ## Local Commands
 
 Run from the repo root:

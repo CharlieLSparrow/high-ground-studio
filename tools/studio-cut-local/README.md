@@ -128,6 +128,11 @@ pnpm studio-cut:verify
 This command compiles the local Python CLI, runs `agent-smoke-test --json`,
 runs Studio Cut typecheck, and builds the Studio Cut web app.
 
+The same command runs in GitHub Actions from
+`.github/workflows/studio-cut-verify.yml` on relevant Studio Cut pushes and pull
+requests. The workflow verifies only; it does not deploy and does not require
+Firebase secrets.
+
 ## Render Profiles
 
 `plan-render` now attaches profile-aware layout intent to each active segment:
