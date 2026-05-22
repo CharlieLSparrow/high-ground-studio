@@ -67,6 +67,9 @@ import {
   type StudioCollaborationReviewNoteState,
   type StudioCollaborationReviewNoteStatus,
 } from "./studio-collaboration-review-note-model";
+import {
+  createAnnotationDurabilityDecisionRecord,
+} from "./studio-collaboration-annotation-durability";
 
 type LabState = {
   charlie: StudioCollaborationClient;
@@ -498,6 +501,10 @@ export default function StudioCollaborationLabClient() {
   const reviewNoteSummary = useMemo(
     () => summarizeSyntheticReviewNotes(reviewNotes),
     [reviewNotes],
+  );
+  const annotationDecision = useMemo(
+    () => createAnnotationDurabilityDecisionRecord(),
+    [],
   );
   const availableSpans = useMemo(() => {
     const spansById = new Map<string, StudioCollaborationSpanTag>();
@@ -1383,6 +1390,51 @@ export default function StudioCollaborationLabClient() {
                   </p>
                 )}
               </div>
+            </div>
+            <div
+              className="mt-4 grid gap-3 rounded-xl border border-studio-line-strong bg-studio-ink/5 p-3"
+              data-testid="studio-collab-annotation-durability"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={labelClassName}>
+                    Annotation durability decision
+                  </p>
+                  <p className="mt-1 text-xs font-bold leading-5 text-studio-muted">
+                    No persistence has been added. Review notes remain
+                    React-only while the future durable model is kept separate
+                    from source text and manual snapshots.
+                  </p>
+                </div>
+                <StudioChip tone="review">
+                  primary:{" "}
+                  {annotationDecision.recommendation.recommendedPrimaryStore}
+                </StudioChip>
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                {annotationDecision.options.map((option) => (
+                  <div
+                    key={option.option}
+                    className="rounded-lg border border-studio-line bg-[#0f1512] p-3"
+                  >
+                    <p className="text-sm font-black text-studio-ink">
+                      {option.label}
+                    </p>
+                    <p className="mt-1 text-xs font-bold leading-5 text-studio-muted">
+                      {option.summary}
+                    </p>
+                    <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-studio-source">
+                      Score {option.totalScore} / risk {option.primaryStoreRisk}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs font-bold leading-5 text-studio-muted">
+                Recommended path: use an annotation event log for operations and
+                audit trail, a separate annotation store for current review
+                state, and let manual snapshots reference annotation
+                state/version instead of becoming comment warehouses.
+              </p>
             </div>
             <p
               className="mt-3 text-sm font-bold text-studio-muted"

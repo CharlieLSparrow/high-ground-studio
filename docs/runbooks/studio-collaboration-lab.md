@@ -69,6 +69,12 @@ Review note tests:
 pnpm studio:collab:review:test
 ```
 
+Annotation durability decision tests:
+
+```bash
+pnpm studio:collab:annotation:test
+```
+
 Agentic helper smoke:
 
 ```bash
@@ -108,22 +114,27 @@ Generated reports are ignored and should not be committed.
 20. Archive the note.
 21. Confirm the page says review notes are annotations, not source text, and
     local-only for this sprint.
-22. Click `Export synthetic snapshot`.
-23. Confirm the JSON appears in the textarea and includes spans, but not
+22. Confirm the annotation durability decision section says no persistence has
+    been added.
+23. Confirm it recommends an event log for operations and a separate annotation
+    store for current state.
+24. Confirm it says manual snapshots should not become comment warehouses.
+25. Click `Export synthetic snapshot`.
+26. Confirm the JSON appears in the textarea and includes spans, but not
     presence state.
-24. Confirm the snapshot JSON does not include review-note body text.
-25. Click `Create synthetic checkpoint`.
-26. Confirm the checkpoint summary and checkpoint JSON appear without review
+27. Confirm the snapshot JSON does not include review-note body text.
+28. Click `Create synthetic checkpoint`.
+29. Confirm the checkpoint summary and checkpoint JSON appear without review
     notes.
-27. Click `Import checkpoint back into new synthetic client`.
-28. Confirm the imported-client summary appears.
-29. Click `Create synthetic Manuscript adapter payload from checkpoint`.
-30. Confirm the adapter summary and adapter JSON appear without presence state
+30. Click `Import checkpoint back into new synthetic client`.
+31. Confirm the imported-client summary appears.
+32. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+33. Confirm the adapter summary and adapter JSON appear without presence state
     or review-note body text.
-31. Click `Validate adapter payload`.
-32. Click `Convert adapter back to collaboration client`.
-33. Confirm the adapter roundtrip summary appears.
-34. Confirm the page says no server writes, no production manuscript editing,
+34. Click `Validate adapter payload`.
+35. Click `Convert adapter back to collaboration client`.
+36. Confirm the adapter roundtrip summary appears.
+37. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -149,6 +160,9 @@ Passing means:
 - review notes do not mutate source text
 - review notes are excluded from snapshots checkpoints and adapter payloads in
   this pass
+- annotation durability comparison recommends event-log operations plus a
+  separate annotation store for future durable notes
+- checkpoint metadata is not the primary recommended note store
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

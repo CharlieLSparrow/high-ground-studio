@@ -54,6 +54,11 @@ localStorage, server routes, or production manual snapshots. Future production
 work still needs a deliberate decision about whether review notes become
 durable annotation events, checkpoint metadata, or a separate annotation store.
 
+The current durability recommendation is to use an annotation event log for
+operations and audit trail, plus a separate annotation store for current review
+state. Checkpoint metadata should not be the primary note store because manual
+snapshots must remain rollback anchors rather than comment warehouses.
+
 ## Spans
 
 Semantic spans are overlays on source text. They are the collaboration bridge

@@ -47,6 +47,10 @@ import {
   updateSyntheticReviewNoteStatus,
   validateSyntheticReviewNoteState,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts";
+import {
+  createAnnotationDurabilityDecisionRecord,
+  validateAnnotationDurabilityDecisionRecord,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -305,6 +309,29 @@ async function runSmoke() {
       sourceTextUnchanged: true,
     });
 
+    const annotationDecision = createAnnotationDurabilityDecisionRecord();
+    const annotationDecisionValidation =
+      validateAnnotationDurabilityDecisionRecord(annotationDecision);
+
+    if (!annotationDecisionValidation.ok) {
+      throw new Error(
+        `Annotation durability decision validation failed: ${annotationDecisionValidation.errors.join(" ")}`,
+      );
+    }
+
+    if (annotationDecision.recommendation.checkpointMetadataPrimaryStore) {
+      throw new Error("Checkpoint metadata was recommended as the primary annotation store.");
+    }
+
+    addStep("compare future annotation durability options", "passed", {
+      recommendedPrimaryStore:
+        annotationDecision.recommendation.recommendedPrimaryStore,
+      recommendedOperationLog:
+        annotationDecision.recommendation.recommendedOperationLog,
+      checkpointMetadataPrimaryStore:
+        annotationDecision.recommendation.checkpointMetadataPrimaryStore,
+    });
+
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
     const safety = assertSyntheticCollaborationSnapshot(exportedSnapshot);
 
@@ -514,6 +541,12 @@ async function runSmoke() {
       reviewNotesAnchoredToSpans: true,
       reviewNotesMutateSourceText: false,
       reviewNotesExcludedFromSnapshots: true,
+      annotationDurabilityDecision: true,
+      recommendedPrimaryStore:
+        annotationDecision.recommendation.recommendedPrimaryStore,
+      checkpointMetadataPrimaryStore:
+        annotationDecision.recommendation.checkpointMetadataPrimaryStore,
+      noDbSchema: true,
       manuscriptFirstSurface: true,
       noServerWrites: true,
       noProductionManuscriptEditing: true,

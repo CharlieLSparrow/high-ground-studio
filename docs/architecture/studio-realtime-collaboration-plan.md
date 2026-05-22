@@ -85,6 +85,7 @@ Commands:
 - `pnpm studio:collab:span:test`
 - `pnpm studio:collab:presence:test`
 - `pnpm studio:collab:review:test`
+- `pnpm studio:collab:annotation:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -212,6 +213,32 @@ That exclusion is intentional until the production model decides whether review
 notes belong in durable annotation events, checkpoint metadata, or a separate
 annotation store. Manual snapshots remain sacred either way.
 
+## Annotation Durability Decision
+
+The collaboration lab now has a synthetic-only annotation durability decision
+helper:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts`
+
+Decision record:
+
+- `studio-annotation-durability-decision-v1`
+
+The helper compares three future storage paths:
+
+- annotation event log
+- checkpoint metadata
+- separate annotation store
+
+The current recommendation is to use an annotation event log for operations and
+audit trail, plus a separate annotation store for materialized current review
+state. Checkpoint metadata should not become the primary durable note store
+because it would bloat manual snapshots and blur rollback semantics.
+
+This sprint adds no persistence. Review notes remain React-state-only in the
+lab, production `/manuscript` save/load is untouched, and manual snapshots
+remain separate rollback anchors.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -227,6 +254,7 @@ annotation store. Manual snapshots remain sacred either way.
 - no public publishing
 - no durable presence storage
 - no durable review-note storage
+- no annotation persistence
 
 ## Rough 20-Sprint Path
 
