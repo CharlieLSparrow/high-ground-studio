@@ -295,16 +295,20 @@ async function runBrowserSmoke() {
     ).toBeVisible();
 
     await expect(page.getByRole("heading", { name: "Persistence Mode" })).toBeVisible();
-    await expect(page.getByText("Local only")).toBeVisible();
+    await expect(page.getByText("Local only", { exact: true })).toBeVisible();
     await expect(page.getByText("decisions are saved in this browser")).toBeVisible();
 
     for (const label of stateButtonLabels) {
       await expect(stateButton(page, label)).toBeVisible();
     }
 
+    await expect(page.locator(".shortcut-legend")).toContainText("Play/Pause");
+    await expect(page.getByRole("button", { name: "Export Decisions" })).toBeVisible();
+
     const secondsInput = page.getByLabel("Seconds");
     await secondsInput.fill("5");
-    await stateButton(page, "Both").click();
+    await secondsInput.evaluate((element) => element.blur());
+    await page.keyboard.press("3");
 
     const decisionSection = page
       .locator(".list-section")
@@ -312,10 +316,17 @@ async function runBrowserSmoke() {
     const segmentSection = page
       .locator(".list-section")
       .filter({ has: page.getByRole("heading", { name: "Derived Segments" }) });
+    const currentSegmentSection = page
+      .locator(".current-segment-panel")
+      .filter({ has: page.getByRole("heading", { name: "Current Segment" }) });
 
     await expectSectionText(decisionSection, "1 event");
     await expectSectionText(decisionSection, "Both");
     await expectSectionText(decisionSection, "0:05");
+    await expectSectionText(decisionSection, "Active");
+    await expectSectionText(decisionSection, "Newest");
+    await expectSectionText(currentSegmentSection, "Both");
+    await expectSectionText(currentSegmentSection, "Included");
 
     await secondsInput.fill("10");
     await stateButton(page, "Cut").click();
@@ -329,9 +340,10 @@ async function runBrowserSmoke() {
     await expectSectionText(segmentSection, "Episode end");
 
     await secondsInput.fill("5");
-    await page.getByRole("button", { name: "Play" }).click();
+    await secondsInput.evaluate((element) => element.blur());
+    await page.keyboard.press("Space");
     await expect(page.getByText("Program Playback", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Pause" }).click();
+    await page.keyboard.press("Space");
     await expect(page.getByText("Source Scrub", { exact: true })).toBeVisible();
 
     await page.reload({ waitUntil: "networkidle" });

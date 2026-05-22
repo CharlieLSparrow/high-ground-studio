@@ -152,6 +152,25 @@ tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
 The browser reads the proxy file locally with an object URL. It does not upload
 or persist the proxy file.
 
+Keyboard shortcuts for tagging:
+
+```text
+1 Charlie
+2 Homer
+3 Both
+4 Charlie/Clip
+5 Homer/Clip
+6 Both/Clip
+X Cut
+Space Play/Pause
+Left/Right scrub 1s
+Shift+Left/Shift+Right scrub 10s
+```
+
+The Current Segment panel should match what Charlie expects before each tag.
+When the imported manifest id is `episode-004`, the export download name should
+default to `episode-004-decisions.json`.
+
 ## 6. Dry-Run Render
 
 Run this first:
@@ -202,4 +221,3 @@ This renders simple 16:9 layouts from timeline-aligned local media and skips
 - Render looks compositionally rough: expected for tonight. The aligned renderer
   uses simple rectangles and semantic states; full-res polish belongs in later
   render profile work.
-

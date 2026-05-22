@@ -76,6 +76,29 @@ This does not create destructive cuts or a new source timeline. Source time
 remains canonical; playback skipping is only a preview behavior for inactive
 ranges.
 
+## Tagging Cockpit
+
+The web editor supports keyboard-first Episode tagging after a manifest and
+local proxy are loaded:
+
+| Key | Action |
+| --- | --- |
+| `1` | Add `Charlie` decision |
+| `2` | Add `Homer` decision |
+| `3` | Add `Both` decision |
+| `4` | Add `Charlie/Clip` decision |
+| `5` | Add `Homer/Clip` decision |
+| `6` | Add `Both/Clip` decision |
+| `X` | Add `Cut` decision |
+| `Space` | Play / Pause |
+| `Left` / `Right` | Scrub source time by 1 second |
+| `Shift+Left` / `Shift+Right` | Scrub source time by 10 seconds |
+
+Shortcuts are ignored while typing in inputs or notes. The Current Segment panel
+shows the state that applies at the current source time, its in/out range, and
+whether Program Playback will include or skip that span. Decision export uses
+the manifest id when present, for example `episode-004-decisions.json`.
+
 ## Episode Manifest
 
 Studio Cut can import an Episode Manifest JSON file for the temporary

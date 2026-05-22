@@ -35,6 +35,31 @@ const LOCAL_PROXY_VIDEO_ACCEPT =
   "video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
 const PLAYBACK_TICK_MS = 250;
 const VIDEO_SEEK_DRIFT_TOLERANCE_MS = 350;
+const SMALL_SCRUB_STEP_MS = 1000;
+const LARGE_SCRUB_STEP_MS = 10000;
+
+const STATE_KEYBOARD_SHORTCUTS: Record<string, ProgramState> = {
+  "1": "charlie",
+  "2": "homer",
+  "3": "both",
+  "4": "charlie_clip",
+  "5": "homer_clip",
+  "6": "both_clip",
+  x: "cut",
+};
+
+const KEYBOARD_SHORTCUT_LEGEND = [
+  { key: "1", label: "Charlie" },
+  { key: "2", label: "Homer" },
+  { key: "3", label: "Both" },
+  { key: "4", label: "Charlie/Clip" },
+  { key: "5", label: "Homer/Clip" },
+  { key: "6", label: "Both/Clip" },
+  { key: "X", label: "Cut" },
+  { key: "Space", label: "Play/Pause" },
+  { key: "Left/Right", label: "Scrub 1s" },
+  { key: "Shift+Left/Right", label: "Scrub 10s" },
+];
 
 type LocalProxyVideo = {
   id: string;
@@ -137,6 +162,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     () => getCurrentDecisionEvent(sortedEvents, sourceTimeMs),
     [sortedEvents, sourceTimeMs],
   );
+  const currentSegment = useMemo(
+    () => getSegmentAtSourceTime(derivedSegments, sourceTimeMs, sourceDurationMs),
+    [derivedSegments, sourceDurationMs, sourceTimeMs],
+  );
+  const latestEventId = sortedEvents[sortedEvents.length - 1]?.id;
   const currentState = currentEvent?.state;
   const playbackModeLabel = isProgramPlaying
     ? "Program Playback"
@@ -222,6 +252,39 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     return () => window.clearInterval(intervalId);
   }, [derivedSegments, isProgramPlaying, localProxyVideo, sourceDurationMs]);
 
+  useEffect(() => {
+    function handleKeyboardShortcut(event: KeyboardEvent) {
+      if (shouldIgnoreKeyboardShortcut(event.target)) {
+        return;
+      }
+
+      const shortcutState = STATE_KEYBOARD_SHORTCUTS[event.key.toLowerCase()];
+
+      if (shortcutState) {
+        event.preventDefault();
+        addDecision(shortcutState);
+        return;
+      }
+
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        toggleProgramPlayback();
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        const stepMs = event.shiftKey ? LARGE_SCRUB_STEP_MS : SMALL_SCRUB_STEP_MS;
+        scrubToSourceTime(sourceTimeMs + direction * stepMs);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyboardShortcut);
+
+    return () => window.removeEventListener("keydown", handleKeyboardShortcut);
+  });
+
   function setClampedSourceTime(nextValue: number) {
     setSourceTimeMs(clampSourceTime(nextValue, sourceDurationMs));
   }
@@ -275,7 +338,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `studio-cut-${payload.projectId}-${payload.branchId}.json`;
+    anchor.download = getDecisionExportFileName(episodeManifest, payload);
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -570,6 +633,12 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           </div>
         </section>
 
+        <CurrentSegmentPanel
+          currentSegment={currentSegment}
+          sourceTimeMs={sourceTimeMs}
+          sourceDurationMs={sourceDurationMs}
+        />
+
         <section className="state-panel">
           <div className="panel-heading">
             <div>
@@ -577,6 +646,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
               <p>Each state holds until the next event</p>
             </div>
           </div>
+          <KeyboardShortcutLegend />
           <textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}
@@ -603,71 +673,153 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       </aside>
 
       <section className="lists-panel" aria-label="Decision and segment lists">
-          <div className="list-section">
-            <div className="panel-heading">
-              <div>
-                <h2>Decision Events</h2>
-                <p>
-                  {sortedEvents.length} event
-                  {sortedEvents.length === 1 ? "" : "s"} in this working set
-                </p>
-              </div>
-              <div className="toolbar-actions">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => importInputRef.current?.click()}
-                >
-                  Import JSON
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={handleExportJson}
-                >
-                  Export JSON
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={clearLocalDecisions}
-                  disabled={sortedEvents.length === 0}
-                >
-                  Clear Local
-                </button>
-              </div>
+        <div className="list-section">
+          <div className="panel-heading">
+            <div>
+              <h2>Decision Events</h2>
+              <p>
+                {sortedEvents.length} event
+                {sortedEvents.length === 1 ? "" : "s"} in this working set.
+                Jump preserves source time; Remove Local only changes this
+                browser/branch working set.
+              </p>
             </div>
-            <input
-              ref={importInputRef}
-              className="file-input"
-              type="file"
-              accept="application/json,.json"
-              onChange={handleImportJson}
-              aria-label="Import decision events JSON"
-            />
-            {importMessage ? <p className="import-message">{importMessage}</p> : null}
-            <DecisionList
-              events={sortedEvents}
-              currentEventId={currentEvent?.id}
-              onJump={scrubToSourceTime}
-              onRemove={(eventId) => {
-                stopProgramPlayback();
-                removeDecision(eventId);
-              }}
-            />
+            <div className="toolbar-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+              >
+                Import JSON
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={handleExportJson}
+              >
+                Export Decisions
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={clearLocalDecisions}
+                disabled={sortedEvents.length === 0}
+              >
+                Clear Local
+              </button>
+            </div>
           </div>
+          <input
+            ref={importInputRef}
+            className="file-input"
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportJson}
+            aria-label="Import decision events JSON"
+          />
+          {importMessage ? <p className="import-message">{importMessage}</p> : null}
+          <DecisionList
+            events={sortedEvents}
+            currentEventId={currentEvent?.id}
+            latestEventId={latestEventId}
+            onJump={scrubToSourceTime}
+            onRemove={(eventId) => {
+              stopProgramPlayback();
+              removeDecision(eventId);
+            }}
+          />
+        </div>
 
-          <div className="list-section">
-            <div className="panel-heading">
-              <div>
-                <h2>Derived Segments</h2>
-                <p>Program state over source time</p>
-              </div>
+        <div className="list-section">
+          <div className="panel-heading">
+            <div>
+              <h2>Derived Segments</h2>
+              <p>Program state over source time</p>
             </div>
-            <SegmentList segments={derivedSegments} />
           </div>
+          <SegmentList
+            segments={derivedSegments}
+            currentSegmentSourceEventId={currentSegment?.sourceEventId}
+          />
+        </div>
       </section>
     </main>
+  );
+}
+
+function CurrentSegmentPanel({
+  currentSegment,
+  sourceTimeMs,
+  sourceDurationMs,
+}: {
+  currentSegment?: DerivedSegment;
+  sourceTimeMs: number;
+  sourceDurationMs: number;
+}) {
+  const segmentEndSourceTimeMs =
+    currentSegment?.endSourceTimeMs ?? sourceDurationMs;
+  const isCutSegment = currentSegment?.state === "cut";
+
+  return (
+    <section
+      className={`current-segment-panel${isCutSegment ? " is-cut" : ""}`}
+      aria-label="Current segment"
+    >
+      <div className="panel-heading">
+        <div>
+          <h2>Current Segment</h2>
+          <p>
+            {currentSegment
+              ? isCutSegment
+                ? "Program Playback will skip this inactive span."
+                : "Program Playback includes this active span."
+              : "No state decision applies at this source time yet."}
+          </p>
+        </div>
+        <strong>{formatSourceTime(sourceTimeMs)}</strong>
+      </div>
+      {currentSegment ? (
+        <div className="current-segment-grid">
+          <div>
+            <span>State</span>
+            <strong>{PROGRAM_STATE_LABELS[currentSegment.state]}</strong>
+          </div>
+          <div>
+            <span>In</span>
+            <strong>{formatSourceTime(currentSegment.startSourceTimeMs)}</strong>
+          </div>
+          <div>
+            <span>Out</span>
+            <strong>
+              {currentSegment.endSourceTimeMs === undefined
+                ? "Episode end"
+                : formatSourceTime(segmentEndSourceTimeMs)}
+            </strong>
+          </div>
+          <div>
+            <span>Playback</span>
+            <strong>{isCutSegment ? "Skipped" : "Included"}</strong>
+          </div>
+        </div>
+      ) : (
+        <p className="current-segment-empty">
+          Add a state decision at or before this time to define program behavior.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function KeyboardShortcutLegend() {
+  return (
+    <div className="shortcut-legend" aria-label="Keyboard shortcuts">
+      {KEYBOARD_SHORTCUT_LEGEND.map((shortcut) => (
+        <span key={`${shortcut.key}-${shortcut.label}`}>
+          <kbd>{shortcut.key}</kbd>
+          {shortcut.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -978,11 +1130,13 @@ function ProgramMonitor({
 function DecisionList({
   events,
   currentEventId,
+  latestEventId,
   onJump,
   onRemove,
 }: {
   events: DecisionEvent[];
   currentEventId?: string;
+  latestEventId?: string;
   onJump: (sourceTimeMs: number) => void;
   onRemove: (eventId: string) => void;
 }) {
@@ -1003,41 +1157,77 @@ function DecisionList({
           </tr>
         </thead>
         <tbody>
-          {events.map((event) => (
-            <tr
-              key={event.id}
-              className={event.id === currentEventId ? "is-current-row" : ""}
-            >
-              <td>{formatSourceTime(event.sourceTimeMs)}</td>
-              <td>
-                <span
-                  className="state-pill"
-                  style={{ "--accent": STATE_ACCENTS[event.state] } as CSSProperties}
-                >
-                  {PROGRAM_STATE_LABELS[event.state]}
-                </span>
-              </td>
-              <td>{event.note || "None"}</td>
-              <td title={event.id}>{shortId(event.id)}</td>
-              <td>
-                <div className="row-actions">
-                  <button type="button" onClick={() => onJump(event.sourceTimeMs)}>
-                    Jump
-                  </button>
-                  <button type="button" onClick={() => onRemove(event.id)}>
-                    Remove Local
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {events.map((event) => {
+            const isCurrent = event.id === currentEventId;
+            const isLatest = event.id === latestEventId;
+
+            return (
+              <tr
+                key={event.id}
+                className={[
+                  isCurrent ? "is-current-row" : "",
+                  isLatest ? "is-latest-row" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <td>{formatSourceTime(event.sourceTimeMs)}</td>
+                <td>
+                  <span
+                    className="state-pill"
+                    style={
+                      { "--accent": STATE_ACCENTS[event.state] } as CSSProperties
+                    }
+                  >
+                    {PROGRAM_STATE_LABELS[event.state]}
+                  </span>
+                </td>
+                <td>{event.note || "None"}</td>
+                <td title={event.id}>
+                  <div className="event-cell">
+                    <span>{shortId(event.id)}</span>
+                    <div>
+                      {isCurrent ? <small>Active</small> : null}
+                      {isLatest ? <small>Newest</small> : null}
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      onClick={() => onJump(event.sourceTimeMs)}
+                      aria-label={`Jump to ${PROGRAM_STATE_LABELS[event.state]} at ${formatSourceTime(
+                        event.sourceTimeMs,
+                      )}`}
+                    >
+                      Jump
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemove(event.id)}
+                      aria-label={`Remove local decision ${shortId(event.id)}`}
+                    >
+                      Remove Local
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function SegmentList({ segments }: { segments: DerivedSegment[] }) {
+function SegmentList({
+  segments,
+  currentSegmentSourceEventId,
+}: {
+  segments: DerivedSegment[];
+  currentSegmentSourceEventId?: string;
+}) {
   if (segments.length === 0) {
     return <EmptyState text="Segments appear after the first decision." />;
   }
@@ -1055,7 +1245,14 @@ function SegmentList({ segments }: { segments: DerivedSegment[] }) {
         </thead>
         <tbody>
           {segments.map((segment) => (
-            <tr key={segment.sourceEventId}>
+            <tr
+              key={segment.sourceEventId}
+              className={
+                segment.sourceEventId === currentSegmentSourceEventId
+                  ? "is-current-row"
+                  : ""
+              }
+            >
               <td>{formatSourceTime(segment.startSourceTimeMs)}</td>
               <td>
                 {segment.endSourceTimeMs === undefined
@@ -1165,6 +1362,22 @@ function saveStoredEpisodeManifest(manifest: EpisodeManifest | null) {
   }
 }
 
+function shouldIgnoreKeyboardShortcut(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName.toLowerCase();
+
+  return (
+    target.isContentEditable ||
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    tagName === "button"
+  );
+}
+
 function isSupportedLocalProxyVideo(file: File) {
   return (
     file.type.startsWith("video/") || /\.(mp4|mov|m4v)$/i.test(file.name)
@@ -1213,6 +1426,27 @@ function formatSourceTime(sourceTimeMs: number) {
 
 function shortId(id: string) {
   return id.slice(0, 8);
+}
+
+function getDecisionExportFileName(
+  manifest: EpisodeManifest | null,
+  payload: { projectId: string; branchId: string },
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-decisions`
+    : `studio-cut-${payload.projectId}-${payload.branchId}`;
+
+  return `${sanitizeFileNamePart(baseName)}.json`;
+}
+
+function sanitizeFileNamePart(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "studio-cut-decisions"
+  );
 }
 
 function formatFileSize(sizeBytes: number) {
