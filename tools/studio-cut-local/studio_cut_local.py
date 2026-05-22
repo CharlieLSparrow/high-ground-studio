@@ -278,6 +278,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     aligned_parser.set_defaults(handler=run_render_youtube_16x9_aligned)
 
+    smoke_parser = subparsers.add_parser(
+        "agent-smoke-test",
+        help="Run a synthetic end-to-end Studio Cut workflow smoke test.",
+    )
+    smoke_parser.add_argument("--workdir", type=Path)
+    smoke_parser.add_argument(
+        "--keep-workdir",
+        action="store_true",
+        help="Keep the generated synthetic files after the smoke test.",
+    )
+    smoke_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print a machine-readable JSON report.",
+    )
+    smoke_parser.add_argument(
+        "--skip-render",
+        action="store_true",
+        help="Generate inputs and plan-render output, but skip final MP4 rendering.",
+    )
+    smoke_parser.set_defaults(handler=run_agent_smoke_test)
+
     return parser
 
 
@@ -401,6 +423,442 @@ def run_explain_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def execute_agent_smoke_test(
+    *, workdir: Path, workdir_kept: bool, skip_render: bool
+) -> dict[str, Any]:
+    source_duration_ms = 12000
+    expected_cut_duration_ms = 2000
+    expected_output_duration_ms = source_duration_ms - expected_cut_duration_ms
+    commands_run: list[str] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+    generated_files: dict[str, str] = {}
+    script_path = Path(__file__).resolve()
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffprobe_path = shutil.which("ffprobe")
+    media_dir = workdir / "media"
+    output_dir = workdir / "output"
+    manifest_path = workdir / "episode-manifest.synthetic.json"
+    decisions_path = workdir / "studio-cut-decisions.synthetic.json"
+    media_map_path = workdir / "synthetic-media-map.json"
+    render_plan_path = output_dir / "render-plan.youtube-16x9.json"
+    output_path = output_dir / "studio-cut-agent-smoke-output.mp4"
+
+    report: dict[str, Any] = {
+        "status": "fail",
+        "workdir": str(workdir),
+        "workdirKept": workdir_kept,
+        "generatedFiles": generated_files,
+        "sourceDurationMs": source_duration_ms,
+        "expectedCutDurationMs": expected_cut_duration_ms,
+        "expectedOutputDurationMs": expected_output_duration_ms,
+        "actualOutputDurationMs": None,
+        "outputPath": str(output_path),
+        "commandsRun": commands_run,
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+    try:
+        workdir.mkdir(parents=True, exist_ok=True)
+        media_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        record_agent_doctor_checks(
+            report=report,
+            workdir=workdir,
+            ffmpeg_path=ffmpeg_path,
+            ffprobe_path=ffprobe_path,
+        )
+
+        if not ffmpeg_path:
+            if skip_render:
+                warnings.append(
+                    "ffmpeg is not available; generated JSON workflow only because --skip-render was set."
+                )
+            else:
+                raise StudioCutCliError("ffmpeg is required for agent-smoke-test rendering")
+
+        media_paths = {
+            "homer": media_dir / "homer.synthetic.mp4",
+            "charlie": media_dir / "charlie.synthetic.mp4",
+            "clip": media_dir / "clip.synthetic.mp4",
+            "programAudio": media_dir / "program.synthetic.wav",
+        }
+
+        if ffmpeg_path:
+            generate_agent_smoke_media(
+                ffmpeg_path=ffmpeg_path,
+                media_paths=media_paths,
+                duration_ms=source_duration_ms,
+                commands_run=commands_run,
+            )
+
+        manifest = build_agent_smoke_manifest(source_duration_ms)
+        decisions = build_agent_smoke_decisions()
+        media_map = build_agent_smoke_media_map(
+            manifest_id=manifest["id"],
+            media_paths=media_paths,
+        )
+        write_json(manifest_path, manifest)
+        write_json(decisions_path, decisions)
+        write_json(media_map_path, media_map)
+
+        generated_files.update(
+            {
+                "manifest": str(manifest_path),
+                "decisions": str(decisions_path),
+                "mediaMap": str(media_map_path),
+                "renderPlan": str(render_plan_path),
+            }
+        )
+
+        if ffmpeg_path:
+            generated_files.update(
+                {
+                    "homerVideo": str(media_paths["homer"]),
+                    "charlieVideo": str(media_paths["charlie"]),
+                    "clipVideo": str(media_paths["clip"]),
+                    "programAudio": str(media_paths["programAudio"]),
+                }
+            )
+
+        run_command_capture(
+            [
+                sys.executable,
+                str(script_path),
+                "plan-render",
+                "--manifest",
+                str(manifest_path),
+                "--decisions",
+                str(decisions_path),
+                "--profile",
+                "youtube_16x9",
+                "--out",
+                str(render_plan_path),
+            ],
+            "agent smoke plan-render",
+            commands_run,
+        )
+
+        if not render_plan_path.is_file():
+            errors.append(f"render plan JSON was not written: {render_plan_path}")
+
+        if not skip_render:
+            run_command_capture(
+                [
+                    sys.executable,
+                    str(script_path),
+                    "render-youtube-16x9-aligned",
+                    "--manifest",
+                    str(manifest_path),
+                    "--decisions",
+                    str(decisions_path),
+                    "--media-map",
+                    str(media_map_path),
+                    "--out",
+                    str(output_path),
+                ],
+                "agent smoke render-youtube-16x9-aligned",
+                commands_run,
+            )
+            generated_files["output"] = str(output_path)
+            validate_agent_smoke_output(
+                output_path=output_path,
+                ffprobe_path=ffprobe_path,
+                source_duration_ms=source_duration_ms,
+                expected_output_duration_ms=expected_output_duration_ms,
+                report=report,
+            )
+        else:
+            warnings.append("--skip-render set; output MP4 validation was skipped.")
+
+    except StudioCutCliError as error:
+        errors.append(str(error))
+    except Exception as error:  # pragma: no cover - safety net for CLI reports.
+        errors.append(f"unexpected agent smoke failure: {error}")
+
+    report["status"] = "fail" if errors else "pass"
+    return report
+
+
+def record_agent_doctor_checks(
+    *,
+    report: dict[str, Any],
+    workdir: Path,
+    ffmpeg_path: str | None,
+    ffprobe_path: str | None,
+) -> None:
+    doctor = {
+        "python": sys.version.split()[0],
+        "pythonOk": sys.version_info >= MINIMUM_PYTHON,
+        "ffmpegPath": ffmpeg_path,
+        "ffprobePath": ffprobe_path,
+        "workdirReadable": workdir.exists() and os.access(workdir, os.R_OK),
+        "workdirWritable": check_write_access(workdir),
+    }
+    report["doctor"] = doctor
+
+    if not doctor["pythonOk"]:
+        report["errors"].append(
+            f"Python {MINIMUM_PYTHON[0]}.{MINIMUM_PYTHON[1]}+ is required"
+        )
+
+    if not doctor["workdirReadable"]:
+        report["errors"].append(f"workdir is not readable: {workdir}")
+
+    if not doctor["workdirWritable"]:
+        report["errors"].append(f"workdir is not writable: {workdir}")
+
+    if not ffmpeg_path:
+        report["warnings"].append("ffmpeg not found on PATH")
+
+    if not ffprobe_path:
+        report["warnings"].append("ffprobe not found on PATH; output inspection limited")
+
+
+def generate_agent_smoke_media(
+    *,
+    ffmpeg_path: str,
+    media_paths: dict[str, Path],
+    duration_ms: int,
+    commands_run: list[str],
+) -> None:
+    duration_seconds = duration_ms / 1000
+    video_specs = {
+        "homer": "color=c=green:s=640x360:r=24",
+        "charlie": "color=c=blue:s=640x360:r=24",
+        "clip": "testsrc2=s=640x360:r=24",
+    }
+
+    for role, source in video_specs.items():
+        run_command_capture(
+            [
+                ffmpeg_path,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                f"{source}:d={format_seconds(duration_seconds)}",
+                "-pix_fmt",
+                "yuv420p",
+                str(media_paths[role]),
+            ],
+            f"agent smoke generate {role} video",
+            commands_run,
+        )
+
+    run_command_capture(
+        [
+            ffmpeg_path,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:duration={format_seconds(duration_seconds)}:sample_rate=48000",
+            str(media_paths["programAudio"]),
+        ],
+        "agent smoke generate program audio",
+        commands_run,
+    )
+
+
+def build_agent_smoke_manifest(duration_ms: int) -> dict[str, Any]:
+    return {
+        "id": "studio-cut-agent-smoke",
+        "title": "Studio Cut Agent Smoke",
+        "durationMs": duration_ms,
+        "sources": {
+            "homer": {"role": "homer", "label": "Synthetic Homer"},
+            "charlie": {"role": "charlie", "label": "Synthetic Charlie"},
+            "clip": {"role": "clip", "label": "Synthetic Clip"},
+            "program": {"role": "program", "label": "Synthetic Program"},
+        },
+        "sourceMonitorProxy": {
+            "localPlaceholderPath": "./media/source-monitor.synthetic.mp4",
+            "panes": {
+                "homer": {"x": 0, "y": 0, "width": 0.5, "height": 0.5},
+                "charlie": {"x": 0.5, "y": 0, "width": 0.5, "height": 0.5},
+                "clip": {"x": 0, "y": 0.5, "width": 0.5, "height": 0.5},
+            },
+        },
+        "syncBootstrap": {
+            "source": "premiere",
+            "notes": "Synthetic canary. Media is generated locally by the CLI.",
+        },
+    }
+
+
+def build_agent_smoke_decisions() -> dict[str, Any]:
+    base = {
+        "projectId": "studio-cut-agent-smoke",
+        "branchId": "local-main",
+        "createdBy": "agent-smoke-test",
+    }
+    decision_specs = [
+        ("agent-smoke-001", 0, "both", "Open with both hosts."),
+        ("agent-smoke-002", 2000, "charlie", "Cut to Charlie."),
+        ("agent-smoke-003", 4000, "cut", "Skip this inactive span."),
+        ("agent-smoke-004", 6000, "homer", "Return on Homer."),
+        ("agent-smoke-005", 8000, "charlie_clip", "Charlie plus clip."),
+        ("agent-smoke-006", 10000, "both_clip", "Both hosts plus clip."),
+    ]
+
+    return {
+        "schemaVersion": 1,
+        "exportedAt": "2026-05-21T00:00:00.000Z",
+        "projectId": base["projectId"],
+        "branchId": base["branchId"],
+        "decisionEvents": [
+            {
+                "id": event_id,
+                **base,
+                "sourceTimeMs": source_time_ms,
+                "state": state,
+                "createdAt": f"2026-05-21T00:00:{index:02d}.000Z",
+                "note": note,
+            }
+            for index, (event_id, source_time_ms, state, note) in enumerate(
+                decision_specs
+            )
+        ],
+    }
+
+
+def build_agent_smoke_media_map(
+    *, manifest_id: str, media_paths: dict[str, Path]
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "episodeId": manifest_id,
+        "timelineAligned": True,
+        "video": {
+            "homer": str(media_paths["homer"]),
+            "charlie": str(media_paths["charlie"]),
+            "clip": str(media_paths["clip"]),
+        },
+        "audio": {"program": str(media_paths["programAudio"])},
+    }
+
+
+def validate_agent_smoke_output(
+    *,
+    output_path: Path,
+    ffprobe_path: str | None,
+    source_duration_ms: int,
+    expected_output_duration_ms: int,
+    report: dict[str, Any],
+) -> None:
+    errors = report["errors"]
+    warnings = report["warnings"]
+    commands_run = report["commandsRun"]
+
+    if not output_path.is_file():
+        errors.append(f"output MP4 was not written: {output_path}")
+        return
+
+    if not ffprobe_path:
+        warnings.append("ffprobe unavailable; output duration/resolution not checked")
+        return
+
+    command = [
+        ffprobe_path,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-show_entries",
+        "stream=codec_type,width,height",
+        "-of",
+        "json",
+        str(output_path),
+    ]
+    result = run_command_capture(command, "agent smoke ffprobe output", commands_run)
+    payload = json.loads(result.stdout)
+    actual_duration_ms = int(round(float(payload["format"]["duration"]) * 1000))
+    report["actualOutputDurationMs"] = actual_duration_ms
+
+    video_stream = next(
+        (
+            stream
+            for stream in payload.get("streams", [])
+            if stream.get("codec_type") == "video"
+        ),
+        None,
+    )
+
+    if not video_stream:
+        errors.append("output has no video stream")
+        return
+
+    width = video_stream.get("width")
+    height = video_stream.get("height")
+    report["actualOutputResolution"] = {"width": width, "height": height}
+
+    if width != YOUTUBE_16X9_WIDTH or height != YOUTUBE_16X9_HEIGHT:
+        errors.append(f"expected 1920x1080 output, got {width}x{height}")
+
+    if actual_duration_ms >= source_duration_ms:
+        errors.append(
+            "expected output duration to be shorter than source duration after Cut skip"
+        )
+
+    if abs(actual_duration_ms - expected_output_duration_ms) > 1500:
+        errors.append(
+            "output duration differs from expected by more than 1500ms: "
+            f"actual={actual_duration_ms} expected={expected_output_duration_ms}"
+        )
+
+
+def print_agent_smoke_report(report: dict[str, Any], *, json_mode: bool) -> None:
+    if json_mode:
+        print(json.dumps(report, indent=2))
+        return
+
+    print("Studio Cut Agent Smoke Test")
+    print("===========================")
+    print(f"Status: {report['status']}")
+    print(f"Workdir: {report['workdir']}")
+    print(f"Workdir kept: {report['workdirKept']}")
+    print(f"Source duration: {format_time_ms(report['sourceDurationMs'])}")
+    print(f"Expected Cut duration: {format_time_ms(report['expectedCutDurationMs'])}")
+    print(
+        "Expected output duration: "
+        f"{format_time_ms(report['expectedOutputDurationMs'])}"
+    )
+
+    if report.get("actualOutputDurationMs") is not None:
+        print(f"Actual output duration: {format_time_ms(report['actualOutputDurationMs'])}")
+
+    if report.get("actualOutputResolution"):
+        resolution = report["actualOutputResolution"]
+        print(f"Actual output resolution: {resolution['width']}x{resolution['height']}")
+
+    print("\nGenerated files:")
+    for label, path in sorted(report["generatedFiles"].items()):
+        print(f"  {label}: {path}")
+
+    if report["warnings"]:
+        print("\nWarnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+    if report["errors"]:
+        print("\nErrors:")
+        for error in report["errors"]:
+            print(f"  - {error}")
+
+    print("\nCommands run:")
+    for command in report["commandsRun"]:
+        print(f"  {command}")
+
+
 def run_render_youtube_16x9_aligned(args: argparse.Namespace) -> int:
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path and not args.dry_run:
@@ -485,6 +943,38 @@ def run_render_youtube_16x9_aligned(args: argparse.Namespace) -> int:
 
     print(f"\nAligned 16:9 render complete: {args.out}")
     return 0
+
+
+def run_agent_smoke_test(args: argparse.Namespace) -> int:
+    if args.workdir:
+        workdir = args.workdir
+        workdir.mkdir(parents=True, exist_ok=True)
+        report = execute_agent_smoke_test(
+            workdir=workdir,
+            workdir_kept=True,
+            skip_render=args.skip_render,
+        )
+        print_agent_smoke_report(report, json_mode=args.json)
+        return 0 if report["status"] == "pass" else 1
+
+    if args.keep_workdir:
+        workdir = Path(tempfile.mkdtemp(prefix="studio-cut-agent-smoke-"))
+        report = execute_agent_smoke_test(
+            workdir=workdir,
+            workdir_kept=True,
+            skip_render=args.skip_render,
+        )
+        print_agent_smoke_report(report, json_mode=args.json)
+        return 0 if report["status"] == "pass" else 1
+
+    with tempfile.TemporaryDirectory(prefix="studio-cut-agent-smoke-") as temp_dir:
+        report = execute_agent_smoke_test(
+            workdir=Path(temp_dir),
+            workdir_kept=False,
+            skip_render=args.skip_render,
+        )
+        print_agent_smoke_report(report, json_mode=args.json)
+        return 0 if report["status"] == "pass" else 1
 
 
 def load_inputs(
@@ -1199,6 +1689,28 @@ def run_command(command: list[str], label: str) -> None:
         subprocess.run(command, check=True)
     except subprocess.CalledProcessError as error:
         raise StudioCutCliError(f"{label} failed with exit code {error.returncode}") from error
+
+
+def run_command_capture(
+    command: list[str], label: str, commands_run: list[str]
+) -> subprocess.CompletedProcess[str]:
+    commands_run.append(format_shell_command(command))
+    result = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        suffix = f": {detail}" if detail else ""
+        raise StudioCutCliError(
+            f"{label} failed with exit code {result.returncode}{suffix}"
+        )
+
+    return result
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

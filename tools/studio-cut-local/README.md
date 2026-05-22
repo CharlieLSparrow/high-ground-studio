@@ -79,6 +79,26 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   --out /tmp/studio-cut-youtube-16x9.mp4
 ```
 
+Run the agentic end-to-end smoke test:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-smoke-test
+```
+
+Machine-readable report:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-smoke-test --json
+```
+
+Keep generated synthetic files for inspection:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-smoke-test \
+  --keep-workdir \
+  --workdir tools/studio-cut-local/output/agent-smoke
+```
+
 ## Render Profiles
 
 `plan-render` now attaches profile-aware layout intent to each active segment:
@@ -119,6 +139,33 @@ rectangles from local media files that already start at sequence time
 
 This command still avoids Premiere XML/EDL parsing. Premiere owns alignment for
 now by exporting timeline-aligned local files.
+
+## Agent Smoke Test
+
+`agent-smoke-test` is the workflow canary for Codex and future agents. It uses
+synthetic media only and proves the Studio Cut path can be driven by files and
+commands, without browser clicking or private media:
+
+```text
+synthetic media -> manifest -> decisions -> plan-render -> render-youtube-16x9-aligned -> output validation
+```
+
+The generated decisions exercise:
+
+- `both`
+- `charlie`
+- `cut`
+- `homer`
+- `charlie_clip`
+- `both_clip`
+
+The validation checks that a render plan is written, the output MP4 exists, the
+rendered output is shorter than the source because the `Cut` span was skipped,
+and the output resolution is `1920x1080` when `ffprobe` is available.
+
+Run this before and after renderer changes. Use `--skip-render` when `ffmpeg` is
+not available and you only need to validate structured file generation and
+planning.
 
 ## Inputs
 

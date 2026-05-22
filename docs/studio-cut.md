@@ -200,6 +200,9 @@ The CLI supports:
 - `render-youtube-16x9-aligned`: uses timeline-aligned local media files that
   all begin at sequence time `00:00:00`, applies the `youtube_16x9` semantic
   layout plan, skips `Cut` spans, and writes a rough 16:9 MP4.
+- `agent-smoke-test`: generates synthetic media and structured files, runs the
+  planning/render path, and validates the output without private media or
+  browser interaction.
 
 Current `youtube_16x9` planning maps semantic states this way:
 
@@ -297,12 +300,45 @@ file's directory.
 Do not commit generated render plans, preview renders, full-res media, proxy
 media, real local media maps, private paths, or private episode manifests.
 
+## Agent Workflow Canary
+
+`agent-smoke-test` is the agent-friendly end-to-end workflow canary. It proves
+that Studio Cut can be driven through structured files and commands:
+
+```text
+synthetic media -> manifest -> decisions -> plan-render -> render-youtube-16x9-aligned -> output validation
+```
+
+It uses only generated synthetic local media. No private podcast media, local
+paths, Firebase data, browser clicking, or human-only steps are required.
+
+Stable commands:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-smoke-test
+python tools/studio-cut-local/studio_cut_local.py agent-smoke-test --json
+python tools/studio-cut-local/studio_cut_local.py agent-smoke-test \
+  --keep-workdir \
+  --workdir tools/studio-cut-local/output/agent-smoke
+```
+
+The synthetic decisions exercise `both`, `charlie`, `cut`, `homer`,
+`charlie_clip`, and `both_clip`. The validation checks that the render plan
+exists, the output MP4 exists, the output is shorter than the source because the
+`Cut` span was skipped, and the rendered video is `1920x1080` when `ffprobe` is
+available.
+
+Future agents should run this before and after local renderer changes. Use
+`--skip-render` only when `ffmpeg` is unavailable and the change is limited to
+structured planning.
+
 ## Local Commands
 
 Run from the repo root:
 
 ```bash
 pnpm studio-cut
+pnpm studio-cut:agent-smoke
 pnpm studio-cut:typecheck
 pnpm studio-cut:build
 pnpm studio-cut:local:doctor
