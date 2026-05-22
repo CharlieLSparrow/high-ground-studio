@@ -114,13 +114,35 @@ route keeps that warning visible and exists to demonstrate the future flow:
 `Studio projection JSON -> HGO staged import review -> review gate -> later
 private artifact store or promotion workflow`
 
+## Browser Artifact Contract
+
+The staged import route can also create a browser-only review artifact using:
+
+- `apps/web/src/lib/hgo/staged-projection-artifact.ts`
+
+The artifact combines the pasted projection, validation warnings/errors,
+review-gate result, source metadata, and explicit safety flags:
+
+- `persisted: false`
+- `published: false`
+- `containsRealContent: "unknown"`
+
+The operator can generate and download the artifact JSON, but HGO does not save
+it. The artifact contract prepares the future private staged store without
+adding a database table, API route, or publish workflow in this pass.
+
+Detailed artifact notes:
+
+- `docs/architecture/hgo-staged-projection-artifact-contract.md`
+
 ## Future Path
 
 1. Synthetic staged surface.
 2. No-persistence browser import from Studio projection JSON.
-3. Private staged projection persistence.
-4. Manual approval gates for citation and public-safety review.
-5. Live public route promotion.
+3. Browser-only staged artifact download.
+4. Private staged projection persistence.
+5. Manual approval gates for citation and public-safety review.
+6. Live public route promotion.
 
 ## Deferred
 

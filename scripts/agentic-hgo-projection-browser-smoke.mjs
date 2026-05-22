@@ -514,8 +514,20 @@ async function runSmoke() {
       .getByTestId("hgo-stage-import-review-gate")
       .waitFor({ state: "visible", timeout: 20_000 });
     await page
+      .getByTestId("hgo-stage-import-artifact-summary")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
       .getByTestId("hgo-projection-rendered-root")
       .waitFor({ state: "visible", timeout: 20_000 });
+    await page.getByTestId("hgo-stage-import-generate-artifact").click();
+    await page
+      .getByTestId("hgo-stage-import-artifact-json")
+      .waitFor({ state: "visible", timeout: 20_000 });
+
+    const artifactJson = await page
+      .getByTestId("hgo-stage-import-artifact-json")
+      .inputValue();
+    const artifact = JSON.parse(artifactJson);
 
     const stagedImportText = await page.locator("body").innerText();
 
@@ -523,16 +535,32 @@ async function runSmoke() {
       !/staged import review/i.test(stagedImportText) ||
       !/blocks live/i.test(stagedImportText) ||
       !/No publish action/i.test(stagedImportText) ||
-      !/does not persist/i.test(stagedImportText)
+      !/does not persist/i.test(stagedImportText) ||
+      !/Download staged artifact JSON/i.test(stagedImportText) ||
+      !/Future private staged store/i.test(stagedImportText)
     ) {
       throw new Error(
-        "HGO staged import review did not show expected staged-review, blocker, no-publish, and no-persistence copy.",
+        "HGO staged import review did not show expected staged-review, artifact, blocker, no-publish, and no-persistence copy.",
+      );
+    }
+    if (
+      artifact.artifactVersion !== "hgo-staged-artifact-v1" ||
+      artifact.source?.projectionSlug !== projection.slug ||
+      !artifact.reviewGate ||
+      artifact.safety?.persisted !== false ||
+      artifact.safety?.published !== false
+    ) {
+      throw new Error(
+        `Generated staged artifact JSON did not include the expected contract fields: ${artifactJson}`,
       );
     }
     addStep("confirm HGO staged import review", "passed", {
       url: page.url(),
+      artifactVersion: artifact.artifactVersion,
+      artifactStatus: artifact.status,
+      recommendedNextAction: artifact.recommendedNextAction,
     });
-    await assertNoRealContentMarkers(page, projectionJson);
+    await assertNoRealContentMarkers(page, `${projectionJson}\n${artifactJson}`);
 
     await page.goto(`${hgoBaseUrl}/projection-stage/synthetic-field-radio`, {
       waitUntil: "domcontentloaded",

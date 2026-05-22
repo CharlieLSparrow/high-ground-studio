@@ -139,10 +139,11 @@ For HGO no-auth browser reports:
   renderer mounted, `/projection-stage` loaded, `/projection-stage/review`
   showed blocked/needs-review/live-safe group text and blocker copy,
   `/projection-stage/import` accepted pasted synthetic JSON, showed the staged
-  review gate and no-publish/no-persistence boundary, a staged detail route
-  rendered through the shared projection component, staged/readiness warnings
-  appeared, known real-content markers were absent, and no server write
-  happened.
+  review gate and no-publish/no-persistence boundary, generated staged artifact
+  JSON containing `artifactVersion`, the projection slug, `reviewGate`, and
+  `persisted: false` / `published: false`, a staged detail route rendered
+  through the shared projection component, staged/readiness warnings appeared,
+  known real-content markers were absent, and no server write happened.
 - `blocked` means the browser or HGO route could not be made available safely,
   for example missing Chromium.
 - `failed` means the browser run started but route, validation, render, or
@@ -152,8 +153,8 @@ For HGO visual smoke reports:
 
 - `passed` means the projection preview map, empty import route, rendered import
   route, empty staged import review route, rendered staged import review route,
-  and discovered synthetic detail routes captured screenshots while known
-  real-content markers stayed absent.
+  staged artifact JSON route state, and discovered synthetic detail routes
+  captured screenshots while known real-content markers stayed absent.
 - `blocked` means Chromium or the HGO server path could not be made available
   safely.
 - `failed` means a route, selector, render, screenshot, or content-safety

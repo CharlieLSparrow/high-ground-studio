@@ -107,11 +107,15 @@ for Studio projections.
 
 The staged import route accepts pasted Studio projection JSON in browser state,
 validates it, runs the staged review gate, and renders it with staged route base
-links. It does not persist projection artifacts, does not write local storage,
-does not publish, and does not replace public `/episodes` routes. It makes the
-future architecture visible: pasted/imported projection drafts can later become
-private staged artifacts, and only approved projections should move to live
-public pages.
+links. It can also create and download a browser-only staged artifact JSON
+packet that contains the projection, validation result, review gate, and
+explicit `persisted: false` / `published: false` safety flags.
+
+HGO does not persist the artifact, does not write local storage, does not
+publish, and does not replace public `/episodes` routes. It makes the future
+architecture visible: pasted/imported projection drafts can later become private
+staged artifacts, and only approved projections should move to live public
+pages.
 
 ## Citation Gates
 
