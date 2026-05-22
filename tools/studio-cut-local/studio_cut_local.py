@@ -211,6 +211,7 @@ AGENT_SMOKE_EXPECTED_YOUTUBE_16X9_BEHAVIORS = {
     "both_clip": "Both hosts plus clip",
     "cut": "Skipped",
 }
+DEFAULT_EPISODE_VALIDATION_TOLERANCE_MS = 1500
 
 PROGRAM_STATE_LABELS = {
     "charlie": "Charlie",
@@ -339,6 +340,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bootstrap_parser.set_defaults(handler=run_create_episode_bootstrap)
 
+    validate_episode_parser = subparsers.add_parser(
+        "validate-episode-files",
+        help="Validate a real-episode manifest and local media map before rendering.",
+    )
+    validate_episode_parser.add_argument("--manifest", required=True, type=Path)
+    validate_episode_parser.add_argument("--media-map", required=True, type=Path)
+    validate_episode_parser.add_argument(
+        "--duration-tolerance-ms",
+        default=DEFAULT_EPISODE_VALIDATION_TOLERANCE_MS,
+        type=int,
+        help=(
+            "Warn when inspected media duration differs from manifest duration by "
+            "more than this many milliseconds. Default: 1500."
+        ),
+    )
+    validate_episode_parser.set_defaults(handler=run_validate_episode_files)
+
     return parser
 
 
@@ -465,6 +483,7 @@ def run_explain_profile(args: argparse.Namespace) -> int:
 def execute_agent_smoke_test(
     *, workdir: Path, workdir_kept: bool, skip_render: bool
 ) -> dict[str, Any]:
+    workdir = workdir.resolve()
     source_duration_ms = AGENT_SMOKE_SOURCE_DURATION_MS
     expected_cut_duration_ms = AGENT_SMOKE_EXPECTED_CUT_DURATION_MS
     expected_output_duration_ms = AGENT_SMOKE_EXPECTED_ACTIVE_DURATION_MS
@@ -565,6 +584,20 @@ def execute_agent_smoke_test(
                     "clipVideo": str(media_paths["clip"]),
                     "programAudio": str(media_paths["programAudio"]),
                 }
+            )
+
+            run_command_capture(
+                [
+                    sys.executable,
+                    str(script_path),
+                    "validate-episode-files",
+                    "--manifest",
+                    str(manifest_path),
+                    "--media-map",
+                    str(media_map_path),
+                ],
+                "agent smoke validate-episode-files",
+                commands_run,
             )
 
         run_command_capture(
@@ -1033,8 +1066,8 @@ def build_episode_bootstrap_readme(
     manifest_path: Path,
     media_map_path: Path,
 ) -> str:
-    decisions_path = f"./{episode_id}-decisions.json"
-    output_path = f"./{episode_id}-youtube-16x9.mp4"
+    decisions_path = manifest_path.parent / f"{episode_id}-decisions.json"
+    output_path = manifest_path.parent / f"{episode_id}-youtube-16x9.mp4"
     clip_note = (
         "- `REPLACE_WITH_CLIP_ALIGNED_PATH` with the local Clip aligned media path.\n"
         if include_clip
@@ -1057,6 +1090,19 @@ Episode id: `{episode_id}`
 Duration: `{duration_ms}` ms / `{format_time_ms(duration_ms)}`
 Clip source included: `{"true" if include_clip else "false"}`
 
+## Before You Render
+
+- Confirm Premiere exported timeline-aligned media that all starts at sequence
+  time `00:00:00`.
+- Confirm Homer, Charlie, optional Clip, and program audio files share the same
+  duration as the manifest within normal encoder rounding.
+- Import `{manifest_path.name}` in Studio Cut and load the local source-monitor
+  proxy from this machine.
+- Export Studio Cut decisions as `{decisions_path}` or update the commands
+  below with the real download path.
+- Keep this directory under ignored local output, such as
+  `tools/studio-cut-local/output/`, or in `/tmp`.
+
 ## Fill In Local Paths
 
 Open `{media_map_path.name}` and replace:
@@ -1067,6 +1113,14 @@ Open `{media_map_path.name}` and replace:
 
 The aligned media files should be exported from Premiere so every file starts at
 sequence time `00:00:00` and shares the same duration.
+
+## Validate Files
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-episode-files \\
+  --manifest {manifest_path} \\
+  --media-map {media_map_path}
+```
 
 ## Studio Cut Web
 
@@ -1394,6 +1448,230 @@ def run_create_episode_bootstrap(args: argparse.Namespace) -> int:
     print(f"Local media map: {media_map_path}")
     print(f"Next steps: {readme_path}")
     return 0
+
+
+def run_validate_episode_files(args: argparse.Namespace) -> int:
+    if args.duration_tolerance_ms < 0:
+        raise StudioCutCliError("--duration-tolerance-ms must be zero or greater")
+
+    report = build_episode_file_validation_report(
+        manifest_path=args.manifest,
+        media_map_path=args.media_map,
+        duration_tolerance_ms=args.duration_tolerance_ms,
+    )
+    print_episode_file_validation_report(report)
+    return 0 if not report["errors"] else 1
+
+
+def build_episode_file_validation_report(
+    *,
+    manifest_path: Path,
+    media_map_path: Path,
+    duration_tolerance_ms: int,
+) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "status": "blocked",
+        "manifestPath": str(manifest_path),
+        "mediaMapPath": str(media_map_path),
+        "episodeId": None,
+        "title": None,
+        "manifestDurationMs": None,
+        "durationToleranceMs": duration_tolerance_ms,
+        "ffmpegPath": shutil.which("ffmpeg"),
+        "ffprobePath": shutil.which("ffprobe"),
+        "media": [],
+        "warnings": [],
+        "errors": [],
+    }
+    warnings: list[str] = report["warnings"]
+    errors: list[str] = report["errors"]
+
+    if not report["ffmpegPath"]:
+        errors.append("ffmpeg not found on PATH; install ffmpeg before rendering.")
+
+    if not report["ffprobePath"]:
+        warnings.append("ffprobe not found on PATH; media duration inspection skipped.")
+
+    try:
+        manifest = load_json_file(manifest_path, "manifest")
+        validate_manifest(manifest)
+    except StudioCutCliError as error:
+        errors.append(str(error))
+        return report
+
+    try:
+        media_map = load_media_map(media_map_path)
+    except StudioCutCliError as error:
+        errors.append(str(error))
+        return report
+
+    report["episodeId"] = manifest["id"]
+    report["title"] = manifest["title"]
+    report["manifestDurationMs"] = int(round(float(manifest["durationMs"])))
+
+    if media_map["episodeId"] != manifest["id"]:
+        errors.append(
+            "media map episodeId does not match manifest id: "
+            f"{media_map['episodeId']} != {manifest['id']}"
+        )
+
+    media_entries = collect_media_map_entries(media_map, media_map_path)
+    report["media"] = media_entries
+
+    for entry in media_entries:
+        path = Path(entry["path"])
+        if not path.is_file():
+            entry["exists"] = False
+            errors.append(f"{entry['label']} file not found: {path}")
+            continue
+
+        entry["exists"] = True
+
+        if report["ffprobePath"]:
+            duration_ms, probe_error = probe_media_duration_ms(
+                ffprobe_path=str(report["ffprobePath"]),
+                media_path=path,
+            )
+
+            if probe_error:
+                errors.append(f"ffprobe could not inspect {entry['label']}: {probe_error}")
+                continue
+
+            entry["durationMs"] = duration_ms
+            drift_ms = abs(duration_ms - int(report["manifestDurationMs"]))
+            entry["durationDriftMs"] = drift_ms
+
+            if drift_ms > duration_tolerance_ms:
+                warnings.append(
+                    f"{entry['label']} duration differs from manifest by {drift_ms} ms "
+                    f"({format_time_ms(duration_ms)} vs "
+                    f"{format_time_ms(int(report['manifestDurationMs']))})."
+                )
+
+    report["status"] = "ready" if not errors else "blocked"
+    return report
+
+
+def collect_media_map_entries(
+    media_map: dict[str, Any], media_map_path: Path
+) -> list[dict[str, Any]]:
+    entries = []
+
+    for role in ("homer", "charlie", "clip"):
+        raw_path = media_map["video"].get(role)
+
+        if raw_path:
+            entries.append(
+                {
+                    "kind": "video",
+                    "role": role,
+                    "label": f"video.{role}",
+                    "path": str(resolve_media_path(raw_path, media_map_path)),
+                    "exists": None,
+                    "durationMs": None,
+                    "durationDriftMs": None,
+                }
+            )
+
+    program_audio_path = media_map["audio"].get("program")
+
+    if program_audio_path:
+        entries.append(
+            {
+                "kind": "audio",
+                "role": "program",
+                "label": "audio.program",
+                "path": str(resolve_media_path(program_audio_path, media_map_path)),
+                "exists": None,
+                "durationMs": None,
+                "durationDriftMs": None,
+            }
+        )
+
+    return entries
+
+
+def probe_media_duration_ms(
+    *, ffprobe_path: str, media_path: Path
+) -> tuple[int | None, str | None]:
+    command = [
+        ffprobe_path,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(media_path),
+    ]
+    result = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        return None, detail or f"exit code {result.returncode}"
+
+    raw_duration = result.stdout.strip()
+
+    try:
+        return int(round(float(raw_duration) * 1000)), None
+    except ValueError:
+        return None, f"unexpected duration output: {raw_duration!r}"
+
+
+def print_episode_file_validation_report(report: dict[str, Any]) -> None:
+    print("Studio Cut Episode File Validation")
+    print("==================================")
+    print(f"Status: {report['status']}")
+    print(f"Manifest: {report['manifestPath']}")
+    print(f"Media map: {report['mediaMapPath']}")
+
+    if report["episodeId"]:
+        print(f"Episode: {report['title']} ({report['episodeId']})")
+
+    if report["manifestDurationMs"] is not None:
+        print(
+            "Manifest duration: "
+            f"{format_time_ms(int(report['manifestDurationMs']))} "
+            f"({int(report['manifestDurationMs'])} ms)"
+        )
+
+    print(f"ffmpeg: {report['ffmpegPath'] or 'not found'}")
+    print(f"ffprobe: {report['ffprobePath'] or 'not found'}")
+    print(f"Duration tolerance: {report['durationToleranceMs']} ms")
+
+    if report["media"]:
+        print("\nMedia files:")
+        for entry in report["media"]:
+            status = "found" if entry["exists"] else "missing"
+            duration = (
+                format_time_ms(entry["durationMs"])
+                if entry["durationMs"] is not None
+                else "not inspected"
+            )
+            drift = (
+                f"{entry['durationDriftMs']} ms"
+                if entry["durationDriftMs"] is not None
+                else "n/a"
+            )
+            print(f"  - {entry['label']}: {status}")
+            print(f"    path: {entry['path']}")
+            print(f"    duration: {duration}; drift: {drift}")
+
+    if report["warnings"]:
+        print("\nWarnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+    if report["errors"]:
+        print("\nErrors:")
+        for error in report["errors"]:
+            print(f"  - {error}")
 
 
 def load_inputs(

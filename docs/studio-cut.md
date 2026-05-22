@@ -187,11 +187,20 @@ Tonight's rough full-output path:
 Premiere sync -> export aligned Homer/Charlie/Clip/program-audio media -> export source-monitor proxy -> Studio Cut tags decisions -> export decision JSON -> render-youtube-16x9-aligned
 ```
 
+The Episode 4 operator runbook for that path lives at:
+
+```text
+docs/studio-cut-episode-4-runbook.md
+```
+
 The CLI supports:
 
 - `doctor`: checks Python, `ffmpeg`, and current-directory read/write access.
 - `create-episode-bootstrap`: writes a placeholder Episode Manifest, local media
   map, and README for a real episode so operators do not hand-write JSON.
+- `validate-episode-files`: checks a real-episode manifest and local media map,
+  confirms the episode id matches, verifies local file existence, and uses
+  `ffprobe` to compare media durations against the manifest before rendering.
 - `plan-render`: validates the manifest and decision JSON, derives semantic
   segments, removes `Cut` spans, adds profile-specific layout intent, prints a
   human-readable plan, and can write a render-plan JSON file.
@@ -269,6 +278,14 @@ Fill those paths locally after Premiere exports timeline-aligned media. Keep
 generated real-episode bootstrap directories under `tools/studio-cut-local/output/`
 or `/tmp`; `tools/studio-cut-local/output/` and local media map filename patterns
 are ignored by git.
+
+Validate the filled manifest and media map before rendering:
+
+```bash
+pnpm studio-cut:local:verify-episode -- \
+  --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
+  --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json
+```
 
 Dry-run first:
 
@@ -361,7 +378,9 @@ The synthetic decisions exercise `both`, `charlie`, `cut`, `homer`,
 `charlie_clip`, and `both_clip`. The validation checks that the render plan
 exists, the output MP4 exists, the output is shorter than the source because the
 `Cut` span was skipped, and the rendered video is `1920x1080` when `ffprobe` is
-available.
+available. It also runs `validate-episode-files` against the generated
+synthetic manifest/media map so the real-episode readiness command stays covered
+without private media.
 
 The smoke test is also a structural canary for agentic workflow compatibility.
 It verifies embedded golden expectations for the render plan:
@@ -452,6 +471,7 @@ pnpm studio-cut:web-smoke
 pnpm studio-cut:typecheck
 pnpm studio-cut:build
 pnpm studio-cut:local:doctor
+pnpm studio-cut:local:verify-episode -- --manifest path/to/manifest.json --media-map path/to/local-media.json
 ```
 
 The editor always persists decisions in browser storage under:

@@ -38,6 +38,28 @@ Use `--include-clip false` if the episode has no shared Clip track. Generated
 real-episode bootstrap directories should stay under `tools/studio-cut-local/output/`
 or `/tmp`; that output path is ignored by git.
 
+Validate a generated manifest and local media map before rendering:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-episode-files \
+  --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
+  --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json
+```
+
+The same command is available through pnpm with argument forwarding:
+
+```bash
+pnpm studio-cut:local:verify-episode -- \
+  --manifest tools/studio-cut-local/output/episode-004-bootstrap/episode-004-episode-manifest.json \
+  --media-map tools/studio-cut-local/output/episode-004-bootstrap/episode-004-local-media.json
+```
+
+`validate-episode-files` checks manifest/media-map parsing, episode id match,
+referenced local file existence, `ffmpeg`/`ffprobe` availability, and inspected
+media durations against the manifest duration with a default `1500` ms
+tolerance. Duration drift is a warning so operators can decide whether encoder
+rounding is acceptable before rendering.
+
 Create a dry-run render plan from placeholder examples:
 
 ```bash
@@ -229,8 +251,10 @@ The generated decisions exercise:
 
 The validation checks that a render plan is written, the output MP4 exists, the
 rendered output is shorter than the source because the `Cut` span was skipped,
-and the output resolution is `1920x1080` when `ffprobe` is available. It also
-checks embedded golden assertions for the semantic render plan:
+and the output resolution is `1920x1080` when `ffprobe` is available. It runs
+`validate-episode-files` against the generated synthetic manifest/media map so
+future agents also cover the real-episode readiness check. It also checks
+embedded golden assertions for the semantic render plan:
 
 - source duration is `12000` ms
 - `Cut` duration is `2000` ms
@@ -262,6 +286,12 @@ coverage. Use the full verifier before deploying.
 - Studio Cut decision JSON exported from the web app.
 - Optional local source-monitor proxy video for proxy preview rendering.
 - Optional local media map JSON for aligned full-output rendering.
+
+For Episode 4 real-use steps, use:
+
+```text
+docs/studio-cut-episode-4-runbook.md
+```
 
 For real episodes, start with `create-episode-bootstrap` to avoid hand-writing
 the manifest and local media map. Fill in the generated media map with local
