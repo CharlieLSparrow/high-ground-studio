@@ -75,3 +75,16 @@ jobs:
           path: tools/studio-cut-local/output/web-smoke-artifacts
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Write Studio Cut verification summary
+        if: always()
+        run: |
+          {
+            echo "## Studio Cut verification"
+            echo ""
+            echo "- Result: ${{ job.status }}"
+            echo "- Command: \`pnpm studio-cut:verify\`"
+            echo "- Failure artifact name: \`studio-cut-web-smoke-artifacts\`"
+            echo "- Failure artifact path: \`tools/studio-cut-local/output/web-smoke-artifacts\`"
+            echo "- CI boundary: verify-only; this workflow does not deploy to Firebase Hosting and does not use secrets."
+          } >> "$GITHUB_STEP_SUMMARY"
