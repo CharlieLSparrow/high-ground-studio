@@ -39,5 +39,13 @@ service cloud.firestore {
         && request.resource.data.userEmail == request.auth.token.email;
       allow delete: if false;
     }
+
+    match /studioCutSyncJobs/{syncJobId} {
+      allow read: if highGroundEmail();
+      allow create, update: if highGroundEmail()
+        && request.resource.data.syncJobId == syncJobId
+        && request.resource.data.createdBy == request.auth.token.email;
+      allow delete: if false;
+    }
   }
 }

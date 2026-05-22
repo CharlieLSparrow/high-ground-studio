@@ -804,9 +804,69 @@ studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName
 The uploaded file is the lightweight composite proxy only. It is not the Canon
 R8, Insta360, DJI, Shure, or aligned full-resolution render source.
 
+## Raw Asset Cloud Sync Intake
+
+The next primary direction starts before a prepared manifest/proxy exists:
+
+```text
+Charlie uploads disparate assets -> cloud sync worker prepares manifest/proxy/shared room -> Mako opens room link
+```
+
+The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
+can select required raw assets:
+
+- Homer video
+- Charlie video
+- Homer clean audio
+- Charlie clean audio
+- phone/reference audio
+
+Clip/screen video is optional. The upload is explicit; the app does not
+auto-upload selected files. Local dev mode keeps this disabled because Firebase
+config is absent.
+
+Episode 4 needs Rescue Sync because the phone/reference recording can arrive in
+multiple pieces. The intake model now supports multiple `phoneReferenceAudio`
+inputs. Each piece gets an `inputId`, optional `durationMs`, and an
+`orderIndex`. The future worker will sort those pieces into a reference rail,
+then sync Homer/Charlie sources against it.
+
+Raw intake job metadata lives at:
+
+```text
+studioCutSyncJobs/{syncJobId}
+```
+
+Raw uploads are stored at:
+
+```text
+studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName}
+```
+
+Expected worker outputs are:
+
+```text
+studioCutSyncJobs/{syncJobId}/outputs/source-monitor-proxy.mp4
+studioCutSyncJobs/{syncJobId}/outputs/episode-manifest.json
+studioCutSyncJobs/{syncJobId}/outputs/sync-report.json
+```
+
+The current app can create/upload a sync job and mark it queued. The actual
+Cloud Run sync worker is scaffold only. Its contract is documented at:
+
+```text
+docs/studio-cut-cloud-sync.md
+tools/studio-cut-cloud-sync/README.md
+docs/studio-cut-rescue-sync.md
+```
+
+This path is the new product direction, but it is not safe for sensitive/private
+footage until Firestore/Storage rules have passed emulator tests, rules have
+been intentionally deployed, and lifecycle cleanup is defined.
+
 ## Primary Shared-Room Workflow
 
-The primary collaboration path is no longer JSON handoff:
+The current prepared-package collaboration path is no longer JSON handoff:
 
 1. Charlie exports the source-monitor proxy from Premiere.
 2. Charlie opens Studio Cut, imports or loads the Episode Manifest, and loads
@@ -880,8 +940,9 @@ Desired deployment shape:
 
 - Firebase Hosting for the static Studio Cut web editor
 - Firestore for decision events, room metadata, presence, and later branches
-  and comments
-- Cloud Storage for lightweight source-monitor proxy packages only
+  and comments, plus `studioCutSyncJobs/{syncJobId}` intake jobs
+- Cloud Storage for lightweight source-monitor proxy packages, raw intake
+  uploads, and worker-generated manifest/proxy/report outputs
 - Cloud Run later for Python APIs and local-engine coordination services
 
 Checked-in scaffold:

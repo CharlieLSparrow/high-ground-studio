@@ -1,0 +1,65 @@
+{
+  "syncJobId": "episode-004-rescue-sync-placeholder",
+  "generatedAt": "2026-05-22T12:30:00.000Z",
+  "status": "ready",
+  "referenceRail": {
+    "syncJobId": "episode-004-rescue-sync-placeholder",
+    "referenceRole": "phoneReferenceAudio",
+    "segments": [
+      {
+        "inputId": "phone-reference-00-placeholder",
+        "fileName": "phone-reference-part-01.placeholder.m4a",
+        "railStartMs": 0,
+        "sourceStartMs": 0,
+        "durationMs": 5000,
+        "confidence": 0.1,
+        "warnings": [
+          "Placeholder reference segment. No media analysis was run."
+        ]
+      },
+      {
+        "inputId": "phone-reference-01-placeholder",
+        "fileName": "phone-reference-part-02.placeholder.m4a",
+        "railStartMs": 5000,
+        "sourceStartMs": 0,
+        "durationMs": 7000,
+        "confidence": 0.1,
+        "gapBeforeMs": 0,
+        "warnings": [
+          "Placeholder reference segment. No media analysis was run."
+        ]
+      }
+    ],
+    "totalDurationMs": 12000,
+    "warnings": [
+      "Reference rail is placeholder-only."
+    ]
+  },
+  "trackOffsets": [
+    {
+      "role": "homerVideo",
+      "inputId": "homer-video-placeholder",
+      "fileName": "homer-video.placeholder.mp4",
+      "estimatedOffsetMs": 0,
+      "driftPpm": 0,
+      "confidence": 0.1,
+      "warnings": [
+        "Placeholder offset. No correlation was run."
+      ]
+    },
+    {
+      "role": "charlieVideo",
+      "inputId": "charlie-video-placeholder",
+      "fileName": "charlie-video.placeholder.mp4",
+      "estimatedOffsetMs": 0,
+      "driftPpm": 0,
+      "confidence": 0.1,
+      "warnings": [
+        "Placeholder offset. No correlation was run."
+      ]
+    }
+  ],
+  "globalWarnings": [
+    "Placeholder sync report only. Do not treat it as real sync output."
+  ]
+}

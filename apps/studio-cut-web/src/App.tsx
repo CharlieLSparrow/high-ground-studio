@@ -8,8 +8,11 @@ import {
   useState,
 } from "react";
 import {
+  CLOUD_SYNC_INPUT_ROLES,
+  CLOUD_SYNC_REQUIRED_INPUT_ROLES,
   deriveSegments,
   getCurrentDecisionEvent,
+  isCloudSyncJobInputComplete,
   isDecisionEvent,
   mergeDecisionEvents,
   PROGRAM_STATE_LABELS,
@@ -18,12 +21,26 @@ import {
   parseDecisionEventsPayload,
   sortDecisionEvents,
   SOURCE_ROLE_LABELS,
+  type CloudSyncInputRole,
+  type CloudSyncJob,
+  type CloudSyncUploadedInput,
   type DecisionEvent,
   type DerivedSegment,
   type EpisodeManifest,
   type ProgramState,
   type SourceRole,
 } from "@high-ground/studio-cut-schema";
+import {
+  buildCloudSyncUploadStoragePath,
+  CLOUD_SYNC_ROLE_ACCEPT,
+  CLOUD_SYNC_ROLE_HELP,
+  CLOUD_SYNC_ROLE_LABELS,
+  createCloudSyncInputId,
+  createCloudSyncJob,
+  createCloudSyncJobId,
+  getMissingRequiredCloudSyncSelection,
+  isRequiredCloudSyncSelectionComplete,
+} from "./cloudSync";
 import {
   useDecisionPersistence,
   type StudioCutRoomSelection,
@@ -36,6 +53,10 @@ import type {
   CollaboratorPresence,
   PersistenceStatus,
 } from "./persistence/decisionPersistence";
+import {
+  createCloudSyncStore,
+  type CloudSyncUploadProgress,
+} from "./persistence/cloudSyncPersistence";
 import {
   createSharedRoomStore,
   type SharedRoomUploadProgress,
@@ -149,6 +170,28 @@ type SharedRoomUploadState = {
   shareUrl: string;
 };
 
+type CloudSyncRoleUploadState = {
+  status: "idle" | "selected" | "uploading" | "uploaded" | "error";
+  progressPercent: number;
+  message: string;
+  storagePath?: string;
+};
+
+type CloudSyncIntakeMessage = {
+  tone: "info" | "success" | "error";
+  text: string;
+};
+
+type CloudSyncSelectedFile = {
+  inputId: string;
+  file: File;
+  orderIndex?: number;
+};
+
+type CloudSyncSelectedFiles = Partial<
+  Record<CloudSyncInputRole, CloudSyncSelectedFile[]>
+>;
+
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
   homer: "#91de72",
@@ -227,6 +270,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       progressPercent: 0,
       message: "",
       shareUrl: "",
+    });
+  const [cloudSyncTitle, setCloudSyncTitle] = useState("");
+  const [cloudSyncIncludeClip, setCloudSyncIncludeClip] = useState(true);
+  const [cloudSyncFiles, setCloudSyncFiles] = useState<CloudSyncSelectedFiles>(
+    {},
+  );
+  const [cloudSyncUploadStates, setCloudSyncUploadStates] = useState<
+    Record<CloudSyncInputRole, CloudSyncRoleUploadState>
+  >(createInitialCloudSyncUploadStates);
+  const [cloudSyncJob, setCloudSyncJob] = useState<CloudSyncJob | null>(null);
+  const [cloudSyncMessage, setCloudSyncMessage] =
+    useState<CloudSyncIntakeMessage>({
+      tone: "info",
+      text: "Select raw episode assets, then explicitly upload when cloud rules are ready.",
     });
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryState>(
     loadStoredDecisionHistory,
@@ -1168,6 +1225,301 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }
   }
 
+  function handleSelectCloudSyncFile(
+    role: CloudSyncInputRole,
+    files: File[] | undefined,
+  ) {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    setCloudSyncFiles((currentFiles) => {
+      const existingSelections = currentFiles[role] ?? [];
+      const allowsMultiple = role === "phoneReferenceAudio" || role === "other";
+      const baseOrderIndex = allowsMultiple ? existingSelections.length : 0;
+      const nextSelections = files.map((file, index) => {
+        const orderIndex =
+          role === "phoneReferenceAudio" ? baseOrderIndex + index : undefined;
+
+        return {
+          inputId: createCloudSyncInputId({
+            role,
+            fileName: file.name,
+            orderIndex,
+          }),
+          file,
+          ...(orderIndex === undefined ? {} : { orderIndex }),
+        };
+      });
+
+      return {
+        ...currentFiles,
+        [role]: allowsMultiple
+          ? [...existingSelections, ...nextSelections]
+          : nextSelections.slice(0, 1),
+      };
+    });
+    setCloudSyncUploadStates((currentStates) => ({
+      ...currentStates,
+      [role]: {
+        status: "selected",
+        progressPercent: 0,
+        message: `${files.length} file${files.length === 1 ? "" : "s"} selected.`,
+      },
+    }));
+  }
+
+  function handleClearCloudSyncFile(role: CloudSyncInputRole) {
+    setCloudSyncFiles((currentFiles) => {
+      const nextFiles = { ...currentFiles };
+      delete nextFiles[role];
+      return nextFiles;
+    });
+    setCloudSyncUploadStates((currentStates) => ({
+      ...currentStates,
+      [role]: {
+        status: "idle",
+        progressPercent: 0,
+        message: "No file selected.",
+      },
+    }));
+  }
+
+  function handleCloudSyncOrderIndexChange(
+    role: CloudSyncInputRole,
+    inputId: string,
+    orderIndex: number,
+  ) {
+    setCloudSyncFiles((currentFiles) => ({
+      ...currentFiles,
+      [role]: (currentFiles[role] ?? []).map((selection) =>
+        selection.inputId === inputId
+          ? { ...selection, orderIndex: Math.max(0, Math.floor(orderIndex)) }
+          : selection,
+      ),
+    }));
+  }
+
+  async function handleUploadCloudSyncAssets() {
+    if (!config.firebaseConfig) {
+      setCloudSyncMessage({
+        tone: "error",
+        text: "Firebase is not configured in this build; raw asset intake is disabled in local-only mode.",
+      });
+      return;
+    }
+
+    const cloudReady =
+      status.mode === "cloud_connected" || status.mode === "cloud_ready";
+
+    if (!cloudReady) {
+      setCloudSyncMessage({
+        tone: "error",
+        text: "Cloud Sync Intake requires an active Firebase connection.",
+      });
+      return;
+    }
+
+    const cloudSyncSelectedFileArrays = getCloudSyncSelectedFileArrays(cloudSyncFiles);
+
+    if (!isRequiredCloudSyncSelectionComplete(cloudSyncSelectedFileArrays)) {
+      const missingLabels = getMissingRequiredCloudSyncSelection(cloudSyncSelectedFileArrays)
+        .map((role) => CLOUD_SYNC_ROLE_LABELS[role])
+        .join(", ");
+
+      setCloudSyncMessage({
+        tone: "error",
+        text: `Select required assets before upload: ${missingLabels}.`,
+      });
+      return;
+    }
+
+    const syncJobId = createCloudSyncJobId(roomSelection.projectId);
+    const now = new Date().toISOString();
+    const jobDraft = createCloudSyncJob({
+      syncJobId,
+      roomSelection,
+      title:
+        cloudSyncTitle ||
+        episodeManifest?.title ||
+        `${roomSelection.projectId} sync job`,
+      createdBy: createdBy ?? config.createdBy,
+      includeClip: cloudSyncIncludeClip,
+      now,
+    });
+    const jobUploading: CloudSyncJob = {
+      ...jobDraft,
+      status: "uploading",
+      updatedAt: now,
+    };
+
+    try {
+      const store = await createCloudSyncStore({
+        firebaseConfig: config.firebaseConfig,
+        syncJobId: jobDraft.syncJobId,
+      });
+
+      setCloudSyncJob(jobUploading);
+      setCloudSyncMessage({
+        tone: "info",
+        text: `Created sync job ${jobDraft.syncJobId}. Uploading selected raw assets now.`,
+      });
+      setCloudSyncUploadStates((currentStates) =>
+        markSelectedCloudSyncRolesUploading(currentStates, cloudSyncFiles),
+      );
+      await store.saveSyncJob(jobUploading);
+
+      const uploadedInputs: CloudSyncUploadedInput[] = [];
+
+      for (const role of CLOUD_SYNC_INPUT_ROLES) {
+        const selectedRoleFiles = sortCloudSyncSelectedFiles(
+          cloudSyncFiles[role] ?? [],
+        );
+
+        if (selectedRoleFiles.length === 0) {
+          continue;
+        }
+
+        for (const selectedFile of selectedRoleFiles) {
+          const file = selectedFile.file;
+          const storagePath = buildCloudSyncUploadStoragePath({
+            syncJobId: jobDraft.syncJobId,
+            role,
+            fileName: file.name,
+            inputId: selectedFile.inputId,
+          });
+
+          setCloudSyncUploadStates((currentStates) => ({
+            ...currentStates,
+            [role]: {
+              status: "uploading",
+              progressPercent: 0,
+              message: `Uploading ${file.name}.`,
+              storagePath,
+            },
+          }));
+
+          await store.uploadInput(
+            file,
+            storagePath,
+            (progress: CloudSyncUploadProgress) => {
+              setCloudSyncUploadStates((currentStates) => ({
+                ...currentStates,
+                [role]: {
+                  status: "uploading",
+                  progressPercent: progress.percent,
+                  message: `Uploading ${progress.percent}% (${formatFileSize(
+                    progress.bytesTransferred,
+                  )} of ${formatFileSize(progress.totalBytes)}).`,
+                  storagePath,
+                },
+              }));
+            },
+          );
+
+          const uploadedInput: CloudSyncUploadedInput = {
+            inputId: selectedFile.inputId,
+            role,
+            storagePath,
+            fileName: file.name,
+            contentType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+            uploadedAt: new Date().toISOString(),
+            ...(selectedFile.orderIndex === undefined
+              ? {}
+              : { orderIndex: selectedFile.orderIndex }),
+          };
+
+          uploadedInputs.push(uploadedInput);
+          setCloudSyncUploadStates((currentStates) => ({
+            ...currentStates,
+            [role]: {
+              status: "uploaded",
+              progressPercent: 100,
+              message: `${selectedRoleFiles.length} ${CLOUD_SYNC_ROLE_LABELS[
+                role
+              ].toLowerCase()} file${
+                selectedRoleFiles.length === 1 ? "" : "s"
+              } uploaded.`,
+                storagePath,
+              },
+          }));
+        }
+      }
+
+      const uploadedJob: CloudSyncJob = {
+        ...jobUploading,
+        status: "uploaded",
+        uploadedInputs,
+        updatedAt: new Date().toISOString(),
+      };
+      const finalJob: CloudSyncJob = {
+        ...uploadedJob,
+        status: isCloudSyncJobInputComplete(uploadedJob) ? "uploaded" : "draft",
+      };
+
+      await store.updateSyncJob(finalJob);
+      setCloudSyncJob(finalJob);
+      setCloudSyncMessage({
+        tone: "success",
+        text: "Raw assets are uploaded for cloud sync prep. Queue Sync Job is a placeholder until the worker is wired.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failedAt = new Date().toISOString();
+
+      setCloudSyncJob((currentJob) =>
+        currentJob
+          ? {
+              ...currentJob,
+              status: "failed",
+              updatedAt: failedAt,
+              errorMessage: message,
+            }
+          : currentJob,
+      );
+      setCloudSyncMessage({
+        tone: "error",
+        text: `Raw asset upload failed: ${message}`,
+      });
+      setCloudSyncUploadStates((currentStates) =>
+        markUploadingCloudSyncRolesErrored(currentStates, message),
+      );
+    }
+  }
+
+  async function handleQueueCloudSyncJob() {
+    if (!config.firebaseConfig || !cloudSyncJob) {
+      return;
+    }
+
+    try {
+      const store = await createCloudSyncStore({
+        firebaseConfig: config.firebaseConfig,
+        syncJobId: cloudSyncJob.syncJobId,
+      });
+      const queuedJob: CloudSyncJob = {
+        ...cloudSyncJob,
+        status: "queued",
+        updatedAt: new Date().toISOString(),
+      };
+
+      await store.updateSyncJob(queuedJob);
+      setCloudSyncJob(queuedJob);
+      setCloudSyncMessage({
+        tone: "success",
+        text: "Sync job marked queued. The Cloud Run worker contract is scaffolded, but no paid worker is started by the web app yet.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      setCloudSyncMessage({
+        tone: "error",
+        text: `Could not queue sync job: ${message}`,
+      });
+    }
+  }
+
   function stopProgramPlayback() {
     setIsProgramPlaying(false);
     pauseProxyVideo();
@@ -1252,6 +1604,24 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       </section>
 
       <aside className="edit-panel" aria-label="Decision controls">
+        <CloudSyncIntakePanel
+          status={status}
+          roomSelection={roomSelection}
+          title={cloudSyncTitle}
+          includeClip={cloudSyncIncludeClip}
+          selectedFiles={cloudSyncFiles}
+          uploadStates={cloudSyncUploadStates}
+          syncJob={cloudSyncJob}
+          message={cloudSyncMessage}
+          onTitleChange={setCloudSyncTitle}
+          onIncludeClipChange={setCloudSyncIncludeClip}
+          onSelectFile={handleSelectCloudSyncFile}
+          onClearFile={handleClearCloudSyncFile}
+          onOrderIndexChange={handleCloudSyncOrderIndexChange}
+          onUpload={() => void handleUploadCloudSyncAssets()}
+          onQueue={() => void handleQueueCloudSyncJob()}
+        />
+
         <SharedRoomPackagePanel
           status={status}
           manifest={episodeManifest}
@@ -1613,6 +1983,260 @@ function KeyboardShortcutLegend() {
         </span>
       ))}
     </div>
+  );
+}
+
+function CloudSyncIntakePanel({
+  status,
+  roomSelection,
+  title,
+  includeClip,
+  selectedFiles,
+  uploadStates,
+  syncJob,
+  message,
+  onTitleChange,
+  onIncludeClipChange,
+  onSelectFile,
+  onClearFile,
+  onOrderIndexChange,
+  onUpload,
+  onQueue,
+}: {
+  status: PersistenceStatus;
+  roomSelection: StudioCutRoomSelection;
+  title: string;
+  includeClip: boolean;
+  selectedFiles: CloudSyncSelectedFiles;
+  uploadStates: Record<CloudSyncInputRole, CloudSyncRoleUploadState>;
+  syncJob: CloudSyncJob | null;
+  message: CloudSyncIntakeMessage;
+  onTitleChange: (title: string) => void;
+  onIncludeClipChange: (includeClip: boolean) => void;
+  onSelectFile: (role: CloudSyncInputRole, files: File[] | undefined) => void;
+  onClearFile: (role: CloudSyncInputRole) => void;
+  onOrderIndexChange: (
+    role: CloudSyncInputRole,
+    inputId: string,
+    orderIndex: number,
+  ) => void;
+  onUpload: () => void;
+  onQueue: () => void;
+}) {
+  const cloudReady =
+    status.mode === "cloud_connected" || status.mode === "cloud_ready";
+  const isUploading = Object.values(uploadStates).some(
+    (uploadState) => uploadState.status === "uploading",
+  );
+  const selectedFileArrays = getCloudSyncSelectedFileArrays(selectedFiles);
+  const requiredComplete = isRequiredCloudSyncSelectionComplete(selectedFileArrays);
+  const missingRequired = getMissingRequiredCloudSyncSelection(selectedFileArrays);
+  const visibleRoles = CLOUD_SYNC_INPUT_ROLES.filter(
+    (role) => includeClip || role !== "clipVideo",
+  );
+  const canUpload = cloudReady && requiredComplete && !isUploading;
+  const canQueue = cloudReady && syncJob?.status === "uploaded";
+  const statusLabel =
+    syncJob?.status ??
+    (cloudReady ? (requiredComplete ? "ready to upload" : "missing inputs") : "local only");
+
+  return (
+    <section className="cloud-sync-panel" aria-label="Cloud Sync Intake">
+      <div className="panel-heading">
+        <div>
+          <h2>Cloud Sync Intake</h2>
+          <p>
+            New primary setup path: Charlie uploads raw episode assets, then the
+            sync worker prepares a shared room for link-only editing.
+          </p>
+        </div>
+        <strong>{statusLabel}</strong>
+      </div>
+      <div className="cloud-sync-warning">
+        Uploads may be large and should be used only after rules/security and
+        retention are ready. Do not upload full-res/private material for broad
+        testing.
+      </div>
+      <div className="cloud-sync-controls">
+        <label>
+          Episode title
+          <input
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            placeholder="Episode 004"
+            aria-label="Cloud sync episode title"
+          />
+        </label>
+        <ReadinessMetric
+          label="Room"
+          value={`${roomSelection.projectId} / ${roomSelection.branchId}`}
+        />
+        <label className="cloud-sync-toggle">
+          <input
+            type="checkbox"
+            checked={includeClip}
+            onChange={(event) => onIncludeClipChange(event.target.checked)}
+          />
+          Expect clip/screen video
+        </label>
+      </div>
+      <div className="cloud-sync-required">
+        <span>Required</span>
+        <strong>
+          {missingRequired.length === 0
+            ? "All required assets selected"
+            : missingRequired
+                .map((role) => CLOUD_SYNC_ROLE_LABELS[role])
+                .join(", ")}
+        </strong>
+      </div>
+      <div className="cloud-sync-role-list">
+        {visibleRoles.map((role) => (
+          <CloudSyncRoleRow
+            key={role}
+            role={role}
+            files={selectedFiles[role] ?? []}
+            uploadState={uploadStates[role]}
+            onSelectFile={onSelectFile}
+            onClearFile={onClearFile}
+            onOrderIndexChange={onOrderIndexChange}
+          />
+        ))}
+      </div>
+      <div className="cloud-sync-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onUpload}
+          disabled={!canUpload}
+        >
+          Create Sync Job / Upload Raw Assets
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onQueue}
+          disabled={!canQueue}
+        >
+          Queue Sync Job
+        </button>
+      </div>
+      {syncJob ? (
+        <div className="cloud-sync-job-summary">
+          <span>Sync job</span>
+          <strong>{syncJob.syncJobId}</strong>
+          <small>
+            {syncJob.status} · {syncJob.uploadedInputs.length} uploaded input
+            {syncJob.uploadedInputs.length === 1 ? "" : "s"}
+          </small>
+        </div>
+      ) : null}
+      <p className={`cloud-sync-message is-${message.tone}`}>{message.text}</p>
+    </section>
+  );
+}
+
+function CloudSyncRoleRow({
+  role,
+  files,
+  uploadState,
+  onSelectFile,
+  onClearFile,
+  onOrderIndexChange,
+}: {
+  role: CloudSyncInputRole;
+  files: CloudSyncSelectedFile[];
+  uploadState: CloudSyncRoleUploadState;
+  onSelectFile: (role: CloudSyncInputRole, files: File[] | undefined) => void;
+  onClearFile: (role: CloudSyncInputRole) => void;
+  onOrderIndexChange: (
+    role: CloudSyncInputRole,
+    inputId: string,
+    orderIndex: number,
+  ) => void;
+}) {
+  const isRequired = CLOUD_SYNC_REQUIRED_INPUT_ROLES.includes(role);
+  const allowsMultiple = role === "phoneReferenceAudio" || role === "other";
+  const sortedFiles = sortCloudSyncSelectedFiles(files);
+
+  return (
+    <article className={`cloud-sync-role-row is-${uploadState.status}`}>
+      <div className="cloud-sync-role-copy">
+        <strong>
+          {CLOUD_SYNC_ROLE_LABELS[role]}
+          {isRequired ? " *" : ""}
+        </strong>
+        <span>{CLOUD_SYNC_ROLE_HELP[role]}</span>
+        {sortedFiles.length > 0 ? (
+          <div className="cloud-sync-selected-files">
+            {sortedFiles.map((selectedFile) => (
+              <div key={selectedFile.inputId} className="cloud-sync-selected-file">
+                <small>
+                  {selectedFile.file.name} · {formatFileSize(selectedFile.file.size)}
+                </small>
+                {role === "phoneReferenceAudio" ? (
+                  <label>
+                    Order
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={selectedFile.orderIndex ?? 0}
+                      onChange={(event) =>
+                        onOrderIndexChange(
+                          role,
+                          selectedFile.inputId,
+                          Number(event.target.value),
+                        )
+                      }
+                      aria-label={`Order for ${selectedFile.file.name}`}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <small>{uploadState.message || "No file selected."}</small>
+        )}
+        {uploadState.storagePath ? <code>{uploadState.storagePath}</code> : null}
+      </div>
+      <div className="cloud-sync-role-actions">
+        <label className="secondary-button">
+          {allowsMultiple ? "Add Files" : "Choose"}
+          <input
+            className="file-input"
+            type="file"
+            multiple={allowsMultiple}
+            accept={CLOUD_SYNC_ROLE_ACCEPT[role]}
+            onChange={(event) => {
+              onSelectFile(
+                role,
+                event.target.files ? Array.from(event.target.files) : undefined,
+              );
+              event.target.value = "";
+            }}
+            aria-label={`Choose ${CLOUD_SYNC_ROLE_LABELS[role]}`}
+          />
+        </label>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => onClearFile(role)}
+          disabled={files.length === 0 && uploadState.status === "idle"}
+        >
+          Clear
+        </button>
+      </div>
+      {uploadState.status === "uploading" || uploadState.status === "uploaded" ? (
+        <progress
+          className="cloud-sync-progress"
+          max={100}
+          value={uploadState.progressPercent}
+          aria-label={`${CLOUD_SYNC_ROLE_LABELS[role]} upload progress`}
+        />
+      ) : null}
+    </article>
   );
 }
 
@@ -2237,7 +2861,7 @@ function PrototypeNotice({ authStatus }: { authStatus: StudioCutAuthStatus }) {
       <span>
         {isLocalDev
           ? "Local dev mode, auth disabled because Firebase env vars are missing. Do not use full-res media, private paths, credentials, or personal recordings here."
-          : "This internal prototype can upload only lightweight source-monitor proxies for shared rooms. Do not upload full-res media, credentials, or private local paths."}
+          : "This internal prototype can upload shared proxies and rescue-sync intake assets only when rules/security are ready. Do not upload credentials or private local paths."}
       </span>
     </section>
   );
@@ -2967,6 +3591,92 @@ function formatPane(
   pane: { x: number; y: number; width: number; height: number },
 ) {
   return `${label} x:${pane.x} y:${pane.y} w:${pane.width} h:${pane.height}`;
+}
+
+function createInitialCloudSyncUploadStates(): Record<
+  CloudSyncInputRole,
+  CloudSyncRoleUploadState
+> {
+  return CLOUD_SYNC_INPUT_ROLES.reduce(
+    (states, role) => ({
+      ...states,
+      [role]: {
+        status: "idle",
+        progressPercent: 0,
+        message: "No file selected.",
+      },
+    }),
+    {} as Record<CloudSyncInputRole, CloudSyncRoleUploadState>,
+  );
+}
+
+function markSelectedCloudSyncRolesUploading(
+  currentStates: Record<CloudSyncInputRole, CloudSyncRoleUploadState>,
+  selectedFiles: CloudSyncSelectedFiles,
+) {
+  return CLOUD_SYNC_INPUT_ROLES.reduce(
+    (states, role) => {
+      const selectedRoleFiles = selectedFiles[role] ?? [];
+
+      if (selectedRoleFiles.length === 0) {
+        return states;
+      }
+
+      return {
+        ...states,
+        [role]: {
+          status: "uploading",
+          progressPercent: 0,
+          message: `Waiting to upload ${selectedRoleFiles.length} file${
+            selectedRoleFiles.length === 1 ? "" : "s"
+          }.`,
+        },
+      };
+    },
+    { ...currentStates },
+  );
+}
+
+function getCloudSyncSelectedFileArrays(selectedFiles: CloudSyncSelectedFiles) {
+  return CLOUD_SYNC_INPUT_ROLES.reduce(
+    (fileArrays, role) => ({
+      ...fileArrays,
+      [role]: (selectedFiles[role] ?? []).map((selection) => selection.file),
+    }),
+    {} as Partial<Record<CloudSyncInputRole, File[]>>,
+  );
+}
+
+function sortCloudSyncSelectedFiles(files: readonly CloudSyncSelectedFile[]) {
+  return [...files].sort(
+    (left, right) =>
+      (left.orderIndex ?? 0) - (right.orderIndex ?? 0) ||
+      left.file.name.localeCompare(right.file.name) ||
+      left.inputId.localeCompare(right.inputId),
+  );
+}
+
+function markUploadingCloudSyncRolesErrored(
+  currentStates: Record<CloudSyncInputRole, CloudSyncRoleUploadState>,
+  message: string,
+) {
+  return CLOUD_SYNC_INPUT_ROLES.reduce(
+    (states, role) => {
+      if (states[role].status !== "uploading") {
+        return states;
+      }
+
+      return {
+        ...states,
+        [role]: {
+          ...states[role],
+          status: "error",
+          message,
+        },
+      };
+    },
+    { ...currentStates },
+  );
 }
 
 function loadStoredEpisodeManifest() {

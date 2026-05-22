@@ -5,12 +5,52 @@ Date: 2026-05-22
 This is the primary real-use path for Episode 4:
 
 ```text
-Premiere exports aligned media and source-monitor proxy -> create bootstrap files -> Charlie creates shared room -> Mako opens room link -> both tag live -> Charlie exports decisions/checkpoint -> render rough 16:9 output locally
+Charlie uploads raw assets -> cloud sync prep generates manifest/proxy/shared room -> Mako opens room link -> both tag live -> Charlie renders locally
 ```
 
 Studio Cut decisions stay semantic. Local media stays on Charlie's machine. Do
 not commit real media, proxy files, private paths, rendered outputs, credentials,
 or generated real-episode JSON.
+
+For tonight, the prepared-package fallback is still available:
+
+```text
+Premiere exports aligned media and source-monitor proxy -> create bootstrap files -> Charlie creates shared room -> Mako opens room link -> both tag live -> Charlie exports decisions/checkpoint -> render rough 16:9 output locally
+```
+
+The `Cloud Sync Intake` panel is the new product direction. It can upload raw
+Homer/Charlie/audio/reference assets into a sync job, but the Cloud Run worker
+that generates the manifest/proxy/shared room is still scaffold only.
+
+## 0. Cloud Sync Intake Direction
+
+Use this when rules/security and cost controls are ready for real raw asset
+uploads:
+
+1. Charlie opens Studio Cut and signs in.
+2. Charlie confirms `projectId=episode-004` and `branchId=main`.
+3. Charlie opens `Cloud Sync Intake`.
+4. Charlie selects:
+   - Homer video
+   - Charlie video
+   - Homer clean audio
+   - Charlie clean audio
+   - phone/reference audio, including multiple pieces if the recording split
+   - optional clip/screen video
+5. Charlie checks the `orderIndex` values for phone/reference pieces. The
+   intended order is `0`, `1`, `2`, and so on.
+6. Charlie clicks `Create Sync Job / Upload Raw Assets`.
+7. Studio Cut writes `studioCutSyncJobs/{syncJobId}` and uploads files under
+   `studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName}`.
+8. A future sync worker builds the reference rail from phone pieces, then writes
+   the source-monitor proxy, manifest, sync report,
+   and shared room metadata.
+9. Mako opens the shared room link and edits without JSON import/export or local
+   media files.
+
+Do not use this for sensitive/private footage until Firestore/Storage rules have
+passed emulator tests, have been deployed intentionally, and retention cleanup
+is defined.
 
 ## 1. Premiere Export Checklist
 
@@ -126,7 +166,7 @@ pnpm studio-cut:local:verify-episode -- \
 The report should say `Status: READY`. Duration warnings mean a file does not
 match the manifest closely enough; review the export before rendering.
 
-## 5. Create The Shared Room
+## 5. Prepared-Package Shared Room Fallback
 
 Open the deployed editor:
 

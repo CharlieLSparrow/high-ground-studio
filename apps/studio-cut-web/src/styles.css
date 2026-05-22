@@ -564,6 +564,7 @@ h2 {
 .readiness-panel,
 .pane-calibration-panel,
 .collaboration-panel,
+.cloud-sync-panel,
 .shared-room-panel,
 .shared-room-diagnostics-panel {
   display: grid;
@@ -576,6 +577,7 @@ h2 {
 .readiness-panel,
 .pane-calibration-panel,
 .collaboration-panel,
+.cloud-sync-panel,
 .shared-room-panel,
 .shared-room-diagnostics-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
@@ -778,6 +780,219 @@ h2 {
 }
 
 .shared-room-message.is-error {
+  border-color: rgba(255, 116, 116, 0.34);
+  color: #ffb7b7;
+}
+
+.cloud-sync-panel {
+  border-color: rgba(114, 214, 255, 0.28);
+  background:
+    linear-gradient(135deg, rgba(114, 214, 255, 0.1), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.cloud-sync-warning,
+.cloud-sync-required,
+.cloud-sync-job-summary,
+.cloud-sync-message {
+  border: 1px dashed rgba(240, 201, 106, 0.24);
+  border-radius: 7px;
+  color: #d7e0dc;
+  padding: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.cloud-sync-warning {
+  color: #f3dfaa;
+  background: rgba(240, 201, 106, 0.07);
+}
+
+.cloud-sync-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+  gap: 8px;
+}
+
+.cloud-sync-controls label,
+.cloud-sync-toggle {
+  display: grid;
+  gap: 5px;
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.cloud-sync-controls input[type="text"],
+.cloud-sync-controls input:not([type]) {
+  min-height: 36px;
+  width: 100%;
+  border: 1px solid rgba(238, 242, 238, 0.16);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #eef2ee;
+  padding: 8px 9px;
+}
+
+.cloud-sync-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: none;
+}
+
+.cloud-sync-toggle input {
+  width: auto;
+}
+
+.cloud-sync-required {
+  display: grid;
+  gap: 4px;
+  border-style: solid;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.cloud-sync-required span,
+.cloud-sync-job-summary span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.cloud-sync-required strong,
+.cloud-sync-job-summary strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.cloud-sync-job-summary small {
+  overflow-wrap: anywhere;
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.cloud-sync-role-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cloud-sync-role-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 10px;
+}
+
+.cloud-sync-role-row.is-uploaded {
+  border-color: rgba(145, 219, 183, 0.3);
+  background: rgba(145, 219, 183, 0.07);
+}
+
+.cloud-sync-role-row.is-error {
+  border-color: rgba(255, 116, 116, 0.34);
+  background: rgba(255, 116, 116, 0.07);
+}
+
+.cloud-sync-role-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.cloud-sync-role-copy strong {
+  color: #eef2ee;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.cloud-sync-role-copy span,
+.cloud-sync-role-copy small,
+.cloud-sync-role-copy code {
+  overflow-wrap: anywhere;
+  color: #aeb9b4;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.cloud-sync-role-copy code {
+  color: #72d6ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.cloud-sync-selected-files {
+  display: grid;
+  gap: 6px;
+}
+
+.cloud-sync-selected-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(238, 242, 238, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px;
+}
+
+.cloud-sync-selected-file label {
+  display: grid;
+  gap: 3px;
+  color: #aeb9b4;
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.cloud-sync-selected-file input {
+  min-height: 28px;
+  width: 100%;
+  border: 1px solid rgba(238, 242, 238, 0.16);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #eef2ee;
+  padding: 4px 6px;
+}
+
+.cloud-sync-role-actions,
+.cloud-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cloud-sync-role-actions label.secondary-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+}
+
+.cloud-sync-progress {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #72d6ff;
+}
+
+.cloud-sync-message.is-success {
+  border-color: rgba(145, 219, 183, 0.32);
+  color: #c4f5d8;
+}
+
+.cloud-sync-message.is-error {
   border-color: rgba(255, 116, 116, 0.34);
   color: #ffb7b7;
 }
@@ -1541,6 +1756,9 @@ td {
   .pane-calibration-row,
   .checkpoint-row,
   .room-controls,
+  .cloud-sync-controls,
+  .cloud-sync-role-row,
+  .cloud-sync-selected-file,
   .proxy-program-layout.pane-count-2,
   .proxy-program-layout.both-clip,
   .current-segment-grid,

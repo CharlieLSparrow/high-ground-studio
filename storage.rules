@@ -22,5 +22,22 @@ service firebase.storage {
         && request.resource.contentType.matches('video/.*');
       allow delete: if false;
     }
+
+    match /studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName} {
+      allow read: if highGroundEmail();
+      allow write: if highGroundEmail()
+        && role.matches('homerVideo|charlieVideo|homerAudio|charlieAudio|phoneReferenceAudio|clipVideo|other')
+        && request.resource.size < 20 * 1024 * 1024 * 1024
+        && request.resource.contentType.matches('(video/.*|audio/.*|application/json)');
+      allow delete: if false;
+    }
+
+    match /studioCutSyncJobs/{syncJobId}/outputs/{fileName} {
+      allow read: if highGroundEmail();
+      allow write: if highGroundEmail()
+        && request.resource.size < 1024 * 1024 * 1024
+        && request.resource.contentType.matches('(video/.*|application/json)');
+      allow delete: if false;
+    }
   }
 }

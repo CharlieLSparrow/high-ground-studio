@@ -45,9 +45,34 @@ const verificationSteps = [
     ],
   },
   {
+    label: "Studio Cut cloud sync helper test",
+    command: "node",
+    args: [
+      "--experimental-strip-types",
+      "--test",
+      "scripts/studio-cut-cloud-sync.test.mjs",
+    ],
+  },
+  {
     label: "Studio Cut rules config test",
     command: "pnpm",
     args: ["studio-cut:rules-config-test"],
+  },
+  {
+    label: "Cloud sync worker compile",
+    command: pythonCommand,
+    args: ["-m", "py_compile", "tools/studio-cut-cloud-sync/cloud_sync_worker.py"],
+  },
+  {
+    label: "Cloud sync worker dry run",
+    command: pythonCommand,
+    args: [
+      "tools/studio-cut-cloud-sync/cloud_sync_worker.py",
+      "--sync-job-json",
+      "tools/studio-cut-cloud-sync/examples/sync-job.placeholder.json",
+      "--out",
+      "/tmp/studio-cut-cloud-sync-report.placeholder.json",
+    ],
   },
   {
     label: "Agent smoke test",

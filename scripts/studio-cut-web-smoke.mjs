@@ -386,10 +386,26 @@ async function runBrowserSmoke() {
 
     const sharedRoomSection = page.getByLabel("Shared episode room");
     const collaborationSection = page.getByLabel("Collaboration mode");
+    const cloudSyncSection = page.getByLabel("Cloud Sync Intake");
 
     await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Episode Room" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cloud Sync Intake" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Room Diagnostics" })).toBeVisible();
+    await expect(cloudSyncSection).toContainText("Homer video");
+    await expect(cloudSyncSection).toContainText("Charlie video");
+    await expect(cloudSyncSection).toContainText("Homer clean audio");
+    await expect(cloudSyncSection).toContainText("Charlie clean audio");
+    await expect(cloudSyncSection).toContainText("Phone/reference audio");
+    await expect(cloudSyncSection).toContainText("Clip/screen video");
+    await expect(cloudSyncSection).toContainText(/Multiple pieces are allowed/i);
+    await expect(cloudSyncSection).toContainText(/raw asset intake is disabled|local only/i);
+    await expect(
+      cloudSyncSection.getByRole("button", {
+        name: "Create Sync Job / Upload Raw Assets",
+      }),
+    ).toBeDisabled();
+    await expect(cloudSyncSection.getByRole("button", { name: "Queue Sync Job" })).toBeDisabled();
     await expect(sharedRoomSection.getByText(/shared rooms are disabled in local-only mode/i)).toBeVisible();
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Room metadata");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Local only");

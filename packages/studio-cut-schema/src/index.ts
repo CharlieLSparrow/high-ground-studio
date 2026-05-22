@@ -75,11 +75,148 @@ export type EpisodeManifest = {
   syncBootstrap: SyncBootstrap;
 };
 
+export type CloudSyncInputRole =
+  | "homerVideo"
+  | "charlieVideo"
+  | "homerAudio"
+  | "charlieAudio"
+  | "phoneReferenceAudio"
+  | "clipVideo"
+  | "other";
+
+export type CloudSyncJobStatus =
+  | "draft"
+  | "uploading"
+  | "uploaded"
+  | "queued"
+  | "processing"
+  | "ready"
+  | "failed";
+
+export type CloudSyncExpectedInputs = {
+  homerVideo: boolean;
+  charlieVideo: boolean;
+  homerAudio: boolean;
+  charlieAudio: boolean;
+  phoneReferenceAudio: boolean;
+  clipVideo?: boolean;
+  other?: boolean;
+};
+
+export type CloudSyncUploadedInput = {
+  inputId: string;
+  role: CloudSyncInputRole;
+  storagePath: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  durationMs?: number;
+  uploadedAt: string;
+  orderIndex?: number;
+  notes?: string;
+};
+
+export type CloudSyncJobOutputs = {
+  manifestStoragePath?: string;
+  sourceMonitorProxyStoragePath?: string;
+  syncReportStoragePath?: string;
+  sharedRoomUrl?: string;
+};
+
+export type CloudSyncReportSummary = {
+  confidence: number;
+  warnings: string[];
+  offsets: Record<string, number>;
+};
+
+export type CloudSyncJob = {
+  syncJobId: string;
+  projectId: string;
+  branchId: string;
+  title: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  status: CloudSyncJobStatus;
+  expectedInputs: CloudSyncExpectedInputs;
+  uploadedInputs: CloudSyncUploadedInput[];
+  outputs: CloudSyncJobOutputs;
+  syncReportSummary?: CloudSyncReportSummary;
+  errorMessage?: string;
+};
+
+export type CloudSyncReferenceRailSegment = {
+  inputId: string;
+  fileName: string;
+  railStartMs: number;
+  sourceStartMs: number;
+  durationMs: number;
+  confidence: number;
+  gapBeforeMs?: number;
+  overlapBeforeMs?: number;
+  warnings: string[];
+};
+
+export type CloudSyncReferenceRail = {
+  syncJobId: string;
+  referenceRole: "phoneReferenceAudio";
+  segments: CloudSyncReferenceRailSegment[];
+  totalDurationMs: number;
+  warnings: string[];
+};
+
+export type CloudSyncTrackOffset = {
+  role: CloudSyncInputRole;
+  inputId: string;
+  fileName: string;
+  estimatedOffsetMs: number;
+  confidence: number;
+  driftPpm?: number;
+  warnings: string[];
+};
+
+export type CloudSyncReport = {
+  syncJobId: string;
+  generatedAt: string;
+  status: CloudSyncJobStatus;
+  referenceRail: CloudSyncReferenceRail;
+  trackOffsets: CloudSyncTrackOffset[];
+  globalWarnings: string[];
+};
+
 export const SOURCE_ROLES: readonly SourceRole[] = [
   "homer",
   "charlie",
   "clip",
   "program",
+] as const;
+
+export const CLOUD_SYNC_INPUT_ROLES: readonly CloudSyncInputRole[] = [
+  "homerVideo",
+  "charlieVideo",
+  "homerAudio",
+  "charlieAudio",
+  "phoneReferenceAudio",
+  "clipVideo",
+  "other",
+] as const;
+
+export const CLOUD_SYNC_REQUIRED_INPUT_ROLES: readonly CloudSyncInputRole[] = [
+  "homerVideo",
+  "charlieVideo",
+  "homerAudio",
+  "charlieAudio",
+  "phoneReferenceAudio",
+] as const;
+
+export const CLOUD_SYNC_JOB_STATUSES: readonly CloudSyncJobStatus[] = [
+  "draft",
+  "uploading",
+  "uploaded",
+  "queued",
+  "processing",
+  "ready",
+  "failed",
 ] as const;
 
 export const PROGRAM_STATES: readonly ProgramState[] = [
@@ -119,8 +256,28 @@ export type EpisodeManifestParseResult =
   | { ok: true; manifest: EpisodeManifest }
   | { ok: false; reason: string };
 
+export type CloudSyncJobParseResult =
+  | { ok: true; job: CloudSyncJob }
+  | { ok: false; reason: string };
+
+export type CloudSyncReportParseResult =
+  | { ok: true; report: CloudSyncReport }
+  | { ok: false; reason: string };
+
 export function isProgramState(value: unknown): value is ProgramState {
   return PROGRAM_STATES.includes(value as ProgramState);
+}
+
+export function isCloudSyncInputRole(
+  value: unknown,
+): value is CloudSyncInputRole {
+  return CLOUD_SYNC_INPUT_ROLES.includes(value as CloudSyncInputRole);
+}
+
+export function isCloudSyncJobStatus(
+  value: unknown,
+): value is CloudSyncJobStatus {
+  return CLOUD_SYNC_JOB_STATUSES.includes(value as CloudSyncJobStatus);
 }
 
 export function isDecisionEvent(value: unknown): value is DecisionEvent {
@@ -192,6 +349,34 @@ export function parseEpisodeManifestPayload(
   return { ok: true, manifest: payload };
 }
 
+export function parseCloudSyncJobPayload(
+  payload: unknown,
+): CloudSyncJobParseResult {
+  if (!isCloudSyncJob(payload)) {
+    return {
+      ok: false,
+      reason:
+        "Cloud sync job must include ids, status, expected/uploaded inputs, outputs, creator, and timestamps.",
+    };
+  }
+
+  return { ok: true, job: payload };
+}
+
+export function parseCloudSyncReportPayload(
+  payload: unknown,
+): CloudSyncReportParseResult {
+  if (!isCloudSyncReport(payload)) {
+    return {
+      ok: false,
+      reason:
+        "Cloud sync report must include syncJobId, generatedAt, status, reference rail, track offsets, and global warnings.",
+    };
+  }
+
+  return { ok: true, report: payload };
+}
+
 export function isEpisodeManifest(value: unknown): value is EpisodeManifest {
   if (!isRecord(value)) {
     return false;
@@ -216,6 +401,69 @@ export function isEpisodeManifest(value: unknown): value is EpisodeManifest {
     isSourceMonitorProxy(manifest.sourceMonitorProxy) &&
     isSyncBootstrap(manifest.syncBootstrap)
   );
+}
+
+export function isCloudSyncJob(value: unknown): value is CloudSyncJob {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const job = value as Partial<CloudSyncJob>;
+
+  return (
+    typeof job.syncJobId === "string" &&
+    job.syncJobId.trim().length > 0 &&
+    typeof job.projectId === "string" &&
+    job.projectId.trim().length > 0 &&
+    typeof job.branchId === "string" &&
+    job.branchId.trim().length > 0 &&
+    typeof job.title === "string" &&
+    job.title.trim().length > 0 &&
+    typeof job.createdBy === "string" &&
+    job.createdBy.trim().length > 0 &&
+    isIsoDateString(job.createdAt) &&
+    isIsoDateString(job.updatedAt) &&
+    isCloudSyncJobStatus(job.status) &&
+    isCloudSyncExpectedInputs(job.expectedInputs) &&
+    Array.isArray(job.uploadedInputs) &&
+    job.uploadedInputs.every(isCloudSyncUploadedInput) &&
+    isCloudSyncJobOutputs(job.outputs) &&
+    (job.syncReportSummary === undefined ||
+      isCloudSyncReportSummary(job.syncReportSummary)) &&
+    optionalString(job.errorMessage)
+  );
+}
+
+export function isCloudSyncReport(value: unknown): value is CloudSyncReport {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const report = value as Partial<CloudSyncReport>;
+
+  return (
+    typeof report.syncJobId === "string" &&
+    report.syncJobId.trim().length > 0 &&
+    isIsoDateString(report.generatedAt) &&
+    isCloudSyncJobStatus(report.status) &&
+    isCloudSyncReferenceRail(report.referenceRail) &&
+    Array.isArray(report.trackOffsets) &&
+    report.trackOffsets.every(isCloudSyncTrackOffset) &&
+    Array.isArray(report.globalWarnings) &&
+    report.globalWarnings.every((warning) => typeof warning === "string")
+  );
+}
+
+export function getMissingRequiredCloudSyncInputs(job: CloudSyncJob) {
+  const uploadedRoles = new Set(job.uploadedInputs.map((input) => input.role));
+
+  return CLOUD_SYNC_REQUIRED_INPUT_ROLES.filter(
+    (role) => job.expectedInputs[role] && !uploadedRoles.has(role),
+  );
+}
+
+export function isCloudSyncJobInputComplete(job: CloudSyncJob) {
+  return getMissingRequiredCloudSyncInputs(job).length === 0;
 }
 
 export function sortDecisionEvents(events: readonly DecisionEvent[]) {
@@ -342,6 +590,155 @@ function isSyncBootstrap(value: unknown) {
   );
 }
 
+function isCloudSyncExpectedInputs(
+  value: unknown,
+): value is CloudSyncExpectedInputs {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.homerVideo === true &&
+    value.charlieVideo === true &&
+    value.homerAudio === true &&
+    value.charlieAudio === true &&
+    value.phoneReferenceAudio === true &&
+    (value.clipVideo === undefined || typeof value.clipVideo === "boolean") &&
+    (value.other === undefined || typeof value.other === "boolean")
+  );
+}
+
+function isCloudSyncUploadedInput(
+  value: unknown,
+): value is CloudSyncUploadedInput {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const orderIndex = value.orderIndex;
+
+  return (
+    typeof value.inputId === "string" &&
+    value.inputId.trim().length > 0 &&
+    isCloudSyncInputRole(value.role) &&
+    typeof value.storagePath === "string" &&
+    value.storagePath.trim().length > 0 &&
+    typeof value.fileName === "string" &&
+    value.fileName.trim().length > 0 &&
+    typeof value.contentType === "string" &&
+    value.contentType.trim().length > 0 &&
+    isFiniteNonNegativeNumber(value.sizeBytes) &&
+    (value.durationMs === undefined ||
+      isFiniteNonNegativeNumber(value.durationMs)) &&
+    isIsoDateString(value.uploadedAt) &&
+    (orderIndex === undefined ||
+      (typeof orderIndex === "number" &&
+        Number.isInteger(orderIndex) &&
+        orderIndex >= 0)) &&
+    optionalString(value.notes)
+  );
+}
+
+function isCloudSyncJobOutputs(
+  value: unknown,
+): value is CloudSyncJobOutputs {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    optionalString(value.manifestStoragePath) &&
+    optionalString(value.sourceMonitorProxyStoragePath) &&
+    optionalString(value.syncReportStoragePath) &&
+    optionalString(value.sharedRoomUrl)
+  );
+}
+
+function isCloudSyncReportSummary(
+  value: unknown,
+): value is CloudSyncReportSummary {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isConfidence(value.confidence) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string") &&
+    isRecord(value.offsets) &&
+    Object.values(value.offsets).every(
+      (offsetMs) => typeof offsetMs === "number" && Number.isFinite(offsetMs),
+    )
+  );
+}
+
+function isCloudSyncReferenceRail(
+  value: unknown,
+): value is CloudSyncReferenceRail {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.syncJobId === "string" &&
+    value.syncJobId.trim().length > 0 &&
+    value.referenceRole === "phoneReferenceAudio" &&
+    Array.isArray(value.segments) &&
+    value.segments.every(isCloudSyncReferenceRailSegment) &&
+    isFiniteNonNegativeNumber(value.totalDurationMs) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string")
+  );
+}
+
+function isCloudSyncReferenceRailSegment(
+  value: unknown,
+): value is CloudSyncReferenceRailSegment {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.inputId === "string" &&
+    value.inputId.trim().length > 0 &&
+    typeof value.fileName === "string" &&
+    value.fileName.trim().length > 0 &&
+    isFiniteNonNegativeNumber(value.railStartMs) &&
+    isFiniteNonNegativeNumber(value.sourceStartMs) &&
+    isFiniteNonNegativeNumber(value.durationMs) &&
+    isConfidence(value.confidence) &&
+    (value.gapBeforeMs === undefined ||
+      isFiniteNonNegativeNumber(value.gapBeforeMs)) &&
+    (value.overlapBeforeMs === undefined ||
+      isFiniteNonNegativeNumber(value.overlapBeforeMs)) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string")
+  );
+}
+
+function isCloudSyncTrackOffset(
+  value: unknown,
+): value is CloudSyncTrackOffset {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isCloudSyncInputRole(value.role) &&
+    typeof value.inputId === "string" &&
+    value.inputId.trim().length > 0 &&
+    typeof value.fileName === "string" &&
+    value.fileName.trim().length > 0 &&
+    typeof value.estimatedOffsetMs === "number" &&
+    Number.isFinite(value.estimatedOffsetMs) &&
+    (value.driftPpm === undefined ||
+      (typeof value.driftPpm === "number" && Number.isFinite(value.driftPpm))) &&
+    isConfidence(value.confidence) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string")
+  );
+}
+
 function optionalString(value: unknown) {
   return value === undefined || typeof value === "string";
 }
@@ -352,6 +749,23 @@ function isFiniteNonNegativeNumber(value: unknown) {
 
 function isFinitePositiveNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isConfidence(value: unknown) {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1
+  );
+}
+
+function isIsoDateString(value: unknown) {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    !Number.isNaN(Date.parse(value))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

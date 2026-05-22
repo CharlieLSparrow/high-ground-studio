@@ -1,0 +1,114 @@
+{
+  "syncJobId": "episode-004-rescue-sync-placeholder",
+  "projectId": "episode-004",
+  "branchId": "main",
+  "title": "Episode 004 Rescue Sync Placeholder",
+  "createdBy": "operator@example.com",
+  "createdAt": "2026-05-22T12:00:00.000Z",
+  "updatedAt": "2026-05-22T12:10:00.000Z",
+  "status": "uploaded",
+  "expectedInputs": {
+    "homerVideo": true,
+    "charlieVideo": true,
+    "homerAudio": true,
+    "charlieAudio": true,
+    "phoneReferenceAudio": true,
+    "clipVideo": true
+  },
+  "uploadedInputs": [
+    {
+      "inputId": "homer-video-placeholder",
+      "role": "homerVideo",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/homerVideo/homer-video-placeholder-homer-video.placeholder.mp4",
+      "fileName": "homer-video.placeholder.mp4",
+      "contentType": "video/mp4",
+      "sizeBytes": 1024,
+      "durationMs": 12000,
+      "uploadedAt": "2026-05-22T12:01:00.000Z"
+    },
+    {
+      "inputId": "charlie-video-placeholder",
+      "role": "charlieVideo",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/charlieVideo/charlie-video-placeholder-charlie-video.placeholder.mp4",
+      "fileName": "charlie-video.placeholder.mp4",
+      "contentType": "video/mp4",
+      "sizeBytes": 1024,
+      "durationMs": 12000,
+      "uploadedAt": "2026-05-22T12:02:00.000Z"
+    },
+    {
+      "inputId": "homer-audio-placeholder",
+      "role": "homerAudio",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/homerAudio/homer-audio-placeholder-homer-audio.placeholder.wav",
+      "fileName": "homer-audio.placeholder.wav",
+      "contentType": "audio/wav",
+      "sizeBytes": 1024,
+      "durationMs": 12000,
+      "uploadedAt": "2026-05-22T12:03:00.000Z"
+    },
+    {
+      "inputId": "charlie-audio-placeholder",
+      "role": "charlieAudio",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/charlieAudio/charlie-audio-placeholder-charlie-audio.placeholder.wav",
+      "fileName": "charlie-audio.placeholder.wav",
+      "contentType": "audio/wav",
+      "sizeBytes": 1024,
+      "durationMs": 12000,
+      "uploadedAt": "2026-05-22T12:04:00.000Z"
+    },
+    {
+      "inputId": "phone-reference-00-placeholder",
+      "role": "phoneReferenceAudio",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/phoneReferenceAudio/phone-reference-00-placeholder-phone-reference-part-01.placeholder.m4a",
+      "fileName": "phone-reference-part-01.placeholder.m4a",
+      "contentType": "audio/mp4",
+      "sizeBytes": 1024,
+      "durationMs": 5000,
+      "uploadedAt": "2026-05-22T12:05:00.000Z",
+      "orderIndex": 0,
+      "notes": "First phone reference piece."
+    },
+    {
+      "inputId": "phone-reference-01-placeholder",
+      "role": "phoneReferenceAudio",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/phoneReferenceAudio/phone-reference-01-placeholder-phone-reference-part-02.placeholder.m4a",
+      "fileName": "phone-reference-part-02.placeholder.m4a",
+      "contentType": "audio/mp4",
+      "sizeBytes": 1024,
+      "durationMs": 7000,
+      "uploadedAt": "2026-05-22T12:06:00.000Z",
+      "orderIndex": 1,
+      "notes": "Second phone reference piece."
+    },
+    {
+      "inputId": "clip-video-placeholder",
+      "role": "clipVideo",
+      "storagePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/uploads/clipVideo/clip-video-placeholder-clip-video.placeholder.mp4",
+      "fileName": "clip-video.placeholder.mp4",
+      "contentType": "video/mp4",
+      "sizeBytes": 1024,
+      "durationMs": 12000,
+      "uploadedAt": "2026-05-22T12:07:00.000Z"
+    }
+  ],
+  "outputs": {
+    "manifestStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/episode-manifest.json",
+    "sourceMonitorProxyStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/source-monitor-proxy.mp4",
+    "syncReportStoragePath": "studioCutSyncJobs/episode-004-rescue-sync-placeholder/outputs/sync-report.json",
+    "sharedRoomUrl": "https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main"
+  },
+  "syncReportSummary": {
+    "confidence": 0.1,
+    "warnings": [
+      "Placeholder sync job only. Do not use as real episode data."
+    ],
+    "offsets": {
+      "homerVideo": 0,
+      "charlieVideo": 0,
+      "homerAudio": 0,
+      "charlieAudio": 0,
+      "phoneReferenceAudio": 0,
+      "clipVideo": 0
+    }
+  }
+}

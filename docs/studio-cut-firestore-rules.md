@@ -105,9 +105,18 @@ Firebase Storage may store only lightweight source-monitor proxy packages under:
 studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName}
 ```
 
+Rescue Sync raw intake may also store operator-uploaded assets and worker
+outputs under:
+
+```text
+studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName}
+studioCutSyncJobs/{syncJobId}/outputs/{fileName}
+```
+
 The shared layer stores only room metadata, semantic decision events, branch
-metadata, presence, comments later, and lightweight proxy packages. Full-res
-render media remains local.
+metadata, presence, comments later, sync job metadata, uploaded intake assets,
+worker output manifests/reports/proxies, and lightweight proxy packages.
+Full-res final render media remains local.
 
 ## Auth Assumptions
 
@@ -163,6 +172,14 @@ service cloud.firestore {
         && request.resource.data.userEmail == request.auth.token.email;
       allow delete: if false;
     }
+
+    match /studioCutSyncJobs/{syncJobId} {
+      allow read: if highGroundEmail();
+      allow create, update: if highGroundEmail()
+        && request.resource.data.syncJobId == syncJobId
+        && request.resource.data.createdBy == request.auth.token.email;
+      allow delete: if false;
+    }
   }
 }
 ```
@@ -190,12 +207,31 @@ service firebase.storage {
         && request.resource.contentType.matches('video/.*');
       allow delete: if false;
     }
+
+    match /studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName} {
+      allow read: if highGroundEmail();
+      allow write: if highGroundEmail()
+        && role.matches('homerVideo|charlieVideo|homerAudio|charlieAudio|phoneReferenceAudio|clipVideo|other')
+        && request.resource.size < 20 * 1024 * 1024 * 1024
+        && request.resource.contentType.matches('(video/.*|audio/.*|application/json)');
+      allow delete: if false;
+    }
+
+    match /studioCutSyncJobs/{syncJobId}/outputs/{fileName} {
+      allow read: if highGroundEmail();
+      allow write: if highGroundEmail()
+        && request.resource.size < 1024 * 1024 * 1024
+        && request.resource.contentType.matches('(video/.*|application/json)');
+      allow delete: if false;
+    }
   }
 }
 ```
 
 The size limit is intentionally generous for a lightweight proxy but should be
-reviewed against real proxy export sizes before production collaboration.
+reviewed against real proxy export sizes and raw intake sizes before production
+collaboration. Raw intake upload limits are intentionally broad scaffolds, not a
+final security/cost policy.
 
 ## Rules Tests
 
@@ -219,6 +255,8 @@ The emulator test covers:
 - approved users can read/write their own presence
 - approved users can upload/read source-monitor proxy files under the intended
   Storage path
+- approved users can create/update Rescue Sync job documents
+- approved users can upload/read Rescue Sync raw intake files and worker outputs
 - anonymous users are denied
 - non-HighGroundOdyssey users are denied
 - deletes are denied
@@ -247,5 +285,7 @@ firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 - Branch/project permissions are not modeled beyond path convention yet.
 - Storage upload size/content-type checks do not prove a file is safe or
   lightweight.
+- Raw intake can involve large files and needs lifecycle cleanup, quotas, and a
+  narrower production policy before sensitive footage.
 - Tombstones preserve explainability but are not a full audit log.
 - Presence is best-effort and should not be used as authority for locks.

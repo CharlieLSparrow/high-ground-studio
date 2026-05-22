@@ -14,6 +14,10 @@ It contains no private paths, media, credentials, or real episode data.
   tombstoned cloud removes, and presence.
 - Primary shared-room workflow: Charlie can upload the Episode Manifest plus one
   lightweight source-monitor proxy package, then share a room link with Mako.
+- Rescue Sync intake foundation: Charlie can model/upload raw Homer, Charlie,
+  clean audio, multi-piece phone/reference audio, optional clip, and optional
+  other files into `studioCutSyncJobs/{syncJobId}`. The actual sync worker is
+  still scaffold only.
 - Shared Room Diagnostics shows metadata/proxy/listener/Storage status for the
   active room.
 - Firestore and Storage rules are wired into `firebase.json` and have an
@@ -34,6 +38,8 @@ It contains no private paths, media, credentials, or real episode data.
 - Local render CLI with bootstrap creation, file validation, render planning,
   proxy preview rendering, rough aligned `youtube_16x9` rendering, and synthetic
   agent smoke verification.
+- Local cloud sync worker stub that validates a sync job and emits a placeholder
+  multi-piece reference rail report.
 - One-command verifier: `pnpm studio-cut:verify`.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
@@ -68,6 +74,25 @@ firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 ```
 
 ## Episode 4 Commands
+
+Rescue Sync direction, once rules/security and retention are ready for raw
+uploads:
+
+1. Open Studio Cut and confirm the `episode-004 / main` room.
+2. In `Cloud Sync Intake`, select Homer video, Charlie video, Homer clean audio,
+   Charlie clean audio, and every phone/reference piece.
+3. Set phone/reference `orderIndex` values in the intended rail order.
+4. Click `Create Sync Job / Upload Raw Assets`.
+5. Wait for a future worker to create the shared room. This worker is not live
+   yet, so use the prepared-package fallback below for real editing today.
+
+Local worker stub:
+
+```bash
+python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
+  --sync-job-json tools/studio-cut-cloud-sync/examples/sync-job.placeholder.json \
+  --out /tmp/studio-cut-rescue-sync-report.placeholder.json
+```
 
 Create bootstrap files after calculating the real duration in milliseconds:
 
@@ -157,6 +182,10 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   `pnpm studio-cut:rules-test` passes and rules are deployed.
 - Shared rooms upload only source-monitor proxies. Full-resolution aligned
   media remains local for render.
+- Rescue Sync raw uploads can be large and should not be used with sensitive
+  footage until rules have passed emulator tests and lifecycle cleanup exists.
+- Rescue Sync worker output is placeholder-only; it does not run waveform
+  extraction, correlation, manifest generation, or proxy generation yet.
 - The emulator rules test requires Java. If Java is missing locally, install a
   JRE/JDK before deploying rules.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
