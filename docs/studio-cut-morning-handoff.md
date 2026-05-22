@@ -12,9 +12,11 @@ It contains no private paths, media, credentials, or real episode data.
   allow rules.
 - Experimental Firestore collaboration rooms with realtime decision events,
   tombstoned cloud removes, and presence.
+- Primary shared-room workflow: Charlie can upload the Episode Manifest plus one
+  lightweight source-monitor proxy package, then share a room link with Mako.
 - Episode Manifest import with Premiere bootstrap metadata.
-- Browser-local source-monitor proxy playback. The proxy file is not uploaded,
-  persisted, or written into decision JSON.
+- Browser-local source-monitor proxy playback for backup/local mode, plus
+  Firebase Storage proxy loading for shared rooms.
 - Proxy Program Preview layouts from manifest pane rectangles.
 - Proxy Pane Calibration with adjusted manifest export.
 - Keyboard tagging shortcuts, current segment summary, source scrub, and
@@ -84,10 +86,16 @@ In the browser:
 1. Sign in with an allowed Google account.
 2. Import the Episode Manifest.
 3. Load the local source-monitor proxy.
-4. Calibrate panes if crops are off, then export an adjusted manifest.
-5. Tag decisions.
-6. Export checkpoints during risky passes.
-7. Export final decisions to the bootstrap directory.
+4. Confirm the `episode-004 / main` room in Collaboration Mode.
+5. Click `Create Shared Room`.
+6. Copy the link, for example
+   `https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main`.
+7. Mako opens that link, signs in with an approved High Ground Odyssey Google
+   account, and edits without importing JSON or loading local media.
+8. Calibrate panes if crops are off, then export an adjusted manifest.
+9. Tag decisions live.
+10. Export checkpoints during risky passes.
+11. Export final decisions to the bootstrap directory before rendering.
 
 Validate render readiness after exporting decisions:
 
@@ -132,8 +140,11 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
 - The rough aligned renderer assumes Premiere exported timeline-aligned media
   starting at sequence time `00:00:00`.
 - The renderer does not parse Premiere XML/EDL yet.
-- Firestore collaboration and branch history are not live; do not put private
-  collaboration data into Firestore until rules are reviewed and deployed.
+- Firestore collaboration is experimental, and branch history is still shallow;
+  do not put sensitive collaboration data into Firestore/Storage until rules
+  are reviewed and deployed.
+- Shared rooms upload only source-monitor proxies. Full-resolution aligned
+  media remains local for render.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
   checkpoints remain the durable rollback path.
 
@@ -159,5 +170,5 @@ Build true branch/checkpoint management for the decision layer:
 - named branches/checkpoints in JSON and localStorage
 - duplicate branch from current decisions
 - restore checkpoint into working set with undo history
-- Firestore-ready branch paths and security-rule documentation
+- Firestore branch history UX and security-rule tests
 - render plan references to branch/checkpoint ids

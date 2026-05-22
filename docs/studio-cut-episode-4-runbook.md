@@ -2,10 +2,10 @@
 
 Date: 2026-05-22
 
-This is the real-use path for Episode 4 tonight:
+This is the primary real-use path for Episode 4:
 
 ```text
-Premiere exports aligned media -> create bootstrap files -> import manifest in Studio Cut -> load local proxy -> tag decisions -> export decisions -> render rough 16:9 output
+Premiere exports aligned media and source-monitor proxy -> create bootstrap files -> Charlie creates shared room -> Mako opens room link -> both tag live -> Charlie exports decisions/checkpoint -> render rough 16:9 output locally
 ```
 
 Studio Cut decisions stay semantic. Local media stays on Charlie's machine. Do
@@ -36,7 +36,8 @@ Notes:
   audio mix. If it is missing, the rough aligned renderer can produce silent
   audio, but that is only useful for visual checks.
 - `episode-004_source-monitor-proxy.mp4` is the lightweight composite video for
-  browser review. It is selected locally in the browser and is never uploaded.
+  browser review. Charlie uploads this proxy once when creating the shared room;
+  do not upload full-resolution aligned media.
 - `episode-004_premiere-export.xml` is optional for tonight because the renderer
   does not parse XML yet, but keeping it next to the exports preserves the sync
   reference for later work.
@@ -125,7 +126,7 @@ pnpm studio-cut:local:verify-episode -- \
 The report should say `Status: READY`. Duration warnings mean a file does not
 match the manifest closely enough; review the export before rendering.
 
-## 5. Edit In Studio Cut
+## 5. Create The Shared Room
 
 Open the deployed editor:
 
@@ -139,31 +140,62 @@ Steps:
 2. Import `episode-004-episode-manifest.json`.
 3. Click `Load Local Proxy Video`.
 4. Select `episode-004_source-monitor-proxy.mp4` from the local export folder.
-5. Use Source Scrub to inspect the full source timeline, including `Cut` spans.
-6. Confirm the Program Preview says `Proxy Program Preview`; it should crop the
+5. Confirm `projectId=episode-004` and `branchId=main` in Collaboration Mode,
+   or switch the room before uploading.
+6. Click `Create Shared Room`.
+7. Copy the generated room link. It should look like:
+
+```text
+https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main
+```
+
+8. Send the link to Mako.
+
+The shared package writes manifest metadata to Firestore and uploads only the
+lightweight source-monitor proxy to Firebase Storage. It does not upload
+full-resolution aligned media, local filesystem paths, object URLs, credentials,
+or generated renders.
+
+## 6. Edit Together In Studio Cut
+
+Charlie can keep editing in the same tab. Mako should:
+
+1. Open the shared room link.
+2. Sign in with an approved `@highgroundodyssey.com` Google account.
+3. Wait for the manifest, shared proxy, decisions, and presence to load.
+4. Scrub, play, and tag decisions in the shared room.
+
+Neither Mako nor Charlie need JSON import/export for the primary collaboration
+flow. JSON export/checkpoint is still the recovery path before rendering.
+
+Operator checks while editing:
+
+1. Use Source Scrub to inspect the full source timeline, including `Cut` spans.
+2. Confirm the Program Preview says `Proxy Program Preview`; it should crop the
    local source-monitor proxy into the current semantic layout.
-7. Check the Episode Readiness panel. It should show the manifest and local
-   proxy loaded, decision and `Cut` counts, and the expected export filename.
-8. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
+3. Check the Episode Readiness panel. It should show the manifest and proxy
+   loaded, decision and `Cut` counts, and the expected export filename.
+4. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
    normalized pane rectangles, then use `Export Adjusted Manifest` and keep that
    adjusted manifest with the local Episode 4 bootstrap files.
-9. Use Program Playback to simulate output playback with `Cut` spans skipped.
-10. Tag semantic state decisions.
-11. Watch the Decision Timeline. Colored source-time blocks should match the
+5. Use Program Playback to simulate output playback with `Cut` spans skipped.
+6. Tag semantic state decisions.
+7. Watch the Decision Timeline. Colored source-time blocks should match the
    derived segments; click a block to jump to its in-point.
-12. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
+8. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
    restore point.
-13. Use `Export Checkpoint` before any risky cleanup/import pass or before
+9. Use `Export Checkpoint` before any risky cleanup/import pass or before
    leaving the machine.
-14. Export final decision JSON.
-15. Save or move the downloaded decision file to:
+10. Export final decision JSON before rendering.
+11. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json
 ```
 
-The browser reads the proxy file locally with an object URL. It does not upload
-or persist the proxy file.
+In local backup mode, the browser reads the proxy file with an object URL. In
+shared-room mode, approved editors load the lightweight proxy from Firebase
+Storage. Full-resolution aligned media still stays local for rendering.
 
 Keyboard shortcuts for tagging:
 
@@ -229,7 +261,7 @@ Browser proxy layouts:
 This is a browser-only confidence preview from the local source-monitor proxy.
 The local render CLI remains final truth for rough 16:9 output.
 
-## 6. Dry-Run Render
+## 7. Dry-Run Render
 
 First rerun validation with decisions:
 
@@ -258,7 +290,7 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
 The dry run prints the active segment plan and ffmpeg commands. It does not
 write a render.
 
-## 7. Real Rough 16:9 Render
+## 8. Real Rough 16:9 Render
 
 When the dry run looks right:
 

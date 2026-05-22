@@ -1,0 +1,25 @@
+// Studio Cut Storage rules draft.
+// This file is intentionally not referenced by firebase.json yet. Do not deploy
+// it without emulator/rules testing and explicit operator review.
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+
+    function highGroundEmail() {
+      return signedIn()
+        && request.auth.token.email.matches('^.+@highgroundodyssey\\.com$');
+    }
+
+    match /studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName} {
+      allow read: if highGroundEmail();
+      allow write: if highGroundEmail()
+        && request.resource.size < 1024 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,42 @@
+// Studio Cut Firestore rules draft.
+// This file is intentionally not referenced by firebase.json yet. Do not deploy
+// it without emulator/rules testing and explicit operator review.
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+
+    function highGroundEmail() {
+      return signedIn()
+        && request.auth.token.email.matches('^.+@highgroundodyssey\\.com$');
+    }
+
+    match /studioCutProjects/{projectId}/branches/{branchId}/room/meta {
+      allow read: if highGroundEmail();
+      allow create, update: if highGroundEmail()
+        && request.resource.data.projectId == projectId
+        && request.resource.data.branchId == branchId;
+      allow delete: if false;
+    }
+
+    match /studioCutProjects/{projectId}/branches/{branchId}/decisionEvents/{eventId} {
+      allow read: if highGroundEmail();
+      allow create, update: if highGroundEmail()
+        && request.resource.data.projectId == projectId
+        && request.resource.data.branchId == branchId
+        && request.resource.data.id == eventId;
+      allow delete: if false;
+    }
+
+    match /studioCutProjects/{projectId}/branches/{branchId}/presence/{sessionId} {
+      allow read: if highGroundEmail();
+      allow create, update: if highGroundEmail()
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.userEmail == request.auth.token.email;
+      allow delete: if false;
+    }
+  }
+}

@@ -30,6 +30,7 @@ const localDevEnv = {
   VITE_FIREBASE_APP_ID: "",
   VITE_FIREBASE_STORAGE_BUCKET: "",
   VITE_STUDIO_CUT_ALLOWED_EMAILS: "",
+  VITE_STUDIO_CUT_ALLOWED_EMAIL_DOMAINS: "",
 };
 
 const stateButtonLabels = [
@@ -238,6 +239,15 @@ function getErrorStack(error) {
   return String(error);
 }
 
+function isBenignBlobRevocationError(entry) {
+  return (
+    entry.type === "console" &&
+    entry.text === "Failed to load resource: net::ERR_FILE_NOT_FOUND" &&
+    typeof entry.location?.url === "string" &&
+    entry.location.url.startsWith("blob:")
+  );
+}
+
 async function writeFailureArtifacts({
   artifactDir,
   context,
@@ -374,16 +384,23 @@ async function runBrowserSmoke() {
       page.getByText(/auth disabled because Firebase env vars are missing/i),
     ).toBeVisible();
 
+    const sharedRoomSection = page.getByLabel("Shared episode room");
+    const collaborationSection = page.getByLabel("Collaboration mode");
+
     await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
-    await expect(page.getByText("Local only", { exact: true })).toBeVisible();
-    await expect(page.getByText("decisions are saved in this browser")).toBeVisible();
-    await expect(page.getByLabel("Collaboration project ID")).toHaveValue(
+    await expect(page.getByRole("heading", { name: "Shared Episode Room" })).toBeVisible();
+    await expect(sharedRoomSection.getByText(/shared rooms are disabled in local-only mode/i)).toBeVisible();
+    await expect(sharedRoomSection.getByRole("button", { name: "Create Shared Room" })).toBeDisabled();
+    await expect(sharedRoomSection.getByRole("button", { name: "Copy Room Link" })).toBeDisabled();
+    await expect(collaborationSection.getByText("Local only", { exact: true })).toBeVisible();
+    await expect(collaborationSection.getByText("decisions are saved in this browser")).toBeVisible();
+    await expect(collaborationSection.getByLabel("Collaboration project ID")).toHaveValue(
       "studio-cut-local-project",
     );
-    await expect(page.getByLabel("Collaboration branch ID")).toHaveValue(
+    await expect(collaborationSection.getByLabel("Collaboration branch ID")).toHaveValue(
       "local-main",
     );
-    await expect(page.getByText(/Collaborator presence appears here/i)).toBeVisible();
+    await expect(collaborationSection.getByText(/Collaborator presence appears here/i)).toBeVisible();
 
     for (const label of stateButtonLabels) {
       await expect(stateButton(page, label)).toBeVisible();
@@ -480,9 +497,13 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "1 event");
     await expectSectionText(decisionSection, "Both");
 
-    if (pageErrors.length > 0) {
+    const actionablePageErrors = pageErrors.filter(
+      (entry) => !isBenignBlobRevocationError(entry),
+    );
+
+    if (actionablePageErrors.length > 0) {
       throw new Error(
-        `Browser console/page errors: ${pageErrors
+        `Browser console/page errors: ${actionablePageErrors
           .map((entry) => entry.text)
           .join(" | ")}`,
       );

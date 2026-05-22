@@ -36,6 +36,17 @@ import type {
   CollaboratorPresence,
   PersistenceStatus,
 } from "./persistence/decisionPersistence";
+import {
+  createSharedRoomStore,
+  type SharedRoomUploadProgress,
+} from "./persistence/sharedRoomPersistence";
+import {
+  buildSharedRoomUrl,
+  buildSourceMonitorProxyStoragePath,
+  parseSharedRoomQuery,
+  sanitizeSharedRoomPart,
+  type SharedRoomMetadata,
+} from "./sharedRoom";
 import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 
 const DEFAULT_SOURCE_DURATION_MS = 60 * 60 * 1000;
@@ -91,6 +102,8 @@ type LocalProxyVideo = {
   name: string;
   sizeBytes: number;
   objectUrl: string;
+  source: "local" | "cloud";
+  storagePath?: string;
   durationMs?: number;
 };
 
@@ -127,6 +140,13 @@ type LocalDecisionCheckpoint = {
   branchId: string;
   createdAt: string;
   decisionEvents: DecisionEvent[];
+};
+
+type SharedRoomUploadState = {
+  status: "idle" | "uploading" | "success" | "error";
+  progressPercent: number;
+  message: string;
+  shareUrl: string;
 };
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
@@ -185,7 +205,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const runtimeConfig = useMemo(getStudioCutRuntimeConfig, []);
   const sessionId = useMemo(createSessionId, []);
   const [selectedRoom, setSelectedRoom] = useState<StudioCutRoomSelection>(() =>
-    loadStoredRoomSelection(runtimeConfig),
+    loadInitialRoomSelection(runtimeConfig),
   );
   const [roomDraft, setRoomDraft] =
     useState<StudioCutRoomSelection>(selectedRoom);
@@ -198,6 +218,16 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     useState<EpisodeManifest | null>(loadStoredEpisodeManifestBaseline);
   const [localProxyVideo, setLocalProxyVideo] =
     useState<LocalProxyVideo | null>(null);
+  const [localProxyFile, setLocalProxyFile] = useState<File | null>(null);
+  const [sharedRoomMetadata, setSharedRoomMetadata] =
+    useState<SharedRoomMetadata | null>(null);
+  const [sharedRoomUploadState, setSharedRoomUploadState] =
+    useState<SharedRoomUploadState>({
+      status: "idle",
+      progressPercent: 0,
+      message: "",
+      shareUrl: "",
+    });
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryState>(
     loadStoredDecisionHistory,
   );
@@ -263,8 +293,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     (event) => event.state === "cut",
   ).length;
   const exportFileNamePreview = getDecisionExportFileName(episodeManifest, {
-    projectId: config.projectId,
-    branchId: config.branchId,
+    projectId: roomSelection.projectId,
+    branchId: roomSelection.branchId,
   });
   const readinessWarnings = useMemo(
     () =>
@@ -284,6 +314,117 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   }, [selectedRoom]);
 
   useEffect(() => {
+    if (!config.firebaseConfig) {
+      setSharedRoomMetadata(null);
+      return;
+    }
+
+    let isStale = false;
+    let unsubscribe: (() => void) | undefined;
+
+    setSharedRoomMetadata(null);
+
+    void createSharedRoomStore({
+      firebaseConfig: config.firebaseConfig,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+    })
+      .then((store) => {
+        if (isStale) {
+          return;
+        }
+
+        unsubscribe = store.subscribeToRoomMetadata(
+          (metadata) => {
+            if (isStale) {
+              return;
+            }
+
+            setSharedRoomMetadata(metadata);
+
+            if (!metadata) {
+              setSharedRoomUploadState({
+                status: "idle",
+                progressPercent: 0,
+                message:
+                  "No shared room package exists yet for this project/branch.",
+                shareUrl: buildCurrentSharedRoomUrl(roomSelection),
+              });
+              return;
+            }
+
+            setSharedRoomUploadState((currentState) =>
+              currentState.status === "uploading"
+                ? currentState
+                : {
+                    status: "success",
+                    progressPercent: 100,
+                    message:
+                      "Shared room package is loaded for this project/branch.",
+                    shareUrl: buildCurrentSharedRoomUrl(roomSelection),
+                  },
+            );
+            setEpisodeManifest(metadata.manifest);
+            setImportedEpisodeManifestBaseline(
+              cloneEpisodeManifest(metadata.manifest),
+            );
+            setSourceTimeMs((currentSourceTimeMs) =>
+              clampSourceTime(currentSourceTimeMs, metadata.manifest.durationMs),
+            );
+            setLocalProxyFile(null);
+            void store
+              .getSourceMonitorProxyDownloadUrl(
+                metadata.sourceMonitorProxyStoragePath,
+              )
+              .then((downloadUrl) => {
+                if (isStale) {
+                  return;
+                }
+
+                setLocalProxyVideo({
+                  id: `cloud-${metadata.sourceMonitorProxyStoragePath}-${metadata.updatedAt}`,
+                  name: metadata.sourceMonitorProxyFileName,
+                  sizeBytes: metadata.sourceMonitorProxySizeBytes,
+                  objectUrl: downloadUrl,
+                  source: "cloud",
+                  storagePath: metadata.sourceMonitorProxyStoragePath,
+                });
+                setImportMessage(
+                  `Loaded shared room "${metadata.title}" from Firestore and Firebase Storage.`,
+                );
+              })
+              .catch((error: unknown) => {
+                if (isStale) {
+                  return;
+                }
+
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                setImportMessage(message);
+              });
+          },
+          (error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            setImportMessage(`Shared room load failed: ${message}`);
+          },
+        );
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setImportMessage(`Shared room adapter failed: ${message}`);
+      });
+
+    return () => {
+      isStale = true;
+      unsubscribe?.();
+    };
+  }, [
+    config.firebaseConfig,
+    roomSelection.branchId,
+    roomSelection.projectId,
+  ]);
+
+  useEffect(() => {
     saveStoredEpisodeManifestBaseline(importedEpisodeManifestBaseline);
   }, [importedEpisodeManifestBaseline]);
 
@@ -296,12 +437,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   }, [localCheckpoints]);
 
   useEffect(() => {
+    const videoToRevoke = localProxyVideo;
+
     return () => {
-      if (localProxyVideo) {
-        URL.revokeObjectURL(localProxyVideo.objectUrl);
+      if (videoToRevoke?.source === "local") {
+        URL.revokeObjectURL(videoToRevoke.objectUrl);
       }
     };
-  }, [localProxyVideo?.objectUrl]);
+  }, [localProxyVideo]);
 
   useEffect(() => {
     setSourceTimeMs((currentSourceTimeMs) =>
@@ -463,6 +606,13 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     stopProgramPlayback();
     setSelectedRoom(nextRoom);
     setDecisionHistory(createEmptyDecisionHistory());
+    setSharedRoomUploadState({
+      status: "idle",
+      progressPercent: 0,
+      message: "",
+      shareUrl: buildCurrentSharedRoomUrl(nextRoom),
+    });
+    updateBrowserRoomUrl(nextRoom);
     setImportMessage(
       `Switched collaboration room to ${nextRoom.projectId} / ${nextRoom.branchId}.`,
     );
@@ -809,7 +959,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       name: file.name,
       sizeBytes: file.size,
       objectUrl,
+      source: "local",
     });
+    setLocalProxyFile(file);
     setImportMessage(
       `Loaded local proxy video "${file.name}". The file stays in this browser tab and is not uploaded, persisted, or written to decisions.`,
     );
@@ -819,7 +971,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   function clearLocalProxyVideo() {
     stopProgramPlayback();
     setLocalProxyVideo(null);
-    setImportMessage("Cleared the local proxy video from this browser tab.");
+    setLocalProxyFile(null);
+    setImportMessage("Cleared the source-monitor proxy from this browser tab.");
   }
 
   function handleProxyLoadedMetadata(durationSeconds: number) {
@@ -877,6 +1030,137 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
 
     downloadJsonFile(episodeManifest, fileName);
     setImportMessage(`Exported adjusted manifest ${fileName}.`);
+  }
+
+  async function handleUploadSharedRoomPackage() {
+    if (!config.firebaseConfig) {
+      setSharedRoomUploadState({
+        status: "error",
+        progressPercent: 0,
+        message: "Firebase is not configured in this build; shared rooms are unavailable.",
+        shareUrl: "",
+      });
+      return;
+    }
+
+    if (!episodeManifest) {
+      setSharedRoomUploadState({
+        status: "error",
+        progressPercent: 0,
+        message: "Import or load an Episode Manifest before creating a shared room.",
+        shareUrl: "",
+      });
+      return;
+    }
+
+    if (!localProxyFile || localProxyVideo?.source !== "local") {
+      setSharedRoomUploadState({
+        status: "error",
+        progressPercent: 0,
+        message:
+          "Load a local source-monitor proxy video before uploading the shared room package.",
+        shareUrl: "",
+      });
+      return;
+    }
+
+    try {
+      const createdAt = sharedRoomMetadata?.createdAt ?? new Date().toISOString();
+      const updatedAt = new Date().toISOString();
+      const storagePath = buildSourceMonitorProxyStoragePath({
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+        fileName: localProxyFile.name,
+      });
+      const store = await createSharedRoomStore({
+        firebaseConfig: config.firebaseConfig,
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+      });
+
+      setSharedRoomUploadState({
+        status: "uploading",
+        progressPercent: 0,
+        message: "Uploading lightweight source-monitor proxy to Firebase Storage.",
+        shareUrl: "",
+      });
+
+      await store.uploadSourceMonitorProxy(
+        localProxyFile,
+        storagePath,
+        (progress: SharedRoomUploadProgress) => {
+          setSharedRoomUploadState((currentState) => ({
+            ...currentState,
+            status: "uploading",
+            progressPercent: progress.percent,
+            message: `Uploading proxy: ${progress.percent}% (${formatFileSize(
+              progress.bytesTransferred,
+            )} of ${formatFileSize(progress.totalBytes)}).`,
+          }));
+        },
+      );
+
+      const metadata: SharedRoomMetadata = {
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+        title: episodeManifest.title,
+        manifest: cloneEpisodeManifest(episodeManifest),
+        sourceMonitorProxyStoragePath: storagePath,
+        sourceMonitorProxyFileName: localProxyFile.name,
+        sourceMonitorProxyContentType: localProxyFile.type || "video/mp4",
+        sourceMonitorProxySizeBytes: localProxyFile.size,
+        createdBy: createdBy ?? config.createdBy,
+        createdAt,
+        updatedAt,
+        notes:
+          "Shared Studio Cut browser package. Full-resolution source media remains local.",
+      };
+
+      await store.saveRoomMetadata(metadata);
+
+      const shareUrl = buildCurrentSharedRoomUrl(roomSelection);
+
+      setSharedRoomMetadata(metadata);
+      setSharedRoomUploadState({
+        status: "success",
+        progressPercent: 100,
+        message:
+          "Shared room is ready. Send this link to approved High Ground accounts.",
+        shareUrl,
+      });
+      updateBrowserRoomUrl(roomSelection);
+      setImportMessage(
+        `Created shared room ${roomSelection.projectId} / ${roomSelection.branchId}.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSharedRoomUploadState({
+        status: "error",
+        progressPercent: 0,
+        message: `Shared room upload failed: ${message}`,
+        shareUrl: "",
+      });
+    }
+  }
+
+  async function handleCopySharedRoomUrl() {
+    const shareUrl =
+      sharedRoomUploadState.shareUrl || buildCurrentSharedRoomUrl(roomSelection);
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setSharedRoomUploadState((currentState) => ({
+        ...currentState,
+        shareUrl,
+        message: "Shared room link copied.",
+      }));
+    } catch {
+      setSharedRoomUploadState((currentState) => ({
+        ...currentState,
+        shareUrl,
+        message: "Copy failed; select the share link manually.",
+      }));
+    }
   }
 
   function stopProgramPlayback() {
@@ -963,6 +1247,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       </section>
 
       <aside className="edit-panel" aria-label="Decision controls">
+        <SharedRoomPackagePanel
+          status={status}
+          manifest={episodeManifest}
+          localProxyVideo={localProxyVideo}
+          hasUploadableLocalProxy={Boolean(
+            localProxyFile && localProxyVideo?.source === "local",
+          )}
+          roomSelection={roomSelection}
+          metadata={sharedRoomMetadata}
+          uploadState={sharedRoomUploadState}
+          onUpload={() => void handleUploadSharedRoomPackage()}
+          onCopyShareUrl={() => void handleCopySharedRoomUrl()}
+        />
+
         <EpisodeManifestPanel
           manifest={episodeManifest}
           sourceDurationMs={sourceDurationMs}
@@ -1306,6 +1604,131 @@ function KeyboardShortcutLegend() {
   );
 }
 
+function SharedRoomPackagePanel({
+  status,
+  manifest,
+  localProxyVideo,
+  hasUploadableLocalProxy,
+  roomSelection,
+  metadata,
+  uploadState,
+  onUpload,
+  onCopyShareUrl,
+}: {
+  status: PersistenceStatus;
+  manifest: EpisodeManifest | null;
+  localProxyVideo: LocalProxyVideo | null;
+  hasUploadableLocalProxy: boolean;
+  roomSelection: StudioCutRoomSelection;
+  metadata: SharedRoomMetadata | null;
+  uploadState: SharedRoomUploadState;
+  onUpload: () => void;
+  onCopyShareUrl: () => void;
+}) {
+  const cloudReady =
+    status.mode === "cloud_connected" || status.mode === "cloud_ready";
+  const canUpload =
+    cloudReady &&
+    Boolean(manifest) &&
+    hasUploadableLocalProxy &&
+    uploadState.status !== "uploading";
+  const shareUrl = uploadState.shareUrl || buildCurrentSharedRoomUrl(roomSelection);
+
+  return (
+    <section className="shared-room-panel" aria-label="Shared episode room">
+      <div className="panel-heading">
+        <div>
+          <h2>Shared Episode Room</h2>
+          <p>
+            Primary workflow: upload one lightweight proxy package, then approved
+            editors join by link.
+          </p>
+        </div>
+        <strong>{metadata ? "Room Ready" : cloudReady ? "Cloud Ready" : "Local"}</strong>
+      </div>
+      <div className="shared-room-grid">
+        <ReadinessMetric label="Room" value={`${roomSelection.projectId} / ${roomSelection.branchId}`} />
+        <ReadinessMetric
+          label="Manifest"
+          value={manifest ? manifest.title : "Missing"}
+        />
+        <ReadinessMetric
+          label="Proxy"
+          value={
+            localProxyVideo
+              ? localProxyVideo.source === "cloud"
+                ? "Shared cloud proxy"
+                : "Local upload source"
+              : "Missing"
+          }
+        />
+        <ReadinessMetric
+          label="Mode"
+          value={cloudReady ? "Cloud connected" : "Local only"}
+        />
+      </div>
+      {metadata ? (
+        <div className="shared-room-meta">
+          <span>Package</span>
+          <strong>{metadata.sourceMonitorProxyFileName}</strong>
+          <small>
+            {formatFileSize(metadata.sourceMonitorProxySizeBytes)} ·{" "}
+            {metadata.sourceMonitorProxyStoragePath}
+          </small>
+        </div>
+      ) : null}
+      <div className="shared-room-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onUpload}
+          disabled={!canUpload}
+        >
+          Create Shared Room
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onCopyShareUrl}
+          disabled={!cloudReady}
+        >
+          Copy Room Link
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => window.open(shareUrl, "_blank", "noopener,noreferrer")}
+          disabled={!cloudReady}
+        >
+          Open Room
+        </button>
+      </div>
+      {uploadState.status === "uploading" ? (
+        <progress
+          className="shared-room-progress"
+          max={100}
+          value={uploadState.progressPercent}
+          aria-label="Shared room upload progress"
+        />
+      ) : null}
+      <label className="shared-room-link">
+        Share link
+        <input readOnly value={shareUrl} aria-label="Shared room link" />
+      </label>
+      <p
+        className={`shared-room-message${
+          uploadState.status === "error" ? " is-error" : ""
+        }`}
+      >
+        {uploadState.message ||
+          (cloudReady
+            ? "Load a manifest and local source-monitor proxy, then create the shared room. Full-res media stays local."
+            : "Firebase config is absent; shared rooms are disabled in local-only mode.")}
+      </p>
+    </section>
+  );
+}
+
 function CollaborationModePanel({
   status,
   roomSelection,
@@ -1518,10 +1941,14 @@ function EpisodeManifestPanel({
       ) : null}
       <div className="local-proxy-loader">
         <div>
-          <strong>Local source-monitor proxy</strong>
+          <strong>Source-monitor proxy</strong>
           <p>
             {localProxyVideo
-              ? `${localProxyVideo.name} · ${formatFileSize(
+              ? `${
+                  localProxyVideo.source === "cloud"
+                    ? "Shared cloud proxy"
+                    : "Local browser file"
+                }: ${localProxyVideo.name} · ${formatFileSize(
                   localProxyVideo.sizeBytes,
                 )}${
                   localProxyVideo.durationMs
@@ -1541,7 +1968,7 @@ function EpisodeManifestPanel({
               type="button"
               onClick={onClearLocalProxy}
             >
-              Clear Video
+              Clear Proxy
             </button>
           ) : null}
         </div>
@@ -1730,8 +2157,8 @@ function PrototypeNotice({ authStatus }: { authStatus: StudioCutAuthStatus }) {
       <strong>{isLocalDev ? "Local dev prototype" : "Protected prototype"}</strong>
       <span>
         {isLocalDev
-          ? "Local dev mode, auth disabled because Firebase env vars are missing. Do not use real media, proxy paths, private podcast details, credentials, or personal recordings here."
-          : "This internal shell is for semantic decision tests only. Do not upload, paste, or reference real media, proxy paths, private podcast details, credentials, or personal recordings yet."}
+          ? "Local dev mode, auth disabled because Firebase env vars are missing. Do not use full-res media, private paths, credentials, or personal recordings here."
+          : "This internal prototype can upload only lightweight source-monitor proxies for shared rooms. Do not upload full-res media, credentials, or private local paths."}
       </span>
     </section>
   );
@@ -1825,7 +2252,11 @@ function SourceProxyMonitor({
       <div className="monitor-header">
         <div>
           <h2>Source monitor proxy</h2>
-          <p>Local browser file only. No upload or persistence.</p>
+          <p>
+            {localProxyVideo.source === "cloud"
+              ? "Loaded from the shared room package."
+              : "Local browser file only. No persistence."}
+          </p>
         </div>
         <span>{formatSourceTime(sourceTimeMs)}</span>
       </div>
@@ -1842,7 +2273,7 @@ function SourceProxyMonitor({
               onLoadedMetadata(event.currentTarget.duration)
             }
             onEnded={onEnded}
-            aria-label={`Local source-monitor proxy ${localProxyVideo.name}`}
+            aria-label={`${localProxyVideo.source} source-monitor proxy ${localProxyVideo.name}`}
           />
           <div className="proxy-pane-labels" aria-hidden="true">
             <span>Homer</span>
@@ -2566,6 +2997,21 @@ function loadStoredRoomSelection(
   }
 }
 
+function loadInitialRoomSelection(
+  config: ReturnType<typeof getStudioCutRuntimeConfig>,
+): StudioCutRoomSelection {
+  const storedRoomSelection = loadStoredRoomSelection(config);
+
+  if (typeof window === "undefined") {
+    return storedRoomSelection;
+  }
+
+  return normalizeRoomSelection(
+    parseSharedRoomQuery(window.location.search, storedRoomSelection),
+    config,
+  );
+}
+
 function saveStoredRoomSelection(roomSelection: StudioCutRoomSelection) {
   try {
     localStorage.setItem(
@@ -2601,11 +3047,27 @@ function normalizeRoomSelection(
 }
 
 function sanitizeRoomPart(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return sanitizeSharedRoomPart(value, "");
+}
+
+function buildCurrentSharedRoomUrl(roomSelection: StudioCutRoomSelection) {
+  const fallbackUrl = "https://high-ground-odyssey.web.app/";
+  const baseHref =
+    typeof window === "undefined" ? fallbackUrl : window.location.href;
+
+  return buildSharedRoomUrl(baseHref, roomSelection);
+}
+
+function updateBrowserRoomUrl(roomSelection: StudioCutRoomSelection) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.history.replaceState(
+    null,
+    "",
+    buildSharedRoomUrl(window.location.href, roomSelection),
+  );
 }
 
 function loadStoredLocalCheckpoints(): LocalDecisionCheckpoint[] {

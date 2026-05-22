@@ -563,7 +563,8 @@ h2 {
 .current-segment-panel,
 .readiness-panel,
 .pane-calibration-panel,
-.collaboration-panel {
+.collaboration-panel,
+.shared-room-panel {
   display: grid;
   gap: 14px;
 }
@@ -573,7 +574,8 @@ h2 {
 .current-segment-panel,
 .readiness-panel,
 .pane-calibration-panel,
-.collaboration-panel {
+.collaboration-panel,
+.shared-room-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -686,6 +688,96 @@ h2 {
   background:
     linear-gradient(135deg, rgba(114, 214, 255, 0.08), transparent 58%),
     rgba(255, 255, 255, 0.04);
+}
+
+.shared-room-panel {
+  border-color: rgba(145, 219, 183, 0.24);
+  background:
+    linear-gradient(135deg, rgba(145, 219, 183, 0.1), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.shared-room-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shared-room-grid div,
+.shared-room-meta {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.shared-room-grid span,
+.shared-room-meta span,
+.shared-room-link {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.shared-room-grid strong,
+.shared-room-meta strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.shared-room-meta small {
+  overflow-wrap: anywhere;
+  color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.shared-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shared-room-progress {
+  width: 100%;
+  accent-color: #91dbb7;
+}
+
+.shared-room-link {
+  display: grid;
+  gap: 6px;
+}
+
+.shared-room-link input {
+  min-height: 36px;
+  width: 100%;
+  border: 1px solid rgba(238, 242, 238, 0.16);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #eef2ee;
+  padding: 8px 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.shared-room-message {
+  border: 1px dashed rgba(145, 219, 183, 0.24);
+  border-radius: 7px;
+  color: #d7e0dc;
+  padding: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.shared-room-message.is-error {
+  border-color: rgba(255, 116, 116, 0.34);
+  color: #ffb7b7;
 }
 
 .room-controls {

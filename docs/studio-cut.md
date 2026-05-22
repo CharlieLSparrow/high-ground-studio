@@ -19,6 +19,8 @@ Current slice:
   making Firebase mandatory for local dev
 - Firebase Auth / Google sign-in gate when Firebase config and allowed emails
   are provided at build time
+- shared episode rooms: Firestore room metadata, realtime decision events,
+  presence, and Firebase Storage source-monitor proxy packages
 
 ## Media Boundary
 
@@ -31,11 +33,12 @@ Full-resolution source media stays local:
 - iPhone call recording as backup audio and sync reference
 
 Do not commit secrets, credentials, full media, proxy media, personal
-recordings, generated render outputs, or generated caches.
+recordings, generated render outputs, local env files, or generated caches.
 
-The web/cloud layer should store only lightweight project metadata, proxy
-references/packages, semantic decision events, branches, comments, and later
-collaboration state.
+The web/cloud layer may store only lightweight project metadata,
+source-monitor proxy packages, semantic decision events, branches, comments, and
+collaboration state. It must not store local filesystem paths, object URLs, or
+full-resolution media.
 
 ## Editing Model
 
@@ -165,21 +168,24 @@ personal recordings in checked-in manifest files.
 
 ## Local Proxy Playback
 
-Studio Cut can play a local source-monitor proxy video in the browser without
-uploading it anywhere. Use `Load Local Proxy Video` in the Episode Manifest
-panel and choose a local `.mp4`, `.mov`, or `.m4v` file from the operator's
-machine.
+Studio Cut can play a local source-monitor proxy video in the browser. Use
+`Load Local Proxy Video` in the Episode Manifest panel and choose a local
+`.mp4`, `.mov`, or `.m4v` file from the operator's machine.
 
-Important boundaries:
+Local/backup mode boundaries:
 
 - the selected file is read only by the current browser tab
 - the app uses an in-memory `URL.createObjectURL()` URL
 - the file and object URL are not saved to localStorage
 - the file and object URL are not written to Firestore decision events
-- the file is not uploaded to Firebase Hosting, Cloud Storage, Firestore, or
-  any other service
 - the object URL is revoked when the video is replaced, cleared, or the app
   unloads
+
+Creating a shared room is a separate explicit action. In cloud mode,
+`Create Shared Room` uploads only the lightweight source-monitor proxy to
+Firebase Storage and writes room metadata to Firestore. It does not upload
+full-resolution Canon/Insta360/DJI/Shure media, local filesystem paths, object
+URLs, or generated renders.
 
 The source-time slider seeks the local proxy video. Program Playback uses the
 same video but keeps the semantic preview behavior: when playback reaches a
@@ -206,8 +212,9 @@ way:
 | `both_clip` | Homer/Charlie stacked left, Clip large right |
 | `cut` | Inactive/skipped visual state |
 
-The proxy file still stays local to the browser tab. The object URL is not
-persisted to localStorage or Firestore, and no video is uploaded.
+When loaded locally, the proxy file stays local to the browser tab. In shared
+rooms, approved editors load the lightweight proxy from Firebase Storage; the
+object URL is still not persisted to localStorage or Firestore.
 
 If the source-monitor proxy export does not match the manifest pane rectangles,
 use `Proxy Pane Calibration` in the editor:
@@ -240,11 +247,14 @@ Use Premiere only to create the temporary synced source truth:
 7. Tag semantic decisions in Studio Cut against source time.
 8. Export Studio Cut decision JSON.
 
-Tonight's usable workflow is:
+Current primary shared-room workflow:
 
 ```text
-Premiere sync -> proxy export -> manifest import -> local proxy load -> semantic tagging -> decision JSON export
+Premiere sync -> proxy export -> create shared room -> Mako opens room link -> live semantic tagging -> local render
 ```
+
+JSON export/import remains available as backup and recovery, not the primary
+collaboration path.
 
 Tonight's boundary: Premiere owns temporary source sync. Studio Cut owns the
 semantic decision layer. The later local render engine should consume the
@@ -550,11 +560,11 @@ For CI-friendly pre-deploy verification, use the one-command runner:
 pnpm studio-cut:verify
 ```
 
-It runs Python syntax compilation, `agent-smoke-test --json`, Studio Cut
-typecheck, browser smoke, and Studio Cut build in order. It fails fast on the
-first nonzero command and prints a short smoke-test summary including golden
-assertion status, assertion count, output duration, and output resolution when
-available.
+It runs Python syntax compilation, auth/collaboration/shared-room helper tests,
+`agent-smoke-test --json`, Studio Cut typecheck, browser smoke, and Studio Cut
+build in order. It fails fast on the first nonzero command and prints a short
+smoke-test summary including golden assertion status, assertion count, output
+duration, and output resolution when available.
 
 GitHub Actions runs the same verifier from:
 
@@ -772,9 +782,53 @@ They include session id, user email/configured editor, current source time,
 optional current state, and `updatedAt`. Stale presence is marked visually. The
 first collaboration version does not rely on perfect disconnect cleanup.
 
-Each collaborator must still load their own local source-monitor proxy. Proxy
-files, object URLs, full media, local filesystem paths, recordings,
-credentials, and generated renders are not stored in Firestore.
+Shared room metadata lives at:
+
+```text
+studioCutProjects/{projectId}/branches/{branchId}/room/meta
+```
+
+That document stores the room title, Episode Manifest, source-monitor proxy
+Storage path, proxy file name/content type/size, creator, timestamps, and
+optional notes. It must not store local filesystem paths, object URLs,
+full-resolution media, credentials, recordings, or generated renders.
+
+Source-monitor proxy packages are stored at:
+
+```text
+studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName}
+```
+
+The uploaded file is the lightweight composite proxy only. It is not the Canon
+R8, Insta360, DJI, Shure, or aligned full-resolution render source.
+
+## Primary Shared-Room Workflow
+
+The primary collaboration path is no longer JSON handoff:
+
+1. Charlie exports the source-monitor proxy from Premiere.
+2. Charlie opens Studio Cut, imports or loads the Episode Manifest, and loads
+   the local source-monitor proxy.
+3. Charlie confirms the `projectId` and `branchId`, then uses
+   `Create Shared Room`.
+4. Studio Cut uploads the lightweight proxy to Firebase Storage and writes the
+   manifest/room metadata to Firestore.
+5. Charlie copies the room link, for example:
+
+```text
+https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main
+```
+
+6. Mako opens the link, signs in with an approved High Ground Odyssey Google
+   account, and the browser loads the manifest, shared proxy, realtime
+   decisions, and presence for that room.
+7. Charlie and Mako tag semantic decisions live in the same room.
+8. Charlie later renders locally from Studio Cut decisions and local
+   timeline-aligned media.
+
+Mako does not need to import JSON, export JSON, or select local media in the
+primary flow. JSON import/export and local proxy loading remain backup and
+recovery paths.
 
 Firestore rules are documented as a draft at:
 
@@ -815,9 +869,9 @@ decision set. Checkpoint files are lightweight decision snapshots only.
 Desired deployment shape:
 
 - Firebase Hosting for the static Studio Cut web editor
-- Firestore for decision events now, and later for branches, comments, and
-  project metadata
-- Cloud Storage later for lightweight proxy packages only
+- Firestore for decision events, room metadata, presence, and later branches
+  and comments
+- Cloud Storage for lightweight source-monitor proxy packages only
 - Cloud Run later for Python APIs and local-engine coordination services
 
 Checked-in scaffold:
@@ -825,6 +879,8 @@ Checked-in scaffold:
 - `firebase.json` serves `apps/studio-cut-web/dist` as a single-page app
 - `.firebaserc` binds the default Firebase project alias to
   `high-ground-odyssey`
+- `firestore.rules` and `storage.rules` are draft scaffolds only and are not
+  referenced by `firebase.json` yet
 
 Live Firebase Hosting URL:
 
@@ -899,15 +955,17 @@ Current safety state:
   Firebase config is supplied at build time.
 - If production Firebase env vars are missing, the editor is hidden instead of
   falling back to public local mode.
-- Do not enter real media paths, private podcast details, proxy package
-  references, credentials, personal recordings, or production collaboration data
-  until Firestore rules are in place.
+- Do not enter real local media paths, credentials, personal recordings,
+  full-resolution media, or sensitive collaboration data until Firestore and
+  Storage rules are reviewed and deployed. Shared rooms should contain only the
+  lightweight source-monitor proxy and manifest metadata.
 
 Near-term internal-only task:
 
-- Add Firestore security rules scoped to approved internal users and explicit
-  project/branch permissions.
-- Only then use live Firestore for real collaboration or private podcast data.
+- Add Firestore and Storage security rules scoped to approved internal users
+  and explicit project/branch permissions.
+- Only then use live Firestore/Storage for real collaboration or private
+  podcast data.
 
 Manual Firebase Hosting path after future build-verified changes:
 

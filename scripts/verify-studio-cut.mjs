@@ -36,6 +36,15 @@ const verificationSteps = [
     ],
   },
   {
+    label: "Studio Cut shared room helper test",
+    command: "node",
+    args: [
+      "--experimental-strip-types",
+      "--test",
+      "scripts/studio-cut-shared-room.test.mjs",
+    ],
+  },
+  {
     label: "Agent smoke test",
     command: pythonCommand,
     args: [
