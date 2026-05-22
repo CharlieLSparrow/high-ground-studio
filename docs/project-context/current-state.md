@@ -68,6 +68,11 @@ High Ground Studio is a monorepo with:
   with the same projection preview component without persisting or publishing it.
   It warns when Studio browser bridge drafts include pull quotes, staged
   status/visibility, unresolved citation state, or live/public state.
+- HGO has a synthetic-only staged projection surface at `/projection-stage` and
+  `/projection-stage/[slug]`. It uses the same projection renderer and a
+  fixture-backed repository to show staged review/readiness architecture without
+  replacing public `/episodes`, persisting projection artifacts, or using real
+  HGO/manuscript content.
 - The repo now has an agentic Studio/HGO smoke command,
   `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
   Studio manuscript helper payloads, HGO projection generation, HGO validation,
@@ -131,12 +136,16 @@ High Ground Studio is a monorepo with:
 - The Studio-to-HGO projection bridge is browser-only/manual. It does not create
   a DB projection table, live publish API, public deployment pipeline, autosave,
   collaboration layer, or server-side staged artifact store.
+- The HGO staged projection surface is synthetic-only. It is a review-stage
+  architecture prototype, not a public publishing system or real staged content
+  store.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a
   product failure.
 - The HGO no-auth browser smoke does not exercise Studio auth, manuscript
-  library, or snapshot UI. It covers only HGO projection import and rendering.
+  library, or snapshot UI. It covers HGO projection import, staged projection
+  routes, and rendering.
 - The HGO no-auth visual smoke is a screenshot/report artifact pass for later
   human review. It does not exercise Studio auth, manuscript library, snapshot
   UI, real publishing, or real content.

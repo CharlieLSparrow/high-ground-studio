@@ -121,6 +121,31 @@ Current synthetic preview routes:
 - `/projection-preview/synthetic-episode`: now served by the shared dynamic
   renderer, preserving the original preview URL.
 
+## Staged Projection Surface
+
+Current synthetic staged routes:
+
+- `/projection-stage`: review-stage map for synthetic/staged/live/archived
+  projection fixtures.
+- `/projection-stage/[slug]`: staged detail route that wraps the shared
+  projection renderer with review-boundary and citation-readiness warnings.
+
+The staged surface is not public publishing and does not replace `/episodes`.
+It exists to make the future HGO.com integration path visible: Studio produces
+projection artifacts, HGO stages them for review, and only a later approval
+workflow promotes them to live public routes.
+
+Current staged data comes from:
+
+- `apps/web/src/lib/hgo/projection-repository.ts`
+
+That repository is synthetic fixture backed only. It has no database, API,
+server write, or real content integration.
+
+Detailed staged-surface notes:
+
+- `docs/architecture/hgo-staged-projection-surface-plan.md`
+
 ## Studio Bridge
 
 The first Studio-to-HGO bridge is manual and browser-only. Studio's private

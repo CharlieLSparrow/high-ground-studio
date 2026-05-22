@@ -91,6 +91,23 @@ The same renderer should support:
 The import route is for development and staged review only. It does not persist
 the JSON, write local storage, publish a page, or mutate server state.
 
+## HGO Staged Surface
+
+HGO now also has a synthetic-only staged surface:
+
+- `/projection-stage`
+- `/projection-stage/[slug]`
+
+This route family is separate from the browser-only import route. It uses a
+fixture-backed projection repository and the same shared renderer to demonstrate
+how HGO can become the browseable review stage for Studio projections.
+
+The staged surface does not ingest Studio exports yet, does not persist
+projection artifacts, does not publish, and does not replace public `/episodes`
+routes. It makes the future architecture visible: pasted/imported projection
+drafts can later become private staged artifacts, and only approved projections
+should move to live public pages.
+
 ## Citation Gates
 
 These citation states must block live publishing later:

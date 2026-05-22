@@ -150,7 +150,11 @@ async function writeReport(status, extra = {}) {
     errors,
     warnings,
     screenshots,
-    routesTested: ["/projection-preview/import"],
+    routesTested: [
+      "/projection-preview/import",
+      "/projection-stage",
+      "/projection-stage/synthetic-field-radio",
+    ],
     commitSha: getCommitSha(),
     config: {
       hgoBaseUrl: extra.hgoBaseUrl ?? suppliedHgoBaseUrl ?? null,
@@ -437,6 +441,54 @@ async function runSmoke() {
       .waitFor({ state: "visible", timeout: 20_000 });
     addStep("confirm rendered projection root", "passed");
 
+    await assertNoRealContentMarkers(page, projectionJson);
+
+    await page.goto(`${hgoBaseUrl}/projection-stage`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByTestId("hgo-stage-map")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    const stageMapText = await page.locator("body").innerText();
+
+    if (
+      !/staged projection surface/i.test(stageMapText) ||
+      !/not public publishing/i.test(stageMapText)
+    ) {
+      throw new Error(
+        "HGO staged projection map did not show the expected staged/not-public boundary copy.",
+      );
+    }
+    addStep("confirm HGO staged projection map", "passed", {
+      url: page.url(),
+    });
+    await assertNoRealContentMarkers(page, projectionJson);
+
+    await page.goto(`${hgoBaseUrl}/projection-stage/synthetic-field-radio`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByTestId("hgo-stage-review-banner")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-stage-readiness-warnings")
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page
+      .getByTestId("hgo-projection-rendered-root")
+      .waitFor({ state: "visible", timeout: 20_000 });
+
+    const readinessText = await page
+      .getByTestId("hgo-stage-readiness-warnings")
+      .innerText();
+
+    if (!/needs review/i.test(readinessText) || !/not a live public page/i.test(readinessText)) {
+      throw new Error(
+        `HGO staged detail readiness warnings did not include expected review/live-safety copy. Text: ${readinessText}`,
+      );
+    }
+    addStep("confirm HGO staged projection detail", "passed", {
+      url: page.url(),
+    });
     await assertNoRealContentMarkers(page, projectionJson);
 
     const report = await writeReport("passed", {

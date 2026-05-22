@@ -75,9 +75,11 @@ function ProjectionSection({
 function ProjectionNavigation({
   projection,
   allProjections,
+  projectionBasePath,
 }: {
   projection: HgoEpisodeProjection;
   allProjections: HgoEpisodeProjection[];
+  projectionBasePath: string;
 }) {
   const previous = allProjections.find(
     (candidate) => candidate.slug === projection.navigation?.previousSlug,
@@ -94,7 +96,7 @@ function ProjectionNavigation({
     <section className="mx-auto grid max-w-[1200px] gap-4 px-5 pb-16 pt-4 md:grid-cols-2 md:px-8">
       {previous ? (
         <Link
-          href={`/projection-preview/${previous.slug}`}
+          href={`${projectionBasePath}/${previous.slug}`}
           className="rounded-[28px] border border-white/10 bg-white/7 p-6 text-subject no-underline shadow-glass transition hover:border-flare/35 hover:text-flare"
         >
           <p className="text-sm font-bold uppercase text-flare">Previous projection</p>
@@ -105,7 +107,7 @@ function ProjectionNavigation({
       )}
       {next ? (
         <Link
-          href={`/projection-preview/${next.slug}`}
+          href={`${projectionBasePath}/${next.slug}`}
           className="rounded-[28px] border border-white/10 bg-white/7 p-6 text-subject no-underline shadow-glass transition hover:border-flare/35 hover:text-flare md:text-right"
         >
           <p className="text-sm font-bold uppercase text-flare">Next projection</p>
@@ -121,9 +123,13 @@ function ProjectionNavigation({
 export default function EpisodeProjectionView({
   projection,
   allProjections,
+  projectionBasePath = "/projection-preview",
+  projectionMapHref = "/projection-preview",
 }: {
   projection: HgoEpisodeProjection;
   allProjections: HgoEpisodeProjection[];
+  projectionBasePath?: string;
+  projectionMapHref?: string;
 }) {
   return (
     <main
@@ -358,11 +364,15 @@ export default function EpisodeProjectionView({
         </ProjectionSection>
       ) : null}
 
-      <ProjectionNavigation projection={projection} allProjections={allProjections} />
+      <ProjectionNavigation
+        projection={projection}
+        allProjections={allProjections}
+        projectionBasePath={projectionBasePath}
+      />
 
       <div className="mx-auto flex max-w-[1200px] flex-wrap gap-3 px-5 pb-12 md:px-8">
         <Link
-          href="/projection-preview"
+          href={projectionMapHref}
           className="inline-flex rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold text-subject no-underline hover:border-flare/40 hover:text-flare"
         >
           Open projection map
