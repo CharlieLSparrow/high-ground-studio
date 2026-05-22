@@ -152,12 +152,14 @@ directly to public surfaces.
 
 ## Deployment Boundary
 
-Cloud Run is the first runtime target for `apps/studio`, not the entire future
-platform.
+Cloud Run is the first runtime target for `apps/studio`, and the first prepared
+deploy target for `apps/web` once the web app has confirmed runtime secrets,
+database configuration, OAuth callback URLs, and rollback.
 
 Near-term Cloud Run services should stay narrow:
 
 - `studio` for the private Studio web app
+- `web` for the public and operations-facing High Ground Odyssey app
 - later worker services only when ingestion, embedding, or projection jobs need
   separate scaling and permissions
 
