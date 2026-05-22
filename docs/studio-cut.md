@@ -429,6 +429,17 @@ file. It installs dependencies, Python, `ffmpeg`, and Playwright Chromium, then
 runs `pnpm studio-cut:verify`. It does not use secrets and does not deploy to
 Firebase Hosting; deployment remains a separate local/operator step for now.
 
+If the verifier fails in GitHub Actions, the workflow uploads the web smoke
+artifact directory as:
+
+```text
+studio-cut-web-smoke-artifacts
+```
+
+Open the failed Actions run, download that artifact from the run summary, and
+inspect `failure.txt`, `screenshot.png`, `page.html`, `browser-errors.json`,
+`dev-server.log`, and `trace.zip` when present.
+
 ## Local Commands
 
 Run from the repo root:

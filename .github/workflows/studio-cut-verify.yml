@@ -66,3 +66,12 @@ jobs:
 
       - name: Run Studio Cut verification
         run: pnpm studio-cut:verify
+
+      - name: Upload web smoke failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-cut-web-smoke-artifacts
+          path: tools/studio-cut-local/output/web-smoke-artifacts
+          if-no-files-found: ignore
+          retention-days: 14

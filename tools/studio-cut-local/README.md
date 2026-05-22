@@ -158,6 +158,15 @@ trace when available. Override the location with
 `STUDIO_CUT_WEB_SMOKE_ARTIFACT_DIR=/path/to/artifacts`. The default path is
 ignored by git.
 
+In GitHub Actions, failed verifier runs upload that directory as the artifact:
+
+```text
+studio-cut-web-smoke-artifacts
+```
+
+Download it from the failed Actions run summary before debugging browser smoke
+failures.
+
 ## Render Profiles
 
 `plan-render` now attaches profile-aware layout intent to each active segment:
