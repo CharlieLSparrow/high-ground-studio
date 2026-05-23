@@ -8,6 +8,9 @@ Date: 2026-05-23
 - Use browser-local state for the first working board.
 - Make podcast, book, and episode-page projects the primary defaults.
 - Keep monetization and coaching visible as secondary follow-through lanes.
+- Keep the first provider-neutral spine and capability contract in `packages/content-studio-domain`.
+- Preserve current manuscript, structure, writing, and HGO staged projection boundaries.
+- Keep WorldHub as the business/access follow-through layer, not the creative source layer.
 - Export a JSON handoff packet with safety flags.
 - Deploy coherent Studio slices to the existing private Cloud Run service when
   validation passes and gcloud credentials are available.
@@ -17,7 +20,8 @@ Date: 2026-05-23
 
 ## Next
 
-- Add a real content-project packet model when the first workflow stabilizes.
+- Add a real content-project packet model when the first workflow stabilizes: project, source, research note, quote/example, principle, outline, draft, production task, schedule item, publishing target, review state, and agent task packet.
+- Extend the pure domain package only when a field is needed by a real workflow or test.
 - Decide whether persistence should be Prisma-backed Studio state, an API
   boundary, or a small service.
 - Connect episode-page projects to HGO staged artifact review without automatic
@@ -40,8 +44,12 @@ Date: 2026-05-23
   podcast distribution.
 - Kindle/Audible export packages.
 - Production queues for provider publishing or fulfillment.
+- Quipsly quote/principle/example API adapter.
+- Research assistant task runner.
+- Content calendar persistence.
 - Service extraction where a separate release/deploy boundary buys speed or
   reliability.
+- Production database schema changes with migration and rollback plans.
 
 ## Fast-Approval Rule
 

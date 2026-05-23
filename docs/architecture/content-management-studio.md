@@ -46,6 +46,8 @@ Current capabilities:
 - add custom checkpoints to the active stage
 - export a browser JSON handoff packet with explicit safety flags
 
+The provider-neutral type/sample-data contract from the WorldHub foundation branch lives in `packages/content-studio-domain`. That package is available for the next slice, but the currently deployed route uses browser-local board state rather than a persisted model.
+
 ## Current Boundaries
 
 This slice does not:
@@ -132,4 +134,4 @@ and hand off clean packets:
   until a deliberate migration is planned.
 
 The near-term build path should favor useful vertical slices over perfect
-architecture.
+architecture. No existing route, package, or app boundary is sacred if a cleaner database/API/service split lets the system move faster.

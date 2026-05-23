@@ -17,6 +17,11 @@ The goal is to keep the platform honest as it grows toward:
 
 It is not an infrastructure-as-code plan yet.
 
+WorldHub is the future central infrastructure hub for cross-site offers,
+entitlements, provider connections, embeds, commerce, fulfillment, and coaching
+coordination. See `docs/architecture/worldhub-foundation.md` for the first
+provider-neutral WorldHub boundary before implementation work begins.
+
 ## Current Services
 
 ### `apps/studio`
@@ -47,6 +52,12 @@ First deployment target:
 Studio should own private drafts, source trails, semantic tags, structures,
 research notes, agent context, and future private knowledge graph operations.
 It should not become the public website.
+
+The broader Content Management Studio direction extends this private Studio
+boundary into book writing, speech writing, podcast/video planning, publishing
+handoff, content schedules, analytics/SEO review, marketing planning, and
+Quipsly-assisted research. See
+`docs/architecture/content-management-studio.md`.
 
 ### `apps/web`
 
@@ -147,12 +158,14 @@ directly to public surfaces.
 
 ## Deployment Boundary
 
-Cloud Run is the first runtime target for `apps/studio`, not the entire future
-platform.
+Cloud Run is the first runtime target for `apps/studio`, and the first prepared
+deploy target for `apps/web` once the web app has confirmed runtime secrets,
+database configuration, OAuth callback URLs, and rollback.
 
 Near-term Cloud Run services should stay narrow:
 
 - `studio` for the private Studio web app
+- `web` for the public and operations-facing High Ground Odyssey app
 - later worker services only when ingestion, embedding, or projection jobs need
   separate scaling and permissions
 

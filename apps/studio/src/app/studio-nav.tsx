@@ -38,6 +38,10 @@ const primaryLinks = [
     href: "/manuscript",
     label: "Manuscript Desk",
   },
+  {
+    href: "/content-studio",
+    label: "Content Studio",
+  },
 ];
 
 const futureLinks = ["Projections", "Sources"];

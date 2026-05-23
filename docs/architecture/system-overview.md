@@ -6,6 +6,10 @@
   - Next.js App Router application
   - primary product surface
   - owns auth, Prisma-backed workflows, content UI, and public pages
+- `apps/studio`
+  - private Next.js Studio app
+  - owns protected creative workflows, manuscript tooling, structure mode,
+    writing/research surfaces, and the Content Management Studio spine
 - `apps/motion-lab`
   - Vite-based local playground
   - used to develop and preview motion scenes against the shared engine
@@ -121,3 +125,17 @@ The cart is currently incidental and not part of the stabilized coaching flow.
 - root script `pnpm motion` builds the engine and opens motion-lab
 
 This is a separate subsystem from the Prisma/auth/coaching stack.
+
+## Studio Product Direction
+
+The Content Management Studio direction is documented in:
+
+- `docs/architecture/content-management-studio.md`
+- `docs/plans/content-studio-now-next-later.md`
+
+The first runtime marker is the private Studio route `/content-studio`. It is a
+static internal command surface for the broader creative operating system:
+books, speeches, podcast/video production, travel video, social schedules,
+analytics, SEO, marketing, Quipsly-assisted research, and WorldHub
+follow-through. It does not persist data, call providers, publish content, or
+expose private manuscript material.

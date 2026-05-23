@@ -45,3 +45,11 @@ checks, blockers, and next handoff.
 - Worktree check: `project/worldhub` and `codex/worldhub-001-foundation` are
   clean; Studio Cut has a dirty local edit in
   `tools/studio-cut-local/studio_cut_local.py`, so treat that lane as occupied.
+
+### Codex / project/worldhub
+
+- Merged current `main` into `project/worldhub`.
+- Merged deployed Content Studio branch `codex/content-studio-command-001`.
+- Merged WorldHub foundation branch `codex/worldhub-001-foundation` and resolved conflicts by preserving the deployed browser-local Content Studio board while folding in `packages/content-studio-domain`, `packages/worldhub-domain`, WorldHub docs, and Web Cloud Run deployment scaffolding.
+- Validation passed: `git diff --check`, `pnpm install --frozen-lockfile`, `pnpm content-studio:domain:typecheck`, `pnpm worldhub:domain:typecheck`, `pnpm content-studio:domain:build`, `pnpm worldhub:domain:build`, `pnpm --filter studio typecheck`, `pnpm --filter studio build`, `pnpm studio:cloudrun:test`, `pnpm web:cloudrun:test`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web build`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`, and `pnpm studio:collab:agentic-smoke`.
+- Web builds used a dummy local `DATABASE_URL` only for build-time env; no database mutation was run.

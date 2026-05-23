@@ -132,7 +132,7 @@ High Ground Studio is a monorepo with:
   follow-through checklists, stores state in browser localStorage, and exports
   a JSON handoff packet with safety flags. It does not write Prisma data, call
   provider APIs, publish public content, use real manuscript/HGO source
-  material, or replace existing HGO/WorldHub/coaching workflows.
+  material, or replace existing HGO/WorldHub/coaching workflows. The broader provider-neutral type/sample-data contract lives in `packages/content-studio-domain` for future shared packets and persistence.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
