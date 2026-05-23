@@ -92,3 +92,19 @@ checks, blockers, and next handoff.
   feature branch.
 - Preserved current `main` deploy history and added `docs/agents/codex-continuity.md`
   to the first-five-minutes handoff list.
+
+### Codex / `codex/team-progress-story-001`
+
+- Added a team-only web route at `/team/progress` for a readable internal
+  progress story.
+- Added checked-in story data at `apps/web/content/internal/progress-story.json`
+  so the page can render in the web standalone container without `.git` or repo
+  docs at runtime.
+- Added the Progress link to the existing Team Console navigation.
+- Validation passed: `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`, `pnpm web:cloudrun:test`, `pnpm web:cloudrun:preflight`, and `git diff --check`.
+- Default `pnpm --filter web build` was attempted, hit the known Turbopack
+  optimized-build hang, and was stopped; webpack remains the documented passing
+  web build path.
+- Web Cloud Run preflight has no blocked repo items, but first live web deploy
+  still needs cloud setup or confirmation of the current HighGroundOdyssey.com
+  hosting target.
