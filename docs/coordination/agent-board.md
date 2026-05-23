@@ -28,7 +28,7 @@ Verified after `git fetch --all --prune` on 2026-05-23.
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
 | `main` | `d9c9337` | `/Users/wall-e/Dev/high-ground-studio` before this branch | Trunk / integration runway | Clean and aligned with `origin/main` when inspected. The older `b0ee6c8` dirty-main report is stale for this checkout. |
-| `codex/content-studio-command-001` | based on `d9c9337` | `/Users/wall-e/Dev/high-ground-studio` | Content Studio first usable command surface | Current focused branch. No product work directly on `main`. |
+| `codex/content-studio-command-001` | `0e17203` | `/Users/wall-e/Dev/high-ground-studio` | Content Studio first usable command surface and deploy helper | Deployed to Studio Cloud Run revision `studio-00023-7c5`. No product work directly on `main`. |
 | `project/worldhub` | `fb7bfaa` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub integration candidate | Behind current `main`; update from `main` before merging WorldHub foundation. |
 | `codex/worldhub-001-foundation` | `484988d` | `/Users/wall-e/Dev/hgs-worldhub-codex` | WorldHub / Content Studio foundation | Contains useful docs/domain/route work, but is based before latest Studio collaboration commits. Do not merge blindly. |
 | `codex/studio-cut-001-web-shell` | `46031ff` | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Keep separate until media deploy/auth blockers are intentionally scheduled. |
@@ -125,7 +125,9 @@ Verified after `git fetch --all --prune` on 2026-05-23.
   - Studio Cut editor/media workflow
   - rescue sync and generated package tooling
 - current status:
-  - clean and pushed at `46031ff` when inspected
+  - pushed at `46031ff`
+  - local worktree currently has a dirty edit in
+    `tools/studio-cut-local/studio_cut_local.py`
 - no-touch without handoff:
   - main `apps/studio` routes
   - WorldHub provider/domain packages

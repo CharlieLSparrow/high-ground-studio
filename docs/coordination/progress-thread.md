@@ -32,3 +32,15 @@ checks, blockers, and next handoff.
   only, with fast approval and rollback. Added one-command Studio Cloud Run
   deploy helper and Cloud Build deploy config; live deploy is waiting on gcloud
   reauthentication.
+- gcloud reauthenticated as `charlie@highgroundodyssey.com`.
+- Deployed Studio image `studio:0e17203` to Cloud Run revision
+  `studio-00023-7c5`, serving 100% traffic.
+- Live URL: `https://studio-hm2odnvjga-uc.a.run.app`
+- Smokes passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/health`
+  - `https://studio-hm2odnvjga-uc.a.run.app/content-studio`
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00022-fdg=100`
+- Worktree check: `project/worldhub` and `codex/worldhub-001-foundation` are
+  clean; Studio Cut has a dirty local edit in
+  `tools/studio-cut-local/studio_cut_local.py`, so treat that lane as occupied.
