@@ -80,6 +80,10 @@ import {
   summarizeAnnotationEventLog,
   type StudioCollaborationAnnotationEventLog,
 } from "./studio-collaboration-annotation-event-log";
+import {
+  createMaterializedAnnotationStateFromEventLog,
+  createMaterializedAnnotationStateReference,
+} from "./studio-collaboration-annotation-state";
 
 type LabState = {
   charlie: StudioCollaborationClient;
@@ -527,6 +531,14 @@ export default function StudioCollaborationLabClient() {
   const annotationEventReplay = useMemo(
     () => replayAnnotationEventLog(annotationEventLog),
     [annotationEventLog],
+  );
+  const materializedAnnotationState = useMemo(
+    () => createMaterializedAnnotationStateFromEventLog(annotationEventLog),
+    [annotationEventLog],
+  );
+  const materializedAnnotationReference = useMemo(
+    () => createMaterializedAnnotationStateReference(materializedAnnotationState),
+    [materializedAnnotationState],
   );
   const availableSpans = useMemo(() => {
     const spansById = new Map<string, StudioCollaborationSpanTag>();
@@ -1553,6 +1565,9 @@ export default function StudioCollaborationLabClient() {
                   <StudioChip tone="review">
                     {annotationEventReplay.summary.noteCount} replayed notes
                   </StudioChip>
+                  <StudioChip>
+                    {materializedAnnotationReference.noteCount} materialized
+                  </StudioChip>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1600,6 +1615,11 @@ export default function StudioCollaborationLabClient() {
                   {annotationEventReplay.summary.archivedCount} archived.
                   Checkpoints should reference annotation state/version later,
                   not embed the full event log by default.
+                </p>
+                <p className="text-xs font-bold leading-5 text-studio-muted">
+                  Materialized state reference:{" "}
+                  {materializedAnnotationReference.annotationStateVersion}. This
+                  is a current-state view for query/review, not persistence.
                 </p>
                 {annotationEventReplay.state.notes.length ? (
                   annotationEventReplay.state.notes.map((note) => (

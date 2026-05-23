@@ -87,6 +87,7 @@ Commands:
 - `pnpm studio:collab:review:test`
 - `pnpm studio:collab:annotation:test`
 - `pnpm studio:collab:annotation-log:test`
+- `pnpm studio:collab:annotation-state:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -259,6 +260,25 @@ The event log is not persistence. It is excluded from collaboration snapshots,
 checkpoints, Manuscript adapter payloads, localStorage, server routes, and
 production manual snapshots.
 
+## Materialized Annotation State Lab
+
+The collaboration lab now has a synthetic-only materialized annotation-state
+contract:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts`
+
+State version:
+
+- `studio-collaboration-annotation-state-v1`
+
+It derives current review-note state from the annotation event log, indexes
+notes by span/block/status, and creates a safe reference that a future manual
+snapshot could point at after persistence and access control exist.
+
+The materialized state is not persistence. It is not stored in localStorage,
+server routes, DB rows, collaboration checkpoints, Manuscript adapter payloads,
+or production manual snapshots.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -276,6 +296,7 @@ production manual snapshots.
 - no durable review-note storage
 - no annotation persistence
 - no annotation event persistence
+- no materialized annotation-state persistence
 
 ## Rough 20-Sprint Path
 

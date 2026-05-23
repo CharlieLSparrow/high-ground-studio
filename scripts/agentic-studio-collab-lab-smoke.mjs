@@ -60,6 +60,12 @@ import {
   createReviewNoteStatusChangedEvent,
   replayAnnotationEventLog,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
+import {
+  compareMaterializedAnnotationStateToEventLog,
+  createMaterializedAnnotationStateFromEventLog,
+  createMaterializedAnnotationStateReference,
+  validateMaterializedAnnotationState,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -382,6 +388,16 @@ async function runSmoke() {
     const annotationReplay = replayAnnotationEventLog(annotationEventLog);
     const annotationReference =
       createAnnotationEventLogReference(annotationEventLog);
+    const materializedAnnotationState =
+      createMaterializedAnnotationStateFromEventLog(annotationEventLog);
+    const materializedAnnotationValidation =
+      validateMaterializedAnnotationState(materializedAnnotationState);
+    const materializedAnnotationReference =
+      createMaterializedAnnotationStateReference(materializedAnnotationState);
+    const materializedComparison = compareMaterializedAnnotationStateToEventLog(
+      materializedAnnotationState,
+      annotationEventLog,
+    );
     const sourceTextAfterAnnotationEvents = summarizeCollaborationDocument(charlie)
       .blocks.map((block) => block.text)
       .join("\n");
@@ -407,10 +423,34 @@ async function runSmoke() {
       throw new Error("Annotation event-log reference crossed the snapshot boundary.");
     }
 
+    if (!materializedAnnotationValidation.ok) {
+      throw new Error(
+        `Materialized annotation state validation failed: ${materializedAnnotationValidation.errors.join(" ")}`,
+      );
+    }
+
+    if (!materializedComparison.matches) {
+      throw new Error(
+        `Materialized annotation state did not match event-log replay: ${materializedComparison.details.join(" ")}`,
+      );
+    }
+
+    if (materializedAnnotationReference.manualSnapshotEmbedsAnnotations) {
+      throw new Error("Materialized annotation state reference embedded annotations in snapshots.");
+    }
+
     addStep("replay synthetic annotation event log", "passed", {
       events: annotationReplay.appliedEventCount,
       replayedNotes: annotationReplay.summary.noteCount,
       annotationStateVersion: annotationReference.annotationStateVersion,
+    });
+
+    addStep("materialize annotation current state from event log", "passed", {
+      materializedNotes: materializedAnnotationState.summary.noteCount,
+      materializedVersion:
+        materializedAnnotationReference.annotationStateVersion,
+      manualSnapshotEmbedsAnnotations:
+        materializedAnnotationReference.manualSnapshotEmbedsAnnotations,
     });
 
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
@@ -638,6 +678,13 @@ async function runSmoke() {
       replayedAnnotationNoteCount: annotationReplay.summary.noteCount,
       annotationEventLogReference: true,
       annotationStateVersion: annotationReference.annotationStateVersion,
+      materializedAnnotationStateModeled: true,
+      materializedAnnotationNoteCount:
+        materializedAnnotationReference.noteCount,
+      materializedAnnotationStateVersion:
+        materializedAnnotationReference.annotationStateVersion,
+      manualSnapshotEmbedsAnnotations:
+        materializedAnnotationReference.manualSnapshotEmbedsAnnotations,
       noDbSchema: true,
       manuscriptFirstSurface: true,
       noServerWrites: true,

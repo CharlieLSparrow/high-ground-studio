@@ -32,6 +32,7 @@ Events:
 Replay output:
 
 - `StudioCollaborationReviewNoteState`
+- `studio-collaboration-annotation-state-v1` materialized current state
 
 The replayed state is a materialized view for inspection. It does not mutate
 source text, collaboration snapshots, collaboration checkpoints, Manuscript
@@ -60,7 +61,8 @@ Route:
 
 The lab exposes an `Annotation event-log replay` section under the review-note
 and durability decision controls. It can append synthetic create/edit/status
-events and show replayed current annotation state in React state only.
+events and show replayed/materialized current annotation state in React state
+only.
 
 ## Tests
 

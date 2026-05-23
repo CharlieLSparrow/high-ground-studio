@@ -120,6 +120,12 @@ High Ground Studio is a monorepo with:
   reference shape. The event log is pure/local only and is excluded from
   snapshots, checkpoints, Manuscript adapter payloads, localStorage, server
   routes, DB/schema, and production manual snapshots.
+- Studio collaboration now has a synthetic materialized annotation-state lab.
+  It derives current review-note state from the event log, indexes notes by
+  span/block/status, and creates a safe annotation-state reference for future
+  checkpoint linkage. It is not persistence and is excluded from localStorage,
+  server routes, DB/schema, checkpoints, Manuscript adapter payloads, and
+  production manual snapshots.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -249,6 +255,8 @@ High Ground Studio is a monorepo with:
 - Studio collaboration annotation event logs are also local lab contracts only.
   They prove operation replay and version references, but they are not persisted
   and are not embedded in production manual snapshots.
+- Studio materialized annotation state is a local replay view only. It proves
+  current-state indexing/query behavior, not durable storage.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a
