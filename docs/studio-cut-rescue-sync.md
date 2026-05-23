@@ -205,6 +205,13 @@ Publishing flow:
 Mako opens the link, signs in, and edits against the shared proxy room. Mako
 does not import JSON, load local media, or touch sync files in the primary path.
 
+After publish, the web app shows `Sync Review` for the room. It reads the
+attached Sync Map and optional sync report from Storage, validates them, and
+summarizes canonical duration, asset roles, reference rail pieces, estimated
+offset count, lowest confidence, and warning count. This gives Charlie a visible
+confirmation that the shared proxy room is backed by generated sync metadata,
+not just a loose MP4. The panel never shows local filesystem paths.
+
 Before using real footage, generate a synthetic package and publish it through
 the live UI:
 

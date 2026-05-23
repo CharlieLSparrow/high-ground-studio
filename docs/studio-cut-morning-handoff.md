@@ -179,6 +179,12 @@ To publish the generated package:
 Mako opens the room link and edits live. Mako does not import JSON, load local
 media, or touch sync files in the primary path.
 
+After publish, check `Sync Review` in the editor. It should show the attached
+Sync Map job id, canonical duration, asset roles, reference pieces, offset
+count, lowest confidence, and warning count. If it says the Sync Map is missing
+or failed to load, treat the room as a proxy-only rehearsal until the package is
+republished or Storage rules are fixed.
+
 Safe live-app publish rehearsal:
 
 ```bash

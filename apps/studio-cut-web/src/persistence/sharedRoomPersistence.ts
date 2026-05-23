@@ -32,6 +32,10 @@ export type SharedRoomStore = {
     onProgress: (progress: SharedRoomUploadProgress) => void,
   ) => Promise<string>;
   getSourceMonitorProxyDownloadUrl: (storagePath: string) => Promise<string>;
+  getGeneratedPackageArtifactText: (
+    storagePath: string,
+    artifactKind: string,
+  ) => Promise<string>;
 };
 
 export async function createSharedRoomStore({
@@ -137,6 +141,23 @@ export async function createSharedRoomStore({
     }
   }
 
+  async function getGeneratedPackageArtifactText(
+    storagePath: string,
+    artifactKind: string,
+  ) {
+    const artifactRef = storage.ref(storageService, storagePath);
+
+    try {
+      const bytes = await storage.getBytes(artifactRef, 5 * 1024 * 1024);
+
+      return new TextDecoder("utf-8").decode(bytes);
+    } catch (error) {
+      throw new Error(
+        `Could not load ${artifactKind} from Storage: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
   return {
     roomMetadataPath,
     subscribeToRoomMetadata,
@@ -144,6 +165,7 @@ export async function createSharedRoomStore({
     uploadSourceMonitorProxy,
     uploadGeneratedPackageArtifact,
     getSourceMonitorProxyDownloadUrl,
+    getGeneratedPackageArtifactText,
   };
 
   function uploadStorageFile({

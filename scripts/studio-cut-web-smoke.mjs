@@ -159,6 +159,9 @@ async function createProxyPreviewSmokeFiles() {
   const workdir = await mkdtemp(path.join(tmpdir(), "studio-cut-web-smoke-"));
   const manifestPath = path.join(workdir, "episode-manifest.web-smoke.json");
   const proxyPath = path.join(workdir, "source-monitor-proxy.web-smoke.mp4");
+  const syncMapPath = path.join(workdir, "sync-map.web-smoke.json");
+  const syncReportPath = path.join(workdir, "sync-report.web-smoke.json");
+  const generatedAt = "2026-05-23T00:00:00.000Z";
   const manifest = {
     id: "web-smoke-episode",
     title: "Web Smoke Episode",
@@ -199,8 +202,106 @@ async function createProxyPreviewSmokeFiles() {
       notes: "Synthetic manifest for Playwright browser smoke only.",
     },
   };
+  const referenceRail = {
+    syncJobId: "web-smoke-sync-job",
+    referenceRole: "phoneReferenceAudio",
+    segments: [
+      {
+        inputId: "phone-reference-01",
+        fileName: "phone-reference-01.synthetic.wav",
+        railStartMs: 0,
+        sourceStartMs: 0,
+        durationMs: 6000,
+        confidence: 0.95,
+        warnings: [],
+      },
+      {
+        inputId: "phone-reference-02",
+        fileName: "phone-reference-02.synthetic.wav",
+        railStartMs: 6000,
+        sourceStartMs: 0,
+        durationMs: 6000,
+        confidence: 0.94,
+        warnings: [],
+      },
+    ],
+    totalDurationMs: 12000,
+    warnings: [],
+  };
+  const syncMap = {
+    syncMapId: "web-smoke-sync-map",
+    syncJobId: "web-smoke-sync-job",
+    projectId: "web-smoke-episode",
+    branchId: "local-main",
+    createdAt: generatedAt,
+    updatedAt: generatedAt,
+    canonicalTimeline: {
+      durationMs: 12000,
+      timebase: "milliseconds",
+      referenceRole: "phoneReferenceAudio",
+    },
+    assets: [
+      {
+        assetId: "homer-video",
+        inputId: "homer-video",
+        role: "homerVideo",
+        fileName: "homer.synthetic.mp4",
+        timelineStartMs: 0,
+        assetStartMs: 0,
+        durationMs: 12000,
+        estimatedOffsetMs: 0,
+        confidence: 0.91,
+        warnings: [],
+      },
+      {
+        assetId: "charlie-video",
+        inputId: "charlie-video",
+        role: "charlieVideo",
+        fileName: "charlie.synthetic.mp4",
+        timelineStartMs: 1000,
+        assetStartMs: 0,
+        durationMs: 11000,
+        estimatedOffsetMs: 1000,
+        confidence: 0.88,
+        warnings: [],
+      },
+    ],
+    referenceRail,
+    globalWarnings: ["Synthetic browser smoke Sync Map."],
+  };
+  const syncReport = {
+    syncJobId: "web-smoke-sync-job",
+    generatedAt,
+    status: "ready",
+    referenceRail,
+    trackOffsets: [
+      {
+        role: "homerVideo",
+        inputId: "homer-video",
+        fileName: "homer.synthetic.mp4",
+        estimatedOffsetMs: 0,
+        confidence: 0.91,
+        anchorCount: 2,
+        anchorAgreementMs: 12,
+        warnings: [],
+      },
+      {
+        role: "charlieVideo",
+        inputId: "charlie-video",
+        fileName: "charlie.synthetic.mp4",
+        estimatedOffsetMs: 1000,
+        confidence: 0.88,
+        anchorCount: 2,
+        anchorAgreementMs: 18,
+        warnings: [],
+      },
+    ],
+    globalWarnings: ["Synthetic browser smoke sync report."],
+  };
 
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+  await writeFile(syncMapPath, JSON.stringify(syncMap, null, 2), "utf8");
+  await writeFile(syncReportPath, JSON.stringify(syncReport, null, 2), "utf8");
 
   const ffmpegResult = spawnSync(
     "ffmpeg",
@@ -228,7 +329,7 @@ async function createProxyPreviewSmokeFiles() {
     throw new Error(`ffmpeg could not create web smoke proxy video: ${detail}`);
   }
 
-  return { workdir, manifestPath, proxyPath };
+  return { workdir, manifestPath, proxyPath, syncMapPath, syncReportPath };
 }
 
 function getErrorStack(error) {
@@ -394,6 +495,7 @@ async function runBrowserSmoke() {
     await expect(page.getByRole("heading", { name: "Publish Rescue Sync Package" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Cloud Sync Intake" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Room Diagnostics" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sync Review" })).toBeVisible();
     await expect(cloudSyncSection).toContainText("Homer video");
     await expect(cloudSyncSection).toContainText("Charlie video");
     await expect(cloudSyncSection).toContainText("Homer clean audio");
@@ -417,6 +519,20 @@ async function runBrowserSmoke() {
       rescuePackageSection.getByRole("button", { name: "Publish Generated Package" }),
     ).toBeDisabled();
     await expect(rescuePackageSection).toContainText(/local-only mode/i);
+    await expect(page.getByLabel("Sync review")).toContainText("No Sync Map loaded");
+    await page
+      .getByLabel("Select generated Episode Manifest JSON")
+      .setInputFiles(smokeFiles.manifestPath);
+    await page
+      .getByLabel("Select generated Sync Map JSON")
+      .setInputFiles(smokeFiles.syncMapPath);
+    await page
+      .getByLabel("Select generated sync report JSON")
+      .setInputFiles(smokeFiles.syncReportPath);
+    await expect(page.getByLabel("Sync review")).toContainText("Selected package");
+    await expect(page.getByLabel("Sync review")).toContainText("web-smoke-sync-job");
+    await expect(page.getByLabel("Sync review")).toContainText("Reference pieces");
+    await expect(page.getByLabel("Sync review")).toContainText("Homer video x1");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Room metadata");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync Map");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync report");

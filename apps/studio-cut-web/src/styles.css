@@ -567,7 +567,8 @@ h2 {
 .cloud-sync-panel,
 .shared-room-panel,
 .rescue-package-panel,
-.shared-room-diagnostics-panel {
+.shared-room-diagnostics-panel,
+.sync-review-panel {
   display: grid;
   gap: 14px;
 }
@@ -581,7 +582,8 @@ h2 {
 .cloud-sync-panel,
 .shared-room-panel,
 .rescue-package-panel,
-.shared-room-diagnostics-panel {
+.shared-room-diagnostics-panel,
+.sync-review-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -1045,13 +1047,24 @@ h2 {
     rgba(255, 255, 255, 0.04);
 }
 
-.diagnostics-grid {
+.sync-review-panel {
+  border-color: rgba(145, 219, 183, 0.24);
+  background:
+    linear-gradient(135deg, rgba(145, 219, 183, 0.09), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.diagnostics-grid,
+.sync-review-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.diagnostics-grid div {
+.diagnostics-grid div,
+.sync-review-grid div,
+.sync-review-roles,
+.sync-review-empty {
   display: grid;
   gap: 4px;
   border: 1px solid rgba(238, 242, 238, 0.1);
@@ -1060,21 +1073,33 @@ h2 {
   padding: 9px;
 }
 
-.diagnostics-grid span {
+.diagnostics-grid span,
+.sync-review-grid span,
+.sync-review-roles span {
   color: #aeb9b4;
   font-size: 0.68rem;
   font-weight: 850;
   text-transform: uppercase;
 }
 
-.diagnostics-grid strong {
+.diagnostics-grid strong,
+.sync-review-grid strong,
+.sync-review-roles strong,
+.sync-review-empty strong {
   overflow-wrap: anywhere;
   color: #eef2ee;
   font-size: 0.84rem;
   line-height: 1.25;
 }
 
-.diagnostics-message {
+.sync-review-empty span {
+  color: #aeb9b4;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.diagnostics-message,
+.sync-review-message {
   border: 1px dashed rgba(240, 201, 106, 0.24);
   border-radius: 7px;
   color: #d7e0dc;
@@ -1083,7 +1108,8 @@ h2 {
   line-height: 1.4;
 }
 
-.diagnostics-message.is-error {
+.diagnostics-message.is-error,
+.sync-review-message.is-error {
   border-color: rgba(255, 116, 116, 0.34);
   color: #ffb7b7;
 }
@@ -1802,6 +1828,7 @@ td {
   .cloud-sync-role-row,
   .cloud-sync-selected-file,
   .rescue-package-grid,
+  .sync-review-grid,
   .proxy-program-layout.pane-count-2,
   .proxy-program-layout.both-clip,
   .current-segment-grid,

@@ -292,6 +292,13 @@ Original full-resolution files are not uploaded by this publish flow.
 Mako opens the room URL, signs in, and edits the shared proxy room. JSON
 import/export remains backup and recovery.
 
+The shared-room editor also has a `Sync Review` panel. When room metadata points
+at a generated Sync Map/report, the browser fetches those JSON artifacts from
+Storage, validates the schema, and shows the sync job id, canonical duration,
+asset role counts, reference rail pieces, offset count, lowest confidence, and
+warning count. This is an operator-facing confidence layer only; it does not
+load originals, expose local paths, or change the edit model.
+
 To generate a safe synthetic package for testing the live publish UI:
 
 ```bash

@@ -178,6 +178,12 @@ room proxy path and the manifest/Sync Map/report under
 `studioCutSyncJobs/{syncJobId}/outputs/{fileName}`. It does not upload original
 full-resolution assets or local filesystem paths.
 
+Once the room loads, `Sync Review` reads the attached Sync Map and optional sync
+report from Storage and summarizes the sync job, canonical duration, asset
+roles, reference pieces, offset count, confidence, and warnings. Use that panel
+as the browser-side confirmation that a shared room was published from Rescue
+Sync outputs rather than a loose proxy-only package.
+
 Generate a safe package for testing that UI path:
 
 ```bash

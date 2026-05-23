@@ -209,6 +209,15 @@ type RescueSyncPackageSelection = {
   message: CloudSyncIntakeMessage;
 };
 
+type SyncReviewState = {
+  status: "idle" | "not_attached" | "loading" | "loaded" | "error";
+  message: string;
+  syncMap?: SyncMap;
+  syncReport?: CloudSyncReport;
+  loadedAt?: string;
+  reportWarning?: string;
+};
+
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
   homer: "#91de72",
@@ -281,6 +290,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [localProxyFile, setLocalProxyFile] = useState<File | null>(null);
   const [sharedRoomMetadata, setSharedRoomMetadata] =
     useState<SharedRoomMetadata | null>(null);
+  const [syncReview, setSyncReview] = useState<SyncReviewState>({
+    status: "idle",
+    message:
+      "Open a Rescue Sync shared room to review attached Sync Map and sync report metadata.",
+  });
   const [sharedRoomUploadState, setSharedRoomUploadState] =
     useState<SharedRoomUploadState>({
       status: "idle",
@@ -512,6 +526,119 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     config.firebaseConfig,
     roomSelection.branchId,
     roomSelection.projectId,
+  ]);
+
+  useEffect(() => {
+    if (!config.firebaseConfig) {
+      setSyncReview({
+        status: "idle",
+        message:
+          "Sync review loads attached room metadata in cloud mode. Local-only mode can still preview selected package files before publish.",
+      });
+      return;
+    }
+
+    if (!sharedRoomMetadata) {
+      setSyncReview({
+        status: "not_attached",
+        message: "No shared room metadata is loaded for this project/branch.",
+      });
+      return;
+    }
+
+    if (!sharedRoomMetadata.syncMapStoragePath) {
+      setSyncReview({
+        status: "not_attached",
+        message:
+          "This shared room has no Sync Map attached. Prepared proxy rooms can still be edited, but original-asset render handoff needs a Sync Map.",
+      });
+      return;
+    }
+
+    let isStale = false;
+    const syncMapStoragePath = sharedRoomMetadata.syncMapStoragePath;
+    const syncReportStoragePath = sharedRoomMetadata.syncReportStoragePath;
+
+    setSyncReview({
+      status: "loading",
+      message: "Loading attached Sync Map and sync report metadata.",
+    });
+
+    void createSharedRoomStore({
+      firebaseConfig: config.firebaseConfig,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+    })
+      .then(async (store) => {
+        const syncMapText = await store.getGeneratedPackageArtifactText(
+          syncMapStoragePath,
+          "Sync Map",
+        );
+        const syncMapPayload = JSON.parse(syncMapText) as unknown;
+        const syncMapResult = parseSyncMapPayload(syncMapPayload);
+
+        if (!syncMapResult.ok) {
+          throw new Error(syncMapResult.reason);
+        }
+
+        let syncReport: CloudSyncReport | undefined;
+        let reportWarning: string | undefined;
+
+        if (syncReportStoragePath) {
+          try {
+            const syncReportText = await store.getGeneratedPackageArtifactText(
+              syncReportStoragePath,
+              "sync report",
+            );
+            const syncReportPayload = JSON.parse(syncReportText) as unknown;
+            const syncReportResult = parseCloudSyncReportPayload(syncReportPayload);
+
+            if (!syncReportResult.ok) {
+              throw new Error(syncReportResult.reason);
+            }
+
+            syncReport = syncReportResult.report;
+          } catch (error) {
+            reportWarning = `Sync report attached but could not be loaded: ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+          }
+        }
+
+        if (isStale) {
+          return;
+        }
+
+        setSyncReview({
+          status: "loaded",
+          syncMap: syncMapResult.syncMap,
+          ...(syncReport ? { syncReport } : {}),
+          ...(reportWarning ? { reportWarning } : {}),
+          loadedAt: new Date().toISOString(),
+          message: reportWarning ?? "Attached Sync Map metadata loaded.",
+        });
+      })
+      .catch((error: unknown) => {
+        if (isStale) {
+          return;
+        }
+
+        setSyncReview({
+          status: "error",
+          message: `Sync review load failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      });
+
+    return () => {
+      isStale = true;
+    };
+  }, [
+    config.firebaseConfig,
+    roomSelection.branchId,
+    roomSelection.projectId,
+    sharedRoomMetadata,
   ]);
 
   useEffect(() => {
@@ -2066,6 +2193,12 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           uploadState={sharedRoomUploadState}
         />
 
+        <SyncReviewPanel
+          metadata={sharedRoomMetadata}
+          review={syncReview}
+          packageSelection={rescueSyncPackage}
+        />
+
         <EpisodeManifestPanel
           manifest={episodeManifest}
           sourceDurationMs={sourceDurationMs}
@@ -3053,6 +3186,100 @@ function SharedRoomDiagnosticsPanel({
             : "Create or open a shared room to load cloud metadata and proxy."}
         </p>
       )}
+    </section>
+  );
+}
+
+function SyncReviewPanel({
+  metadata,
+  review,
+  packageSelection,
+}: {
+  metadata: SharedRoomMetadata | null;
+  review: SyncReviewState;
+  packageSelection: RescueSyncPackageSelection;
+}) {
+  const syncMap = review.syncMap ?? packageSelection.syncMap;
+  const syncReport = review.syncReport ?? packageSelection.syncReport;
+  const summary = syncMap ? buildSyncReviewSummary(syncMap, syncReport) : null;
+  const sourceLabel = review.syncMap
+    ? "Attached room"
+    : packageSelection.syncMap
+      ? "Selected package"
+      : metadata?.syncMapStoragePath
+        ? review.status === "loading"
+          ? "Loading"
+          : "Attached"
+        : "Waiting";
+  const message = summary
+    ? review.reportWarning ?? review.message
+    : review.message;
+
+  return (
+    <section className="sync-review-panel" aria-label="Sync review">
+      <div className="panel-heading">
+        <div>
+          <h2>Sync Review</h2>
+          <p>
+            Reads Rescue Sync metadata so operators can trust the shared proxy
+            room before editing.
+          </p>
+        </div>
+        <strong>{sourceLabel}</strong>
+      </div>
+
+      {summary ? (
+        <>
+          <div className="sync-review-grid">
+            <ReadinessMetric label="Sync job" value={syncMap?.syncJobId ?? "None"} />
+            <ReadinessMetric
+              label="Timeline"
+              value={formatSourceTime(summary.timelineDurationMs)}
+            />
+            <ReadinessMetric label="Assets" value={String(summary.assetCount)} />
+            <ReadinessMetric
+              label="Reference pieces"
+              value={String(summary.referencePieceCount)}
+            />
+            <ReadinessMetric
+              label="Offsets"
+              value={String(summary.trackOffsetCount)}
+            />
+            <ReadinessMetric
+              label="Lowest confidence"
+              value={formatConfidence(summary.lowestConfidence)}
+            />
+            <ReadinessMetric
+              label="Warnings"
+              value={String(summary.warningCount)}
+            />
+            <ReadinessMetric
+              label="Loaded"
+              value={review.loadedAt ? formatDateTimeLabel(review.loadedAt) : sourceLabel}
+            />
+          </div>
+          <div className="sync-review-roles">
+            <span>Asset roles</span>
+            <strong>{summary.roleSummary}</strong>
+          </div>
+        </>
+      ) : (
+        <div className="sync-review-empty">
+          <strong>No Sync Map loaded</strong>
+          <span>
+            Published Rescue Sync rooms attach a Sync Map. Local-only sessions
+            can select generated package files here before publishing.
+          </span>
+        </div>
+      )}
+
+      <p
+        className={`sync-review-message${
+          review.status === "error" || review.reportWarning ? " is-error" : ""
+        }`}
+      >
+        {message}
+      </p>
     </section>
   );
 }
@@ -4948,6 +5175,73 @@ function getSharedRoomPackageKindLabel(
   }
 
   return "Unknown";
+}
+
+function buildSyncReviewSummary(
+  syncMap: SyncMap,
+  syncReport?: CloudSyncReport,
+) {
+  const confidenceValues = [
+    ...syncMap.assets.map((asset) => asset.confidence),
+    ...(syncReport?.trackOffsets.map((trackOffset) => trackOffset.confidence) ??
+      []),
+  ].filter((value) => Number.isFinite(value));
+  const lowestConfidence =
+    confidenceValues.length > 0 ? Math.min(...confidenceValues) : 0;
+
+  return {
+    timelineDurationMs: syncMap.canonicalTimeline.durationMs,
+    assetCount: syncMap.assets.length,
+    referencePieceCount: syncMap.referenceRail.segments.length,
+    trackOffsetCount: syncReport?.trackOffsets.length ?? 0,
+    lowestConfidence,
+    warningCount: countSyncReviewWarnings(syncMap, syncReport),
+    roleSummary: buildSyncReviewRoleSummary(syncMap),
+  };
+}
+
+function buildSyncReviewRoleSummary(syncMap: SyncMap) {
+  const roleCounts = syncMap.assets.reduce(
+    (counts, asset) => ({
+      ...counts,
+      [asset.role]: (counts[asset.role] ?? 0) + 1,
+    }),
+    {} as Partial<Record<CloudSyncInputRole, number>>,
+  );
+
+  return (
+    CLOUD_SYNC_INPUT_ROLES.filter((role) => roleCounts[role])
+      .map((role) => `${CLOUD_SYNC_ROLE_LABELS[role]} x${roleCounts[role]}`)
+      .join(", ") || "No assets"
+  );
+}
+
+function countSyncReviewWarnings(
+  syncMap: SyncMap,
+  syncReport?: CloudSyncReport,
+) {
+  const syncMapWarnings =
+    syncMap.globalWarnings.length +
+    syncMap.referenceRail.warnings.length +
+    syncMap.referenceRail.segments.reduce(
+      (count, segment) => count + segment.warnings.length,
+      0,
+    ) +
+    syncMap.assets.reduce((count, asset) => count + asset.warnings.length, 0);
+  const syncReportWarnings = syncReport
+    ? syncReport.globalWarnings.length +
+      syncReport.referenceRail.warnings.length +
+      syncReport.trackOffsets.reduce(
+        (count, offset) => count + offset.warnings.length,
+        0,
+      )
+    : 0;
+
+  return syncMapWarnings + syncReportWarnings;
+}
+
+function formatConfidence(value: number) {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
 function sanitizeFileNamePart(value: string) {
