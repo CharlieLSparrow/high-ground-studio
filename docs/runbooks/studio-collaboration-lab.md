@@ -75,6 +75,12 @@ Annotation durability decision tests:
 pnpm studio:collab:annotation:test
 ```
 
+Annotation event-log replay tests:
+
+```bash
+pnpm studio:collab:annotation-log:test
+```
+
 Agentic helper smoke:
 
 ```bash
@@ -119,22 +125,28 @@ Generated reports are ignored and should not be committed.
 23. Confirm it recommends an event log for operations and a separate annotation
     store for current state.
 24. Confirm it says manual snapshots should not become comment warehouses.
-25. Click `Export synthetic snapshot`.
-26. Confirm the JSON appears in the textarea and includes spans, but not
+25. In the annotation event-log section, append a create event.
+26. Append an edit event.
+27. Append an addressed or archive event.
+28. Confirm the replay summary updates without changing source text.
+29. Confirm the page says this is not persistence and not checkpoint metadata.
+30. Click `Export synthetic snapshot`.
+31. Confirm the JSON appears in the textarea and includes spans, but not
     presence state.
-27. Confirm the snapshot JSON does not include review-note body text.
-28. Click `Create synthetic checkpoint`.
-29. Confirm the checkpoint summary and checkpoint JSON appear without review
+32. Confirm the snapshot JSON does not include review-note body text or
+    annotation event bodies.
+33. Click `Create synthetic checkpoint`.
+34. Confirm the checkpoint summary and checkpoint JSON appear without review
     notes.
-30. Click `Import checkpoint back into new synthetic client`.
-31. Confirm the imported-client summary appears.
-32. Click `Create synthetic Manuscript adapter payload from checkpoint`.
-33. Confirm the adapter summary and adapter JSON appear without presence state
+35. Click `Import checkpoint back into new synthetic client`.
+36. Confirm the imported-client summary appears.
+37. Click `Create synthetic Manuscript adapter payload from checkpoint`.
+38. Confirm the adapter summary and adapter JSON appear without presence state
     or review-note body text.
-34. Click `Validate adapter payload`.
-35. Click `Convert adapter back to collaboration client`.
-36. Confirm the adapter roundtrip summary appears.
-37. Confirm the page says no server writes, no production manuscript editing,
+39. Click `Validate adapter payload`.
+40. Click `Convert adapter back to collaboration client`.
+41. Confirm the adapter roundtrip summary appears.
+42. Confirm the page says no server writes, no production manuscript editing,
     no autosave, and no localStorage.
 
 Do not paste real manuscript text into this lab.
@@ -163,6 +175,10 @@ Passing means:
 - annotation durability comparison recommends event-log operations plus a
   separate annotation store for future durable notes
 - checkpoint metadata is not the primary recommended note store
+- annotation event logs can replay create/edit/status operations into
+  materialized annotation state
+- partial annotation event replay can model rollback/version references
+- annotation event logs stay out of snapshots checkpoints and adapter payloads
 - concurrent same-block edits do not crash
 - empty synthetic blocks are retained and counted
 - known real-content markers are absent

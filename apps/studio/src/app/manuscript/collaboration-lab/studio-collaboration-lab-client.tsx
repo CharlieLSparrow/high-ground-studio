@@ -70,6 +70,16 @@ import {
 import {
   createAnnotationDurabilityDecisionRecord,
 } from "./studio-collaboration-annotation-durability";
+import {
+  appendAnnotationEvent,
+  createEmptyAnnotationEventLog,
+  createReviewNoteBodyEditedEvent,
+  createReviewNoteCreatedEvent,
+  createReviewNoteStatusChangedEvent,
+  replayAnnotationEventLog,
+  summarizeAnnotationEventLog,
+  type StudioCollaborationAnnotationEventLog,
+} from "./studio-collaboration-annotation-event-log";
 
 type LabState = {
   charlie: StudioCollaborationClient;
@@ -454,6 +464,10 @@ export default function StudioCollaborationLabClient() {
     useState<StudioCollaborationReviewNoteState>(() =>
       createSyntheticReviewNoteState(),
     );
+  const [annotationEventLog, setAnnotationEventLog] =
+    useState<StudioCollaborationAnnotationEventLog>(() =>
+      createEmptyAnnotationEventLog(),
+    );
   const [spanForm, setSpanForm] = useState({
     actor: "Charlie",
     blockId: "synthetic-collab-block-1",
@@ -505,6 +519,14 @@ export default function StudioCollaborationLabClient() {
   const annotationDecision = useMemo(
     () => createAnnotationDurabilityDecisionRecord(),
     [],
+  );
+  const annotationEventLogSummary = useMemo(
+    () => summarizeAnnotationEventLog(annotationEventLog),
+    [annotationEventLog],
+  );
+  const annotationEventReplay = useMemo(
+    () => replayAnnotationEventLog(annotationEventLog),
+    [annotationEventLog],
   );
   const availableSpans = useMemo(() => {
     const spansById = new Map<string, StudioCollaborationSpanTag>();
@@ -603,6 +625,78 @@ export default function StudioCollaborationLabClient() {
       updateSyntheticReviewNoteStatus(current, noteId, status, actorId),
     );
     refresh(`Synthetic review note marked ${status}. No source text changed.`);
+  }
+
+  function appendReviewNoteCreateEventFromForm() {
+    if (!selectedReviewSpan) {
+      refresh("Create a synthetic span before appending an annotation event.");
+      return;
+    }
+
+    const event = createReviewNoteCreatedEvent(
+      selectedReviewSpan,
+      reviewNoteForm.authorId,
+      reviewNoteForm.body,
+    );
+
+    if (!event) {
+      refresh("Synthetic annotation create event was rejected.");
+      return;
+    }
+
+    setAnnotationEventLog((current) => appendAnnotationEvent(current, event));
+    refresh("Synthetic annotation create event appended. No persistence added.");
+  }
+
+  function appendAnnotationEditEvent() {
+    const firstNote = annotationEventReplay.state.notes[0];
+
+    if (!firstNote) {
+      refresh("Append a synthetic annotation create event before editing.");
+      return;
+    }
+
+    const event = createReviewNoteBodyEditedEvent(
+      firstNote.noteId,
+      "homer",
+      `${firstNote.body} Synthetic event-log edit.`,
+    );
+
+    if (!event) {
+      refresh("Synthetic annotation edit event was rejected.");
+      return;
+    }
+
+    setAnnotationEventLog((current) => appendAnnotationEvent(current, event));
+    refresh("Synthetic annotation edit event appended. Source text is unchanged.");
+  }
+
+  function appendAnnotationStatusEvent(
+    nextStatus: StudioCollaborationReviewNoteStatus,
+    actorId: StudioCollaborationReviewNoteAuthorId,
+  ) {
+    const firstNote = annotationEventReplay.state.notes[0];
+
+    if (!firstNote) {
+      refresh("Append a synthetic annotation create event before changing status.");
+      return;
+    }
+
+    const event = createReviewNoteStatusChangedEvent(
+      firstNote.noteId,
+      actorId,
+      nextStatus,
+    );
+
+    if (!event) {
+      refresh("Synthetic annotation status event was rejected.");
+      return;
+    }
+
+    setAnnotationEventLog((current) => appendAnnotationEvent(current, event));
+    refresh(
+      `Synthetic annotation ${nextStatus} event appended. No checkpoint metadata changed.`,
+    );
   }
 
   function updateCheckpointState(input: {
@@ -1435,6 +1529,94 @@ export default function StudioCollaborationLabClient() {
                 state, and let manual snapshots reference annotation
                 state/version instead of becoming comment warehouses.
               </p>
+            </div>
+            <div
+              className="mt-4 grid gap-3 rounded-xl border border-studio-line-strong bg-studio-ink/5 p-3"
+              data-testid="studio-collab-annotation-event-log"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={labelClassName}>
+                    Annotation event-log replay
+                  </p>
+                  <p className="mt-1 text-xs font-bold leading-5 text-studio-muted">
+                    Synthetic event log only. It can replay annotation
+                    operations into current review-note state, but it does not
+                    persist, write localStorage, touch checkpoints, or mutate
+                    source text.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StudioChip tone="tag">
+                    {annotationEventLogSummary.eventCount} events
+                  </StudioChip>
+                  <StudioChip tone="review">
+                    {annotationEventReplay.summary.noteCount} replayed notes
+                  </StudioChip>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-annotation-event-create"
+                  onClick={appendReviewNoteCreateEventFromForm}
+                  disabled={!selectedReviewSpan}
+                >
+                  Append create event
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-annotation-event-edit"
+                  onClick={appendAnnotationEditEvent}
+                >
+                  Append edit event
+                </button>
+                <button
+                  type="button"
+                  className={buttonClassName}
+                  data-testid="studio-collab-annotation-event-addressed"
+                  onClick={() => appendAnnotationStatusEvent("addressed", "homer")}
+                >
+                  Append addressed event
+                </button>
+                <button
+                  type="button"
+                  className={dangerButtonClassName}
+                  data-testid="studio-collab-annotation-event-archived"
+                  onClick={() => appendAnnotationStatusEvent("archived", "charlie")}
+                >
+                  Append archive event
+                </button>
+              </div>
+              <div
+                className="grid gap-2 rounded-lg border border-studio-line bg-[#0f1512] p-3"
+                data-testid="studio-collab-annotation-event-replay"
+              >
+                <p className="text-xs font-bold leading-5 text-studio-muted">
+                  Replay state: {annotationEventReplay.summary.openCount} open,{" "}
+                  {annotationEventReplay.summary.addressedCount} addressed,{" "}
+                  {annotationEventReplay.summary.archivedCount} archived.
+                  Checkpoints should reference annotation state/version later,
+                  not embed the full event log by default.
+                </p>
+                {annotationEventReplay.state.notes.length ? (
+                  annotationEventReplay.state.notes.map((note) => (
+                    <p
+                      key={note.noteId}
+                      className="text-sm font-bold leading-6 text-studio-ink"
+                    >
+                      {note.status}: {note.body}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-xs font-bold leading-5 text-studio-muted">
+                    No replayed annotation state yet. Append a create event from
+                    an existing synthetic span.
+                  </p>
+                )}
+              </div>
             </div>
             <p
               className="mt-3 text-sm font-bold text-studio-muted"

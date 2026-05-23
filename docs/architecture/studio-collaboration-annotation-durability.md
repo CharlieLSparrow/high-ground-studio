@@ -103,6 +103,13 @@ The helper creates and validates a synthetic decision record only. It adds no
 DB schema, server route, localStorage, production collaboration behavior,
 snapshot API calls, autosave, provider server, or deployment.
 
+The next pure implementation step now exists as a local lab contract:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts`
+
+That event log models review-note create/edit/status operations and replays them
+into materialized annotation state without adding persistence.
+
 ## Future Production Gates
 
 Before durable review notes can ship, Studio still needs:

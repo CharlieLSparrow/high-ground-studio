@@ -51,6 +51,15 @@ import {
   createAnnotationDurabilityDecisionRecord,
   validateAnnotationDurabilityDecisionRecord,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
+import {
+  appendAnnotationEvent,
+  createAnnotationEventLogReference,
+  createEmptyAnnotationEventLog,
+  createReviewNoteBodyEditedEvent,
+  createReviewNoteCreatedEvent,
+  createReviewNoteStatusChangedEvent,
+  replayAnnotationEventLog,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -332,6 +341,78 @@ async function runSmoke() {
         annotationDecision.recommendation.checkpointMetadataPrimaryStore,
     });
 
+    const annotationEventBody =
+      "Synthetic annotation event-log note for replay.";
+    const annotationEventEditBody =
+      "Synthetic annotation event-log note after replay edit.";
+    const annotationCreatedEvent = createReviewNoteCreatedEvent(
+      syncedSpan,
+      "charlie",
+      annotationEventBody,
+    );
+
+    if (!annotationCreatedEvent) {
+      throw new Error("Synthetic annotation create event was not created.");
+    }
+
+    let annotationEventLog = appendAnnotationEvent(
+      createEmptyAnnotationEventLog(),
+      annotationCreatedEvent,
+    );
+    const annotationEditEvent = createReviewNoteBodyEditedEvent(
+      annotationCreatedEvent.noteId,
+      "homer",
+      annotationEventEditBody,
+    );
+    const annotationAddressedEvent = createReviewNoteStatusChangedEvent(
+      annotationCreatedEvent.noteId,
+      "homer",
+      "addressed",
+    );
+
+    if (!annotationEditEvent || !annotationAddressedEvent) {
+      throw new Error("Synthetic annotation replay events were not created.");
+    }
+
+    annotationEventLog = appendAnnotationEvent(
+      appendAnnotationEvent(annotationEventLog, annotationEditEvent),
+      annotationAddressedEvent,
+    );
+
+    const annotationReplay = replayAnnotationEventLog(annotationEventLog);
+    const annotationReference =
+      createAnnotationEventLogReference(annotationEventLog);
+    const sourceTextAfterAnnotationEvents = summarizeCollaborationDocument(charlie)
+      .blocks.map((block) => block.text)
+      .join("\n");
+
+    if (!annotationReplay.ok) {
+      throw new Error(
+        `Synthetic annotation event-log replay failed: ${annotationReplay.errors.join(" ")}`,
+      );
+    }
+
+    if (annotationReplay.summary.addressedCount !== 1) {
+      throw new Error("Synthetic annotation event-log did not replay addressed state.");
+    }
+
+    if (sourceTextAfterAnnotationEvents !== sourceTextBeforeReviewNotes) {
+      throw new Error("Synthetic annotation event log mutated source text.");
+    }
+
+    if (
+      annotationReference.checkpointMetadataPrimaryStore ||
+      annotationReference.manualSnapshotEmbedsEvents
+    ) {
+      throw new Error("Annotation event-log reference crossed the snapshot boundary.");
+    }
+
+    addStep("replay synthetic annotation event log", "passed", {
+      events: annotationReplay.appliedEventCount,
+      replayedNotes: annotationReplay.summary.noteCount,
+      annotationStateVersion: annotationReference.annotationStateVersion,
+    });
+
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
     const safety = assertSyntheticCollaborationSnapshot(exportedSnapshot);
 
@@ -357,6 +438,8 @@ async function runSmoke() {
       reviewNoteBody,
       archivedReviewNoteBody,
       openReviewNoteBody,
+      annotationEventBody,
+      annotationEventEditBody,
     ]) {
       assertReviewNotesExcluded(exportedSnapshot, body);
     }
@@ -398,6 +481,8 @@ async function runSmoke() {
       reviewNoteBody,
       archivedReviewNoteBody,
       openReviewNoteBody,
+      annotationEventBody,
+      annotationEventEditBody,
     ]) {
       assertReviewNotesExcluded(checkpoint, body);
     }
@@ -455,6 +540,8 @@ async function runSmoke() {
       reviewNoteBody,
       archivedReviewNoteBody,
       openReviewNoteBody,
+      annotationEventBody,
+      annotationEventEditBody,
     ]) {
       assertReviewNotesExcluded(adapterPayload, body);
     }
@@ -546,6 +633,11 @@ async function runSmoke() {
         annotationDecision.recommendation.recommendedPrimaryStore,
       checkpointMetadataPrimaryStore:
         annotationDecision.recommendation.checkpointMetadataPrimaryStore,
+      annotationEventLogModeled: true,
+      annotationEventCount: annotationEventLog.events.length,
+      replayedAnnotationNoteCount: annotationReplay.summary.noteCount,
+      annotationEventLogReference: true,
+      annotationStateVersion: annotationReference.annotationStateVersion,
       noDbSchema: true,
       manuscriptFirstSurface: true,
       noServerWrites: true,

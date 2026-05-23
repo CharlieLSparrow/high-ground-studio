@@ -114,6 +114,12 @@ High Ground Studio is a monorepo with:
   operations plus a separate annotation store for future durable review notes.
   Checkpoint metadata is explicitly not the primary recommended store because
   manual snapshots should remain rollback anchors, not comment warehouses.
+- Studio collaboration now has a synthetic annotation event-log lab. It models
+  review-note create, edit, and status-change operations, replays them into
+  materialized annotation state, and can produce a safe future snapshot
+  reference shape. The event log is pure/local only and is excluded from
+  snapshots, checkpoints, Manuscript adapter payloads, localStorage, server
+  routes, DB/schema, and production manual snapshots.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -240,6 +246,9 @@ High Ground Studio is a monorepo with:
   and not wired to production `/manuscript`. A future production implementation
   should use annotation events plus a separate annotation store rather than
   checkpoint metadata as the primary durable comment store.
+- Studio collaboration annotation event logs are also local lab contracts only.
+  They prove operation replay and version references, but they are not persisted
+  and are not embedded in production manual snapshots.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

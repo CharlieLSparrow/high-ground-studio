@@ -86,6 +86,7 @@ Commands:
 - `pnpm studio:collab:presence:test`
 - `pnpm studio:collab:review:test`
 - `pnpm studio:collab:annotation:test`
+- `pnpm studio:collab:annotation-log:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -239,6 +240,25 @@ This sprint adds no persistence. Review notes remain React-state-only in the
 lab, production `/manuscript` save/load is untouched, and manual snapshots
 remain separate rollback anchors.
 
+## Annotation Event Log Lab
+
+The collaboration lab also has a synthetic-only annotation event-log contract:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts`
+
+Event log version:
+
+- `studio-collaboration-annotation-event-log-v1`
+
+It models review-note create, edit, and status-change operations, then replays
+them into materialized review-note state. Partial replay acts as a local proof
+that future annotation versions can be referenced without embedding full comment
+history in manual snapshots.
+
+The event log is not persistence. It is excluded from collaboration snapshots,
+checkpoints, Manuscript adapter payloads, localStorage, server routes, and
+production manual snapshots.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -255,6 +275,7 @@ remain separate rollback anchors.
 - no durable presence storage
 - no durable review-note storage
 - no annotation persistence
+- no annotation event persistence
 
 ## Rough 20-Sprint Path
 
