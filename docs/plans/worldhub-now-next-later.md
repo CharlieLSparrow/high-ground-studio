@@ -22,6 +22,7 @@ Create the architecture foundation and first safe seams.
 Current foundation docs:
 
 - `docs/architecture/worldhub-foundation.md`
+- `docs/architecture/worldhub-current-workflow-map.md`
 - `docs/plans/worldhub-now-next-later.md`
 - `docs/agents/worldhub-codex-brief.md`
 - `docs/architecture/platform-service-boundaries.md`
@@ -40,6 +41,8 @@ behavior.
   - `Membership` -> EntitlementGrant candidate
   - `CoachingRequest` -> coaching intake workflow input
   - `Appointment` -> CoachingSession candidate
+- Build a read-only WorldHub summary of current workflows before changing
+  current writes or Prisma models.
 - Identify package seams before Prisma seams, starting with
   `packages/worldhub-domain`.
 - Define provider adapter interfaces without installing provider SDKs.

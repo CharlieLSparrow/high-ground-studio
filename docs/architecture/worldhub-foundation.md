@@ -115,6 +115,11 @@ The first implementation seam is the pure domain package scaffold at
 `packages/worldhub-domain`. It should stay provider-neutral and dependency-light
 until the domain model earns database and runtime behavior.
 
+The current `apps/web` coaching, membership, and appointment workflows are
+mapped to these nouns in
+`docs/architecture/worldhub-current-workflow-map.md`. Treat that map as a
+read-only bridge before proposing Prisma changes or workflow migration.
+
 ## Future Extractable Service Boundaries
 
 These boundaries may eventually earn separate runtime identities. They should
