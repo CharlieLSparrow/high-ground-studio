@@ -61,6 +61,8 @@ Verified after `git fetch --all --prune` on 2026-05-23.
 - owns for this slice:
   - `apps/studio/src/app/content-studio/*`
   - `apps/studio/src/app/studio-nav.tsx`
+  - `scripts/studio-cloud-run-deploy.mjs`
+  - `cloudbuild.studio.deploy.yaml`
   - Content Studio docs under `docs/architecture`, `docs/plans`, and
     `docs/project-context`
 - goal:
@@ -73,6 +75,10 @@ Verified after `git fetch --all --prune` on 2026-05-23.
   - no public publishing
   - no real manuscript/content material
   - local-first is a first slice, not a promise to avoid DB/API/service work
+- deploy posture:
+  - deploy coherent Studio slices to the existing private Cloud Run service
+    after validation
+  - record live URL, smoke result, and rollback command in the progress thread
 
 ### Manuscript Collaboration
 

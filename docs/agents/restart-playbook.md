@@ -33,6 +33,8 @@ Then run:
 Report current branch, dirty files, pushed branches, and the next safest action.
 Keep coordination lightweight. If DB/API/deploy/service work is the right move,
 ask for that approval directly and keep moving.
+Prefer live Google Cloud deploys for coherent Studio slices when validation
+passes and rollback is known.
 ```
 
 ## Single Progress Thread
@@ -211,6 +213,7 @@ Next useful work:
 - add focused model tests
 - decide whether the first shared persistence step should be Prisma, API, or a
   small service
+- deploy with pnpm studio:cloudrun:deploy after validation and gcloud auth
 
 Append progress to docs/coordination/progress-thread.md.
 ```

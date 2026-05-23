@@ -28,3 +28,7 @@ checks, blockers, and next handoff.
   one-minute captain prompt, one progress thread, and worker packets for
   Manuscript Collaboration, WorldHub Integration, Studio Cut, and Content
   Studio.
+- Chuck updated deployment posture: prefer live Google Cloud deploys over local
+  only, with fast approval and rollback. Added one-command Studio Cloud Run
+  deploy helper and Cloud Build deploy config; live deploy is waiting on gcloud
+  reauthentication.

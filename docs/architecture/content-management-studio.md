@@ -62,6 +62,19 @@ This slice does not:
 Browser-local state is a fast first slice. It is not a strategic refusal to use
 databases, APIs, services, or deployable boundaries.
 
+## Live Deployment Posture
+
+Content Studio should be deployed to the private Studio Cloud Run service as
+soon as each coherent slice is validated. The expected path is:
+
+```bash
+pnpm studio:cloudrun:deploy
+```
+
+The service remains private behind Google auth and the Studio allowlist. The
+route can be live while still browser-local because the only customer right now
+is the operator and the rollback path is fast.
+
 ## When To Add Persistence
 
 Move beyond browser-local state when one of these becomes true:

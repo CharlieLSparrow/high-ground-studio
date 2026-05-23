@@ -9,6 +9,8 @@ Date: 2026-05-23
 - Make podcast, book, and episode-page projects the primary defaults.
 - Keep monetization and coaching visible as secondary follow-through lanes.
 - Export a JSON handoff packet with safety flags.
+- Deploy coherent Studio slices to the existing private Cloud Run service when
+  validation passes and gcloud credentials are available.
 - Keep coordination lightweight through:
   - `docs/coordination/agent-board.md`
   - `docs/coordination/progress-thread.md`
@@ -25,6 +27,8 @@ Date: 2026-05-23
   and coaching concepts.
 - Add focused tests for packet creation, safety flags, and export/import.
 - Add a Studio browser smoke for `/content-studio`.
+- Add an automatic Cloud Build trigger after the current one-command deploy path
+  proves stable.
 
 ## Later
 
