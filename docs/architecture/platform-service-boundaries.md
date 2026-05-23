@@ -53,6 +53,12 @@ Studio should own private drafts, source trails, semantic tags, structures,
 research notes, agent context, and future private knowledge graph operations.
 It should not become the public website.
 
+The broader Content Management Studio direction extends this private Studio
+boundary into book writing, speech writing, podcast/video planning, publishing
+handoff, content schedules, analytics/SEO review, marketing planning, and
+Quipsly-assisted research. See
+`docs/architecture/content-management-studio.md`.
+
 ### `apps/web`
 
 Public and operations-facing app.

@@ -87,6 +87,13 @@ High Ground Studio is a monorepo with:
   reviews, then converts back into a collaboration checkpoint/client. It is not
   a production Manuscript Desk import, does not call snapshot APIs, does not
   write localStorage, does not autosave, and does not touch manual snapshots.
+- Studio has a private `/content-studio` command surface for the broader
+  Content Management Studio direction. It maps the research -> structure ->
+  produce -> publish -> learn spine across books, speeches, podcast/video,
+  travel video, social scheduling, analytics/SEO, marketing, Quipsly-assisted
+  research, and WorldHub follow-through. It is static planning state only: no
+  Prisma writes, provider calls, publishing actions, payment behavior, social
+  credentials, or public manuscript exposure.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.

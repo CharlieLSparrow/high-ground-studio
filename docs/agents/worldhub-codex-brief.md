@@ -39,7 +39,9 @@ smallest safe next action instead of inventing a new path.
 - `codex/worldhub-*` branches are task branches for narrow slices.
 - Start each task by confirming the current branch and working tree state.
 - Keep task branches small enough to review against `project/worldhub`.
-- Do not commit, push, or open a PR unless the operator explicitly asks.
+- Chuck has approved autonomous commit, push, and safe deploy for coherent,
+  verified, documented slices. Follow
+  `docs/agents/autonomous-codex-operating-mode.md` for the safety stops.
 
 ## Required Files To Read
 

@@ -7,6 +7,7 @@ Read in this order:
 - `docs/project-context/current-state.md`
 - `docs/architecture/system-overview.md`
 - `docs/runbooks/local-dev.md`
+- `docs/agents/autonomous-codex-operating-mode.md`
 - the most recent relevant file in `docs/sessions/`
 
 ## Current Repo Truths
@@ -25,6 +26,9 @@ Read in this order:
 - The episodes route is stabilized with a guarded loader, not a final content architecture.
 - Both current production build paths pass.
 - The content tree is much larger than the current published surface.
+- Codex has approval to commit, push, and deploy independently when a coherent
+  slice is verified, documented, and has a known rollback path. See
+  `docs/agents/autonomous-codex-operating-mode.md` for the safety stops.
 
 ## Files Future Agents Will Commonly Need
 

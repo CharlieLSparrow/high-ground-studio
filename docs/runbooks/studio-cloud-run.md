@@ -29,6 +29,8 @@ Studio routes remain private:
 - `/` - Tagging Desk
 - `/write` - Writing Desk
 - `/structure` - Structure Mode
+- `/content-studio` - Content Management Studio command surface
+- `/manuscript` - Manuscript Desk
 
 The health route is intentionally public and non-sensitive:
 
@@ -46,12 +48,15 @@ Expected response:
 }
 ```
 
-Only `/structure` is useful without database persistence because it stores its
-draft in browser `localStorage` under:
+`/structure` is useful without database persistence because it stores its draft
+in browser `localStorage` under:
 
 ```text
 high-ground-studio.structure-mode.v1
 ```
+
+`/content-studio` is a static internal planning surface. It does not write
+data, call providers, publish content, or expose private manuscript material.
 
 `/manuscript` is also live and useful through browser-local persistence under:
 
