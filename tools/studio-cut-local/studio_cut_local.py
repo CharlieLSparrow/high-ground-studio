@@ -1940,9 +1940,53 @@ def build_rescue_sync_status_report(session: dict[str, Any]) -> dict[str, Any]:
         ]
     )
 
+    if report["readiness"]["publishReady"]:
+        report["publishPackage"] = build_rescue_sync_publish_package_status(
+            report, session
+        )
+
     report["nextActions"] = build_rescue_sync_next_actions(report, session)
     report["status"] = "ready" if report["readiness"]["renderReady"] else "blocked"
     return report
+
+
+def build_rescue_sync_publish_package_status(
+    report: dict[str, Any], session: dict[str, Any]
+) -> dict[str, Any]:
+    sync_report_exists = bool(report["files"]["syncReport"]["exists"])
+
+    return {
+        "studioCutUrl": "https://high-ground-odyssey.web.app",
+        "shareUrl": (
+            "https://high-ground-odyssey.web.app/"
+            f"?projectId={session['episodeId']}&branchId={session['branchId']}"
+        ),
+        "files": {
+            "manifest": str(session["manifestPath"]),
+            "sourceMonitorProxy": str(session["sourceMonitorProxyPath"]),
+            "syncMap": str(session["syncMapPath"]),
+            **(
+                {"syncReport": str(session["syncReportPath"])}
+                if sync_report_exists
+                else {}
+            ),
+        },
+        "expectedSyncReview": {
+            "syncMapAttached": True,
+            "syncReportAttached": sync_report_exists,
+            "referencePieces": (
+                report.get("syncReport", {}).get("referenceRailSegments")
+                or report.get("syncMap", {}).get("referenceRailSegments")
+            ),
+            "trackOffsets": report.get("syncReport", {}).get("trackOffsetCount"),
+        },
+        "postPublishCheck": (
+            "After publishing, Shared Room Diagnostics should show the proxy, "
+            "manifest, Sync Map, and optional sync report attached. Sync Review "
+            "should load the Sync Map job id, canonical duration, reference pieces, "
+            "offset count, confidence, and warning count."
+        ),
+    }
 
 
 def add_sync_job_status(report: dict[str, Any], sync_job_path: Path) -> None:
@@ -2043,6 +2087,7 @@ def add_sync_map_status(report: dict[str, Any], sync_map_path: Path) -> None:
         "branchId": sync_map["branchId"],
         "durationMs": sync_map["canonicalTimeline"]["durationMs"],
         "assetCount": len(sync_map["assets"]),
+        "referenceRailSegments": len(sync_map["referenceRail"]["segments"]),
         "roles": sorted(
             {
                 str(asset.get("role"))
@@ -2205,6 +2250,7 @@ def build_rescue_sync_next_actions(
     if not report["readiness"]["editDecisionsReady"]:
         return [
             "Publish the generated package in Studio Cut using Publish Rescue Sync Package.",
+            "After publish, confirm Shared Room Diagnostics and Sync Review both show attached generated package metadata.",
             "Edit the shared room, then export decisions into the edit/ folder.",
         ]
 
@@ -2284,6 +2330,23 @@ def print_rescue_sync_status_report(report: dict[str, Any], *, json_mode: bool) 
                 "  resolution: "
                 f"{proxy['resolution']['width']}x{proxy['resolution']['height']}"
             )
+
+    if report.get("publishPackage"):
+        publish_package = report["publishPackage"]
+        print("\nPublish package:")
+        print(f"  Studio Cut: {publish_package['studioCutUrl']}")
+        print(f"  Room link: {publish_package['shareUrl']}")
+        print("  Select these files in Publish Rescue Sync Package:")
+        for label, path_value in publish_package["files"].items():
+            print(f"    - {label}: {path_value}")
+        expected = publish_package["expectedSyncReview"]
+        print("  Sync Review should show:")
+        print(f"    - Sync Map attached: {yes_no(expected['syncMapAttached'])}")
+        print(f"    - Sync report attached: {yes_no(expected['syncReportAttached'])}")
+        if expected.get("referencePieces") is not None:
+            print(f"    - Reference pieces: {expected['referencePieces']}")
+        if expected.get("trackOffsets") is not None:
+            print(f"    - Track offsets: {expected['trackOffsets']}")
 
     if report.get("decisions"):
         decisions = report["decisions"]
