@@ -917,6 +917,17 @@ Run the synthetic local worker canary:
 pnpm studio-cut:cloud-sync-smoke
 ```
 
+Generate a synthetic publish package for the deployed UI:
+
+```bash
+pnpm studio-cut:rescue-sync-package
+```
+
+It writes ignored files under
+`tools/studio-cut-local/output/rescue-sync-publish-package/`, including a README
+with the exact `Publish Rescue Sync Package` rehearsal. Use it to test shared
+room publishing without private media.
+
 The actual Cloud Run sync worker remains scaffold only. FFT/refined drift
 analysis and production-grade labels/proxy quality are not implemented yet. Sync
 Map, proxy package, and manifest generation are local-worker outputs now; the

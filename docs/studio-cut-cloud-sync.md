@@ -277,6 +277,21 @@ Original full-resolution files are not uploaded by this publish flow.
 Mako opens the room URL, signs in, and edits the shared proxy room. JSON
 import/export remains backup and recovery.
 
+To generate a safe synthetic package for testing the live publish UI:
+
+```bash
+pnpm studio-cut:rescue-sync-package
+```
+
+That writes an ignored package under:
+
+```text
+tools/studio-cut-local/output/rescue-sync-publish-package/
+```
+
+Use those generated files in `Publish Rescue Sync Package` to test Firebase
+room publishing without private footage or real episode metadata.
+
 Run the synthetic local-media canary:
 
 ```bash

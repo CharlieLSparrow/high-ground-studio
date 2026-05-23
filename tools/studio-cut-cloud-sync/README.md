@@ -153,5 +153,22 @@ room proxy path and the manifest/Sync Map/report under
 `studioCutSyncJobs/{syncJobId}/outputs/{fileName}`. It does not upload original
 full-resolution assets or local filesystem paths.
 
+Generate a safe package for testing that UI path:
+
+```bash
+pnpm studio-cut:rescue-sync-package
+```
+
+The command writes synthetic-only files under the ignored directory:
+
+```text
+tools/studio-cut-local/output/rescue-sync-publish-package/
+```
+
+Open the generated `README.md` in that directory for the exact live-app publish
+test. The package includes a manifest, source-monitor proxy MP4, Sync Map, sync
+report, sync job JSON, and package summary. None of those files should be
+committed.
+
 Keep real episode assets, generated proxies, private paths, and credentials out
 of git.

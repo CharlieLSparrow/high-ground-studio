@@ -160,6 +160,18 @@ Publishing flow:
 Mako opens the link, signs in, and edits against the shared proxy room. Mako
 does not import JSON, load local media, or touch sync files in the primary path.
 
+Before using real footage, generate a synthetic package and publish it through
+the live UI:
+
+```bash
+pnpm studio-cut:rescue-sync-package
+```
+
+The command writes synthetic files and a local README under
+`tools/studio-cut-local/output/rescue-sync-publish-package/`. Use those files in
+`Publish Rescue Sync Package` to validate the room metadata, Storage upload,
+Sync Map attachment, and shared proxy load path without private media.
+
 ## Current Implementation
 
 Implemented now:

@@ -149,6 +149,17 @@ To publish the generated package:
 Mako opens the room link and edits live. Mako does not import JSON, load local
 media, or touch sync files in the primary path.
 
+Safe live-app publish rehearsal:
+
+```bash
+pnpm studio-cut:rescue-sync-package
+```
+
+This creates a synthetic-only package at
+`tools/studio-cut-local/output/rescue-sync-publish-package/` with a README. Use
+that package in the deployed app before putting real Episode 4 artifacts through
+the same flow.
+
 Create bootstrap files after calculating the real duration in milliseconds:
 
 ```bash

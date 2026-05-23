@@ -206,6 +206,16 @@ source-monitor proxy MP4, Sync Map JSON, and optional sync report JSON. Studio
 Cut uploads only those generated artifacts, attaches the Sync Map/report storage
 paths to room metadata, and creates the same room link for Mako.
 
+Rehearse that flow with synthetic files first:
+
+```bash
+pnpm studio-cut:rescue-sync-package
+```
+
+The command writes a safe generated package to
+`tools/studio-cut-local/output/rescue-sync-publish-package/`. Follow its README
+in the deployed app before uploading real Episode 4 generated artifacts.
+
 Before trusting private collaboration data in the shared room, confirm that
 Firestore and Storage rules have been emulator-tested and deployed. JSON
 checkpoints remain the recovery path.
