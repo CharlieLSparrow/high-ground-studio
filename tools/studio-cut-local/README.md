@@ -265,8 +265,11 @@ canonical episode timeline time, translates each active span through the Sync
 Map into asset-local time, applies the rough `youtube_16x9` layouts, and skips
 `Cut` spans. It does not mutate source files. If a mapped asset is not visible
 for part of a requested span, the first renderer pads that role with black
-inside the segment. `audio.program`, when supplied, is currently expected to be
-canonical-timeline aligned; otherwise the renderer writes silent audio.
+inside the segment. `audio.program`, when supplied, is expected to be
+canonical-timeline aligned. If `audio.program` is absent, the renderer now looks
+for `homerAudio` and `charlieAudio` assets in the Sync Map and mixes any mapped
+clean-audio files from `inputs.{inputId}`. If neither program audio nor mapped
+clean audio exists, it writes silent audio.
 
 Run the agentic end-to-end smoke test:
 

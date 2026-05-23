@@ -164,8 +164,10 @@ The local media map points at original or higher-quality local files by Sync Map
 `inputId`. It should stay untracked because it can contain private machine
 paths. The renderer translates each active semantic decision span from
 canonical episode time into asset-local time, pads missing role coverage with
-black, skips `Cut`, and writes a rough 16:9 output. Final quality, drift-aware
-rendering, and profile polish remain future work.
+black, skips `Cut`, and writes a rough 16:9 output. If `audio.program` is not
+provided, it can now mix mapped `homerAudio` and `charlieAudio` Sync Map assets
+from the same local media map. Final quality, drift-aware rendering, and profile
+polish remain future work.
 
 ## Generated Proxy Package
 

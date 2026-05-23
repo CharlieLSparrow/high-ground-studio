@@ -393,7 +393,11 @@ requires every video file to start at sequence time `00:00:00`. It reads
 each local asset at the correct asset-local time for the current canonical
 episode span. If a source is missing for part of a span, v0 pads that role with
 black rather than mutating or stretching source media. `audio.program`, when
-provided, is still expected to already be canonical-timeline aligned.
+provided, is still expected to already be canonical-timeline aligned. If no
+program audio is supplied, the Sync Map renderer looks for `homerAudio` and
+`charlieAudio` assets in the Sync Map and mixes any mapped clean-audio files
+from `inputs.{inputId}` in the local media map. If neither program audio nor
+mapped clean audio exists, it writes silent audio and warns.
 
 This renderer intentionally does not parse Premiere XML/EDL yet. Premiere owns
 timeline alignment for now by exporting local media files that share sequence

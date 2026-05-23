@@ -1062,6 +1062,8 @@ def build_agent_smoke_sync_map(*, manifest_id: str, duration_ms: int) -> dict[st
         ("agent-smoke-homer-video", "homerVideo", "homer.synthetic.mp4", 1000),
         ("agent-smoke-charlie-video", "charlieVideo", "charlie.synthetic.mp4", 0),
         ("agent-smoke-clip-video", "clipVideo", "clip.synthetic.mp4", 500),
+        ("agent-smoke-homer-audio", "homerAudio", "homer.synthetic.wav", 0),
+        ("agent-smoke-charlie-audio", "charlieAudio", "charlie.synthetic.wav", 0),
     ]
 
     return {
@@ -1126,8 +1128,10 @@ def build_agent_smoke_sync_map_media_map(
             "agent-smoke-homer-video": str(media_paths["homer"]),
             "agent-smoke-charlie-video": str(media_paths["charlie"]),
             "agent-smoke-clip-video": str(media_paths["clip"]),
+            "agent-smoke-homer-audio": str(media_paths["programAudio"]),
+            "agent-smoke-charlie-audio": str(media_paths["programAudio"]),
         },
-        "audio": {"program": str(media_paths["programAudio"])},
+        "audio": {},
     }
 
 
@@ -2781,7 +2785,7 @@ def run_render_from_sync_map(args: argparse.Namespace) -> int:
         resolved_media=resolved_media,
     )
 
-    if not media_map["audio"].get("program"):
+    if not media_map["audio"].get("program") and not resolved_media.get("__audio_assets__"):
         print(
             "\nwarning: media map has no audio.program file; Sync Map renderer will use silent audio.",
             file=sys.stderr,
@@ -4646,6 +4650,34 @@ def build_sync_map_render_media(
             raise StudioCutCliError(f"program audio file not found: {audio_path}")
         if not require_existing and not audio_path.is_file():
             print(f"warning: dry-run program audio path does not exist: {audio_path}", file=sys.stderr)
+    else:
+        clean_audio_assets = []
+        for role_name in ("homerAudio", "charlieAudio"):
+            asset = find_sync_map_asset_for_input_role(sync_map, role_name)
+            if not asset:
+                continue
+
+            raw_path = media_map.get("inputs", {}).get(str(asset.get("inputId") or ""))
+            if not raw_path:
+                continue
+
+            audio_path = resolve_media_path(str(raw_path), media_map_path)
+            if require_existing and not audio_path.is_file():
+                raise StudioCutCliError(
+                    f"Sync Map render clean audio file not found: {audio_path}"
+                )
+            if not require_existing and not audio_path.is_file():
+                print(
+                    f"warning: dry-run clean audio path does not exist: {audio_path}",
+                    file=sys.stderr,
+                )
+
+            clean_audio_assets.append(
+                {"role": role_name, "asset": asset, "path": audio_path}
+            )
+
+        if clean_audio_assets:
+            resolved["__audio_assets__"] = clean_audio_assets
 
     return resolved
 
@@ -4662,6 +4694,12 @@ def find_sync_map_asset_for_video_role(
     if not role_name:
         return None
 
+    return find_sync_map_asset_for_input_role(sync_map, role_name)
+
+
+def find_sync_map_asset_for_input_role(
+    sync_map: dict[str, Any], role_name: str
+) -> dict[str, Any] | None:
     candidates = [
         asset
         for asset in sync_map.get("assets", [])
@@ -4725,6 +4763,14 @@ def print_sync_map_render_summary(
     if media_map["audio"].get("program"):
         print(f"Audio program: {resolve_media_path(media_map['audio']['program'], media_map_path)}")
         print("Audio note: program audio is treated as canonical-timeline aligned.")
+    elif resolved_media.get("__audio_assets__"):
+        print("Audio program: none; renderer will mix Sync Map clean audio assets.")
+        for audio_entry in resolved_media["__audio_assets__"]:
+            asset = audio_entry["asset"]
+            print(
+                f"  {audio_entry['role']}: {audio_entry['path']} "
+                f"(inputId={asset['inputId']}, timelineStart={format_time_ms(asset['timelineStartMs'])})"
+            )
     else:
         print("Audio program: none; renderer will use silent audio")
 
@@ -4845,11 +4891,11 @@ def build_sync_map_youtube_16x9_segment_command(
             )
         )
 
-    audio_input_index = len(video_roles)
     program_audio = media_map["audio"].get("program")
     start_seconds = float(segment["startSourceTimeMs"]) / 1000
 
     if program_audio:
+        audio_input_index = len(video_roles)
         command.extend(
             [
                 "-ss",
@@ -4861,7 +4907,40 @@ def build_sync_map_youtube_16x9_segment_command(
             ]
         )
         audio_filter = f"[{audio_input_index}:a]aresample=48000,asetpts=PTS-STARTPTS[aout]"
+    elif resolved_media.get("__audio_assets__"):
+        audio_filters = []
+        audio_labels = []
+
+        for audio_index, audio_entry in enumerate(resolved_media["__audio_assets__"]):
+            input_index = len(video_roles) + audio_index
+            command.extend(["-i", str(audio_entry["path"])])
+            label = f"clean{audio_index}"
+            audio_labels.append(label)
+            audio_filters.append(
+                build_sync_map_clean_audio_filter(
+                    input_index=input_index,
+                    output_label=label,
+                    segment=segment,
+                    asset=audio_entry["asset"],
+                )
+            )
+
+        if len(audio_labels) == 1:
+            mix_filter = (
+                f"[{audio_labels[0]}]apad,atrim=0:{format_seconds(duration_seconds)},"
+                "asetpts=PTS-STARTPTS[aout]"
+            )
+        else:
+            mix_filter = (
+                "".join(f"[{label}]" for label in audio_labels)
+                + f"amix=inputs={len(audio_labels)}:duration=longest:normalize=0,"
+                + f"apad,atrim=0:{format_seconds(duration_seconds)},"
+                + "asetpts=PTS-STARTPTS[aout]"
+            )
+
+        audio_filter = ";".join([*audio_filters, mix_filter])
     else:
+        audio_input_index = len(video_roles)
         command.extend(
             [
                 "-f",
@@ -4949,6 +5028,45 @@ def build_sync_map_role_video_filter(
         f"stop_duration={format_seconds(trailing_ms / 1000)}:color=black,"
         f"trim=duration={format_seconds(segment_duration_ms / 1000)},"
         f"setpts=PTS-STARTPTS,format=yuv420p[{output_label}]"
+    )
+
+
+def build_sync_map_clean_audio_filter(
+    *,
+    input_index: int,
+    output_label: str,
+    segment: dict[str, Any],
+    asset: dict[str, Any],
+) -> str:
+    segment_start_ms = int(segment["startSourceTimeMs"])
+    segment_end_ms = int(segment["endSourceTimeMs"])
+    segment_duration_ms = int(segment["durationMs"])
+    timeline_start_ms = int(round(float(asset["timelineStartMs"])))
+    asset_start_ms = int(round(float(asset["assetStartMs"])))
+    asset_duration_ms = int(round(float(asset["durationMs"])))
+    asset_timeline_end_ms = timeline_start_ms + asset_duration_ms
+    audible_start_ms = max(segment_start_ms, timeline_start_ms)
+    audible_end_ms = min(segment_end_ms, asset_timeline_end_ms)
+
+    if audible_end_ms <= audible_start_ms:
+        return (
+            "anullsrc=channel_layout=stereo:sample_rate=48000,"
+            f"atrim=0:{format_seconds(segment_duration_ms / 1000)},"
+            f"asetpts=PTS-STARTPTS[{output_label}]"
+        )
+
+    audible_duration_ms = audible_end_ms - audible_start_ms
+    source_start_ms = asset_start_ms + (audible_start_ms - timeline_start_ms)
+    leading_ms = audible_start_ms - segment_start_ms
+
+    return (
+        f"[{input_index}:a]"
+        f"atrim=start={format_seconds(source_start_ms / 1000)}:"
+        f"duration={format_seconds(audible_duration_ms / 1000)},"
+        "asetpts=PTS-STARTPTS,aresample=48000,"
+        f"adelay={leading_ms}|{leading_ms},"
+        f"apad,atrim=0:{format_seconds(segment_duration_ms / 1000)},"
+        f"asetpts=PTS-STARTPTS[{output_label}]"
     )
 
 
