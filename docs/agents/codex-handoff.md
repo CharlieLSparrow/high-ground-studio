@@ -7,6 +7,7 @@ Read in this order:
 - `docs/project-context/current-state.md`
 - `docs/architecture/system-overview.md`
 - `docs/runbooks/local-dev.md`
+- `docs/agents/codex-continuity.md`
 - `docs/agents/autonomous-codex-operating-mode.md`
 - `docs/agents/multi-agent-collaboration.md`
 - `docs/coordination/agent-board.md`

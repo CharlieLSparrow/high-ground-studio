@@ -45,6 +45,8 @@ checks, blockers, and next handoff.
 - Worktree check: `project/worldhub` and `codex/worldhub-001-foundation` are
   clean; Studio Cut has a dirty local edit in
   `tools/studio-cut-local/studio_cut_local.py`, so treat that lane as occupied.
+- Added `docs/agents/codex-continuity.md` as a durable north-star and handoff
+  note before closing this terminal.
 
 ### Codex / project/worldhub
 
@@ -80,3 +82,13 @@ checks, blockers, and next handoff.
 - Smokes passed: `/api/health` and `/content-studio`.
 - Rollback: `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00024-rr5=100`.
 - Deployment changed Studio runtime only; no DB/schema, provider, DNS, OAuth, IAM, billing, or secret mutation was performed.
+
+### Codex / closed-agent handoff sync
+
+- Chuck closed all terminals except the video/Studio Cut agent.
+- The closed Content Studio terminal pushed docs-only continuity commit `bfa9dc0`
+  to `codex/content-studio-command-001` after PR #4 had already merged.
+- Cherry-picked the continuity note into `main` instead of merging the stale
+  feature branch.
+- Preserved current `main` deploy history and added `docs/agents/codex-continuity.md`
+  to the first-five-minutes handoff list.

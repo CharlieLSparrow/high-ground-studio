@@ -23,15 +23,16 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after PR #4 merge and Studio Cloud Run deploy on 2026-05-23.
+Verified after PR #4 merge, Studio Cloud Run deploy, and closed-agent handoff
+sync on 2026-05-23.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | `c32adb2` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live Studio runtime | PR #4 merged and deployed to Studio Cloud Run revision `studio-00025-shp`. Do not do feature work directly on `main`. |
+| `main` | current `main` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live Studio runtime | PR #4 merged and deployed to Studio Cloud Run revision `studio-00025-shp`; docs-only continuity handoff is being synced from the closed Content Studio branch. Do not do feature work directly on `main`. |
 | `project/worldhub` | `32a6179` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Merged to `main` by PR #4; keep as integration reference until next cycle. |
-| `codex/content-studio-command-001` | `e13e33f` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded. |
-| `codex/worldhub-001-foundation` | `ee26a41` | `/Users/wall-e/Dev/hgs-worldhub-codex` | WorldHub / monetization foundation | Included in PR #4. Safe to close its terminal if clean. |
-| `codex/studio-cut-001-web-shell` | `46031ff` plus local edits | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Active dirty lane; do not touch without handoff. |
+| `codex/content-studio-command-001` | `bfa9dc0` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded; final continuity note is being cherry-picked to `main`. |
+| `codex/worldhub-001-foundation` | `ee26a41` | no active terminal | WorldHub / monetization foundation | Included in PR #4. Terminal can remain closed. |
+| `codex/studio-cut-001-web-shell` | `46031ff` | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Only remaining active outside agent. Coordinate before touching video/media files. |
 
 ## Active Lanes
 
@@ -121,7 +122,7 @@ Verified after PR #4 merge and Studio Cloud Run deploy on 2026-05-23.
   - Studio Cut docs
 - current status:
   - pushed at `46031ff`
-  - local worktree has dirty edits in Studio Cut docs and `tools/studio-cut-local/studio_cut_local.py`
+  - user reports this is the only remaining active outside agent terminal
 - no-touch without handoff:
   - main `apps/studio` routes
   - WorldHub provider/domain packages
