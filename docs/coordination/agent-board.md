@@ -15,6 +15,12 @@ For a single readable progress stream, append updates to:
 docs/coordination/progress-thread.md
 ```
 
+For reboot/crash recovery and copy/paste worker packets, use:
+
+```text
+docs/agents/restart-playbook.md
+```
+
 ## Current Snapshot
 
 Verified after `git fetch --all --prune` on 2026-05-23.

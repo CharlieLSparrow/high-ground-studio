@@ -24,3 +24,7 @@ checks, blockers, and next handoff.
 - Validation so far: `pnpm --filter studio typecheck` passed; sandboxed
   `pnpm --filter studio build` hit the known Turbopack port-bind restriction,
   rerun outside the sandbox and passed; `git diff --check` passed.
+- Added `docs/agents/restart-playbook.md` so reboot/crash recovery has a
+  one-minute captain prompt, one progress thread, and worker packets for
+  Manuscript Collaboration, WorldHub Integration, Studio Cut, and Content
+  Studio.
