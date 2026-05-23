@@ -69,9 +69,21 @@ Expected health response:
   - read-only repository and local operator preflight
   - does not deploy, create resources, mutate IAM, mutate secrets, or touch
     databases
+- `scripts/web-cloud-run-seed-secrets-from-env.mjs`
+  - adds web Secret Manager versions from local env files without printing
+    secret values
+  - skips secrets that already have enabled versions unless
+    `FORCE_WEB_SECRET_VERSION=1` is set
+- `scripts/web-cloud-run-deploy.mjs`
+  - builds the web image with Cloud Build
+  - deploys the image to Cloud Run
+  - refuses first-service creation unless `WEB_CLOUD_RUN_CREATE_SERVICE=1` is
+    explicitly set
+  - runs smoke checks for `/api/health`, `/`, and unauthenticated
+    `/team/progress` sign-in redirect
 - `scripts/web-cloud-run-readiness.test.mjs`
   - tests health response shape, Dockerfile expectations, standalone config,
-    Cloud Build config, and preflight read-only behavior
+    Cloud Build config, deploy-helper wiring, and preflight read-only behavior
 - `.dockerignore`
   - keeps env files, dependencies, build artifacts, logs, and raw
     staging/inbox source material out of the Docker context
@@ -153,6 +165,32 @@ Cloud Build config, preflight script, or runbook:
 
 ```bash
 pnpm web:cloudrun:test
+```
+
+If the expected web secrets exist but do not have enabled versions yet, seed
+them from local env files:
+
+```bash
+pnpm web:cloudrun:seed-secrets
+```
+
+The helper reads `.env` and `apps/web/.env.local` by default. It maps:
+
+| Env value | Secret |
+| --- | --- |
+| `DATABASE_URL` | `web-database-url` |
+| `AUTH_SECRET` | `web-auth-secret` |
+| `GOOGLE_CLIENT_ID` | `web-google-client-id` |
+| `GOOGLE_CLIENT_SECRET` | `web-google-client-secret` |
+| `HGO_OWNER_EMAILS` | `web-owner-emails` |
+| `HGO_TEAM_SCHEDULER_EMAILS` | `web-team-scheduler-emails` |
+| `HGO_COACH_EMAILS` | `web-coach-emails` |
+
+It does not print secret values. To intentionally add fresh versions even when
+enabled versions already exist:
+
+```bash
+FORCE_WEB_SECRET_VERSION=1 pnpm web:cloudrun:seed-secrets
 ```
 
 Set project and region manually:
@@ -252,7 +290,64 @@ gcloud builds submit \
 
 This builds and pushes an image. It does not deploy the image.
 
-## Deploy Command
+## Deploy Helper
+
+After the `web` Cloud Run service exists, deploy a new image with:
+
+```bash
+pnpm web:cloudrun:deploy
+```
+
+The helper:
+
+1. Requires a clean working tree unless `ALLOW_DIRTY_DEPLOY=1` is set.
+2. Runs `pnpm web:cloudrun:test`.
+3. Runs the explicit webpack production build with a local build-time
+   `DATABASE_URL`.
+4. Runs Cloud Build using `cloudbuild.web.yaml`.
+5. Deploys the image to the existing `web` Cloud Run service.
+6. Smoke checks `/api/health`, `/`, and `/team/progress`.
+7. Prints a rollback command when a previous ready revision exists.
+
+Override knobs:
+
+```bash
+WEB_CLOUD_RUN_PROJECT=high-ground-odyssey
+WEB_CLOUD_RUN_REGION=us-central1
+WEB_CLOUD_RUN_SERVICE=web
+WEB_ARTIFACT_REPOSITORY=high-ground-studio
+WEB_IMAGE_NAME=web
+WEB_IMAGE_TAG=$(git rev-parse --short HEAD)
+WEB_LOCAL_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio
+pnpm web:cloudrun:deploy
+```
+
+## First Service Deploy
+
+The first deploy creates the `web` service and attaches the required runtime
+configuration. Only run this after the runtime service account, Secret Manager
+versions, Cloud SQL attachment, and OAuth callback plan are understood.
+
+```bash
+WEB_CLOUD_RUN_CREATE_SERVICE=1 pnpm web:cloudrun:deploy
+```
+
+By default the helper uses:
+
+- service: `web`
+- service account: `web-cloud-run@PROJECT_ID.iam.gserviceaccount.com`
+- Cloud SQL instance: `PROJECT_ID:us-central1:studio-postgres`
+- secret bindings from the web Secret Manager names listed above
+- `AUTH_TRUST_HOST=true`
+- `HGO_SITE_URL=https://highgroundodyssey.com` on first deploy, unless
+  `WEB_HGO_SITE_URL` is set
+
+If `WEB_AUTH_URL` is not set during first deploy, the helper updates `AUTH_URL`
+and `HGO_SITE_URL` to the generated Cloud Run service URL after the service is
+created. A later custom-domain pass should update both values to the final
+public origin after DNS and OAuth callback wiring are confirmed.
+
+## Manual Deploy Command
 
 Do not run this until the database target, secrets, service account, OAuth
 callback URL, and rollback target are known.
