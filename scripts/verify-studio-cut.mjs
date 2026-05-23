@@ -108,6 +108,28 @@ const verificationSteps = [
     args: ["studio-cut:cloud-sync-smoke"],
   },
   {
+    label: "Synthetic Rescue Sync publish package",
+    command: "pnpm",
+    args: ["studio-cut:rescue-sync-package"],
+  },
+  {
+    label: "Generated package validation",
+    command: pythonCommand,
+    args: [
+      "tools/studio-cut-local/studio_cut_local.py",
+      "validate-generated-package",
+      "--manifest",
+      "tools/studio-cut-local/output/rescue-sync-publish-package/episode-manifest.synthetic.json",
+      "--proxy",
+      "tools/studio-cut-local/output/rescue-sync-publish-package/source-monitor-proxy.synthetic.mp4",
+      "--sync-map",
+      "tools/studio-cut-local/output/rescue-sync-publish-package/sync-map.synthetic.json",
+      "--sync-report",
+      "tools/studio-cut-local/output/rescue-sync-publish-package/sync-report.synthetic.json",
+      "--json",
+    ],
+  },
+  {
     label: "Agent smoke test",
     command: pythonCommand,
     args: [

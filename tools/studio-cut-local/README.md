@@ -103,6 +103,29 @@ job id, canonical duration, reference pieces, offset count, confidence, and
 warning count. If it reports a missing or failed Sync Map, republish or fix
 Storage/rules before treating the room as ready for real collaboration.
 
+Validate a generated Rescue Sync package before publishing:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-generated-package \
+  --manifest ~/Movies/StudioCut/episode-004/generated/episode-manifest.json \
+  --proxy ~/Movies/StudioCut/episode-004/generated/source-monitor-proxy.mp4 \
+  --sync-map ~/Movies/StudioCut/episode-004/generated/sync-map.json \
+  --sync-report ~/Movies/StudioCut/episode-004/generated/sync-report.json
+```
+
+This checks JSON shape, manifest/Sync Map compatibility, proxy duration and
+resolution, sync report job id, local-path leakage, and prints the exact
+publish checklist plus expected `Sync Review` confirmation. The same command is
+available through pnpm:
+
+```bash
+pnpm studio-cut:local:validate-package -- \
+  --manifest ~/Movies/StudioCut/episode-004/generated/episode-manifest.json \
+  --proxy ~/Movies/StudioCut/episode-004/generated/source-monitor-proxy.mp4 \
+  --sync-map ~/Movies/StudioCut/episode-004/generated/sync-map.json \
+  --sync-report ~/Movies/StudioCut/episode-004/generated/sync-report.json
+```
+
 Machine-readable status:
 
 ```bash

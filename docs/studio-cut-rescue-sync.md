@@ -224,6 +224,19 @@ The command writes synthetic files and a local README under
 `Publish Rescue Sync Package` to validate the room metadata, Storage upload,
 Sync Map attachment, and shared proxy load path without private media.
 
+Before publishing a real generated package, validate the artifact set:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-generated-package \
+  --manifest ~/Movies/StudioCut/episode-004/generated/episode-manifest.json \
+  --proxy ~/Movies/StudioCut/episode-004/generated/source-monitor-proxy.mp4 \
+  --sync-map ~/Movies/StudioCut/episode-004/generated/sync-map.json \
+  --sync-report ~/Movies/StudioCut/episode-004/generated/sync-report.json
+```
+
+It should print `Status: READY`, the publish checklist, and the expected `Sync
+Review` confirmation for the shared room.
+
 ## Current Implementation
 
 Implemented now:

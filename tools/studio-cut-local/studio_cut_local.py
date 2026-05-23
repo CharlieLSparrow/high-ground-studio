@@ -511,6 +511,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_episode_parser.set_defaults(handler=run_validate_episode_files)
 
+    validate_package_parser = subparsers.add_parser(
+        "validate-generated-package",
+        help="Validate generated Rescue Sync publish artifacts before uploading them.",
+    )
+    validate_package_parser.add_argument("--manifest", required=True, type=Path)
+    validate_package_parser.add_argument("--proxy", required=True, type=Path)
+    validate_package_parser.add_argument("--sync-map", required=True, type=Path)
+    validate_package_parser.add_argument("--sync-report", type=Path)
+    validate_package_parser.add_argument(
+        "--duration-tolerance-ms",
+        default=DEFAULT_EPISODE_VALIDATION_TOLERANCE_MS,
+        type=int,
+        help=(
+            "Warn when proxy/Sync Map durations differ from the manifest by "
+            "more than this many milliseconds. Default: 1500."
+        ),
+    )
+    validate_package_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print a machine-readable JSON package validation report.",
+    )
+    validate_package_parser.set_defaults(handler=run_validate_generated_package)
+
     return parser
 
 
@@ -1989,6 +2013,134 @@ def build_rescue_sync_publish_package_status(
     }
 
 
+def summarize_cloud_sync_report(sync_report: dict[str, Any]) -> dict[str, Any]:
+    reference_rail = sync_report.get("referenceRail", {})
+    track_offsets = sync_report.get("trackOffsets", [])
+    confidence_values = [
+        float(offset["confidence"])
+        for offset in track_offsets
+        if isinstance(offset, dict) and isinstance(offset.get("confidence"), (int, float))
+    ]
+    warning_count = len(sync_report.get("globalWarnings", []))
+
+    for offset in track_offsets:
+        if isinstance(offset, dict) and isinstance(offset.get("warnings"), list):
+            warning_count += len(offset["warnings"])
+
+    return {
+        "syncJobId": sync_report["syncJobId"],
+        "status": sync_report["status"],
+        "referenceRailSegments": len(reference_rail.get("segments", []))
+        if isinstance(reference_rail, dict) and isinstance(reference_rail.get("segments"), list)
+        else 0,
+        "referenceRailDurationMs": reference_rail.get("totalDurationMs")
+        if isinstance(reference_rail, dict)
+        else None,
+        "trackOffsetCount": len(track_offsets),
+        "lowestConfidence": min(confidence_values) if confidence_values else 0,
+        "warningCount": warning_count,
+    }
+
+
+def summarize_sync_map_roles(sync_map: dict[str, Any]) -> list[str]:
+    role_counts: dict[str, int] = {}
+
+    for asset in sync_map.get("assets", []):
+        if isinstance(asset, dict) and isinstance(asset.get("role"), str):
+            role_counts[asset["role"]] = role_counts.get(asset["role"], 0) + 1
+
+    return [f"{role} x{count}" for role, count in sorted(role_counts.items())]
+
+
+def get_lowest_sync_map_confidence(sync_map: dict[str, Any]) -> float:
+    confidence_values = [
+        float(asset["confidence"])
+        for asset in sync_map.get("assets", [])
+        if isinstance(asset, dict) and isinstance(asset.get("confidence"), (int, float))
+    ]
+
+    return min(confidence_values) if confidence_values else 0
+
+
+def count_sync_map_warnings(sync_map: dict[str, Any]) -> int:
+    warning_count = len(sync_map.get("globalWarnings", []))
+    reference_rail = sync_map.get("referenceRail")
+
+    if isinstance(reference_rail, dict):
+        warnings = reference_rail.get("warnings", [])
+        if isinstance(warnings, list):
+            warning_count += len(warnings)
+        segments = reference_rail.get("segments", [])
+        if isinstance(segments, list):
+            for segment in segments:
+                if isinstance(segment, dict) and isinstance(segment.get("warnings"), list):
+                    warning_count += len(segment["warnings"])
+
+    for asset in sync_map.get("assets", []):
+        if isinstance(asset, dict) and isinstance(asset.get("warnings"), list):
+            warning_count += len(asset["warnings"])
+
+    return warning_count
+
+
+def normalize_publish_id(value: str, fallback: str = "room") -> str:
+    normalized = []
+    for character in value.strip().lower():
+        if character.isalnum() or character in {".", "_", "-"}:
+            normalized.append(character)
+        else:
+            normalized.append("-")
+
+    compacted = []
+    previous_dash = False
+    for character in normalized:
+        if character == "-":
+            if not previous_dash:
+                compacted.append(character)
+            previous_dash = True
+        else:
+            compacted.append(character)
+            previous_dash = False
+
+    return "".join(compacted).strip("-") or fallback
+
+
+def find_unsafe_local_references(value: Any) -> list[str]:
+    unsafe: list[str] = []
+
+    def walk(candidate: Any, path: str) -> None:
+        if isinstance(candidate, dict):
+            for key, child in candidate.items():
+                walk(child, f"{path}.{key}" if path else str(key))
+            return
+
+        if isinstance(candidate, list):
+            for index, child in enumerate(candidate):
+                walk(child, f"{path}[{index}]")
+            return
+
+        if isinstance(candidate, str) and is_unsafe_publish_reference(candidate):
+            unsafe.append(path or "<root>")
+
+    walk(value, "")
+    return unsafe
+
+
+def is_unsafe_publish_reference(value: str) -> bool:
+    normalized = value.strip().lower()
+
+    return (
+        normalized.startswith("/")
+        or normalized.startswith("file:")
+        or normalized.startswith("blob:")
+        or normalized.startswith("\\")
+        or "://" in normalized
+        or "/users/" in normalized
+        or "/private/" in normalized
+        or "\\users\\" in normalized
+    )
+
+
 def add_sync_job_status(report: dict[str, Any], sync_job_path: Path) -> None:
     if not sync_job_path.is_file():
         return
@@ -2885,6 +3037,212 @@ def run_validate_episode_files(args: argparse.Namespace) -> int:
     return 0 if not report["errors"] else 1
 
 
+def run_validate_generated_package(args: argparse.Namespace) -> int:
+    if args.duration_tolerance_ms < 0:
+        raise StudioCutCliError("--duration-tolerance-ms must be zero or greater")
+
+    report = build_generated_package_validation_report(
+        manifest_path=args.manifest,
+        proxy_path=args.proxy,
+        sync_map_path=args.sync_map,
+        sync_report_path=args.sync_report,
+        duration_tolerance_ms=args.duration_tolerance_ms,
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print_generated_package_validation_report(report)
+
+    return 0 if not report["errors"] else 1
+
+
+def build_generated_package_validation_report(
+    *,
+    manifest_path: Path,
+    proxy_path: Path,
+    sync_map_path: Path,
+    sync_report_path: Path | None,
+    duration_tolerance_ms: int,
+) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "status": "blocked",
+        "manifestPath": str(manifest_path),
+        "proxyPath": str(proxy_path),
+        "syncMapPath": str(sync_map_path),
+        "syncReportPath": str(sync_report_path) if sync_report_path else None,
+        "durationToleranceMs": duration_tolerance_ms,
+        "ffprobePath": shutil.which("ffprobe"),
+        "manifest": None,
+        "proxy": None,
+        "syncMap": None,
+        "syncReport": None,
+        "publishChecklist": None,
+        "warnings": [],
+        "errors": [],
+    }
+    warnings: list[str] = report["warnings"]
+    errors: list[str] = report["errors"]
+
+    try:
+        manifest = load_json_file(manifest_path, "manifest")
+        validate_manifest(manifest)
+    except StudioCutCliError as error:
+        errors.append(str(error))
+        manifest = None
+
+    try:
+        sync_map = load_sync_map(sync_map_path)
+    except StudioCutCliError as error:
+        errors.append(str(error))
+        sync_map = None
+
+    sync_report = None
+    if sync_report_path:
+        try:
+            sync_report = load_cloud_sync_report(sync_report_path)
+        except StudioCutCliError as error:
+            errors.append(str(error))
+
+    if not proxy_path.is_file():
+        errors.append(f"source-monitor proxy file not found: {proxy_path}")
+    else:
+        proxy_status: dict[str, Any] = {
+            "path": str(proxy_path),
+            "sizeBytes": proxy_path.stat().st_size,
+            "durationMs": None,
+            "resolution": None,
+        }
+
+        if report["ffprobePath"]:
+            duration_ms, probe_error = probe_media_duration_ms(
+                ffprobe_path=str(report["ffprobePath"]),
+                media_path=proxy_path,
+            )
+            if probe_error:
+                errors.append(f"ffprobe could not inspect proxy: {probe_error}")
+            else:
+                proxy_status["durationMs"] = duration_ms
+                proxy_status["resolution"] = probe_video_resolution(
+                    ffprobe_path=str(report["ffprobePath"]),
+                    media_path=proxy_path,
+                )
+        else:
+            warnings.append("ffprobe not found on PATH; proxy duration/resolution skipped.")
+
+        report["proxy"] = proxy_status
+
+    if manifest:
+        report["manifest"] = {
+            "id": manifest["id"],
+            "title": manifest["title"],
+            "durationMs": int(round(float(manifest["durationMs"]))),
+            "hasClipPane": bool(
+                manifest.get("sourceMonitorProxy", {})
+                .get("panes", {})
+                .get("clip")
+            ),
+        }
+
+        if find_unsafe_local_references(manifest):
+            errors.append(
+                "manifest contains local filesystem/blob references; publish generated packages with file names only."
+            )
+
+    if sync_map:
+        sync_map_duration_ms = int(
+            round(float(sync_map["canonicalTimeline"]["durationMs"]))
+        )
+        report["syncMap"] = {
+            "syncMapId": sync_map["syncMapId"],
+            "syncJobId": sync_map["syncJobId"],
+            "projectId": sync_map["projectId"],
+            "branchId": sync_map["branchId"],
+            "durationMs": sync_map_duration_ms,
+            "assetCount": len(sync_map["assets"]),
+            "referenceRailSegments": len(sync_map["referenceRail"]["segments"]),
+            "roles": summarize_sync_map_roles(sync_map),
+            "lowestConfidence": get_lowest_sync_map_confidence(sync_map),
+            "warningCount": count_sync_map_warnings(sync_map),
+        }
+
+        if find_unsafe_local_references(sync_map):
+            errors.append(
+                "Sync Map contains local filesystem/blob references; it must only contain ids, file names, and storage paths."
+            )
+
+    if sync_report:
+        report["syncReport"] = summarize_cloud_sync_report(sync_report)
+
+        if find_unsafe_local_references(sync_report):
+            errors.append(
+                "sync report contains local filesystem/blob references; publish reports without local paths."
+            )
+
+    if manifest and sync_map:
+        manifest_project_id = normalize_publish_id(str(manifest["id"]))
+        sync_map_project_id = normalize_publish_id(str(sync_map["projectId"]))
+
+        if manifest_project_id != sync_map_project_id:
+            errors.append(
+                "manifest id does not match Sync Map projectId: "
+                f"{manifest['id']} != {sync_map['projectId']}"
+            )
+
+        duration_delta_ms = abs(
+            int(round(float(manifest["durationMs"])))
+            - int(round(float(sync_map["canonicalTimeline"]["durationMs"])))
+        )
+        if duration_delta_ms > duration_tolerance_ms:
+            warnings.append(
+                "manifest duration differs from Sync Map canonical duration by "
+                f"{duration_delta_ms} ms."
+            )
+
+    if manifest and report["proxy"] and report["proxy"]["durationMs"] is not None:
+        proxy_delta_ms = abs(
+            int(report["proxy"]["durationMs"])
+            - int(round(float(manifest["durationMs"])))
+        )
+        if proxy_delta_ms > duration_tolerance_ms:
+            warnings.append(
+                f"source-monitor proxy duration differs from manifest by {proxy_delta_ms} ms."
+            )
+
+    if sync_report and sync_map and sync_report["syncJobId"] != sync_map["syncJobId"]:
+        errors.append(
+            "sync report syncJobId does not match Sync Map syncJobId: "
+            f"{sync_report['syncJobId']} != {sync_map['syncJobId']}"
+        )
+
+    if manifest and sync_map and proxy_path.is_file() and not errors:
+        project_id = normalize_publish_id(str(manifest["id"]))
+        branch_id = normalize_publish_id(str(sync_map["branchId"]), fallback="main")
+        report["publishChecklist"] = {
+            "studioCutUrl": "https://high-ground-odyssey.web.app",
+            "shareUrl": (
+                "https://high-ground-odyssey.web.app/"
+                f"?projectId={project_id}&branchId={branch_id}"
+            ),
+            "projectId": project_id,
+            "branchId": branch_id,
+            "files": {
+                "manifest": str(manifest_path),
+                "sourceMonitorProxy": str(proxy_path),
+                "syncMap": str(sync_map_path),
+                **({"syncReport": str(sync_report_path)} if sync_report_path else {}),
+            },
+            "postPublishChecks": [
+                "Shared Room Diagnostics shows room metadata, manifest, proxy, Sync Map, and optional sync report attached.",
+                "Sync Review shows the Sync Map job id, canonical duration, reference pieces, offset count, confidence, and warning count.",
+                "Mako can open the room link without importing JSON or loading local media.",
+            ],
+        }
+
+    report["status"] = "ready" if not errors else "blocked"
+    return report
+
+
 def build_episode_file_validation_report(
     *,
     manifest_path: Path,
@@ -3291,6 +3649,82 @@ def print_episode_file_validation_report(report: dict[str, Any]) -> None:
         print(f"  {report['renderCommand']}")
 
 
+def print_generated_package_validation_report(report: dict[str, Any]) -> None:
+    print("Studio Cut Generated Package Validation")
+    print("=======================================")
+    status_label = "READY" if report["status"] == "ready" else "BLOCKED"
+    print(f"Status: {status_label}")
+    print(f"Manifest: {report['manifestPath']}")
+    print(f"Proxy: {report['proxyPath']}")
+    print(f"Sync Map: {report['syncMapPath']}")
+    if report.get("syncReportPath"):
+        print(f"Sync report: {report['syncReportPath']}")
+    print(f"ffprobe: {report['ffprobePath'] or 'not found'}")
+    print(f"Duration tolerance: {report['durationToleranceMs']} ms")
+
+    if report.get("manifest"):
+        manifest = report["manifest"]
+        print("\nManifest:")
+        print(f"  episode: {manifest['title']} ({manifest['id']})")
+        print(f"  duration: {format_time_ms(manifest['durationMs'])}")
+        print(f"  clip pane: {yes_no(manifest['hasClipPane'])}")
+
+    if report.get("proxy"):
+        proxy = report["proxy"]
+        print("\nSource-monitor proxy:")
+        print(f"  size: {proxy['sizeBytes']} bytes")
+        if proxy["durationMs"] is not None:
+            print(f"  duration: {format_time_ms(proxy['durationMs'])}")
+        if proxy["resolution"]:
+            print(
+                "  resolution: "
+                f"{proxy['resolution']['width']}x{proxy['resolution']['height']}"
+            )
+
+    if report.get("syncMap"):
+        sync_map = report["syncMap"]
+        print("\nSync Map:")
+        print(f"  id: {sync_map['syncMapId']}")
+        print(f"  job: {sync_map['syncJobId']}")
+        print(f"  room: {sync_map['projectId']} / {sync_map['branchId']}")
+        print(f"  duration: {format_time_ms(sync_map['durationMs'])}")
+        print(f"  assets: {sync_map['assetCount']}")
+        print(f"  reference pieces: {sync_map['referenceRailSegments']}")
+        print(f"  lowest confidence: {format_percent(sync_map['lowestConfidence'])}")
+        print(f"  roles: {', '.join(sync_map['roles'])}")
+
+    if report.get("syncReport"):
+        sync_report = report["syncReport"]
+        print("\nSync report:")
+        print(f"  status: {sync_report['status']}")
+        print(f"  reference pieces: {sync_report['referenceRailSegments']}")
+        print(f"  track offsets: {sync_report['trackOffsetCount']}")
+        print(f"  lowest confidence: {format_percent(sync_report['lowestConfidence'])}")
+        print(f"  warnings: {sync_report['warningCount']}")
+
+    if report["warnings"]:
+        print("\nWarnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+    if report["errors"]:
+        print("\nErrors:")
+        for error in report["errors"]:
+            print(f"  - {error}")
+
+    if report.get("publishChecklist"):
+        checklist = report["publishChecklist"]
+        print("\nPublish checklist:")
+        print(f"  Studio Cut: {checklist['studioCutUrl']}")
+        print(f"  Room link: {checklist['shareUrl']}")
+        print("  Select these files in Publish Rescue Sync Package:")
+        for label, path_value in checklist["files"].items():
+            print(f"    - {label}: {path_value}")
+        print("  After publish:")
+        for check in checklist["postPublishChecks"]:
+            print(f"    - {check}")
+
+
 def load_inputs(
     manifest_path: Path, decisions_path: Path
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -3391,8 +3825,62 @@ def load_sync_map(path: Path) -> dict[str, Any]:
     for index, asset in enumerate(assets):
         validate_sync_map_asset(asset, index)
 
+    reference_rail = payload.get("referenceRail")
+    if not isinstance(reference_rail, dict):
+        raise StudioCutCliError("Sync Map referenceRail must be an object")
+    if not isinstance(reference_rail.get("segments"), list):
+        raise StudioCutCliError("Sync Map referenceRail.segments must be an array")
+
     if contains_key_recursive(payload, "localDebugPath"):
         raise StudioCutCliError("Sync Map must not contain localDebugPath values")
+
+    return payload
+
+
+def load_cloud_sync_report(path: Path) -> dict[str, Any]:
+    payload = load_json_file(path, "sync report")
+
+    if not isinstance(payload, dict):
+        raise StudioCutCliError("sync report must be a JSON object")
+
+    for key in ("syncJobId", "generatedAt", "status"):
+        require_non_empty_string(payload, key, "sync report")
+
+    reference_rail = payload.get("referenceRail")
+    if not isinstance(reference_rail, dict):
+        raise StudioCutCliError("sync report referenceRail must be an object")
+
+    segments = reference_rail.get("segments")
+    if not isinstance(segments, list):
+        raise StudioCutCliError("sync report referenceRail.segments must be an array")
+
+    track_offsets = payload.get("trackOffsets")
+    if not isinstance(track_offsets, list):
+        raise StudioCutCliError("sync report trackOffsets must be an array")
+
+    global_warnings = payload.get("globalWarnings")
+    if not isinstance(global_warnings, list) or not all(
+        isinstance(warning, str) for warning in global_warnings
+    ):
+        raise StudioCutCliError("sync report globalWarnings must be an array of strings")
+
+    for index, offset in enumerate(track_offsets):
+        if not isinstance(offset, dict):
+            raise StudioCutCliError(f"sync report trackOffsets[{index}] must be an object")
+        for key in ("role", "inputId", "fileName"):
+            require_non_empty_string(offset, key, f"sync report trackOffsets[{index}]")
+        confidence = offset.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            raise StudioCutCliError(
+                f"sync report trackOffsets[{index}].confidence must be a number"
+            )
+        warnings = offset.get("warnings", [])
+        if not isinstance(warnings, list) or not all(
+            isinstance(warning, str) for warning in warnings
+        ):
+            raise StudioCutCliError(
+                f"sync report trackOffsets[{index}].warnings must be an array of strings"
+            )
 
     return payload
 
@@ -4734,6 +5222,10 @@ def format_time_ms(value: int | float) -> str:
         return f"{hours}:{minutes:02d}:{seconds:02d}.{millis:03d}"
 
     return f"{minutes}:{seconds:02d}.{millis:03d}"
+
+
+def format_percent(value: int | float) -> str:
+    return f"{round(max(0, min(1, float(value))) * 100)}%"
 
 
 def format_seconds(value: float) -> str:

@@ -185,6 +185,18 @@ count, lowest confidence, and warning count. If it says the Sync Map is missing
 or failed to load, treat the room as a proxy-only rehearsal until the package is
 republished or Storage rules are fixed.
 
+Before publishing real generated files, run:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-generated-package \
+  --manifest ~/Movies/StudioCut/episode-004/generated/episode-manifest.json \
+  --proxy ~/Movies/StudioCut/episode-004/generated/source-monitor-proxy.mp4 \
+  --sync-map ~/Movies/StudioCut/episode-004/generated/sync-map.json \
+  --sync-report ~/Movies/StudioCut/episode-004/generated/sync-report.json
+```
+
+Use the printed publish checklist rather than manually hunting for files.
+
 Safe live-app publish rehearsal:
 
 ```bash

@@ -299,6 +299,20 @@ asset role counts, reference rail pieces, offset count, lowest confidence, and
 warning count. This is an operator-facing confidence layer only; it does not
 load originals, expose local paths, or change the edit model.
 
+Before publishing a generated package, run:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py validate-generated-package \
+  --manifest path/to/episode-manifest.json \
+  --proxy path/to/source-monitor-proxy.mp4 \
+  --sync-map path/to/sync-map.json \
+  --sync-report path/to/sync-report.json
+```
+
+The validator checks package compatibility, proxy inspection, Sync Map/report
+job alignment, local-path leakage, and prints the files to select in `Publish
+Rescue Sync Package`.
+
 To generate a safe synthetic package for testing the live publish UI:
 
 ```bash

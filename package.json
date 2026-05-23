@@ -16,6 +16,7 @@
     "studio-cut:build": "pnpm --filter @high-ground/studio-cut-schema build && pnpm --filter studio-cut-web build",
     "studio-cut:local:doctor": "python tools/studio-cut-local/studio_cut_local.py doctor",
     "studio-cut:local:verify-episode": "python tools/studio-cut-local/studio_cut_local.py validate-episode-files",
+    "studio-cut:local:validate-package": "python tools/studio-cut-local/studio_cut_local.py validate-generated-package",
     "studio-cut:local:rescue-sync-session": "python tools/studio-cut-local/studio_cut_local.py rescue-sync-session",
     "studio-cut:local:rescue-sync-status": "python tools/studio-cut-local/studio_cut_local.py rescue-sync-status",
     "studio-cut:cloud-sync-smoke": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs",

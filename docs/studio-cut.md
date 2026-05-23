@@ -339,6 +339,10 @@ The CLI supports:
 - `validate-episode-files`: checks a real-episode manifest and local media map,
   confirms the episode id matches, verifies local file existence, and uses
   `ffprobe` to compare media durations against the manifest before rendering.
+- `validate-generated-package`: checks the generated Episode Manifest,
+  source-monitor proxy, Sync Map, and optional sync report before publishing
+  them into a shared room. It prints `Status: READY`, the exact files to select
+  in `Publish Rescue Sync Package`, and the expected `Sync Review` confirmation.
 - `plan-render`: validates the manifest and decision JSON, derives semantic
   segments, removes `Cut` spans, adds profile-specific layout intent, prints a
   human-readable plan, and can write a render-plan JSON file.
