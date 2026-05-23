@@ -1742,6 +1742,15 @@ def build_rescue_sync_session_readme(session: dict[str, Any]) -> str:
             "--dry-run",
         ]
     )
+    status_command = format_shell_command(
+        [
+            sys.executable,
+            str(Path(__file__)),
+            "rescue-sync-status",
+            "--episode-dir",
+            str(session["episodeDir"]),
+        ]
+    )
 
     missing = "\n".join(
         f"- {RESCUE_SYNC_ROLE_SPECS[role]['label']}"
@@ -1791,6 +1800,12 @@ Missing required inputs right now:
 {worker_command}
 ```
 
+Check the local package/readiness state any time:
+
+```bash
+{status_command}
+```
+
 ## Publish Shared Room
 
 Open Studio Cut, use `Publish Rescue Sync Package`, and select:
@@ -1805,6 +1820,11 @@ Mako opens:
 ```text
 https://high-ground-odyssey.web.app/?projectId={episode_id}&branchId={session['branchId']}
 ```
+
+After publish, check `Shared Room Diagnostics` and `Sync Review` in the web app.
+`Sync Review` should show the Sync Map job id, canonical duration, reference
+pieces, offset count, confidence, and warning count. If it says the Sync Map is
+missing or failed to load, do not treat the room as ready for real collaboration.
 
 ## Render After Editing
 

@@ -97,6 +97,12 @@ The status report shows:
 - decision count and rough render readiness when exported decisions are present
 - the exact next command the operator or assistant should run
 
+After publishing a generated package in the web app, check `Shared Room
+Diagnostics` and `Sync Review`. `Sync Review` should show the attached Sync Map
+job id, canonical duration, reference pieces, offset count, confidence, and
+warning count. If it reports a missing or failed Sync Map, republish or fix
+Storage/rules before treating the room as ready for real collaboration.
+
 Machine-readable status:
 
 ```bash
