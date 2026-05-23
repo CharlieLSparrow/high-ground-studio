@@ -53,3 +53,14 @@ checks, blockers, and next handoff.
 - Merged WorldHub foundation branch `codex/worldhub-001-foundation` and resolved conflicts by preserving the deployed browser-local Content Studio board while folding in `packages/content-studio-domain`, `packages/worldhub-domain`, WorldHub docs, and Web Cloud Run deployment scaffolding.
 - Validation passed: `git diff --check`, `pnpm install --frozen-lockfile`, `pnpm content-studio:domain:typecheck`, `pnpm worldhub:domain:typecheck`, `pnpm content-studio:domain:build`, `pnpm worldhub:domain:build`, `pnpm --filter studio typecheck`, `pnpm --filter studio build`, `pnpm studio:cloudrun:test`, `pnpm web:cloudrun:test`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web build`, `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`, and `pnpm studio:collab:agentic-smoke`.
 - Web builds used a dummy local `DATABASE_URL` only for build-time env; no database mutation was run.
+
+### Codex / project/worldhub deploy
+
+- Deployed integrated `project/worldhub` runtime commit `beb86b7` to Studio Cloud Run.
+- Cloud Build: `521c9b31-1d49-4522-9e2d-88559b987e42`.
+- Image: `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:beb86b7`.
+- Image digest: `sha256:e987a509e97122e5567244b1217b454b3197f59921fd4e2cd6bc626fce3931c8`.
+- New revision: `studio-00024-rr5`, serving 100% traffic.
+- Live URL: `https://studio-hm2odnvjga-uc.a.run.app`.
+- Smokes passed: `/api/health` and `/content-studio`.
+- Rollback: `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00023-7c5=100`.
