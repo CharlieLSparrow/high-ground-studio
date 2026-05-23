@@ -1,3 +1,10 @@
+import type { ContentStudioCapability } from "@high-ground/content-studio-domain";
+import {
+  CONTENT_STUDIO_CAPABILITIES,
+  CONTENT_STUDIO_SPINE,
+  getContentStudioCapabilitySummary,
+} from "@high-ground/content-studio-domain";
+
 import { StudioAccessShell } from "../studio-access-shell";
 import { StudioNav } from "../studio-nav";
 import {
@@ -15,141 +22,14 @@ import { getStudioAccessState } from "@/lib/server/studio-access";
 
 export const dynamic = "force-dynamic";
 
-type StudioCapability = {
-  id: string;
-  title: string;
-  lane: string;
-  status: "live" | "prototype" | "planned";
-  summary: string;
-  next: string;
-};
-
-type StudioSpineStage = {
-  title: string;
-  focus: string;
-  surfaces: string[];
-};
-
 const capabilityTone: Record<
-  StudioCapability["status"],
+  ContentStudioCapability["status"],
   "tag" | "source" | "review"
 > = {
   live: "tag",
   planned: "review",
   prototype: "source",
 };
-
-const spine: StudioSpineStage[] = [
-  {
-    title: "Research",
-    focus: "sources, quotes, examples, principle maps, and Quipsly context",
-    surfaces: ["Tagging Desk", "Research assistant", "Quote database"],
-  },
-  {
-    title: "Structure",
-    focus: "book chapters, talks, episodes, campaigns, and reusable outlines",
-    surfaces: ["Structure Mode", "Writing Desk", "Manuscript Desk"],
-  },
-  {
-    title: "Produce",
-    focus: "drafts, scripts, recording prep, audio/video edits, and review packets",
-    surfaces: ["Manuscript Desk", "Show Prep", "Studio exports"],
-  },
-  {
-    title: "Publish",
-    focus: "site projections, social posts, schedules, direct publishing, and embeds",
-    surfaces: ["HGO staging", "Content calendar", "WorldHub embeds"],
-  },
-  {
-    title: "Learn",
-    focus: "analytics, SEO, marketing loops, supporter signals, and coaching follow-up",
-    surfaces: ["WorldHub", "Analytics", "Campaign review"],
-  },
-];
-
-const capabilities: StudioCapability[] = [
-  {
-    id: "book-writing",
-    title: "Book Writing",
-    lane: "Writing",
-    status: "live",
-    summary:
-      "Learning to Lead drafts, manuscript snapshots, structure regions, and export handoff.",
-    next: "Turn manuscript exports into staged content project packets.",
-  },
-  {
-    id: "speech-writing",
-    title: "Speech Writing",
-    lane: "Writing",
-    status: "prototype",
-    summary:
-      "Reuse the same source, structure, quote, and example model for talks and scripts.",
-    next: "Add talk-shaped project templates beside book-shaped templates.",
-  },
-  {
-    id: "podcast-production",
-    title: "Podcast Audio / Video",
-    lane: "Production",
-    status: "prototype",
-    summary:
-      "Connect show prep, source clips, talking points, and episode projection review.",
-    next: "Create a production checklist model before media editing integrations.",
-  },
-  {
-    id: "travel-video",
-    title: "Travel Video",
-    lane: "Production",
-    status: "planned",
-    summary:
-      "Plan footage, story arcs, voiceover, edit notes, publishing targets, and follow-up posts.",
-    next: "Define a lightweight asset and shot-list contract.",
-  },
-  {
-    id: "social-schedule",
-    title: "Social Schedule",
-    lane: "Distribution",
-    status: "planned",
-    summary:
-      "Turn long-form work into platform-specific excerpts, captions, and posting windows.",
-    next: "Model content calendar items without calling social APIs.",
-  },
-  {
-    id: "analytics-seo",
-    title: "Analytics / SEO",
-    lane: "Marketing",
-    status: "planned",
-    summary:
-      "Track search intent, page outcomes, content gaps, campaigns, and audience signals.",
-    next: "Start with manual metrics snapshots and SEO briefs.",
-  },
-  {
-    id: "quipsly-ai",
-    title: "Quipsly AI",
-    lane: "Research",
-    status: "planned",
-    summary:
-      "Use quote, principle, example, and research context as agent inputs instead of loose chat.",
-    next: "Define agent task packets before connecting live APIs.",
-  },
-  {
-    id: "direct-publishing",
-    title: "Kindle / Audible Path",
-    lane: "Publishing",
-    status: "planned",
-    summary:
-      "Prepare future package exports for book, audio, metadata, description, and review assets.",
-    next: "Document export package requirements before provider automation.",
-  },
-  {
-    id: "worldhub-follow-through",
-    title: "WorldHub Follow-through",
-    lane: "Business",
-    status: "prototype",
-    summary:
-      "Connect finished content to coaching offers, memberships, merch, Patreon, and embeds.",
-    next: "Keep provider adapters out until entitlements and offers are stable.",
-  },
-];
 
 const guardrails = [
   "No provider publishing calls",
@@ -161,6 +41,7 @@ const guardrails = [
 
 export default async function StudioContentStudioPage() {
   const access = await getStudioAccessState();
+  const capabilitySummary = getContentStudioCapabilitySummary();
 
   if (!access.isSignedIn) {
     return <StudioAccessShell mode="signed-out" redirectTo="/content-studio" />;
@@ -221,7 +102,7 @@ export default async function StudioContentStudioPage() {
             </div>
 
             <div className="grid gap-3 lg:grid-cols-5">
-              {spine.map((stage, index) => (
+              {CONTENT_STUDIO_SPINE.map((stage, index) => (
                 <article
                   className={cn(cardClassName, "grid min-h-[238px] gap-3 p-3")}
                   key={stage.title}
@@ -282,11 +163,13 @@ export default async function StudioContentStudioPage() {
               <p className={labelClassName}>Capability Map</p>
               <h2 className={panelTitleClassName}>What attaches to the spine</h2>
             </div>
-            <StudioChip tone="source">{capabilities.length} tracked lanes</StudioChip>
+            <StudioChip tone="source">
+              {capabilitySummary.total} tracked lanes
+            </StudioChip>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {capabilities.map((capability) => (
+            {CONTENT_STUDIO_CAPABILITIES.map((capability) => (
               <article
                 className={cn(cardClassName, "grid min-h-[260px] gap-3 p-4")}
                 key={capability.id}

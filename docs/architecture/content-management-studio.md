@@ -206,5 +206,7 @@ The first visible runtime marker is the protected Studio route:
 /content-studio
 ```
 
-It is a static internal command surface. It does not write data, call providers,
-change Prisma, publish content, or expose private manuscript material.
+It is a static internal command surface backed by the provider-neutral
+`packages/content-studio-domain` type and sample-data package. It does not write
+data, call providers, change Prisma, publish content, or expose private
+manuscript material.

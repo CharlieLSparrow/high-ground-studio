@@ -91,9 +91,10 @@ High Ground Studio is a monorepo with:
   Content Management Studio direction. It maps the research -> structure ->
   produce -> publish -> learn spine across books, speeches, podcast/video,
   travel video, social scheduling, analytics/SEO, marketing, Quipsly-assisted
-  research, and WorldHub follow-through. It is static planning state only: no
-  Prisma writes, provider calls, publishing actions, payment behavior, social
-  credentials, or public manuscript exposure.
+  research, and WorldHub follow-through. The provider-neutral type/sample-data
+  contract lives in `packages/content-studio-domain`. It is static planning
+  state only: no Prisma writes, provider calls, publishing actions, payment
+  behavior, social credentials, or public manuscript exposure.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.

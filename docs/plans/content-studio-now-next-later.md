@@ -6,11 +6,14 @@ Date: 2026-05-23
 
 - Keep Studio private and deployable.
 - Make the Content Management Studio spine visible at `/content-studio`.
+- Keep the first provider-neutral spine and capability contract in
+  `packages/content-studio-domain`.
 - Preserve current manuscript, structure, writing, and HGO staged projection
   boundaries.
 - Keep WorldHub as the business/access follow-through layer, not the creative
   source layer.
-- Use static/sample planning state until the first real data model is clear.
+- Use static/sample planning state until the first persisted data model is
+  clear.
 - Keep all provider credentials, payment providers, social APIs, publishing
   APIs, and vendor calls out of the first shell.
 
@@ -29,8 +32,8 @@ Date: 2026-05-23
   - publishing target
   - review state
   - agent task packet
-- Add a local/pure domain package only when the first model is stable enough to
-  test.
+- Extend the pure domain package only when a field is needed by a real workflow
+  or test.
 - Create a Homer-ready workflow slice:
   - content project intake
   - structured outline

@@ -8,6 +8,8 @@ Read in this order:
 - `docs/architecture/system-overview.md`
 - `docs/runbooks/local-dev.md`
 - `docs/agents/autonomous-codex-operating-mode.md`
+- `docs/agents/multi-agent-collaboration.md`
+- `docs/coordination/agent-board.md`
 - the most recent relevant file in `docs/sessions/`
 
 ## Current Repo Truths

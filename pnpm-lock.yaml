@@ -40,6 +40,9 @@ importers:
 
   apps/studio:
     dependencies:
+      '@high-ground/content-studio-domain':
+        specifier: workspace:*
+        version: link:../../packages/content-studio-domain
       '@high-ground/studio-domain':
         specifier: workspace:*
         version: link:../../packages/studio-domain
@@ -159,6 +162,12 @@ importers:
       tailwindcss:
         specifier: ^4.2.2
         version: 4.2.2
+
+  packages/content-studio-domain:
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
 
   packages/motion-engine:
     dependencies:
