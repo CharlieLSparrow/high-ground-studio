@@ -371,6 +371,26 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
 This renders simple 16:9 layouts from timeline-aligned local media and skips
 `Cut` spans. It does not mutate source files.
 
+## 8b. Rescue Sync Rough Render
+
+If Episode 4 is prepared by the Rescue Sync worker instead of manual Premiere
+alignment, render from the generated Sync Map:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
+  --sync-map tools/studio-cut-local/output/episode-004-rescue-sync/sync-map.json \
+  --decisions tools/studio-cut-local/output/episode-004-rescue-sync/episode-004-decisions.json \
+  --media-map tools/studio-cut-local/output/episode-004-rescue-sync/sync-map-local-media.json \
+  --out tools/studio-cut-local/output/episode-004-rescue-sync/episode-004-youtube-16x9.mp4 \
+  --dry-run
+```
+
+Then rerun without `--dry-run`. The Sync Map media map is a local-only file that
+points Sync Map `inputId` values at Charlie's original or higher-quality local
+assets. Keep it out of git. This path interprets Studio Cut decision
+`sourceTimeMs` as canonical episode timeline time, translates spans into
+asset-local time, pads partial missing coverage with black, and skips `Cut`.
+
 ## Troubleshooting
 
 - `Status: BLOCKED` in validation: fix the listed missing files, JSON parse

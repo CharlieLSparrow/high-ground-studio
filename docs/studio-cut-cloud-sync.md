@@ -251,6 +251,21 @@ original render. Existing web UI and schema still use `sourceTimeMs` in places;
 for Studio Cut architecture, read that as canonical episode timeline time until
 the naming is migrated.
 
+The first local renderer for that bridge is:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
+  --sync-map path/to/sync-map.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --media-map path/to/sync-map-local-media.json \
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4
+```
+
+The `--media-map` file remains local and points Sync Map `inputId` values at
+original or higher-quality local media. It should not be committed. The command
+applies the rough `youtube_16x9` layouts, skips `Cut`, and pads partial asset
+coverage with black in v0.
+
 The worker can also draft an Episode Manifest from Sync Map metadata. That
 bridge is active in the local worker: it sets duration from
 `canonicalTimeline.durationMs`, derives source labels from asset roles, and

@@ -135,6 +135,43 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   --out /tmp/studio-cut-youtube-16x9.mp4
 ```
 
+Render from a Rescue Sync `Sync Map` plus original local assets:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
+  --sync-map path/to/sync-map.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --media-map path/to/sync-map-local-media.json \
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4 \
+  --dry-run
+```
+
+The Sync Map media map can point at local originals by input id:
+
+```json
+{
+  "schemaVersion": 1,
+  "episodeId": "episode-004",
+  "timelineAligned": false,
+  "inputs": {
+    "episode-004-homer-video": "/path/to/homer-original-or-proxy.mp4",
+    "episode-004-charlie-video": "/path/to/charlie-original-or-proxy.mp4",
+    "episode-004-clip-video": "/path/to/clip-original-or-proxy.mp4"
+  },
+  "audio": {
+    "program": "/path/to/program-audio-canonical-aligned.wav"
+  }
+}
+```
+
+`render-from-sync-map` interprets Studio Cut decision `sourceTimeMs` values as
+canonical episode timeline time, translates each active span through the Sync
+Map into asset-local time, applies the rough `youtube_16x9` layouts, and skips
+`Cut` spans. It does not mutate source files. If a mapped asset is not visible
+for part of a requested span, the first renderer pads that role with black
+inside the segment. `audio.program`, when supplied, is currently expected to be
+canonical-timeline aligned; otherwise the renderer writes silent audio.
+
 Run the agentic end-to-end smoke test:
 
 ```bash
@@ -244,6 +281,15 @@ rectangles from local media files that already start at sequence time
 This command still avoids Premiere XML/EDL parsing. Premiere owns alignment for
 now by exporting timeline-aligned local files.
 
+`render-from-sync-map` is the first original-asset handoff renderer. It takes a
+Rescue Sync `Sync Map`, Studio Cut decision JSON, and a local media map keyed by
+Sync Map `inputId`. It renders the same rough `youtube_16x9` layouts by
+translating canonical episode timeline spans into asset-local time. That means
+the browser can edit against a synced proxy room while local rendering can start
+from the original or higher-quality local assets. The command is still v0:
+program audio must already be canonical-timeline aligned if supplied, and final
+full-res quality/crop polish remains future work.
+
 ## Agent Smoke Test
 
 `agent-smoke-test` is the workflow canary for Codex and future agents. It uses
@@ -251,7 +297,7 @@ synthetic media only and proves the Studio Cut path can be driven by files and
 commands, without browser clicking or private media:
 
 ```text
-synthetic media -> manifest -> decisions -> plan-render -> render-youtube-16x9-aligned -> output validation
+synthetic media -> manifest -> decisions -> plan-render -> render-youtube-16x9-aligned -> render-from-sync-map -> output validation
 ```
 
 The generated decisions exercise:

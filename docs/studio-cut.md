@@ -337,6 +337,9 @@ The CLI supports:
 - `render-youtube-16x9-aligned`: uses timeline-aligned local media files that
   all begin at sequence time `00:00:00`, applies the `youtube_16x9` semantic
   layout plan, skips `Cut` spans, and writes a rough 16:9 MP4.
+- `render-from-sync-map`: uses a Rescue Sync `Sync Map` plus local original or
+  proxy asset paths to translate canonical episode timeline spans into
+  asset-local time, then applies the rough `youtube_16x9` layouts.
 - `agent-smoke-test`: generates synthetic media and structured files, runs the
   planning/render path, and validates the output without private media or
   browser interaction.
@@ -367,6 +370,14 @@ The rough aligned renderer uses simple, robust 16:9 rectangles:
 - `homer_clip`: Homer and Clip side by side
 - `both_clip`: Homer/Charlie stacked on the left, Clip large on the right
 - `cut`: skipped
+
+The first Sync Map renderer uses the same rough rectangles, but it no longer
+requires every video file to start at sequence time `00:00:00`. It reads
+`timelineStartMs`, `assetStartMs`, and `durationMs` from the Sync Map to trim
+each local asset at the correct asset-local time for the current canonical
+episode span. If a source is missing for part of a span, v0 pads that role with
+black rather than mutating or stretching source media. `audio.program`, when
+provided, is still expected to already be canonical-timeline aligned.
 
 This renderer intentionally does not parse Premiere XML/EDL yet. Premiere owns
 timeline alignment for now by exporting local media files that share sequence
@@ -859,6 +870,20 @@ Proxies and extracted audio are disposable/derivable. Sync Maps and semantic
 decision events are durable. Existing Studio Cut UI and JSON still use
 `sourceTimeMs` in some places; architecturally that should now be read as
 canonical episode timeline time until the naming is migrated.
+
+The local render CLI can now consume that durable bridge directly:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
+  --sync-map path/to/sync-map.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --media-map path/to/sync-map-local-media.json \
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4
+```
+
+The media map stays local and may point at original local exports or higher
+quality local proxies keyed by Sync Map `inputId`. Do not commit that map if it
+contains real machine paths.
 
 Raw intake job metadata lives at:
 

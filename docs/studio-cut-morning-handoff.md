@@ -230,6 +230,20 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   --out tools/studio-cut-local/output/episode-004-bootstrap/episode-004-youtube-16x9.mp4
 ```
 
+Sync Map rough render after Rescue Sync:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
+  --sync-map tools/studio-cut-local/output/episode-004-rescue-sync/sync-map.json \
+  --decisions tools/studio-cut-local/output/episode-004-rescue-sync/episode-004-decisions.json \
+  --media-map tools/studio-cut-local/output/episode-004-rescue-sync/sync-map-local-media.json \
+  --out tools/studio-cut-local/output/episode-004-rescue-sync/episode-004-youtube-16x9.mp4 \
+  --dry-run
+```
+
+The Sync Map local media map should stay ignored and should point Sync Map
+`inputId` values at Charlie's local original or higher-quality proxy assets.
+
 ## Known Limitations
 
 - Undo/redo is local/browser-only and bounded. Exported checkpoints are the
@@ -250,10 +264,13 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
   media remains local for render.
 - Rescue Sync raw uploads can be large and should not be used with sensitive
   footage until rules have passed emulator tests and lifecycle cleanup exists.
-- Rescue Sync Worker v0 extracts audio, builds a duration-based reference rail,
-  and estimates offsets with anchor-based waveform correlation. It includes
-  approximate drift guidance from anchor agreement, but it does not generate
-  manifests/proxies or write shared-room metadata yet.
+- Rescue Sync Worker extracts audio, builds the reference rail, estimates
+  offsets with anchor-based waveform correlation, writes a Sync Map, generates
+  low-res aligned proxies, composes a source-monitor proxy, and drafts a
+  manifest. It still does not write shared-room metadata directly.
+- The first Sync Map renderer can render rough 16:9 output from local assets,
+  but final quality, drift-aware trim correction, and render-profile polish are
+  still ahead.
 - The emulator rules test requires Java. If Java is missing locally, install a
   JRE/JDK before deploying rules.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
@@ -276,8 +293,9 @@ Use the exact commit SHAs from the final Codex report for this sprint.
 
 ## Recommended Next Sprint
 
-Add aligned sync output generation:
+Improve Sync Map render quality:
 
 - refine correlation with FFT/chunked analysis and better drift estimation
-- generate production-grade labels/proxy quality
-- render original assets from Sync Map + semantic decisions
+- use Sync Map drift guidance during local original render
+- add render-profile output presets beyond rough `youtube_16x9`
+- generate production-grade source-monitor labels/proxy quality

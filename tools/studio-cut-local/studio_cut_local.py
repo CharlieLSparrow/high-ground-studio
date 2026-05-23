@@ -302,6 +302,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     aligned_parser.set_defaults(handler=run_render_youtube_16x9_aligned)
 
+    sync_map_render_parser = subparsers.add_parser(
+        "render-from-sync-map",
+        help="Render a rough 16:9 output from original local media using Sync Map offsets.",
+    )
+    sync_map_render_parser.add_argument("--sync-map", required=True, type=Path)
+    sync_map_render_parser.add_argument("--decisions", required=True, type=Path)
+    sync_map_render_parser.add_argument("--media-map", required=True, type=Path)
+    sync_map_render_parser.add_argument("--out", required=True, type=Path)
+    sync_map_render_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the segment plan and ffmpeg commands without rendering files.",
+    )
+    sync_map_render_parser.add_argument(
+        "--keep-temp",
+        action="store_true",
+        help="Keep temporary segment files after a real render.",
+    )
+    sync_map_render_parser.set_defaults(handler=run_render_from_sync_map)
+
     smoke_parser = subparsers.add_parser(
         "agent-smoke-test",
         help="Run a synthetic end-to-end Studio Cut workflow smoke test.",
@@ -514,8 +534,11 @@ def execute_agent_smoke_test(
     manifest_path = workdir / "episode-manifest.synthetic.json"
     decisions_path = workdir / "studio-cut-decisions.synthetic.json"
     media_map_path = workdir / "synthetic-media-map.json"
+    sync_map_path = workdir / "sync-map.synthetic.json"
+    sync_map_media_map_path = workdir / "sync-map-media-map.synthetic.json"
     render_plan_path = output_dir / "render-plan.youtube-16x9.json"
     output_path = output_dir / "studio-cut-agent-smoke-output.mp4"
+    sync_map_output_path = output_dir / "studio-cut-agent-smoke-sync-map-output.mp4"
 
     report: dict[str, Any] = {
         "status": "fail",
@@ -528,6 +551,7 @@ def execute_agent_smoke_test(
         "expectedOutputDurationMs": expected_output_duration_ms,
         "actualOutputDurationMs": None,
         "outputPath": str(output_path),
+        "syncMapOutputPath": str(sync_map_output_path),
         "commandsRun": commands_run,
         "warnings": warnings,
         "errors": errors,
@@ -577,15 +601,27 @@ def execute_agent_smoke_test(
             manifest_id=manifest["id"],
             media_paths=media_paths,
         )
+        sync_map = build_agent_smoke_sync_map(
+            manifest_id=manifest["id"],
+            duration_ms=source_duration_ms,
+        )
+        sync_map_media_map = build_agent_smoke_sync_map_media_map(
+            manifest_id=manifest["id"],
+            media_paths=media_paths,
+        )
         write_json(manifest_path, manifest)
         write_json(decisions_path, decisions)
         write_json(media_map_path, media_map)
+        write_json(sync_map_path, sync_map)
+        write_json(sync_map_media_map_path, sync_map_media_map)
 
         generated_files.update(
             {
                 "manifest": str(manifest_path),
                 "decisions": str(decisions_path),
                 "mediaMap": str(media_map_path),
+                "syncMap": str(sync_map_path),
+                "syncMapMediaMap": str(sync_map_media_map_path),
                 "renderPlan": str(render_plan_path),
             }
         )
@@ -669,6 +705,31 @@ def execute_agent_smoke_test(
             generated_files["output"] = str(output_path)
             validate_agent_smoke_output(
                 output_path=output_path,
+                ffprobe_path=ffprobe_path,
+                source_duration_ms=source_duration_ms,
+                expected_output_duration_ms=expected_output_duration_ms,
+                report=report,
+            )
+            run_command_capture(
+                [
+                    sys.executable,
+                    str(script_path),
+                    "render-from-sync-map",
+                    "--sync-map",
+                    str(sync_map_path),
+                    "--decisions",
+                    str(decisions_path),
+                    "--media-map",
+                    str(sync_map_media_map_path),
+                    "--out",
+                    str(sync_map_output_path),
+                ],
+                "agent smoke render-from-sync-map",
+                commands_run,
+            )
+            generated_files["syncMapOutput"] = str(sync_map_output_path)
+            validate_agent_smoke_output(
+                output_path=sync_map_output_path,
                 ffprobe_path=ffprobe_path,
                 source_duration_ms=source_duration_ms,
                 expected_output_duration_ms=expected_output_duration_ms,
@@ -846,6 +907,81 @@ def build_agent_smoke_media_map(
             "homer": str(media_paths["homer"]),
             "charlie": str(media_paths["charlie"]),
             "clip": str(media_paths["clip"]),
+        },
+        "audio": {"program": str(media_paths["programAudio"])},
+    }
+
+
+def build_agent_smoke_sync_map(*, manifest_id: str, duration_ms: int) -> dict[str, Any]:
+    generated_at = "2026-05-21T00:00:00.000Z"
+    asset_specs = [
+        ("agent-smoke-homer-video", "homerVideo", "homer.synthetic.mp4", 1000),
+        ("agent-smoke-charlie-video", "charlieVideo", "charlie.synthetic.mp4", 0),
+        ("agent-smoke-clip-video", "clipVideo", "clip.synthetic.mp4", 500),
+    ]
+
+    return {
+        "syncMapId": "studio-cut-agent-smoke-sync-map-v1",
+        "syncJobId": "studio-cut-agent-smoke-sync-job",
+        "projectId": manifest_id,
+        "branchId": "local-main",
+        "createdAt": generated_at,
+        "updatedAt": generated_at,
+        "canonicalTimeline": {
+            "durationMs": duration_ms,
+            "timebase": "milliseconds",
+            "referenceRole": "phoneReferenceAudio",
+        },
+        "assets": [
+            {
+                "assetId": input_id,
+                "inputId": input_id,
+                "role": role,
+                "fileName": file_name,
+                "timelineStartMs": timeline_start_ms,
+                "assetStartMs": 0,
+                "durationMs": duration_ms,
+                "estimatedOffsetMs": timeline_start_ms,
+                "confidence": 1,
+                "warnings": [],
+            }
+            for input_id, role, file_name, timeline_start_ms in asset_specs
+        ],
+        "referenceRail": {
+            "syncJobId": "studio-cut-agent-smoke-sync-job",
+            "referenceRole": "phoneReferenceAudio",
+            "segments": [
+                {
+                    "inputId": "agent-smoke-reference-audio",
+                    "fileName": "reference.synthetic.wav",
+                    "railStartMs": 0,
+                    "sourceStartMs": 0,
+                    "durationMs": duration_ms,
+                    "confidence": 1,
+                    "warnings": [],
+                }
+            ],
+            "totalDurationMs": duration_ms,
+            "warnings": [],
+        },
+        "globalWarnings": [
+            "Synthetic Sync Map for local agent smoke testing.",
+            "Local filesystem paths are intentionally omitted from Sync Map metadata.",
+        ],
+    }
+
+
+def build_agent_smoke_sync_map_media_map(
+    *, manifest_id: str, media_paths: dict[str, Path]
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "episodeId": manifest_id,
+        "timelineAligned": False,
+        "inputs": {
+            "agent-smoke-homer-video": str(media_paths["homer"]),
+            "agent-smoke-charlie-video": str(media_paths["charlie"]),
+            "agent-smoke-clip-video": str(media_paths["clip"]),
         },
         "audio": {"program": str(media_paths["programAudio"])},
     }
@@ -1390,6 +1526,105 @@ def run_render_youtube_16x9_aligned(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_render_from_sync_map(args: argparse.Namespace) -> int:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path and not args.dry_run:
+        raise StudioCutCliError(
+            "ffmpeg is not available on PATH; install ffmpeg before rendering from a Sync Map."
+        )
+
+    sync_map = load_sync_map(args.sync_map)
+    decisions_payload = load_json_file(args.decisions, "decisions")
+    decision_events = parse_decision_events(decisions_payload)
+    media_map = load_sync_map_render_media_map(args.media_map)
+
+    if media_map["episodeId"] != sync_map["projectId"]:
+        print(
+            "warning: media-map episodeId does not match Sync Map projectId: "
+            f"{media_map['episodeId']} != {sync_map['projectId']}",
+            file=sys.stderr,
+        )
+
+    manifest = build_manifest_from_sync_map(sync_map)
+    plan = build_render_plan(
+        manifest=manifest,
+        decision_events=decision_events,
+        profile="youtube_16x9",
+        manifest_path=args.sync_map,
+        decisions_path=args.decisions,
+    )
+    segments = plan["activeSegments"]
+
+    if not segments:
+        raise StudioCutCliError("render plan has no active non-Cut segments to render.")
+
+    resolved_media = build_sync_map_render_media(
+        sync_map=sync_map,
+        media_map=media_map,
+        media_map_path=args.media_map,
+        segments=segments,
+        require_existing=not args.dry_run,
+    )
+
+    print_render_plan(plan)
+    print_sync_map_render_summary(
+        sync_map=sync_map,
+        media_map=media_map,
+        media_map_path=args.media_map,
+        resolved_media=resolved_media,
+    )
+
+    if not media_map["audio"].get("program"):
+        print(
+            "\nwarning: media map has no audio.program file; Sync Map renderer will use silent audio.",
+            file=sys.stderr,
+        )
+
+    ffmpeg_bin = ffmpeg_path or "ffmpeg"
+
+    if args.dry_run:
+        print("\nDry run: no files will be rendered.")
+        print_sync_map_render_commands(
+            ffmpeg_path=ffmpeg_bin,
+            media_map=media_map,
+            media_map_path=args.media_map,
+            segments=segments,
+            resolved_media=resolved_media,
+            out_path=args.out,
+            temp_path=Path("<temp>"),
+        )
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.keep_temp:
+        temp_path = Path(tempfile.mkdtemp(prefix="studio-cut-sync-map16x9-"))
+        render_sync_map_youtube_16x9_segments(
+            ffmpeg_path=ffmpeg_bin,
+            media_map=media_map,
+            media_map_path=args.media_map,
+            segments=segments,
+            resolved_media=resolved_media,
+            out_path=args.out,
+            temp_path=temp_path,
+        )
+        print(f"\nKept temporary segment directory: {temp_path}")
+    else:
+        with tempfile.TemporaryDirectory(prefix="studio-cut-sync-map16x9-") as temp_dir:
+            render_sync_map_youtube_16x9_segments(
+                ffmpeg_path=ffmpeg_bin,
+                media_map=media_map,
+                media_map_path=args.media_map,
+                segments=segments,
+                resolved_media=resolved_media,
+                out_path=args.out,
+                temp_path=Path(temp_dir),
+            )
+
+    print(f"\nSync Map 16:9 render complete: {args.out}")
+    return 0
+
+
 def run_agent_smoke_test(args: argparse.Namespace) -> int:
     if args.workdir:
         workdir = args.workdir
@@ -1928,6 +2163,141 @@ def load_media_map(path: Path) -> dict[str, Any]:
     }
 
 
+def load_sync_map(path: Path) -> dict[str, Any]:
+    payload = load_json_file(path, "Sync Map")
+
+    if not isinstance(payload, dict):
+        raise StudioCutCliError("Sync Map must be a JSON object")
+
+    for key in ("syncMapId", "syncJobId", "projectId", "branchId"):
+        require_non_empty_string(payload, key, "Sync Map")
+
+    canonical = payload.get("canonicalTimeline")
+    if not isinstance(canonical, dict):
+        raise StudioCutCliError("Sync Map canonicalTimeline must be an object")
+
+    duration_ms = canonical.get("durationMs")
+    if not isinstance(duration_ms, (int, float)) or duration_ms <= 0:
+        raise StudioCutCliError("Sync Map canonicalTimeline.durationMs must be positive")
+
+    if canonical.get("timebase") != "milliseconds":
+        raise StudioCutCliError("Sync Map canonicalTimeline.timebase must be milliseconds")
+
+    assets = payload.get("assets")
+    if not isinstance(assets, list):
+        raise StudioCutCliError("Sync Map assets must be an array")
+
+    for index, asset in enumerate(assets):
+        validate_sync_map_asset(asset, index)
+
+    if contains_key_recursive(payload, "localDebugPath"):
+        raise StudioCutCliError("Sync Map must not contain localDebugPath values")
+
+    return payload
+
+
+def validate_sync_map_asset(asset: Any, index: int) -> None:
+    label = f"Sync Map assets[{index}]"
+
+    if not isinstance(asset, dict):
+        raise StudioCutCliError(f"{label} must be an object")
+
+    for key in ("assetId", "inputId", "role", "fileName"):
+        require_non_empty_string(asset, key, label)
+
+    for key in ("timelineStartMs", "assetStartMs", "durationMs", "estimatedOffsetMs"):
+        value = asset.get(key)
+        if not isinstance(value, (int, float)):
+            raise StudioCutCliError(f"{label}.{key} must be a number")
+
+    if float(asset["durationMs"]) <= 0:
+        raise StudioCutCliError(f"{label}.durationMs must be positive")
+
+    confidence = asset.get("confidence")
+    if not isinstance(confidence, (int, float)):
+        raise StudioCutCliError(f"{label}.confidence must be a number")
+
+    warnings = asset.get("warnings", [])
+    if not isinstance(warnings, list) or not all(
+        isinstance(warning, str) for warning in warnings
+    ):
+        raise StudioCutCliError(f"{label}.warnings must be an array of strings")
+
+
+def load_sync_map_render_media_map(path: Path) -> dict[str, Any]:
+    payload = load_json_file(path, "Sync Map render media map")
+
+    if not isinstance(payload, dict):
+        raise StudioCutCliError("Sync Map render media map must be a JSON object")
+
+    if payload.get("schemaVersion") != 1:
+        raise StudioCutCliError("Sync Map render media map schemaVersion must be 1")
+
+    require_non_empty_string(payload, "episodeId", "Sync Map render media map")
+
+    inputs = payload.get("inputs", {})
+    if inputs is None:
+        inputs = {}
+    if not isinstance(inputs, dict):
+        raise StudioCutCliError("Sync Map render media map inputs must be an object when present")
+
+    for input_id, raw_path in inputs.items():
+        if not isinstance(input_id, str) or not input_id.strip():
+            raise StudioCutCliError("Sync Map render media map inputs keys must be non-empty strings")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise StudioCutCliError(
+                f"Sync Map render media map inputs.{input_id} must be a non-empty string"
+            )
+
+    video = payload.get("video", {})
+    if video is None:
+        video = {}
+    if not isinstance(video, dict):
+        raise StudioCutCliError("Sync Map render media map video must be an object when present")
+
+    for role in ("homer", "charlie", "clip"):
+        if role in video and video[role] is not None:
+            require_non_empty_string(video, role, "Sync Map render media map video")
+
+    audio = payload.get("audio", {})
+    if audio is None:
+        audio = {}
+    if not isinstance(audio, dict):
+        raise StudioCutCliError("Sync Map render media map audio must be an object when present")
+
+    if "program" in audio and audio["program"] is not None:
+        require_non_empty_string(audio, "program", "Sync Map render media map audio")
+
+    return {
+        "schemaVersion": 1,
+        "episodeId": payload["episodeId"],
+        "timelineAligned": bool(payload.get("timelineAligned", False)),
+        "inputs": {
+            input_id: raw_path
+            for input_id, raw_path in inputs.items()
+            if isinstance(input_id, str) and isinstance(raw_path, str) and raw_path
+        },
+        "video": {
+            role: value
+            for role, value in video.items()
+            if role in {"homer", "charlie", "clip"} and value
+        },
+        "audio": {
+            role: value for role, value in audio.items() if role == "program" and value
+        },
+    }
+
+
+def contains_key_recursive(value: Any, key: str) -> bool:
+    if isinstance(value, dict):
+        return key in value or any(contains_key_recursive(child, key) for child in value.values())
+
+    if isinstance(value, list):
+        return any(contains_key_recursive(child, key) for child in value)
+
+    return False
+
+
 def validate_manifest(manifest: Any) -> None:
     if not isinstance(manifest, dict):
         raise StudioCutCliError("manifest must be a JSON object")
@@ -2458,6 +2828,15 @@ def video_scale_filter(input_index: int, width: int, height: int, label: str) ->
     )
 
 
+def video_scale_filter_from_label(input_label: str, width: int, height: int, label: str) -> str:
+    return (
+        f"[{input_label}]"
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},setsar=1,setpts=PTS-STARTPTS"
+        f"[{label}]"
+    )
+
+
 def get_youtube_16x9_video_roles(state: str) -> list[str]:
     try:
         return YOUTUBE_16X9_STATE_INPUTS[state]
@@ -2489,6 +2868,428 @@ def print_media_map_summary(media_map: dict[str, Any], media_map_path: Path) -> 
         print(f"Audio program: {resolve_media_path(media_map['audio']['program'], media_map_path)}")
     else:
         print("Audio program: none; renderer will use silent audio")
+
+
+def build_manifest_from_sync_map(sync_map: dict[str, Any]) -> dict[str, Any]:
+    project_id = sync_map["projectId"]
+    duration_ms = int(round(float(sync_map["canonicalTimeline"]["durationMs"])))
+    sources = {
+        "homer": {"role": "homer", "label": "Homer from Sync Map"},
+        "charlie": {"role": "charlie", "label": "Charlie from Sync Map"},
+        "program": {"role": "program", "label": "Program from Sync Map"},
+    }
+
+    if find_sync_map_asset_for_video_role(sync_map, "clip"):
+        sources["clip"] = {"role": "clip", "label": "Clip from Sync Map"}
+
+    return {
+        "id": project_id,
+        "title": project_id,
+        "durationMs": duration_ms,
+        "sources": sources,
+        "sourceMonitorProxy": {
+            "localPlaceholderPath": "./source-monitor-proxy.mp4",
+            "panes": {
+                "homer": {"x": 0, "y": 0, "width": 0.5, "height": 0.5},
+                "charlie": {"x": 0.5, "y": 0, "width": 0.5, "height": 0.5},
+                "clip": {"x": 0, "y": 0.5, "width": 0.5, "height": 0.5},
+            },
+        },
+        "syncBootstrap": {
+            "source": "premiere",
+            "notes": (
+                f"Local render manifest synthesized from Sync Map {sync_map['syncMapId']}. "
+                "Decision sourceTimeMs values are interpreted as canonical episode timeline time."
+            ),
+        },
+    }
+
+
+def build_sync_map_render_media(
+    *,
+    sync_map: dict[str, Any],
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segments: list[dict[str, Any]],
+    require_existing: bool,
+) -> dict[str, dict[str, Any]]:
+    required_roles = sorted(
+        {
+            role
+            for segment in segments
+            for role in get_youtube_16x9_video_roles(segment["programState"])
+        }
+    )
+    resolved: dict[str, dict[str, Any]] = {}
+
+    for role in required_roles:
+        asset = find_sync_map_asset_for_video_role(sync_map, role)
+
+        if not asset:
+            raise StudioCutCliError(
+                f"Sync Map has no video asset for role required by decisions: {role}"
+            )
+
+        raw_path = lookup_sync_map_media_path(media_map, role, asset)
+
+        if not raw_path:
+            raise StudioCutCliError(
+                "Sync Map render media map is missing a path for "
+                f"{role} asset inputId={asset['inputId']}. Add inputs.{asset['inputId']} "
+                f"or video.{role}."
+            )
+
+        resolved_path = resolve_media_path(raw_path, media_map_path)
+
+        if require_existing and not resolved_path.is_file():
+            raise StudioCutCliError(f"Sync Map render media file not found: {resolved_path}")
+
+        if not require_existing and not resolved_path.is_file():
+            print(f"warning: dry-run media path does not exist: {resolved_path}", file=sys.stderr)
+
+        resolved[role] = {"asset": asset, "path": resolved_path}
+
+    program_audio = media_map["audio"].get("program")
+
+    if program_audio:
+        audio_path = resolve_media_path(program_audio, media_map_path)
+        if require_existing and not audio_path.is_file():
+            raise StudioCutCliError(f"program audio file not found: {audio_path}")
+        if not require_existing and not audio_path.is_file():
+            print(f"warning: dry-run program audio path does not exist: {audio_path}", file=sys.stderr)
+
+    return resolved
+
+
+def find_sync_map_asset_for_video_role(
+    sync_map: dict[str, Any], video_role: str
+) -> dict[str, Any] | None:
+    role_name = {
+        "homer": "homerVideo",
+        "charlie": "charlieVideo",
+        "clip": "clipVideo",
+    }.get(video_role)
+
+    if not role_name:
+        return None
+
+    candidates = [
+        asset
+        for asset in sync_map.get("assets", [])
+        if isinstance(asset, dict) and asset.get("role") == role_name
+    ]
+
+    if not candidates:
+        return None
+
+    return sorted(
+        candidates,
+        key=lambda asset: (
+            -float(asset.get("confidence") or 0),
+            str(asset.get("inputId") or ""),
+        ),
+    )[0]
+
+
+def lookup_sync_map_media_path(
+    media_map: dict[str, Any], video_role: str, asset: dict[str, Any]
+) -> str | None:
+    input_id = str(asset.get("inputId") or "")
+    input_path = media_map.get("inputs", {}).get(input_id)
+
+    if input_path:
+        return str(input_path)
+
+    role_path = media_map.get("video", {}).get(video_role)
+    return str(role_path) if role_path else None
+
+
+def print_sync_map_render_summary(
+    *,
+    sync_map: dict[str, Any],
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    resolved_media: dict[str, dict[str, Any]],
+) -> None:
+    print("\nSync Map render media")
+    print("=====================")
+    print(f"Sync Map: {sync_map['syncMapId']}")
+    print(f"Project/branch: {sync_map['projectId']} / {sync_map['branchId']}")
+    print(
+        "Canonical duration: "
+        f"{format_time_ms(sync_map['canonicalTimeline']['durationMs'])}"
+    )
+    print(f"Media map: {media_map_path}")
+
+    for role in ("homer", "charlie", "clip"):
+        entry = resolved_media.get(role)
+        if not entry:
+            continue
+
+        asset = entry["asset"]
+        print(
+            f"  {role}: {entry['path']} "
+            f"(inputId={asset['inputId']}, timelineStart={format_time_ms(asset['timelineStartMs'])}, "
+            f"assetStart={format_time_ms(asset['assetStartMs'])})"
+        )
+
+    if media_map["audio"].get("program"):
+        print(f"Audio program: {resolve_media_path(media_map['audio']['program'], media_map_path)}")
+        print("Audio note: program audio is treated as canonical-timeline aligned.")
+    else:
+        print("Audio program: none; renderer will use silent audio")
+
+
+def render_sync_map_youtube_16x9_segments(
+    *,
+    ffmpeg_path: str,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segments: list[dict[str, Any]],
+    resolved_media: dict[str, dict[str, Any]],
+    out_path: Path,
+    temp_path: Path,
+) -> None:
+    temp_path.mkdir(parents=True, exist_ok=True)
+    segment_files = []
+
+    for segment in segments:
+        segment_file = temp_path / f"sync-map16x9-segment-{int(segment['index']):04d}.mp4"
+        segment_files.append(segment_file)
+        command = build_sync_map_youtube_16x9_segment_command(
+            ffmpeg_path=ffmpeg_path,
+            media_map=media_map,
+            media_map_path=media_map_path,
+            segment=segment,
+            resolved_media=resolved_media,
+            out_path=segment_file,
+        )
+        run_command(command, f"ffmpeg render Sync Map segment {int(segment['index']) + 1}")
+
+    concat_file = temp_path / "segments.txt"
+    concat_file.write_text(
+        "\n".join(f"file '{escape_ffmpeg_concat_path(path)}'" for path in segment_files)
+        + "\n",
+        encoding="utf-8",
+    )
+    run_ffmpeg_concat(
+        ffmpeg_path=ffmpeg_path,
+        concat_file=concat_file,
+        out_path=out_path,
+    )
+
+
+def print_sync_map_render_commands(
+    *,
+    ffmpeg_path: str,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segments: list[dict[str, Any]],
+    resolved_media: dict[str, dict[str, Any]],
+    out_path: Path,
+    temp_path: Path,
+) -> None:
+    segment_files = []
+
+    print("\nSync Map 16:9 ffmpeg segment plan:")
+    for segment in segments:
+        segment_file = temp_path / f"sync-map16x9-segment-{int(segment['index']):04d}.mp4"
+        segment_files.append(segment_file)
+        roles = ", ".join(get_youtube_16x9_video_roles(segment["programState"]))
+        print(
+            f"\nSegment {int(segment['index']) + 1}: "
+            f"{segment['programState']} / {segment['layoutBehavior']} / sources: {roles}"
+        )
+        print(
+            format_shell_command(
+                build_sync_map_youtube_16x9_segment_command(
+                    ffmpeg_path=ffmpeg_path,
+                    media_map=media_map,
+                    media_map_path=media_map_path,
+                    segment=segment,
+                    resolved_media=resolved_media,
+                    out_path=segment_file,
+                )
+            )
+        )
+
+    concat_file = temp_path / "segments.txt"
+    print("\nFinal concat:")
+    print(
+        format_shell_command(
+            build_ffmpeg_concat_command(
+                ffmpeg_path=ffmpeg_path,
+                concat_file=concat_file,
+                out_path=out_path,
+            )
+        )
+    )
+    print(f"\nConcat list would include {len(segment_files)} rendered segment file(s).")
+
+
+def build_sync_map_youtube_16x9_segment_command(
+    *,
+    ffmpeg_path: str,
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    segment: dict[str, Any],
+    resolved_media: dict[str, dict[str, Any]],
+    out_path: Path,
+) -> list[str]:
+    state = segment["programState"]
+    video_roles = get_youtube_16x9_video_roles(state)
+    duration_seconds = float(segment["durationMs"]) / 1000
+    command = [ffmpeg_path, "-hide_banner", "-loglevel", "error", "-y"]
+    role_filters = []
+    role_labels: list[str] = []
+
+    for input_index, role in enumerate(video_roles):
+        entry = resolved_media[role]
+        role_labels.append(f"role{input_index}")
+        command.extend(["-i", str(entry["path"])])
+        role_filters.append(
+            build_sync_map_role_video_filter(
+                input_index=input_index,
+                output_label=f"role{input_index}",
+                segment=segment,
+                asset=entry["asset"],
+            )
+        )
+
+    audio_input_index = len(video_roles)
+    program_audio = media_map["audio"].get("program")
+    start_seconds = float(segment["startSourceTimeMs"]) / 1000
+
+    if program_audio:
+        command.extend(
+            [
+                "-ss",
+                format_seconds(start_seconds),
+                "-t",
+                format_seconds(duration_seconds),
+                "-i",
+                str(resolve_media_path(program_audio, media_map_path)),
+            ]
+        )
+        audio_filter = f"[{audio_input_index}:a]aresample=48000,asetpts=PTS-STARTPTS[aout]"
+    else:
+        command.extend(
+            [
+                "-f",
+                "lavfi",
+                "-t",
+                format_seconds(duration_seconds),
+                "-i",
+                "anullsrc=channel_layout=stereo:sample_rate=48000",
+            ]
+        )
+        audio_filter = f"[{audio_input_index}:a]anull[aout]"
+
+    filter_complex = ";".join(
+        [
+            *role_filters,
+            build_youtube_16x9_labeled_video_filter(state, role_labels),
+            audio_filter,
+        ]
+    )
+    command.extend(
+        [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "22",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+    )
+
+    return command
+
+
+def build_sync_map_role_video_filter(
+    *,
+    input_index: int,
+    output_label: str,
+    segment: dict[str, Any],
+    asset: dict[str, Any],
+) -> str:
+    segment_start_ms = int(segment["startSourceTimeMs"])
+    segment_end_ms = int(segment["endSourceTimeMs"])
+    segment_duration_ms = int(segment["durationMs"])
+    timeline_start_ms = int(round(float(asset["timelineStartMs"])))
+    asset_start_ms = int(round(float(asset["assetStartMs"])))
+    asset_duration_ms = int(round(float(asset["durationMs"])))
+    asset_timeline_end_ms = timeline_start_ms + asset_duration_ms
+    visible_start_ms = max(segment_start_ms, timeline_start_ms)
+    visible_end_ms = min(segment_end_ms, asset_timeline_end_ms)
+
+    if visible_end_ms <= visible_start_ms:
+        return (
+            "color=c=black:s=1280x720:r=30:"
+            f"d={format_seconds(segment_duration_ms / 1000)},"
+            f"format=yuv420p[{output_label}]"
+        )
+
+    visible_duration_ms = visible_end_ms - visible_start_ms
+    source_start_ms = asset_start_ms + (visible_start_ms - timeline_start_ms)
+    leading_ms = visible_start_ms - segment_start_ms
+    trailing_ms = segment_end_ms - visible_end_ms
+
+    return (
+        f"[{input_index}:v]"
+        f"trim=start={format_seconds(source_start_ms / 1000)}:"
+        f"duration={format_seconds(visible_duration_ms / 1000)},"
+        "setpts=PTS-STARTPTS,"
+        f"tpad=start_duration={format_seconds(leading_ms / 1000)}:"
+        f"stop_duration={format_seconds(trailing_ms / 1000)}:color=black,"
+        f"trim=duration={format_seconds(segment_duration_ms / 1000)},"
+        f"setpts=PTS-STARTPTS,format=yuv420p[{output_label}]"
+    )
+
+
+def build_youtube_16x9_labeled_video_filter(state: str, input_labels: list[str]) -> str:
+    if state in {"charlie", "homer"}:
+        return video_scale_filter_from_label(
+            input_labels[0], YOUTUBE_16X9_WIDTH, YOUTUBE_16X9_HEIGHT, "vout"
+        )
+
+    if state in {"both", "charlie_clip", "homer_clip"}:
+        return ";".join(
+            [
+                video_scale_filter_from_label(input_labels[0], 960, 1080, "left"),
+                video_scale_filter_from_label(input_labels[1], 960, 1080, "right"),
+                "[left][right]hstack=inputs=2[vout]",
+            ]
+        )
+
+    if state == "both_clip":
+        return ";".join(
+            [
+                video_scale_filter_from_label(input_labels[0], 640, 540, "homer"),
+                video_scale_filter_from_label(input_labels[1], 640, 540, "charlie"),
+                "[homer][charlie]vstack=inputs=2[left]",
+                video_scale_filter_from_label(input_labels[2], 1280, 1080, "clip"),
+                "[left][clip]hstack=inputs=2[vout]",
+            ]
+        )
+
+    raise StudioCutCliError(f"cannot render state in Sync Map youtube_16x9 renderer: {state}")
 
 
 def run_ffmpeg_trim(

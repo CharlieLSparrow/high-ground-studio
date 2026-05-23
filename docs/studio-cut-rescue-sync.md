@@ -122,6 +122,23 @@ The web UI and current decision schema still say `sourceTimeMs` in several
 places. Architecturally, that value should be treated as canonical episode
 timeline time, not an individual asset's file time.
 
+The first local original-asset renderer now consumes this contract:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
+  --sync-map /tmp/studio-cut-sync-map.json \
+  --decisions /path/to/studio-cut-decisions.json \
+  --media-map /path/to/sync-map-local-media.json \
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4
+```
+
+The local media map points at original or higher-quality local files by Sync Map
+`inputId`. It should stay untracked because it can contain private machine
+paths. The renderer translates each active semantic decision span from
+canonical episode time into asset-local time, pads missing role coverage with
+black, skips `Cut`, and writes a rough 16:9 output. Final quality, drift-aware
+rendering, and profile polish remain future work.
+
 ## Generated Proxy Package
 
 Worker v0 can now turn Sync Map offsets into a local browser editing package:
@@ -189,6 +206,8 @@ Implemented now:
 - aligned low-res proxy generation, 2x2 source-monitor proxy composition, and
   draft Episode Manifest output
 - browser publishing of generated worker packages into shared rooms
+- local `render-from-sync-map` handoff from Sync Map + decisions to rough 16:9
+  output using local original/proxy assets
 - helper tests included in `pnpm studio-cut:verify`
 
 Scaffold only:
