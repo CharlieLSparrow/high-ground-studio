@@ -9,7 +9,10 @@ const config = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
   reactStrictMode: true,
-  transpilePackages: ["@high-ground/studio-domain"],
+  transpilePackages: [
+    "@high-ground/content-studio-domain",
+    "@high-ground/studio-domain",
+  ],
 };
 
 export default config;

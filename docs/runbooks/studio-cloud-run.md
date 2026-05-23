@@ -7,9 +7,10 @@ Date: 2026-05-19
 This runbook documents the first live private Studio deployment path for Google
 Cloud Run.
 
-Do not treat this as permission to deploy from an agent session. Codex can
-prepare docs, scripts, and code, but an operator owns live Google Cloud
-mutations.
+Codex can deploy from an agent session when Chuck has explicitly approved the
+deployment scope, the rollback path is known, and local validation has passed.
+Treat live Google Cloud mutation as fast-approval work, not as a reason to avoid
+shipping.
 
 First successful deployment result:
 
@@ -29,6 +30,8 @@ Studio routes remain private:
 - `/` - Tagging Desk
 - `/write` - Writing Desk
 - `/structure` - Structure Mode
+- `/content-studio` - browser-local Content Management Studio command board
+- `/manuscript` - Manuscript Desk
 
 The health route is intentionally public and non-sensitive:
 
@@ -46,12 +49,17 @@ Expected response:
 }
 ```
 
-Only `/structure` is useful without database persistence because it stores its
+`/structure` is useful without database persistence because it stores its
 draft in browser `localStorage` under:
 
 ```text
 high-ground-studio.structure-mode.v1
 ```
+
+`/content-studio` is a browser-local internal command surface. It stores the
+current board in browser `localStorage`, exports JSON handoff packets, and does
+not write server data, call providers, publish content, or expose private
+manuscript material.
 
 `/manuscript` is also live and useful through browser-local persistence under:
 
@@ -77,6 +85,18 @@ keep other development seed writes disabled in Cloud Run.
   - builds the Studio container image
   - tags it for Artifact Registry
   - does not deploy to Cloud Run
+- `cloudbuild.studio.deploy.yaml`
+  - builds the Studio container image
+  - deploys the image to the existing Cloud Run service
+  - intended for Cloud Build triggers after the Cloud Build service account has
+    deploy permissions
+- `scripts/studio-cloud-run-deploy.mjs`
+  - local one-command build/deploy/smoke helper
+  - requires a clean working tree unless `ALLOW_DIRTY_DEPLOY=1`
+  - runs Studio typecheck and Cloud Run readiness tests unless
+    `SKIP_LOCAL_CHECKS=1`
+  - builds through Cloud Build, deploys the image, smokes `/api/health` and
+    `/content-studio`, and prints a rollback command
 - `.dockerignore`
   - keeps local build artifacts, dependencies, logs, env files, and large
     staging/inbox content out of the Docker context
@@ -227,6 +247,63 @@ gcloud builds submit \
 
 This builds and pushes an image. It does not deploy the image.
 
+## One-Command Deploy
+
+For the current fast-shipping posture, use the deploy helper from a clean
+branch after the desired commit is pushed:
+
+```bash
+pnpm studio:cloudrun:deploy
+```
+
+Defaults:
+
+- project: active `gcloud config get-value project`
+- region: active `gcloud config get-value run/region`, falling back to
+  `us-central1`
+- service: `studio`
+- image tag: current short git SHA
+- image repository: `high-ground-studio`
+
+Useful overrides:
+
+```bash
+STUDIO_CLOUD_RUN_PROJECT=high-ground-odyssey \
+STUDIO_CLOUD_RUN_REGION=us-central1 \
+STUDIO_CLOUD_RUN_SERVICE=studio \
+pnpm studio:cloudrun:deploy
+```
+
+The helper updates only the Cloud Run image for the existing service. It relies
+on the existing service configuration for auth, secrets, service account, and
+invoker posture.
+
+Rollback command shape:
+
+```bash
+gcloud run services update-traffic studio \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=PREVIOUS_REVISION=100
+```
+
+## Cloud Build Trigger Path
+
+`cloudbuild.studio.deploy.yaml` is the checked-in config for a push-to-deploy
+trigger later. Before enabling an automatic trigger, grant the Cloud Build
+service account only the permissions it needs to deploy the existing Studio
+service and use the runtime service account.
+
+Recommended trigger posture:
+
+- trigger on pushes to `main` after merge validation
+- build and deploy with `_IMAGE_TAG=$SHORT_SHA`
+- keep secrets in Cloud Run/Secret Manager, not in trigger config
+- require rollback notes in the progress thread for risky releases
+
+Do not create a trigger that deploys unreviewed feature branches to the main
+live Studio service unless Chuck explicitly asks for that workflow.
+
 ## First Deploy Command
 
 Do not run this from an agent session in the readiness pass.
@@ -305,7 +382,10 @@ After an explicitly approved deployment:
 
 - open the Cloud Run service URL
 - verify `/api/health` returns `{ "ok": true, "service": "high-ground-studio", "app": "studio" }`
+- verify `/content-studio` returns the Studio sign-in/access shell when not
+  authenticated
 - sign in with an allowlisted Google account
+- verify `/content-studio` opens
 - verify `/structure` opens
 - paste text
 - select a span in the textarea

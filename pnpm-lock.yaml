@@ -40,6 +40,9 @@ importers:
 
   apps/studio:
     dependencies:
+      '@high-ground/content-studio-domain':
+        specifier: workspace:*
+        version: link:../../packages/content-studio-domain
       '@high-ground/studio-domain':
         specifier: workspace:*
         version: link:../../packages/studio-domain
@@ -104,6 +107,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@high-ground/worldhub-domain':
+        specifier: workspace:*
+        version: link:../../packages/worldhub-domain
       '@prisma/adapter-pg':
         specifier: ^7.7.0
         version: 7.7.0
@@ -157,6 +163,12 @@ importers:
         specifier: ^4.2.2
         version: 4.2.2
 
+  packages/content-studio-domain:
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   packages/motion-engine:
     dependencies:
       gsap:
@@ -174,6 +186,12 @@ importers:
         version: 5.9.3
 
   packages/studio-domain:
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  packages/worldhub-domain:
     devDependencies:
       typescript:
         specifier: ^5.5.4

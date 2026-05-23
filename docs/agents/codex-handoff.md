@@ -7,6 +7,9 @@ Read in this order:
 - `docs/project-context/current-state.md`
 - `docs/architecture/system-overview.md`
 - `docs/runbooks/local-dev.md`
+- `docs/agents/autonomous-codex-operating-mode.md`
+- `docs/agents/multi-agent-collaboration.md`
+- `docs/coordination/agent-board.md`
 - the most recent relevant file in `docs/sessions/`
 
 ## Current Repo Truths
@@ -23,8 +26,14 @@ Read in this order:
 - Resend email notifications are wired for new coaching requests and are best-effort after the request transaction commits.
 - SMS/Twilio notification sending is not wired into the active coaching request flow.
 - The episodes route is stabilized with a guarded loader, not a final content architecture.
+- Studio `/content-studio` is a private browser-local command surface for
+  podcast, book, episode-page, monetization, and coaching project boards. It is
+  not yet Prisma-backed and does not call providers or publish content.
 - Both current production build paths pass.
 - The content tree is much larger than the current published surface.
+- Codex has approval to commit, push, and deploy independently when a coherent
+  slice is verified, documented, and has a known rollback path. See
+  `docs/agents/autonomous-codex-operating-mode.md` for the safety stops.
 
 ## Files Future Agents Will Commonly Need
 
@@ -53,6 +62,8 @@ Team workflows:
 - `apps/web/src/lib/server/email.ts`
 
 Content:
+- `apps/studio/src/app/content-studio/page.tsx`
+- `apps/studio/src/app/content-studio/content-studio-client.tsx`
 - `apps/web/src/app/episodes/[[...slug]]/page.tsx`
 - `apps/web/src/lib/source.ts`
 - `apps/web/source.config.ts`
