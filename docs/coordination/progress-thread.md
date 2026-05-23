@@ -108,3 +108,20 @@ checks, blockers, and next handoff.
 - Web Cloud Run preflight has no blocked repo items, but first live web deploy
   still needs cloud setup or confirmation of the current HighGroundOdyssey.com
   hosting target.
+
+### Codex / `codex/web-cloud-run-deploy-001`
+
+- Added `pnpm web:cloudrun:seed-secrets` and `pnpm web:cloudrun:deploy`.
+- Seeded web Secret Manager versions from local env files without printing
+  values.
+- Ensured the web runtime service account can read web secrets and granted it
+  `roles/cloudsql.client`.
+- Created Cloud Run service `web`, attached Cloud SQL
+  `high-ground-odyssey:us-central1:studio-postgres`, and deployed image
+  `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:742690e`.
+- Cloud Build: `dd3c4756-ea24-443c-8906-ac3b6726c4eb`.
+- Latest ready revision after env update: `web-00002-vjt`, serving 100%.
+- Live URL: `https://web-hm2odnvjga-uc.a.run.app`.
+- Smokes passed after applying the same disabled invoker-IAM-check setting used
+  by Studio: `/api/health`, `/`, and `/team/progress` unauthenticated redirect.
+- DNS and Google OAuth callback mutation are still pending.

@@ -315,6 +315,21 @@ if (createService && !requestedAuthUrl) {
   );
 }
 
+if (createService) {
+  run("gcloud", [
+    "run",
+    "services",
+    "update",
+    service,
+    "--project",
+    project,
+    "--region",
+    region,
+    "--no-invoker-iam-check",
+    "--quiet",
+  ]);
+}
+
 await assertHttpOk(`${serviceUrl}/api/health`, (body) => {
   try {
     const parsed = JSON.parse(body);

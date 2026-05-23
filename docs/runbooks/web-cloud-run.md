@@ -81,6 +81,9 @@ Expected health response:
     explicitly set
   - runs smoke checks for `/api/health`, `/`, and unauthenticated
     `/team/progress` sign-in redirect
+  - applies the same Cloud Run disabled invoker-IAM-check setting used by
+    Studio during first-service creation when org policy blocks public invoker
+    IAM binding
 - `scripts/web-cloud-run-readiness.test.mjs`
   - tests health response shape, Dockerfile expectations, standalone config,
     Cloud Build config, deploy-helper wiring, and preflight read-only behavior
@@ -346,6 +349,18 @@ If `WEB_AUTH_URL` is not set during first deploy, the helper updates `AUTH_URL`
 and `HGO_SITE_URL` to the generated Cloud Run service URL after the service is
 created. A later custom-domain pass should update both values to the final
 public origin after DNS and OAuth callback wiring are confirmed.
+
+The helper also runs:
+
+```bash
+gcloud run services update web \
+  --region=us-central1 \
+  --no-invoker-iam-check
+```
+
+This mirrors the current Studio Cloud Run posture. Public web routes still need
+unauthenticated HTTP access, while `/team/*` remains protected by app-level
+Google OAuth plus role authorization.
 
 ## Manual Deploy Command
 
