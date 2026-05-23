@@ -118,6 +118,23 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
+For real episodes, prefer the one-folder session helper instead of hand-writing
+the sync job and local media map:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-session \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+Put files in `~/Movies/StudioCut/episode-004/inbox/` using predictable names:
+`homer-video.mov`, `charlie-video.mov`, `homer-audio.wav`,
+`charlie-audio.wav`, `phone-reference-01.m4a`, `phone-reference-02.m4a`, and
+optional `clip-video.mp4`. The helper writes `generated/sync-job.json` and
+`generated/local-media-map.json`, then runs the worker automatically when the
+required files are present.
+
 The web UI and current decision schema still say `sourceTimeMs` in several
 places. Architecturally, that value should be treated as canonical episode
 timeline time, not an individual asset's file time.

@@ -324,6 +324,9 @@ The CLI supports:
 - `doctor`: checks Python, `ffmpeg`, and current-directory read/write access.
 - `create-episode-bootstrap`: writes a placeholder Episode Manifest, local media
   map, and README for a real episode so operators do not hand-write JSON.
+- `rescue-sync-session`: creates a one-folder local episode workspace, scans
+  predictable inbox filenames, writes the sync job/local media map, and runs the
+  Rescue Sync worker when required files are present.
 - `validate-episode-files`: checks a real-episode manifest and local media map,
   confirms the episode id matches, verifies local file existence, and uses
   `ffprobe` to compare media durations against the manifest before rendering.
@@ -870,6 +873,37 @@ Proxies and extracted audio are disposable/derivable. Sync Maps and semantic
 decision events are durable. Existing Studio Cut UI and JSON still use
 `sourceTimeMs` in some places; architecturally that should now be read as
 canonical episode timeline time until the naming is migrated.
+
+The real-episode workspace should live outside the repo, by default:
+
+```text
+~/Movies/StudioCut/episode-004/
+  inbox/
+    homer-video.mov
+    charlie-video.mov
+    homer-audio.wav
+    charlie-audio.wav
+    phone-reference-01.m4a
+    phone-reference-02.m4a
+    clip-video.mp4
+  generated/
+  edit/checkpoints/
+  renders/
+```
+
+Create or run that workspace with:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-session \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+The command writes the local sync job and local media map, then runs the worker
+once the required inbox files are present. This is the assistant-friendly path:
+files in predictable places, generated artifacts in predictable places, no
+hand-written path maps for normal use.
 
 The local render CLI can now consume that durable bridge directly:
 

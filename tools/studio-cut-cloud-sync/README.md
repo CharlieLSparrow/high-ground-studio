@@ -82,6 +82,21 @@ python tools/studio-cut-cloud-sync/cloud_sync_worker.py \
   --out-manifest /tmp/studio-cut-episode-manifest.json
 ```
 
+For real operator work, prefer generating those inputs with the local one-folder
+session helper:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-session \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+That command scans `inbox/`, writes `generated/sync-job.json` and
+`generated/local-media-map.json`, then calls this worker when required files are
+present. Use the direct worker command when debugging or when another system has
+already produced the job/map files.
+
 The worker writes `estimatedOffsetMs`, confidence, `anchorCount`,
 `anchorAgreementMs`, approximate `driftPpm`, and optional `anchorSummaries` for
 correlated tracks. Positive offsets mean the input starts after the reference

@@ -212,6 +212,57 @@ AGENT_SMOKE_EXPECTED_YOUTUBE_16X9_BEHAVIORS = {
     "cut": "Skipped",
 }
 DEFAULT_EPISODE_VALIDATION_TOLERANCE_MS = 1500
+DEFAULT_STUDIO_CUT_WORKSPACE_ROOT = Path.home() / "Movies" / "StudioCut"
+
+RESCUE_SYNC_ROLE_SPECS = {
+    "homerVideo": {
+        "label": "Homer video",
+        "required": True,
+        "kind": "video",
+        "prefixes": ["homer-video", "homer-camera", "homer-insta360"],
+    },
+    "charlieVideo": {
+        "label": "Charlie video",
+        "required": True,
+        "kind": "video",
+        "prefixes": ["charlie-video", "charlie-camera", "charlie-canon"],
+    },
+    "homerAudio": {
+        "label": "Homer clean audio",
+        "required": True,
+        "kind": "audio",
+        "prefixes": ["homer-audio", "homer-dji", "dji-homer"],
+    },
+    "charlieAudio": {
+        "label": "Charlie clean audio",
+        "required": True,
+        "kind": "audio",
+        "prefixes": ["charlie-audio", "charlie-shure", "shure-charlie"],
+    },
+    "phoneReferenceAudio": {
+        "label": "Phone/reference audio pieces",
+        "required": True,
+        "kind": "audio",
+        "multi": True,
+        "prefixes": [
+            "phone-reference",
+            "iphone-reference",
+            "call-reference",
+            "reference-audio",
+            "reference",
+        ],
+    },
+    "clipVideo": {
+        "label": "Optional clip/screen video",
+        "required": False,
+        "kind": "video",
+        "prefixes": ["clip-video", "screen-video", "shared-clip", "clip"],
+    },
+}
+
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".webm"}
+AUDIO_EXTENSIONS = {".wav", ".m4a", ".mp3", ".aac", ".aiff", ".aif", ".flac"}
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 PROGRAM_STATE_LABELS = {
     "charlie": "Charlie",
@@ -359,6 +410,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Whether to include the optional Clip source. Use true or false. Default: true.",
     )
     bootstrap_parser.set_defaults(handler=run_create_episode_bootstrap)
+
+    rescue_session_parser = subparsers.add_parser(
+        "rescue-sync-session",
+        help="Create and optionally run a one-folder Rescue Sync session.",
+    )
+    rescue_session_parser.add_argument("--episode-id", required=True)
+    rescue_session_parser.add_argument("--title", required=True)
+    rescue_session_parser.add_argument(
+        "--episode-dir",
+        type=Path,
+        help=(
+            "Episode workspace directory. Default: "
+            "~/Movies/StudioCut/<episode-id>."
+        ),
+    )
+    rescue_session_parser.add_argument(
+        "--branch-id",
+        default="main",
+        help="Studio Cut branch id for generated room metadata. Default: main.",
+    )
+    rescue_session_parser.add_argument(
+        "--created-by",
+        default="local-rescue-sync-session",
+        help="Operator id/email stored in generated local metadata.",
+    )
+    rescue_session_parser.add_argument(
+        "--include-clip",
+        default=True,
+        type=parse_bool_arg,
+        help="Whether to scan for optional clip/screen video. Default: true.",
+    )
+    rescue_session_parser.add_argument(
+        "--skip-worker",
+        action="store_true",
+        help="Only scaffold/scan/write JSON; do not run the Rescue Sync worker.",
+    )
+    rescue_session_parser.set_defaults(handler=run_rescue_sync_session)
 
     validate_episode_parser = subparsers.add_parser(
         "validate-episode-files",
@@ -1318,6 +1406,392 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \\
 """
 
 
+def build_rescue_sync_session(
+    *,
+    episode_id: str,
+    title: str,
+    branch_id: str,
+    created_by: str,
+    episode_dir: Path,
+    include_clip: bool,
+) -> dict[str, Any]:
+    inbox_dir = episode_dir / "inbox"
+    generated_dir = episode_dir / "generated"
+    edit_dir = episode_dir / "edit"
+    checkpoints_dir = edit_dir / "checkpoints"
+    renders_dir = episode_dir / "renders"
+    sync_job_id = f"{episode_id}-rescue-sync-local"
+    now = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    role_matches = scan_rescue_sync_inbox(inbox_dir, include_clip=include_clip)
+    uploaded_inputs: list[dict[str, Any]] = []
+    local_media_inputs: dict[str, str] = {}
+    warnings: list[str] = []
+
+    for role, matches in role_matches.items():
+        spec = RESCUE_SYNC_ROLE_SPECS[role]
+        if not matches:
+            continue
+
+        if not spec.get("multi") and len(matches) > 1:
+            warnings.append(
+                f"Multiple {spec['label']} files matched; using {matches[0].name}."
+            )
+            matches = matches[:1]
+
+        for index, media_path in enumerate(matches):
+            input_id = build_rescue_sync_input_id(episode_id, role, index)
+            uploaded_inputs.append(
+                build_rescue_sync_uploaded_input(
+                    sync_job_id=sync_job_id,
+                    input_id=input_id,
+                    role=role,
+                    media_path=media_path,
+                    uploaded_at=now,
+                    order_index=index if role == "phoneReferenceAudio" else None,
+                )
+            )
+            local_media_inputs[input_id] = os.path.relpath(media_path, generated_dir)
+
+    expected_inputs = {
+        "homerVideo": True,
+        "charlieVideo": True,
+        "homerAudio": True,
+        "charlieAudio": True,
+        "phoneReferenceAudio": True,
+        "clipVideo": include_clip,
+    }
+    missing_required_roles = [
+        role
+        for role, spec in RESCUE_SYNC_ROLE_SPECS.items()
+        if spec["required"] and not role_matches.get(role)
+    ]
+
+    sync_job = {
+        "syncJobId": sync_job_id,
+        "projectId": episode_id,
+        "branchId": branch_id,
+        "title": title,
+        "createdBy": created_by,
+        "createdAt": now,
+        "updatedAt": now,
+        "status": "uploaded" if not missing_required_roles else "draft",
+        "expectedInputs": expected_inputs,
+        "uploadedInputs": uploaded_inputs,
+        "outputs": {
+            "manifestStoragePath": f"studioCutSyncJobs/{sync_job_id}/outputs/episode-manifest.json",
+            "sourceMonitorProxyStoragePath": f"studioCutSyncJobs/{sync_job_id}/outputs/source-monitor-proxy.mp4",
+            "syncReportStoragePath": f"studioCutSyncJobs/{sync_job_id}/outputs/sync-report.json",
+            "syncMapStoragePath": f"studioCutSyncJobs/{sync_job_id}/outputs/sync-map.json",
+            "sharedRoomUrl": f"https://high-ground-odyssey.web.app/?projectId={episode_id}&branchId={branch_id}",
+        },
+        "syncReportSummary": {
+            "confidence": 0,
+            "warnings": [
+                "Local Rescue Sync session metadata. Run the worker to produce the real report."
+            ],
+            "offsets": {},
+        },
+    }
+    local_media_map = {
+        "schemaVersion": 1,
+        "episodeId": episode_id,
+        "inputs": local_media_inputs,
+    }
+
+    return {
+        "episodeId": episode_id,
+        "title": title,
+        "branchId": branch_id,
+        "createdBy": created_by,
+        "includeClip": include_clip,
+        "episodeDir": episode_dir,
+        "inboxDir": inbox_dir,
+        "generatedDir": generated_dir,
+        "editDir": edit_dir,
+        "checkpointsDir": checkpoints_dir,
+        "rendersDir": renders_dir,
+        "syncJobId": sync_job_id,
+        "syncJobPath": generated_dir / "sync-job.json",
+        "localMediaMapPath": generated_dir / "local-media-map.json",
+        "syncReportPath": generated_dir / "sync-report.json",
+        "syncMapPath": generated_dir / "sync-map.json",
+        "sourceMonitorProxyPath": generated_dir / "source-monitor-proxy.mp4",
+        "manifestPath": generated_dir / "episode-manifest.json",
+        "alignedProxyDir": generated_dir / "aligned-proxies",
+        "workDir": generated_dir / "work",
+        "readmePath": episode_dir / "README.md",
+        "roleMatches": role_matches,
+        "missingRequiredRoles": missing_required_roles,
+        "warnings": warnings,
+        "syncJob": sync_job,
+        "localMediaMap": local_media_map,
+    }
+
+
+def scan_rescue_sync_inbox(
+    inbox_dir: Path, *, include_clip: bool
+) -> dict[str, list[Path]]:
+    role_matches: dict[str, list[Path]] = {}
+    files = [
+        path
+        for path in sorted(inbox_dir.glob("*"))
+        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
+    ]
+
+    for role, spec in RESCUE_SYNC_ROLE_SPECS.items():
+        if role == "clipVideo" and not include_clip:
+            role_matches[role] = []
+            continue
+
+        kind = str(spec["kind"])
+        prefixes = [str(prefix) for prefix in spec["prefixes"]]
+        matches = [
+            path
+            for path in files
+            if media_file_matches_role(path, kind=kind, prefixes=prefixes)
+        ]
+        role_matches[role] = sorted(matches, key=lambda path: normalized_file_stem(path))
+
+    return role_matches
+
+
+def media_file_matches_role(path: Path, *, kind: str, prefixes: list[str]) -> bool:
+    suffix = path.suffix.lower()
+    if kind == "video" and suffix not in VIDEO_EXTENSIONS:
+        return False
+    if kind == "audio" and suffix not in AUDIO_EXTENSIONS:
+        return False
+
+    stem = normalized_file_stem(path)
+    return any(stem == prefix or stem.startswith(f"{prefix}-") for prefix in prefixes)
+
+
+def normalized_file_stem(path: Path) -> str:
+    return (
+        path.stem.lower()
+        .replace("_", "-")
+        .replace(" ", "-")
+        .replace(".", "-")
+    )
+
+
+def build_rescue_sync_input_id(episode_id: str, role: str, index: int) -> str:
+    role_slug = camel_to_kebab(role)
+    if role == "phoneReferenceAudio":
+        return f"{episode_id}-{role_slug}-{index + 1:02d}"
+    return f"{episode_id}-{role_slug}"
+
+
+def build_rescue_sync_uploaded_input(
+    *,
+    sync_job_id: str,
+    input_id: str,
+    role: str,
+    media_path: Path,
+    uploaded_at: str,
+    order_index: int | None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "inputId": input_id,
+        "role": role,
+        "storagePath": (
+            f"studioCutSyncJobs/{sync_job_id}/uploads/"
+            f"{role}/{safe_file_part(input_id)}-{safe_file_part(media_path.name)}"
+        ),
+        "fileName": media_path.name,
+        "contentType": guess_media_content_type(media_path),
+        "sizeBytes": media_path.stat().st_size if media_path.exists() else 0,
+        "uploadedAt": uploaded_at,
+    }
+
+    if order_index is not None:
+        entry["orderIndex"] = order_index
+        entry["notes"] = "Ordered phone/reference piece from local episode inbox."
+
+    return entry
+
+
+def guess_media_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return {
+        ".mp4": "video/mp4",
+        ".m4v": "video/x-m4v",
+        ".mov": "video/quicktime",
+        ".mkv": "video/x-matroska",
+        ".webm": "video/webm",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".aac": "audio/aac",
+        ".aiff": "audio/aiff",
+        ".aif": "audio/aiff",
+        ".flac": "audio/flac",
+    }.get(suffix, "application/octet-stream")
+
+
+def print_rescue_sync_session_report(session: dict[str, Any]) -> None:
+    print("Studio Cut Rescue Sync Session")
+    print("==============================")
+    print(f"Episode: {session['title']} ({session['episodeId']})")
+    print(f"Workspace: {session['episodeDir']}")
+    print(f"Inbox: {session['inboxDir']}")
+    print(f"Generated: {session['generatedDir']}")
+    print(f"Edit: {session['editDir']}")
+    print(f"Renders: {session['rendersDir']}")
+
+    print("\nDetected inputs:")
+    for role, spec in RESCUE_SYNC_ROLE_SPECS.items():
+        if role == "clipVideo" and not session["includeClip"]:
+            continue
+        matches = session["roleMatches"].get(role, [])
+        status = "missing" if spec["required"] and not matches else "optional" if not matches else "ready"
+        print(f"  - {spec['label']}: {status}")
+        for index, media_path in enumerate(matches):
+            prefix = f"    {index + 1}." if spec.get("multi") else "    -"
+            print(f"{prefix} {media_path.name}")
+
+    if session["warnings"]:
+        print("\nWarnings:")
+        for warning in session["warnings"]:
+            print(f"  - {warning}")
+
+    if session["missingRequiredRoles"]:
+        print("\nMissing required roles:")
+        for role in session["missingRequiredRoles"]:
+            print(f"  - {RESCUE_SYNC_ROLE_SPECS[role]['label']}")
+
+    print("\nWrote:")
+    print(f"  - {session['syncJobPath']}")
+    print(f"  - {session['localMediaMapPath']}")
+    print(f"  - {session['readmePath']}")
+
+
+def build_rescue_sync_worker_command(session: dict[str, Any]) -> list[str]:
+    repo_root = Path(__file__).resolve().parents[2]
+    return [
+        sys.executable,
+        str(repo_root / "tools/studio-cut-cloud-sync/cloud_sync_worker.py"),
+        "--sync-job-json",
+        str(session["syncJobPath"]),
+        "--local-media-map",
+        str(session["localMediaMapPath"]),
+        "--workdir",
+        str(session["workDir"]),
+        "--out",
+        str(session["syncReportPath"]),
+        "--out-sync-map",
+        str(session["syncMapPath"]),
+        "--out-proxy-dir",
+        str(session["alignedProxyDir"]),
+        "--out-source-monitor-proxy",
+        str(session["sourceMonitorProxyPath"]),
+        "--out-manifest",
+        str(session["manifestPath"]),
+    ]
+
+
+def build_rescue_sync_session_readme(session: dict[str, Any]) -> str:
+    episode_id = session["episodeId"]
+    title = session["title"]
+    worker_command = format_shell_command(build_rescue_sync_worker_command(session))
+    render_command = format_shell_command(
+        [
+            sys.executable,
+            str(Path(__file__)),
+            "render-from-sync-map",
+            "--sync-map",
+            str(session["syncMapPath"]),
+            "--decisions",
+            str(session["editDir"] / f"{episode_id}-decisions.json"),
+            "--media-map",
+            str(session["localMediaMapPath"]),
+            "--out",
+            str(session["rendersDir"] / f"{episode_id}-youtube-16x9.mp4"),
+            "--dry-run",
+        ]
+    )
+
+    missing = "\n".join(
+        f"- {RESCUE_SYNC_ROLE_SPECS[role]['label']}"
+        for role in session["missingRequiredRoles"]
+    ) or "- none"
+
+    return f"""# Studio Cut Rescue Sync Session: {title}
+
+This folder is a local episode workspace. Keep it out of git.
+
+## Folder Shape
+
+- `inbox/`: original messy local media from recording/export.
+- `generated/`: sync job JSON, local media map, Sync Map, source-monitor proxy,
+  manifest, aligned proxies, and worker scratch output.
+- `edit/`: exported Studio Cut decisions and checkpoints.
+- `renders/`: local rendered outputs.
+
+## Expected Inbox Names
+
+Use these names or the documented prefixes:
+
+- `homer-video.mov`
+- `charlie-video.mov`
+- `homer-audio.wav`
+- `charlie-audio.wav`
+- `phone-reference-01.m4a`
+- `phone-reference-02.m4a`
+- `clip-video.mp4` when there is a clip/screen source
+
+Missing required inputs right now:
+
+{missing}
+
+## Generated Files
+
+- Sync job: `{session['syncJobPath']}`
+- Local media map: `{session['localMediaMapPath']}`
+- Sync report: `{session['syncReportPath']}`
+- Sync Map: `{session['syncMapPath']}`
+- Episode Manifest: `{session['manifestPath']}`
+- Source-monitor proxy: `{session['sourceMonitorProxyPath']}`
+
+## Run Rescue Sync Worker
+
+```bash
+{worker_command}
+```
+
+## Publish Shared Room
+
+Open Studio Cut, use `Publish Rescue Sync Package`, and select:
+
+- `{session['manifestPath']}`
+- `{session['sourceMonitorProxyPath']}`
+- `{session['syncMapPath']}`
+- `{session['syncReportPath']}`
+
+Mako opens:
+
+```text
+https://high-ground-odyssey.web.app/?projectId={episode_id}&branchId={session['branchId']}
+```
+
+## Render After Editing
+
+Put exported decisions at:
+
+```text
+{session['editDir'] / f'{episode_id}-decisions.json'}
+```
+
+Dry-run:
+
+```bash
+{render_command}
+```
+
+Remove `--dry-run` when the segment plan looks right.
+"""
+
+
 def validate_agent_smoke_output(
     *,
     output_path: Path,
@@ -1711,6 +2185,81 @@ def run_create_episode_bootstrap(args: argparse.Namespace) -> int:
     print(f"Manifest: {manifest_path}")
     print(f"Local media map: {media_map_path}")
     print(f"Next steps: {readme_path}")
+    return 0
+
+
+def run_rescue_sync_session(args: argparse.Namespace) -> int:
+    episode_id = args.episode_id.strip()
+    title = args.title.strip()
+    branch_id = args.branch_id.strip()
+    created_by = args.created_by.strip()
+    include_clip = bool(args.include_clip)
+
+    if not episode_id:
+        raise StudioCutCliError("--episode-id must be a non-empty string")
+    if not title:
+        raise StudioCutCliError("--title must be a non-empty string")
+    if not branch_id:
+        raise StudioCutCliError("--branch-id must be a non-empty string")
+    if not created_by:
+        raise StudioCutCliError("--created-by must be a non-empty string")
+
+    episode_dir = (
+        args.episode_dir.expanduser()
+        if args.episode_dir
+        else DEFAULT_STUDIO_CUT_WORKSPACE_ROOT / episode_id
+    ).resolve()
+    session = build_rescue_sync_session(
+        episode_id=episode_id,
+        title=title,
+        branch_id=branch_id,
+        created_by=created_by,
+        episode_dir=episode_dir,
+        include_clip=include_clip,
+    )
+
+    for directory in (
+        session["episodeDir"],
+        session["inboxDir"],
+        session["generatedDir"],
+        session["editDir"],
+        session["checkpointsDir"],
+        session["rendersDir"],
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    write_json(session["syncJobPath"], session["syncJob"])
+    write_json(session["localMediaMapPath"], session["localMediaMap"])
+    session["readmePath"].write_text(
+        build_rescue_sync_session_readme(session),
+        encoding="utf-8",
+    )
+
+    print_rescue_sync_session_report(session)
+
+    can_run_worker = not session["missingRequiredRoles"]
+    if args.skip_worker:
+        print("\nWorker skipped by --skip-worker.")
+        return 0
+
+    if not can_run_worker:
+        print("\nWorker not run because required files are missing.")
+        return 0
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffprobe_path = shutil.which("ffprobe")
+    if not ffmpeg_path or not ffprobe_path:
+        raise StudioCutCliError(
+            "ffmpeg and ffprobe are required to run the Rescue Sync worker. "
+            "Install ffmpeg or rerun with --skip-worker to scaffold only."
+        )
+
+    command = build_rescue_sync_worker_command(session)
+    print("\nRunning Rescue Sync worker:")
+    print(f"  {format_shell_command(command)}")
+    run_command(command, "Rescue Sync worker")
+    print("\nRescue Sync session complete.")
+    print(f"Generated package: {session['generatedDir']}")
     return 0
 
 
@@ -3479,6 +4028,42 @@ def parse_bool_arg(value: str | bool) -> bool:
         return False
 
     raise argparse.ArgumentTypeError("expected true or false")
+
+
+def camel_to_kebab(value: str) -> str:
+    result = []
+
+    for index, character in enumerate(value):
+        if character.isupper() and index > 0:
+            result.append("-")
+        result.append(character.lower())
+
+    return "".join(result)
+
+
+def safe_file_part(value: str) -> str:
+    normalized = []
+
+    for character in value.strip().lower():
+        if character.isalnum():
+            normalized.append(character)
+        elif character in {"-", "_", "."}:
+            normalized.append("-" if character != "." else ".")
+        else:
+            normalized.append("-")
+
+    compacted = []
+    previous_dash = False
+    for character in normalized:
+        if character == "-":
+            if not previous_dash:
+                compacted.append(character)
+            previous_dash = True
+        else:
+            compacted.append(character)
+            previous_dash = False
+
+    return "".join(compacted).strip("-.") or "file"
 
 
 def clamp_ms(value: float, duration_ms: int) -> int:

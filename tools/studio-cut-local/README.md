@@ -38,6 +38,50 @@ Use `--include-clip false` if the episode has no shared Clip track. Generated
 real-episode bootstrap directories should stay under `tools/studio-cut-local/output/`
 or `/tmp`; that output path is ignored by git.
 
+Create a one-folder Rescue Sync session for real episode work:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-session \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+The command creates this local workspace:
+
+```text
+~/Movies/StudioCut/episode-004/
+  inbox/
+  generated/
+  edit/checkpoints/
+  renders/
+```
+
+Drop files into `inbox/` with predictable names:
+
+- `homer-video.mov`
+- `charlie-video.mov`
+- `homer-audio.wav`
+- `charlie-audio.wav`
+- `phone-reference-01.m4a`
+- `phone-reference-02.m4a`
+- `clip-video.mp4` when present
+
+Then rerun the same command. When required files are present it writes
+`generated/sync-job.json`, `generated/local-media-map.json`, and runs the local
+Rescue Sync worker to produce:
+
+- `generated/sync-report.json`
+- `generated/sync-map.json`
+- `generated/episode-manifest.json`
+- `generated/source-monitor-proxy.mp4`
+- `generated/aligned-proxies/`
+
+Use `--skip-worker` to only scaffold and inspect the workspace. The workspace
+should live outside the repo for real episodes. Generated JSON may contain local
+paths; source media, proxies, reports, decisions, and renders must not be
+committed.
+
 Validate a generated manifest and local media map before rendering:
 
 ```bash

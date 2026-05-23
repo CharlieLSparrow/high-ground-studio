@@ -106,6 +106,36 @@ durations drift from the manifest by more than `1500` ms.
 
 ## 3. Create Bootstrap Files
 
+For the Rescue Sync path, use the one-folder episode workspace instead of
+hand-writing sync JSON:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-session \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+Then put messy local assets in:
+
+```text
+~/Movies/StudioCut/episode-004/inbox/
+  homer-video.mov
+  charlie-video.mov
+  homer-audio.wav
+  charlie-audio.wav
+  phone-reference-01.m4a
+  phone-reference-02.m4a
+  clip-video.mp4
+```
+
+Rerun the same command. Once the required files are present it writes the sync
+job/local media map under `generated/` and runs the local Rescue Sync worker to
+create `sync-report.json`, `sync-map.json`, `episode-manifest.json`, and
+`source-monitor-proxy.mp4`.
+
+The older Premiere-aligned fallback still uses `create-episode-bootstrap`:
+
 From the repo root:
 
 ```bash

@@ -78,17 +78,36 @@ firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 
 ## Episode 4 Commands
 
-Rescue Sync direction, once rules/security and retention are ready for raw
-uploads:
+Rescue Sync direction:
+
+For real local work, start with the one-folder workspace. This keeps large media
+outside the repo and gives agents a predictable place to help:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-session \
+  --episode-id episode-004 \
+  --title "Episode 004" \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+Put assets in `~/Movies/StudioCut/episode-004/inbox/` as
+`homer-video.mov`, `charlie-video.mov`, `homer-audio.wav`,
+`charlie-audio.wav`, `phone-reference-01.m4a`, `phone-reference-02.m4a`, and
+optional `clip-video.mp4`. Rerun the same command. When required files are
+present, it runs the local worker and writes generated package files under
+`generated/`.
+
+Cloud raw uploads remain future-facing until rules/security and retention are
+ready:
 
 1. Open Studio Cut and confirm the `episode-004 / main` room.
 2. In `Cloud Sync Intake`, select Homer video, Charlie video, Homer clean audio,
    Charlie clean audio, and every phone/reference piece.
 3. Set phone/reference `orderIndex` values in the intended rail order.
 4. Click `Create Sync Job / Upload Raw Assets`.
-5. Wait for a future deployed worker to create the shared room. Worker v0 is
-   local-only and does not write manifests/proxies/room metadata yet, so use the
-   prepared-package fallback below for real editing today.
+5. Wait for a future deployed worker to create the shared room. The worker is
+   still local-first for real use today, so publish the generated package from
+   the browser after reviewing it.
 
 Local worker metadata-only run:
 

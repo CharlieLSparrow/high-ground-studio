@@ -18,6 +18,21 @@ const verificationSteps = [
     args: ["-m", "py_compile", "tools/studio-cut-local/studio_cut_local.py"],
   },
   {
+    label: "Rescue sync session scaffold",
+    command: pythonCommand,
+    args: [
+      "tools/studio-cut-local/studio_cut_local.py",
+      "rescue-sync-session",
+      "--episode-id",
+      "studio-cut-verify",
+      "--title",
+      "Studio Cut Verify",
+      "--episode-dir",
+      "/tmp/studio-cut-verify-rescue-session",
+      "--skip-worker",
+    ],
+  },
+  {
     label: "Studio Cut auth access test",
     command: "node",
     args: [
