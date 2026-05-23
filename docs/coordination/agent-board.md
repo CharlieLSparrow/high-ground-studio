@@ -136,6 +136,8 @@ sync on 2026-05-23.
 | `apps/studio/src/app/manuscript/*` | Manuscript lane | Do not mix collaboration lab changes into Content Studio slices. |
 | `apps/studio/src/app/studio-nav.tsx` | Shared Studio navigation | Declare before editing. |
 | `apps/web/src/app/team/worldhub/*` | WorldHub lane | Keep provider-neutral until business model is stable. |
+| `apps/web/src/app/team/progress/*` | Integration / team visibility lane | Team-only readable build journal. |
+| `apps/web/content/internal/progress-story.json` | Integration / team visibility lane | Add short narrative entries for meaningful commits, merges, and deploys. |
 | `packages/content-studio-domain` | Content Studio lane | Provider-neutral content project contract. |
 | `packages/worldhub-domain` | WorldHub lane | Provider-neutral business/access contract. |
 | `packages/*` | Shared | Coordinate package creation and lockfile changes. |

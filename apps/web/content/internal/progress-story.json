@@ -1,0 +1,134 @@
+{
+  "updatedAt": "2026-05-23T23:20:00.000Z",
+  "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
+  "entries": [
+    {
+      "id": "main-studio-live",
+      "date": "2026-05-23",
+      "title": "The Studio spine went live",
+      "kicker": "Content Studio and WorldHub reached main",
+      "mood": "Live and useful",
+      "summary": "The private Studio now has a Content Studio command surface for podcast, book, episode-page, monetization, and coaching work. The WorldHub foundation also landed so business infrastructure has a real home instead of scattered notes.",
+      "body": [
+        "The big move today was turning a planning conversation into a live working surface. Content Studio is still intentionally lightweight, but it gives the team a place to capture active creative projects and the steps around them instead of letting the work disappear into chat scrollback.",
+        "WorldHub came along for the ride as the business layer: offers, memberships, coaching, supporter workflows, merch, and future provider connections now have a shared vocabulary. Nothing is wired to payment or fulfillment providers yet, which is exactly right for this stage.",
+        "After validation, the integrated Studio runtime was deployed to Cloud Run from the merged main SHA. The live app and main are aligned again."
+      ],
+      "commits": [
+        {
+          "sha": "c32adb2",
+          "label": "feat: integrate Content Studio and WorldHub foundation"
+        },
+        {
+          "sha": "a3c4f64",
+          "label": "docs: record main studio deploy"
+        }
+      ],
+      "links": [
+        {
+          "label": "Studio live",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Deploy result",
+          "href": "docs/sessions/main-studio-cloud-run-deploy-result.md"
+        }
+      ],
+      "tags": ["Studio", "Content Studio", "WorldHub", "Cloud Run"]
+    },
+    {
+      "id": "coordination-rails",
+      "date": "2026-05-23",
+      "title": "The agents got a shared trail map",
+      "kicker": "Less bottleneck, more coordination",
+      "mood": "Organized enough to move fast",
+      "summary": "The project now has one progress thread, one board, and a restart playbook so concurrent agents can keep moving without inventing a new coordination ritual every time.",
+      "body": [
+        "The goal is not bureaucracy. The goal is to make it easy for agents to move quickly without stepping on active work. The board names lanes, branches, file ownership, deployment posture, and rollback habits.",
+        "The progress thread is the readable record. It is terse by design: what changed, what passed, what deployed, what is blocked, and what another agent should know before editing.",
+        "A continuity note was pulled back into main after the older Content Studio terminal closed, so future sessions can recover the north star and current operating model quickly."
+      ],
+      "commits": [
+        {
+          "sha": "e9db695",
+          "label": "docs: add codex continuity note"
+        },
+        {
+          "sha": "32a6179",
+          "label": "docs: record worldhub integration studio deploy"
+        }
+      ],
+      "links": [
+        {
+          "label": "Progress thread",
+          "href": "docs/coordination/progress-thread.md"
+        },
+        {
+          "label": "Agent board",
+          "href": "docs/coordination/agent-board.md"
+        }
+      ],
+      "tags": ["Coordination", "Handoff", "Agents"]
+    },
+    {
+      "id": "content-studio-first-slice",
+      "date": "2026-05-23",
+      "title": "The Content Studio first slice became real",
+      "kicker": "A private command surface for chaotic creative work",
+      "mood": "First usable shape",
+      "summary": "A browser-local board now gives the private Studio a concrete place for podcast editing, book writing, HGO episode pages, monetization follow-through, and coaching ideas.",
+      "body": [
+        "This slice deliberately avoids provider calls and public publishing. It proves the working pattern first: capture a real project, assign a workflow lane, track the next action, and export a handoff packet.",
+        "The important thing is that the tool starts meeting the way the work actually happens. It can grow toward real persistence, APIs, and provider integrations once the daily shape proves itself.",
+        "The board is not the final Content Management Studio. It is the first grip point."
+      ],
+      "commits": [
+        {
+          "sha": "0e17203",
+          "label": "feature branch deployed to Studio Cloud Run"
+        },
+        {
+          "sha": "e13e33f",
+          "label": "docs: note content studio pull request"
+        }
+      ],
+      "links": [
+        {
+          "label": "Content Studio architecture",
+          "href": "docs/architecture/content-management-studio.md"
+        },
+        {
+          "label": "Now / next / later",
+          "href": "docs/plans/content-studio-now-next-later.md"
+        }
+      ],
+      "tags": ["Podcast", "Book", "Episode Pages", "Coaching"]
+    },
+    {
+      "id": "video-lane-stays-open",
+      "date": "2026-05-23",
+      "title": "The video lane stayed independent",
+      "kicker": "Studio Cut keeps moving separately",
+      "mood": "Active lane",
+      "summary": "The video and media tooling agent remains the active outside lane. Main and Studio work should coordinate with it instead of quietly touching the media files it owns.",
+      "body": [
+        "This is the working model we want: one active media lane can keep building while the integration thread keeps main healthy and deployable.",
+        "The next connection point is obvious but should be deliberate. Studio Cut media packages should eventually flow into Content Studio podcast and video projects, with rescue paths and local-first workflows preserved.",
+        "Until then, the board treats Studio Cut as occupied space."
+      ],
+      "commits": [
+        {
+          "sha": "46031ff",
+          "label": "studio cut web shell lane"
+        }
+      ],
+      "links": [
+        {
+          "label": "Agent board",
+          "href": "docs/coordination/agent-board.md"
+        }
+      ],
+      "tags": ["Studio Cut", "Video", "Media"]
+    }
+  ]
+}
