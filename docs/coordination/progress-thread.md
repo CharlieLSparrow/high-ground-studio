@@ -124,4 +124,9 @@ checks, blockers, and next handoff.
 - Live URL: `https://web-hm2odnvjga-uc.a.run.app`.
 - Smokes passed after applying the same disabled invoker-IAM-check setting used
   by Studio: `/api/health`, `/`, and `/team/progress` unauthenticated redirect.
+- Redeployed after adding the web-launch story entry: image `web:29b1bfb`,
+  Cloud Build `38e4197f-903b-461c-be64-11ce4425695a`, revision
+  `web-00003-fc2`, serving 100%.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00002-vjt=100`
 - DNS and Google OAuth callback mutation are still pending.

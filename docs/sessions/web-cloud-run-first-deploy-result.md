@@ -38,13 +38,19 @@ current web app, including the team-only progress story route at
 - service: `web`
 - project: `high-ground-odyssey`
 - region: `us-central1`
-- deployed image:
+- first deployed image:
   `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:742690e`
-- image digest:
+- first image digest:
   `sha256:66ea1896093097f0f77f646d2d9e3c15b6121ba53a8d7f0d50d462498311856c`
-- Cloud Build: `dd3c4756-ea24-443c-8906-ac3b6726c4eb`
-- latest ready revision after env update: `web-00002-vjt`
-- traffic: `web-00002-vjt` serving 100%
+- first Cloud Build: `dd3c4756-ea24-443c-8906-ac3b6726c4eb`
+- first ready revision after env update: `web-00002-vjt`
+- final deployed image for the progress-story update:
+  `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:29b1bfb`
+- final image digest:
+  `sha256:503620b1e67751c698a16ea2508617d958ae44451fa75d03126563d31a1c4bfd`
+- final Cloud Build: `38e4197f-903b-461c-be64-11ce4425695a`
+- latest ready revision: `web-00003-fc2`
+- traffic: `web-00003-fc2` serving 100%
 - live URL: `https://web-hm2odnvjga-uc.a.run.app`
 - canonical Cloud Run URL: `https://web-659427658635.us-central1.run.app`
 
@@ -73,6 +79,21 @@ Live smoke after disabled invoker-IAM-check update:
 - `https://web-hm2odnvjga-uc.a.run.app/` returned `200`
 - `https://web-hm2odnvjga-uc.a.run.app/team/progress` returned `307` to
   `/api/auth/signin?callbackUrl=%2Fteam%2Fclients`
+
+Final deploy smoke for `web-00003-fc2`:
+
+- `/api/health` passed
+- `/` passed
+- `/team/progress` redirected unauthenticated visitors to sign-in
+
+## Rollback
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=web-00002-vjt=100
+```
 
 ## Follow-Up
 
