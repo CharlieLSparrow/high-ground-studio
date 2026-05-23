@@ -64,3 +64,19 @@ checks, blockers, and next handoff.
 - Live URL: `https://studio-hm2odnvjga-uc.a.run.app`.
 - Smokes passed: `/api/health` and `/content-studio`.
 - Rollback: `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00023-7c5=100`.
+
+### Codex / main merge and deploy
+
+- Merged PR #4, `project/worldhub` into `main`.
+- Superseded and closed PR #3 because its Content Studio slice is included in PR #4.
+- Main merge commit: `c32adb2` (`feat: integrate Content Studio and WorldHub foundation`).
+- Primary checkout `/Users/wall-e/Dev/high-ground-studio` is now on `main` at `c32adb2`.
+- Deployed main runtime commit `c32adb2` to Studio Cloud Run.
+- Cloud Build: `ce548402-cc92-47e1-9cbb-be5a83dac156`.
+- Image: `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:c32adb2`.
+- Image digest: `sha256:bae37d870de5f44077483b39e8b9b1e71d4323c54b089f4663f1701304aee7bb`.
+- New revision: `studio-00025-shp`, serving 100% traffic.
+- Live URL: `https://studio-hm2odnvjga-uc.a.run.app`.
+- Smokes passed: `/api/health` and `/content-studio`.
+- Rollback: `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00024-rr5=100`.
+- Deployment changed Studio runtime only; no DB/schema, provider, DNS, OAuth, IAM, billing, or secret mutation was performed.

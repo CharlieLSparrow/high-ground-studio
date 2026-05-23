@@ -23,14 +23,14 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after `git fetch --all --prune` on 2026-05-23.
+Verified after PR #4 merge and Studio Cloud Run deploy on 2026-05-23.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | `d9c9337` | none active | Trunk / integration runway | Current trunk before integration. Do not do feature work directly on `main`. |
-| `project/worldhub` | integration in progress | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Current integration branch; now merging `main`, deployed Content Studio, and WorldHub foundation. |
-| `codex/content-studio-command-001` | `e13e33f` | `/Users/wall-e/Dev/high-ground-studio` | Content Studio command surface and deploy helper | Deployed to Studio Cloud Run revision `studio-00023-7c5`; PR #3 opened. |
-| `codex/worldhub-001-foundation` | `ee26a41` | `/Users/wall-e/Dev/hgs-worldhub-codex` | WorldHub / monetization foundation | Clean and pushed. Safe to close its terminal; integration proceeds through `project/worldhub`. |
+| `main` | `c32adb2` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live Studio runtime | PR #4 merged and deployed to Studio Cloud Run revision `studio-00025-shp`. Do not do feature work directly on `main`. |
+| `project/worldhub` | `32a6179` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Merged to `main` by PR #4; keep as integration reference until next cycle. |
+| `codex/content-studio-command-001` | `e13e33f` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded. |
+| `codex/worldhub-001-foundation` | `ee26a41` | `/Users/wall-e/Dev/hgs-worldhub-codex` | WorldHub / monetization foundation | Included in PR #4. Safe to close its terminal if clean. |
 | `codex/studio-cut-001-web-shell` | `46031ff` plus local edits | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Active dirty lane; do not touch without handoff. |
 
 ## Active Lanes
@@ -38,7 +38,8 @@ Verified after `git fetch --all --prune` on 2026-05-23.
 ### Integration / Release Captain
 
 - owner: Codex in this thread
-- branch: `project/worldhub`
+- branch: `main` for release coordination; use `project/worldhub` again for
+  the next integration cycle
 - owns:
   - lane visibility
   - merge order recommendations
@@ -54,7 +55,7 @@ Verified after `git fetch --all --prune` on 2026-05-23.
 
 - owner: integration captain until reassigned
 - source branch: `codex/content-studio-command-001`
-- integration branch: `project/worldhub`
+- integration branch: merged to `main` by PR #4
 - owns:
   - `apps/studio/src/app/content-studio/*`
   - `apps/studio/src/app/studio-nav.tsx`
@@ -74,12 +75,15 @@ Verified after `git fetch --all --prune` on 2026-05-23.
 - deploy posture:
   - deploy coherent Studio slices to the existing private Cloud Run service after validation
   - record live URL, smoke result, and rollback command in the progress thread
+- current live revision:
+  - `studio-00025-shp` from `main` commit `c32adb2`
+  - rollback to `studio-00024-rr5`
 
 ### WorldHub / Business Infrastructure
 
 - owner: integration captain until reassigned
 - source branch: `codex/worldhub-001-foundation`
-- integration branch: `project/worldhub`
+- integration branch: merged to `main` by PR #4
 - owns:
   - `packages/worldhub-domain`
   - `apps/web/src/app/team/worldhub/*`
@@ -88,7 +92,7 @@ Verified after `git fetch --all --prune` on 2026-05-23.
   - `docs/runbooks/web-cloud-run.md`
   - future offers, entitlements, merch, Patreon, coaching-package follow-through
 - current status:
-  - provider-neutral foundation and current workflow map are being integrated
+  - provider-neutral foundation and current workflow map are merged to `main`
   - no Stripe/Patreon/POD/provider calls are active
 - next likely slice:
   - read-only WorldHub summary of current workflows, then deliberate persistence or service boundary if that becomes the smallest useful move
@@ -101,9 +105,9 @@ Verified after `git fetch --all --prune` on 2026-05-23.
   - `apps/studio/src/app/manuscript/collaboration-lab/*`
   - collaboration lab tests and runbooks
 - current status:
-  - latest collaboration work is on `main` and now merged into `project/worldhub`
+  - latest collaboration work is on `main`
 - next packet:
-  - continue from current `main` or the integration branch on a fresh focused branch
+  - continue from current `main` on a fresh focused branch
   - preserve synthetic-only boundaries unless a real collaboration persistence slice is approved
 
 ### Studio Cut / Media Tooling
@@ -140,14 +144,23 @@ Verified after `git fetch --all --prune` on 2026-05-23.
 
 ## Recommended Merge Order
 
-1. Keep `main` clean; no feature work directly on `main`.
-2. Use `project/worldhub` as the integration branch.
-3. Merge current `main` into `project/worldhub`.
-4. Merge deployed Content Studio branch.
-5. Merge WorldHub foundation branch.
-6. Validate Studio, web, package, and docs surfaces.
-7. Deploy integrated runtime changes if validation passes.
-8. Promote `project/worldhub` to `main` only after broad validation and rollback notes are recorded.
+Completed for the 2026-05-23 Content Studio / WorldHub cycle:
+
+1. Kept feature work off `main`.
+2. Used `project/worldhub` as the integration branch.
+3. Merged current `main`, deployed Content Studio, and WorldHub foundation.
+4. Validated Studio, web, package, docs, and collaboration smoke surfaces.
+5. Deployed integrated runtime changes.
+6. Promoted `project/worldhub` to `main` through PR #4.
+7. Deployed `main` commit `c32adb2` to Studio Cloud Run.
+
+Next cycle:
+
+1. Start new feature work from current `main`.
+2. Use fresh focused branches for worker lanes.
+3. Reuse `project/worldhub` only when there is another multi-lane integration
+   batch ready.
+4. Validate and deploy coherent slices frequently with rollback notes.
 
 ## Broad Validation Matrix
 
