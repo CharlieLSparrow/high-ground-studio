@@ -134,6 +134,17 @@ job/local media map under `generated/` and runs the local Rescue Sync worker to
 create `sync-report.json`, `sync-map.json`, `episode-manifest.json`, and
 `source-monitor-proxy.mp4`.
 
+Check readiness at any point:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+Use that status report as the checklist. It says what is missing, whether the
+generated package is ready to publish, whether exported decisions are present,
+and what command to run next.
+
 The older Premiere-aligned fallback still uses `create-episode-bootstrap`:
 
 From the repo root:

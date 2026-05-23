@@ -327,6 +327,8 @@ The CLI supports:
 - `rescue-sync-session`: creates a one-folder local episode workspace, scans
   predictable inbox filenames, writes the sync job/local media map, and runs the
   Rescue Sync worker when required files are present.
+- `rescue-sync-status`: inspects that one-folder workspace and reports input,
+  sync package, publish, decision, and render readiness with exact next actions.
 - `validate-episode-files`: checks a real-episode manifest and local media map,
   confirms the episode id matches, verifies local file existence, and uses
   `ffprobe` to compare media durations against the manifest before rendering.
@@ -904,6 +906,18 @@ The command writes the local sync job and local media map, then runs the worker
 once the required inbox files are present. This is the assistant-friendly path:
 files in predictable places, generated artifacts in predictable places, no
 hand-written path maps for normal use.
+
+Check current readiness with:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+The status command is designed for operator/assistant handoff. It answers:
+which required files are missing, whether worker outputs exist, whether the
+package can be published, whether decisions are present, and whether local
+render is ready.
 
 The local render CLI can now consume that durable bridge directly:
 

@@ -135,6 +135,17 @@ optional `clip-video.mp4`. The helper writes `generated/sync-job.json` and
 `generated/local-media-map.json`, then runs the worker automatically when the
 required files are present.
 
+Inspect the same folder with:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+The report is intentionally operator-friendly: it shows missing inputs,
+generated package files, sync report confidence hints, source-monitor proxy
+inspection, decision count, render readiness, and the exact next command.
+
 The web UI and current decision schema still say `sourceTimeMs` in several
 places. Architecturally, that value should be treated as canonical episode
 timeline time, not an individual asset's file time.

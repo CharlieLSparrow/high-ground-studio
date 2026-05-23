@@ -448,6 +448,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rescue_session_parser.set_defaults(handler=run_rescue_sync_session)
 
+    rescue_status_parser = subparsers.add_parser(
+        "rescue-sync-status",
+        help="Inspect a one-folder Rescue Sync workspace and print next steps.",
+    )
+    rescue_status_parser.add_argument(
+        "--episode-id",
+        help=(
+            "Episode id. Optional when --episode-dir is supplied; otherwise "
+            "defaults to the episode directory name."
+        ),
+    )
+    rescue_status_parser.add_argument(
+        "--episode-dir",
+        type=Path,
+        help=(
+            "Episode workspace directory. Default: "
+            "~/Movies/StudioCut/<episode-id>."
+        ),
+    )
+    rescue_status_parser.add_argument(
+        "--include-clip",
+        default=True,
+        type=parse_bool_arg,
+        help="Whether to expect/scan optional clip/screen video. Default: true.",
+    )
+    rescue_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print a machine-readable JSON status report.",
+    )
+    rescue_status_parser.set_defaults(handler=run_rescue_sync_status)
+
     validate_episode_parser = subparsers.add_parser(
         "validate-episode-files",
         help="Validate a real-episode manifest and local media map before rendering.",
@@ -1792,6 +1824,472 @@ Remove `--dry-run` when the segment plan looks right.
 """
 
 
+def build_rescue_sync_status_report(session: dict[str, Any]) -> dict[str, Any]:
+    generated_dir = session["generatedDir"]
+    edit_dir = session["editDir"]
+    episode_id = session["episodeId"]
+    decisions_candidates = [
+        edit_dir / f"{episode_id}-decisions.json",
+        edit_dir / "decisions.json",
+        generated_dir / f"{episode_id}-decisions.json",
+        generated_dir / "decisions.json",
+    ]
+    decisions_path = next((path for path in decisions_candidates if path.is_file()), None)
+    report: dict[str, Any] = {
+        "status": "blocked",
+        "episodeId": episode_id,
+        "episodeDir": str(session["episodeDir"]),
+        "inboxDir": str(session["inboxDir"]),
+        "generatedDir": str(generated_dir),
+        "editDir": str(edit_dir),
+        "rendersDir": str(session["rendersDir"]),
+        "inputs": [],
+        "missingRequiredRoles": list(session["missingRequiredRoles"]),
+        "files": {},
+        "syncReport": None,
+        "syncMap": None,
+        "manifest": None,
+        "proxy": None,
+        "decisions": None,
+        "readiness": {
+            "inputReady": False,
+            "workerOutputsReady": False,
+            "publishReady": False,
+            "editDecisionsReady": False,
+            "renderReady": False,
+        },
+        "nextActions": [],
+        "warnings": list(session["warnings"]),
+        "errors": [],
+    }
+
+    for role, spec in RESCUE_SYNC_ROLE_SPECS.items():
+        if role == "clipVideo" and not session["includeClip"]:
+            continue
+
+        matches = session["roleMatches"].get(role, [])
+        report["inputs"].append(
+            {
+                "role": role,
+                "label": spec["label"],
+                "required": bool(spec["required"]),
+                "count": len(matches),
+                "files": [str(path) for path in matches],
+            }
+        )
+
+    file_specs = {
+        "syncJob": session["syncJobPath"],
+        "localMediaMap": session["localMediaMapPath"],
+        "syncReport": session["syncReportPath"],
+        "syncMap": session["syncMapPath"],
+        "manifest": session["manifestPath"],
+        "sourceMonitorProxy": session["sourceMonitorProxyPath"],
+        "readme": session["readmePath"],
+    }
+    report["files"] = {
+        label: {"path": str(path), "exists": path.is_file()}
+        for label, path in file_specs.items()
+    }
+
+    report["readiness"]["inputReady"] = not session["missingRequiredRoles"]
+
+    add_sync_job_status(report, session["syncJobPath"])
+    add_local_media_map_status(report, session["localMediaMapPath"])
+    add_sync_report_status(report, session["syncReportPath"])
+    add_sync_map_status(report, session["syncMapPath"])
+    add_manifest_status(report, session["manifestPath"])
+    add_proxy_status(report, session["sourceMonitorProxyPath"])
+    add_decision_status(report, decisions_path, session)
+
+    report["readiness"]["workerOutputsReady"] = all(
+        report["files"][label]["exists"]
+        for label in ("syncReport", "syncMap", "manifest", "sourceMonitorProxy")
+    )
+    report["readiness"]["publishReady"] = all(
+        report["files"][label]["exists"]
+        for label in ("syncMap", "manifest", "sourceMonitorProxy")
+    )
+    decision_report = report.get("decisions") or {}
+    report["readiness"]["editDecisionsReady"] = bool(decision_report.get("eventCount"))
+    report["readiness"]["renderReady"] = all(
+        [
+            report["files"]["syncMap"]["exists"],
+            report["files"]["localMediaMap"]["exists"],
+            bool(decision_report.get("eventCount")),
+        ]
+    )
+
+    report["nextActions"] = build_rescue_sync_next_actions(report, session)
+    report["status"] = "ready" if report["readiness"]["renderReady"] else "blocked"
+    return report
+
+
+def add_sync_job_status(report: dict[str, Any], sync_job_path: Path) -> None:
+    if not sync_job_path.is_file():
+        return
+
+    try:
+        payload = load_json_file(sync_job_path, "sync job")
+    except StudioCutCliError as error:
+        report["errors"].append(str(error))
+        return
+
+    if not isinstance(payload, dict):
+        report["errors"].append("sync job must be a JSON object")
+        return
+
+    report["syncJob"] = {
+        "syncJobId": payload.get("syncJobId"),
+        "projectId": payload.get("projectId"),
+        "branchId": payload.get("branchId"),
+        "title": payload.get("title"),
+        "status": payload.get("status"),
+        "uploadedInputCount": len(payload.get("uploadedInputs", []))
+        if isinstance(payload.get("uploadedInputs"), list)
+        else 0,
+    }
+
+
+def add_local_media_map_status(report: dict[str, Any], media_map_path: Path) -> None:
+    if not media_map_path.is_file():
+        return
+
+    try:
+        payload = load_json_file(media_map_path, "local media map")
+    except StudioCutCliError as error:
+        report["errors"].append(str(error))
+        return
+
+    inputs = payload.get("inputs") if isinstance(payload, dict) else None
+    report["localMediaMap"] = {
+        "inputCount": len(inputs) if isinstance(inputs, dict) else 0,
+        "episodeId": payload.get("episodeId") if isinstance(payload, dict) else None,
+    }
+
+
+def add_sync_report_status(report: dict[str, Any], sync_report_path: Path) -> None:
+    if not sync_report_path.is_file():
+        return
+
+    try:
+        payload = load_json_file(sync_report_path, "sync report")
+    except StudioCutCliError as error:
+        report["errors"].append(str(error))
+        return
+
+    if not isinstance(payload, dict):
+        report["errors"].append("sync report must be a JSON object")
+        return
+
+    reference_rail = payload.get("referenceRail")
+    track_offsets = payload.get("trackOffsets")
+    global_warnings = payload.get("globalWarnings")
+    report["syncReport"] = {
+        "status": payload.get("status"),
+        "referenceRailSegments": len(reference_rail.get("segments", []))
+        if isinstance(reference_rail, dict) and isinstance(reference_rail.get("segments"), list)
+        else 0,
+        "referenceRailDurationMs": reference_rail.get("totalDurationMs")
+        if isinstance(reference_rail, dict)
+        else None,
+        "trackOffsetCount": len(track_offsets) if isinstance(track_offsets, list) else 0,
+        "lowConfidenceTracks": [
+            str(offset.get("inputId") or offset.get("role"))
+            for offset in track_offsets
+            if isinstance(offset, dict)
+            and isinstance(offset.get("confidence"), (int, float))
+            and float(offset["confidence"]) < 0.35
+        ]
+        if isinstance(track_offsets, list)
+        else [],
+        "warningCount": len(global_warnings) if isinstance(global_warnings, list) else 0,
+    }
+
+
+def add_sync_map_status(report: dict[str, Any], sync_map_path: Path) -> None:
+    if not sync_map_path.is_file():
+        return
+
+    try:
+        sync_map = load_sync_map(sync_map_path)
+    except StudioCutCliError as error:
+        report["errors"].append(str(error))
+        return
+
+    report["syncMap"] = {
+        "syncMapId": sync_map["syncMapId"],
+        "projectId": sync_map["projectId"],
+        "branchId": sync_map["branchId"],
+        "durationMs": sync_map["canonicalTimeline"]["durationMs"],
+        "assetCount": len(sync_map["assets"]),
+        "roles": sorted(
+            {
+                str(asset.get("role"))
+                for asset in sync_map["assets"]
+                if isinstance(asset, dict) and asset.get("role")
+            }
+        ),
+    }
+
+
+def add_manifest_status(report: dict[str, Any], manifest_path: Path) -> None:
+    if not manifest_path.is_file():
+        return
+
+    try:
+        manifest = load_json_file(manifest_path, "manifest")
+        validate_manifest(manifest)
+    except StudioCutCliError as error:
+        report["errors"].append(str(error))
+        return
+
+    report["manifest"] = {
+        "id": manifest["id"],
+        "title": manifest["title"],
+        "durationMs": manifest["durationMs"],
+        "hasProxyUrl": bool(manifest["sourceMonitorProxy"].get("url")),
+        "hasLocalProxyPlaceholder": bool(
+            manifest["sourceMonitorProxy"].get("localPlaceholderPath")
+        ),
+    }
+
+
+def add_proxy_status(report: dict[str, Any], proxy_path: Path) -> None:
+    if not proxy_path.is_file():
+        return
+
+    proxy_status: dict[str, Any] = {
+        "path": str(proxy_path),
+        "sizeBytes": proxy_path.stat().st_size,
+        "durationMs": None,
+        "resolution": None,
+    }
+    ffprobe_path = shutil.which("ffprobe")
+
+    if ffprobe_path:
+        duration_ms, probe_error = probe_media_duration_ms(
+            ffprobe_path=ffprobe_path,
+            media_path=proxy_path,
+        )
+        if probe_error:
+            report["warnings"].append(f"could not inspect source-monitor proxy: {probe_error}")
+        else:
+            proxy_status["durationMs"] = duration_ms
+            proxy_status["resolution"] = probe_video_resolution(
+                ffprobe_path=ffprobe_path,
+                media_path=proxy_path,
+            )
+    else:
+        report["warnings"].append("ffprobe not found; source-monitor proxy not inspected")
+
+    report["proxy"] = proxy_status
+
+
+def add_decision_status(
+    report: dict[str, Any], decisions_path: Path | None, session: dict[str, Any]
+) -> None:
+    if decisions_path is None:
+        return
+
+    try:
+        decisions_payload = load_json_file(decisions_path, "decisions")
+        decision_events = parse_decision_events(decisions_payload)
+    except StudioCutCliError as error:
+        report["errors"].append(str(error))
+        return
+
+    decision_status: dict[str, Any] = {
+        "path": str(decisions_path),
+        "eventCount": len(decision_events),
+        "cutCount": sum(1 for event in decision_events if event["state"] == "cut"),
+        "firstDecisionAtZero": bool(
+            decision_events and int(decision_events[0]["sourceTimeMs"]) == 0
+        ),
+        "activeDurationMs": None,
+        "cutDurationMs": None,
+        "renderCommand": None,
+    }
+
+    manifest_path = session["manifestPath"]
+    if manifest_path.is_file() and decision_events:
+        try:
+            manifest = load_json_file(manifest_path, "manifest")
+            validate_manifest(manifest)
+            plan = build_render_plan(
+                manifest=manifest,
+                decision_events=decision_events,
+                profile="youtube_16x9",
+                manifest_path=manifest_path,
+                decisions_path=decisions_path,
+            )
+            decision_status["activeDurationMs"] = plan["summary"]["activeDurationMs"]
+            decision_status["cutDurationMs"] = plan["summary"]["cutDurationMs"]
+        except StudioCutCliError as error:
+            report["warnings"].append(f"could not derive decision render plan: {error}")
+
+    decision_status["renderCommand"] = format_shell_command(
+        [
+            sys.executable,
+            str(Path(__file__)),
+            "render-from-sync-map",
+            "--sync-map",
+            str(session["syncMapPath"]),
+            "--decisions",
+            str(decisions_path),
+            "--media-map",
+            str(session["localMediaMapPath"]),
+            "--out",
+            str(session["rendersDir"] / f"{session['episodeId']}-youtube-16x9.mp4"),
+        ]
+    )
+    report["decisions"] = decision_status
+
+
+def build_rescue_sync_next_actions(
+    report: dict[str, Any], session: dict[str, Any]
+) -> list[str]:
+    if not Path(report["episodeDir"]).exists():
+        return [
+            "Create the episode workspace with rescue-sync-session.",
+        ]
+
+    if not report["readiness"]["inputReady"]:
+        missing = ", ".join(
+            RESCUE_SYNC_ROLE_SPECS[role]["label"]
+            for role in report["missingRequiredRoles"]
+        )
+        return [
+            f"Add missing files to inbox: {missing}.",
+            "Rerun rescue-sync-session when the files are present.",
+        ]
+
+    if not report["readiness"]["workerOutputsReady"]:
+        return [
+            "Run rescue-sync-session without --skip-worker to generate the proxy package.",
+            format_shell_command(
+                [
+                    sys.executable,
+                    str(Path(__file__)),
+                    "rescue-sync-session",
+                    "--episode-id",
+                    session["episodeId"],
+                    "--title",
+                    str((report.get("syncJob") or {}).get("title") or session["title"]),
+                    "--episode-dir",
+                    str(session["episodeDir"]),
+                ]
+            ),
+        ]
+
+    if not report["readiness"]["editDecisionsReady"]:
+        return [
+            "Publish the generated package in Studio Cut using Publish Rescue Sync Package.",
+            "Edit the shared room, then export decisions into the edit/ folder.",
+        ]
+
+    if not report["readiness"]["renderReady"]:
+        return [
+            "Fix Sync Map, local media map, or decision JSON blockers before rendering.",
+        ]
+
+    return [
+        "Ready to dry-run local render from Sync Map.",
+        str(report["decisions"]["renderCommand"]) + " --dry-run",
+    ]
+
+
+def print_rescue_sync_status_report(report: dict[str, Any], *, json_mode: bool) -> None:
+    if json_mode:
+        print(json.dumps(report, indent=2))
+        return
+
+    print("Studio Cut Rescue Sync Status")
+    print("=============================")
+    print(f"Status: {'READY' if report['status'] == 'ready' else 'BLOCKED'}")
+    print(f"Episode: {report['episodeId']}")
+    print(f"Workspace: {report['episodeDir']}")
+
+    readiness = report["readiness"]
+    print("\nReadiness:")
+    print(f"  input files: {yes_no(readiness['inputReady'])}")
+    print(f"  worker outputs: {yes_no(readiness['workerOutputsReady'])}")
+    print(f"  publish package: {yes_no(readiness['publishReady'])}")
+    print(f"  decisions: {yes_no(readiness['editDecisionsReady'])}")
+    print(f"  local render: {yes_no(readiness['renderReady'])}")
+
+    print("\nInputs:")
+    for entry in report["inputs"]:
+        required = "required" if entry["required"] else "optional"
+        print(f"  - {entry['label']} ({required}): {entry['count']}")
+        for file_path in entry["files"]:
+            print(f"    {Path(file_path).name}")
+
+    print("\nGenerated files:")
+    for label, file_status in report["files"].items():
+        print(
+            f"  - {label}: {'found' if file_status['exists'] else 'missing'} "
+            f"({file_status['path']})"
+        )
+
+    if report.get("syncReport"):
+        sync_report = report["syncReport"]
+        print("\nSync report:")
+        print(f"  status: {sync_report['status']}")
+        print(f"  reference rail segments: {sync_report['referenceRailSegments']}")
+        print(
+            "  reference rail duration: "
+            f"{format_time_ms(sync_report['referenceRailDurationMs'] or 0)}"
+        )
+        print(f"  track offsets: {sync_report['trackOffsetCount']}")
+        if sync_report["lowConfidenceTracks"]:
+            print("  low confidence tracks: " + ", ".join(sync_report["lowConfidenceTracks"]))
+
+    if report.get("syncMap"):
+        sync_map = report["syncMap"]
+        print("\nSync Map:")
+        print(f"  id: {sync_map['syncMapId']}")
+        print(f"  duration: {format_time_ms(sync_map['durationMs'])}")
+        print(f"  assets: {sync_map['assetCount']}")
+        print(f"  roles: {', '.join(sync_map['roles'])}")
+
+    if report.get("proxy"):
+        proxy = report["proxy"]
+        print("\nSource-monitor proxy:")
+        print(f"  size: {proxy['sizeBytes']} bytes")
+        if proxy["durationMs"] is not None:
+            print(f"  duration: {format_time_ms(proxy['durationMs'])}")
+        if proxy["resolution"]:
+            print(
+                "  resolution: "
+                f"{proxy['resolution']['width']}x{proxy['resolution']['height']}"
+            )
+
+    if report.get("decisions"):
+        decisions = report["decisions"]
+        print("\nDecisions:")
+        print(f"  file: {decisions['path']}")
+        print(f"  events: {decisions['eventCount']}")
+        print(f"  cuts: {decisions['cutCount']}")
+        print(f"  first decision at 0: {yes_no(decisions['firstDecisionAtZero'])}")
+        if decisions["activeDurationMs"] is not None:
+            print(f"  active duration: {format_time_ms(decisions['activeDurationMs'])}")
+
+    if report["warnings"]:
+        print("\nWarnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+    if report["errors"]:
+        print("\nErrors:")
+        for error in report["errors"]:
+            print(f"  - {error}")
+
+    print("\nNext actions:")
+    for action in report["nextActions"]:
+        print(f"  - {action}")
+
+
 def validate_agent_smoke_output(
     *,
     output_path: Path,
@@ -2263,6 +2761,32 @@ def run_rescue_sync_session(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_rescue_sync_status(args: argparse.Namespace) -> int:
+    episode_dir = args.episode_dir.expanduser().resolve() if args.episode_dir else None
+    episode_id = args.episode_id.strip() if args.episode_id else None
+
+    if not episode_id and episode_dir:
+        episode_id = episode_dir.name
+
+    if not episode_id:
+        raise StudioCutCliError("--episode-id is required when --episode-dir is not supplied")
+
+    if episode_dir is None:
+        episode_dir = (DEFAULT_STUDIO_CUT_WORKSPACE_ROOT / episode_id).resolve()
+
+    session = build_rescue_sync_session(
+        episode_id=episode_id,
+        title=episode_id,
+        branch_id="main",
+        created_by="local-rescue-sync-status",
+        episode_dir=episode_dir,
+        include_clip=bool(args.include_clip),
+    )
+    report = build_rescue_sync_status_report(session)
+    print_rescue_sync_status_report(report, json_mode=bool(args.json))
+    return 0
+
+
 def run_validate_episode_files(args: argparse.Namespace) -> int:
     if args.duration_tolerance_ms < 0:
         raise StudioCutCliError("--duration-tolerance-ms must be zero or greater")
@@ -2552,6 +3076,51 @@ def probe_media_duration_ms(
         return int(round(float(raw_duration) * 1000)), None
     except ValueError:
         return None, f"unexpected duration output: {raw_duration!r}"
+
+
+def probe_video_resolution(
+    *, ffprobe_path: str, media_path: Path
+) -> dict[str, int] | None:
+    command = [
+        ffprobe_path,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "json",
+        str(media_path),
+    ]
+    result = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    if result.returncode != 0:
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    streams = payload.get("streams")
+    if not isinstance(streams, list) or not streams:
+        return None
+
+    stream = streams[0]
+    width = stream.get("width")
+    height = stream.get("height")
+
+    if isinstance(width, int) and isinstance(height, int):
+        return {"width": width, "height": height}
+
+    return None
 
 
 def print_episode_file_validation_report(report: dict[str, Any]) -> None:
@@ -4090,6 +4659,10 @@ def format_seconds(value: float) -> str:
 
 def format_shell_command(command: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in command)
+
+
+def yes_no(value: bool) -> str:
+    return "yes" if value else "no"
 
 
 def short_id(value: str) -> str:

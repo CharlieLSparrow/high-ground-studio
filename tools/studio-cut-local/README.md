@@ -82,6 +82,29 @@ should live outside the repo for real episodes. Generated JSON may contain local
 paths; source media, proxies, reports, decisions, and renders must not be
 committed.
 
+Inspect the workspace at any time:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+The status report shows:
+
+- required inbox files found/missing
+- generated sync job, local media map, Sync Map, manifest, proxy, and report
+- source-monitor proxy duration/resolution when `ffprobe` is available
+- decision count and rough render readiness when exported decisions are present
+- the exact next command the operator or assistant should run
+
+Machine-readable status:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
+  --json
+```
+
 Validate a generated manifest and local media map before rendering:
 
 ```bash

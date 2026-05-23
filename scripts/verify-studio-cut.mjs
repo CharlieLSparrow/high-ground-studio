@@ -33,6 +33,19 @@ const verificationSteps = [
     ],
   },
   {
+    label: "Rescue sync session status",
+    command: pythonCommand,
+    args: [
+      "tools/studio-cut-local/studio_cut_local.py",
+      "rescue-sync-status",
+      "--episode-id",
+      "studio-cut-verify",
+      "--episode-dir",
+      "/tmp/studio-cut-verify-rescue-session",
+      "--json",
+    ],
+  },
+  {
     label: "Studio Cut auth access test",
     command: "node",
     args: [

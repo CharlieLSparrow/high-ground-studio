@@ -97,6 +97,16 @@ That command scans `inbox/`, writes `generated/sync-job.json` and
 present. Use the direct worker command when debugging or when another system has
 already produced the job/map files.
 
+Use the companion status command when assisting an operator:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+It summarizes missing inputs, generated worker outputs, sync confidence hints,
+proxy inspection, decisions, render readiness, and the next command to run.
+
 The worker writes `estimatedOffsetMs`, confidence, `anchorCount`,
 `anchorAgreementMs`, approximate `driftPpm`, and optional `anchorSummaries` for
 correlated tracks. Positive offsets mean the input starts after the reference

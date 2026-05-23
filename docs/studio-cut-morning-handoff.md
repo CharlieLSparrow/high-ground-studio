@@ -97,6 +97,17 @@ optional `clip-video.mp4`. Rerun the same command. When required files are
 present, it runs the local worker and writes generated package files under
 `generated/`.
 
+Status/readiness check:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
+  --episode-dir ~/Movies/StudioCut/episode-004
+```
+
+This is the preferred handoff command for agents. It reports missing inbox
+files, generated package files, Sync Map/report summary, proxy inspection,
+decision/render readiness, and the exact next action.
+
 Cloud raw uploads remain future-facing until rules/security and retention are
 ready:
 
