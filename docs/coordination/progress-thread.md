@@ -45,3 +45,5 @@ checks, blockers, and next handoff.
 - Worktree check: `project/worldhub` and `codex/worldhub-001-foundation` are
   clean; Studio Cut has a dirty local edit in
   `tools/studio-cut-local/studio_cut_local.py`, so treat that lane as occupied.
+- Added `docs/agents/codex-continuity.md` as a durable north-star and handoff
+  note before closing this terminal.

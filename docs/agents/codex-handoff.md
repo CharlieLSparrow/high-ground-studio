@@ -7,6 +7,7 @@ Read in this order:
 - `docs/project-context/current-state.md`
 - `docs/architecture/system-overview.md`
 - `docs/runbooks/local-dev.md`
+- `docs/agents/codex-continuity.md`
 - the most recent relevant file in `docs/sessions/`
 
 ## Current Repo Truths
