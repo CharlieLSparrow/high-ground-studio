@@ -52,6 +52,24 @@ test("web Cloud Build config targets the web Dockerfile", () => {
   assert.match(cloudbuild, /_IMAGE_NAME: web/);
 });
 
+test("web deploy helpers are wired for explicit first-service creation", () => {
+  const packageJson = readFileSync("package.json", "utf8");
+  const deployScript = readFileSync("scripts/web-cloud-run-deploy.mjs", "utf8");
+  const seedScript = readFileSync(
+    "scripts/web-cloud-run-seed-secrets-from-env.mjs",
+    "utf8",
+  );
+
+  assert.match(packageJson, /web:cloudrun:deploy/);
+  assert.match(packageJson, /web:cloudrun:seed-secrets/);
+  assert.match(deployScript, /WEB_CLOUD_RUN_CREATE_SERVICE/);
+  assert.match(deployScript, /web-cloud-run@/);
+  assert.match(deployScript, /--set-secrets/);
+  assert.match(deployScript, /team\/progress/);
+  assert.match(seedScript, /Secret values are not printed/);
+  assert.match(seedScript, /web-database-url/);
+});
+
 test("web runbook mounts OAuth client id from Secret Manager", () => {
   const runbook = readFileSync("docs/runbooks/web-cloud-run.md", "utf8");
   assert.match(runbook, /web-google-client-id/);

@@ -1,7 +1,41 @@
 {
-  "updatedAt": "2026-05-23T23:20:00.000Z",
+  "updatedAt": "2026-05-23T23:45:00.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "web-cloud-run-first-deploy",
+      "date": "2026-05-23",
+      "title": "The web app reached Google Cloud",
+      "kicker": "High Ground Odyssey web service is live on Cloud Run",
+      "mood": "Cloud runway open",
+      "summary": "The main web app now has its own Cloud Run service, mounted secrets, Cloud SQL attachment, and live smoke checks. This gives the team progress page and future internal web tools a real Google Cloud deployment target.",
+      "body": [
+        "The important shift is operational: web is no longer just a repo build target. It now has a live Cloud Run service with the same deployment posture we proved on Studio.",
+        "The first deploy mounted the web database, auth, Google OAuth, and team-role secrets from Secret Manager, attached the existing Cloud SQL instance, and opened public HTTP access at the Cloud Run layer while keeping team routes protected by app-level auth.",
+        "The public home page and health route are reachable. The team progress page correctly redirects unauthenticated visitors to sign-in, which means the route is live without exposing the internal story."
+      ],
+      "commits": [
+        {
+          "sha": "742690e",
+          "label": "ops(web): add cloud run deploy helper"
+        }
+      ],
+      "links": [
+        {
+          "label": "Web live",
+          "href": "https://web-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Health",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/api/health"
+        },
+        {
+          "label": "Deploy result",
+          "href": "docs/sessions/web-cloud-run-first-deploy-result.md"
+        }
+      ],
+      "tags": ["Web", "Cloud Run", "Google Cloud", "Team Progress"]
+    },
     {
       "id": "main-studio-live",
       "date": "2026-05-23",

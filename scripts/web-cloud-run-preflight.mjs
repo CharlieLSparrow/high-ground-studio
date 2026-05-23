@@ -98,6 +98,35 @@ function checkOptionalGcloudResource(label, args) {
   }
 }
 
+function checkSecretEnabledVersion(secretName) {
+  const value = runReadOnly("gcloud", [
+    "secrets",
+    "versions",
+    "list",
+    secretName,
+    "--format=json",
+    "--limit=20",
+  ]);
+
+  if (!value) {
+    warnings.push(`Secret Manager secret ${secretName} has no readable versions`);
+    return false;
+  }
+
+  const versions = JSON.parse(value);
+  const hasEnabledVersion = versions.some(
+    (version) => version.state === "ENABLED",
+  );
+
+  if (hasEnabledVersion) {
+    passed.push(`Secret Manager secret ${secretName} has an enabled version`);
+    return true;
+  }
+
+  warnings.push(`Secret Manager secret ${secretName} has no enabled version`);
+  return false;
+}
+
 function printList(title, entries) {
   console.log(`\n${title}`);
 
@@ -125,6 +154,8 @@ checkFile("apps/web/src/lib/web-health.mjs");
 checkFile("docs/runbooks/web-cloud-run.md");
 checkFile("docs/architecture/platform-service-boundaries.md");
 checkFile("docs/architecture/worldhub-foundation.md");
+checkFile("scripts/web-cloud-run-deploy.mjs");
+checkFile("scripts/web-cloud-run-seed-secrets-from-env.mjs");
 
 checkFileContains("apps/web/Dockerfile", [
   "pnpm --filter web exec next build --webpack",
@@ -229,18 +260,7 @@ if (hasGcloud) {
         continue;
       }
 
-      checkOptionalGcloudResource(
-        `Secret Manager secret ${secretName} enabled version`,
-        [
-          "secrets",
-          "versions",
-          "list",
-          secretName,
-          "--filter=state:ENABLED",
-          "--format=value(name)",
-          "--limit=1",
-        ],
-      );
+      checkSecretEnabledVersion(secretName);
     }
   }
 }
@@ -255,6 +275,9 @@ info.push("Set region manually when ready: gcloud config set run/region us-centr
 info.push(
   "When explicitly ready to run Cloud Build later: pnpm web:cloudbuild:image:sha",
 );
+info.push("To add missing web secret versions from local env files: pnpm web:cloudrun:seed-secrets");
+info.push("To deploy the existing service after validation: pnpm web:cloudrun:deploy");
+info.push("For the first web service deploy only: WEB_CLOUD_RUN_CREATE_SERVICE=1 pnpm web:cloudrun:deploy");
 info.push("Do not run deploy, DNS, IAM, Secret Manager, or db:push commands from this preflight.");
 
 printList("Passed checks", passed);
