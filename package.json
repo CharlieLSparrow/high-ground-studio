@@ -19,6 +19,7 @@
     "studio:cloudbuild:image": "gcloud builds submit --config cloudbuild.studio.yaml .",
     "studio:cloudbuild:image:sha": "gcloud builds submit --config cloudbuild.studio.yaml --substitutions=_IMAGE_TAG=$(git rev-parse --short HEAD) .",
     "studio:cloudrun:preflight": "node scripts/studio-cloud-run-preflight.mjs",
+    "studio:cloudrun:deploy": "node scripts/studio-cloud-run-deploy.mjs",
     "studio:cloudrun:test": "node --test scripts/studio-cloud-run-readiness.test.mjs",
     "studio:manuscript:test": "node --experimental-strip-types --test scripts/studio-manuscript-editor.test.mjs",
     "studio:hgo:agentic-smoke": "node --experimental-strip-types scripts/agentic-studio-hgo-smoke.test.mjs",

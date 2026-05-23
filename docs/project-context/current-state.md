@@ -126,6 +126,13 @@ High Ground Studio is a monorepo with:
   checkpoint linkage. It is not persistence and is excluded from localStorage,
   server routes, DB/schema, checkpoints, Manuscript adapter payloads, and
   production manual snapshots.
+- Studio now has a private browser-local Content Management Studio route at
+  `/content-studio`. It creates podcast, book, episode-page, monetization, and
+  coaching project boards from templates, tracks source/shape/produce/publish/
+  follow-through checklists, stores state in browser localStorage, and exports
+  a JSON handoff packet with safety flags. It does not write Prisma data, call
+  provider APIs, publish public content, use real manuscript/HGO source
+  material, or replace existing HGO/WorldHub/coaching workflows.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -257,6 +264,10 @@ High Ground Studio is a monorepo with:
   and are not embedded in production manual snapshots.
 - Studio materialized annotation state is a local replay view only. It proves
   current-state indexing/query behavior, not durable storage.
+- Content Studio project state is browser-local only in this slice. It is useful
+  as a command surface and handoff packet generator, but it is not yet shared
+  multi-device state, a Prisma-backed project system, a publishing queue, or a
+  provider integration.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

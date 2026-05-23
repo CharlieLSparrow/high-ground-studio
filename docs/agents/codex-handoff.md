@@ -23,6 +23,9 @@ Read in this order:
 - Resend email notifications are wired for new coaching requests and are best-effort after the request transaction commits.
 - SMS/Twilio notification sending is not wired into the active coaching request flow.
 - The episodes route is stabilized with a guarded loader, not a final content architecture.
+- Studio `/content-studio` is a private browser-local command surface for
+  podcast, book, episode-page, monetization, and coaching project boards. It is
+  not yet Prisma-backed and does not call providers or publish content.
 - Both current production build paths pass.
 - The content tree is much larger than the current published surface.
 
@@ -53,6 +56,8 @@ Team workflows:
 - `apps/web/src/lib/server/email.ts`
 
 Content:
+- `apps/studio/src/app/content-studio/page.tsx`
+- `apps/studio/src/app/content-studio/content-studio-client.tsx`
 - `apps/web/src/app/episodes/[[...slug]]/page.tsx`
 - `apps/web/src/lib/source.ts`
 - `apps/web/source.config.ts`

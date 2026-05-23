@@ -19,6 +19,10 @@ const linkBaseClassName =
 
 const primaryLinks = [
   {
+    href: "/content-studio",
+    label: "Content Studio",
+  },
+  {
     href: "/",
     label: "Tagging Desk",
   },
