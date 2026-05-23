@@ -82,6 +82,12 @@ Commands:
 - `pnpm studio:collab:test`
 - `pnpm studio:collab:checkpoint:test`
 - `pnpm studio:collab:adapter:test`
+- `pnpm studio:collab:span:test`
+- `pnpm studio:collab:presence:test`
+- `pnpm studio:collab:review:test`
+- `pnpm studio:collab:annotation:test`
+- `pnpm studio:collab:annotation-log:test`
+- `pnpm studio:collab:annotation-state:test`
 - `pnpm studio:collab:agentic-smoke`
 
 The lab creates two synthetic clients from one shared Yjs baseline update. That
@@ -151,6 +157,128 @@ write localStorage, write server state, autosave, or mutate manual snapshots.
 Future production wiring still needs a deliberate checkpoint-to-manual-snapshot
 action with access control and rollback rules.
 
+## Span Semantics And Manuscript-First UI
+
+The collaboration lab now has synthetic span semantics:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts`
+
+Spans are local-only Yjs records with `blockId`, `startOffset`, `endOffset`,
+`label`, `actor`, `tagType`, and notes. They are synthetic text-offset ranges,
+not DOM selections and not production comments.
+
+This moves the lab from block-level tags toward addressable manuscript spans.
+The Manuscript adapter maps non-overlapping synthetic spans into
+`semanticHighlightMark` ranges in `ManuscriptDraft.editorJson`; overlapping
+later spans are ignored with explicit warnings for this pass.
+
+The route also now leads with a shared manuscript surface. The long manuscript
+is the product direction; the two-client panels are scaffolding. Future
+production collaboration should preserve one continuous manuscript stream with
+span overlays, margin presence, comments/tags/quotes in side panels, and
+explicit checkpoints.
+
+## Local Presence And Margin Awareness
+
+The collaboration lab now has synthetic local presence:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts`
+
+Presence tracks Charlie and Homer as ephemeral actors with active block, active
+span, mode, last action, and staleness summary. The shared manuscript surface
+uses this to show margin awareness cues, so the lab feels closer to two people
+working in one manuscript instead of a dashboard of cards.
+
+Presence is not document content. It is not written into collaboration
+snapshots, checkpoints, Manuscript adapter payloads, localStorage, server
+routes, or production manual snapshots. The agentic smoke reports presence
+summary fields, but generated document/checkpoint/adapter payloads explicitly
+exclude it.
+
+## Local Span Review Notes
+
+The collaboration lab now has synthetic span-anchored review notes:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts`
+
+Review notes attach to synthetic spans, have Charlie/Homer authors, and can be
+`open`, `addressed`, or `archived`. The shared manuscript surface shows note
+counts as margin context, and the lab controls can add, address, and archive
+notes.
+
+For this sprint, review notes are React-state-only local annotations. They are
+not source text and they do not mutate block text. They are also deliberately
+excluded from Yjs snapshots, collaboration checkpoints, Manuscript adapter
+payloads, localStorage, server routes, and production manual snapshots.
+
+That exclusion is intentional until the production model decides whether review
+notes belong in durable annotation events, checkpoint metadata, or a separate
+annotation store. Manual snapshots remain sacred either way.
+
+## Annotation Durability Decision
+
+The collaboration lab now has a synthetic-only annotation durability decision
+helper:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts`
+
+Decision record:
+
+- `studio-annotation-durability-decision-v1`
+
+The helper compares three future storage paths:
+
+- annotation event log
+- checkpoint metadata
+- separate annotation store
+
+The current recommendation is to use an annotation event log for operations and
+audit trail, plus a separate annotation store for materialized current review
+state. Checkpoint metadata should not become the primary durable note store
+because it would bloat manual snapshots and blur rollback semantics.
+
+This sprint adds no persistence. Review notes remain React-state-only in the
+lab, production `/manuscript` save/load is untouched, and manual snapshots
+remain separate rollback anchors.
+
+## Annotation Event Log Lab
+
+The collaboration lab also has a synthetic-only annotation event-log contract:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts`
+
+Event log version:
+
+- `studio-collaboration-annotation-event-log-v1`
+
+It models review-note create, edit, and status-change operations, then replays
+them into materialized review-note state. Partial replay acts as a local proof
+that future annotation versions can be referenced without embedding full comment
+history in manual snapshots.
+
+The event log is not persistence. It is excluded from collaboration snapshots,
+checkpoints, Manuscript adapter payloads, localStorage, server routes, and
+production manual snapshots.
+
+## Materialized Annotation State Lab
+
+The collaboration lab now has a synthetic-only materialized annotation-state
+contract:
+
+- `apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts`
+
+State version:
+
+- `studio-collaboration-annotation-state-v1`
+
+It derives current review-note state from the annotation event log, indexes
+notes by span/block/status, and creates a safe reference that a future manual
+snapshot could point at after persistence and access control exist.
+
+The materialized state is not persistence. It is not stored in localStorage,
+server routes, DB rows, collaboration checkpoints, Manuscript adapter payloads,
+or production manual snapshots.
+
 ## Non-Goals For This Sprint
 
 - no production simultaneous editing
@@ -164,6 +292,11 @@ action with access control and rollback rules.
 - no production manual snapshot mutation
 - no production Manuscript Desk adapter import
 - no public publishing
+- no durable presence storage
+- no durable review-note storage
+- no annotation persistence
+- no annotation event persistence
+- no materialized annotation-state persistence
 
 ## Rough 20-Sprint Path
 

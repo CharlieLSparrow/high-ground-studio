@@ -27,6 +27,45 @@ import {
   summarizeCollaborationDocument,
   syncCollaborationClients,
 } from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+import {
+  applySyntheticSpanTag,
+  listSyntheticSpanTags,
+  summarizeSyntheticSpanTags,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+import {
+  createSyntheticPresenceState,
+  markSyntheticPresenceForBlock,
+  markSyntheticPresenceForSpan,
+  summarizeSyntheticPresence,
+  validateSyntheticPresenceState,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
+import {
+  addSyntheticReviewNote,
+  createSyntheticReviewNote,
+  createSyntheticReviewNoteState,
+  summarizeSyntheticReviewNotes,
+  updateSyntheticReviewNoteStatus,
+  validateSyntheticReviewNoteState,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts";
+import {
+  createAnnotationDurabilityDecisionRecord,
+  validateAnnotationDurabilityDecisionRecord,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
+import {
+  appendAnnotationEvent,
+  createAnnotationEventLogReference,
+  createEmptyAnnotationEventLog,
+  createReviewNoteBodyEditedEvent,
+  createReviewNoteCreatedEvent,
+  createReviewNoteStatusChangedEvent,
+  replayAnnotationEventLog,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
+import {
+  compareMaterializedAnnotationStateToEventLog,
+  createMaterializedAnnotationStateFromEventLog,
+  createMaterializedAnnotationStateReference,
+  validateMaterializedAnnotationState,
+} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",
@@ -53,6 +92,31 @@ function addStep(name, status, details = {}) {
     details,
     completedAt: new Date().toISOString(),
   });
+}
+
+function assertPresenceExcluded(payload, lastAction) {
+  const serialized = JSON.stringify(payload);
+
+  if (
+    serialized.includes('"presence"') ||
+    serialized.includes("activeBlockId") ||
+    serialized.includes("activeSpanId") ||
+    serialized.includes(lastAction)
+  ) {
+    throw new Error("Ephemeral synthetic presence leaked into durable payload.");
+  }
+}
+
+function assertReviewNotesExcluded(payload, noteBody) {
+  const serialized = JSON.stringify(payload);
+
+  if (
+    serialized.includes(noteBody) ||
+    serialized.includes("reviewNotes") ||
+    serialized.includes("Synthetic review note")
+  ) {
+    throw new Error("Local synthetic review notes leaked into a durable payload.");
+  }
 }
 
 async function writeReport(status, extra = {}) {
@@ -115,7 +179,23 @@ async function runSmoke() {
       "Charlie agent tag",
     );
     applySyntheticTag(homer, "synthetic-collab-block-1", "Homer agent tag");
+    applySyntheticSpanTag(
+      charlie,
+      "synthetic-collab-block-1",
+      10,
+      22,
+      "Charlie agent span",
+    );
     addStep("apply synthetic edits and tags on separate clients", "passed");
+
+    let presence = createSyntheticPresenceState();
+    presence = markSyntheticPresenceForBlock(
+      presence,
+      "charlie",
+      "synthetic-collab-block-1",
+      "tagging",
+      "Charlie is tagging a synthetic block in the agent smoke.",
+    );
 
     const syncResult = syncCollaborationClients(charlie, homer);
 
@@ -126,6 +206,251 @@ async function runSmoke() {
     addStep("sync clients and confirm convergence", "passed", {
       charlieSyncCount: summarizeCollaborationDocument(charlie).syncCount,
       homerSyncCount: summarizeCollaborationDocument(homer).syncCount,
+      spanCount: summarizeSyntheticSpanTags(homer).spanCount,
+    });
+
+    if (summarizeSyntheticSpanTags(homer).spanCount !== 1) {
+      throw new Error("Synthetic span did not sync to Homer.");
+    }
+
+    const syncedSpan = listSyntheticSpanTags(homer)[0];
+    const sourceTextBeforeReviewNotes = summarizeCollaborationDocument(charlie)
+      .blocks.map((block) => block.text)
+      .join("\n");
+    presence = markSyntheticPresenceForSpan(
+      presence,
+      "homer",
+      syncedSpan.spanId,
+      "reviewing",
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
+    const presenceValidation = validateSyntheticPresenceState(presence);
+    const presenceSummary = summarizeSyntheticPresence(presence);
+
+    if (!presenceValidation.ok) {
+      throw new Error(
+        `Synthetic presence validation failed: ${presenceValidation.errors.join(" ")}`,
+      );
+    }
+
+    addStep("model ephemeral synthetic presence", "passed", {
+      actors: presenceSummary.actorCount,
+      activeBlockPresence: presenceSummary.activeBlockPresenceCount,
+      activeSpanPresence: presenceSummary.activeSpanPresenceCount,
+    });
+
+    const reviewNoteBody = "Synthetic review note anchored to the agent span.";
+    const archivedReviewNoteBody =
+      "Synthetic archived review note for status coverage.";
+    const openReviewNoteBody =
+      "Synthetic open review note kept open for status coverage.";
+    const openNote = createSyntheticReviewNote(
+      syncedSpan,
+      "charlie",
+      reviewNoteBody,
+    );
+
+    if (!openNote) {
+      throw new Error("Synthetic review note was not created.");
+    }
+
+    let reviewNotes = addSyntheticReviewNote(
+      createSyntheticReviewNoteState(),
+      openNote,
+    );
+    reviewNotes = updateSyntheticReviewNoteStatus(
+      reviewNotes,
+      openNote.noteId,
+      "addressed",
+      "homer",
+    );
+    const archivedNote = createSyntheticReviewNote(
+      syncedSpan,
+      "homer",
+      archivedReviewNoteBody,
+    );
+
+    if (!archivedNote) {
+      throw new Error("Synthetic archived review note was not created.");
+    }
+
+    reviewNotes = addSyntheticReviewNote(reviewNotes, archivedNote);
+    reviewNotes = updateSyntheticReviewNoteStatus(
+      reviewNotes,
+      archivedNote.noteId,
+      "archived",
+      "charlie",
+    );
+    const secondOpenNote = createSyntheticReviewNote(
+      syncedSpan,
+      "charlie",
+      openReviewNoteBody,
+    );
+
+    if (!secondOpenNote) {
+      throw new Error("Synthetic open review note was not created.");
+    }
+
+    reviewNotes = addSyntheticReviewNote(reviewNotes, secondOpenNote);
+
+    const reviewNoteValidation = validateSyntheticReviewNoteState(reviewNotes);
+    const reviewNoteSummary = summarizeSyntheticReviewNotes(reviewNotes);
+    const sourceTextAfterReviewNotes = summarizeCollaborationDocument(charlie)
+      .blocks.map((block) => block.text)
+      .join("\n");
+
+    if (!reviewNoteValidation.ok) {
+      throw new Error(
+        `Synthetic review note validation failed: ${reviewNoteValidation.errors.join(" ")}`,
+      );
+    }
+
+    if (sourceTextAfterReviewNotes !== sourceTextBeforeReviewNotes) {
+      throw new Error("Synthetic review notes mutated source text.");
+    }
+
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+    ]) {
+      assertReviewNotesExcluded(presence, body);
+    }
+
+    addStep("model local span-anchored review notes", "passed", {
+      notes: reviewNoteSummary.noteCount,
+      addressed: reviewNoteSummary.addressedCount,
+      archived: reviewNoteSummary.archivedCount,
+      sourceTextUnchanged: true,
+    });
+
+    const annotationDecision = createAnnotationDurabilityDecisionRecord();
+    const annotationDecisionValidation =
+      validateAnnotationDurabilityDecisionRecord(annotationDecision);
+
+    if (!annotationDecisionValidation.ok) {
+      throw new Error(
+        `Annotation durability decision validation failed: ${annotationDecisionValidation.errors.join(" ")}`,
+      );
+    }
+
+    if (annotationDecision.recommendation.checkpointMetadataPrimaryStore) {
+      throw new Error("Checkpoint metadata was recommended as the primary annotation store.");
+    }
+
+    addStep("compare future annotation durability options", "passed", {
+      recommendedPrimaryStore:
+        annotationDecision.recommendation.recommendedPrimaryStore,
+      recommendedOperationLog:
+        annotationDecision.recommendation.recommendedOperationLog,
+      checkpointMetadataPrimaryStore:
+        annotationDecision.recommendation.checkpointMetadataPrimaryStore,
+    });
+
+    const annotationEventBody =
+      "Synthetic annotation event-log note for replay.";
+    const annotationEventEditBody =
+      "Synthetic annotation event-log note after replay edit.";
+    const annotationCreatedEvent = createReviewNoteCreatedEvent(
+      syncedSpan,
+      "charlie",
+      annotationEventBody,
+    );
+
+    if (!annotationCreatedEvent) {
+      throw new Error("Synthetic annotation create event was not created.");
+    }
+
+    let annotationEventLog = appendAnnotationEvent(
+      createEmptyAnnotationEventLog(),
+      annotationCreatedEvent,
+    );
+    const annotationEditEvent = createReviewNoteBodyEditedEvent(
+      annotationCreatedEvent.noteId,
+      "homer",
+      annotationEventEditBody,
+    );
+    const annotationAddressedEvent = createReviewNoteStatusChangedEvent(
+      annotationCreatedEvent.noteId,
+      "homer",
+      "addressed",
+    );
+
+    if (!annotationEditEvent || !annotationAddressedEvent) {
+      throw new Error("Synthetic annotation replay events were not created.");
+    }
+
+    annotationEventLog = appendAnnotationEvent(
+      appendAnnotationEvent(annotationEventLog, annotationEditEvent),
+      annotationAddressedEvent,
+    );
+
+    const annotationReplay = replayAnnotationEventLog(annotationEventLog);
+    const annotationReference =
+      createAnnotationEventLogReference(annotationEventLog);
+    const materializedAnnotationState =
+      createMaterializedAnnotationStateFromEventLog(annotationEventLog);
+    const materializedAnnotationValidation =
+      validateMaterializedAnnotationState(materializedAnnotationState);
+    const materializedAnnotationReference =
+      createMaterializedAnnotationStateReference(materializedAnnotationState);
+    const materializedComparison = compareMaterializedAnnotationStateToEventLog(
+      materializedAnnotationState,
+      annotationEventLog,
+    );
+    const sourceTextAfterAnnotationEvents = summarizeCollaborationDocument(charlie)
+      .blocks.map((block) => block.text)
+      .join("\n");
+
+    if (!annotationReplay.ok) {
+      throw new Error(
+        `Synthetic annotation event-log replay failed: ${annotationReplay.errors.join(" ")}`,
+      );
+    }
+
+    if (annotationReplay.summary.addressedCount !== 1) {
+      throw new Error("Synthetic annotation event-log did not replay addressed state.");
+    }
+
+    if (sourceTextAfterAnnotationEvents !== sourceTextBeforeReviewNotes) {
+      throw new Error("Synthetic annotation event log mutated source text.");
+    }
+
+    if (
+      annotationReference.checkpointMetadataPrimaryStore ||
+      annotationReference.manualSnapshotEmbedsEvents
+    ) {
+      throw new Error("Annotation event-log reference crossed the snapshot boundary.");
+    }
+
+    if (!materializedAnnotationValidation.ok) {
+      throw new Error(
+        `Materialized annotation state validation failed: ${materializedAnnotationValidation.errors.join(" ")}`,
+      );
+    }
+
+    if (!materializedComparison.matches) {
+      throw new Error(
+        `Materialized annotation state did not match event-log replay: ${materializedComparison.details.join(" ")}`,
+      );
+    }
+
+    if (materializedAnnotationReference.manualSnapshotEmbedsAnnotations) {
+      throw new Error("Materialized annotation state reference embedded annotations in snapshots.");
+    }
+
+    addStep("replay synthetic annotation event log", "passed", {
+      events: annotationReplay.appliedEventCount,
+      replayedNotes: annotationReplay.summary.noteCount,
+      annotationStateVersion: annotationReference.annotationStateVersion,
+    });
+
+    addStep("materialize annotation current state from event log", "passed", {
+      materializedNotes: materializedAnnotationState.summary.noteCount,
+      materializedVersion:
+        materializedAnnotationReference.annotationStateVersion,
+      manualSnapshotEmbedsAnnotations:
+        materializedAnnotationReference.manualSnapshotEmbedsAnnotations,
     });
 
     const exportedSnapshot = exportCollaborationSnapshot(charlie);
@@ -143,7 +468,21 @@ async function runSmoke() {
         (count, block) => count + block.tags.length,
         0,
       ),
+      spans: exportedSnapshot.spans?.length ?? 0,
     });
+    assertPresenceExcluded(
+      exportedSnapshot,
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+      annotationEventBody,
+      annotationEventEditBody,
+    ]) {
+      assertReviewNotesExcluded(exportedSnapshot, body);
+    }
 
     const imported = importCollaborationSnapshot(
       exportedSnapshot,
@@ -172,7 +511,21 @@ async function runSmoke() {
       checkpointVersion: checkpoint.checkpointVersion,
       blocks: checkpointValidation.summary.blockCount,
       tags: checkpointValidation.summary.tagCount,
+      spans: checkpointValidation.summary.spanCount,
     });
+    assertPresenceExcluded(
+      checkpoint,
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+      annotationEventBody,
+      annotationEventEditBody,
+    ]) {
+      assertReviewNotesExcluded(checkpoint, body);
+    }
 
     const checkpointImport = importCollaborationCheckpointToClient(
       checkpoint,
@@ -212,7 +565,26 @@ async function runSmoke() {
       adapterVersion: adapterPayload.adapterVersion,
       blocks: adapterValidation.summary.blockCount,
       tags: adapterValidation.summary.tagCount,
+      spans: adapterValidation.summary.spanCount,
+      semanticMarks: adapterValidation.summary.semanticMarkCount,
     });
+
+    if (adapterValidation.summary.semanticMarkCount !== 1) {
+      throw new Error("Synthetic Manuscript adapter did not create a span semantic mark.");
+    }
+    assertPresenceExcluded(
+      adapterPayload,
+      "Homer is reviewing a synthetic span in the agent smoke.",
+    );
+    for (const body of [
+      reviewNoteBody,
+      archivedReviewNoteBody,
+      openReviewNoteBody,
+      annotationEventBody,
+      annotationEventEditBody,
+    ]) {
+      assertReviewNotesExcluded(adapterPayload, body);
+    }
 
     const adapterComparison = compareCollaborationCheckpointToManuscriptDraft(
       checkpoint,
@@ -280,6 +652,41 @@ async function runSmoke() {
       adapterBlockCount: adapterSummary.blockCount,
       adapterTagCount: adapterSummary.tagCount,
       adapterRoundtripMatches,
+      spanRoundtrip: true,
+      spanCount: adapterSummary.spanCount,
+      semanticMarkCount: adapterSummary.semanticMarkCount,
+      presenceModeled: true,
+      presenceActorCount: presenceSummary.actorCount,
+      activeBlockPresenceCount: presenceSummary.activeBlockPresenceCount,
+      activeSpanPresenceCount: presenceSummary.activeSpanPresenceCount,
+      presenceExcludedFromSnapshots: true,
+      reviewNotesModeled: true,
+      reviewNoteCount: reviewNoteSummary.noteCount,
+      openReviewNoteCount: reviewNoteSummary.openCount,
+      addressedReviewNoteCount: reviewNoteSummary.addressedCount,
+      archivedReviewNoteCount: reviewNoteSummary.archivedCount,
+      reviewNotesAnchoredToSpans: true,
+      reviewNotesMutateSourceText: false,
+      reviewNotesExcludedFromSnapshots: true,
+      annotationDurabilityDecision: true,
+      recommendedPrimaryStore:
+        annotationDecision.recommendation.recommendedPrimaryStore,
+      checkpointMetadataPrimaryStore:
+        annotationDecision.recommendation.checkpointMetadataPrimaryStore,
+      annotationEventLogModeled: true,
+      annotationEventCount: annotationEventLog.events.length,
+      replayedAnnotationNoteCount: annotationReplay.summary.noteCount,
+      annotationEventLogReference: true,
+      annotationStateVersion: annotationReference.annotationStateVersion,
+      materializedAnnotationStateModeled: true,
+      materializedAnnotationNoteCount:
+        materializedAnnotationReference.noteCount,
+      materializedAnnotationStateVersion:
+        materializedAnnotationReference.annotationStateVersion,
+      manualSnapshotEmbedsAnnotations:
+        materializedAnnotationReference.manualSnapshotEmbedsAnnotations,
+      noDbSchema: true,
+      manuscriptFirstSurface: true,
       noServerWrites: true,
       noProductionManuscriptEditing: true,
       noLocalStorage: true,

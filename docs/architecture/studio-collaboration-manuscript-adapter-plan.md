@@ -50,15 +50,28 @@ The adapter creates a valid synthetic `ManuscriptDraft` subset containing:
 - block text
 - synthetic author marks from collaboration actor names
 - synthetic collaboration tag metadata on paragraph attrs
-- a first synthetic semantic mark when a block has tags
+- synthetic span tags mapped into `semanticHighlightMark` ranges
 - empty `structureRegions`
 - empty `quoteReviews`
 - `sourceFileName: null`
 - `importSummary: null`
 
 The adapter payload also carries the original synthetic collaboration blocks and
-tags because collaboration tags are block-level lab metadata, not yet a full
-production span model.
+tags because block-level tags are still useful lab metadata. The important new
+semantic path is span-first: non-overlapping synthetic spans become addressable
+semantic marks in the draft JSON.
+
+## Span Policy
+
+For this pass:
+
+- spans are text-offset ranges over synthetic block text
+- out-of-range offsets are clamped before storage
+- zero-length spans are rejected
+- spans are sorted by start offset, end offset, and span id
+- non-overlapping spans become `semanticHighlightMark` ranges
+- overlapping later spans are ignored and listed in adapter warnings
+- rejoining all text nodes must reproduce the original block text
 
 ## Explicit Gaps
 
@@ -71,6 +84,8 @@ This is not a full production import format. It deliberately omits:
 - cited quotations
 - production snapshot metadata
 - server-side ownership metadata
+- overlapping span reconciliation
+- real DOM/ProseMirror selection anchoring
 
 Those gaps must be closed deliberately before production collaboration can write
 to the Manuscript Desk.

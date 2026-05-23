@@ -7,6 +7,7 @@ import {
   type StudioCollaborationLabSnapshot,
   type StudioCollaborationSummary,
 } from "./studio-collaboration-lab-model";
+import type { StudioCollaborationSpanTag } from "./studio-collaboration-span-model";
 
 export const STUDIO_COLLABORATION_CHECKPOINT_VERSION =
   "studio-collaboration-checkpoint-v1";
@@ -17,6 +18,7 @@ export type StudioCollaborationCheckpoint = {
   source: "collaboration-lab";
   title: string;
   blocks: StudioCollaborationLabBlock[];
+  spans?: StudioCollaborationSpanTag[];
   safety: {
     syntheticDataOnly: true;
     serverWrites: false;
@@ -37,6 +39,7 @@ export type StudioCollaborationCheckpointSummary = {
   title: string;
   blockCount: number;
   tagCount: number;
+  spanCount: number;
   emptyBlockCount: number;
   createdAt: string;
   source: string;
@@ -97,6 +100,10 @@ function cloneBlocks(blocks: StudioCollaborationLabBlock[]) {
   }));
 }
 
+function cloneSpans(spans: StudioCollaborationSpanTag[] = []) {
+  return spans.map((span) => ({ ...span }));
+}
+
 function createCheckpointFromSnapshotAndSummary({
   snapshot,
   summary,
@@ -110,6 +117,7 @@ function createCheckpointFromSnapshotAndSummary({
     source: "collaboration-lab",
     title: snapshot.title,
     blocks: cloneBlocks(snapshot.blocks),
+    spans: cloneSpans(snapshot.spans ?? []),
     safety: {
       syntheticDataOnly: true,
       serverWrites: false,
@@ -153,12 +161,14 @@ export function summarizeCollaborationCheckpoint(
     (count, block) => count + block.tags.length,
     0,
   );
+  const spanCount = checkpoint.spans?.length ?? 0;
 
   return {
     checkpointVersion: checkpoint.checkpointVersion,
     title: checkpoint.title,
     blockCount: checkpoint.blocks.length,
     tagCount,
+    spanCount,
     emptyBlockCount: checkpoint.blocks.filter((block) => !block.text.trim()).length,
     createdAt: checkpoint.createdAt,
     source: checkpoint.source,
@@ -240,6 +250,9 @@ export function validateCollaborationCheckpoint(
   }
 
   const blocks = validateBlocks(input.blocks, errors);
+  if (input.spans !== undefined && !Array.isArray(input.spans)) {
+    errors.push("Checkpoint spans must be an array when present.");
+  }
   const safety = isRecord(input.safety) ? input.safety : null;
   const yjs = isRecord(input.yjs) ? input.yjs : null;
 
@@ -324,6 +337,7 @@ export function importCollaborationCheckpointToClient(
     exportedAt: validation.checkpoint.createdAt,
     title: validation.checkpoint.title,
     blocks: cloneBlocks(validation.checkpoint.blocks),
+    spans: cloneSpans(validation.checkpoint.spans ?? []),
     safety: {
       syntheticDataOnly: true,
       serverWrites: false,

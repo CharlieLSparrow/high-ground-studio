@@ -71,9 +71,9 @@ High Ground Studio is a monorepo with:
   routes, does not autosave, and does not enable real simultaneous editing.
 - Studio has pure collaboration lab validation through
   `pnpm studio:collab:test`, `pnpm studio:collab:checkpoint:test`,
-  `pnpm studio:collab:adapter:test`, and `pnpm studio:collab:agentic-smoke`.
-  These use synthetic data only and write generated reports under ignored
-  `artifacts/` paths.
+  `pnpm studio:collab:adapter:test`, `pnpm studio:collab:span:test`, and
+  `pnpm studio:collab:agentic-smoke`. These use synthetic data only and write
+  generated reports under ignored `artifacts/` paths.
 - Studio has a local-only collaboration checkpoint bridge. It exports a Yjs lab
   client into `studio-collaboration-checkpoint-v1`, validates safety flags,
   imports the checkpoint into a new synthetic client, and confirms blocks, text,
@@ -87,6 +87,45 @@ High Ground Studio is a monorepo with:
   reviews, then converts back into a collaboration checkpoint/client. It is not
   a production Manuscript Desk import, does not call snapshot APIs, does not
   write localStorage, does not autosave, and does not touch manual snapshots.
+- Studio collaboration now has synthetic span semantics. The local Yjs lab can
+  add addressable synthetic spans over block text, sync them between Charlie and
+  Homer clients, carry them through snapshots/checkpoints, and map
+  non-overlapping spans into `semanticHighlightMark` ranges in the synthetic
+  Manuscript adapter payload. The lab UI now leads with a shared long manuscript
+  surface to reinforce that collaboration should happen over one manuscript
+  stream, not disconnected cards.
+- Studio collaboration now has synthetic local presence and manuscript margin
+  awareness in `/manuscript/collaboration-lab`. Presence tracks Charlie and
+  Homer active block/span/mode/last action in React state only and renders
+  margin cues around the shared manuscript surface. Presence is explicitly not
+  durable manuscript content and is excluded from snapshots, checkpoints,
+  Manuscript adapter payloads, localStorage, server routes, and production
+  manual snapshots.
+- Studio collaboration now has synthetic span-anchored review notes in
+  `/manuscript/collaboration-lab`. Notes can be authored by Charlie or Homer,
+  marked `open`, `addressed`, or `archived`, and shown as margin/side-panel
+  context around the shared manuscript surface. For this sprint they are
+  React-state-only local annotations: not source text, not presence, not Yjs
+  snapshot state, not collaboration checkpoints, not Manuscript adapter payloads,
+  not localStorage, not server routes, and not production manual snapshots.
+- Studio collaboration now has a synthetic annotation durability decision
+  helper and lab UI summary. It compares annotation event log, checkpoint
+  metadata, and separate annotation store options, then recommends event-log
+  operations plus a separate annotation store for future durable review notes.
+  Checkpoint metadata is explicitly not the primary recommended store because
+  manual snapshots should remain rollback anchors, not comment warehouses.
+- Studio collaboration now has a synthetic annotation event-log lab. It models
+  review-note create, edit, and status-change operations, replays them into
+  materialized annotation state, and can produce a safe future snapshot
+  reference shape. The event log is pure/local only and is excluded from
+  snapshots, checkpoints, Manuscript adapter payloads, localStorage, server
+  routes, DB/schema, and production manual snapshots.
+- Studio collaboration now has a synthetic materialized annotation-state lab.
+  It derives current review-note state from the event log, indexes notes by
+  span/block/status, and creates a safe annotation-state reference for future
+  checkpoint linkage. It is not persistence and is excluded from localStorage,
+  server routes, DB/schema, checkpoints, Manuscript adapter payloads, and
+  production manual snapshots.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -202,6 +241,22 @@ High Ground Studio is a monorepo with:
 - Studio collaboration Manuscript adapter payloads are synthetic bridge payloads
   only. They are not production imports, server snapshots, autosave state, or a
   collaboration-enabled replacement for `/manuscript`.
+- Studio collaboration span semantics are synthetic text-offset lab semantics.
+  They are not production comments, not real source spans, not DOM selections,
+  and not wired to production `/manuscript`.
+- Studio collaboration presence is local lab awareness only. It is not
+  provider-backed, not persisted, not checkpointed, not stored in localStorage,
+  and not wired to production `/manuscript`.
+- Studio collaboration review notes are local lab annotations only. They are
+  not source text, not persisted, not checkpointed, not stored in localStorage,
+  and not wired to production `/manuscript`. A future production implementation
+  should use annotation events plus a separate annotation store rather than
+  checkpoint metadata as the primary durable comment store.
+- Studio collaboration annotation event logs are also local lab contracts only.
+  They prove operation replay and version references, but they are not persisted
+  and are not embedded in production manual snapshots.
+- Studio materialized annotation state is a local replay view only. It proves
+  current-state indexing/query behavior, not durable storage.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a
