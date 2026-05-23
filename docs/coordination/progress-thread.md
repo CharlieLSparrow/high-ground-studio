@@ -41,6 +41,7 @@ checks, blockers, and next handoff.
   - `https://studio-hm2odnvjga-uc.a.run.app/content-studio`
 - Rollback:
   `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00022-fdg=100`
+- Opened merge PR: `https://github.com/CharlieLSparrow/high-ground-studio/pull/3`
 - Worktree check: `project/worldhub` and `codex/worldhub-001-foundation` are
   clean; Studio Cut has a dirty local edit in
   `tools/studio-cut-local/studio_cut_local.py`, so treat that lane as occupied.
