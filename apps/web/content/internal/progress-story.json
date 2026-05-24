@@ -1,7 +1,42 @@
 {
-  "updatedAt": "2026-05-24T01:20:00.000Z",
+  "updatedAt": "2026-05-24T02:11:17.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "content-studio-server-checkpoints",
+      "date": "2026-05-23",
+      "title": "Content Studio learned how to remember",
+      "kicker": "Manual checkpoints are live after a deliberate database sync",
+      "mood": "More durable",
+      "summary": "The private Studio now has Content Studio handoff packets, import/export recovery, and manual server checkpoints backed by the live Studio database.",
+      "body": [
+        "The board is still browser-first, which keeps the fast creative workflow intact, but it no longer has to be trapped in one browser forever. A signed-in Studio user can save a manual checkpoint and later load the latest checkpoint from the server.",
+        "The checkpoint model is intentionally narrow. It stores the Content Studio workspace, a content hash, project counts, and status counts. It does not autosave, call providers, publish public pages, or move real manuscript material into tests.",
+        "This also added a repeatable database sync path. The schema change was applied through a one-off Cloud Run Job that used Studio's existing Cloud SQL connection and database secret, then the merged main commit deployed through GitHub Actions.",
+        "The live smoke checks passed after deployment: Studio health, Content Studio page, the new snapshot API's sign-in guard, web health, and the team progress route."
+      ],
+      "commits": [
+        {
+          "sha": "3cc1fae",
+          "label": "feat(studio): add content studio server checkpoints"
+        }
+      ],
+      "links": [
+        {
+          "label": "Studio live",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Content Studio plan",
+          "href": "docs/plans/content-studio-now-next-later.md"
+        },
+        {
+          "label": "Studio runbook",
+          "href": "docs/runbooks/studio-cloud-run.md"
+        }
+      ],
+      "tags": ["Content Studio", "Database", "Cloud Run", "Checkpoints"]
+    },
     {
       "id": "web-domain-readiness-loop",
       "date": "2026-05-23",

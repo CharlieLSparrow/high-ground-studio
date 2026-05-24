@@ -23,12 +23,13 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified during the Content Studio checkpoint branch on 2026-05-23.
+Verified after the Content Studio checkpoint merge, schema sync, and deploy on
+2026-05-23.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | current `main` | none active | Trunk / live runtime | Current release runway. Do not do feature work directly on `main`. |
-| `codex/content-studio-packet-import-001` | in progress | `/Users/wall-e/Dev/high-ground-studio` | Content Studio persistence | Adds packet import/export, manual server checkpoints, `StudioContentWorkspaceSnapshot`, and Cloud Run Job schema-sync prep. |
+| `main` | `3cc1fae` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoint slice merged, schema-synced, and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `codex/content-studio-packet-import-001` | `b2fd9ac` | none active | Content Studio persistence | Merged by PR #16 as `3cc1fae`; branch can be left closed. |
 | `project/worldhub` | `32a6179` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Merged to `main` by PR #4; keep as integration reference until next cycle. |
 | `codex/content-studio-command-001` | `bfa9dc0` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded; final continuity note is being cherry-picked to `main`. |
 | `codex/worldhub-001-foundation` | `ee26a41` | no active terminal | WorldHub / monetization foundation | Included in PR #4. Terminal can remain closed. |
@@ -55,7 +56,7 @@ Verified during the Content Studio checkpoint branch on 2026-05-23.
 ### Studio / Content Management Studio
 
 - owner: integration captain until reassigned
-- source branch: `codex/content-studio-packet-import-001`
+- source branch: `codex/content-studio-packet-import-001`, merged by PR #16
 - previous branch: `codex/content-studio-command-001`, merged to `main` by PR #4
 - owns:
   - `apps/studio/src/app/content-studio/*`
@@ -68,7 +69,8 @@ Verified during the Content Studio checkpoint branch on 2026-05-23.
   - create a private command surface for podcast production, book writing/publishing, HGO episode-page work, monetization follow-through, and Homer coaching ideas
 - current guardrails:
   - browser-local state remains the active working surface
-  - manual server checkpoints only after the schema sync is deliberately run
+  - manual server checkpoints are available after Cloud Run Job
+    `studio-db-push-3cc1fae`
   - no provider calls
   - no public publishing
   - no real manuscript/content material
@@ -77,8 +79,8 @@ Verified during the Content Studio checkpoint branch on 2026-05-23.
   - deploy coherent Studio slices to the existing private Cloud Run service after validation
   - record live URL, smoke result, and rollback command in the progress thread
 - current live revision:
-  - `studio-00028-qlk` after the web custom-domain readiness loop
-  - Content Studio checkpoint branch is not live yet
+  - `studio-00029-nqp` from `main` commit `3cc1fae`
+  - rollback to `studio-00028-qlk`
 
 ### WorldHub / Business Infrastructure
 

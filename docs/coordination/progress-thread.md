@@ -271,3 +271,26 @@ checks, blockers, and next handoff.
   `git diff --check`.
 - No provider calls, public publishing, real manuscript text, or automatic
   autosave behavior were added.
+- Merged PR #16 to `main` as `3cc1fae`.
+- Built the one-off Prisma db-push image with Cloud Build
+  `920209e8-68be-4a0e-bfe6-22520d58a98e`:
+  `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:3cc1fae7fc0b`.
+- Created and executed Cloud Run Job `studio-db-push-3cc1fae` against the live
+  Studio Cloud SQL database using Studio's runtime service account, Cloud SQL
+  attachment, and `studio-database-url:latest`.
+- Job execution `studio-db-push-3cc1fae-426ng` completed successfully; logs
+  report `Your database is now in sync with your Prisma schema`.
+- GitHub Actions deployed the merged runtime commit `3cc1fae`:
+  - Studio: `studio-00029-nqp`, serving 100%.
+  - Web: `web-00008-k4l`, serving 100%.
+- Live smokes passed:
+  - Studio `/api/health`
+  - Studio `/content-studio`
+  - Studio `/api/content-studio/snapshots` unauthenticated `401`
+  - Web `/api/health`
+  - Web `/team/progress` unauthenticated redirect
+- Rollback:
+  - Studio:
+    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00028-qlk=100`
+  - Web:
+    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00007-7p8=100`
