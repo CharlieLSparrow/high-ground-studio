@@ -6,6 +6,25 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO episode publish queue
+
+- Added `/team/hgo-publish-queue` as a private episode-page publish planning
+  surface for saved HGO staged artifacts.
+- Added `createHgoEpisodePublishQueue` so saved staged artifacts can derive
+  ready/not-ready/archived publish-candidate lanes with active blocker/warning
+  totals.
+- Added the queue route to the team console nav and to the web Cloud Run deploy
+  smoke redirects.
+- Guardrails preserved: no public route creation, no content-file mutation, no
+  provider calls, no public-safety certification, no `/episodes` replacement,
+  and no publish action.
+- Validation passed: `pnpm hgo:publish-candidate:test`,
+  `pnpm web:cloudrun:test`, `pnpm --filter web build` outside the sandbox
+  after the known Turbopack sandbox hang, `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`,
+  and `git diff --check`.
+- Local functional commit: `a219b88`
+  `feat(web): add HGO episode publish queue`.
+
 ### Codex / `main` HGO artifact handoff controls
 
 - Added a private team-shelf handoff panel to `/team/hgo-staged-artifacts`:

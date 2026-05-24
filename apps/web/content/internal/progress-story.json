@@ -1,7 +1,35 @@
 {
-  "updatedAt": "2026-05-24T20:00:08.500Z",
+  "updatedAt": "2026-05-24T20:16:30.059Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-episode-publish-queue",
+      "date": "2026-05-24",
+      "title": "Episode publish candidates got a queue",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Saved HGO staged artifacts now roll into a private publish queue with route proposals, blockers, review steps, rollback posture, and artifact handoff controls kept together.",
+      "body": [
+        "The queue is still deliberately private planning space. It does not create public episode routes, publish pages, certify public-safety review, or call providers, but it gives the team one focused surface for deciding what is ready for human publish review."
+      ],
+      "commits": [
+        {
+          "sha": "a219b88",
+          "label": "feat(web): add HGO episode publish queue"
+        }
+      ],
+      "links": [
+        {
+          "label": "Publish queue",
+          "href": "/team/hgo-publish-queue"
+        },
+        {
+          "label": "Artifact store plan",
+          "href": "https://github.com/CharlieLSparrow/high-ground-studio/blob/main/docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Publishing"]
+    },
     {
       "id": "hgo-artifact-handoff-controls",
       "date": "2026-05-24",
