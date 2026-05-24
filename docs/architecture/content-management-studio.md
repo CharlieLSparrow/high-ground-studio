@@ -53,6 +53,9 @@ Current capabilities:
   publishing handoffs
 - generate a valid staged HGO projection draft for podcast and episode-page
   projects so HGO can review it through `/projection-stage/import`
+- paste a full Content Studio production packet into HGO staged import, where
+  HGO extracts `hgoProjectionDraft`, checks packet safety flags, validates the
+  projection, and keeps the review browser-only
 - manually save/load server checkpoints through private
   `StudioContentWorkspaceSnapshot` rows when the Studio database schema has
   been applied

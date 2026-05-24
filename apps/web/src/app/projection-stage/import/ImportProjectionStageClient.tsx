@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import EpisodeProjectionView from "@/components/hgo/projection/EpisodeProjectionView";
 import ProjectionReviewGatePanel from "@/components/hgo/projection/ProjectionReviewGatePanel";
+import { extractHgoProjectionInputFromContentStudioPacket } from "@/lib/hgo/content-studio-production-packet";
 import { createHgoProjectionReviewGate } from "@/lib/hgo/projection-review-gate";
 import type { HgoEpisodeProjection } from "@/lib/hgo/projection-types";
 import { validateHgoEpisodeProjection } from "@/lib/hgo/projection-validation";
@@ -48,13 +49,26 @@ function parseProjectionJson(value: string): ParsedProjection {
 
   try {
     const parsed = JSON.parse(value) as unknown;
-    const validation = validateHgoEpisodeProjection(parsed);
+    const extracted =
+      extractHgoProjectionInputFromContentStudioPacket(parsed);
+
+    if (!extracted.ok) {
+      return {
+        state: "invalid",
+        errors: extracted.errors,
+        warnings: extracted.warnings,
+        projection: null,
+      };
+    }
+
+    const validation = validateHgoEpisodeProjection(extracted.projectionInput);
+    const warnings = [...extracted.warnings, ...validation.warnings];
 
     if (!validation.ok) {
       return {
         state: "invalid",
         errors: validation.errors,
-        warnings: validation.warnings,
+        warnings,
         projection: null,
       };
     }
@@ -62,8 +76,8 @@ function parseProjectionJson(value: string): ParsedProjection {
     return {
       state: "valid",
       errors: [],
-      warnings: validation.warnings,
-      projection: parsed as HgoEpisodeProjection,
+      warnings,
+      projection: extracted.projectionInput as HgoEpisodeProjection,
     };
   } catch (error) {
     return {
@@ -407,7 +421,7 @@ export default function ImportProjectionStageClient() {
           <div className="grid gap-4 rounded-[28px] border border-white/12 bg-white/8 p-5 shadow-glass backdrop-blur">
             <label className="grid gap-2">
               <span className="text-sm font-black uppercase text-flare">
-                Projection JSON
+                Projection or Content Studio packet JSON
               </span>
               <textarea
                 className="min-h-[300px] w-full resize-y rounded-[18px] border border-white/12 bg-void-light/80 px-4 py-3 font-mono text-xs leading-6 text-subject outline-none focus:border-flare/45"
@@ -444,8 +458,9 @@ export default function ImportProjectionStageClient() {
               ) : null}
               {parsedProjection.state === "empty" ? (
                 <div className="rounded-[20px] border border-white/10 bg-void-light/55 p-4 text-sm font-bold leading-6 text-subject-muted">
-                  Paste HGO projection JSON to run validation and review gate
-                  checks in this browser session only.
+                  Paste HGO projection JSON or a Content Studio production
+                  packet to run validation and review gate checks in this
+                  browser session only.
                 </div>
               ) : null}
             </div>
