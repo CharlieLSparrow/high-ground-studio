@@ -188,3 +188,13 @@ checks, blockers, and next handoff.
   `us-central1/high-ground-studio`.
 - Local validation passed: workflow YAML parse, `git diff --check`,
   `pnpm web:cloudrun:test`, and `pnpm studio:cloudrun:test`.
+- Merged PR #10 to `main` as `b80f140`; GitHub Actions run `26347727705`
+  deployed both services successfully from `main`.
+- New live revisions:
+  - web: `web-00004-fml`
+  - Studio: `studio-00026-hpm`
+- Live smokes passed for web `/api/health`, web `/`, web `/team/progress`
+  unauthenticated sign-in redirect, Studio `/api/health`, and Studio
+  `/content-studio`.
+- Docker logs exposed Prisma/OpenSSL warnings in the slim images. Follow-up
+  hardening branch: `codex/cloud-run-openssl-hardening-001`.
