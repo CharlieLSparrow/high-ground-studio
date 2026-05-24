@@ -95,8 +95,10 @@ keep other development seed writes disabled in Cloud Run.
   - requires a clean working tree unless `ALLOW_DIRTY_DEPLOY=1`
   - runs Studio typecheck and Cloud Run readiness tests unless
     `SKIP_LOCAL_CHECKS=1`
-  - builds through Cloud Build, deploys the image, smokes `/api/health` and
-    `/content-studio`, and prints a rollback command
+  - builds through Cloud Build by default, or builds and pushes directly with
+    Docker when `STUDIO_IMAGE_BUILD_STRATEGY=docker`
+  - deploys the image, smokes `/api/health` and `/content-studio`, and prints a
+    rollback command
 - `.dockerignore`
   - keeps local build artifacts, dependencies, logs, env files, and large
     staging/inbox content out of the Docker context

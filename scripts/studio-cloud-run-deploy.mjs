@@ -53,6 +53,56 @@ function getDeployBlockingDirtyStatus() {
     .join("\n");
 }
 
+function buildImageWithCloudBuild() {
+  run("gcloud", [
+    "builds",
+    "submit",
+    "--project",
+    project,
+    "--config",
+    "cloudbuild.studio.yaml",
+    "--substitutions",
+    `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag}`,
+    ".",
+  ]);
+}
+
+function buildImageWithDocker() {
+  run("gcloud", [
+    "auth",
+    "configure-docker",
+    `${region}-docker.pkg.dev`,
+    "--quiet",
+  ]);
+  run("docker", [
+    "build",
+    "--file",
+    "apps/studio/Dockerfile",
+    "--tag",
+    imageUri,
+    ".",
+  ]);
+  run("docker", ["push", imageUri]);
+}
+
+function buildImage() {
+  const strategy = process.env.STUDIO_IMAGE_BUILD_STRATEGY || "cloud-build";
+
+  if (strategy === "cloud-build") {
+    buildImageWithCloudBuild();
+    return;
+  }
+
+  if (strategy === "docker") {
+    buildImageWithDocker();
+    return;
+  }
+
+  throw new Error(
+    `Unsupported STUDIO_IMAGE_BUILD_STRATEGY: ${strategy}. Use cloud-build or docker.`,
+  );
+}
+
 async function assertHttpOk(url, matcher) {
   const response = await fetch(url, {
     redirect: "manual",
@@ -134,17 +184,7 @@ if (process.env.SKIP_LOCAL_CHECKS !== "1") {
   run("pnpm", ["studio:cloudrun:test"]);
 }
 
-run("gcloud", [
-  "builds",
-  "submit",
-  "--project",
-  project,
-  "--config",
-  "cloudbuild.studio.yaml",
-  "--substitutions",
-  `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag}`,
-  ".",
-]);
+buildImage();
 
 run("gcloud", [
   "run",

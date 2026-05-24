@@ -173,3 +173,18 @@ checks, blockers, and next handoff.
   `google-github-actions/auth` generated a temporary `gha-creds-*.json` file in
   the checkout and the deploy helper correctly refused a dirty tree.
 - Follow-up fix branch: `codex/github-cloud-deploy-fix-001`.
+
+### Codex / `codex/github-cloud-deploy-docker-001`
+
+- GitHub Actions deploys reached the app validation steps but remained blocked
+  on Cloud Build source-staging bucket access for both `web` and `studio`.
+- Added a Docker build/push strategy to both Cloud Run deploy helpers:
+  - `WEB_IMAGE_BUILD_STRATEGY=docker`
+  - `STUDIO_IMAGE_BUILD_STRATEGY=docker`
+- Updated the GitHub Actions workflow to use the Docker strategy so CI builds
+  images on the runner, pushes to Artifact Registry, and deploys Cloud Run
+  without using `gcloud builds submit`.
+- Granted the GitHub deployer scoped Artifact Registry writer access on
+  `us-central1/high-ground-studio`.
+- Local validation passed: workflow YAML parse, `git diff --check`,
+  `pnpm web:cloudrun:test`, and `pnpm studio:cloudrun:test`.

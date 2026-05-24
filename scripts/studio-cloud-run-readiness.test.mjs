@@ -103,6 +103,8 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
   assert.match(deployScript, /getDeployBlockingDirtyStatus/);
   assert.match(deployScript, /gha-creds-/);
   assert.match(deployScript, /ALLOW_DIRTY_DEPLOY/);
+  assert.match(deployScript, /STUDIO_IMAGE_BUILD_STRATEGY/);
+  assert.match(deployScript, /apps\/studio\/Dockerfile/);
 });
 
 test("preflight script is read-only and completes repository checks", () => {

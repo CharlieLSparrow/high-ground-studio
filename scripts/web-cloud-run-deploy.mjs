@@ -113,6 +113,49 @@ function buildEnvArg({ authUrl, siteUrl }) {
   return env.map(([key, value]) => `${key}=${value}`).join(",");
 }
 
+function buildImageWithCloudBuild() {
+  run("gcloud", [
+    "builds",
+    "submit",
+    "--project",
+    project,
+    "--config",
+    "cloudbuild.web.yaml",
+    "--substitutions",
+    `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag}`,
+    ".",
+  ]);
+}
+
+function buildImageWithDocker() {
+  run("gcloud", [
+    "auth",
+    "configure-docker",
+    `${region}-docker.pkg.dev`,
+    "--quiet",
+  ]);
+  run("docker", ["build", "--file", "apps/web/Dockerfile", "--tag", imageUri, "."]);
+  run("docker", ["push", imageUri]);
+}
+
+function buildImage() {
+  const strategy = process.env.WEB_IMAGE_BUILD_STRATEGY || "cloud-build";
+
+  if (strategy === "cloud-build") {
+    buildImageWithCloudBuild();
+    return;
+  }
+
+  if (strategy === "docker") {
+    buildImageWithDocker();
+    return;
+  }
+
+  throw new Error(
+    `Unsupported WEB_IMAGE_BUILD_STRATEGY: ${strategy}. Use cloud-build or docker.`,
+  );
+}
+
 async function assertHttpOk(url, matcher) {
   const response = await fetch(url, {
     redirect: "manual",
@@ -236,17 +279,7 @@ if (process.env.SKIP_LOCAL_CHECKS !== "1") {
   });
 }
 
-run("gcloud", [
-  "builds",
-  "submit",
-  "--project",
-  project,
-  "--config",
-  "cloudbuild.web.yaml",
-  "--substitutions",
-  `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag}`,
-  ".",
-]);
+buildImage();
 
 const deployArgs = [
   "run",
