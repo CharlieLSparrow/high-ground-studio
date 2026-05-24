@@ -44,15 +44,24 @@ Current capabilities:
 - track source, shape, produce, publish, and follow-through checklists
 - edit project title, notes, status, priority, and active stage
 - add custom checkpoints to the active stage
-- export a browser JSON handoff packet with explicit safety flags
+- show a next-action handoff packet for the selected project
+- export a browser JSON handoff packet with explicit safety flags and derived
+  project handoff summaries
+- import a Content Studio packet or raw workspace JSON back into the board
+- manually save/load server checkpoints through private
+  `StudioContentWorkspaceSnapshot` rows when the Studio database schema has
+  been applied
 
-The provider-neutral type/sample-data contract from the WorldHub foundation branch lives in `packages/content-studio-domain`. That package is available for the next slice, but the currently deployed route uses browser-local board state rather than a persisted model.
+The provider-neutral type/sample-data contract from the WorldHub foundation
+branch lives in `packages/content-studio-domain`. The active board still uses
+browser-local state as the immediate working copy, while manual server
+checkpoints provide recovery and cross-device handoff.
 
 ## Current Boundaries
 
 This slice does not:
 
-- write Prisma data
+- autosave Prisma data
 - call provider APIs
 - publish public content
 - deploy anything
@@ -61,8 +70,10 @@ This slice does not:
 - replace the HGO staged projection review path
 - replace existing coaching request or appointment workflows
 
-Browser-local state is a fast first slice. It is not a strategic refusal to use
-databases, APIs, services, or deployable boundaries.
+Browser-local state remains the fast working surface. Manual server checkpoints
+are explicit persistence anchors. They are not canonical public content, not
+provider state, and not a strategic refusal to add cleaner APIs or services
+when those become the smallest correct boundary.
 
 ## Live Deployment Posture
 
@@ -79,9 +90,9 @@ is the operator and the rollback path is fast.
 
 ## When To Add Persistence
 
-Move beyond browser-local state when one of these becomes true:
+Move beyond browser-local plus manual checkpoints when one of these becomes
+true:
 
-- projects need to move between devices
 - multiple agents or people need shared project state
 - Content Studio needs to feed HGO staged artifacts or WorldHub offers
 - a project needs auditability beyond manual JSON export

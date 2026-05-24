@@ -109,6 +109,51 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
   assert.match(dockerfile, /ca-certificates openssl/);
 });
 
+test("Content Studio checkpoints are wired through authenticated API", () => {
+  const route = readFileSync(
+    "apps/studio/src/app/api/content-studio/snapshots/route.ts",
+    "utf8",
+  );
+  const serverModel = readFileSync(
+    "apps/studio/src/lib/server/studio-content-workspace-snapshots.ts",
+    "utf8",
+  );
+  const client = readFileSync(
+    "apps/studio/src/app/content-studio/content-studio-client.tsx",
+    "utf8",
+  );
+
+  assert.match(route, /getStudioAccessState/);
+  assert.match(route, /getStudioDatabaseUrl/);
+  assert.match(route, /createStudioContentWorkspaceSnapshot/);
+  assert.match(route, /getLatestStudioContentWorkspaceSnapshot/);
+  assert.match(serverModel, /studioContentWorkspaceSnapshot/);
+  assert.match(serverModel, /safeContentStudioWorkspaceInput/);
+  assert.match(client, /Save Checkpoint/);
+  assert.match(client, /Load Latest/);
+  assert.match(client, /No autosave, provider\s+call,\s+or public publish action/);
+});
+
+test("Prisma db-push job image is available for Cloud SQL schema sync", () => {
+  const dockerfile = readFileSync("ops/prisma-db-push.Dockerfile", "utf8");
+  const cloudbuild = readFileSync("cloudbuild.prisma-db-push.yaml", "utf8");
+  const gcloudignore = readFileSync(".gcloudignore", "utf8");
+
+  assert.match(dockerfile, /pnpm@/);
+  assert.match(dockerfile, /prisma\.config\.ts/);
+  assert.match(dockerfile, /prisma\/schema\.prisma/);
+  assert.match(dockerfile, /ca-certificates openssl/);
+  assert.match(dockerfile, /CMD \["pnpm", "db:push"\]/);
+  assert.match(cloudbuild, /ops\/prisma-db-push\.Dockerfile/);
+  assert.match(cloudbuild, /prisma-db-push/);
+  assert.match(cloudbuild, /_REGION: us-central1/);
+  assert.match(cloudbuild, /\$\{_REGION\}-docker\.pkg\.dev/);
+  assert.match(gcloudignore, /^\.env$/m);
+  assert.match(gcloudignore, /^\.env\.\*$/m);
+  assert.match(gcloudignore, /^apps\/web\/content\/_inbox$/m);
+  assert.match(gcloudignore, /^apps\/web\/content\/_staging$/m);
+});
+
 test("preflight script is read-only and completes repository checks", () => {
   const result = spawnSync("node", ["scripts/studio-cloud-run-preflight.mjs"], {
     encoding: "utf8",

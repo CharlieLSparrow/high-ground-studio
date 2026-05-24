@@ -27,9 +27,11 @@ Read in this order:
 - Resend email notifications are wired for new coaching requests and are best-effort after the request transaction commits.
 - SMS/Twilio notification sending is not wired into the active coaching request flow.
 - The episodes route is stabilized with a guarded loader, not a final content architecture.
-- Studio `/content-studio` is a private browser-local command surface for
-  podcast, book, episode-page, monetization, and coaching project boards. It is
-  not yet Prisma-backed and does not call providers or publish content.
+- Studio `/content-studio` is a private browser-first command surface for
+  podcast, book, episode-page, monetization, and coaching project boards. It
+  supports JSON handoff packets and manual Prisma-backed server checkpoints
+  once the `StudioContentWorkspaceSnapshot` schema change has been applied. It
+  does not call providers or publish content.
 - Both current production build paths pass.
 - The content tree is much larger than the current published surface.
 - Codex has approval to commit, push, and deploy independently when a coherent

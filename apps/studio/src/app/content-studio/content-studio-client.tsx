@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { cn } from "../studio-ui";
+import {
+  buildContentStudioBrowserPacket,
+  createContentStudioProjectHandoff,
+  parseContentStudioPacket,
+  type ContentStudioProjectHandoff,
+} from "./content-studio-model";
 
 const STORAGE_KEY = "high-ground-studio.content-studio.v1";
 const SCHEMA_VERSION = 1;
@@ -453,20 +459,10 @@ function formatDate(value: string) {
 }
 
 function buildExportPacket(workspace: ContentStudioWorkspace, actorLabel: string) {
-  return {
-    kind: "high-ground-content-studio-browser-packet",
-    schemaVersion: SCHEMA_VERSION,
-    exportedAt: new Date().toISOString(),
-    actorLabel,
-    safety: {
-      browserLocalOnly: true,
-      persistedToServer: false,
-      providerCalls: false,
-      publicPublished: false,
-      containsRealManuscriptText: false,
-    },
+  return buildContentStudioBrowserPacket({
     workspace,
-  };
+    actorLabel,
+  });
 }
 
 function countByStatus(projects: ContentStudioProject[]) {
@@ -506,6 +502,15 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
   );
   const [loaded, setLoaded] = useState(false);
   const [taskDraft, setTaskDraft] = useState("");
+  const [importDraft, setImportDraft] = useState("");
+  const [importMessage, setImportMessage] = useState<{
+    tone: "source" | "review" | "danger";
+    text: string;
+  } | null>(null);
+  const [serverSnapshotStatus, setServerSnapshotStatus] = useState(
+    "Server checkpoints have not been checked in this browser.",
+  );
+  const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
 
   useEffect(() => {
     try {
@@ -561,6 +566,11 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
   const exportJson = useMemo(
     () => JSON.stringify(buildExportPacket(workspace, actorLabel), null, 2),
     [actorLabel, workspace],
+  );
+  const selectedHandoff = useMemo(
+    () =>
+      selectedProject ? createContentStudioProjectHandoff(selectedProject) : null,
+    [selectedProject],
   );
 
   function updateWorkspace(updater: (current: ContentStudioWorkspace) => ContentStudioWorkspace) {
@@ -638,6 +648,10 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
     setWorkspace(next);
     setSelectedProjectId(next.projects[0]?.id ?? "");
     setTaskDraft("");
+    setImportMessage({
+      tone: "review",
+      text: "Sample workspace restored in browser local state.",
+    });
   }
 
   function downloadExport() {
@@ -650,6 +664,158 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
       .slice(0, 10)}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  function importPacket() {
+    const trimmed = importDraft.trim();
+
+    if (!trimmed) {
+      setImportMessage({
+        tone: "danger",
+        text: "Paste a Content Studio packet or raw workspace JSON first.",
+      });
+      return;
+    }
+
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      setImportMessage({
+        tone: "danger",
+        text: "Import failed. The pasted text is not valid JSON.",
+      });
+      return;
+    }
+
+    const result = parseContentStudioPacket(parsed);
+
+    if (!result.ok) {
+      setImportMessage({
+        tone: "danger",
+        text: `Import blocked: ${result.errors.join(" ")}`,
+      });
+      return;
+    }
+
+    const next = {
+      ...result.workspace,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setWorkspace(next);
+    setSelectedProjectId(next.projects[0]?.id ?? "");
+    setTaskDraft("");
+    setImportDraft("");
+    setImportMessage({
+      tone: result.warnings.length > 0 ? "review" : "source",
+      text:
+        result.warnings.length > 0
+          ? `Imported ${next.projects.length} projects. ${result.warnings.join(" ")}`
+          : `Imported ${next.projects.length} projects from handoff packet.`,
+    });
+  }
+
+  async function saveServerSnapshot() {
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus("Saving manual server checkpoint...");
+
+    try {
+      const response = await fetch("/api/content-studio/snapshots", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace,
+          title: "Content Studio workspace",
+          description: `Manual checkpoint from ${actorLabel}.`,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        snapshot?: {
+          id: string;
+          projectCount: number;
+          updatedAt: string;
+        };
+      } | null;
+
+      if (!response.ok || !payload?.ok || !payload.snapshot) {
+        throw new Error(
+          payload?.message ?? "Content Studio checkpoint save failed.",
+        );
+      }
+
+      setServerSnapshotStatus(
+        `Saved checkpoint ${payload.snapshot.id} with ${payload.snapshot.projectCount} projects at ${formatDate(payload.snapshot.updatedAt)}.`,
+      );
+    } catch (error) {
+      setServerSnapshotStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio checkpoint save failed.",
+      );
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function loadLatestServerSnapshot() {
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus("Loading latest server checkpoint...");
+
+    try {
+      const response = await fetch("/api/content-studio/snapshots?latest=1");
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        snapshot?: {
+          id: string;
+          updatedAt: string;
+          workspace?: unknown;
+        } | null;
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.message ?? "Content Studio checkpoint load failed.",
+        );
+      }
+
+      if (!payload.snapshot?.workspace) {
+        setServerSnapshotStatus("No server checkpoint has been saved yet.");
+        return;
+      }
+
+      const result = parseContentStudioPacket(payload.snapshot.workspace);
+
+      if (!result.ok) {
+        throw new Error(`Stored checkpoint was invalid: ${result.errors.join(" ")}`);
+      }
+
+      const next = {
+        ...result.workspace,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setWorkspace(next);
+      setSelectedProjectId(next.projects[0]?.id ?? "");
+      setTaskDraft("");
+      setServerSnapshotStatus(
+        `Loaded checkpoint ${payload.snapshot.id} from ${formatDate(payload.snapshot.updatedAt)}.`,
+      );
+    } catch (error) {
+      setServerSnapshotStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio checkpoint load failed.",
+      );
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
   }
 
   return (
@@ -729,6 +895,7 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
         {selectedProject ? (
           <>
             <ProjectHeader
+              handoff={selectedHandoff}
               project={selectedProject}
               onProjectChange={updateSelectedProject}
               onReset={resetToSamples}
@@ -760,9 +927,17 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
 
               <ExportPanel
                 exportJson={exportJson}
+                importDraft={importDraft}
+                importMessage={importMessage}
                 lastSaved={workspace.updatedAt}
                 loaded={loaded}
+                isServerSnapshotBusy={isServerSnapshotBusy}
                 onDownload={downloadExport}
+                onImport={importPacket}
+                onImportDraftChange={setImportDraft}
+                onLoadLatestServerSnapshot={loadLatestServerSnapshot}
+                onSaveServerSnapshot={saveServerSnapshot}
+                serverSnapshotStatus={serverSnapshotStatus}
               />
             </div>
           </>
@@ -814,10 +989,12 @@ function Progress({ value }: { value: number }) {
 }
 
 function ProjectHeader({
+  handoff,
   project,
   onProjectChange,
   onReset,
 }: {
+  handoff: ContentStudioProjectHandoff | null;
   project: ContentStudioProject;
   onProjectChange: (
     updater: (project: ContentStudioProject) => ContentStudioProject,
@@ -934,6 +1111,26 @@ function ProjectHeader({
               Updated {formatDate(project.updatedAt)}
             </p>
           </div>
+
+          {handoff ? (
+            <div className="rounded-lg border border-studio-line bg-black/15 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={handoff.blocked ? "danger" : "source"}>
+                  {handoff.blocked ? "Blocked" : "Next packet"}
+                </Badge>
+                {handoff.readyToPublish ? (
+                  <Badge tone="review">Publish-ready</Badge>
+                ) : null}
+              </div>
+              <p className="m-0 mt-3 text-sm font-black leading-tight text-studio-ink">
+                {handoff.nextAction ?? "No open checkpoints"}
+              </p>
+              <p className="m-0 mt-2 text-xs leading-relaxed text-studio-muted">
+                Included in every JSON export so another agent can pick up the
+                project by stage, blocker, and next action.
+              </p>
+            </div>
+          ) : null}
 
           <button
             className="min-h-11 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 text-sm font-black text-studio-danger"
@@ -1082,14 +1279,30 @@ function StageColumn({
 
 function ExportPanel({
   exportJson,
+  importDraft,
+  importMessage,
+  isServerSnapshotBusy,
   lastSaved,
   loaded,
   onDownload,
+  onImport,
+  onImportDraftChange,
+  onLoadLatestServerSnapshot,
+  onSaveServerSnapshot,
+  serverSnapshotStatus,
 }: {
   exportJson: string;
+  importDraft: string;
+  importMessage: { tone: "source" | "review" | "danger"; text: string } | null;
+  isServerSnapshotBusy: boolean;
   lastSaved: string;
   loaded: boolean;
   onDownload: () => void;
+  onImport: () => void;
+  onImportDraftChange: (value: string) => void;
+  onLoadLatestServerSnapshot: () => void;
+  onSaveServerSnapshot: () => void;
+  serverSnapshotStatus: string;
 }) {
   return (
     <aside className="grid content-start gap-3 rounded-lg border border-studio-line bg-studio-panel/95 p-4 shadow-studio-panel">
@@ -1104,21 +1317,85 @@ function ExportPanel({
 
       <div className="grid gap-2">
         <Badge tone="tag">{loaded ? "Local state loaded" : "Loading"}</Badge>
-        <Badge tone="source">No server writes</Badge>
-        <Badge tone="review">No provider calls</Badge>
+        <Badge tone="source">Import / export ready</Badge>
+        <Badge tone="review">Manual server checkpoints</Badge>
       </div>
 
-      <button
-        className="min-h-11 rounded-lg border border-studio-source/55 bg-studio-source/10 px-3 text-sm font-black text-studio-source"
-        onClick={onDownload}
-        type="button"
-      >
-        Download JSON
-      </button>
+      <section className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
+        <div>
+          <p className="m-0 text-[0.72rem] font-black uppercase tracking-normal text-studio-dim">
+            Server checkpoint
+          </p>
+          <p className="m-0 mt-1 text-xs leading-relaxed text-studio-muted">
+            Manual save/load for cross-device recovery. No autosave, provider
+            call, or public publish action.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="min-h-11 rounded-lg border border-studio-source/55 bg-studio-source/10 px-3 text-sm font-black text-studio-source disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isServerSnapshotBusy}
+            onClick={onSaveServerSnapshot}
+            type="button"
+          >
+            Save Checkpoint
+          </button>
+
+          <button
+            className="min-h-11 rounded-lg border border-studio-review/55 bg-studio-review/10 px-3 text-sm font-black text-studio-review disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isServerSnapshotBusy}
+            onClick={onLoadLatestServerSnapshot}
+            type="button"
+          >
+            Load Latest
+          </button>
+        </div>
+
+        <p className="m-0 font-mono text-xs leading-relaxed text-studio-muted">
+          {serverSnapshotStatus}
+        </p>
+      </section>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          className="min-h-11 rounded-lg border border-studio-source/55 bg-studio-source/10 px-3 text-sm font-black text-studio-source"
+          onClick={onDownload}
+          type="button"
+        >
+          Download JSON
+        </button>
+
+        <button
+          className="min-h-11 rounded-lg border border-studio-tag/55 bg-studio-tag/10 px-3 text-sm font-black text-studio-tag"
+          onClick={onImport}
+          type="button"
+        >
+          Import Packet
+        </button>
+      </div>
 
       <p className="m-0 font-mono text-xs leading-relaxed text-studio-muted">
         Saved {formatDate(lastSaved)}
       </p>
+
+      {importMessage ? (
+        <div className="rounded-lg border border-studio-line bg-black/15 p-3">
+          <Badge tone={importMessage.tone}>{importMessage.text}</Badge>
+        </div>
+      ) : null}
+
+      <label className="grid gap-1">
+        <span className="text-[0.72rem] font-black uppercase tracking-normal text-studio-dim">
+          Import packet
+        </span>
+        <textarea
+          className="min-h-[160px] resize-y rounded-lg border border-studio-line bg-black/25 p-3 font-mono text-[0.72rem] leading-relaxed text-studio-muted outline-none focus:border-studio-tag/65"
+          onChange={(event) => onImportDraftChange(event.target.value)}
+          placeholder="Paste a Content Studio packet JSON export"
+          value={importDraft}
+        />
+      </label>
 
       <textarea
         className="min-h-[420px] resize-y rounded-lg border border-studio-line bg-black/25 p-3 font-mono text-[0.72rem] leading-relaxed text-studio-muted outline-none focus:border-studio-source/65"
