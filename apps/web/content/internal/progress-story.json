@@ -16,7 +16,7 @@
       ],
       "commits": [
         {
-          "sha": "f523c1e",
+          "sha": "1b6309c",
           "label": "ops: add GitHub Actions Cloud Run deploy workflow"
         }
       ],
