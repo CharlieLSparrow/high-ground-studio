@@ -222,6 +222,45 @@ The Docker logs exposed a Prisma/OpenSSL warning in the slim images, so the
 next hardening slice should install `openssl` and `ca-certificates` in both
 builder and runner stages for web and Studio.
 
+## OpenSSL Hardening Deploy
+
+Follow-up hardening commit:
+
+```text
+3842c1d280fe666ad1171fea7af2a601590c8677
+```
+
+GitHub Actions run:
+
+```text
+26347922823
+```
+
+The web and Studio Dockerfiles now install `openssl` and `ca-certificates` in
+both build and runtime stages. The hardening run deployed both services
+successfully.
+
+Web:
+
+```text
+revision: web-00005-r68
+url: https://web-hm2odnvjga-uc.a.run.app
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:3842c1d280fe666ad1171fea7af2a601590c8677
+rollback: gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00004-fml=100
+```
+
+Studio:
+
+```text
+revision: studio-00027-8gx
+url: https://studio-hm2odnvjga-uc.a.run.app
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:3842c1d280fe666ad1171fea7af2a601590c8677
+rollback: gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00026-hpm=100
+```
+
+The previous Prisma/OpenSSL warning was absent from the `pnpm install` and
+`prisma generate` portions of the Docker builds after OpenSSL was installed.
+
 ## Rollback
 
 Cloud Run rollback remains service-specific:

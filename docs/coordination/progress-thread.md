@@ -198,3 +198,20 @@ checks, blockers, and next handoff.
   `/content-studio`.
 - Docker logs exposed Prisma/OpenSSL warnings in the slim images. Follow-up
   hardening branch: `codex/cloud-run-openssl-hardening-001`.
+
+### Codex / `codex/cloud-run-openssl-hardening-001`
+
+- Installed `openssl` and `ca-certificates` in web and Studio Docker build and
+  runtime stages.
+- Merged PR #11 to `main` as `3842c1d`.
+- GitHub Actions run `26347922823` deployed both hardened images
+  successfully.
+- New live revisions:
+  - web: `web-00005-r68`
+  - Studio: `studio-00027-8gx`
+- Rollback:
+  - web:
+    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00004-fml=100`
+  - Studio:
+    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00026-hpm=100`
+- Live health smokes passed after deploy for web and Studio.
