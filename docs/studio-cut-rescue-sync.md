@@ -181,6 +181,11 @@ python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session \
 Remove `--dry-run` to write the rough output into the session `renders/`
 directory.
 
+The web editor's `Local Render Handoff` panel mirrors this flow while tagging:
+it shows the expected decision filename, whether a Sync Map is attached, and the
+same dry-run command. That panel is intentionally operator-facing so Charlie can
+move from shared-room editing to local render without hunting through docs.
+
 ## Generated Proxy Package
 
 Worker v0 can now turn Sync Map offsets into a local browser editing package:

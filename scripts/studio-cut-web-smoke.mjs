@@ -562,6 +562,13 @@ async function runBrowserSmoke() {
       .setInputFiles(smokeFiles.manifestPath);
     await expect(page.getByText(/Loaded manifest web-smoke-episode/i)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Episode Readiness" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Local Render Handoff" })).toBeVisible();
+    await expect(page.getByLabel("Local render handoff")).toContainText(
+      "render-rescue-sync-session",
+    );
+    await expect(page.getByLabel("Local render handoff")).toContainText(
+      "web-smoke-episode-decisions.json",
+    );
     await expect(page.getByRole("heading", { name: "Proxy Pane Calibration" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export Adjusted Manifest" })).toBeVisible();
     await expect(page.getByText(/No decisions yet/i)).toBeVisible();

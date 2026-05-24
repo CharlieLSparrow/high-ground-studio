@@ -2252,6 +2252,17 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           warnings={readinessWarnings}
         />
 
+        <LocalRenderHandoffPanel
+          manifest={episodeManifest}
+          decisionCount={sortedEvents.length}
+          exportFileNamePreview={exportFileNamePreview}
+          syncMapAvailable={Boolean(
+            syncReview.syncMap ||
+              rescueSyncPackage.syncMap ||
+              sharedRoomMetadata?.syncMapStoragePath,
+          )}
+        />
+
         <section className="time-panel">
           <div className="panel-heading">
             <div>
@@ -3691,6 +3702,62 @@ function EpisodeReadinessPanel({
       ) : (
         <p className="readiness-ok">No readiness warnings for the current edit.</p>
       )}
+    </section>
+  );
+}
+
+function LocalRenderHandoffPanel({
+  manifest,
+  decisionCount,
+  exportFileNamePreview,
+  syncMapAvailable,
+}: {
+  manifest: EpisodeManifest | null;
+  decisionCount: number;
+  exportFileNamePreview: string;
+  syncMapAvailable: boolean;
+}) {
+  const episodeId = manifest?.id ?? "episode-id";
+  const episodeFolder = sanitizeFileNamePart(episodeId);
+  const episodeDir = `~/Movies/StudioCut/${episodeFolder}`;
+  const command = `pnpm studio-cut:local:render-rescue-sync-session -- --episode-id ${episodeFolder} --episode-dir ${episodeDir} --dry-run`;
+
+  return (
+    <section className="render-handoff-panel" aria-label="Local render handoff">
+      <div className="panel-heading">
+        <div>
+          <h2>Local Render Handoff</h2>
+          <p>Export decisions, then render from the Rescue Sync session folder.</p>
+        </div>
+        <strong>{syncMapAvailable ? "Sync Map ready" : "Needs Sync Map"}</strong>
+      </div>
+
+      <div className="render-handoff-grid">
+        <ReadinessMetric
+          label="Decision file"
+          value={`edit/${exportFileNamePreview}`}
+        />
+        <ReadinessMetric label="Decisions" value={String(decisionCount)} />
+        <ReadinessMetric
+          label="Session folder"
+          value={manifest ? episodeDir : "Import or join an episode"}
+        />
+        <ReadinessMetric
+          label="Sync Map"
+          value={syncMapAvailable ? "Available" : "Publish Rescue Sync package"}
+        />
+      </div>
+
+      <div className="render-handoff-command">
+        <span>Dry-run command</span>
+        <code>{command}</code>
+      </div>
+
+      <ol className="render-handoff-steps">
+        <li>Export decisions and place the JSON in the session `edit/` folder.</li>
+        <li>Run the dry-run command and inspect the segment plan.</li>
+        <li>Remove `--dry-run` to write the rough 16:9 MP4 into `renders/`.</li>
+      </ol>
     </section>
   );
 }

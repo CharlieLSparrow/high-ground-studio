@@ -562,6 +562,7 @@ h2 {
 .manifest-panel,
 .current-segment-panel,
 .readiness-panel,
+.render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
 .cloud-sync-panel,
@@ -577,6 +578,7 @@ h2 {
 .manifest-panel,
 .current-segment-panel,
 .readiness-panel,
+.render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
 .cloud-sync-panel,
@@ -1258,14 +1260,29 @@ h2 {
     rgba(255, 255, 255, 0.04);
 }
 
+.render-handoff-panel {
+  border-color: rgba(125, 178, 255, 0.22);
+  background:
+    linear-gradient(135deg, rgba(125, 178, 255, 0.09), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
 .readiness-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
+.render-handoff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .readiness-grid div,
-.readiness-export {
+.readiness-export,
+.render-handoff-grid div,
+.render-handoff-command {
   display: grid;
   gap: 4px;
   border: 1px solid rgba(238, 242, 238, 0.1);
@@ -1275,7 +1292,9 @@ h2 {
 }
 
 .readiness-grid span,
-.readiness-export span {
+.readiness-export span,
+.render-handoff-grid span,
+.render-handoff-command span {
   color: #aeb9b4;
   font-size: 0.68rem;
   font-weight: 850;
@@ -1283,11 +1302,30 @@ h2 {
 }
 
 .readiness-grid strong,
-.readiness-export strong {
+.readiness-export strong,
+.render-handoff-grid strong {
   overflow-wrap: anywhere;
   color: #eef2ee;
   font-size: 0.84rem;
   line-height: 1.25;
+}
+
+.render-handoff-command code {
+  overflow-wrap: anywhere;
+  color: #dbe8ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.render-handoff-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #c8d2ce;
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .readiness-warnings {

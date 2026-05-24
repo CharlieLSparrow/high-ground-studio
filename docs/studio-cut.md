@@ -363,6 +363,11 @@ The CLI supports:
   planning/render path, and validates the output without private media or
   browser interaction.
 
+The web editor also shows a `Local Render Handoff` panel after an episode is
+loaded. It previews the expected decision export filename, the session folder
+shape, and the `render-rescue-sync-session` dry-run command so the local render
+handoff is visible from the tagging cockpit.
+
 Current `youtube_16x9` planning maps semantic states this way:
 
 | State | 16:9 layout intent |
