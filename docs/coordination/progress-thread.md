@@ -4,6 +4,39 @@ Append short updates here so the project has one readable async thread across
 agents and worktrees. Keep updates concrete: branch, action, files touched,
 checks, blockers, and next handoff.
 
+## 2026-05-24
+
+### Codex / `codex/hgo-content-studio-packet-import-001`
+
+- Created a focused web/HGO bridge branch from `main` so feature work stayed
+  off trunk.
+- Added `apps/web/src/lib/hgo/content-studio-production-packet.ts` and wired
+  `/projection-stage/import` to accept either raw HGO projection JSON or a full
+  Content Studio production packet.
+- Packet import safety checks reject provider-called, public-published,
+  real-manuscript, missing-review, wrong-schema, or no-HGO-draft packets before
+  HGO projection validation runs.
+- Updated HGO staged artifact tests to prove a generated Content Studio podcast
+  production packet exposes a valid HGO projection draft and unsafe packets are
+  blocked.
+- Validation passed: `pnpm hgo:artifact:test`,
+  `pnpm content-studio:packet:test`,
+  `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`,
+  `pnpm web:cloudrun:test`, and `git diff --check`.
+- Opened and merged PR #19 as `e5062ac`:
+  `feat(web): import Content Studio packets into HGO staging`.
+- GitHub push-to-main deploy had not moved the service quickly, so the existing
+  `pnpm web:cloudrun:deploy` helper deployed `web:e5062ac` manually.
+- Cloud Build: `e82db780-0722-4beb-9f66-7dc4af1572e4`.
+- New web revision: `web-00013-fq4`, serving 100% traffic.
+- Live route smoke passed:
+  `https://web-hm2odnvjga-uc.a.run.app/projection-stage/import` returned 200
+  and includes the new Content Studio packet import copy.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00011-6sq=100`.
+- No DB/schema, provider, public publishing, real content, secrets, IAM, OAuth,
+  DNS, or Cloud SQL changes.
+
 ## 2026-05-23
 
 ### Codex / `codex/content-studio-command-001`

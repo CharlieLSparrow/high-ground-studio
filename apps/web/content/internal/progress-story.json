@@ -1,7 +1,37 @@
 {
-  "updatedAt": "2026-05-24T02:47:36.000Z",
+  "updatedAt": "2026-05-24T03:15:20.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-content-studio-packet-import",
+      "date": "2026-05-24",
+      "title": "Content Studio packets can land in HGO review",
+      "kicker": "The HGO staged importer now understands full production packets",
+      "mood": "Workflow connected",
+      "summary": "The web HGO staging route can now accept a full Content Studio production packet, extract the HGO projection draft, reject unsafe flags, and render the staged review without publishing.",
+      "body": [
+        "The previous Studio slice could generate production packets. This slice connected the other side of the handoff: HGO no longer needs the operator to manually split out the draft before review.",
+        "When a podcast or episode-page packet is pasted into `/projection-stage/import`, the importer checks the packet kind, schema version, provider-call flag, public-publishing flag, real-manuscript flag, and human-review flag. Only then does it extract `hgoProjectionDraft` and run the existing HGO projection validation and review gate.",
+        "This keeps the workflow fast without pretending the packet is published. It is still browser-only staged review, with no database write, provider call, public page promotion, or real content in tests."
+      ],
+      "commits": [
+        {
+          "sha": "e5062ac",
+          "label": "feat(web): import Content Studio packets into HGO staging"
+        }
+      ],
+      "links": [
+        {
+          "label": "HGO staged import",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/projection-stage/import"
+        },
+        {
+          "label": "Content Studio architecture",
+          "href": "docs/architecture/content-management-studio.md"
+        }
+      ],
+      "tags": ["HGO", "Content Studio", "Episode Pages", "Review"]
+    },
     {
       "id": "content-studio-checkpoint-history",
       "date": "2026-05-23",
