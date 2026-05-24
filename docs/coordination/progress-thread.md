@@ -19,6 +19,25 @@ checks, blockers, and next handoff.
   and `git diff --check`.
 - Local functional commit: `27459c6`
   `feat(studio): copy production packet to HGO import`.
+- Pushed final deploy head `b291494`
+  `docs: log Studio HGO packet handoff`.
+- GitHub Actions run `26371939993` completed successfully:
+  - Studio revision `studio-00039-jzh`, serving 100%.
+  - Web revision `web-00049-6jd`, serving 100%.
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/health` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/content-studio` returned 200 with
+    the expected unauthenticated Studio sign-in surface.
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new full-packet handoff story entry.
+- Post-deploy readiness tests passed:
+  `pnpm studio:cloudrun:test` and `pnpm web:cloudrun:test`.
+- Rollback:
+  - Studio:
+    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00038-9nw=100`
+  - Web:
+    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00048-m7t=100`
 
 ### Codex / `main` HGO episode publish queue
 

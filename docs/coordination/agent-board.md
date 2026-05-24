@@ -23,11 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the HGO episode publish queue deploy on 2026-05-24.
+Verified after the Studio full-packet HGO handoff deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | HGO episode publish queue `7beae2f` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy-plus-open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | Studio full-packet HGO handoff `b291494` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy selected production packet plus open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -87,8 +87,8 @@ Verified after the HGO episode publish queue deploy on 2026-05-24.
   - deploy coherent Studio slices to the existing private Cloud Run service after validation
   - record live URL, smoke result, and rollback command in the progress thread
 - current live revision:
-  - `studio-00038-9nw` from `main` commit `26250c5`
-  - rollback to `studio-00037-z9r`
+  - `studio-00039-jzh` from `main` commit `b291494`
+  - rollback to `studio-00038-9nw`
 
 ### HGO Staged Episode Pages
 
@@ -123,8 +123,8 @@ Verified after the HGO episode publish queue deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00048-m7t` from `main` commit `7beae2f`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00047-lf8`
+  - latest web deploy is `web-00049-6jd` from `main` commit `b291494`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00048-m7t`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
