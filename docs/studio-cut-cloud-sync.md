@@ -15,7 +15,9 @@ The primary future workflow is proxy-first:
 3. The worker syncs those derivatives and writes a durable Sync Map.
 4. The worker generates the lightweight browser editing package.
 5. Charlie publishes the generated package from Studio Cut web into a shared
-   room.
+   room. If the job was produced by the cloud worker, the web app can publish
+   the worker output Storage paths directly without another local file-selection
+   pass.
 6. Mako opens a shared room link and edits live on canonical episode timeline
    time.
 7. Charlie later renders original assets locally from Sync Map + semantic
@@ -196,7 +198,42 @@ The generated Episode Manifest uses normalized pane rectangles matching that
 2x2 layout and points `sourceMonitorProxy.localPlaceholderPath` at the generated
 proxy file name. It does not include local original media paths.
 
-Firestore room metadata writes remain future work.
+Firestore room metadata writes by the worker remain future work. The web app
+can now bridge that gap: when a sync job reaches `ready` and has manifest,
+source-monitor proxy, Sync Map, and sync report Storage paths, `Publish Worker
+Outputs` reads the generated JSON artifacts, validates compatibility, and writes
+shared room metadata pointing at the generated proxy. That keeps Charlie's
+operator path lightweight while still making the worker responsible for sync and
+package generation.
+
+## Worker Output Handoff
+
+The `Cloud Sync Intake` panel subscribes to the active
+`studioCutSyncJobs/{syncJobId}` document after Charlie uploads assets or queues a
+job. When a future worker updates the job to `ready`, the panel shows the
+expected output paths and enables `Publish Worker Outputs`.
+
+`Publish Worker Outputs`:
+
+1. Reads `episode-manifest.json`, `sync-map.json`, and `sync-report.json` from
+   the job output paths.
+2. Validates those JSON payloads with the shared Studio Cut schema.
+3. Confirms the manifest, Sync Map, job, project, and branch are compatible with
+   the selected collaboration room.
+4. Writes shared room metadata under
+   `studioCutProjects/{projectId}/branches/{branchId}/room/meta`.
+5. Points the room at the worker-generated
+   `source-monitor-proxy.mp4` in Storage instead of reuploading it.
+
+This is the intended bridge for the near-term cloud workflow:
+
+```text
+Cloud Sync Intake upload -> worker writes outputs -> web publishes worker outputs -> Mako opens room link
+```
+
+The shared room still does not include original full-resolution source media.
+It includes only the generated source-monitor proxy, manifest metadata, Sync
+Map, sync report, presence, and semantic decisions.
 
 ## Sync Map Shape
 

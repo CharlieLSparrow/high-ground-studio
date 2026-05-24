@@ -905,6 +905,7 @@ h2 {
 .cloud-sync-warning,
 .cloud-sync-required,
 .cloud-sync-job-summary,
+.cloud-sync-output-handoff,
 .cloud-sync-message {
   border: 1px dashed rgba(240, 201, 106, 0.24);
   border-radius: 7px;
@@ -981,9 +982,59 @@ h2 {
   line-height: 1.25;
 }
 
-.cloud-sync-job-summary small {
+.cloud-sync-job-summary small,
+.cloud-sync-output-handoff small {
   overflow-wrap: anywhere;
   color: #aeb9b4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.cloud-sync-output-handoff {
+  display: grid;
+  gap: 10px;
+  border-style: solid;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.cloud-sync-output-handoff.is-ready {
+  border-color: rgba(145, 219, 183, 0.32);
+  background: rgba(145, 219, 183, 0.07);
+}
+
+.cloud-sync-output-handoff span,
+.cloud-sync-output-handoff dt {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.cloud-sync-output-handoff strong {
+  display: block;
+  margin: 3px 0;
+  color: #eef2ee;
+  font-size: 0.84rem;
+}
+
+.cloud-sync-output-handoff dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.cloud-sync-output-handoff dl div {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid rgba(238, 242, 238, 0.08);
+  padding-top: 6px;
+}
+
+.cloud-sync-output-handoff dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #d7e0dc;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.68rem;
   line-height: 1.35;

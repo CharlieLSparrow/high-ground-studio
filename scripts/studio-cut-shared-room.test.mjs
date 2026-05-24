@@ -231,6 +231,18 @@ test("shared room metadata validates manifest and proxy storage fields", () => {
     }),
     false,
   );
+
+  assert.equal(
+    isSharedRoomMetadata({
+      ...metadata,
+      sourceMonitorProxyStoragePath:
+        "studioCutSyncJobs/episode-004-rescue-sync/outputs/source-monitor-proxy.mp4",
+      sourceMonitorProxySizeBytes: 0,
+      notes:
+        "Published directly from Cloud Sync worker outputs without local path metadata.",
+    }),
+    true,
+  );
 });
 
 test("generated Rescue Sync package compatibility validates durable metadata", () => {

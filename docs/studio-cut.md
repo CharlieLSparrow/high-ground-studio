@@ -869,7 +869,7 @@ R8, Insta360, DJI, Shure, or aligned full-resolution render source.
 The next primary direction starts before a prepared manifest/proxy exists:
 
 ```text
-Charlie uploads disparate assets -> cloud sync worker prepares manifest/proxy/shared room -> Mako opens room link
+Charlie uploads disparate assets -> cloud sync worker writes generated outputs -> Studio Cut publishes shared room -> Mako opens room link
 ```
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
@@ -1018,6 +1018,11 @@ Generated proxy package behavior:
 - web publishing support through `Publish Rescue Sync Package`, which uploads
   the generated proxy, manifest, Sync Map, and optional sync report into a
   shared room for approved editors
+- cloud worker output handoff through `Publish Worker Outputs`: when a watched
+  sync job reaches `ready` with output Storage paths, Studio Cut validates the
+  generated manifest, Sync Map, and sync report directly from Storage and writes
+  shared room metadata pointing at the worker-generated source-monitor proxy.
+  This avoids a second local file-selection pass after cloud sync finishes.
 
 Run the synthetic local worker canary:
 

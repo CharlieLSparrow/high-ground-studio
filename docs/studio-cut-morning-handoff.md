@@ -121,9 +121,10 @@ ready:
    Charlie clean audio, and every phone/reference piece.
 3. Set phone/reference `orderIndex` values in the intended rail order.
 4. Click `Create Sync Job / Upload Raw Assets`.
-5. Wait for a future deployed worker to create the shared room. The worker is
-   still local-first for real use today, so publish the generated package from
-   the browser after reviewing it.
+5. When a future deployed worker marks the job `ready`, click `Publish Worker
+   Outputs` to create the shared room from the generated Storage outputs. The
+   worker is still local-first for real use today, so publish the generated
+   package from local files after reviewing it.
 
 Local worker metadata-only run:
 
@@ -169,6 +170,13 @@ derived artifacts. The worker still does not write shared-room metadata itself,
 but the Studio Cut web app now has `Publish Rescue Sync Package` to publish the
 generated proxy, manifest, Sync Map, and optional sync report into a shared
 room.
+
+If those generated artifacts came from a future cloud worker instead of the
+local session folder, use `Cloud Sync Intake` -> `Publish Worker Outputs`. That
+button reads the generated manifest, Sync Map, and sync report from the job
+output Storage paths and writes shared room metadata pointing at the generated
+source-monitor proxy. Charlie should still review `Sync Review` before sending
+the room link.
 
 To publish the generated package:
 

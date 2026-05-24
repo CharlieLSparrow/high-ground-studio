@@ -214,6 +214,14 @@ Sync Map, and optional sync report into the selected shared room. The worker
 still does not write Firestore room metadata directly; Charlie publishes the
 generated package from the browser after reviewing the outputs.
 
+When a future cloud worker produces the same generated package into the sync
+job output paths, Charlie does not need to download and reselect those files.
+The `Cloud Sync Intake` panel watches the active sync job. If it reaches
+`ready`, `Publish Worker Outputs` validates the generated manifest, Sync Map,
+and sync report directly from Storage, then writes shared room metadata pointing
+at the worker-generated source-monitor proxy. That is the direct raw-upload to
+shared-room bridge while the worker remains separate from the web app.
+
 Publishing flow:
 
 1. Run the local Rescue Sync worker with `--out-sync-map`,

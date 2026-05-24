@@ -510,6 +510,9 @@ async function runBrowserSmoke() {
       }),
     ).toBeDisabled();
     await expect(cloudSyncSection.getByRole("button", { name: "Queue Sync Job" })).toBeDisabled();
+    await expect(
+      cloudSyncSection.getByRole("button", { name: "Publish Worker Outputs" }),
+    ).toBeDisabled();
     await expect(sharedRoomSection.getByText(/shared rooms are disabled in local-only mode/i)).toBeVisible();
     await expect(rescuePackageSection).toContainText("Manifest");
     await expect(rescuePackageSection).toContainText("Source-monitor proxy");

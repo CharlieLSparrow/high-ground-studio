@@ -218,6 +218,15 @@ type SyncReviewState = {
   reportWarning?: string;
 };
 
+type CloudSyncJobWithCompleteOutputs = CloudSyncJob & {
+  outputs: CloudSyncJob["outputs"] & {
+    manifestStoragePath: string;
+    sourceMonitorProxyStoragePath: string;
+    syncReportStoragePath: string;
+    syncMapStoragePath: string;
+  };
+};
+
 const STATE_ACCENTS: Record<ProgramState, string> = {
   charlie: "#7db2ff",
   homer: "#91de72",
@@ -411,6 +420,79 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredRoomSelection(selectedRoom);
   }, [selectedRoom]);
+
+  useEffect(() => {
+    if (!config.firebaseConfig || !cloudSyncJob?.syncJobId) {
+      return;
+    }
+
+    let isStale = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void createCloudSyncStore({
+      firebaseConfig: config.firebaseConfig,
+      syncJobId: cloudSyncJob.syncJobId,
+    })
+      .then((store) => {
+        if (isStale) {
+          return;
+        }
+
+        unsubscribe = store.subscribeToSyncJob(
+          (job) => {
+            if (isStale || !job) {
+              return;
+            }
+
+            setCloudSyncJob(job);
+
+            if (job.status === "ready" && isCloudSyncJobOutputComplete(job)) {
+              setCloudSyncMessage({
+                tone: "success",
+                text:
+                  "Cloud sync worker outputs are ready. Publish Worker Outputs will create the shared room from the generated package.",
+              });
+            } else if (job.status === "failed") {
+              setCloudSyncMessage({
+                tone: "error",
+                text: job.errorMessage
+                  ? `Cloud sync job failed: ${job.errorMessage}`
+                  : "Cloud sync job failed. Inspect the worker report before retrying.",
+              });
+            }
+          },
+          (error) => {
+            if (isStale) {
+              return;
+            }
+
+            setCloudSyncMessage({
+              tone: "error",
+              text: `Cloud sync job listener failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            });
+          },
+        );
+      })
+      .catch((error: unknown) => {
+        if (isStale) {
+          return;
+        }
+
+        setCloudSyncMessage({
+          tone: "error",
+          text: `Cloud sync job adapter failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      });
+
+    return () => {
+      isStale = true;
+      unsubscribe?.();
+    };
+  }, [cloudSyncJob?.syncJobId, config.firebaseConfig]);
 
   useEffect(() => {
     if (!config.firebaseConfig) {
@@ -2025,6 +2107,190 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }
   }
 
+  async function handlePublishCloudSyncWorkerOutputs() {
+    if (!config.firebaseConfig) {
+      setCloudSyncMessage({
+        tone: "error",
+        text: "Firebase is not configured in this build; worker outputs cannot be published.",
+      });
+      return;
+    }
+
+    if (!cloudSyncJob) {
+      setCloudSyncMessage({
+        tone: "error",
+        text: "No cloud sync job is selected for worker output publishing.",
+      });
+      return;
+    }
+
+    if (cloudSyncJob.status !== "ready") {
+      setCloudSyncMessage({
+        tone: "error",
+        text: `Cloud sync job is ${cloudSyncJob.status}; wait for status ready before publishing worker outputs.`,
+      });
+      return;
+    }
+
+    if (!isCloudSyncJobOutputComplete(cloudSyncJob)) {
+      setCloudSyncMessage({
+        tone: "error",
+        text:
+          "Cloud sync job is missing one or more output paths: manifest, source-monitor proxy, Sync Map, or sync report.",
+      });
+      return;
+    }
+
+    const outputs = cloudSyncJob.outputs;
+
+    try {
+      const cloudSyncStore = await createCloudSyncStore({
+        firebaseConfig: config.firebaseConfig,
+        syncJobId: cloudSyncJob.syncJobId,
+      });
+      const sharedRoomStore = await createSharedRoomStore({
+        firebaseConfig: config.firebaseConfig,
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+      });
+
+      setSharedRoomUploadState({
+        status: "uploading",
+        progressPercent: 0,
+        message: "Reading generated worker outputs from Firebase Storage.",
+        shareUrl: "",
+      });
+      setCloudSyncMessage({
+        tone: "info",
+        text: "Reading generated manifest, Sync Map, and sync report before publishing the shared room.",
+      });
+
+      const manifestText = await cloudSyncStore.getOutputArtifactText(
+        outputs.manifestStoragePath,
+        "manifest",
+      );
+      const syncMapText = await cloudSyncStore.getOutputArtifactText(
+        outputs.syncMapStoragePath,
+        "Sync Map",
+      );
+      const syncReportText = await cloudSyncStore.getOutputArtifactText(
+        outputs.syncReportStoragePath,
+        "sync report",
+      );
+      const manifestResult = parseEpisodeManifestPayload(
+        JSON.parse(manifestText) as unknown,
+      );
+      const syncMapResult = parseSyncMapPayload(JSON.parse(syncMapText) as unknown);
+      const syncReportResult = parseCloudSyncReportPayload(
+        JSON.parse(syncReportText) as unknown,
+      );
+
+      if (!manifestResult.ok) {
+        throw new Error(`Generated manifest is invalid: ${manifestResult.reason}`);
+      }
+
+      if (!syncMapResult.ok) {
+        throw new Error(`Generated Sync Map is invalid: ${syncMapResult.reason}`);
+      }
+
+      if (!syncReportResult.ok) {
+        throw new Error(
+          `Generated sync report is invalid: ${syncReportResult.reason}`,
+        );
+      }
+
+      const manifest = manifestResult.manifest;
+      const syncMap = syncMapResult.syncMap;
+      const syncReport = syncReportResult.report;
+      const compatibility = validateGeneratedPackageCompatibility({
+        manifest,
+        syncMap,
+        syncReport,
+      });
+
+      if (!compatibility.ok) {
+        throw new Error(compatibility.errors.join(" "));
+      }
+
+      if (
+        sanitizeSharedRoomPart(manifest.id) !== roomSelection.projectId ||
+        sanitizeSharedRoomPart(syncMap.branchId) !== roomSelection.branchId ||
+        sanitizeSharedRoomPart(cloudSyncJob.projectId) !== roomSelection.projectId ||
+        sanitizeSharedRoomPart(cloudSyncJob.branchId) !== roomSelection.branchId
+      ) {
+        throw new Error(
+          `Worker outputs target ${manifest.id} / ${syncMap.branchId}, but the active room is ${roomSelection.projectId} / ${roomSelection.branchId}. Switch rooms before publishing.`,
+        );
+      }
+
+      const createdAt = sharedRoomMetadata?.createdAt ?? new Date().toISOString();
+      const updatedAt = new Date().toISOString();
+      const proxyFileName = getStoragePathLeaf(
+        outputs.sourceMonitorProxyStoragePath,
+        "source-monitor-proxy.mp4",
+      );
+      const metadata: SharedRoomMetadata = {
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+        title: manifest.title,
+        manifest: cloneEpisodeManifest(manifest),
+        sourceMonitorProxyStoragePath: outputs.sourceMonitorProxyStoragePath,
+        sourceMonitorProxyFileName: proxyFileName,
+        sourceMonitorProxyContentType: "video/mp4",
+        sourceMonitorProxySizeBytes: 0,
+        packageKind: "rescue_sync_generated",
+        syncJobId: cloudSyncJob.syncJobId,
+        manifestStoragePath: outputs.manifestStoragePath,
+        syncMapStoragePath: outputs.syncMapStoragePath,
+        syncReportStoragePath: outputs.syncReportStoragePath,
+        generatedByWorkerVersion: "studio-cut-cloud-sync-worker-output",
+        packageCreatedAt: syncReport.generatedAt,
+        createdBy: createdBy ?? config.createdBy,
+        createdAt,
+        updatedAt,
+        notes:
+          "Published directly from Cloud Sync worker outputs. Original full-resolution media is not part of the shared room.",
+      };
+
+      await sharedRoomStore.saveRoomMetadata(metadata);
+
+      const shareUrl = buildCurrentSharedRoomUrl(roomSelection);
+
+      setSharedRoomMetadata(metadata);
+      setEpisodeManifest(cloneEpisodeManifest(manifest));
+      setImportedEpisodeManifestBaseline(cloneEpisodeManifest(manifest));
+      setLocalProxyFile(null);
+      setSharedRoomUploadState({
+        status: "success",
+        progressPercent: 100,
+        message:
+          "Worker outputs are published as a shared room. Send this room link to approved editors.",
+        shareUrl,
+      });
+      setCloudSyncMessage({
+        tone: "success",
+        text: "Published Cloud Sync worker outputs to the shared room. Mako can open the room link without JSON import or local media.",
+      });
+      updateBrowserRoomUrl(roomSelection);
+      setImportMessage(
+        `Published worker outputs for ${roomSelection.projectId} / ${roomSelection.branchId}.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      setSharedRoomUploadState({
+        status: "error",
+        progressPercent: 0,
+        message: `Worker output publish failed: ${message}`,
+        shareUrl: "",
+      });
+      setCloudSyncMessage({
+        tone: "error",
+        text: `Worker output publish failed: ${message}`,
+      });
+    }
+  }
+
   function stopProgramPlayback() {
     setIsProgramPlaying(false);
     pauseProxyVideo();
@@ -2125,6 +2391,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onOrderIndexChange={handleCloudSyncOrderIndexChange}
           onUpload={() => void handleUploadCloudSyncAssets()}
           onQueue={() => void handleQueueCloudSyncJob()}
+          onPublishOutputs={() => void handlePublishCloudSyncWorkerOutputs()}
         />
 
         <SharedRoomPackagePanel
@@ -2580,6 +2847,7 @@ function CloudSyncIntakePanel({
   onOrderIndexChange,
   onUpload,
   onQueue,
+  onPublishOutputs,
 }: {
   status: PersistenceStatus;
   roomSelection: StudioCutRoomSelection;
@@ -2600,6 +2868,7 @@ function CloudSyncIntakePanel({
   ) => void;
   onUpload: () => void;
   onQueue: () => void;
+  onPublishOutputs: () => void;
 }) {
   const cloudReady =
     status.mode === "cloud_connected" || status.mode === "cloud_ready";
@@ -2614,6 +2883,8 @@ function CloudSyncIntakePanel({
   );
   const canUpload = cloudReady && requiredComplete && !isUploading;
   const canQueue = cloudReady && syncJob?.status === "uploaded";
+  const canPublishOutputs =
+    cloudReady && syncJob?.status === "ready" && isCloudSyncJobOutputComplete(syncJob);
   const statusLabel =
     syncJob?.status ??
     (cloudReady ? (requiredComplete ? "ready to upload" : "missing inputs") : "local only");
@@ -2698,6 +2969,14 @@ function CloudSyncIntakePanel({
         >
           Queue Sync Job
         </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onPublishOutputs}
+          disabled={!canPublishOutputs}
+        >
+          Publish Worker Outputs
+        </button>
       </div>
       {syncJob ? (
         <div className="cloud-sync-job-summary">
@@ -2709,8 +2988,45 @@ function CloudSyncIntakePanel({
           </small>
         </div>
       ) : null}
+      {syncJob ? <CloudSyncOutputHandoff job={syncJob} /> : null}
       <p className={`cloud-sync-message is-${message.tone}`}>{message.text}</p>
     </section>
+  );
+}
+
+function CloudSyncOutputHandoff({ job }: { job: CloudSyncJob }) {
+  const outputRows = [
+    ["Manifest", job.outputs.manifestStoragePath],
+    ["Source-monitor proxy", job.outputs.sourceMonitorProxyStoragePath],
+    ["Sync Map", job.outputs.syncMapStoragePath],
+    ["Sync report", job.outputs.syncReportStoragePath],
+  ] as const;
+  const complete = isCloudSyncJobOutputComplete(job);
+
+  return (
+    <div className={`cloud-sync-output-handoff${complete ? " is-ready" : ""}`}>
+      <div>
+        <span>Worker output handoff</span>
+        <strong>
+          {job.status === "ready" && complete
+            ? "Ready to publish"
+            : "Waiting for worker outputs"}
+        </strong>
+        <small>
+          The future cloud worker writes generated proxy, manifest, Sync Map,
+          and report artifacts here. Publishing those outputs creates the shared
+          editing room without another file-selection pass.
+        </small>
+      </div>
+      <dl>
+        {outputRows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value ?? "Missing"}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
@@ -5427,6 +5743,17 @@ function getSharedRoomPackageKindLabel(
   return "Unknown";
 }
 
+function isCloudSyncJobOutputComplete(
+  job: CloudSyncJob,
+): job is CloudSyncJobWithCompleteOutputs {
+  return Boolean(
+    job.outputs.manifestStoragePath &&
+      job.outputs.sourceMonitorProxyStoragePath &&
+      job.outputs.syncReportStoragePath &&
+      job.outputs.syncMapStoragePath,
+  );
+}
+
 function buildSyncReviewSummary(
   syncMap: SyncMap,
   syncReport?: CloudSyncReport,
@@ -5502,6 +5829,10 @@ function sanitizeFileNamePart(value: string) {
       .replace(/[^a-z0-9._-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "studio-cut-decisions"
   );
+}
+
+function getStoragePathLeaf(path: string, fallback: string) {
+  return path.split("/").filter(Boolean).at(-1) ?? fallback;
 }
 
 function formatFileSize(sizeBytes: number) {
