@@ -99,9 +99,10 @@ The import helper validates:
 - absence of obvious browser storage, cookie, token, or credential-like keys
 
 The route shows artifact errors, warnings, summary fields, embedded review-gate
-state, and the embedded projection renderer. It does not persist, publish,
-verify public safety, write local storage, or call a server route. It is
-artifact inspection only and prepares a future private staged store.
+state, and the embedded projection renderer. Artifact inspection does not
+persist, publish, verify public safety, write local storage, or call a server
+route. The separate staged import route can explicitly save a validated artifact
+to the private staged artifact store for signed-in team operators.
 
 The validation result is machine-readable and includes:
 
@@ -154,7 +155,7 @@ Focused node tests cover the Store Lab through:
 3. HGO staged artifact import validates the browser-created artifact.
 4. HGO Store Lab models browser-session lifecycle state.
 5. A human reviews blocker and warning state.
-6. A future private staged store saves approved artifacts.
+6. The private staged store saves approved artifacts for team review.
 7. A later approved promotion workflow creates live public pages.
 
 Future persistence planning lives in:

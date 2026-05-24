@@ -23,18 +23,21 @@ type ParsedProjection =
       errors: string[];
       warnings: string[];
       projection: null;
+      source: null;
     }
   | {
       state: "invalid";
       errors: string[];
       warnings: string[];
       projection: null;
+      source: "direct-projection" | "content-studio-production-packet" | null;
     }
   | {
       state: "valid";
       errors: string[];
       warnings: string[];
       projection: HgoEpisodeProjection;
+      source: "direct-projection" | "content-studio-production-packet";
     };
 
 type SaveArtifactState =
@@ -63,6 +66,11 @@ type SaveArtifactState =
       warnings: string[];
     };
 
+type ClipboardLoadState = {
+  status: "idle" | "reading" | "loaded" | "error";
+  message: string;
+};
+
 function parseProjectionJson(value: string): ParsedProjection {
   if (!value.trim()) {
     return {
@@ -70,6 +78,7 @@ function parseProjectionJson(value: string): ParsedProjection {
       errors: [],
       warnings: [],
       projection: null,
+      source: null,
     };
   }
 
@@ -84,6 +93,7 @@ function parseProjectionJson(value: string): ParsedProjection {
         errors: extracted.errors,
         warnings: extracted.warnings,
         projection: null,
+        source: extracted.source,
       };
     }
 
@@ -96,6 +106,7 @@ function parseProjectionJson(value: string): ParsedProjection {
         errors: validation.errors,
         warnings,
         projection: null,
+        source: extracted.source,
       };
     }
 
@@ -104,6 +115,7 @@ function parseProjectionJson(value: string): ParsedProjection {
       errors: [],
       warnings,
       projection: extracted.projectionInput as HgoEpisodeProjection,
+      source: extracted.source,
     };
   } catch (error) {
     return {
@@ -115,6 +127,7 @@ function parseProjectionJson(value: string): ParsedProjection {
       ],
       warnings: [],
       projection: null,
+      source: null,
     };
   }
 }
@@ -189,8 +202,8 @@ function ArtifactSummaryPanel({
             <p className="mt-3 max-w-3xl text-sm leading-6 text-subject-muted">
               This artifact is a browser-only review packet: projection plus
               validation warnings plus review-gate state. This file is not
-              published. This file is not saved by HGO. A future private staged
-              store may accept this artifact shape.
+              published. It is saved only if a signed-in team operator
+              explicitly stores it as a private review artifact.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -358,6 +371,11 @@ function ArtifactSummaryPanel({
 export default function ImportProjectionStageClient() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [rawProjectionJson, setRawProjectionJson] = useState("");
+  const [clipboardLoadState, setClipboardLoadState] =
+    useState<ClipboardLoadState>({
+      status: "idle",
+      message: "",
+    });
   const [artifact, setArtifact] =
     useState<HgoStagedProjectionArtifact | null>(null);
   const [artifactJson, setArtifactJson] = useState("");
@@ -515,6 +533,56 @@ export default function ImportProjectionStageClient() {
     }
   }
 
+  async function loadClipboardJson() {
+    setClipboardLoadState({
+      status: "reading",
+      message: "Reading clipboard...",
+    });
+
+    if (!navigator.clipboard?.readText) {
+      setClipboardLoadState({
+        status: "error",
+        message:
+          "Clipboard reading is not available in this browser. Paste the packet manually.",
+      });
+      return;
+    }
+
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+
+      if (!clipboardText.trim()) {
+        setClipboardLoadState({
+          status: "error",
+          message: "Clipboard is empty.",
+        });
+        return;
+      }
+
+      setRawProjectionJson(clipboardText);
+      setClipboardLoadState({
+        status: "loaded",
+        message: "Clipboard JSON loaded for staged review.",
+      });
+    } catch (error) {
+      setClipboardLoadState({
+        status: "error",
+        message:
+          error instanceof Error
+            ? `Clipboard read failed: ${error.message}`
+            : "Clipboard read failed.",
+      });
+    }
+  }
+
+  function clearImportJson() {
+    setRawProjectionJson("");
+    setClipboardLoadState({
+      status: "idle",
+      message: "",
+    });
+  }
+
   return (
     <div className="min-h-screen bg-void text-subject">
       {isHydrated ? (
@@ -529,19 +597,22 @@ export default function ImportProjectionStageClient() {
               Staged import review
             </p>
             <h1 className="mt-3 max-w-3xl text-4xl font-black leading-[1.02] md:text-6xl">
-              Review pasted projection JSON before any future staging store.
+              Review Studio packets before private staging.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-subject-muted md:text-lg">
-              Paste a Studio-generated HGO projection draft to validate it, run
+              Load a Studio-generated HGO projection draft to validate it, run
               the staged review gate, and render it through the shared HGO
-              projection component. This route does not persist, publish, or
-              write server state.
+              projection component. Browser review happens first. Signed-in team
+              operators can explicitly save a private review artifact.
             </p>
             <div className="mt-5 grid gap-3 rounded-[24px] border border-amber-300/25 bg-amber-300/10 p-5 text-sm font-bold leading-6 text-amber-100">
               <p>This is staged review only, not a live HGO page.</p>
               <p>Real projection drafts may contain private/review-only content.</p>
               <p>Do not paste real drafts into public places.</p>
-              <p>No persistence. No publish action. No replacement for `/episodes`.</p>
+              <p>
+                Private save is explicit. No public publish action. No
+                replacement for `/episodes`.
+              </p>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link
@@ -569,32 +640,85 @@ export default function ImportProjectionStageClient() {
                 Session store lab
               </Link>
               <span className="inline-flex rounded-full border border-sky-300/25 bg-sky-300/8 px-3 py-1 text-xs font-bold text-sky-100">
-                No persistence
+                Browser-first review
               </span>
               <span className="inline-flex rounded-full border border-sky-300/25 bg-sky-300/8 px-3 py-1 text-xs font-bold text-sky-100">
-                No publish action
+                No public publish
               </span>
             </div>
           </div>
 
           <div className="grid gap-4 rounded-[28px] border border-white/12 bg-white/8 p-5 shadow-glass backdrop-blur">
-            <label className="grid gap-2">
-              <span className="text-sm font-black uppercase text-flare">
-                Projection or Content Studio packet JSON
-              </span>
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label
+                  className="text-sm font-black uppercase text-flare"
+                  htmlFor="hgo-stage-import-projection-json"
+                >
+                  Projection or Content Studio packet JSON
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="rounded-full border border-flare/35 bg-flare/12 px-4 py-2 text-sm font-bold text-flare transition hover:bg-flare/18 disabled:cursor-wait disabled:opacity-60"
+                    data-testid="hgo-stage-import-paste-clipboard"
+                    disabled={clipboardLoadState.status === "reading"}
+                    onClick={() => void loadClipboardJson()}
+                    type="button"
+                  >
+                    {clipboardLoadState.status === "reading"
+                      ? "Reading..."
+                      : "Paste Clipboard"}
+                  </button>
+                  <button
+                    className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm font-bold text-subject-muted transition hover:bg-white/12"
+                    data-testid="hgo-stage-import-clear"
+                    onClick={clearImportJson}
+                    type="button"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
               <textarea
+                id="hgo-stage-import-projection-json"
                 className="min-h-[300px] w-full resize-y rounded-[18px] border border-white/12 bg-void-light/80 px-4 py-3 font-mono text-xs leading-6 text-subject outline-none focus:border-flare/45"
                 data-testid="hgo-stage-import-projection-json"
                 value={rawProjectionJson}
-                onChange={(event) => setRawProjectionJson(event.target.value)}
-                onInput={(event) =>
-                  setRawProjectionJson(event.currentTarget.value)
-                }
+                onChange={(event) => {
+                  setRawProjectionJson(event.target.value);
+                  setClipboardLoadState({ status: "idle", message: "" });
+                }}
                 spellCheck={false}
               />
-            </label>
+            </div>
 
             <div className="grid gap-3">
+              {clipboardLoadState.message ? (
+                <div
+                  className={`rounded-[20px] border p-4 text-sm font-bold leading-6 ${
+                    clipboardLoadState.status === "error"
+                      ? "border-rose-300/35 bg-rose-300/10 text-rose-100"
+                      : "border-sky-300/35 bg-sky-300/10 text-sky-100"
+                  }`}
+                  data-testid="hgo-stage-import-clipboard-status"
+                >
+                  {clipboardLoadState.message}
+                </div>
+              ) : null}
+              {parsedProjection.source ? (
+                <div
+                  className="rounded-[20px] border border-white/10 bg-void-light/55 p-4 text-sm font-bold leading-6 text-subject-muted"
+                  data-testid="hgo-stage-import-source"
+                >
+                  Source detected:{" "}
+                  <span className="text-subject">
+                    {parsedProjection.source ===
+                    "content-studio-production-packet"
+                      ? "Content Studio production packet"
+                      : "HGO projection draft"}
+                  </span>
+                </div>
+              ) : null}
               <div data-testid="hgo-stage-import-validation-errors">
                 <ValidationList
                   title="Errors"

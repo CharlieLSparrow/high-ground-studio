@@ -88,8 +88,10 @@ The same renderer should support:
 - `live`
 - `archived`
 
-The import route is for development and staged review only. It does not persist
-the JSON, write local storage, publish a page, or mutate server state.
+The import route is for development and staged review first. Browser review does
+not persist the JSON, write local storage, publish a page, or mutate server
+state. A signed-in team operator can explicitly save a generated review artifact
+to the private staged artifact store.
 
 ## HGO Staged Surface
 
@@ -106,17 +108,17 @@ detail, and review pages use a fixture-backed projection repository and the same
 shared renderer to demonstrate how HGO can become the browseable review stage
 for Studio projections.
 
-The staged import route accepts pasted Studio projection JSON in browser state,
-validates it, runs the staged review gate, and renders it with staged route base
-links. It can also create and download a browser-only staged artifact JSON
-packet that contains the projection, validation result, review gate, and
-explicit `persisted: false` / `published: false` safety flags.
+The staged import route accepts pasted Studio projection JSON or a full Content
+Studio production packet in browser state, validates it, runs the staged review
+gate, and renders it with staged route base links. It can also create and
+download a browser-created staged artifact JSON packet that contains the
+projection, validation result, review gate, and explicit `persisted: false` /
+`published: false` safety flags.
 
-HGO does not persist the artifact, does not write local storage, does not
-publish, and does not replace public `/episodes` routes. It makes the future
-architecture visible: pasted/imported projection drafts can later become private
-staged artifacts, and only approved projections should move to live public
-pages.
+HGO does not publish or replace public `/episodes` routes from this import
+workflow. The embedded artifact remains browser-originated review JSON, while
+the private store records server persistence metadata outside the artifact only
+after an explicit signed-in team save.
 
 The staged artifact inspection route accepts a browser-created
 `hgo-staged-artifact-v1` JSON packet, validates the contract, inspects embedded

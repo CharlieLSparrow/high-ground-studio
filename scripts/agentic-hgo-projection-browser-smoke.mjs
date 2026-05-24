@@ -536,13 +536,13 @@ async function runSmoke() {
     if (
       !/staged import review/i.test(stagedImportText) ||
       !/blocks live/i.test(stagedImportText) ||
-      !/No publish action/i.test(stagedImportText) ||
-      !/does not persist/i.test(stagedImportText) ||
+      !/No public publish/i.test(stagedImportText) ||
+      !/private review artifact/i.test(stagedImportText) ||
       !/Download staged artifact JSON/i.test(stagedImportText) ||
-      !/Future private staged store/i.test(stagedImportText)
+      !/Browser-first review/i.test(stagedImportText)
     ) {
       throw new Error(
-        "HGO staged import review did not show expected staged-review, artifact, blocker, no-publish, and no-persistence copy.",
+        "HGO staged import review did not show expected staged-review, artifact, blocker, private-save, and no-public-publish copy.",
       );
     }
     if (

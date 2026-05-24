@@ -3,7 +3,7 @@ import ImportProjectionStageClient from "./ImportProjectionStageClient";
 export const metadata = {
   title: "Import Projection Review | High Ground Odyssey",
   description:
-    "No-persistence staged review route for pasted Studio HGO projection JSON drafts.",
+    "Browser-first staged review route for Studio HGO projection JSON drafts before private team storage.",
 };
 
 export default function ProjectionStageImportPage() {

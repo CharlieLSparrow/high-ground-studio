@@ -162,9 +162,9 @@ For HGO no-auth browser reports:
   renderer mounted, `/projection-stage` loaded, `/projection-stage/review`
   showed blocked/needs-review/live-safe group text and blocker copy,
   `/projection-stage/import` accepted pasted synthetic JSON, showed the staged
-  review gate and no-publish/no-persistence boundary, generated staged artifact
-  JSON containing `artifactVersion`, the projection slug, `reviewGate`, and
-  `persisted: false` / `published: false`, `/projection-stage/artifact`
+  review gate and no-public-publish/private-save boundary, generated staged
+  artifact JSON containing `artifactVersion`, the projection slug, `reviewGate`,
+  and `persisted: false` / `published: false`, `/projection-stage/artifact`
   accepted the staged artifact JSON, validated it, showed the embedded review
   gate, showed persisted/published false safety state, rendered the embedded
   projection, `/projection-stage/store-lab` imported the generated artifact into

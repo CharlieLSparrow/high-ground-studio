@@ -174,18 +174,18 @@ High Ground Studio is a monorepo with:
   It groups projection fixtures into blocked, needs-review, and live-safe
   states using pure promotion-readiness helpers. It makes blockers and warnings
   visible but does not offer a real publish action.
-- HGO has a no-persistence staged import review route at
+- HGO has a browser-first staged import review route at
   `/projection-stage/import`. It accepts pasted Studio/HGO projection JSON in
-  browser state, validates it, runs the staged review gate against it, and
-  renders it through the shared projection renderer with staged links. It also
-  accepts full Content Studio production packets and extracts
-  `hgoProjectionDraft` after packet safety checks. It can create a browser-only
-  downloadable staged artifact JSON review packet containing the projection,
-  validation warnings, review gate, and explicit `persisted: false` /
-  `published: false` safety flags. Signed-in team operators can explicitly save
-  that artifact to the private staged artifact store; anonymous visitors still
-  only get browser review. It does not publish, replace public `/episodes`, or
-  use real content in tests.
+  browser state, can load copied JSON from the clipboard, validates it, runs
+  the staged review gate against it, and renders it through the shared
+  projection renderer with staged links. It also accepts full Content Studio
+  production packets and extracts `hgoProjectionDraft` after packet safety
+  checks. It can create a browser-created downloadable staged artifact JSON
+  review packet containing the projection, validation warnings, review gate, and
+  explicit `persisted: false` / `published: false` safety flags. Signed-in team
+  operators can explicitly save that artifact to the private staged artifact
+  store; anonymous visitors still only get browser review. It does not publish,
+  replace public `/episodes`, or use real content in tests.
 - HGO has a browser-only staged artifact inspection route at
   `/projection-stage/artifact`. It accepts pasted `hgo-staged-artifact-v1`
   JSON, validates the artifact contract, validates the embedded projection,
@@ -327,9 +327,9 @@ High Ground Studio is a monorepo with:
   staged-to-live promotion checks but does not publish, persist, or approve
   anything.
 - The HGO staged import review route is browser-first and explicit-save only.
-  Pasted JSON is not autosaved, but team operators can save generated staged
-  artifacts through the private API after validation. This writes Prisma review
-  metadata and immutable artifact JSON, not public content.
+  Pasted or clipboard-loaded JSON is not autosaved, but team operators can save
+  generated staged artifacts through the private API after validation. This
+  writes Prisma review metadata and immutable artifact JSON, not public content.
 - The HGO staged artifact inspection route is also no-persistence. It validates
   browser-created artifact JSON and renders embedded projection state, but it
   does not save, approve, publish, or verify real public-safety status.

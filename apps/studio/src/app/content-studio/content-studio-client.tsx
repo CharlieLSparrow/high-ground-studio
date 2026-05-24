@@ -16,6 +16,7 @@ const STORAGE_KEY = "high-ground-studio.content-studio.v1";
 const SCHEMA_VERSION = 1;
 const HGO_STAGE_IMPORT_URL =
   "https://app.highgroundodyssey.com/projection-stage/import";
+const HGO_STAGE_IMPORT_HANDOFF_URL = `${HGO_STAGE_IMPORT_URL}?source=content-studio`;
 
 type ProjectKind =
   | "podcast"
@@ -772,6 +773,20 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
     );
   }
 
+  function copyHgoProjectionDraftAndOpenImport() {
+    if (!selectedProductionPacket?.hgoProjectionDraft) {
+      setClipboardMessage("No HGO projection draft exists for this project.");
+      return;
+    }
+
+    copyToClipboard(
+      "HGO projection draft",
+      JSON.stringify(selectedProductionPacket.hgoProjectionDraft, null, 2),
+    );
+
+    window.open(HGO_STAGE_IMPORT_HANDOFF_URL, "_blank", "noopener,noreferrer");
+  }
+
   function importPacket() {
     const trimmed = importDraft.trim();
 
@@ -1122,6 +1137,9 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
                 importMessage={importMessage}
                 lastSaved={workspace.updatedAt}
                 loaded={loaded}
+                onCopyHgoProjectionDraftAndOpenImport={
+                  copyHgoProjectionDraftAndOpenImport
+                }
                 onCopyHgoProjectionDraft={copyHgoProjectionDraft}
                 onCopyProductionPacket={copyProductionPacket}
                 isServerSnapshotBusy={isServerSnapshotBusy}
@@ -1485,6 +1503,7 @@ function ExportPanel({
   isServerSnapshotBusy,
   lastSaved,
   loaded,
+  onCopyHgoProjectionDraftAndOpenImport,
   onCopyHgoProjectionDraft,
   onCopyProductionPacket,
   onDownload,
@@ -1508,6 +1527,7 @@ function ExportPanel({
   isServerSnapshotBusy: boolean;
   lastSaved: string;
   loaded: boolean;
+  onCopyHgoProjectionDraftAndOpenImport: () => void;
   onCopyHgoProjectionDraft: () => void;
   onCopyProductionPacket: () => void;
   onDownload: () => void;
@@ -1699,14 +1719,23 @@ function ExportPanel({
           </div>
 
           {productionPacket.hgoProjectionDraft ? (
-            <a
-              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-studio-node/55 bg-studio-node/10 px-3 text-center text-sm font-black text-studio-node no-underline"
-              href={HGO_STAGE_IMPORT_URL}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Open HGO Import
-            </a>
+            <div className="grid gap-2">
+              <button
+                className="min-h-11 rounded-lg border border-studio-node/55 bg-studio-node/10 px-3 text-sm font-black text-studio-node"
+                onClick={onCopyHgoProjectionDraftAndOpenImport}
+                type="button"
+              >
+                Copy + Open HGO Import
+              </button>
+              <a
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-studio-line bg-black/15 px-3 text-center text-sm font-black text-studio-muted no-underline"
+                href={HGO_STAGE_IMPORT_HANDOFF_URL}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open HGO Import Only
+              </a>
+            </div>
           ) : null}
 
           {clipboardMessage ? (

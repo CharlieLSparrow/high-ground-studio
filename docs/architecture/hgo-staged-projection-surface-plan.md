@@ -129,9 +129,11 @@ review-gate result, source metadata, and explicit safety flags:
 - `published: false`
 - `containsRealContent: "unknown"`
 
-The operator can generate and download the artifact JSON, but HGO does not save
-it. The artifact contract prepares the future private staged store without
-adding a database table, API route, or publish workflow in this pass.
+The operator can generate and download the artifact JSON. A signed-in team
+operator can also explicitly save it to the private staged artifact store.
+Saving records server persistence metadata outside the embedded artifact, which
+continues to carry `persisted: false` and `published: false` as browser-origin
+safety flags. This workflow still does not publish public pages.
 
 Detailed artifact notes:
 
@@ -167,7 +169,7 @@ The pure artifact helper has a focused node test command:
 ## Future Path
 
 1. Synthetic staged surface.
-2. No-persistence browser import from Studio projection JSON.
+2. Browser-first import from Studio projection JSON.
 3. Browser-only staged artifact download.
 4. Browser-only staged artifact import/validation.
 5. Private staged projection persistence.
