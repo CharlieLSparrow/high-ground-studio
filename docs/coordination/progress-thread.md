@@ -90,17 +90,22 @@ checks, blockers, and next handoff.
   `bd6547a6-43e6-4677-9b95-7094c9380441`; because traffic was pinned to the
   cutover revision, tagged `web-00034-n4p` as `story-smoke`, smoked it, then
   routed live traffic to `web-00034-n4p`.
+- Updated `pnpm web:cloudrun:deploy` so future deploys explicitly route
+  traffic to the deployed revision when Cloud Run traffic was previously pinned
+  to a named rollback revision.
+- Committed and pushed the deploy-helper fix as `d4ebbfe`:
+  `ops(web): route deployed revision after pinned traffic`.
+- Deployed `web:d4ebbfe` with Cloud Build
+  `fbad7319-00f8-4a87-8dfc-671916ac2d4d`; the fixed helper detected pinned
+  traffic and routed live traffic to deployed revision `web-00036-rl9`.
 - Current live smoke passed:
   `/api/health` 200, `/` 200, `/projection-stage/import` 200, and
   `/team/progress` unauthenticated redirect 307.
 - Current `pnpm web:db:target:report` confirms latest ready revision
-  `web-00034-n4p` still mounts `DATABASE_URL` from
+  `web-00036-rl9` still mounts `DATABASE_URL` from
   `web-cloudsql-database-url`.
-- Updated `pnpm web:cloudrun:deploy` so future deploys explicitly route
-  traffic to the deployed revision when Cloud Run traffic was previously pinned
-  to a named rollback revision.
 - Immediate rollback:
-  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00033-den=100`.
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00034-n4p=100`.
 - Deeper rollback while the Neon source remains valid:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00031-4r2=100`.
 

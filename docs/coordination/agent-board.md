@@ -118,8 +118,8 @@ Verified after the live web Cloud SQL cutover on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00034-n4p` from `main` commit `41dc418`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00033-den`
+  - latest web deploy is `web-00036-rl9` from `main` commit `d4ebbfe`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00034-n4p`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 

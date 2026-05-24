@@ -304,8 +304,17 @@ The cutover record/story update was then deployed as:
 ```text
 commit: 41dc418
 Cloud Build: bd6547a6-43e6-4677-9b95-7094c9380441
-current live revision: web-00034-n4p
+deployed revision: web-00034-n4p
 image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:41dc418
+```
+
+The pinned-traffic deploy-helper fix was then deployed as:
+
+```text
+commit: d4ebbfe
+Cloud Build: fbad7319-00f8-4a87-8dfc-671916ac2d4d
+current live revision: web-00036-rl9
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:d4ebbfe
 ```
 
 Immediate rollback to the previous Cloud SQL-backed revision:
@@ -314,7 +323,7 @@ Immediate rollback to the previous Cloud SQL-backed revision:
 gcloud run services update-traffic web \
   --project=high-ground-odyssey \
   --region=us-central1 \
-  --to-revisions=web-00033-den=100
+  --to-revisions=web-00034-n4p=100
 ```
 
 Deeper rollback while the Neon source remains valid:

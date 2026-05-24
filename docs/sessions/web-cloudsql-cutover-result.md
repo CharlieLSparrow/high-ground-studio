@@ -13,7 +13,7 @@ Live service:
 service: web
 region: us-central1
 url: https://web-hm2odnvjga-uc.a.run.app
-current revision: web-00034-n4p
+current revision: web-00036-rl9
 cutover revision: web-00033-den
 runtime secret: web-cloudsql-database-url
 database: web
@@ -76,6 +76,10 @@ The cutover record and progress story entry were then deployed as
 `https://story-smoke---web-hm2odnvjga-uc.a.run.app` before live traffic moved
 to that revision.
 
+The deploy-helper pinned-traffic fix was then deployed from commit `d4ebbfe`.
+The fixed helper routed live traffic to `web-00036-rl9` and passed the same live
+smoke checks.
+
 `pnpm web:db:target:report` confirmed:
 
 - `DATABASE_URL` is mounted from `web-cloudsql-database-url`
@@ -93,7 +97,7 @@ Immediate rollback to the previous Cloud SQL-backed revision is:
 gcloud run services update-traffic web \
   --project=high-ground-odyssey \
   --region=us-central1 \
-  --to-revisions=web-00033-den=100
+  --to-revisions=web-00034-n4p=100
 ```
 
 While the legacy Neon source remains valid, deeper rollback is:
