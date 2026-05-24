@@ -27,7 +27,7 @@ Verified after the live web Cloud SQL cutover on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | web Cloud SQL cutover `f14c4c7` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, and the web Cloud SQL cutover are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | web Cloud SQL cutover record `41dc418` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, and the web Cloud SQL cutover are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -118,8 +118,10 @@ Verified after the live web Cloud SQL cutover on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00033-den` from `main` commit `f14c4c7`
-  - rollback to `web-00031-4r2` while the legacy Neon source remains valid
+  - latest web deploy is `web-00034-n4p` from `main` commit `41dc418`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00033-den`
+  - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
+    remains valid
 
 ### WorldHub / Business Infrastructure
 

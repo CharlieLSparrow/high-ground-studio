@@ -12,7 +12,7 @@
       "body": [
         "This was the first serious admin move toward getting High Ground Odyssey fully onto Google Cloud. The web app already ran on Cloud Run, but its runtime database secret still pointed at Neon. We staged a separate Cloud SQL database named web, a least-privilege web_app user, and a separate Secret Manager URL so the move could be tested without changing live traffic first.",
         "The staged database got the Prisma schema through a one-off Cloud Run Job. Then a guarded Postgres copy job copied only public schema data from the old source to Cloud SQL, refusing non-empty targets and printing only row counts. The successful copy moved 20 rows: users, roles, membership plans, coaching requests, client profiles, and one appointment.",
-        "Before routing users, Cloud Run created a no-traffic revision with the Cloud SQL secret and tested health, home, HGO staged import, and team-progress redirect behavior. After that passed, live traffic moved to web-00033-den. The previous Neon-backed revision remains the rollback target while the new database path gets runtime history."
+        "Before routing users, Cloud Run created a no-traffic revision with the Cloud SQL secret and tested health, home, HGO staged import, and team-progress redirect behavior. After that passed, live traffic moved to web-00033-den. This progress entry itself then shipped on web-00034-n4p, still mounted to the Cloud SQL secret. The previous Cloud SQL revision is the immediate rollback target, while the Neon-backed revision remains a deeper rollback anchor while the new database path gets runtime history."
       ],
       "commits": [
         {

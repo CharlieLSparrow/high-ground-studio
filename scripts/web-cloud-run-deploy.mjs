@@ -70,12 +70,22 @@ function getLatestRevision(service) {
   );
 }
 
+function getLatestCreatedRevision(service) {
+  return service?.status?.latestCreatedRevisionName || "";
+}
+
 function getCurrentImage(service) {
   return service?.spec?.template?.spec?.containers?.[0]?.image || "";
 }
 
 function getServiceUrl(service) {
   return service?.status?.url || service?.status?.address?.url || "";
+}
+
+function getTrafficPercentForRevision(service, revisionName) {
+  return (service?.status?.traffic ?? [])
+    .filter((entry) => entry.revisionName === revisionName)
+    .reduce((total, entry) => total + (entry.percent ?? 0), 0);
 }
 
 function getShortHead() {
@@ -373,6 +383,44 @@ if (createService) {
     "--no-invoker-iam-check",
     "--quiet",
   ]);
+}
+
+const deployedRevision =
+  getLatestCreatedRevision(serviceAfter) || getLatestRevision(serviceAfter);
+
+if (
+  deployedRevision &&
+  getTrafficPercentForRevision(serviceAfter, deployedRevision) !== 100
+) {
+  console.log(
+    `\nRouting 100% traffic to deployed revision ${deployedRevision}; service traffic was pinned to another revision.`,
+  );
+  run("gcloud", [
+    "run",
+    "services",
+    "update-traffic",
+    service,
+    "--project",
+    project,
+    "--region",
+    region,
+    "--to-revisions",
+    `${deployedRevision}=100`,
+  ]);
+
+  serviceAfter = parseService(
+    read("gcloud", [
+      "run",
+      "services",
+      "describe",
+      service,
+      "--project",
+      project,
+      "--region",
+      region,
+      "--format=json",
+    ]),
+  );
 }
 
 await assertHttpOk(`${serviceUrl}/api/health`, (body) => {

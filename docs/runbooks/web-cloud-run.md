@@ -299,7 +299,25 @@ live URL: https://web-hm2odnvjga-uc.a.run.app
 Smoke checks passed for `/api/health`, `/`, `/projection-stage/import`, and
 unauthenticated `/team/progress` redirect before and after live routing.
 
-Rollback while the Neon source remains valid:
+The cutover record/story update was then deployed as:
+
+```text
+commit: 41dc418
+Cloud Build: bd6547a6-43e6-4677-9b95-7094c9380441
+current live revision: web-00034-n4p
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:41dc418
+```
+
+Immediate rollback to the previous Cloud SQL-backed revision:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=web-00033-den=100
+```
+
+Deeper rollback while the Neon source remains valid:
 
 ```bash
 gcloud run services update-traffic web \
@@ -447,8 +465,11 @@ The helper:
    `DATABASE_URL`.
 4. Runs Cloud Build using `cloudbuild.web.yaml`.
 5. Deploys the image to the existing `web` Cloud Run service.
-6. Smoke checks `/api/health`, `/`, and `/team/progress`.
-7. Prints a rollback command when a previous ready revision exists.
+6. Routes 100% traffic to the deployed revision if the service was previously
+   pinned to an older revision.
+7. Smoke checks `/api/health`, `/`, `/projection-stage/import`, and
+   `/team/progress`.
+8. Prints a rollback command when a previous ready revision exists.
 
 Override knobs:
 

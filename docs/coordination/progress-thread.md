@@ -84,7 +84,24 @@ checks, blockers, and next handoff.
 - `pnpm web:db:target:report` now reports no pending work, no warnings, no
   blocked items, and confirms `DATABASE_URL` is mounted from
   `web-cloudsql-database-url`.
-- Rollback while the Neon source remains valid:
+- Committed and pushed the cutover record and team progress story as
+  `41dc418`: `ops(web): record Cloud SQL cutover`.
+- Deployed `web:41dc418` with Cloud Build
+  `bd6547a6-43e6-4677-9b95-7094c9380441`; because traffic was pinned to the
+  cutover revision, tagged `web-00034-n4p` as `story-smoke`, smoked it, then
+  routed live traffic to `web-00034-n4p`.
+- Current live smoke passed:
+  `/api/health` 200, `/` 200, `/projection-stage/import` 200, and
+  `/team/progress` unauthenticated redirect 307.
+- Current `pnpm web:db:target:report` confirms latest ready revision
+  `web-00034-n4p` still mounts `DATABASE_URL` from
+  `web-cloudsql-database-url`.
+- Updated `pnpm web:cloudrun:deploy` so future deploys explicitly route
+  traffic to the deployed revision when Cloud Run traffic was previously pinned
+  to a named rollback revision.
+- Immediate rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00033-den=100`.
+- Deeper rollback while the Neon source remains valid:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00031-4r2=100`.
 
 ## 2026-05-23

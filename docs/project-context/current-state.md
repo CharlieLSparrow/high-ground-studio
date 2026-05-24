@@ -43,9 +43,10 @@ High Ground Studio is a monorepo with:
 - Coaching request email notifications go to active users with `OWNER`, `TEAM_SCHEDULER`, or `COACH` roles and do not block the user success redirect if email fails.
 - The live `apps/web` Cloud Run service now mounts `DATABASE_URL` from
   `web-cloudsql-database-url`, which targets the `web` database on Cloud SQL
-  instance `high-ground-odyssey:us-central1:studio-postgres`. The previous
-  Neon-backed revision remains the short-term rollback path while the Cloud SQL
-  cutover gains runtime history.
+  instance `high-ground-odyssey:us-central1:studio-postgres`. The immediate
+  rollback is the previous Cloud SQL-backed revision; the older Neon-backed
+  revision remains a deeper rollback anchor while the cutover gains runtime
+  history.
 - The internal Learning to Lead Story Map can save database-backed Live Story Drafts attached to Story Candidates and Homer source blocks. These drafts are live app state, not canonical manuscript truth.
 - The private Studio `/manuscript` desk can save and load manual server snapshots through Cloud SQL-backed `StudioManuscriptSnapshot` rows. The browser-local draft remains the active working copy; server snapshots are cross-device checkpoints, not autosave, collaboration, or canonical manuscript truth.
 - The private Studio `/manuscript` desk now has a Manuscript Library MVP in

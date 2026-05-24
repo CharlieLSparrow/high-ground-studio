@@ -13,7 +13,8 @@ Live service:
 service: web
 region: us-central1
 url: https://web-hm2odnvjga-uc.a.run.app
-revision: web-00033-den
+current revision: web-00034-n4p
+cutover revision: web-00033-den
 runtime secret: web-cloudsql-database-url
 database: web
 Cloud SQL instance: high-ground-odyssey:us-central1:studio-postgres
@@ -70,6 +71,11 @@ After live routing to `web-00033-den`, the same smoke checks passed against:
 https://web-hm2odnvjga-uc.a.run.app
 ```
 
+The cutover record and progress story entry were then deployed as
+`web-00034-n4p` from commit `41dc418`. Tagged smoke passed on
+`https://story-smoke---web-hm2odnvjga-uc.a.run.app` before live traffic moved
+to that revision.
+
 `pnpm web:db:target:report` confirmed:
 
 - `DATABASE_URL` is mounted from `web-cloudsql-database-url`
@@ -81,7 +87,16 @@ https://web-hm2odnvjga-uc.a.run.app
 
 ## Rollback
 
-While the legacy Neon source remains valid, rollback is:
+Immediate rollback to the previous Cloud SQL-backed revision is:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=web-00033-den=100
+```
+
+While the legacy Neon source remains valid, deeper rollback is:
 
 ```bash
 gcloud run services update-traffic web \
