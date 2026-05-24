@@ -264,3 +264,15 @@ export function createHgoEpisodePublishDraftFileName(
 ) {
   return `${packet.episodePage.slug}.hgo-episode-publish-draft.json`;
 }
+
+export function createHgoEpisodePublishDraftMdxFileName(
+  packet: HgoEpisodePublishDraftPacket,
+) {
+  return `${packet.episodePage.slug}.private-review.mdx`;
+}
+
+export function createHgoEpisodePublishDraftFrontmatterFileName(
+  packet: HgoEpisodePublishDraftPacket,
+) {
+  return `${packet.episodePage.slug}.frontmatter.json`;
+}

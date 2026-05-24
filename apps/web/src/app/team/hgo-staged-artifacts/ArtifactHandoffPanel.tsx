@@ -13,11 +13,15 @@ type ArtifactHandoffPanelProps = {
   publishReviewBriefJson?: string;
   publishDraftFileName?: string;
   publishDraftJson?: string;
+  publishDraftMdxFileName?: string;
+  publishDraftMdx?: string;
+  publishDraftFrontmatterFileName?: string;
+  publishDraftFrontmatterJson?: string;
 };
 
-function downloadJsonFile(fileName: string, value: string) {
+function downloadTextFile(fileName: string, value: string, type: string) {
   const blob = new Blob([value], {
-    type: "application/json;charset=utf-8",
+    type,
   });
   const href = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -41,12 +45,22 @@ export default function ArtifactHandoffPanel({
   publishReviewBriefJson,
   publishDraftFileName,
   publishDraftJson,
+  publishDraftMdxFileName,
+  publishDraftMdx,
+  publishDraftFrontmatterFileName,
+  publishDraftFrontmatterJson,
 }: ArtifactHandoffPanelProps) {
   const [message, setMessage] = useState("");
   const hasReviewBrief = Boolean(
     publishReviewBriefFileName && publishReviewBriefJson,
   );
   const hasPublishDraft = Boolean(publishDraftFileName && publishDraftJson);
+  const hasPublishDraftMdx = Boolean(
+    publishDraftMdxFileName && publishDraftMdx,
+  );
+  const hasPublishDraftFrontmatter = Boolean(
+    publishDraftFrontmatterFileName && publishDraftFrontmatterJson,
+  );
 
   function copyToClipboard(label: string, value: string) {
     setMessage("");
@@ -115,7 +129,13 @@ export default function ArtifactHandoffPanel({
         </button>
         <button
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-sky-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-sky-50 transition hover:bg-sky-300/12"
-          onClick={() => downloadJsonFile(artifactFileName, artifactJson)}
+          onClick={() =>
+            downloadTextFile(
+              artifactFileName,
+              artifactJson,
+              "application/json;charset=utf-8",
+            )
+          }
           type="button"
         >
           <Download aria-hidden="true" className="h-4 w-4" />
@@ -134,7 +154,11 @@ export default function ArtifactHandoffPanel({
         <button
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-300/12 sm:col-span-2"
           onClick={() =>
-            downloadJsonFile(publishCandidateFileName, publishCandidateJson)
+            downloadTextFile(
+              publishCandidateFileName,
+              publishCandidateJson,
+              "application/json;charset=utf-8",
+            )
           }
           type="button"
         >
@@ -159,9 +183,10 @@ export default function ArtifactHandoffPanel({
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-amber-50 transition hover:bg-amber-300/12"
               onClick={() =>
-                downloadJsonFile(
+                downloadTextFile(
                   publishReviewBriefFileName || "hgo-episode-publish-review-brief.json",
                   publishReviewBriefJson || "",
+                  "application/json;charset=utf-8",
                 )
               }
               type="button"
@@ -186,15 +211,76 @@ export default function ArtifactHandoffPanel({
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/12"
               onClick={() =>
-                downloadJsonFile(
+                downloadTextFile(
                   publishDraftFileName || "hgo-episode-publish-draft.json",
                   publishDraftJson || "",
+                  "application/json;charset=utf-8",
                 )
               }
               type="button"
             >
               <Download aria-hidden="true" className="h-4 w-4" />
               Download Draft Packet
+            </button>
+          </>
+        ) : null}
+        {hasPublishDraftMdx ? (
+          <>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-fuchsia-300/12 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/18"
+              onClick={() =>
+                copyToClipboard("Private MDX draft", publishDraftMdx || "")
+              }
+              type="button"
+            >
+              <Copy aria-hidden="true" className="h-4 w-4" />
+              Copy MDX Draft
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/12"
+              onClick={() =>
+                downloadTextFile(
+                  publishDraftMdxFileName || "hgo-episode-private-review.mdx",
+                  publishDraftMdx || "",
+                  "text/markdown;charset=utf-8",
+                )
+              }
+              type="button"
+            >
+              <Download aria-hidden="true" className="h-4 w-4" />
+              Download MDX Draft
+            </button>
+          </>
+        ) : null}
+        {hasPublishDraftFrontmatter ? (
+          <>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-fuchsia-300/12 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/18"
+              onClick={() =>
+                copyToClipboard(
+                  "Draft frontmatter",
+                  publishDraftFrontmatterJson || "",
+                )
+              }
+              type="button"
+            >
+              <Copy aria-hidden="true" className="h-4 w-4" />
+              Copy Frontmatter
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/12"
+              onClick={() =>
+                downloadTextFile(
+                  publishDraftFrontmatterFileName ||
+                    "hgo-episode-frontmatter.json",
+                  publishDraftFrontmatterJson || "",
+                  "application/json;charset=utf-8",
+                )
+              }
+              type="button"
+            >
+              <Download aria-hidden="true" className="h-4 w-4" />
+              Download Frontmatter
             </button>
           </>
         ) : null}

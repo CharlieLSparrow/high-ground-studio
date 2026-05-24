@@ -32,6 +32,8 @@ The first private persistence slice exists:
   handoff before any public route work starts
 - derived `hgo-episode-publish-draft-v1` packets with proposed private MDX
   drafts and frontmatter
+- copy/download handoff controls for the private publish-draft packet, generated
+  MDX draft, and generated frontmatter JSON
 - private per-artifact render previews at
   `/team/hgo-publish-queue/[recordId]/preview`
 
@@ -78,7 +80,9 @@ a live page, or certify public-safety review.
 The detail page can also derive an `hgo-episode-publish-draft-v1` packet. That
 packet carries proposed private MDX frontmatter/body text, the deferred public
 file target, artifact identity, review blockers/warnings, and explicit safety
-flags. It is a handoff packet, not a writer. Generating it does not write
+flags. The operator can copy or download the whole packet, the generated MDX
+draft, and the generated frontmatter JSON as separate private handoff artifacts.
+It is a handoff packet, not a writer. Generating it does not write
 `apps/web/content/_staging`, does not write `apps/web/content/publish`, does
 not create a public route, does not mutate stored artifacts, does not call
 providers, and does not certify citation or public-safety review.
@@ -163,6 +167,7 @@ API/server actions should remain private and explicit:
 - derive private episode-page publish-candidate packet: implemented
 - derive private episode-page publish-review brief: implemented
 - derive private episode-page publish-draft packet: implemented
+- copy/download private publish-draft MDX and frontmatter exports: implemented
 - copy/download/reopen saved artifact handoff: implemented in the team route
 - view private episode publish queue: implemented at `/team/hgo-publish-queue`
 - load one staged artifact by id: implemented for private queue detail pages

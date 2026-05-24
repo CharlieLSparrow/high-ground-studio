@@ -30,6 +30,8 @@ import {
 } from "@/lib/hgo/staged-projection-artifact";
 import {
   createHgoEpisodePublishDraftFileName,
+  createHgoEpisodePublishDraftFrontmatterFileName,
+  createHgoEpisodePublishDraftMdxFileName,
   createHgoEpisodePublishDraftPacket,
 } from "@/lib/hgo/publish-draft-packet";
 import { getHgoStagedArtifactForOwner } from "@/lib/server/hgo-staged-artifacts";
@@ -178,6 +180,15 @@ export default async function TeamHgoPublishQueueDetailPage({
     createHgoEpisodePublishReviewBriefFileName(reviewBrief);
   const publishDraftJson = JSON.stringify(publishDraft, null, 2);
   const publishDraftFileName = createHgoEpisodePublishDraftFileName(publishDraft);
+  const publishDraftMdxFileName =
+    createHgoEpisodePublishDraftMdxFileName(publishDraft);
+  const publishDraftFrontmatterJson = JSON.stringify(
+    publishDraft.frontmatter,
+    null,
+    2,
+  );
+  const publishDraftFrontmatterFileName =
+    createHgoEpisodePublishDraftFrontmatterFileName(publishDraft);
   const isReady =
     packet.readiness.state === "ready-for-human-publish-review";
 
@@ -285,6 +296,7 @@ export default async function TeamHgoPublishQueueDetailPage({
                 <li key={action}>{action}</li>
               ))}
               <li>Confirm the proposed route does not collide with existing episode content.</li>
+              <li>Review the generated private MDX draft and frontmatter exports before copying anything into staging.</li>
               <li>Record the final deploy revision and rollback revision when a future public publish happens.</li>
             </ul>
           </SectionBlock>
@@ -364,6 +376,14 @@ export default async function TeamHgoPublishQueueDetailPage({
                 {
                   label: "Public safety",
                   value: publishDraft.frontmatter.publicSafetyReview,
+                },
+                {
+                  label: "MDX export",
+                  value: <code>{publishDraftMdxFileName}</code>,
+                },
+                {
+                  label: "Frontmatter export",
+                  value: <code>{publishDraftFrontmatterFileName}</code>,
                 },
               ]}
             />
@@ -463,6 +483,10 @@ export default async function TeamHgoPublishQueueDetailPage({
         publishReviewBriefJson={publishReviewBriefJson}
         publishDraftFileName={publishDraftFileName}
         publishDraftJson={publishDraftJson}
+        publishDraftMdxFileName={publishDraftMdxFileName}
+        publishDraftMdx={publishDraft.mdxDraft}
+        publishDraftFrontmatterFileName={publishDraftFrontmatterFileName}
+        publishDraftFrontmatterJson={publishDraftFrontmatterJson}
       />
     </section>
   );

@@ -223,7 +223,8 @@ High Ground Studio is a monorepo with:
   an `hgo-episode-publish-review-brief-v1` packet with proposed file targets,
   validation commands, safety flags, and future rollback notes. The detail page
   also derives an `hgo-episode-publish-draft-v1` packet with proposed
-  frontmatter, a private MDX draft body, and copy/download controls. Its
+  frontmatter, a private MDX draft body, and copy/download controls for the
+  packet, MDX draft, and frontmatter export. Its
   private `/team/hgo-publish-queue/[recordId]/preview` route renders the saved
   staged artifact through the shared HGO projection renderer before any public
   route work begins. It does not create public routes, mutate content files,

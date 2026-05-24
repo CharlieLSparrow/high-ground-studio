@@ -17,6 +17,8 @@ import {
 } from "../apps/web/src/lib/hgo/publish-candidate-packet.ts";
 import {
   createHgoEpisodePublishDraftFileName,
+  createHgoEpisodePublishDraftFrontmatterFileName,
+  createHgoEpisodePublishDraftMdxFileName,
   createHgoEpisodePublishDraftPacket,
   HGO_EPISODE_PUBLISH_DRAFT_PACKET_KIND,
 } from "../apps/web/src/lib/hgo/publish-draft-packet.ts";
@@ -256,6 +258,14 @@ test("creates a private publish-draft packet without public side effects", () =>
   assert.equal(
     createHgoEpisodePublishDraftFileName(packet),
     "synthetic-candidate-projection.hgo-episode-publish-draft.json",
+  );
+  assert.equal(
+    createHgoEpisodePublishDraftMdxFileName(packet),
+    "synthetic-candidate-projection.private-review.mdx",
+  );
+  assert.equal(
+    createHgoEpisodePublishDraftFrontmatterFileName(packet),
+    "synthetic-candidate-projection.frontmatter.json",
   );
 });
 
