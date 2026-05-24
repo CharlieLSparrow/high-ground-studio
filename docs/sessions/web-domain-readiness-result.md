@@ -128,6 +128,39 @@ workstation. The DNS record likely needs to be added through Squarespace
 Domains, legacy Google Domains, or another Google Cloud project/account that
 owns the zone.
 
+2026-05-24 later recheck:
+
+- `app.highgroundodyssey.com` now resolves publicly as
+  `CNAME ghs.googlehosted.com.`
+- `highgroundodyssey.com` has no public CAA record blocking Google-managed
+  certificate issuance.
+- Cloud Run domain mapping routes `app.highgroundodyssey.com` to `web`.
+- Cloud Run still reports `CertificatePending`; the last visible status says
+  challenge data was not visible through the public internet and the system
+  will retry.
+- `AUTH_URL` and `HGO_SITE_URL` still point at
+  `https://web-hm2odnvjga-uc.a.run.app`, which is correct until the managed
+  certificate is ready and the Google OAuth callback exists.
+- WHOIS reports:
+  - registrar: Squarespace Domains LLC
+  - expiration: 2026-05-28T18:23:10Z
+  - nameservers: `ns-cloud-a1.googledomains.com` through
+    `ns-cloud-a4.googledomains.com`
+- Cloud DNS managed zones are not visible in the accessible projects checked
+  from this workstation:
+  - `high-ground-odyssey`
+  - `gen-lang-client-0819080752`
+  - `prime-agency-473122-k8`
+  - `gen-lang-client-0319242882`
+  - `rising-waters-461403-c6`
+  - `high-ground-schedule`
+
+Registrar renewal and DNS hosting are separate concerns. Because the domain
+expires on 2026-05-28, renew at Squarespace first. If the team later wants
+direct Google Cloud DNS management, move only the authoritative DNS zone after
+the app subdomain is stable; do not attempt a registrar transfer during renewal
+week.
+
 ## Required DNS Record
 
 Add only this staging record:
