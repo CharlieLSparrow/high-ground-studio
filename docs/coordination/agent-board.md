@@ -23,13 +23,14 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the Content Studio checkpoint merge, schema sync, and deploy on
+Verified after the Content Studio production-packet merge and deploy on
 2026-05-23.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | `3cc1fae` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoint slice merged, schema-synced, and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | `95b367a` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints and production packets are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/content-studio-packet-import-001` | `b2fd9ac` | none active | Content Studio persistence | Merged by PR #16 as `3cc1fae`; branch can be left closed. |
+| `codex/content-studio-production-packets-001` | `6078172` | none active | Content Studio production packets | Merged by PR #17 as `95b367a`; branch can be left closed. |
 | `project/worldhub` | `32a6179` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Merged to `main` by PR #4; keep as integration reference until next cycle. |
 | `codex/content-studio-command-001` | `bfa9dc0` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded; final continuity note is being cherry-picked to `main`. |
 | `codex/worldhub-001-foundation` | `ee26a41` | no active terminal | WorldHub / monetization foundation | Included in PR #4. Terminal can remain closed. |
@@ -57,6 +58,8 @@ Verified after the Content Studio checkpoint merge, schema sync, and deploy on
 
 - owner: integration captain until reassigned
 - source branch: `codex/content-studio-packet-import-001`, merged by PR #16
+- latest branch: `codex/content-studio-production-packets-001`, merged by PR
+  #17
 - previous branch: `codex/content-studio-command-001`, merged to `main` by PR #4
 - owns:
   - `apps/studio/src/app/content-studio/*`
@@ -79,8 +82,8 @@ Verified after the Content Studio checkpoint merge, schema sync, and deploy on
   - deploy coherent Studio slices to the existing private Cloud Run service after validation
   - record live URL, smoke result, and rollback command in the progress thread
 - current live revision:
-  - `studio-00029-nqp` from `main` commit `3cc1fae`
-  - rollback to `studio-00028-qlk`
+  - `studio-00030-ncf` from `main` commit `95b367a`
+  - rollback to `studio-00029-nqp`
 
 ### WorldHub / Business Infrastructure
 

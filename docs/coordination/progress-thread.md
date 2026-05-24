@@ -306,3 +306,11 @@ checks, blockers, and next handoff.
   draft for review in `/projection-stage/import`.
 - Guardrails remain: no provider calls, no public publishing, no real
   manuscript/HGO source text, no automatic promotion.
+- Merged PR #17 to `main` as `95b367a`.
+- GitHub Actions run `26349644925` deployed Studio and skipped web, as
+  expected for a Studio-only code change.
+- Studio revision `studio-00030-ncf` is serving 100% with image
+  `studio:95b367a83f9c27467b37401872fb6ca1e01448af`.
+- Live smokes passed for Studio `/api/health` and `/content-studio`.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00029-nqp=100`

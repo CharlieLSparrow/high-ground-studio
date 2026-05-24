@@ -1,7 +1,42 @@
 {
-  "updatedAt": "2026-05-24T02:11:17.000Z",
+  "updatedAt": "2026-05-24T02:30:20.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "content-studio-production-packets",
+      "date": "2026-05-23",
+      "title": "Content Studio started making real handoff packets",
+      "kicker": "Podcast, book, episode-page, coaching, and WorldHub work now get structured outputs",
+      "mood": "More useful",
+      "summary": "Content Studio can now generate selected-project production packets, including HGO staged projection drafts for podcast and episode-page projects.",
+      "body": [
+        "The board is no longer just a checklist. For the selected project, Studio now derives a production packet with delivery targets, current checklist state, safety flags, and review-required agent task prompts.",
+        "For podcast and episode-page work, the packet includes a staged HGO projection draft that validates against the existing HGO projection import contract. That means the next loop can move from Studio planning into HGO staged review without pretending anything is public-safe yet.",
+        "The guardrails are still intact. These packets do not call podcast hosts, publish pages, certify citation safety, touch provider APIs, or use real manuscript text in tests. They are handoff artifacts for review and next action.",
+        "This landed through the same merge-to-main and GitHub Actions deploy path. Studio is now serving the production-packet UI on Cloud Run."
+      ],
+      "commits": [
+        {
+          "sha": "95b367a",
+          "label": "feat(studio): add content studio production packets"
+        }
+      ],
+      "links": [
+        {
+          "label": "Studio live",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "HGO staged import",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/projection-stage/import"
+        },
+        {
+          "label": "Content Studio architecture",
+          "href": "docs/architecture/content-management-studio.md"
+        }
+      ],
+      "tags": ["Content Studio", "Podcast", "Episode Pages", "Publishing"]
+    },
     {
       "id": "content-studio-server-checkpoints",
       "date": "2026-05-23",
