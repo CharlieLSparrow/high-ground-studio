@@ -56,6 +56,10 @@ test("web Cloud Build config targets the web Dockerfile", () => {
 test("web deploy helpers are wired for explicit first-service creation", () => {
   const packageJson = readFileSync("package.json", "utf8");
   const deployScript = readFileSync("scripts/web-cloud-run-deploy.mjs", "utf8");
+  const domainScript = readFileSync(
+    "scripts/web-domain-readiness.mjs",
+    "utf8",
+  );
   const seedScript = readFileSync(
     "scripts/web-cloud-run-seed-secrets-from-env.mjs",
     "utf8",
@@ -63,6 +67,7 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
 
   assert.match(packageJson, /web:cloudrun:deploy/);
   assert.match(packageJson, /web:cloudrun:seed-secrets/);
+  assert.match(packageJson, /web:domain:check/);
   assert.match(deployScript, /WEB_CLOUD_RUN_CREATE_SERVICE/);
   assert.match(deployScript, /web-cloud-run@/);
   assert.match(deployScript, /--set-secrets/);
@@ -70,6 +75,10 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /gha-creds-/);
   assert.match(deployScript, /WEB_IMAGE_BUILD_STRATEGY/);
   assert.match(deployScript, /apps\/web\/Dockerfile/);
+  assert.match(domainScript, /app\.highgroundodyssey\.com/);
+  assert.match(domainScript, /ghs\.googlehosted\.com\./);
+  assert.match(domainScript, /does not change DNS, OAuth, Cloud Run/);
+  assert.match(domainScript, /api\/auth\/callback\/google/);
   assert.match(seedScript, /Secret values are not printed/);
   assert.match(seedScript, /web-database-url/);
 });

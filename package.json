@@ -26,6 +26,7 @@
     "web:cloudrun:preflight": "node scripts/web-cloud-run-preflight.mjs",
     "web:cloudrun:seed-secrets": "node scripts/web-cloud-run-seed-secrets-from-env.mjs",
     "web:cloudrun:deploy": "node scripts/web-cloud-run-deploy.mjs",
+    "web:domain:check": "node scripts/web-domain-readiness.mjs",
     "web:cloudrun:test": "node --test scripts/web-cloud-run-readiness.test.mjs",
     "studio:manuscript:test": "node --experimental-strip-types --test scripts/studio-manuscript-editor.test.mjs",
     "studio:hgo:agentic-smoke": "node --experimental-strip-types scripts/agentic-studio-hgo-smoke.test.mjs",
