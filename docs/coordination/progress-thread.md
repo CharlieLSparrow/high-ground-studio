@@ -244,3 +244,9 @@ checks, blockers, and next handoff.
 - Live smokes passed for web `/api/health`, Studio `/api/health`, and web
   `/team/progress` unauthenticated redirect.
 - Added a team progress story entry for this domain-readiness/deploy loop.
+- Merged PR #14 to `main` as `079205f`.
+- GitHub Actions run `26348472669` deployed only `web` and skipped Studio, as
+  expected for a checked-in team progress story update.
+- Latest web revision after the story update: `web-00007-7p8`, serving 100%.
+- Live smokes passed for web `/api/health` and web `/team/progress`
+  unauthenticated redirect.

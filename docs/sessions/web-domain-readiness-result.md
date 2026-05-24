@@ -59,6 +59,21 @@ https://studio-hm2odnvjga-uc.a.run.app/api/health
 https://web-hm2odnvjga-uc.a.run.app/team/progress unauthenticated redirect
 ```
 
+After PR #14 merged to `main` as `079205f`, GitHub Actions run
+`26348472669` deployed only `web` and skipped Studio, as expected for the
+checked-in team progress story update:
+
+```text
+web latest ready revision: web-00007-7p8
+```
+
+Live smokes passed:
+
+```text
+https://web-hm2odnvjga-uc.a.run.app/api/health
+https://web-hm2odnvjga-uc.a.run.app/team/progress unauthenticated redirect
+```
+
 ## Domain Mapping State
 
 Cloud Run domain mapping:
