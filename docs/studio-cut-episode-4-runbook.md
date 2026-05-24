@@ -247,6 +247,12 @@ source-monitor proxy MP4, Sync Map JSON, and optional sync report JSON. Studio
 Cut uploads only those generated artifacts, attaches the Sync Map/report storage
 paths to room metadata, and creates the same room link for Mako.
 
+Before publishing or tagging, check `Sync Review`. It should show the ordered
+phone/reference rail pieces, Homer/Charlie offset estimates, anchor/agreement
+details, confidence, and any warnings from the Sync Map or sync report. If the
+reference order or offsets look wrong, fix the generated package before asking
+Mako to edit.
+
 Rehearse that flow with synthetic files first:
 
 ```bash

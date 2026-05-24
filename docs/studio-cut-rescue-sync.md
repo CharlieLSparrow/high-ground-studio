@@ -239,7 +239,9 @@ does not import JSON, load local media, or touch sync files in the primary path.
 After publish, the web app shows `Sync Review` for the room. It reads the
 attached Sync Map and optional sync report from Storage, validates them, and
 summarizes canonical duration, asset roles, reference rail pieces, estimated
-offset count, lowest confidence, and warning count. This gives Charlie a visible
+offset count, lowest confidence, and warning count. It also lists the ordered
+reference pieces, per-track offset estimates, anchor/agreement details when
+available, and the first sync warnings. This gives Charlie a visible
 confirmation that the shared proxy room is backed by generated sync metadata,
 not just a loose MP4. The panel never shows local filesystem paths.
 

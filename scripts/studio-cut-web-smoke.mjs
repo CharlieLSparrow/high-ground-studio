@@ -589,6 +589,13 @@ async function runBrowserSmoke() {
     await expect(page.getByLabel("Sync review")).toContainText("Selected package");
     await expect(page.getByLabel("Sync review")).toContainText("web-smoke-sync-job");
     await expect(page.getByLabel("Sync review")).toContainText("Reference pieces");
+    await expect(page.getByLabel("Sync review")).toContainText("Reference Rail");
+    await expect(page.getByLabel("Sync review")).toContainText("phone-reference-01.synthetic.wav");
+    await expect(page.getByLabel("Sync review")).toContainText("Track Offsets");
+    await expect(page.getByLabel("Sync review")).toContainText("charlie.synthetic.mp4");
+    await expect(page.getByLabel("Sync review")).toContainText("+0:01");
+    await expect(page.getByLabel("Sync review")).toContainText("2 anchors");
+    await expect(page.getByLabel("Sync review")).toContainText("Sync Warnings");
     await expect(page.getByLabel("Sync review")).toContainText("Homer video x1");
     await expect(page.getByLabel("Episode command center")).toContainText(
       "Generated package",

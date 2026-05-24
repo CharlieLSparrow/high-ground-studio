@@ -335,8 +335,10 @@ The shared-room editor also has a `Sync Review` panel. When room metadata points
 at a generated Sync Map/report, the browser fetches those JSON artifacts from
 Storage, validates the schema, and shows the sync job id, canonical duration,
 asset role counts, reference rail pieces, offset count, lowest confidence, and
-warning count. This is an operator-facing confidence layer only; it does not
-load originals, expose local paths, or change the edit model.
+warning count. It now expands that summary into ordered reference rail pieces,
+per-track offset estimates, anchor/agreement details when available, and
+warnings from the Sync Map/report. This is an operator-facing confidence layer
+only; it does not load originals, expose local paths, or change the edit model.
 
 Before publishing a generated package, run:
 

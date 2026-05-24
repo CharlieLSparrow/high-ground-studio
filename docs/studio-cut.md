@@ -207,8 +207,11 @@ Shared rooms now include a compact `Sync Review` panel. For Rescue Sync rooms,
 the browser loads the attached Sync Map and optional sync report from Firebase
 Storage, validates them with the shared schema, and shows timeline duration,
 asset counts, reference-piece count, offset count, confidence, and warning
-counts. In local-only mode the same panel can preview the selected generated
-package before publish. It never displays or stores local filesystem paths.
+counts. It also lists the ordered reference rail pieces, per-track estimated
+offsets with anchor/agreement details when available, and the first sync
+warnings that an operator should review before tagging. In local-only mode the
+same panel can preview the selected generated package before publish. It never
+displays or stores local filesystem paths.
 
 The source-time slider seeks the local proxy video. Program Playback uses the
 same video but keeps the semantic preview behavior: when playback reaches a

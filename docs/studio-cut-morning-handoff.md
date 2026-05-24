@@ -73,6 +73,9 @@ Related durable docs:
   tasks so an agent can inspect them through `Export Agent Context`. It can
   also export suggested agent operation JSON drafts that must still be previewed
   through `Import Agent Ops` before applying.
+- `Sync Review` now expands Rescue Sync metadata into ordered reference pieces,
+  per-track offsets, anchor/agreement details, confidence, and warnings, so a
+  generated package can be checked before publishing or tagging.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification

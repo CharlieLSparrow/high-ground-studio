@@ -57,6 +57,7 @@ import {
   buildTranscriptReview,
   type TranscriptReview,
 } from "./transcriptReview";
+import { buildSyncReviewSummary } from "./syncReview";
 import {
   useDecisionPersistence,
   type StudioCutRoomSelection,
@@ -3857,6 +3858,68 @@ function SyncReviewPanel({
             <span>Asset roles</span>
             <strong>{summary.roleSummary}</strong>
           </div>
+          <div className="sync-review-detail-grid">
+            <div className="sync-review-detail-card">
+              <h3>Reference Rail</h3>
+              <ul>
+                {summary.referenceSegments.slice(0, 5).map((segment) => (
+                  <li key={`${segment.inputId}-${segment.railStartMs}`}>
+                    <strong>{segment.fileName}</strong>
+                    <span>
+                      Starts {formatSourceTime(segment.railStartMs)} ·{" "}
+                      {formatSourceTime(segment.durationMs)} ·{" "}
+                      {formatConfidence(segment.confidence)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {summary.referenceSegments.length > 5 ? (
+                <p>{summary.referenceSegments.length - 5} more reference piece(s).</p>
+              ) : null}
+            </div>
+            <div className="sync-review-detail-card">
+              <h3>Track Offsets</h3>
+              <ul>
+                {summary.offsetDetails.slice(0, 6).map((trackOffset) => (
+                  <li key={`${trackOffset.source}-${trackOffset.inputId}`}>
+                    <strong>{trackOffset.roleLabel}</strong>
+                    <span>
+                      {trackOffset.fileName} ·{" "}
+                      {formatSignedSourceTime(trackOffset.estimatedOffsetMs)} ·{" "}
+                      {formatConfidence(trackOffset.confidence)}
+                      {trackOffset.anchorCount
+                        ? ` · ${trackOffset.anchorCount} anchor${
+                            trackOffset.anchorCount === 1 ? "" : "s"
+                          }`
+                        : ""}
+                      {trackOffset.anchorAgreementMs !== undefined
+                        ? ` · ${Math.round(trackOffset.anchorAgreementMs)}ms agreement`
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {summary.offsetDetails.length > 6 ? (
+                <p>{summary.offsetDetails.length - 6} more offset(s).</p>
+              ) : null}
+            </div>
+          </div>
+          {summary.warningDetails.length > 0 ? (
+            <div className="sync-review-warnings">
+              <h3>Sync Warnings</h3>
+              <ul>
+                {summary.warningDetails.slice(0, 5).map((warning, index) => (
+                  <li key={`${warning.source}-${index}`}>
+                    <strong>{warning.source}</strong>
+                    <span>{warning.message}</span>
+                  </li>
+                ))}
+              </ul>
+              {summary.warningDetails.length > 5 ? (
+                <p>{summary.warningDetails.length - 5} more warning(s).</p>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="sync-review-empty">
@@ -6282,71 +6345,13 @@ function isCloudSyncJobOutputComplete(
   );
 }
 
-function buildSyncReviewSummary(
-  syncMap: SyncMap,
-  syncReport?: CloudSyncReport,
-) {
-  const confidenceValues = [
-    ...syncMap.assets.map((asset) => asset.confidence),
-    ...(syncReport?.trackOffsets.map((trackOffset) => trackOffset.confidence) ??
-      []),
-  ].filter((value) => Number.isFinite(value));
-  const lowestConfidence =
-    confidenceValues.length > 0 ? Math.min(...confidenceValues) : 0;
-
-  return {
-    timelineDurationMs: syncMap.canonicalTimeline.durationMs,
-    assetCount: syncMap.assets.length,
-    referencePieceCount: syncMap.referenceRail.segments.length,
-    trackOffsetCount: syncReport?.trackOffsets.length ?? 0,
-    lowestConfidence,
-    warningCount: countSyncReviewWarnings(syncMap, syncReport),
-    roleSummary: buildSyncReviewRoleSummary(syncMap),
-  };
-}
-
-function buildSyncReviewRoleSummary(syncMap: SyncMap) {
-  const roleCounts = syncMap.assets.reduce(
-    (counts, asset) => ({
-      ...counts,
-      [asset.role]: (counts[asset.role] ?? 0) + 1,
-    }),
-    {} as Partial<Record<CloudSyncInputRole, number>>,
-  );
-
-  return (
-    CLOUD_SYNC_INPUT_ROLES.filter((role) => roleCounts[role])
-      .map((role) => `${CLOUD_SYNC_ROLE_LABELS[role]} x${roleCounts[role]}`)
-      .join(", ") || "No assets"
-  );
-}
-
-function countSyncReviewWarnings(
-  syncMap: SyncMap,
-  syncReport?: CloudSyncReport,
-) {
-  const syncMapWarnings =
-    syncMap.globalWarnings.length +
-    syncMap.referenceRail.warnings.length +
-    syncMap.referenceRail.segments.reduce(
-      (count, segment) => count + segment.warnings.length,
-      0,
-    ) +
-    syncMap.assets.reduce((count, asset) => count + asset.warnings.length, 0);
-  const syncReportWarnings = syncReport
-    ? syncReport.globalWarnings.length +
-      syncReport.referenceRail.warnings.length +
-      syncReport.trackOffsets.reduce(
-        (count, offset) => count + offset.warnings.length,
-        0,
-      )
-    : 0;
-
-  return syncMapWarnings + syncReportWarnings;
-}
-
 function formatConfidence(value: number) {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
+function formatSignedSourceTime(sourceTimeMs: number) {
+  const sign = sourceTimeMs < 0 ? "-" : "+";
+  return `${sign}${formatSourceTime(Math.abs(sourceTimeMs))}`;
 }
 
 function sanitizeFileNamePart(value: string) {
