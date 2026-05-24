@@ -250,3 +250,24 @@ checks, blockers, and next handoff.
 - Latest web revision after the story update: `web-00007-7p8`, serving 100%.
 - Live smokes passed for web `/api/health` and web `/team/progress`
   unauthenticated redirect.
+
+### Codex / `codex/content-studio-packet-import-001`
+
+- Added Content Studio import/export packet parsing, project handoff summaries,
+  and explicit manual server checkpoints.
+- Added `StudioContentWorkspaceSnapshot` to Prisma for private Studio workspace
+  recovery across browsers and devices.
+- Added authenticated `/api/content-studio/snapshots` endpoints for list,
+  latest, detail, and manual save.
+- Added a Cloud Build config and Cloud Run Job Dockerfile for deliberate live
+  `pnpm db:push` schema sync using the same Cloud SQL attachment and database
+  secret as Studio.
+- Added `.gcloudignore` so Cloud Build source uploads exclude `.env`, local
+  artifacts, and protected inbox/staging content.
+- Validation passed locally: `pnpm content-studio:packet:test`,
+  `pnpm exec prisma validate`, `pnpm db:generate`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build` outside the sandbox, YAML parse, and
+  `git diff --check`.
+- No provider calls, public publishing, real manuscript text, or automatic
+  autosave behavior were added.

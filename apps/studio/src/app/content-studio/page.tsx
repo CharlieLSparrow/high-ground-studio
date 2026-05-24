@@ -46,7 +46,7 @@ export default async function ContentStudioPage() {
                 Episode Pages
               </span>
               <span className="rounded-lg border border-studio-line bg-black/20 px-2 py-1 text-[0.72rem] font-extrabold uppercase tracking-normal text-studio-muted">
-                Browser local
+                Manual Checkpoints
               </span>
             </div>
           </div>

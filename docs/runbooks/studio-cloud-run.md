@@ -438,6 +438,11 @@ After an explicitly approved deployment:
   authenticated
 - sign in with an allowlisted Google account
 - verify `/content-studio` opens
+- in `/content-studio`, export a JSON handoff packet
+- save a manual Content Studio server checkpoint using synthetic/project-board
+  metadata only
+- load the latest Content Studio server checkpoint
+- confirm the project list and selected project return
 - verify `/structure` opens
 - paste text
 - select a span in the textarea

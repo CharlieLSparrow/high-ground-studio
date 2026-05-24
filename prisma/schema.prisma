@@ -557,6 +557,26 @@ model StudioManuscriptSnapshot {
   @@index([manuscriptId, updatedAt])
 }
 
+model StudioContentWorkspaceSnapshot {
+  id              String   @id @default(cuid())
+  ownerEmail      String
+  title           String
+  description     String?
+  schemaVersion   Int
+  workspaceJson   Json
+  contentHash     String?
+  projectCount    Int      @default(0)
+  activeCount     Int      @default(0)
+  readyCount      Int      @default(0)
+  blockedCount    Int      @default(0)
+  clientUpdatedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, createdAt])
+}
+
 model StudioDocumentBlock {
   id               String                 @id @default(cuid())
   documentId       String

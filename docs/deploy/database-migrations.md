@@ -302,6 +302,43 @@ from pg_type
 where typname = 'StudioManuscriptKind';
 ```
 
+## Content Studio Workspace Snapshot Change
+
+The Content Studio checkpoint slice added:
+
+- `StudioContentWorkspaceSnapshot`
+
+This is an additive private Studio schema change. It stores explicit manual
+Content Studio workspace checkpoints as JSON so the browser-local board can be
+recovered across devices and handed to other agents without introducing
+autosave, provider calls, or public publishing behavior.
+
+Apply the schema to a target database only through the approved operator path
+for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+For the live Studio Cloud Run database, prefer running `pnpm db:push` from a
+Cloud Run Job image that has the `studio-database-url` secret and the same Cloud
+SQL attachment as the `studio` service. That avoids pushing to the unrelated
+remote Neon URL that may be present in a local `.env`.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name = 'StudioContentWorkspaceSnapshot';
+```
+
+Expected result:
+
+- one row for `StudioContentWorkspaceSnapshot`
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 
