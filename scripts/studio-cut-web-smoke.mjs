@@ -572,6 +572,8 @@ async function runBrowserSmoke() {
     await expect(rescuePackageSection).toContainText("Source-monitor proxy");
     await expect(rescuePackageSection).toContainText("Sync Map");
     await expect(rescuePackageSection).toContainText("Sync report");
+    await expect(rescuePackageSection).toContainText("Package preflight");
+    await expect(rescuePackageSection).toContainText("Generated files");
     await expect(
       rescuePackageSection.getByRole("button", { name: "Publish Generated Package" }),
     ).toBeDisabled();
@@ -586,6 +588,9 @@ async function runBrowserSmoke() {
     await page
       .getByLabel("Select generated sync report JSON")
       .setInputFiles(smokeFiles.syncReportPath);
+    await expect(rescuePackageSection).toContainText("Manifest and Sync Map");
+    await expect(rescuePackageSection).toContainText("Room target");
+    await expect(rescuePackageSection).toContainText("Waiting for source-monitor proxy");
     await expect(page.getByLabel("Sync review")).toContainText("Selected package");
     await expect(page.getByLabel("Sync review")).toContainText("web-smoke-sync-job");
     await expect(page.getByLabel("Sync review")).toContainText("Reference pieces");

@@ -201,7 +201,10 @@ only those generated artifacts, writes shared room metadata, and creates a room
 link. The proxy is stored under the shared room source-monitor path; the
 manifest, Sync Map, and sync report are stored under
 `studioCutSyncJobs/{syncJobId}/outputs/{fileName}`. Original full-resolution
-assets are not uploaded by this publish flow.
+assets are not uploaded by this publish flow. The panel includes a package
+preflight summary before upload: generated file selection, Manifest/Sync Map
+compatibility, active room target, proxy upload readiness, and optional sync
+report attachment. A blocked preflight should be fixed before publishing.
 
 Shared rooms now include a compact `Sync Review` panel. For Rescue Sync rooms,
 the browser loads the attached Sync Map and optional sync report from Firebase

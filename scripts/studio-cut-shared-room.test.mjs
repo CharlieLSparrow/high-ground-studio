@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildGeneratedPackagePreflight,
   buildGeneratedPackageStoragePath,
   buildSharedRoomMetadataPath,
   buildSharedRoomUrl,
@@ -292,5 +293,57 @@ test("generated Rescue Sync package compatibility validates durable metadata", (
       syncReport,
     }).ok,
     false,
+  );
+});
+
+test("generated Rescue Sync package preflight summarizes publish readiness", () => {
+  const ready = buildGeneratedPackagePreflight({
+    roomSelection: { projectId: "episode-004", branchId: "main" },
+    manifest,
+    syncMap,
+    syncReport,
+    proxyFileName: "source-monitor-proxy.synthetic.mp4",
+    proxySizeBytes: 1234,
+  });
+
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.canPublish, true);
+  assert.deepEqual(ready.targetRoom, {
+    projectId: "episode-004",
+    branchId: "main",
+  });
+  assert.equal(ready.errors.length, 0);
+  assert.equal(
+    ready.checks.every(
+      (check) => check.status === "ready" || check.status === "optional",
+    ),
+    true,
+  );
+
+  const waiting = buildGeneratedPackagePreflight({
+    roomSelection: { projectId: "episode-004", branchId: "main" },
+    manifest,
+  });
+
+  assert.equal(waiting.status, "waiting");
+  assert.equal(waiting.canPublish, false);
+  assert.equal(
+    waiting.checks.some((check) => check.detail.includes("source-monitor proxy")),
+    true,
+  );
+
+  const blocked = buildGeneratedPackagePreflight({
+    roomSelection: { projectId: "episode-004", branchId: "draft" },
+    manifest,
+    syncMap,
+    proxyFileName: "source-monitor.mp4",
+    proxySizeBytes: 1234,
+  });
+
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.canPublish, false);
+  assert.equal(
+    blocked.errors.some((error) => error.includes("package targets episode-004 / main")),
+    true,
   );
 });

@@ -213,8 +213,10 @@ To publish the generated package:
 3. Use `Publish Rescue Sync Package`.
 4. Select the generated manifest JSON, source-monitor proxy MP4, Sync Map JSON,
    and optional sync report JSON.
-5. Click `Publish Generated Package`.
-6. Send the room link to Mako.
+5. Confirm the package preflight marks the required checks ready: generated
+   files, Manifest/Sync Map compatibility, room target, and proxy upload.
+6. Click `Publish Generated Package`.
+7. Send the room link to Mako.
 
 Mako opens the room link and edits live. Mako does not import JSON, load local
 media, or touch sync files in the primary path.

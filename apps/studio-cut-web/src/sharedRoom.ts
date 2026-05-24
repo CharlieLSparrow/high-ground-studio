@@ -32,6 +32,27 @@ export type SharedRoomMetadata = {
   notes?: string;
 };
 
+export type GeneratedPackagePreflightCheckStatus =
+  | "ready"
+  | "blocked"
+  | "waiting"
+  | "optional";
+
+export type GeneratedPackagePreflightCheck = {
+  id: string;
+  label: string;
+  status: GeneratedPackagePreflightCheckStatus;
+  detail: string;
+};
+
+export type GeneratedPackagePreflight = {
+  status: "ready" | "blocked" | "waiting";
+  canPublish: boolean;
+  checks: GeneratedPackagePreflightCheck[];
+  targetRoom?: SharedRoomSelection;
+  errors: string[];
+};
+
 export function buildSharedRoomMetadataPath(
   projectId: string,
   branchId: string,
@@ -161,6 +182,134 @@ export function validateGeneratedPackageCompatibility({
 
   return {
     ok: errors.length === 0,
+    errors,
+  };
+}
+
+export function buildGeneratedPackagePreflight({
+  roomSelection,
+  manifest,
+  syncMap,
+  syncReport,
+  proxyFileName,
+  proxySizeBytes,
+}: {
+  roomSelection: SharedRoomSelection;
+  manifest?: EpisodeManifest;
+  syncMap?: SyncMap;
+  syncReport?: CloudSyncReport;
+  proxyFileName?: string;
+  proxySizeBytes?: number;
+}): GeneratedPackagePreflight {
+  const errors: string[] = [];
+  const targetRoom =
+    manifest && syncMap
+      ? {
+          projectId: sanitizeSharedRoomPart(manifest.id),
+          branchId: sanitizeSharedRoomPart(syncMap.branchId),
+        }
+      : undefined;
+  const missingFiles = [
+    !manifest ? "manifest" : "",
+    !proxyFileName ? "source-monitor proxy" : "",
+    !syncMap ? "Sync Map" : "",
+  ].filter(Boolean);
+  const checks: GeneratedPackagePreflightCheck[] = [
+    {
+      id: "files",
+      label: "Generated files",
+      status: missingFiles.length === 0 ? "ready" : "waiting",
+      detail:
+        missingFiles.length === 0
+          ? "Manifest, source-monitor proxy, and Sync Map are selected."
+          : `Waiting for ${missingFiles.join(", ")}.`,
+    },
+  ];
+
+  if (manifest && syncMap) {
+    const compatibility = validateGeneratedPackageCompatibility({
+      manifest,
+      syncMap,
+      ...(syncReport ? { syncReport } : {}),
+    });
+
+    errors.push(...compatibility.errors);
+    checks.push({
+      id: "compatibility",
+      label: "Manifest and Sync Map",
+      status: compatibility.ok ? "ready" : "blocked",
+      detail: compatibility.ok
+        ? `Durations match within tolerance at ${manifest.durationMs}ms.`
+        : compatibility.errors.join(" "),
+    });
+  } else {
+    checks.push({
+      id: "compatibility",
+      label: "Manifest and Sync Map",
+      status: "waiting",
+      detail: "Select both files to validate project id, duration, and path safety.",
+    });
+  }
+
+  if (targetRoom) {
+    const roomMatchesPackage =
+      targetRoom.projectId === sanitizeSharedRoomPart(roomSelection.projectId) &&
+      targetRoom.branchId === sanitizeSharedRoomPart(roomSelection.branchId);
+
+    if (!roomMatchesPackage) {
+      errors.push(
+        `Current room is ${roomSelection.projectId} / ${roomSelection.branchId}; package targets ${targetRoom.projectId} / ${targetRoom.branchId}.`,
+      );
+    }
+
+    checks.push({
+      id: "room",
+      label: "Room target",
+      status: roomMatchesPackage ? "ready" : "blocked",
+      detail: roomMatchesPackage
+        ? `Publishing to ${targetRoom.projectId} / ${targetRoom.branchId}.`
+        : `Switch Collaboration Mode to ${targetRoom.projectId} / ${targetRoom.branchId}.`,
+    });
+  } else {
+    checks.push({
+      id: "room",
+      label: "Room target",
+      status: "waiting",
+      detail: "Select manifest and Sync Map to confirm the target room.",
+    });
+  }
+
+  checks.push({
+    id: "proxy",
+    label: "Proxy upload",
+    status: proxyFileName ? "ready" : "waiting",
+    detail: proxyFileName
+      ? `${sanitizeStorageFileName(proxyFileName)} will be uploaded as the browser source-monitor proxy${
+          typeof proxySizeBytes === "number" && Number.isFinite(proxySizeBytes)
+            ? ` (${proxySizeBytes} bytes selected)`
+            : ""
+        }.`
+      : "Select the generated source-monitor MP4/MOV/M4V.",
+  });
+
+  checks.push({
+    id: "sync-report",
+    label: "Sync report",
+    status: syncReport ? "ready" : "optional",
+    detail: syncReport
+      ? `Attached report for ${syncReport.syncJobId}.`
+      : "Optional, but useful for diagnostics and agent review.",
+  });
+
+  const hasBlockingCheck = checks.some((check) => check.status === "blocked");
+  const hasWaitingCheck = checks.some((check) => check.status === "waiting");
+  const status = hasBlockingCheck ? "blocked" : hasWaitingCheck ? "waiting" : "ready";
+
+  return {
+    status,
+    canPublish: status === "ready",
+    checks,
+    ...(targetRoom ? { targetRoom } : {}),
     errors,
   };
 }

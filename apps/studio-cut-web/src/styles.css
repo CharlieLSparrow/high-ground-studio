@@ -899,6 +899,84 @@ h2 {
   justify-self: start;
 }
 
+.package-preflight {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(238, 242, 238, 0.12);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 10px;
+}
+
+.package-preflight-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.package-preflight-heading span {
+  color: #eef2ee;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.package-preflight-heading strong,
+.package-preflight-check strong {
+  border: 1px solid rgba(238, 242, 238, 0.13);
+  border-radius: 999px;
+  color: #eef2ee;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.package-preflight-checks {
+  display: grid;
+  gap: 7px;
+}
+
+.package-preflight-check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-left: 4px solid rgba(174, 185, 180, 0.45);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 8px;
+}
+
+.package-preflight-check.is-ready {
+  border-left-color: #91dbb7;
+}
+
+.package-preflight-check.is-blocked {
+  border-left-color: #ff7474;
+}
+
+.package-preflight-check.is-waiting {
+  border-left-color: #f0c96a;
+}
+
+.package-preflight-check.is-optional {
+  border-left-color: #72d6ff;
+}
+
+.package-preflight-check span {
+  color: #eef2ee;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.package-preflight-check p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #aeb9b4;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .cloud-sync-panel {
   border-color: rgba(114, 214, 255, 0.28);
   background:

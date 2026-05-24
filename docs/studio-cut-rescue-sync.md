@@ -230,8 +230,11 @@ Publishing flow:
 3. Switch Collaboration Mode to the intended `projectId` and `branchId`.
 4. Select the generated Episode Manifest, source-monitor proxy MP4, Sync Map
    JSON, and optional sync report JSON in `Publish Rescue Sync Package`.
-5. Click `Publish Generated Package`.
-6. Send the shared room link to Mako.
+5. Confirm the package preflight shows the generated files, Manifest/Sync Map,
+   room target, proxy upload, and optional sync report checks as ready or
+   intentionally optional.
+6. Click `Publish Generated Package`.
+7. Send the shared room link to Mako.
 
 Mako opens the link, signs in, and edits against the shared proxy room. Mako
 does not import JSON, load local media, or touch sync files in the primary path.

@@ -80,11 +80,13 @@ import {
 } from "./persistence/sharedRoomPersistence";
 import {
   buildGeneratedPackageStoragePath,
+  buildGeneratedPackagePreflight,
   buildSharedRoomUrl,
   buildSourceMonitorProxyStoragePath,
   parseSharedRoomQuery,
   sanitizeSharedRoomPart,
   validateGeneratedPackageCompatibility,
+  type GeneratedPackagePreflightCheck,
   type SharedRoomMetadata,
 } from "./sharedRoom";
 import { getStudioCutRuntimeConfig } from "./studioCutConfig";
@@ -3542,30 +3544,28 @@ function PublishRescueSyncPackagePanel({
 }) {
   const cloudReady =
     status.mode === "cloud_connected" || status.mode === "cloud_ready";
-  const compatibility =
-    packageSelection.manifest && packageSelection.syncMap
-      ? validateGeneratedPackageCompatibility({
-          manifest: packageSelection.manifest,
-          syncMap: packageSelection.syncMap,
-          ...(packageSelection.syncReport
-            ? { syncReport: packageSelection.syncReport }
-            : {}),
-        })
-      : { ok: false, errors: ["Select generated manifest and Sync Map."] };
-  const roomMatchesPackage =
-    (!packageSelection.manifest ||
-      sanitizeSharedRoomPart(packageSelection.manifest.id) ===
-        roomSelection.projectId) &&
-    (!packageSelection.syncMap ||
-      sanitizeSharedRoomPart(packageSelection.syncMap.branchId) ===
-        roomSelection.branchId);
+  const preflight = buildGeneratedPackagePreflight({
+    roomSelection,
+    ...(packageSelection.manifest
+      ? { manifest: packageSelection.manifest }
+      : {}),
+    ...(packageSelection.syncMap ? { syncMap: packageSelection.syncMap } : {}),
+    ...(packageSelection.syncReport
+      ? { syncReport: packageSelection.syncReport }
+      : {}),
+    ...(packageSelection.proxyFile
+      ? {
+          proxyFileName: packageSelection.proxyFile.name,
+          proxySizeBytes: packageSelection.proxyFile.size,
+        }
+      : {}),
+  });
   const canPublish =
     cloudReady &&
     Boolean(packageSelection.manifestFile) &&
     Boolean(packageSelection.proxyFile) &&
     Boolean(packageSelection.syncMapFile) &&
-    compatibility.ok &&
-    roomMatchesPackage &&
+    preflight.canPublish &&
     uploadState.status !== "uploading";
 
   return (
@@ -3635,6 +3635,8 @@ function PublishRescueSyncPackagePanel({
         />
       </div>
 
+      <PackagePreflightSummary checks={preflight.checks} status={preflight.status} />
+
       <div className="shared-room-actions">
         <button
           className="secondary-button"
@@ -3646,20 +3648,9 @@ function PublishRescueSyncPackagePanel({
         </button>
       </div>
 
-      {!roomMatchesPackage && packageSelection.manifest ? (
+      {preflight.errors.length > 0 ? (
         <p className="shared-room-message is-error">
-          Current room is {roomSelection.projectId} / {roomSelection.branchId}.
-          Switch Collaboration Mode to{" "}
-          {sanitizeSharedRoomPart(packageSelection.manifest.id)} /{" "}
-          {packageSelection.syncMap
-            ? sanitizeSharedRoomPart(packageSelection.syncMap.branchId)
-            : roomSelection.branchId}{" "}
-          before publishing this package.
-        </p>
-      ) : null}
-      {!compatibility.ok && packageSelection.manifest && packageSelection.syncMap ? (
-        <p className="shared-room-message is-error">
-          {compatibility.errors.join(" ")}
+          {preflight.errors.join(" ")}
         </p>
       ) : null}
       <p
@@ -3673,6 +3664,51 @@ function PublishRescueSyncPackagePanel({
       </p>
     </section>
   );
+}
+
+function PackagePreflightSummary({
+  checks,
+  status,
+}: {
+  checks: GeneratedPackagePreflightCheck[];
+  status: "ready" | "blocked" | "waiting";
+}) {
+  return (
+    <div className="package-preflight" aria-label="Generated package preflight">
+      <div className="package-preflight-heading">
+        <span>Package preflight</span>
+        <strong>{status === "ready" ? "Ready" : status}</strong>
+      </div>
+      <div className="package-preflight-checks">
+        {checks.map((check) => (
+          <div
+            className={`package-preflight-check is-${check.status}`}
+            key={check.id}
+          >
+            <span>{check.label}</span>
+            <strong>{getPreflightCheckLabel(check.status)}</strong>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getPreflightCheckLabel(status: GeneratedPackagePreflightCheck["status"]) {
+  if (status === "ready") {
+    return "Ready";
+  }
+
+  if (status === "blocked") {
+    return "Blocked";
+  }
+
+  if (status === "optional") {
+    return "Optional";
+  }
+
+  return "Waiting";
 }
 
 function RescuePackageFile({
