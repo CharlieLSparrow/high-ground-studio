@@ -37,6 +37,23 @@ checks, blockers, and next handoff.
 - No DB/schema, provider, public publishing, real content, secrets, IAM, OAuth,
   DNS, or Cloud SQL changes.
 
+### Codex / `codex/web-deploy-hgo-smoke-001`
+
+- Added `/projection-stage/import` to the web Cloud Run deploy smoke list so
+  the HGO staged import route is checked on every web deploy.
+- Updated `pnpm web:cloudrun:test` coverage and the web Cloud Run runbook.
+- Validation passed: `pnpm web:cloudrun:test` and `git diff --check`.
+- Opened and merged PR #20 as `97d6bd6`:
+  `test(web): smoke HGO staged import on deploy`.
+- Ran `pnpm web:cloudrun:deploy` from merged `main` to prove the new smoke in
+  the real deploy path.
+- Cloud Build: `47e8469e-adfb-42ca-ac87-dac5deab6aec`.
+- New web revision: `web-00017-mgg`, serving 100% traffic.
+- Live deploy smokes passed: `/api/health`, `/`, `/projection-stage/import`,
+  and unauthenticated `/team/progress` sign-in redirect.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00015-9vs=100`.
+
 ## 2026-05-23
 
 ### Codex / `codex/content-studio-command-001`

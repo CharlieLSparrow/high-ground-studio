@@ -28,7 +28,8 @@ on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | `e5062ac` plus progress-story follow-up | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, and the HGO production-packet import bridge are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | runtime deploy `97d6bd6` plus docs follow-ups | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, and the HGO import deploy smoke are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
 | `codex/content-studio-packet-import-001` | `b2fd9ac` | none active | Content Studio persistence | Merged by PR #16 as `3cc1fae`; branch can be left closed. |
 | `codex/content-studio-production-packets-001` | `6078172` | none active | Content Studio production packets | Merged by PR #17 as `95b367a`; branch can be left closed. |
@@ -103,8 +104,8 @@ on 2026-05-24.
   - Content Studio packets are safety-checked before `hgoProjectionDraft` is
     extracted for browser-only staged review
 - current live revision:
-  - `web-00013-fq4` from `main` commit `e5062ac`
-  - rollback to `web-00011-6sq`
+  - `web-00017-mgg` from `main` commit `97d6bd6`
+  - rollback to `web-00015-9vs`
 
 ### WorldHub / Business Infrastructure
 
