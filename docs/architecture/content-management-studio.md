@@ -56,6 +56,8 @@ Current capabilities:
 - manually save/load server checkpoints through private
   `StudioContentWorkspaceSnapshot` rows when the Studio database schema has
   been applied
+- refresh recent checkpoint history and load a specific checkpoint as a manual
+  rollback/recovery action
 
 The provider-neutral type/sample-data contract from the WorldHub foundation
 branch lives in `packages/content-studio-domain`. The active board still uses
@@ -77,9 +79,9 @@ This slice does not:
 - replace existing coaching request or appointment workflows
 
 Browser-local state remains the fast working surface. Manual server checkpoints
-are explicit persistence anchors. They are not canonical public content, not
-provider state, and not a strategic refusal to add cleaner APIs or services
-when those become the smallest correct boundary.
+and checkpoint history are explicit persistence anchors. They are not canonical
+public content, not provider state, and not a strategic refusal to add cleaner
+APIs or services when those become the smallest correct boundary.
 
 ## Live Deployment Posture
 

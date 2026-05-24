@@ -314,3 +314,12 @@ checks, blockers, and next handoff.
 - Live smokes passed for Studio `/api/health` and `/content-studio`.
 - Rollback:
   `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00029-nqp=100`
+
+### Codex / `codex/content-studio-checkpoint-history-001`
+
+- Added Content Studio checkpoint history controls on top of the existing
+  snapshot API.
+- Operators can refresh recent checkpoints, see project/status counts, and load
+  a specific checkpoint instead of only loading the latest.
+- This keeps manual checkpoints useful as recovery/rollback anchors without
+  introducing autosave or canonical publishing state.

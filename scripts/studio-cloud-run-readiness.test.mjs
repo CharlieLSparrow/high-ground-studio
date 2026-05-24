@@ -131,6 +131,8 @@ test("Content Studio checkpoints are wired through authenticated API", () => {
   assert.match(serverModel, /safeContentStudioWorkspaceInput/);
   assert.match(client, /Save Checkpoint/);
   assert.match(client, /Load Latest/);
+  assert.match(client, /Refresh History/);
+  assert.match(client, /Load This Checkpoint/);
   assert.match(client, /No autosave, provider\s+call,\s+or public publish action/);
 });
 

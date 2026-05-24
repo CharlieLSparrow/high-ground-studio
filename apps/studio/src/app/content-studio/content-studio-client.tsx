@@ -61,6 +61,20 @@ type ProjectTemplate = {
   stages: Record<StageId, string[]>;
 };
 
+type ServerSnapshotSummary = {
+  id: string;
+  title: string;
+  projectCount: number;
+  activeCount: number;
+  readyCount: number;
+  blockedCount: number;
+  updatedAt: string;
+};
+
+type ServerSnapshotDetail = ServerSnapshotSummary & {
+  workspace?: unknown;
+};
+
 const stageDefinitions: Array<{
   id: StageId;
   label: string;
@@ -524,6 +538,9 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
   const [serverSnapshotStatus, setServerSnapshotStatus] = useState(
     "Server checkpoints have not been checked in this browser.",
   );
+  const [serverSnapshots, setServerSnapshots] = useState<ServerSnapshotSummary[]>(
+    [],
+  );
   const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
 
   useEffect(() => {
@@ -795,11 +812,77 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
       setServerSnapshotStatus(
         `Saved checkpoint ${payload.snapshot.id} with ${payload.snapshot.projectCount} projects at ${formatDate(payload.snapshot.updatedAt)}.`,
       );
+      setServerSnapshots(await fetchServerSnapshots());
     } catch (error) {
       setServerSnapshotStatus(
         error instanceof Error
           ? error.message
           : "Content Studio checkpoint save failed.",
+      );
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function fetchServerSnapshots() {
+    const response = await fetch("/api/content-studio/snapshots");
+    const payload = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      message?: string;
+      snapshots?: ServerSnapshotSummary[];
+    } | null;
+
+    if (!response.ok || !payload?.ok || !Array.isArray(payload.snapshots)) {
+      throw new Error(
+        payload?.message ?? "Content Studio checkpoint history load failed.",
+      );
+    }
+
+    return payload.snapshots;
+  }
+
+  function loadSnapshotWorkspace(snapshot: ServerSnapshotDetail, label: string) {
+    if (!snapshot.workspace) {
+      setServerSnapshotStatus("No workspace was attached to that checkpoint.");
+      return;
+    }
+
+    const result = parseContentStudioPacket(snapshot.workspace);
+
+    if (!result.ok) {
+      throw new Error(`Stored checkpoint was invalid: ${result.errors.join(" ")}`);
+    }
+
+    const next = {
+      ...result.workspace,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setWorkspace(next);
+    setSelectedProjectId(next.projects[0]?.id ?? "");
+    setTaskDraft("");
+    setServerSnapshotStatus(
+      `Loaded ${label} checkpoint ${snapshot.id} from ${formatDate(snapshot.updatedAt)}.`,
+    );
+  }
+
+  async function refreshServerSnapshotHistory() {
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus("Loading checkpoint history...");
+
+    try {
+      const snapshots = await fetchServerSnapshots();
+      setServerSnapshots(snapshots);
+      setServerSnapshotStatus(
+        snapshots.length > 0
+          ? `Loaded ${snapshots.length} checkpoint${snapshots.length === 1 ? "" : "s"}.`
+          : "No server checkpoints have been saved yet.",
+      );
+    } catch (error) {
+      setServerSnapshotStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio checkpoint history load failed.",
       );
     } finally {
       setIsServerSnapshotBusy(false);
@@ -815,11 +898,7 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
       const payload = (await response.json().catch(() => null)) as {
         ok?: boolean;
         message?: string;
-        snapshot?: {
-          id: string;
-          updatedAt: string;
-          workspace?: unknown;
-        } | null;
+        snapshot?: ServerSnapshotDetail | null;
       } | null;
 
       if (!response.ok || !payload?.ok) {
@@ -833,23 +912,45 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
         return;
       }
 
-      const result = parseContentStudioPacket(payload.snapshot.workspace);
+      loadSnapshotWorkspace(payload.snapshot, "latest");
+      setServerSnapshots(await fetchServerSnapshots());
+    } catch (error) {
+      setServerSnapshotStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio checkpoint load failed.",
+      );
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
 
-      if (!result.ok) {
-        throw new Error(`Stored checkpoint was invalid: ${result.errors.join(" ")}`);
+  async function loadServerSnapshot(snapshotId: string) {
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus(`Loading checkpoint ${snapshotId}...`);
+
+    try {
+      const response = await fetch(
+        `/api/content-studio/snapshots?id=${encodeURIComponent(snapshotId)}`,
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        snapshot?: ServerSnapshotDetail | null;
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.message ?? "Content Studio checkpoint load failed.",
+        );
       }
 
-      const next = {
-        ...result.workspace,
-        updatedAt: new Date().toISOString(),
-      };
+      if (!payload.snapshot) {
+        setServerSnapshotStatus("That checkpoint was not found.");
+        return;
+      }
 
-      setWorkspace(next);
-      setSelectedProjectId(next.projects[0]?.id ?? "");
-      setTaskDraft("");
-      setServerSnapshotStatus(
-        `Loaded checkpoint ${payload.snapshot.id} from ${formatDate(payload.snapshot.updatedAt)}.`,
-      );
+      loadSnapshotWorkspace(payload.snapshot, "server");
     } catch (error) {
       setServerSnapshotStatus(
         error instanceof Error
@@ -981,9 +1082,12 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
                 onImport={importPacket}
                 onImportDraftChange={setImportDraft}
                 onLoadLatestServerSnapshot={loadLatestServerSnapshot}
+                onLoadServerSnapshot={loadServerSnapshot}
+                onRefreshServerSnapshotHistory={refreshServerSnapshotHistory}
                 onSaveServerSnapshot={saveServerSnapshot}
                 productionPacket={selectedProductionPacket}
                 productionPacketJson={productionPacketJson}
+                serverSnapshots={serverSnapshots}
                 serverSnapshotStatus={serverSnapshotStatus}
               />
             </div>
@@ -1337,9 +1441,12 @@ function ExportPanel({
   onImport,
   onImportDraftChange,
   onLoadLatestServerSnapshot,
+  onLoadServerSnapshot,
+  onRefreshServerSnapshotHistory,
   onSaveServerSnapshot,
   productionPacket,
   productionPacketJson,
+  serverSnapshots,
   serverSnapshotStatus,
 }: {
   exportJson: string;
@@ -1354,9 +1461,12 @@ function ExportPanel({
   onImport: () => void;
   onImportDraftChange: (value: string) => void;
   onLoadLatestServerSnapshot: () => void;
+  onLoadServerSnapshot: (snapshotId: string) => void;
+  onRefreshServerSnapshotHistory: () => void;
   onSaveServerSnapshot: () => void;
   productionPacket: ContentStudioProductionPacket | null;
   productionPacketJson: string;
+  serverSnapshots: ServerSnapshotSummary[];
   serverSnapshotStatus: string;
 }) {
   return (
@@ -1406,6 +1516,51 @@ function ExportPanel({
             Load Latest
           </button>
         </div>
+
+        <button
+          className="min-h-11 rounded-lg border border-studio-tag/55 bg-studio-tag/10 px-3 text-sm font-black text-studio-tag disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isServerSnapshotBusy}
+          onClick={onRefreshServerSnapshotHistory}
+          type="button"
+        >
+          Refresh History
+        </button>
+
+        {serverSnapshots.length > 0 ? (
+          <div className="grid gap-2">
+            {serverSnapshots.slice(0, 5).map((snapshot) => (
+              <div
+                className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-2"
+                key={snapshot.id}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-black leading-tight text-studio-ink">
+                    {snapshot.title}
+                  </span>
+                  <span className="font-mono text-[0.68rem] text-studio-muted">
+                    {formatDate(snapshot.updatedAt)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="source">{snapshot.projectCount} projects</Badge>
+                  <Badge tone="tag">{snapshot.activeCount} active</Badge>
+                  <Badge tone="review">{snapshot.readyCount} ready</Badge>
+                  {snapshot.blockedCount > 0 ? (
+                    <Badge tone="danger">{snapshot.blockedCount} blocked</Badge>
+                  ) : null}
+                </div>
+                <button
+                  className="min-h-10 rounded-lg border border-studio-review/55 bg-studio-review/10 px-3 text-sm font-black text-studio-review disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isServerSnapshotBusy}
+                  onClick={() => onLoadServerSnapshot(snapshot.id)}
+                  type="button"
+                >
+                  Load This Checkpoint
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <p className="m-0 font-mono text-xs leading-relaxed text-studio-muted">
           {serverSnapshotStatus}
