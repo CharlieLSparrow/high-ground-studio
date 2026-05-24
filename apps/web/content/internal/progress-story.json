@@ -1,7 +1,42 @@
 {
-  "updatedAt": "2026-05-24T00:45:00.000Z",
+  "updatedAt": "2026-05-24T01:20:00.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "web-domain-readiness-loop",
+      "date": "2026-05-23",
+      "title": "The app domain got its landing checklist",
+      "kicker": "Cloud Run is ready; DNS is the next handoff",
+      "mood": "Almost on the real address",
+      "summary": "The web app now has a repeatable custom-domain readiness check for app.highgroundodyssey.com, and the latest main commit deployed both web and Studio through GitHub Actions.",
+      "body": [
+        "The Cloud Run side is already lined up: app.highgroundodyssey.com routes to the web service, and Cloud Run is waiting only for the public DNS record before it can issue the managed certificate.",
+        "The missing piece is intentionally narrow. In the DNS manager for highgroundodyssey.com, add app as a CNAME to ghs.googlehosted.com. Root and www stay untouched until we deliberately move the public site.",
+        "A new operator command, pnpm web:domain:check, now checks public DNS, the Cloud Run mapping, certificate state, and the current web origin settings. It also prints the OAuth callback and Cloud Run env update sequence so the cutover is repeatable instead of living only in chat.",
+        "After this landed on main, GitHub Actions redeployed both services. Web is serving revision web-00006-m6l and Studio is serving revision studio-00028-qlk. Health checks passed for both."
+      ],
+      "commits": [
+        {
+          "sha": "4de9fb8",
+          "label": "ops: add web domain readiness check"
+        }
+      ],
+      "links": [
+        {
+          "label": "Domain readiness result",
+          "href": "docs/sessions/web-domain-readiness-result.md"
+        },
+        {
+          "label": "Web live",
+          "href": "https://web-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Studio live",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app"
+        }
+      ],
+      "tags": ["DNS", "OAuth", "Cloud Run", "Team Progress"]
+    },
     {
       "id": "github-actions-direct-docker-deploys",
       "date": "2026-05-23",
