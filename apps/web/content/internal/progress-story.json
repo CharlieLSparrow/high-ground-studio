@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T18:50:05.302Z",
+  "updatedAt": "2026-05-24T19:12:05.638Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "studio-hgo-import-clipboard-bridge",
+      "date": "2026-05-24",
+      "title": "Studio to HGO review became a copy-and-open loop",
+      "kicker": "Episode-page drafts are easier to move from Studio into HGO staging",
+      "mood": "Shipped and traceable",
+      "summary": "Content Studio can now copy an HGO projection draft and open the HGO staged importer in one action, while the importer can load clipboard JSON, identify the packet source, and keep private-save versus public-publish boundaries visible.",
+      "body": [
+        "This tightens the podcast and episode-page handoff. The operator can build a production packet in Content Studio, use Copy + Open HGO Import, then load the copied JSON into the HGO staged review route without hunting through downloads or chat snippets.",
+        "The HGO import route now says the true thing: browser review happens first, signed-in team members can explicitly save a private review artifact, and nothing in this path publishes or replaces /episodes."
+      ],
+      "commits": [
+        {
+          "sha": "800dbf9",
+          "label": "feat(hgo): streamline Studio projection import"
+        }
+      ],
+      "links": [
+        {
+          "label": "HGO staged import",
+          "href": "https://app.highgroundodyssey.com/projection-stage/import"
+        },
+        {
+          "label": "Content Studio",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app/content-studio"
+        }
+      ],
+      "tags": ["Content Studio", "HGO", "Episode Pages", "Podcast"]
+    },
     {
       "id": "content-studio-copy-handoff",
       "date": "2026-05-24",

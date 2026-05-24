@@ -6,6 +6,26 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` Studio-to-HGO import bridge
+
+- Tightened the Content Studio to HGO staged-review handoff:
+  - Studio now has `Copy + Open HGO Import` for selected HGO projection drafts.
+  - `/projection-stage/import` can load clipboard JSON, detect direct HGO drafts
+    versus full Content Studio production packets, and clear the import panel.
+  - The import route copy now reflects current reality: browser review first,
+    explicit private team save when signed in, and no public publish action.
+- Updated architecture/runbook docs and the HGO browser smoke expectation so
+  they no longer describe the staged import route as a future-only store path.
+- Validation passed:
+  `pnpm hgo:artifact:test`, `pnpm content-studio:packet:test`,
+  `pnpm progress:story:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter web build` outside the sandbox,
+  `pnpm --filter studio build` outside the sandbox,
+  `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`,
+  `pnpm hgo:projection:browser-smoke`, and `git diff --check`.
+- Local functional commit: `800dbf9`
+  `feat(hgo): streamline Studio projection import`.
+
 ### Codex / `main` Content Studio handoff copy
 
 - Added Content Studio copy/open handoff actions for selected production
