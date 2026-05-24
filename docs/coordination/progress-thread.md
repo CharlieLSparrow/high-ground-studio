@@ -6,6 +6,38 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` Content Studio handoff copy
+
+- Added Content Studio copy/open handoff actions for selected production
+  packets:
+  - copy the full production packet JSON
+  - copy the HGO projection draft JSON when one exists
+  - open `https://app.highgroundodyssey.com/projection-stage/import` directly
+    from Studio
+- Guardrails preserved: no provider calls, no automatic cross-service submit,
+  no public publish action, no production content mutation.
+- Added a public build-journal entry with `pnpm progress:story:add`.
+- Validation passed: `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build` outside the sandbox after the known Turbopack
+  sandbox port-bind panic, `pnpm studio:cloudrun:test`,
+  `pnpm web:cloudrun:test`,
+  `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`,
+  `pnpm progress:story:test`, JSON parse checks, and `git diff --check`.
+- Committed and pushed `08c17ef`:
+  `feat(studio): add content studio handoff copy actions`.
+- GitHub Actions run `26369828940` deployed:
+  - Studio revision `studio-00037-z9r`, serving 100%.
+  - Web revision `web-00045-vhj`, serving 100%.
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new Content Studio handoff story entry.
+- Rollback:
+  - Studio:
+    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00036-7vh=100`
+  - Web:
+    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00044-9n7=100`
+
 ### Codex / `main` public build journal
 
 - Published a public `/updates` page at

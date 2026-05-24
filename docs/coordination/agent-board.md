@@ -23,11 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the public build journal deploy on 2026-05-24.
+Verified after the Content Studio handoff-copy deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | Public updates page `4bd64a2` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, publish-candidate packets, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | Content Studio handoff copy `08c17ef` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, publish-candidate packets, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -87,8 +87,8 @@ Verified after the public build journal deploy on 2026-05-24.
   - deploy coherent Studio slices to the existing private Cloud Run service after validation
   - record live URL, smoke result, and rollback command in the progress thread
 - current live revision:
-  - `studio-00031-rkx` from `main` commit `695645b`
-  - rollback to `studio-00030-ncf`
+  - `studio-00037-z9r` from `main` commit `08c17ef`
+  - rollback to `studio-00036-7vh`
 
 ### HGO Staged Episode Pages
 
@@ -121,8 +121,8 @@ Verified after the public build journal deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00038-jxl` from `main` commit `aaf3568`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00036-rl9`
+  - latest web deploy is `web-00045-vhj` from `main` commit `08c17ef`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00044-9n7`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
