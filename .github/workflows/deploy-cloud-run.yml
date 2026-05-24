@@ -147,6 +147,7 @@ jobs:
           WEB_CLOUD_RUN_PROJECT: ${{ env.GCP_PROJECT }}
           WEB_CLOUD_RUN_REGION: ${{ env.GCP_REGION }}
           WEB_IMAGE_TAG: ${{ github.sha }}
+          WEB_IMAGE_BUILD_STRATEGY: docker
         run: pnpm web:cloudrun:deploy
 
   deploy-studio:
@@ -188,5 +189,5 @@ jobs:
           STUDIO_CLOUD_RUN_PROJECT: ${{ env.GCP_PROJECT }}
           STUDIO_CLOUD_RUN_REGION: ${{ env.GCP_REGION }}
           STUDIO_IMAGE_TAG: ${{ github.sha }}
+          STUDIO_IMAGE_BUILD_STRATEGY: docker
         run: pnpm studio:cloudrun:deploy
-

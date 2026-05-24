@@ -1,7 +1,41 @@
 {
-  "updatedAt": "2026-05-23T23:45:00.000Z",
+  "updatedAt": "2026-05-24T00:45:00.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "github-actions-direct-docker-deploys",
+      "date": "2026-05-23",
+      "title": "The deploy pipeline found the faster road",
+      "kicker": "GitHub Actions is moving around Cloud Build bucket friction",
+      "mood": "Still moving",
+      "summary": "The first CI deploys got through validation, then hit Google Cloud's source-staging bucket permissions. Instead of parking there, the pipeline now builds Docker images on the GitHub runner, pushes to Artifact Registry, and deploys Cloud Run directly.",
+      "body": [
+        "This is a good example of the operating style we want. The workflow got far enough to prove auth, checkout, dependency install, web build validation, Studio typecheck, and the app readiness suites. The blocker was not the app. It was Cloud Build's source upload path.",
+        "The fix keeps Cloud Run as the live target and keeps the deploy helpers as the shared path, but gives CI its own image-build strategy. Local operators can still use Cloud Build by default. GitHub Actions now uses direct Docker build and push so the release path depends on fewer Google Cloud moving parts.",
+        "The deployer was granted scoped write access to the existing Artifact Registry repository, not broad artifact admin. The next merge should prove the new path by deploying web and Studio from main."
+      ],
+      "commits": [
+        {
+          "sha": "codex/github-cloud-deploy-docker-001",
+          "label": "ops: let CI build and push Cloud Run images directly"
+        }
+      ],
+      "links": [
+        {
+          "label": "CI/CD setup result",
+          "href": "docs/sessions/github-cloud-run-cicd-setup-result.md"
+        },
+        {
+          "label": "Web live",
+          "href": "https://web-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Studio live",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app"
+        }
+      ],
+      "tags": ["CI/CD", "Docker", "Artifact Registry", "Cloud Run"]
+    },
     {
       "id": "github-cloud-run-cicd",
       "date": "2026-05-23",

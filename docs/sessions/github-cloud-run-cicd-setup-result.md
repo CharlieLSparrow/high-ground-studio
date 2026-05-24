@@ -140,6 +140,47 @@ Follow-up fix:
 - apply the same fix to web and Studio deploy helpers
 - cover the behavior through the Cloud Run readiness tests
 
+## Cloud Build Bucket Blocker
+
+After the dirty-tree fix, the workflow reached the deploy helpers and passed
+their local validation, but both web and Studio failed at `gcloud builds submit`
+with access denied to the Cloud Build source staging bucket:
+
+```text
+high-ground-odyssey_cloudbuild
+```
+
+Additional IAM was applied for the GitHub deployer service account and the
+restricted GitHub Workload Identity principal:
+
+```text
+roles/serviceusage.serviceUsageConsumer
+roles/storage.objectAdmin on gs://high-ground-odyssey_cloudbuild
+```
+
+The failure persisted, so the CI path was changed instead of spending more time
+on the Cloud Build source-upload edge. The deploy helpers now keep Cloud Build
+as the default local/operator strategy, but GitHub Actions sets:
+
+```text
+WEB_IMAGE_BUILD_STRATEGY=docker
+STUDIO_IMAGE_BUILD_STRATEGY=docker
+```
+
+That mode authenticates Docker to Artifact Registry through `gcloud auth
+configure-docker`, builds from the checked-out repo on the GitHub runner, pushes
+the image to Artifact Registry, then deploys the same image to Cloud Run.
+
+The deployer service account has scoped writer access on the existing Artifact
+Registry repository:
+
+```text
+repository: high-ground-studio
+location: us-central1
+role: roles/artifactregistry.writer
+member: github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
+```
+
 ## Rollback
 
 Cloud Run rollback remains service-specific:

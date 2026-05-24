@@ -75,7 +75,10 @@ Expected health response:
   - skips secrets that already have enabled versions unless
     `FORCE_WEB_SECRET_VERSION=1` is set
 - `scripts/web-cloud-run-deploy.mjs`
-  - builds the web image with Cloud Build
+  - builds the web image with Cloud Build by default
+  - can build and push directly with Docker when
+    `WEB_IMAGE_BUILD_STRATEGY=docker`, which is the GitHub Actions path used to
+    avoid Cloud Build source-staging bucket friction
   - deploys the image to Cloud Run
   - refuses first-service creation unless `WEB_CLOUD_RUN_CREATE_SERVICE=1` is
     explicitly set
