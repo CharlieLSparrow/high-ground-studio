@@ -10,6 +10,7 @@ export type HgoStagedArtifactRecordDto = {
   id: string;
   ownerEmail: string;
   recordId: string;
+  artifactJson: Prisma.JsonValue;
   artifactId: string;
   projectionId: string;
   projectionSlug: string;
@@ -88,6 +89,7 @@ function toDto(record: HgoStagedArtifactModel): HgoStagedArtifactRecordDto {
     id: record.id,
     ownerEmail: record.ownerEmail,
     recordId: record.recordId,
+    artifactJson: record.artifactJson,
     artifactId: record.artifactId,
     projectionId: record.projectionId,
     projectionSlug: record.projectionSlug,

@@ -23,6 +23,8 @@ The first private persistence slice exists:
 - private review/archive controls on `/team/hgo-staged-artifacts`
 - private episode-page publish-candidate packets on
   `/team/hgo-staged-artifacts`
+- copy/download/open controls for immutable artifact JSON and derived
+  publish-candidate packets on `/team/hgo-staged-artifacts`
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -38,6 +40,13 @@ Approved staged artifacts can now derive an
 records rollback expectations. It is private planning metadata only: generating
 it does not create route files, mutate the database, call providers, certify
 public-safety review, or change the immutable staged artifact JSON.
+
+The team shelf also exposes the saved artifact JSON as an operator handoff. An
+operator can copy the artifact, download it, reopen it in
+`/projection-stage/artifact`, copy the publish-candidate packet, or download the
+publish-candidate packet. These controls are private convenience actions around
+existing data; they do not publish, approve, call providers, or mutate the
+stored artifact.
 
 ## Why This Came After The Lab
 
@@ -112,6 +121,7 @@ API/server actions should remain private and explicit:
 - mark review status for a staged artifact: implemented
 - archive staged artifact: implemented
 - derive private episode-page publish-candidate packet: implemented
+- copy/download/reopen saved artifact handoff: implemented in the team route
 - load one staged artifact by id
 - later, create a separate promotion candidate
 

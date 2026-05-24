@@ -14,10 +14,12 @@ import {
   createHgoEpisodePublishCandidateFileName,
   createHgoEpisodePublishCandidatePacket,
 } from "@/lib/hgo/publish-candidate-packet";
+import { createHgoStagedProjectionArtifactFileName } from "@/lib/hgo/staged-projection-artifact";
 import {
   listHgoStagedArtifactsForOwner,
   type HgoStagedArtifactRecordDto,
 } from "@/lib/server/hgo-staged-artifacts";
+import ArtifactHandoffPanel from "./ArtifactHandoffPanel";
 import { markHgoStagedArtifactReviewAction } from "./actions";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
@@ -115,6 +117,12 @@ function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
   const publishCandidateFileName = createHgoEpisodePublishCandidateFileName(
     publishCandidatePacket,
   );
+  const artifactJson = JSON.stringify(record.artifactJson, null, 2);
+  const artifactFileName = createHgoStagedProjectionArtifactFileName(
+    record.artifactJson as Parameters<
+      typeof createHgoStagedProjectionArtifactFileName
+    >[0],
+  );
 
   return (
     <article className="rounded-[24px] border border-white/10 bg-white/8 p-5 text-[var(--text-light)] shadow-glass">
@@ -198,6 +206,14 @@ function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
           </div>
         ) : null}
       </div>
+
+      <ArtifactHandoffPanel
+        artifactFileName={artifactFileName}
+        artifactJson={artifactJson}
+        artifactTitle={record.projectionSlug}
+        publishCandidateFileName={publishCandidateFileName}
+        publishCandidateJson={publishCandidateJson}
+      />
 
       <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm leading-6 text-emerald-50">
         <div className="flex flex-wrap items-start justify-between gap-3">

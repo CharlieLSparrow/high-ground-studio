@@ -37,6 +37,11 @@ type ParsedArtifact =
       artifact: HgoStagedProjectionArtifact;
     };
 
+type ClipboardLoadState = {
+  status: "idle" | "reading" | "loaded" | "error";
+  message: string;
+};
+
 function parseArtifactJson(value: string): ParsedArtifact {
   if (!value.trim()) {
     return {
@@ -233,6 +238,11 @@ function ArtifactImportSummaryPanel({
 export default function ArtifactProjectionStageClient() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [rawArtifactJson, setRawArtifactJson] = useState("");
+  const [clipboardLoadState, setClipboardLoadState] =
+    useState<ClipboardLoadState>({
+      status: "idle",
+      message: "",
+    });
   const parsedArtifact = useMemo(
     () => parseArtifactJson(rawArtifactJson),
     [rawArtifactJson],
@@ -241,6 +251,56 @@ export default function ArtifactProjectionStageClient() {
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  async function loadClipboardJson() {
+    setClipboardLoadState({
+      status: "reading",
+      message: "Reading clipboard...",
+    });
+
+    if (!navigator.clipboard?.readText) {
+      setClipboardLoadState({
+        status: "error",
+        message:
+          "Clipboard reading is not available in this browser. Paste the artifact manually.",
+      });
+      return;
+    }
+
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+
+      if (!clipboardText.trim()) {
+        setClipboardLoadState({
+          status: "error",
+          message: "Clipboard is empty.",
+        });
+        return;
+      }
+
+      setRawArtifactJson(clipboardText);
+      setClipboardLoadState({
+        status: "loaded",
+        message: "Clipboard artifact JSON loaded for inspection.",
+      });
+    } catch (error) {
+      setClipboardLoadState({
+        status: "error",
+        message:
+          error instanceof Error
+            ? `Clipboard read failed: ${error.message}`
+            : "Clipboard read failed.",
+      });
+    }
+  }
+
+  function clearArtifactJson() {
+    setRawArtifactJson("");
+    setClipboardLoadState({
+      status: "idle",
+      message: "",
+    });
+  }
 
   return (
     <div className="min-h-screen bg-void text-subject">
@@ -257,18 +317,19 @@ export default function ArtifactProjectionStageClient() {
               Staged artifact inspection
             </p>
             <h1 className="mt-3 max-w-3xl text-4xl font-black leading-[1.02] md:text-6xl">
-              Validate a browser-created staged artifact before any future store.
+              Validate staged artifact JSON before publish planning.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-subject-muted md:text-lg">
-              Paste a staged artifact JSON file to validate its contract, inspect
-              embedded safety flags, review the saved gate state, and render the
-              embedded projection through the shared HGO component.
+              Paste or load a staged artifact JSON file to validate its
+              contract, inspect embedded safety flags, review the saved gate
+              state, and render the embedded projection through the shared HGO
+              component.
             </p>
             <div className="mt-5 grid gap-3 rounded-[24px] border border-amber-300/25 bg-amber-300/10 p-5 text-sm font-bold leading-6 text-amber-100">
               <p>This does not persist artifact JSON.</p>
               <p>This does not publish or verify public safety.</p>
               <p>This is artifact inspection only.</p>
-              <p>Future private staged store may accept this shape.</p>
+              <p>Saved team artifacts can be reopened here for inspection.</p>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link
@@ -299,23 +360,62 @@ export default function ArtifactProjectionStageClient() {
           </div>
 
           <div className="grid gap-4 rounded-[28px] border border-white/12 bg-white/8 p-5 shadow-glass backdrop-blur">
-            <label className="grid gap-2">
-              <span className="text-sm font-black uppercase text-flare">
-                Staged artifact JSON
-              </span>
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label
+                  className="text-sm font-black uppercase text-flare"
+                  htmlFor="hgo-stage-artifact-json"
+                >
+                  Staged artifact JSON
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="rounded-full border border-flare/35 bg-flare/12 px-4 py-2 text-sm font-bold text-flare transition hover:bg-flare/18 disabled:cursor-wait disabled:opacity-60"
+                    data-testid="hgo-stage-artifact-paste-clipboard"
+                    disabled={clipboardLoadState.status === "reading"}
+                    onClick={() => void loadClipboardJson()}
+                    type="button"
+                  >
+                    {clipboardLoadState.status === "reading"
+                      ? "Reading..."
+                      : "Paste Clipboard"}
+                  </button>
+                  <button
+                    className="rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm font-bold text-subject-muted transition hover:bg-white/12"
+                    data-testid="hgo-stage-artifact-clear"
+                    onClick={clearArtifactJson}
+                    type="button"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
               <textarea
+                id="hgo-stage-artifact-json"
                 className="min-h-[300px] w-full resize-y rounded-[18px] border border-white/12 bg-void-light/80 px-4 py-3 font-mono text-xs leading-6 text-subject outline-none focus:border-flare/45"
                 data-testid="hgo-stage-artifact-json"
                 value={rawArtifactJson}
-                onChange={(event) => setRawArtifactJson(event.target.value)}
-                onInput={(event) =>
-                  setRawArtifactJson(event.currentTarget.value)
-                }
+                onChange={(event) => {
+                  setRawArtifactJson(event.target.value);
+                  setClipboardLoadState({ status: "idle", message: "" });
+                }}
                 spellCheck={false}
               />
-            </label>
+            </div>
 
             <div className="grid gap-3">
+              {clipboardLoadState.message ? (
+                <div
+                  className={`rounded-[20px] border p-4 text-sm font-bold leading-6 ${
+                    clipboardLoadState.status === "error"
+                      ? "border-rose-300/35 bg-rose-300/10 text-rose-100"
+                      : "border-sky-300/35 bg-sky-300/10 text-sky-100"
+                  }`}
+                  data-testid="hgo-stage-artifact-clipboard-status"
+                >
+                  {clipboardLoadState.message}
+                </div>
+              ) : null}
               <div data-testid="hgo-stage-artifact-validation-errors">
                 <ValidationList
                   title="Artifact errors"

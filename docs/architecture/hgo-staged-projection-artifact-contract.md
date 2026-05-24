@@ -152,11 +152,14 @@ Focused node tests cover the Store Lab through:
 
 1. Studio generates projection JSON.
 2. HGO staged import review creates a browser artifact.
-3. HGO staged artifact import validates the browser-created artifact.
+3. HGO staged artifact import validates the browser-created or clipboard-loaded
+   artifact.
 4. HGO Store Lab models browser-session lifecycle state.
 5. A human reviews blocker and warning state.
 6. The private staged store saves approved artifacts for team review.
-7. A later approved promotion workflow creates live public pages.
+7. The team shelf can copy, download, and reopen saved artifacts for review or
+   publish-candidate handoff.
+8. A later approved promotion workflow creates live public pages.
 
 Future persistence planning lives in:
 

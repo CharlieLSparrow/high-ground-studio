@@ -187,12 +187,12 @@ High Ground Studio is a monorepo with:
   store; anonymous visitors still only get browser review. It does not publish,
   replace public `/episodes`, or use real content in tests.
 - HGO has a browser-only staged artifact inspection route at
-  `/projection-stage/artifact`. It accepts pasted `hgo-staged-artifact-v1`
-  JSON, validates the artifact contract, validates the embedded projection,
-  checks embedded review-gate id/slug/title/status/visibility identity, shows
-  safety flags, and renders the embedded projection. It does not persist,
-  publish, write local storage, verify public safety, replace public
-  `/episodes`, or use real content.
+  `/projection-stage/artifact`. It accepts pasted or clipboard-loaded
+  `hgo-staged-artifact-v1` JSON, validates the artifact contract, validates the
+  embedded projection, checks embedded review-gate id/slug/title/status/
+  visibility identity, shows safety flags, and renders the embedded projection.
+  It does not persist, publish, write local storage, verify public safety,
+  replace public `/episodes`, or use real content.
 - HGO has a browser-session staged artifact Store Lab at
   `/projection-stage/store-lab`. It imports validated `hgo-staged-artifact-v1`
   JSON into React state only, models future private-store lifecycle behavior,
@@ -207,7 +207,9 @@ High Ground Studio is a monorepo with:
   The API is team-gated, saves only validated `hgo-staged-artifact-v1` review
   packets, preserves embedded artifact JSON with `persisted: false` and
   `published: false`, stores server persistence metadata outside the artifact,
-  and does not publish public pages.
+  and does not publish public pages. The team route exposes copy/download/open
+  handoff controls for saved artifact JSON and derived private episode-page
+  publish-candidate packets.
 - HGO has a pure staged artifact contract test command,
   `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
   validator state, invalid version, persisted/published safety failures,
@@ -338,7 +340,9 @@ High Ground Studio is a monorepo with:
   content files, or public routes.
 - The private HGO staged artifact store is additive and team-gated. It does not
   publish, approve, delete, replace `/episodes`, or verify real public-safety
-  status.
+  status. Saved artifacts can be copied, downloaded, reopened in the artifact
+  inspector, or turned into private publish-candidate handoff packets without
+  mutating public content.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a
