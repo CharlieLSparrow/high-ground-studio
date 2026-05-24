@@ -6,6 +6,20 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` Studio full-packet HGO handoff
+
+- Updated Content Studio so `Copy Packet + Open HGO` copies the full selected
+  production packet instead of splitting out only the HGO draft.
+- Added a direct Studio link to the private HGO publish queue for saved
+  artifact follow-through.
+- Guardrails preserved: no provider calls, no public route creation, no public
+  publish action, and no HGO artifact mutation.
+- Validation passed: `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build` outside the sandbox, `pnpm studio:cloudrun:test`,
+  and `git diff --check`.
+- Local functional commit: `27459c6`
+  `feat(studio): copy production packet to HGO import`.
+
 ### Codex / `main` HGO episode publish queue
 
 - Added `/team/hgo-publish-queue` as a private episode-page publish planning

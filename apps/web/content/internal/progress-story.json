@@ -1,7 +1,35 @@
 {
-  "updatedAt": "2026-05-24T20:16:30.059Z",
+  "updatedAt": "2026-05-24T20:27:33.794Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "studio-production-packet-hgo-handoff",
+      "date": "2026-05-24",
+      "title": "Studio now hands HGO the whole packet",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Content Studio now copies the full selected production packet when opening HGO import, preserving project context while HGO extracts the staged projection draft.",
+      "body": [
+        "The Studio handoff still keeps publishing manual and reviewed: it opens HGO staged import, links to the private publish queue, and does not call providers or create public pages."
+      ],
+      "commits": [
+        {
+          "sha": "27459c6",
+          "label": "feat(studio): copy production packet to HGO import"
+        }
+      ],
+      "links": [
+        {
+          "label": "Content Studio",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app/content-studio"
+        },
+        {
+          "label": "Publish queue",
+          "href": "https://app.highgroundodyssey.com/team/hgo-publish-queue"
+        }
+      ],
+      "tags": ["Studio", "HGO", "Episode Pages"]
+    },
     {
       "id": "hgo-episode-publish-queue",
       "date": "2026-05-24",
