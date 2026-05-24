@@ -6,6 +6,42 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO draft packet lab
+
+- Added portable validation for `hgo-episode-publish-draft-v1` packets:
+  - validates packet kind and required identity fields
+  - requires private-review frontmatter and draft status
+  - requires uncertified citation/public-safety state
+  - rejects safety flags that imply content-file writes, DB mutation, public
+    route creation, live publishing, provider calls, or staged-artifact mutation
+- Added `/team/hgo-publish-draft-lab` as a private team route for pasting a
+  publish-draft packet, validating it, inspecting generated MDX, inspecting
+  frontmatter, and copying/downloading private handoff files.
+- Added the Draft Lab link to the team console navigation.
+- Guardrails preserved: no public route creation, no content-file mutation, no
+  staged artifact mutation, no provider calls, no citation/public-safety
+  certification, no live publish action, and no `/episodes` replacement.
+- Validation passed: `pnpm hgo:publish-candidate:test`,
+  `pnpm progress:story:test`, `pnpm web:cloudrun:test`,
+  `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+- Local functional commit: `37270e5`
+  `feat(web): add HGO publish draft packet lab`.
+- Pushed final deploy head `3f97c92`
+  `docs: log HGO draft packet lab`.
+- GitHub Actions run `26373399963` completed successfully:
+  - Web revision `web-00053-2tv`, serving 100%.
+  - Studio deploy skipped because this slice did not touch Studio runtime
+    paths.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new draft-packet-lab story entry.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-draft-lab` returned the
+    expected unauthenticated team sign-in redirect.
+- Post-deploy readiness test passed: `pnpm web:cloudrun:test`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00052-vjs=100`
+
 ### Codex / `main` HGO draft export handoff
 
 - Added first-class handoff exports for generated private HGO publish drafts:
