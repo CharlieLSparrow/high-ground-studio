@@ -135,8 +135,10 @@ High Ground Studio is a monorepo with:
   projection drafts for podcast and episode-page projects, and can save/load
   explicit server checkpoints through private Prisma-backed
   `StudioContentWorkspaceSnapshot` rows when the Studio database schema is
-  applied. These checkpoints are manual recovery/shared-work anchors, not
-  autosave and not canonical publishing state. The route does not call provider
+  applied. It can also refresh recent checkpoint history and load a specific
+  checkpoint as a manual recovery/rollback action. These checkpoints are manual
+  recovery/shared-work anchors, not autosave and not canonical publishing state.
+  The route does not call provider
   APIs, publish public content, use real manuscript/HGO source material in
   tests, or replace existing HGO/WorldHub/coaching workflows. The broader
   Production packets are browser downloads/review payloads only: they do not
