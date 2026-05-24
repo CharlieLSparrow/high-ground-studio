@@ -109,6 +109,24 @@ checks, blockers, and next handoff.
 - Deeper rollback while the Neon source remains valid:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00031-4r2=100`.
 
+### Codex / `main` web custom-domain recheck
+
+- Re-ran `pnpm web:domain:check` after the web Cloud SQL cutover.
+- Cloud Run domain mapping still routes `app.highgroundodyssey.com` to service
+  `web`, and the requested record remains `app CNAME ghs.googlehosted.com.`
+- Public DNS still has no `app.highgroundodyssey.com` CNAME, so the Cloud Run
+  managed certificate remains `CertificatePending`.
+- Enabled Cloud DNS API in `high-ground-odyssey`; no managed zones are visible
+  in that project.
+- Enabled Cloud Domains API in `high-ground-odyssey`; no registrations are
+  visible in that project.
+- Enabled Cloud DNS API in accessible project `gen-lang-client-0819080752`
+  (`HighGroundOdyssey`); no managed zones are visible there.
+- Attempted Cloud DNS API enablement in `high-ground-schedule`, but billing is
+  not attached to that project.
+- Current handoff: add only this DNS record wherever the authoritative zone is
+  managed: `app.highgroundodyssey.com CNAME ghs.googlehosted.com.`
+
 ## 2026-05-23
 
 ### Codex / `codex/content-studio-command-001`

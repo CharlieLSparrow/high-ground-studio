@@ -105,11 +105,28 @@ app.highgroundodyssey.com NXDOMAIN
 
 WHOIS reports the registrar as Squarespace Domains LLC.
 
-Cloud DNS API was not enabled in the accessible Google Cloud projects checked
-from this workstation, including `high-ground-odyssey`, so the authoritative
-DNS record is not currently editable through `gcloud dns` here. The DNS record
-likely needs to be added through Squarespace Domains or the legacy Google
-Domains DNS surface.
+2026-05-24 recheck:
+
+- `pnpm web:domain:check` still reports `app.highgroundodyssey.com` has no
+  CNAME record.
+- Cloud Run still routes the domain mapping to `web` and requests
+  `app CNAME ghs.googlehosted.com.`
+- Cloud Run certificate state is still `CertificatePending` because the DNS
+  challenge record is not visible publicly.
+- Enabled Cloud DNS API in `high-ground-odyssey`; no managed zones are visible
+  there.
+- Enabled Cloud Domains API in `high-ground-odyssey`; no registrations are
+  visible there.
+- Enabled Cloud DNS API in accessible project `gen-lang-client-0819080752`
+  (`HighGroundOdyssey`); no managed zones are visible there.
+- Attempted to enable Cloud DNS API in `high-ground-schedule`, but that project
+  has no billing account attached.
+
+The authoritative nameserver pattern still looks like a Google Cloud DNS zone,
+but that zone is not visible in the accessible projects checked from this
+workstation. The DNS record likely needs to be added through Squarespace
+Domains, legacy Google Domains, or another Google Cloud project/account that
+owns the zone.
 
 ## Required DNS Record
 

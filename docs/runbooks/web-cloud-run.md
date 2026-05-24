@@ -661,7 +661,7 @@ Cloud Run currently requests:
 app CNAME ghs.googlehosted.com.
 ```
 
-Current public DNS findings from 2026-05-23:
+Current public DNS findings from 2026-05-24:
 
 - `highgroundodyssey.com` is registered through Squarespace Domains.
 - Authoritative nameservers are `ns-cloud-a1` through `ns-cloud-a4`.
@@ -669,9 +669,16 @@ Current public DNS findings from 2026-05-23:
 - `www.highgroundodyssey.com` is a CNAME to a Vercel DNS target.
 - `app.highgroundodyssey.com` is currently NXDOMAIN until the CNAME above is
   added.
-- Cloud DNS API is not enabled in the accessible Google Cloud projects checked
-  from this workstation, so the DNS record likely needs to be added in
-  Squarespace Domains or the legacy Google Domains DNS surface.
+- Cloud DNS API is now enabled in `high-ground-odyssey` and
+  `gen-lang-client-0819080752`, but no managed zone for
+  `highgroundodyssey.com` is visible in either project.
+- Cloud Domains API is now enabled in `high-ground-odyssey`, but no domain
+  registration is visible there.
+- Enabling Cloud DNS API in `high-ground-schedule` was blocked because that
+  project has no billing account attached.
+- The authoritative DNS zone likely needs to be updated in Squarespace
+  Domains, legacy Google Domains, or another Google Cloud project/account that
+  owns the zone.
 
 Add only the `app` CNAME first. Do not change root or `www` as part of this
 staging-domain pass.
