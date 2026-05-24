@@ -1,0 +1,192 @@
+name: Deploy Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Cloud Run service to deploy
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - web
+          - studio
+          - auto
+
+concurrency:
+  group: cloud-run-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT: high-ground-odyssey
+  GCP_REGION: us-central1
+  WIF_PROVIDER: projects/659427658635/locations/global/workloadIdentityPools/github-actions/providers/github
+  DEPLOYER_SERVICE_ACCOUNT: github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  plan:
+    name: Plan deploy
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.plan.outputs.web }}
+      studio: ${{ steps.plan.outputs.studio }}
+      summary: ${{ steps.plan.outputs.summary }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Choose deploy targets
+        id: plan
+        shell: bash
+        env:
+          TARGET: ${{ github.event.inputs.target || 'auto' }}
+        run: |
+          set -euo pipefail
+
+          web=false
+          studio=false
+          summary="No deployable app changes detected."
+
+          case "$TARGET" in
+            all)
+              web=true
+              studio=true
+              summary="Manual deploy requested for web and studio."
+              ;;
+            web)
+              web=true
+              summary="Manual deploy requested for web."
+              ;;
+            studio)
+              studio=true
+              summary="Manual deploy requested for studio."
+              ;;
+            auto)
+              base="${{ github.event.before }}"
+
+              if [[ -z "$base" || "$base" == "0000000000000000000000000000000000000000" ]]; then
+                base="$(git rev-parse "${GITHUB_SHA}^")"
+              fi
+
+              changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
+              web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|\.dockerignore$)'
+              studio_re='^(apps/studio/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|\.dockerignore$)'
+
+              if grep -Eq "$web_re" <<< "$changed"; then
+                web=true
+              fi
+
+              if grep -Eq "$studio_re" <<< "$changed"; then
+                studio=true
+              fi
+
+              if [[ "$web" == "true" || "$studio" == "true" ]]; then
+                summary="Auto deploy planned from changed app/runtime files."
+              fi
+              ;;
+            *)
+              echo "Unknown target: $TARGET" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "studio=$studio" >> "$GITHUB_OUTPUT"
+          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          echo "$summary"
+          echo "web=$web"
+          echo "studio=$studio"
+
+  deploy-web:
+    name: Deploy web
+    needs: plan
+    if: needs.plan.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.3 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy web Cloud Run
+        env:
+          GCLOUD_PROJECT: ${{ env.GCP_PROJECT }}
+          WEB_CLOUD_RUN_PROJECT: ${{ env.GCP_PROJECT }}
+          WEB_CLOUD_RUN_REGION: ${{ env.GCP_REGION }}
+          WEB_IMAGE_TAG: ${{ github.sha }}
+        run: pnpm web:cloudrun:deploy
+
+  deploy-studio:
+    name: Deploy studio
+    needs: plan
+    if: needs.plan.outputs.studio == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.3 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Studio Cloud Run
+        env:
+          GCLOUD_PROJECT: ${{ env.GCP_PROJECT }}
+          STUDIO_CLOUD_RUN_PROJECT: ${{ env.GCP_PROJECT }}
+          STUDIO_CLOUD_RUN_REGION: ${{ env.GCP_REGION }}
+          STUDIO_IMAGE_TAG: ${{ github.sha }}
+        run: pnpm studio:cloudrun:deploy
+

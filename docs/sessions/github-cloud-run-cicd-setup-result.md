@@ -1,0 +1,154 @@
+# GitHub Cloud Run CI/CD Setup Result
+
+Date: 2026-05-23
+
+Branch:
+
+```text
+codex/github-cloud-deploy-001
+```
+
+## Goal
+
+Move web and Studio deploys toward a low-human-intervention Google Cloud path.
+The first CI/CD slice should avoid long-lived Google service account keys and
+reuse the deploy helpers that already passed live Cloud Run smoke checks.
+
+## Google Cloud Admin Work
+
+Enabled APIs in project `high-ground-odyssey`:
+
+```text
+iamcredentials.googleapis.com
+sts.googleapis.com
+```
+
+Created deployer service account:
+
+```text
+github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
+```
+
+Granted project-level deploy permissions:
+
+```text
+roles/cloudbuild.builds.editor
+roles/run.admin
+roles/storage.objectAdmin
+```
+
+Granted scoped runtime impersonation:
+
+```text
+web-cloud-run@high-ground-odyssey.iam.gserviceaccount.com
+studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com
+```
+
+The deployer has `roles/iam.serviceAccountUser` on those runtime service
+accounts only. It was not granted broad project-level service-account-user
+authority.
+
+Created Workload Identity Federation:
+
+```text
+pool: github-actions
+provider: github
+provider resource:
+projects/659427658635/locations/global/workloadIdentityPools/github-actions/providers/github
+```
+
+Provider restriction:
+
+```text
+CharlieLSparrow/high-ground-studio
+```
+
+Granted Workload Identity User on the deployer service account to:
+
+```text
+principalSet://iam.googleapis.com/projects/659427658635/locations/global/workloadIdentityPools/github-actions/attribute.repository/CharlieLSparrow/high-ground-studio
+```
+
+## Repo Changes
+
+Added:
+
+```text
+.github/workflows/deploy-cloud-run.yml
+```
+
+The workflow:
+
+- runs on pushes to `main`
+- supports manual dispatch for `all`, `web`, `studio`, or `auto`
+- deploys web only when web/shared/runtime files change
+- deploys Studio only when Studio/shared/runtime files change
+- uses GitHub OIDC through Google Workload Identity Federation
+- runs `pnpm web:cloudrun:deploy` for web
+- runs `pnpm studio:cloudrun:deploy` for Studio
+- lets web and Studio deploy in parallel during a manual `all` release
+
+Updated:
+
+```text
+docs/runbooks/web-cloud-run.md
+docs/runbooks/studio-cloud-run.md
+docs/coordination/progress-thread.md
+apps/web/content/internal/progress-story.json
+```
+
+## Verification Completed
+
+Local verification:
+
+```bash
+node -e "JSON.parse(require('node:fs').readFileSync('apps/web/content/internal/progress-story.json','utf8'))"
+ruby -e "require 'yaml'; YAML.load_file('.github/workflows/deploy-cloud-run.yml')"
+git diff --check
+pnpm web:cloudrun:test
+pnpm studio:cloudrun:test
+```
+
+After merging:
+
+1. Push to `main` should run the workflow.
+2. This branch should deploy `web` because it updates checked-in web content
+   for the team progress story.
+3. A manual GitHub Actions dispatch with target `all` should deploy both live
+   Cloud Run services and print rollback commands in the job logs.
+
+## Rollback
+
+Cloud Run rollback remains service-specific:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=KNOWN_GOOD_WEB_REVISION=100
+```
+
+```bash
+gcloud run services update-traffic studio \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=KNOWN_GOOD_STUDIO_REVISION=100
+```
+
+CI/CD rollback, if the workflow itself misbehaves:
+
+```bash
+git revert COMMIT_THAT_ADDED_OR_CHANGED_THE_WORKFLOW
+```
+
+Then disable or pause the GitHub Actions workflow from the repository Actions
+tab until a corrected workflow lands.
+
+## Not Changed
+
+- No database schema was changed.
+- No `db:push` or database migration was run.
+- No runtime secrets were printed or committed.
+- No DNS records were changed.
+- No OAuth callback was changed.
+- No billing or provider integrations were changed.

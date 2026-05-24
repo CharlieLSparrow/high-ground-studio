@@ -142,3 +142,28 @@ checks, blockers, and next handoff.
   Google project/account or DNS management surface.
 - Root `highgroundodyssey.com` and `www.highgroundodyssey.com` DNS were not
   changed.
+
+### Codex / `codex/github-cloud-deploy-001`
+
+- Created a dedicated Google Cloud deployer service account:
+  `github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com`.
+- Granted the deployer Cloud Build editor, Cloud Run admin, and artifact
+  storage object admin permissions.
+- Granted the deployer `roles/iam.serviceAccountUser` only on the existing
+  runtime service accounts:
+  - `web-cloud-run@high-ground-odyssey.iam.gserviceaccount.com`
+  - `studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com`
+- Enabled the IAM Credentials and Security Token Service APIs.
+- Created Workload Identity Federation resources for GitHub Actions:
+  - pool: `github-actions`
+  - provider: `github`
+  - provider resource:
+    `projects/659427658635/locations/global/workloadIdentityPools/github-actions/providers/github`
+- Restricted the provider to repository
+  `CharlieLSparrow/high-ground-studio`.
+- Added `.github/workflows/deploy-cloud-run.yml` so pushes to `main` deploy
+  changed Cloud Run targets and manual dispatch can deploy `all`, `web`,
+  `studio`, or `auto`.
+- The workflow reuses `pnpm web:cloudrun:deploy` and
+  `pnpm studio:cloudrun:deploy` so CI deploys keep the same validation, Cloud
+  Build, smoke, and rollback behavior as operator deploys.

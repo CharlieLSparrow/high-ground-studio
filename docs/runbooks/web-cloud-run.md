@@ -325,6 +325,54 @@ WEB_LOCAL_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground
 pnpm web:cloudrun:deploy
 ```
 
+## GitHub Actions CI/CD
+
+`main` now has a GitHub Actions workflow for low-friction Cloud Run deploys:
+
+```text
+.github/workflows/deploy-cloud-run.yml
+```
+
+The workflow uses Google Workload Identity Federation, not a checked-in service
+account key. It impersonates:
+
+```text
+github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
+```
+
+Google Cloud identity resources:
+
+```text
+pool: github-actions
+provider: github
+provider resource:
+projects/659427658635/locations/global/workloadIdentityPools/github-actions/providers/github
+```
+
+The provider is restricted to:
+
+```text
+CharlieLSparrow/high-ground-studio
+```
+
+On pushes to `main`, the workflow deploys `web` only when changed files touch
+`apps/web`, shared packages, Prisma, workspace dependency files, the web Cloud
+Build config, web Cloud Run scripts, or `.dockerignore`.
+
+Manual dispatch is available from GitHub Actions with target choices:
+
+```text
+all
+web
+studio
+auto
+```
+
+Manual `all` deploys both `web` and `studio` in parallel. The web job runs
+`pnpm web:cloudrun:deploy`, so it keeps the same local checks, Cloud Build
+image build, Cloud Run deploy, smoke checks, and rollback output as the
+operator helper.
+
 ## First Service Deploy
 
 The first deploy creates the `web` service and attaches the required runtime
