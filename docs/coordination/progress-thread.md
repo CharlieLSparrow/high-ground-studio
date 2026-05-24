@@ -25,6 +25,21 @@ checks, blockers, and next handoff.
   and `git diff --check`.
 - Local functional commit: `409c625`
   `feat(web): add HGO artifact handoff controls`.
+- Pushed final deploy head `6307e7a`
+  `docs: log HGO artifact handoff controls`.
+- GitHub Actions run `26371342232` completed successfully:
+  - Web revision `web-00047-lf8`, serving 100%.
+  - Studio deploy skipped because this slice did not touch Studio runtime
+    paths.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/projection-stage/artifact` returned 200
+    and includes `Paste Clipboard` plus the saved-artifact inspector copy.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new HGO artifact handoff story entry.
+- Post-deploy readiness test passed: `pnpm web:cloudrun:test`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00046-jwx=100`
 
 ### Codex / `main` Studio-to-HGO import bridge
 
