@@ -195,18 +195,17 @@ Check the active web database target without printing the `DATABASE_URL` secret:
 pnpm web:db:target:report
 ```
 
-This report reads Cloud Run, the mounted `web-database-url` secret, and the
+This report reads Cloud Run, the mounted `web-cloudsql-database-url` secret, and the
 configured Cloud SQL instance. It prints only derived target metadata such as
 provider, host, database name, Cloud SQL databases, and Cloud SQL users. It does
 not print the full URL, username, or password.
 
-As of the 2026-05-24 HGO staged artifact rollout, the web service has the
-Cloud SQL attachment but the `web-database-url` secret still points at a Neon
-PostgreSQL pooler. The Cloud SQL attachment alone does not move Prisma writes.
-Treat the web database move as an explicit migration/cutover: create a staged
-Cloud SQL database/user/secret, run schema sync against that staged secret,
-copy and verify data, then swap `web-database-url` only after rollback is
-clear.
+As of the 2026-05-24 Cloud SQL cutover, the live `web` service mounts
+`DATABASE_URL` from `web-cloudsql-database-url`, which targets database `web`
+on Cloud SQL instance `high-ground-odyssey:us-central1:studio-postgres`.
+The old `web-database-url` secret remains useful as the legacy Neon source and
+short-term rollback anchor, but new web runtime revisions should keep mounting
+`web-cloudsql-database-url`.
 
 Stage the separate Cloud SQL web target without changing the active runtime
 secret:
@@ -240,7 +239,8 @@ FORCE_WEB_CLOUDSQL_PASSWORD=1 FORCE_WEB_CLOUDSQL_SECRET_VERSION=1 pnpm web:cloud
 WEB_CLOUDSQL_GRANT_CLIENT=0 pnpm web:cloudsql:prepare
 ```
 
-After staging the target, apply the Prisma schema to
+This was the staging path used for the 2026-05-24 cutover. If rebuilding from
+scratch or repeating the move in another environment, apply the Prisma schema to
 `web-cloudsql-database-url` through a one-off Cloud Run Job before any data
 copy or runtime-secret swap.
 
@@ -275,6 +275,38 @@ the current Cloud SQL Postgres 16 target, and pipes the result through `psql` wi
 `ON_ERROR_STOP=1`. It refuses to restore into a non-empty target unless
 `POSTGRES_COPY_ALLOW_NONEMPTY_TARGET=1` is explicitly set, and prints only table
 row counts. It does not print database URLs or row data.
+
+The successful 2026-05-24 copy job was:
+
+```text
+job: web-neon-to-cloudsql-copy-f14c4c7
+execution: web-neon-to-cloudsql-copy-f14c4c7-w27bk
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/postgres-copy:f14c4c7
+source-before rows: 20
+target-before rows: 0
+target-after rows: 20
+```
+
+The live cutover used a no-traffic smoke revision before routing traffic:
+
+```text
+previous live revision: web-00031-4r2
+Cloud SQL revision: web-00033-den
+tagged smoke URL: https://cloudsql-smoke---web-hm2odnvjga-uc.a.run.app
+live URL: https://web-hm2odnvjga-uc.a.run.app
+```
+
+Smoke checks passed for `/api/health`, `/`, `/projection-stage/import`, and
+unauthenticated `/team/progress` redirect before and after live routing.
+
+Rollback while the Neon source remains valid:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=web-00031-4r2=100
+```
 
 If the expected web secrets exist but do not have enabled versions yet, seed
 them from local env files:
@@ -529,7 +561,7 @@ gcloud run deploy web \
   --allow-unauthenticated \
   --port=8080 \
   --set-env-vars=HGO_SITE_URL=https://WEB_SERVICE_URL \
-  --set-secrets=DATABASE_URL=web-database-url:latest,AUTH_SECRET=web-auth-secret:latest,GOOGLE_CLIENT_ID=web-google-client-id:latest,GOOGLE_CLIENT_SECRET=web-google-client-secret:latest,HGO_OWNER_EMAILS=web-owner-emails:latest,HGO_TEAM_SCHEDULER_EMAILS=web-team-scheduler-emails:latest,HGO_COACH_EMAILS=web-coach-emails:latest
+  --set-secrets=DATABASE_URL=web-cloudsql-database-url:latest,AUTH_SECRET=web-auth-secret:latest,GOOGLE_CLIENT_ID=web-google-client-id:latest,GOOGLE_CLIENT_SECRET=web-google-client-secret:latest,HGO_OWNER_EMAILS=web-owner-emails:latest,HGO_TEAM_SCHEDULER_EMAILS=web-team-scheduler-emails:latest,HGO_COACH_EMAILS=web-coach-emails:latest
 ```
 
 `--allow-unauthenticated` allows public routes and NextAuth sign-in routes to be

@@ -23,12 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the private HGO staged artifact store merge, web database sync,
-and web deploy on 2026-05-24.
+Verified after the live web Cloud SQL cutover on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | review-controls deploy `3ab47aa` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, and latest progress story are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | web Cloud SQL cutover `f14c4c7` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, and the web Cloud SQL cutover are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -111,12 +110,16 @@ and web deploy on 2026-05-24.
     `approved-for-future-staging`, or `archived`
   - `/api/hgo/staged-artifacts` and `/team/hgo-staged-artifacts` are
     authenticated/team-gated
-  - live schema was synced by Cloud Run Job `web-db-push-b07c73d`
-  - `pnpm web:db:target:report` confirms web currently writes to Neon even
-    though Cloud Run has the Cloud SQL attachment
+  - live schema was first synced by Cloud Run Job `web-db-push-b07c73d`
+  - web persistence has moved from Neon to the staged Cloud SQL target:
+    database `web`, user `web_app`, secret `web-cloudsql-database-url`
+  - successful copy job `web-neon-to-cloudsql-copy-f14c4c7-w27bk` copied 20
+    public-schema rows from Neon into Cloud SQL
+  - `pnpm web:db:target:report` confirms live `web` mounts
+    `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web/story deploy is `web-00025-x2s` from `main` commit `3ab47aa`
-  - rollback to `web-00022-vb8`
+  - latest web deploy is `web-00033-den` from `main` commit `f14c4c7`
+  - rollback to `web-00031-4r2` while the legacy Neon source remains valid
 
 ### WorldHub / Business Infrastructure
 

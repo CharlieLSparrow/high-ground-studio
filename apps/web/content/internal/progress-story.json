@@ -1,7 +1,41 @@
 {
-  "updatedAt": "2026-05-24T05:00:00.000Z",
+  "updatedAt": "2026-05-24T11:36:29.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "web-cloudsql-cutover",
+      "date": "2026-05-24",
+      "title": "The web app moved its live database onto Google Cloud",
+      "kicker": "Neon is no longer the live web database path",
+      "mood": "More owned",
+      "summary": "The web Cloud Run service now mounts DATABASE_URL from the staged Cloud SQL secret, after schema sync, guarded data copy, isolated smoke testing, and live traffic cutover.",
+      "body": [
+        "This was the first serious admin move toward getting High Ground Odyssey fully onto Google Cloud. The web app already ran on Cloud Run, but its runtime database secret still pointed at Neon. We staged a separate Cloud SQL database named web, a least-privilege web_app user, and a separate Secret Manager URL so the move could be tested without changing live traffic first.",
+        "The staged database got the Prisma schema through a one-off Cloud Run Job. Then a guarded Postgres copy job copied only public schema data from the old source to Cloud SQL, refusing non-empty targets and printing only row counts. The successful copy moved 20 rows: users, roles, membership plans, coaching requests, client profiles, and one appointment.",
+        "Before routing users, Cloud Run created a no-traffic revision with the Cloud SQL secret and tested health, home, HGO staged import, and team-progress redirect behavior. After that passed, live traffic moved to web-00033-den. The previous Neon-backed revision remains the rollback target while the new database path gets runtime history."
+      ],
+      "commits": [
+        {
+          "sha": "f14c4c7",
+          "label": "ops(web): copy only public schema data"
+        }
+      ],
+      "links": [
+        {
+          "label": "Web live",
+          "href": "https://web-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Team progress",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/team/progress"
+        },
+        {
+          "label": "Web Cloud Run runbook",
+          "href": "docs/runbooks/web-cloud-run.md"
+        }
+      ],
+      "tags": ["Google Cloud", "Cloud SQL", "Cloud Run", "Database"]
+    },
     {
       "id": "hgo-staged-artifact-review-controls",
       "date": "2026-05-24",

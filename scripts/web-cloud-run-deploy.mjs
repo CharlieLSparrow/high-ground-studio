@@ -11,7 +11,7 @@ const DEFAULT_RUNTIME_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/high_ground_studio";
 
 const WEB_SECRET_BINDINGS = [
-  ["DATABASE_URL", "web-database-url"],
+  ["DATABASE_URL", "web-cloudsql-database-url"],
   ["AUTH_SECRET", "web-auth-secret"],
   ["GOOGLE_CLIENT_ID", "web-google-client-id"],
   ["GOOGLE_CLIENT_SECRET", "web-google-client-secret"],

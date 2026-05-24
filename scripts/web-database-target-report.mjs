@@ -8,7 +8,7 @@ const project =
   "high-ground-odyssey";
 const region = process.env.WEB_CLOUD_RUN_REGION ?? "us-central1";
 const service = process.env.WEB_CLOUD_RUN_SERVICE ?? "web";
-const runtimeSecret = process.env.WEB_DATABASE_SECRET ?? "web-database-url";
+const runtimeSecret = process.env.WEB_DATABASE_SECRET ?? "web-cloudsql-database-url";
 const sqlInstance = process.env.WEB_CLOUD_SQL_INSTANCE ?? "studio-postgres";
 const expectedConnectionName =
   process.env.WEB_CLOUD_SQL_CONNECTION_NAME ??
@@ -22,6 +22,8 @@ const info = [];
 const pending = [];
 const warnings = [];
 const blocked = [];
+let mountedDatabaseSecret = null;
+let databaseTargetProvider = null;
 
 function runReadOnly(command, args) {
   try {
@@ -138,6 +140,7 @@ function readCloudRunService() {
   const env = runService.spec?.template?.spec?.containers?.[0]?.env ?? [];
   const databaseEnv = env.find((entry) => entry.name === "DATABASE_URL");
   const mountedSecretName = databaseEnv ? getSecretRefName(databaseEnv) : null;
+  mountedDatabaseSecret = mountedSecretName;
 
   if (url) {
     passed.push(`Cloud Run ${service} URL: ${url}`);
@@ -213,10 +216,12 @@ function readRuntimeSecret() {
 
   if (parsed.provider === "Cloud SQL") {
     passed.push(`${runtimeSecret} targets Cloud SQL`);
+    databaseTargetProvider = "Cloud SQL";
   } else {
     pending.push(
       `${runtimeSecret} currently targets ${parsed.provider}; Cloud SQL attachment alone does not cut over Prisma`,
     );
+    databaseTargetProvider = parsed.provider;
   }
 }
 
@@ -326,12 +331,24 @@ printList("Pending work", pending);
 printList("Warnings", warnings);
 printList("Blocked items", blocked);
 
-console.log("\nSmallest safe Cloud SQL cutover path");
-console.log("  1. Create a separate Cloud SQL database, likely `web`, if still missing.");
-console.log("  2. Create a least-privilege Cloud SQL user, likely `web_app`, and stage a new secret such as `web-cloudsql-database-url`.");
-console.log("  3. Run `pnpm db:push` against the staged Cloud SQL secret from the one-off Cloud Run Job image.");
-console.log("  4. Export/import production data with an explicit backup and row-count verification plan.");
-console.log("  5. Swap `web-database-url` only after the Cloud SQL target has schema, data, auth smoke, and rollback verified.");
+if (
+  mountedDatabaseSecret === runtimeSecret &&
+  databaseTargetProvider === "Cloud SQL" &&
+  pending.length === 0 &&
+  blocked.length === 0
+) {
+  console.log("\nCloud SQL cutover state");
+  console.log(`  Live ${service} is mounted to ${runtimeSecret}, which targets Cloud SQL.`);
+  console.log("  Keep the previous Cloud Run revision and the old web-database-url secret as rollback anchors until the new target has enough runtime history.");
+} else {
+  console.log("\nSmallest safe Cloud SQL cutover path");
+  console.log("  1. Create a separate Cloud SQL database, likely `web`, if still missing.");
+  console.log("  2. Create a least-privilege Cloud SQL user, likely `web_app`, and stage a new secret such as `web-cloudsql-database-url`.");
+  console.log("  3. Run `pnpm db:push` against the staged Cloud SQL secret from the one-off Cloud Run Job image.");
+  console.log("  4. Export/import production data with an explicit backup and row-count verification plan.");
+  console.log("  5. Mount `web-cloudsql-database-url` on a no-traffic revision, smoke it, then route live traffic to that revision.");
+  console.log("  6. Keep `web-database-url` as the legacy source/rollback secret until the cutover is stable.");
+}
 
 if (strict && (blocked.length > 0 || pending.length > 0)) {
   process.exitCode = 1;

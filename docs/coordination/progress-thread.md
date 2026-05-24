@@ -54,6 +54,39 @@ checks, blockers, and next handoff.
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00015-9vs=100`.
 
+### Codex / `main` web Cloud SQL cutover
+
+- Staged a dedicated Cloud SQL runtime target for web:
+  database `web`, user `web_app`, and secret `web-cloudsql-database-url`.
+- Applied the current Prisma schema to the staged Cloud SQL target with Cloud
+  Run Job `web-cloudsql-db-push-47d8200`; logs reported the database is in
+  sync with the Prisma schema.
+- Added a guarded Postgres copy job image and iterated it until it supported
+  Neon/Postgres 17 source data, Cloud SQL/Postgres 16 target data, secret
+  newline cleanup, public-schema-only dumps, and non-empty target refusal.
+- Successful copy job:
+  `web-neon-to-cloudsql-copy-f14c4c7-w27bk`.
+- Copy counts:
+  source-before 20 rows, target-before 0 rows, target-after 20 rows.
+- Created no-traffic Cloud Run revision `web-00033-den` from image
+  `web:f14c4c7d463b3b37b109b49e7eaabb6968cb22b8`, mounted
+  `DATABASE_URL=web-cloudsql-database-url:latest`, and tagged it
+  `cloudsql-smoke`.
+- Isolated smoke passed on
+  `https://cloudsql-smoke---web-hm2odnvjga-uc.a.run.app`:
+  `/api/health` 200, `/` 200, `/projection-stage/import` 200, and
+  `/team/progress` unauthenticated redirect 307.
+- Routed live web traffic to `web-00033-den`, now serving 100% at
+  `https://web-hm2odnvjga-uc.a.run.app`.
+- Live smoke passed after cutover:
+  `/api/health` 200, `/` 200, `/projection-stage/import` 200, and
+  `/team/progress` unauthenticated redirect 307.
+- `pnpm web:db:target:report` now reports no pending work, no warnings, no
+  blocked items, and confirms `DATABASE_URL` is mounted from
+  `web-cloudsql-database-url`.
+- Rollback while the Neon source remains valid:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00031-4r2=100`.
+
 ## 2026-05-23
 
 ### Codex / `codex/content-studio-command-001`
