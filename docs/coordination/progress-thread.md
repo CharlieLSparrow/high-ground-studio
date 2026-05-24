@@ -25,6 +25,27 @@ checks, blockers, and next handoff.
   `pnpm hgo:projection:browser-smoke`, and `git diff --check`.
 - Local functional commit: `800dbf9`
   `feat(hgo): streamline Studio projection import`.
+- Pushed final deploy head `26250c5`
+  `docs: log Studio HGO import bridge`.
+- GitHub Actions run `26370289854` completed successfully:
+  - Web revision `web-00046-jwx`, serving 100%.
+  - Studio revision `studio-00038-9nw`, serving 100%.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/projection-stage/import` returned 200
+    and includes the browser-first/private-save import copy.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new Studio-to-HGO review story entry.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/health` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/content-studio` returned 200 with
+    the expected unauthenticated Studio sign-in surface.
+- Post-deploy readiness tests passed:
+  `pnpm web:cloudrun:test` and `pnpm studio:cloudrun:test`.
+- Rollback:
+  - Web:
+    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00045-vhj=100`
+  - Studio:
+    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00037-z9r=100`
 
 ### Codex / `main` Content Studio handoff copy
 
