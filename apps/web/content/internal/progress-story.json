@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T20:27:33.794Z",
+  "updatedAt": "2026-05-24T20:46:27.271Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-24-publish-candidates-got-review-briefs",
+      "date": "2026-05-24",
+      "title": "Publish candidates got review briefs",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Each saved HGO staged artifact can now open a private review detail page with proposed files, validation commands, rollback notes, safety flags, and copy/download handoff packets.",
+      "body": [
+        "This turns the queue from a list into a working review station. A team operator can see why an artifact is or is not ready, copy the immutable artifact, copy the publish-candidate packet, and export a review brief for the next agent or human pass.",
+        "The boundary is still deliberate: the detail page does not create public routes, write content files, publish pages, mutate the staged artifact, call providers, or certify public-safety review."
+      ],
+      "commits": [
+        {
+          "sha": "05140de",
+          "label": "feat(web): add HGO publish review detail"
+        }
+      ],
+      "links": [
+        {
+          "label": "Publish queue",
+          "href": "/team/hgo-publish-queue"
+        },
+        {
+          "label": "Artifact store plan",
+          "href": "https://github.com/CharlieLSparrow/high-ground-studio/blob/main/docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Publishing", "Team Ops"]
+    },
     {
       "id": "studio-production-packet-hgo-handoff",
       "date": "2026-05-24",
