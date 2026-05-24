@@ -24,6 +24,21 @@ checks, blockers, and next handoff.
   and `git diff --check`.
 - Local functional commit: `a219b88`
   `feat(web): add HGO episode publish queue`.
+- Pushed final deploy head `7beae2f`
+  `docs: log HGO episode publish queue`.
+- GitHub Actions run `26371696778` completed successfully:
+  - Web revision `web-00048-m7t`, serving 100%.
+  - Studio deploy skipped because this slice did not touch Studio runtime
+    paths.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue` returned the
+    expected unauthenticated team sign-in redirect.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new publish-queue story entry.
+- Post-deploy readiness test passed: `pnpm web:cloudrun:test`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00047-lf8=100`
 
 ### Codex / `main` HGO artifact handoff controls
 
