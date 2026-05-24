@@ -94,12 +94,42 @@ function buildDecisions() {
   };
 }
 
+function buildTranscript() {
+  return {
+    schemaVersion: 1,
+    episodeId: "agent-edit-smoke",
+    generatedAt: "2026-05-24T00:00:00.000Z",
+    language: "en",
+    segments: [
+      {
+        id: "transcript-001",
+        startSourceTimeMs: 4000,
+        endSourceTimeMs: 8000,
+        speaker: "Charlie",
+        speakerRole: "charlie",
+        text: "I want to explain this example before we look at the clip.",
+        confidence: 0.97,
+      },
+      {
+        id: "transcript-002",
+        startSourceTimeMs: 8000,
+        endSourceTimeMs: 9500,
+        speaker: "Homer",
+        speakerRole: "homer",
+        text: "Um uh you know this is a synthetic filler cluster.",
+        confidence: 0.95,
+      },
+    ],
+  };
+}
+
 test("agent edit review and decision ops are deterministic and transparent", async () => {
   const workdir = await mkdtemp(path.join(tmpdir(), "studio-cut-agent-edit-"));
 
   try {
     const manifestPath = path.join(workdir, "manifest.json");
     const decisionsPath = path.join(workdir, "decisions.json");
+    const transcriptPath = path.join(workdir, "transcript.json");
     const reviewPath = path.join(workdir, "agent-review.json");
     const opsPath = path.join(workdir, "agent-ops.json");
     const editedPath = path.join(workdir, "decisions.edited.json");
@@ -107,6 +137,7 @@ test("agent edit review and decision ops are deterministic and transparent", asy
 
     await writeJson(manifestPath, buildManifest());
     await writeJson(decisionsPath, buildDecisions());
+    await writeJson(transcriptPath, buildTranscript());
     await writeJson(opsPath, {
       schemaVersion: 1,
       operations: [
@@ -131,6 +162,8 @@ test("agent edit review and decision ops are deterministic and transparent", asy
       manifestPath,
       "--decisions",
       decisionsPath,
+      "--transcript",
+      transcriptPath,
       "--out",
       reviewPath,
       "--json",
@@ -140,7 +173,13 @@ test("agent edit review and decision ops are deterministic and transparent", asy
     assert.equal(review.kind, "studio-cut-agent-edit-review");
     assert.equal(review.summary.activeDecisionEventCount, 3);
     assert.equal(review.summary.cutSegmentCount, 1);
+    assert.equal(review.transcriptReview.segmentCount, 2);
+    assert.equal(review.transcriptReview.clipReferenceCount, 1);
     assert.equal(review.agentEditingContract.supportedOps.includes("addDecision"), true);
+    assert(
+      review.tasks.some((task) => task.kind === "transcript_speaker_state_mismatch"),
+    );
+    assert(review.tasks.some((task) => task.kind === "transcript_clip_reference"));
 
     runCli([
       "apply-decision-ops",

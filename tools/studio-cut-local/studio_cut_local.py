@@ -588,6 +588,14 @@ def build_parser() -> argparse.ArgumentParser:
     agent_review_parser.add_argument("--manifest", required=True, type=Path)
     agent_review_parser.add_argument("--decisions", required=True, type=Path)
     agent_review_parser.add_argument(
+        "--transcript",
+        type=Path,
+        help=(
+            "Optional timed transcript JSON. Adds speaker/state and clip-reference "
+            "diagnostics to the agent review report."
+        ),
+    )
+    agent_review_parser.add_argument(
         "--profile",
         default="youtube_16x9",
         choices=sorted(SUPPORTED_PROFILES),
@@ -3292,12 +3300,22 @@ def run_validate_generated_package(args: argparse.Namespace) -> int:
 
 def run_agent_review_edit(args: argparse.Namespace) -> int:
     manifest, decision_events = load_inputs(args.manifest, args.decisions)
+    transcript = (
+        parse_episode_transcript(
+            load_json_file(args.transcript, "transcript"),
+            manifest=manifest,
+        )
+        if args.transcript
+        else None
+    )
     report = build_agent_edit_review_report(
         manifest=manifest,
         decision_events=decision_events,
         profile=args.profile,
         manifest_path=args.manifest,
         decisions_path=args.decisions,
+        transcript=transcript,
+        transcript_path=args.transcript,
     )
 
     if args.out:
@@ -3350,6 +3368,352 @@ def run_apply_decision_ops(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_episode_transcript(
+    payload: Any, *, manifest: dict[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise StudioCutCliError("transcript must be a JSON object")
+
+    if payload.get("schemaVersion") != 1:
+        raise StudioCutCliError("transcript.schemaVersion must be 1")
+
+    episode_id = payload.get("episodeId")
+    if not isinstance(episode_id, str) or not episode_id.strip():
+        raise StudioCutCliError("transcript.episodeId must be a non-empty string")
+    if episode_id.strip() != str(manifest["id"]):
+        raise StudioCutCliError(
+            f"transcript episodeId {episode_id!r} does not match manifest id {manifest['id']!r}"
+        )
+
+    raw_segments = payload.get("segments")
+    if not isinstance(raw_segments, list):
+        raise StudioCutCliError("transcript.segments must be an array")
+
+    duration_ms = int(round(float(manifest["durationMs"])))
+    segments: list[dict[str, Any]] = []
+    rejected_count = 0
+
+    for index, raw_segment in enumerate(raw_segments):
+        if not isinstance(raw_segment, dict):
+            rejected_count += 1
+            continue
+
+        segment_id = raw_segment.get("id")
+        start_ms = raw_segment.get("startSourceTimeMs")
+        end_ms = raw_segment.get("endSourceTimeMs")
+        speaker = raw_segment.get("speaker")
+        text = raw_segment.get("text")
+
+        if (
+            not isinstance(segment_id, str)
+            or not segment_id.strip()
+            or not isinstance(start_ms, (int, float))
+            or not isinstance(end_ms, (int, float))
+            or float(end_ms) <= float(start_ms)
+            or not isinstance(speaker, str)
+            or not speaker.strip()
+            or not isinstance(text, str)
+            or not text.strip()
+        ):
+            rejected_count += 1
+            continue
+
+        speaker_role = raw_segment.get("speakerRole")
+        if speaker_role not in {"homer", "charlie", "unknown", None}:
+            rejected_count += 1
+            continue
+
+        confidence = raw_segment.get("confidence")
+        if confidence is not None and (
+            not isinstance(confidence, (int, float))
+            or float(confidence) < 0
+            or float(confidence) > 1
+        ):
+            rejected_count += 1
+            continue
+
+        segments.append(
+            {
+                "id": segment_id.strip(),
+                "startSourceTimeMs": clamp_ms(float(start_ms), duration_ms),
+                "endSourceTimeMs": clamp_ms(float(end_ms), duration_ms),
+                "speaker": speaker.strip(),
+                "speakerRole": speaker_role or infer_transcript_speaker_role(speaker),
+                "text": text.strip(),
+                **({"confidence": round(float(confidence), 4)} if confidence is not None else {}),
+                **(
+                    {"notes": raw_segment["notes"]}
+                    if isinstance(raw_segment.get("notes"), str)
+                    else {}
+                ),
+            }
+        )
+
+    segments = [
+        segment
+        for segment in segments
+        if segment["endSourceTimeMs"] > segment["startSourceTimeMs"]
+    ]
+    segments.sort(
+        key=lambda segment: (
+            int(segment["startSourceTimeMs"]),
+            int(segment["endSourceTimeMs"]),
+            str(segment["id"]),
+        )
+    )
+
+    if not segments:
+        raise StudioCutCliError("transcript contains no valid timed segments")
+
+    if rejected_count:
+        print(
+            f"warning: rejected {rejected_count} invalid transcript segment(s)",
+            file=sys.stderr,
+        )
+
+    return {
+        "schemaVersion": 1,
+        "episodeId": episode_id.strip(),
+        "segments": segments,
+        **(
+            {"generatedAt": payload["generatedAt"]}
+            if isinstance(payload.get("generatedAt"), str)
+            else {}
+        ),
+        **(
+            {"language": payload["language"]}
+            if isinstance(payload.get("language"), str)
+            else {}
+        ),
+        **({"notes": payload["notes"]} if isinstance(payload.get("notes"), str) else {}),
+    }
+
+
+def infer_transcript_speaker_role(speaker: str) -> str:
+    normalized = speaker.strip().lower()
+    if "homer" in normalized:
+        return "homer"
+    if "charlie" in normalized:
+        return "charlie"
+    return "unknown"
+
+
+def build_agent_transcript_review(
+    *,
+    manifest: dict[str, Any],
+    transcript: dict[str, Any],
+    decision_events: list[dict[str, Any]],
+    duration_ms: int,
+) -> dict[str, Any]:
+    segments = transcript["segments"]
+    warnings: list[str] = []
+    tasks: list[dict[str, Any]] = []
+    speaker_durations: dict[str, int] = {}
+    speaker_segment_counts: dict[str, int] = {}
+    word_count = 0
+    clip_reference_count = 0
+    filler_count = 0
+    transcript_duration_ms = 0
+    largest_gap_ms = 0
+    previous_end_ms = 0
+    derived_segments = derive_segments(decision_events, duration_ms)
+    has_clip_pane = "clip" in manifest["sourceMonitorProxy"]["panes"]
+    speaker_focus_threshold_ms = min(max(duration_ms // 20, 3000), 30000)
+
+    for segment in segments:
+        start_ms = int(segment["startSourceTimeMs"])
+        end_ms = int(segment["endSourceTimeMs"])
+        segment_duration_ms = max(0, end_ms - start_ms)
+        gap_start_ms = previous_end_ms
+        gap_before_ms = max(0, start_ms - previous_end_ms)
+        largest_gap_ms = max(largest_gap_ms, gap_before_ms)
+        previous_end_ms = max(previous_end_ms, end_ms)
+        transcript_duration_ms += segment_duration_ms
+        speaker_role = str(segment.get("speakerRole") or "unknown")
+        text = str(segment["text"])
+        lower_text = text.lower()
+        words = [word for word in lower_text.replace("—", " ").split() if word]
+        word_count += len(words)
+        speaker_durations[speaker_role] = (
+            speaker_durations.get(speaker_role, 0) + segment_duration_ms
+        )
+        speaker_segment_counts[speaker_role] = (
+            speaker_segment_counts.get(speaker_role, 0) + 1
+        )
+
+        if gap_before_ms >= 5000:
+            tasks.append(
+                {
+                    "priority": "medium",
+                    "kind": "transcript_gap",
+                    "message": (
+                        f"Transcript gap before {format_time_ms(start_ms)} lasts "
+                        f"{format_time_ms(gap_before_ms)}; review for silence, sync drift, or missing transcript text."
+                    ),
+                    "startSourceTimeMs": gap_start_ms,
+                    "endSourceTimeMs": start_ms,
+                    "gapBeforeMs": gap_before_ms,
+                }
+            )
+
+        clip_hit = transcript_mentions_clip(lower_text)
+        if clip_hit:
+            clip_reference_count += 1
+            tasks.append(
+                {
+                    "priority": "medium" if has_clip_pane else "high",
+                    "kind": "transcript_clip_reference",
+                    "message": (
+                        "Transcript references looking/showing/watching something; "
+                        "review whether a Clip semantic state belongs here."
+                    ),
+                    "segmentId": segment["id"],
+                    "speakerRole": speaker_role,
+                    "startSourceTimeMs": start_ms,
+                    "endSourceTimeMs": end_ms,
+                    **(
+                        {
+                            "suggestedOperation": {
+                                "op": "addDecision",
+                                "sourceTimeMs": start_ms,
+                                "state": (
+                                    "charlie_clip"
+                                    if speaker_role == "charlie"
+                                    else "homer_clip"
+                                    if speaker_role == "homer"
+                                    else "both_clip"
+                                ),
+                                "note": "Transcript appears to reference visual clip context; verify before applying.",
+                            }
+                        }
+                        if has_clip_pane
+                        else {}
+                    ),
+                }
+            )
+
+        filler_hits = count_transcript_filler_hits(lower_text)
+        filler_count += filler_hits
+        if filler_hits >= 3:
+            tasks.append(
+                {
+                    "priority": "low",
+                    "kind": "transcript_filler_cluster",
+                    "message": (
+                        f"Transcript segment has {filler_hits} filler markers; "
+                        "review for a possible tightening edit."
+                    ),
+                    "segmentId": segment["id"],
+                    "startSourceTimeMs": start_ms,
+                    "endSourceTimeMs": end_ms,
+                }
+            )
+
+        if (
+            segment_duration_ms >= speaker_focus_threshold_ms
+            and speaker_role in {"charlie", "homer"}
+        ):
+            current_decision_segment = find_segment_at_time(
+                derived_segments,
+                start_ms,
+                duration_ms,
+            )
+            current_state = (
+                str(current_decision_segment["state"])
+                if current_decision_segment
+                else None
+            )
+            expected_state = speaker_role
+            if current_state and current_state not in {expected_state, "both"}:
+                tasks.append(
+                    {
+                        "priority": "medium",
+                        "kind": "transcript_speaker_state_mismatch",
+                        "message": (
+                            f"{speaker_role} speaks for {format_time_ms(segment_duration_ms)} "
+                            f"starting at {format_time_ms(start_ms)}, but current state is {current_state}."
+                        ),
+                        "segmentId": segment["id"],
+                        "speakerRole": speaker_role,
+                        "currentState": current_state,
+                        "startSourceTimeMs": start_ms,
+                        "endSourceTimeMs": end_ms,
+                        "suggestedOperation": {
+                            "op": "addDecision",
+                            "sourceTimeMs": start_ms,
+                            "state": expected_state,
+                            "note": "Transcript speaker focus mismatch; verify before applying.",
+                        },
+                    }
+                )
+
+    coverage_percent = (
+        round(min(transcript_duration_ms, duration_ms) / duration_ms, 4)
+        if duration_ms
+        else 0
+    )
+    if coverage_percent < 0.5:
+        warnings.append(
+            f"Transcript covers only {format_percent(coverage_percent)} of episode duration."
+        )
+    if largest_gap_ms >= 30000:
+        warnings.append(
+            f"Transcript has a large gap of {format_time_ms(largest_gap_ms)}."
+        )
+
+    return {
+        "summary": {
+            "episodeId": transcript["episodeId"],
+            "segmentCount": len(segments),
+            "wordCount": word_count,
+            "transcriptDurationMs": min(transcript_duration_ms, duration_ms),
+            "coveragePercent": coverage_percent,
+            "largestGapMs": largest_gap_ms,
+            "speakerDurationsMs": speaker_durations,
+            "speakerSegmentCounts": speaker_segment_counts,
+            "clipReferenceCount": clip_reference_count,
+            "fillerMarkerCount": filler_count,
+        },
+        "tasks": tasks,
+        "warnings": warnings,
+    }
+
+
+def transcript_mentions_clip(text: str) -> bool:
+    phrases = (
+        "watch this",
+        "watch the",
+        "look at",
+        "show this",
+        "show the",
+        "pull up",
+        "on screen",
+        "the clip",
+        "this clip",
+        "video",
+        "screen share",
+    )
+    return any(phrase in text for phrase in phrases)
+
+
+def count_transcript_filler_hits(text: str) -> int:
+    padded = f" {text.replace(',', ' ').replace('.', ' ').replace('?', ' ')} "
+    phrases = (" um ", " uh ", " er ", " ah ", " you know ", " kind of ", " sort of ")
+    return sum(padded.count(phrase) for phrase in phrases)
+
+
+def find_segment_at_time(
+    segments: list[dict[str, Any]], source_time_ms: int, duration_ms: int
+) -> dict[str, Any] | None:
+    clamped_time = clamp_ms(float(source_time_ms), duration_ms)
+    for segment in segments:
+        if int(segment["startSourceTimeMs"]) <= clamped_time < int(
+            segment["endSourceTimeMs"]
+        ):
+            return segment
+    return None
+
+
 def build_agent_edit_review_report(
     *,
     manifest: dict[str, Any],
@@ -3357,6 +3721,8 @@ def build_agent_edit_review_report(
     profile: str,
     manifest_path: Path,
     decisions_path: Path,
+    transcript: dict[str, Any] | None = None,
+    transcript_path: Path | None = None,
 ) -> dict[str, Any]:
     duration_ms = int(round(float(manifest["durationMs"])))
     active_events = get_active_decision_events(decision_events)
@@ -3441,7 +3807,21 @@ def build_agent_edit_review_report(
     if plan["summary"]["activeSegmentCount"] == 0 and active_events:
         errors.append("All active decisions are Cut; render output would be empty.")
 
-    return {
+    transcript_review = (
+        build_agent_transcript_review(
+            manifest=manifest,
+            transcript=transcript,
+            decision_events=active_events,
+            duration_ms=duration_ms,
+        )
+        if transcript
+        else None
+    )
+    if transcript_review:
+        warnings.extend(transcript_review["warnings"])
+        tasks.extend(transcript_review["tasks"])
+
+    report = {
         "schemaVersion": 1,
         "generatedAt": utc_now_iso(),
         "kind": "studio-cut-agent-edit-review",
@@ -3453,6 +3833,11 @@ def build_agent_edit_review_report(
         "inputs": {
             "manifestPath": str(manifest_path),
             "decisionsPath": str(decisions_path),
+            **(
+                {"transcriptPath": str(transcript_path)}
+                if transcript_path
+                else {}
+            ),
         },
         "summary": {
             "decisionEventCount": len(decision_events),
@@ -3476,6 +3861,11 @@ def build_agent_edit_review_report(
         "errors": errors,
     }
 
+    if transcript_review:
+        report["transcriptReview"] = transcript_review["summary"]
+
+    return report
+
 
 def print_agent_edit_review_report(report: dict[str, Any]) -> None:
     manifest = report["manifest"]
@@ -3496,6 +3886,15 @@ def print_agent_edit_review_report(report: dict[str, Any]) -> None:
         f"{summary['cutSegmentCount']} Cut segment(s), "
         f"{format_percent(summary['cutPercent'])} cut"
     )
+
+    transcript_summary = report.get("transcriptReview")
+    if transcript_summary:
+        print(
+            "Transcript: "
+            f"{transcript_summary['segmentCount']} segment(s), "
+            f"{transcript_summary['wordCount']} words, "
+            f"{format_percent(transcript_summary['coveragePercent'])} coverage"
+        )
 
     print("\nState duration:")
     for state in PROGRAM_STATE_ORDER:

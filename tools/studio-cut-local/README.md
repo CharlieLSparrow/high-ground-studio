@@ -476,6 +476,14 @@ python tools/studio-cut-local/studio_cut_local.py agent-review-edit \
   --out path/to/agent-edit-review.json
 ```
 
+Add `--transcript path/to/episode-transcript.json` when a timed transcript is
+available. Transcript segments use canonical episode/source time and include
+`speaker`, optional `speakerRole` (`charlie`, `homer`, or `unknown`), and
+`text`. The review then reports transcript coverage, speaker durations, clip
+references, filler clusters, and speaker/state mismatch tasks. See
+`tools/studio-cut-local/examples/transcript.placeholder.json` for a safe
+placeholder shape.
+
 Apply transparent operation JSON:
 
 ```bash

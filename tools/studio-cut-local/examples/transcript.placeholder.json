@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "episodeId": "episode-placeholder",
+  "generatedAt": "2026-05-24T00:00:00.000Z",
+  "language": "en",
+  "notes": "Placeholder timed transcript for Studio Cut agent review tests and docs. No private episode text.",
+  "segments": [
+    {
+      "id": "transcript-001",
+      "startSourceTimeMs": 0,
+      "endSourceTimeMs": 8000,
+      "speaker": "Charlie",
+      "speakerRole": "charlie",
+      "text": "Welcome back. This placeholder transcript shows the expected shape.",
+      "confidence": 0.96
+    },
+    {
+      "id": "transcript-002",
+      "startSourceTimeMs": 8000,
+      "endSourceTimeMs": 16000,
+      "speaker": "Homer",
+      "speakerRole": "homer",
+      "text": "This is where an agent can compare speaker focus against semantic decisions.",
+      "confidence": 0.95
+    },
+    {
+      "id": "transcript-003",
+      "startSourceTimeMs": 16000,
+      "endSourceTimeMs": 22000,
+      "speaker": "Charlie",
+      "speakerRole": "charlie",
+      "text": "Let's look at the clip on screen and decide whether the edit should use a clip state.",
+      "confidence": 0.94
+    }
+  ]
+}

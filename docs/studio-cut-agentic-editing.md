@@ -34,18 +34,53 @@ python tools/studio-cut-local/studio_cut_local.py agent-review-edit \
   --out path/to/agent-edit-review.json
 ```
 
+If a timed transcript is available, include it:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-review-edit \
+  --manifest path/to/episode-manifest.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --transcript path/to/episode-transcript.json \
+  --out path/to/agent-edit-review.json
+```
+
 The report includes:
 
 - active and tombstoned decision counts
 - derived segment counts
 - active and Cut duration
 - state duration totals
+- optional transcript coverage, speaker durations, clip-reference counts, and
+  filler marker counts
 - warnings such as no initial decision or Clip states without Clip pane metadata
 - agent review tasks with suggested operation shapes when safe
 - the exact supported operation contract
 
 Agents should read this report before editing and cite the specific warnings or
 tasks they intend to address in their response or handoff note.
+
+Transcript JSON uses canonical episode/source time:
+
+```json
+{
+  "schemaVersion": 1,
+  "episodeId": "episode-004",
+  "segments": [
+    {
+      "id": "transcript-001",
+      "startSourceTimeMs": 0,
+      "endSourceTimeMs": 12000,
+      "speaker": "Charlie",
+      "speakerRole": "charlie",
+      "text": "Let's look at the clip on screen."
+    }
+  ]
+}
+```
+
+With a transcript, `agent-review-edit` can flag speaker/state mismatches, likely
+clip-reference moments, transcript gaps, and filler clusters. It still only
+suggests semantic operations; a human or agent must review before applying.
 
 ## Apply Agent Decision Operations
 
@@ -161,17 +196,17 @@ plain JSON and every result verifiable by command.
 - Agents still need human judgment for content taste, rhythm, and clip choice.
 - Operation support is intentionally small: add decisions and tombstone
   decisions.
-- There is not yet automatic transcript-aware editing or silence/filler-word
-  detection.
-- The web cockpit can preview/apply operation JSON, but agents still need a
-  structured input such as transcript, source notes, or operator instructions
-  before they can make high-quality creative choices.
+- Transcript-aware review is heuristic. It can flag speaker/state mismatches,
+  clip references, gaps, and filler clusters, but it does not yet understand
+  story quality or comedic timing.
+- The web cockpit can preview/apply operation JSON, but agents still need
+  source notes or operator instructions before they can make high-quality
+  creative choices.
 
 ## Next Agent-Friendly Steps
 
-- Add transcript/speaker import so agents can propose edits from words, not only
-  timestamps.
-- Add review reports for awkward camera holds, long silence, repeated Cut spans,
-  and missing Clip context.
+- Add web transcript import and transcript-aware cockpit panels.
+- Add stronger review reports for awkward camera holds, long silence, repeated
+  Cut spans, and missing Clip context.
 - Add an episode workspace index that lists generated session files for local
   agents without exposing private absolute paths.

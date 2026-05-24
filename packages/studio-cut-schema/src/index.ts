@@ -75,6 +75,28 @@ export type EpisodeManifest = {
   syncBootstrap: SyncBootstrap;
 };
 
+export type TranscriptSpeakerRole = "homer" | "charlie" | "unknown";
+
+export type TranscriptSegment = {
+  id: string;
+  startSourceTimeMs: number;
+  endSourceTimeMs: number;
+  speaker: string;
+  speakerRole?: TranscriptSpeakerRole;
+  text: string;
+  confidence?: number;
+  notes?: string;
+};
+
+export type EpisodeTranscript = {
+  schemaVersion: 1;
+  episodeId: string;
+  generatedAt?: string;
+  language?: string;
+  segments: TranscriptSegment[];
+  notes?: string;
+};
+
 export type CloudSyncInputRole =
   | "homerVideo"
   | "charlieVideo"
@@ -317,6 +339,10 @@ export type SyncMapParseResult =
   | { ok: true; syncMap: SyncMap }
   | { ok: false; reason: string };
 
+export type EpisodeTranscriptParseResult =
+  | { ok: true; transcript: EpisodeTranscript }
+  | { ok: false; reason: string };
+
 export function isProgramState(value: unknown): value is ProgramState {
   return PROGRAM_STATES.includes(value as ProgramState);
 }
@@ -442,6 +468,20 @@ export function parseSyncMapPayload(payload: unknown): SyncMapParseResult {
   return { ok: true, syncMap: payload };
 }
 
+export function parseEpisodeTranscriptPayload(
+  payload: unknown,
+): EpisodeTranscriptParseResult {
+  if (!isEpisodeTranscript(payload)) {
+    return {
+      ok: false,
+      reason:
+        "Transcript must include schemaVersion=1, episodeId, and timed segments with id, startSourceTimeMs, endSourceTimeMs, speaker, and text.",
+    };
+  }
+
+  return { ok: true, transcript: payload };
+}
+
 export function isEpisodeManifest(value: unknown): value is EpisodeManifest {
   if (!isRecord(value)) {
     return false;
@@ -465,6 +505,63 @@ export function isEpisodeManifest(value: unknown): value is EpisodeManifest {
     isEpisodeSource(manifest.sources.program, "program") &&
     isSourceMonitorProxy(manifest.sourceMonitorProxy) &&
     isSyncBootstrap(manifest.syncBootstrap)
+  );
+}
+
+export function isEpisodeTranscript(value: unknown): value is EpisodeTranscript {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const transcript = value as Partial<EpisodeTranscript>;
+
+  return (
+    transcript.schemaVersion === 1 &&
+    typeof transcript.episodeId === "string" &&
+    transcript.episodeId.trim().length > 0 &&
+    (transcript.generatedAt === undefined ||
+      (typeof transcript.generatedAt === "string" &&
+        !Number.isNaN(Date.parse(transcript.generatedAt)))) &&
+    (transcript.language === undefined ||
+      typeof transcript.language === "string") &&
+    (transcript.notes === undefined || typeof transcript.notes === "string") &&
+    Array.isArray(transcript.segments) &&
+    transcript.segments.every(isTranscriptSegment)
+  );
+}
+
+export function isTranscriptSegment(
+  value: unknown,
+): value is TranscriptSegment {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const segment = value as Partial<TranscriptSegment>;
+
+  return (
+    typeof segment.id === "string" &&
+    segment.id.trim().length > 0 &&
+    typeof segment.startSourceTimeMs === "number" &&
+    Number.isFinite(segment.startSourceTimeMs) &&
+    segment.startSourceTimeMs >= 0 &&
+    typeof segment.endSourceTimeMs === "number" &&
+    Number.isFinite(segment.endSourceTimeMs) &&
+    segment.endSourceTimeMs > segment.startSourceTimeMs &&
+    typeof segment.speaker === "string" &&
+    segment.speaker.trim().length > 0 &&
+    (segment.speakerRole === undefined ||
+      segment.speakerRole === "homer" ||
+      segment.speakerRole === "charlie" ||
+      segment.speakerRole === "unknown") &&
+    typeof segment.text === "string" &&
+    segment.text.trim().length > 0 &&
+    (segment.confidence === undefined ||
+      (typeof segment.confidence === "number" &&
+        Number.isFinite(segment.confidence) &&
+        segment.confidence >= 0 &&
+        segment.confidence <= 1)) &&
+    (segment.notes === undefined || typeof segment.notes === "string")
   );
 }
 

@@ -368,7 +368,10 @@ The CLI supports:
   paths so operators do not have to retype Sync Map file locations.
 - `agent-review-edit`: reads an Episode Manifest and decision JSON, then writes
   an agent-friendly review report with decision counts, state durations, Cut
-  duration, warnings, and suggested review tasks.
+  duration, warnings, and suggested review tasks. It can also accept
+  `--transcript` with timed transcript segments to flag speaker/state
+  mismatches, likely clip-reference moments, transcript gaps, and filler
+  clusters.
 - `apply-decision-ops`: applies a transparent operation JSON file to a decision
   export and writes a new decision file. It supports adding decisions and
   tombstoning decisions; it never mutates the input decision file.

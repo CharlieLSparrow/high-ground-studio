@@ -57,7 +57,9 @@ Related durable docs:
 - Agentic decision editing commands:
   `agent-review-edit` for machine-readable edit diagnostics and
   `apply-decision-ops` for transparent add/tombstone operations that write a new
-  decision file without mutating the input export.
+  decision file without mutating the input export. `agent-review-edit` now
+  accepts optional timed transcript JSON so agents can flag speaker/state
+  mismatches, clip-reference moments, transcript gaps, and filler clusters.
 - The web cockpit can import agent operation JSON with `Import Agent Ops`,
   preview add/tombstone changes, and apply accepted operations into the current
   local or shared room.
@@ -390,7 +392,7 @@ Improve Sync Map render quality:
 
 Improve agentic editing:
 
-- add transcript/speaker-aware review reports
+- add transcript import to the web cockpit, not only the local CLI
 - let agents propose silence/filler/awkward-hold cuts with confidence and
   explicit human approval points
 - add a local episode workspace index so agents can discover generated session
