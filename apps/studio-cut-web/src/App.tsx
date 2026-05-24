@@ -53,6 +53,7 @@ import {
 } from "./agentDecisionOps";
 import { buildAgentWorkspaceBrief } from "./agentWorkspaceBrief";
 import {
+  buildTranscriptSuggestedDecisionOps,
   buildTranscriptReview,
   type TranscriptReview,
 } from "./transcriptReview";
@@ -1152,6 +1153,37 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     setDecisionHistory((currentHistory) => ({
       ...currentHistory,
       lastAction: `Exported agent context ${checkpointTimestamp}`,
+    }));
+  }
+
+  function handleExportTranscriptSuggestedOps() {
+    const payload = buildTranscriptSuggestedDecisionOps({
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      review: transcriptReview,
+    });
+
+    if (payload.operations.length === 0) {
+      setImportMessage(
+        "Transcript review has no suggested agent operations to export.",
+      );
+      return;
+    }
+
+    const exportedAt = new Date();
+    const checkpointTimestamp = formatCheckpointTimestamp(exportedAt);
+
+    downloadJsonFile(
+      payload,
+      getTranscriptSuggestedOpsFileName(
+        episodeManifest,
+        roomSelection,
+        checkpointTimestamp,
+      ),
+    );
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Exported transcript agent ops ${checkpointTimestamp}`,
     }));
   }
 
@@ -2658,6 +2690,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           transcript={episodeTranscript}
           review={transcriptReview}
           onImport={() => transcriptInputRef.current?.click()}
+          onExportSuggestedOps={handleExportTranscriptSuggestedOps}
           onClear={() => {
             setEpisodeTranscript(null);
             setImportMessage("Cleared browser-local transcript review data.");
@@ -4098,11 +4131,13 @@ function TranscriptReviewPanel({
   transcript,
   review,
   onImport,
+  onExportSuggestedOps,
   onClear,
 }: {
   transcript: EpisodeTranscript | null;
   review: TranscriptReview;
   onImport: () => void;
+  onExportSuggestedOps: () => void;
   onClear: () => void;
 }) {
   const statusLabel =
@@ -4112,6 +4147,9 @@ function TranscriptReviewPanel({
         ? "Ready"
         : "Check";
   const visibleTasks = review.tasks.slice(0, 5);
+  const suggestedOperationCount = review.tasks.filter(
+    (task) => task.suggestedOperation,
+  ).length;
 
   return (
     <section className="transcript-review-panel" aria-label="Transcript review">
@@ -4129,6 +4167,14 @@ function TranscriptReviewPanel({
       <div className="transcript-actions">
         <button className="secondary-button" type="button" onClick={onImport}>
           Import Transcript JSON
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onExportSuggestedOps}
+          disabled={suggestedOperationCount === 0}
+        >
+          Export Suggested Ops
         </button>
         <button
           className="secondary-button"
@@ -6154,6 +6200,18 @@ function getAgentContextFileName(
   const baseName = manifest?.id
     ? `${manifest.id}-agent-context`
     : `studio-cut-${roomSelection.projectId}-${roomSelection.branchId}-agent-context`;
+
+  return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
+}
+
+function getTranscriptSuggestedOpsFileName(
+  manifest: EpisodeManifest | null,
+  roomSelection: StudioCutRoomSelection,
+  checkpointTimestamp: string,
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-transcript-agent-ops`
+    : `studio-cut-${roomSelection.projectId}-${roomSelection.branchId}-transcript-agent-ops`;
 
   return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
 }

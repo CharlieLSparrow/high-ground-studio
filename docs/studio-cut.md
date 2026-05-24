@@ -404,6 +404,11 @@ filler clusters. The transcript is only included in `Export Agent Context` when
 the operator imports it; media bytes, local paths, and object URLs are still
 excluded.
 
+`Export Suggested Ops` in that panel writes a reviewable agent operation JSON
+draft from transcript tasks that have safe semantic suggestions. It is a draft
+only: use `Import Agent Ops` to preview and apply it through the normal
+decision persistence path.
+
 Use `Export Agent Context` when an agent needs the live browser room state. The
 export includes the manifest, current source time, proxy loaded status,
 persistence/shared-room status, active and tombstoned decisions, derived

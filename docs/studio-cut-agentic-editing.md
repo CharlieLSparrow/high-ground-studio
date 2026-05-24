@@ -189,6 +189,11 @@ live room with manifest, decisions, transcript, and current derived segments in
 one media-safe JSON file. The transcript import does not upload media, local
 paths, object URLs, or source-monitor proxy bytes.
 
+`Export Suggested Ops` writes an agent operation JSON draft from transcript
+review tasks that have safe semantic suggestions, such as likely clip-reference
+or speaker-focus corrections. It does not apply anything. Re-import that file
+with `Import Agent Ops` to preview the proposed mutations before accepting them.
+
 ## Agent Workflow
 
 For a real editing pass:
@@ -197,7 +202,8 @@ For a real editing pass:
 2. Export Agent Context from the web cockpit, or run `agent-review-edit` from a
    decision JSON export.
 3. Discuss the proposed operations with the human when the intent is ambiguous.
-4. Write an operation JSON file.
+4. Write an operation JSON file, or use `Export Suggested Ops` as a draft from
+   browser transcript review.
 5. Run `apply-decision-ops --dry-run`.
 6. Apply the operations through `Import Agent Ops` in the browser or to a new
    decision file with `apply-decision-ops`.

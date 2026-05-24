@@ -70,7 +70,9 @@ Related durable docs:
 - The web cockpit can import timed transcript JSON in the Episode Manifest
   area. The browser-side `Transcript Review` panel surfaces coverage, likely
   clip references, filler clusters, transcript gaps, and speaker/state mismatch
-  tasks so an agent can inspect them through `Export Agent Context`.
+  tasks so an agent can inspect them through `Export Agent Context`. It can
+  also export suggested agent operation JSON drafts that must still be previewed
+  through `Import Agent Ops` before applying.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification

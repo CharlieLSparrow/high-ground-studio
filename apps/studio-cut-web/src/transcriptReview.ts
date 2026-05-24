@@ -5,6 +5,7 @@ import {
   type ProgramState,
   type TranscriptSegment,
 } from "@high-ground/studio-cut-schema";
+import type { AgentDecisionOpsPayload } from "./agentDecisionOps";
 
 export type TranscriptReviewTask = {
   priority: "high" | "medium" | "low";
@@ -211,6 +212,56 @@ export function buildTranscriptReview({
     summary,
     tasks,
     warnings,
+  };
+}
+
+export function buildTranscriptSuggestedDecisionOps({
+  projectId,
+  branchId,
+  review,
+}: {
+  projectId: string;
+  branchId: string;
+  review: TranscriptReview;
+}): AgentDecisionOpsPayload {
+  const seenOperations = new Set<string>();
+  const operations = review.tasks.flatMap((task) => {
+    const suggestedOperation = task.suggestedOperation;
+
+    if (!suggestedOperation) {
+      return [];
+    }
+
+    const sourceTimeMs = Math.max(0, Math.round(suggestedOperation.sourceTimeMs));
+    const operationKey = `${sourceTimeMs}:${suggestedOperation.state}`;
+
+    if (seenOperations.has(operationKey)) {
+      return [];
+    }
+
+    seenOperations.add(operationKey);
+
+    return [
+      {
+        op: "addDecision" as const,
+        sourceTimeMs,
+        state: suggestedOperation.state,
+        note: [
+          suggestedOperation.note,
+          `Transcript task: ${task.kind}`,
+          task.segmentId ? `segment ${task.segmentId}` : "",
+        ]
+          .filter(Boolean)
+          .join(" | "),
+      },
+    ];
+  });
+
+  return {
+    schemaVersion: 1,
+    projectId,
+    branchId,
+    operations,
   };
 }
 

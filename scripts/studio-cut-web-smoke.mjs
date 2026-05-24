@@ -649,6 +649,19 @@ async function runBrowserSmoke() {
     await expect(page.getByLabel("Transcript review")).toContainText("Loaded");
     await expect(page.getByLabel("Transcript review")).toContainText("Clip refs");
     await expect(page.getByLabel("Transcript review")).toContainText("transcript_clip_reference");
+    const transcriptOpsDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export Suggested Ops" }).click();
+    const transcriptOps = await transcriptOpsDownload;
+    assert.match(
+      transcriptOps.suggestedFilename(),
+      /web-smoke-episode-transcript-agent-ops-/,
+    );
+    const transcriptOpsPath = await transcriptOps.path();
+    assert(transcriptOpsPath, "transcript suggested ops download path should be available");
+    const transcriptOpsJson = JSON.parse(await readFile(transcriptOpsPath, "utf8"));
+    assert.equal(transcriptOpsJson.schemaVersion, 1);
+    assert.equal(transcriptOpsJson.operations.length, 1);
+    assert.equal(transcriptOpsJson.operations[0].state, "charlie_clip");
     await expect(page.getByText(/No decisions yet/i)).toBeVisible();
     await page.getByLabel("Homer source pane width").fill("0.49");
     await expect(page.getByRole("button", { name: "Reset Panes" })).toBeEnabled();

@@ -285,7 +285,9 @@ Operator checks while editing:
 4. If a timed transcript is available, import it with `Import Transcript JSON`
    in the Episode Manifest area. The browser-side `Transcript Review` panel can
    flag speaker/state mismatches, likely clip-reference moments, transcript
-   gaps, and filler clusters for human or agent review.
+   gaps, and filler clusters for human or agent review. Use `Export Suggested
+   Ops` only as a draft, then re-import it with `Import Agent Ops` to preview
+   and approve the proposed semantic decisions.
 5. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
    normalized pane rectangles, then use `Export Adjusted Manifest` and keep that
    adjusted manifest with the local Episode 4 bootstrap files.

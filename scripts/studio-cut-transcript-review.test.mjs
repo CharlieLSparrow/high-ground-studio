@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildTranscriptReview } from "../apps/studio-cut-web/src/transcriptReview.ts";
+import {
+  buildTranscriptReview,
+  buildTranscriptSuggestedDecisionOps,
+} from "../apps/studio-cut-web/src/transcriptReview.ts";
 
 const manifest = {
   id: "episode-004",
@@ -75,4 +78,20 @@ test("transcript review flags clip references and speaker state mismatches", () 
   assert(
     review.tasks.some((task) => task.kind === "transcript_filler_cluster"),
   );
+
+  const ops = buildTranscriptSuggestedDecisionOps({
+    projectId: "episode-004",
+    branchId: "main",
+    review,
+  });
+
+  assert.equal(ops.schemaVersion, 1);
+  assert.equal(ops.projectId, "episode-004");
+  assert.equal(ops.branchId, "main");
+  assert.equal(ops.operations.length, 2);
+  assert.deepEqual(
+    ops.operations.map((operation) => operation.state),
+    ["charlie_clip", "charlie"],
+  );
+  assert.match(ops.operations[0].note, /Transcript task/);
 });
