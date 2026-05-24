@@ -6,6 +6,44 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO draft export handoff
+
+- Added first-class handoff exports for generated private HGO publish drafts:
+  - copy/download the full `hgo-episode-publish-draft-v1` packet
+  - copy/download the generated private MDX draft
+  - copy/download the generated frontmatter JSON
+- Added deterministic draft export file names:
+  - `<slug>.hgo-episode-publish-draft.json`
+  - `<slug>.private-review.mdx`
+  - `<slug>.frontmatter.json`
+- Updated the private publish review detail page to surface the MDX/frontmatter
+  export names in the human checklist and draft packet panel.
+- Guardrails preserved: no public route creation, no content-file mutation, no
+  staged artifact mutation, no provider calls, no citation/public-safety
+  certification, no live publish action, and no `/episodes` replacement.
+- Validation passed: `pnpm hgo:publish-candidate:test`,
+  `pnpm progress:story:test`, `pnpm web:cloudrun:test`,
+  `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+- Local functional commit: `2e90a18`
+  `feat(web): add HGO draft export handoff`.
+- Pushed final deploy head `3ad6584`
+  `docs: log HGO draft export handoff`.
+- GitHub Actions run `26373113777` completed successfully:
+  - Web revision `web-00052-vjs`, serving 100%.
+  - Studio deploy skipped because this slice did not touch Studio runtime
+    paths.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new draft-export handoff story entry.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue/synthetic-record`
+    returned the expected unauthenticated team sign-in redirect.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue/synthetic-record/preview`
+    returned the expected unauthenticated team sign-in redirect.
+- Post-deploy readiness test passed: `pnpm web:cloudrun:test`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00051-7qm=100`
+
 ### Codex / `main` HGO publish draft preview
 
 - Added `hgo-episode-publish-draft-v1` packets derived from saved staged HGO

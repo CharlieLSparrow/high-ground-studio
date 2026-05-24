@@ -23,11 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the HGO publish draft preview deploy on 2026-05-24.
+Verified after the HGO draft export handoff deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | HGO publish draft preview `e718122` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy selected production packet plus open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, per-artifact publish review details/briefs, private publish-draft packets, private render previews, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | HGO draft export handoff `3ad6584` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy selected production packet plus open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, per-artifact publish review details/briefs, private publish-draft packets, private render previews, private MDX/frontmatter draft exports, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -126,6 +126,8 @@ Verified after the HGO publish draft preview deploy on 2026-05-24.
   - queue detail pages also derive private `hgo-episode-publish-draft-v1`
     packets with proposed MDX draft content, proposed frontmatter, safety flags,
     and deferred file targets
+  - queue detail handoff controls can copy/download the whole publish-draft
+    packet, the generated private MDX draft, and the generated frontmatter JSON
   - live schema was first synced by Cloud Run Job `web-db-push-b07c73d`
   - web persistence has moved from Neon to the staged Cloud SQL target:
     database `web`, user `web_app`, secret `web-cloudsql-database-url`
@@ -134,8 +136,8 @@ Verified after the HGO publish draft preview deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00051-7qm` from `main` commit `e718122`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00050-6wd`
+  - latest web deploy is `web-00052-vjs` from `main` commit `3ad6584`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00051-7qm`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
