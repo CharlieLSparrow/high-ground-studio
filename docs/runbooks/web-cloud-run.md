@@ -252,6 +252,27 @@ WEB_DB_TARGET_REPORT_REQUIRE_MOUNT=0 \
 pnpm web:db:target:report
 ```
 
+After the staged Cloud SQL schema is synced, copy data from the current web
+database into the staged target with a one-off Cloud Run Job image built from:
+
+```text
+cloudbuild.postgres-copy.yaml
+ops/postgres-copy.Dockerfile
+ops/postgres-copy-entrypoint.sh
+```
+
+The copy job expects:
+
+| Env var | Secret |
+| --- | --- |
+| `SOURCE_DATABASE_URL` | `web-database-url:latest` |
+| `TARGET_DATABASE_URL` | `web-cloudsql-database-url:latest` |
+
+The entrypoint uses `pg_dump --data-only` and `pg_restore --data-only`, refuses
+to restore into a non-empty target unless
+`POSTGRES_COPY_ALLOW_NONEMPTY_TARGET=1` is explicitly set, and prints only table
+row counts. It does not print database URLs or row data.
+
 If the expected web secrets exist but do not have enabled versions yet, seed
 them from local env files:
 

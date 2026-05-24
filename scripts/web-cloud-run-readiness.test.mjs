@@ -53,6 +53,22 @@ test("web Cloud Build config targets the web Dockerfile", () => {
   assert.match(cloudbuild, /_IMAGE_NAME: web/);
 });
 
+test("postgres copy job image is guarded for staged Cloud SQL migration", () => {
+  const cloudbuild = readFileSync("cloudbuild.postgres-copy.yaml", "utf8");
+  const dockerfile = readFileSync("ops/postgres-copy.Dockerfile", "utf8");
+  const entrypoint = readFileSync("ops/postgres-copy-entrypoint.sh", "utf8");
+
+  assert.match(cloudbuild, /ops\/postgres-copy\.Dockerfile/);
+  assert.match(cloudbuild, /_IMAGE_NAME: postgres-copy/);
+  assert.match(dockerfile, /FROM postgres:16-bookworm/);
+  assert.match(entrypoint, /SOURCE_DATABASE_URL is required/);
+  assert.match(entrypoint, /TARGET_DATABASE_URL is required/);
+  assert.match(entrypoint, /POSTGRES_COPY_ALLOW_NONEMPTY_TARGET/);
+  assert.match(entrypoint, /--data-only/);
+  assert.match(entrypoint, /--no-owner/);
+  assert.match(entrypoint, /Database URLs and row data are never printed/);
+});
+
 test("web deploy helpers are wired for explicit first-service creation", () => {
   const packageJson = readFileSync("package.json", "utf8");
   const deployScript = readFileSync("scripts/web-cloud-run-deploy.mjs", "utf8");
