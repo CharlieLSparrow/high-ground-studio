@@ -94,6 +94,7 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(seedScript, /web-database-url/);
   assert.match(databaseReportScript, /Web database target report/);
   assert.match(databaseReportScript, /never prints the full URL/);
+  assert.match(databaseReportScript, /WEB_DB_TARGET_REPORT_REQUIRE_MOUNT/);
   assert.match(databaseReportScript, /web-cloudsql-database-url/);
   assert.match(databaseReportScript, /Cloud SQL attachment alone does not cut over Prisma/);
   assert.match(cloudSqlPrepareScript, /Generated passwords and connection URLs are never printed/);

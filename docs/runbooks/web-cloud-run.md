@@ -244,6 +244,14 @@ After staging the target, apply the Prisma schema to
 `web-cloudsql-database-url` through a one-off Cloud Run Job before any data
 copy or runtime-secret swap.
 
+To inspect the staged secret before it is mounted by the `web` service:
+
+```bash
+WEB_DATABASE_SECRET=web-cloudsql-database-url \
+WEB_DB_TARGET_REPORT_REQUIRE_MOUNT=0 \
+pnpm web:db:target:report
+```
+
 If the expected web secrets exist but do not have enabled versions yet, seed
 them from local env files:
 

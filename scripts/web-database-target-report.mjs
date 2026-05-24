@@ -14,6 +14,7 @@ const expectedConnectionName =
   process.env.WEB_CLOUD_SQL_CONNECTION_NAME ??
   `${project}:us-central1:${sqlInstance}`;
 const readSecretValue = process.env.WEB_DB_TARGET_REPORT_SKIP_SECRET !== "1";
+const requireRuntimeMount = process.env.WEB_DB_TARGET_REPORT_REQUIRE_MOUNT !== "0";
 const strict = process.env.WEB_DB_TARGET_REPORT_STRICT === "1";
 
 const passed = [];
@@ -148,6 +149,10 @@ function readCloudRunService() {
 
   if (mountedSecretName === runtimeSecret) {
     passed.push(`DATABASE_URL is mounted from Secret Manager secret ${runtimeSecret}`);
+  } else if (!requireRuntimeMount) {
+    pending.push(
+      `DATABASE_URL is mounted from ${mountedSecretName ?? "missing"} while this report inspects staged secret ${runtimeSecret}`,
+    );
   } else {
     blocked.push(
       `DATABASE_URL secret mount is ${mountedSecretName ?? "missing"}; expected ${runtimeSecret}`,
@@ -307,6 +312,7 @@ console.log(`Region: ${region}`);
 console.log(`Service: ${service}`);
 console.log(`Runtime secret: ${runtimeSecret}`);
 console.log(`Expected Cloud SQL: ${expectedConnectionName}`);
+console.log(`Require runtime mount: ${requireRuntimeMount ? "yes" : "no"}`);
 
 readCloudRunService();
 readRuntimeSecret();
