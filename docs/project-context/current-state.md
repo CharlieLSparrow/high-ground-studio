@@ -130,13 +130,17 @@ High Ground Studio is a monorepo with:
   `/content-studio`. It creates podcast, book, episode-page, monetization, and
   coaching project boards from templates, tracks source/shape/produce/publish/
   follow-through checklists, stores the active working state in browser
-  localStorage, exports/imports JSON handoff packets with safety flags, and can
-  save/load explicit server checkpoints through private Prisma-backed
+  localStorage, exports/imports JSON handoff packets with safety flags,
+  generates selected-project production packets, emits valid staged HGO
+  projection drafts for podcast and episode-page projects, and can save/load
+  explicit server checkpoints through private Prisma-backed
   `StudioContentWorkspaceSnapshot` rows when the Studio database schema is
   applied. These checkpoints are manual recovery/shared-work anchors, not
   autosave and not canonical publishing state. The route does not call provider
   APIs, publish public content, use real manuscript/HGO source material in
   tests, or replace existing HGO/WorldHub/coaching workflows. The broader
+  Production packets are browser downloads/review payloads only: they do not
+  call provider APIs, publish public pages, or certify public safety. The
   provider-neutral type/sample-data contract lives in
   `packages/content-studio-domain` for future shared packets and persistence.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted

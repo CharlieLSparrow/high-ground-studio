@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "../studio-ui";
 import {
   buildContentStudioBrowserPacket,
+  createContentStudioProductionPacket,
   createContentStudioProjectHandoff,
   parseContentStudioPacket,
+  type ContentStudioProductionPacket,
   type ContentStudioProjectHandoff,
 } from "./content-studio-model";
 
@@ -465,6 +467,18 @@ function buildExportPacket(workspace: ContentStudioWorkspace, actorLabel: string
   });
 }
 
+function downloadJsonFile(filename: string, value: unknown) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function countByStatus(projects: ContentStudioProject[]) {
   return projects.reduce(
     (summary, project) => {
@@ -572,6 +586,18 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
       selectedProject ? createContentStudioProjectHandoff(selectedProject) : null,
     [selectedProject],
   );
+  const selectedProductionPacket = useMemo(
+    () =>
+      selectedProject ? createContentStudioProductionPacket(selectedProject) : null,
+    [selectedProject],
+  );
+  const productionPacketJson = useMemo(
+    () =>
+      selectedProductionPacket
+        ? JSON.stringify(selectedProductionPacket, null, 2)
+        : "",
+    [selectedProductionPacket],
+  );
 
   function updateWorkspace(updater: (current: ContentStudioWorkspace) => ContentStudioWorkspace) {
     setWorkspace((current) => ({
@@ -655,15 +681,32 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
   }
 
   function downloadExport() {
-    const blob = new Blob([exportJson], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `content-studio-packet-${new Date()
-      .toISOString()
-      .slice(0, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadJsonFile(
+      `content-studio-packet-${new Date().toISOString().slice(0, 10)}.json`,
+      buildExportPacket(workspace, actorLabel),
+    );
+  }
+
+  function downloadProductionPacket() {
+    if (!selectedProductionPacket) {
+      return;
+    }
+
+    downloadJsonFile(
+      `content-studio-production-${selectedProductionPacket.projectKind}-${selectedProductionPacket.projectId}.json`,
+      selectedProductionPacket,
+    );
+  }
+
+  function downloadHgoProjectionDraft() {
+    if (!selectedProductionPacket?.hgoProjectionDraft) {
+      return;
+    }
+
+    downloadJsonFile(
+      `hgo-projection-${selectedProductionPacket.hgoProjectionDraft.slug}.json`,
+      selectedProductionPacket.hgoProjectionDraft,
+    );
   }
 
   function importPacket() {
@@ -933,10 +976,14 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
                 loaded={loaded}
                 isServerSnapshotBusy={isServerSnapshotBusy}
                 onDownload={downloadExport}
+                onDownloadHgoProjectionDraft={downloadHgoProjectionDraft}
+                onDownloadProductionPacket={downloadProductionPacket}
                 onImport={importPacket}
                 onImportDraftChange={setImportDraft}
                 onLoadLatestServerSnapshot={loadLatestServerSnapshot}
                 onSaveServerSnapshot={saveServerSnapshot}
+                productionPacket={selectedProductionPacket}
+                productionPacketJson={productionPacketJson}
                 serverSnapshotStatus={serverSnapshotStatus}
               />
             </div>
@@ -1285,10 +1332,14 @@ function ExportPanel({
   lastSaved,
   loaded,
   onDownload,
+  onDownloadHgoProjectionDraft,
+  onDownloadProductionPacket,
   onImport,
   onImportDraftChange,
   onLoadLatestServerSnapshot,
   onSaveServerSnapshot,
+  productionPacket,
+  productionPacketJson,
   serverSnapshotStatus,
 }: {
   exportJson: string;
@@ -1298,10 +1349,14 @@ function ExportPanel({
   lastSaved: string;
   loaded: boolean;
   onDownload: () => void;
+  onDownloadHgoProjectionDraft: () => void;
+  onDownloadProductionPacket: () => void;
   onImport: () => void;
   onImportDraftChange: (value: string) => void;
   onLoadLatestServerSnapshot: () => void;
   onSaveServerSnapshot: () => void;
+  productionPacket: ContentStudioProductionPacket | null;
+  productionPacketJson: string;
   serverSnapshotStatus: string;
 }) {
   return (
@@ -1356,6 +1411,73 @@ function ExportPanel({
           {serverSnapshotStatus}
         </p>
       </section>
+
+      {productionPacket ? (
+        <section className="grid gap-3 rounded-lg border border-studio-line bg-black/15 p-3">
+          <div>
+            <p className="m-0 text-[0.72rem] font-black uppercase tracking-normal text-studio-dim">
+              Production packet
+            </p>
+            <p className="m-0 mt-1 text-sm font-black leading-tight text-studio-ink">
+              {productionPacket.workflow.replaceAll("-", " ")}
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            {productionPacket.deliveryTargets.map((target) => (
+              <div
+                className="rounded-lg border border-studio-line bg-black/15 p-2"
+                key={target.id}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    tone={
+                      target.status === "blocked"
+                        ? "danger"
+                        : target.status === "ready"
+                          ? "review"
+                          : "source"
+                    }
+                  >
+                    {target.status}
+                  </Badge>
+                  <span className="text-sm font-black leading-tight text-studio-ink">
+                    {target.label}
+                  </span>
+                </div>
+                <p className="m-0 mt-2 text-xs leading-relaxed text-studio-muted">
+                  {target.notes}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className="min-h-11 rounded-lg border border-studio-source/55 bg-studio-source/10 px-3 text-sm font-black text-studio-source"
+              onClick={onDownloadProductionPacket}
+              type="button"
+            >
+              Download Production
+            </button>
+
+            <button
+              className="min-h-11 rounded-lg border border-studio-review/55 bg-studio-review/10 px-3 text-sm font-black text-studio-review disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!productionPacket.hgoProjectionDraft}
+              onClick={onDownloadHgoProjectionDraft}
+              type="button"
+            >
+              Download HGO Draft
+            </button>
+          </div>
+
+          <textarea
+            className="min-h-[260px] resize-y rounded-lg border border-studio-line bg-black/25 p-3 font-mono text-[0.72rem] leading-relaxed text-studio-muted outline-none focus:border-studio-review/65"
+            readOnly
+            value={productionPacketJson}
+          />
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <button

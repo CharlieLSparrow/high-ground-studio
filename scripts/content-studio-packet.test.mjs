@@ -4,12 +4,15 @@ import { test } from "node:test";
 import {
   buildContentStudioBrowserPacket,
   CONTENT_STUDIO_PACKET_KIND,
+  CONTENT_STUDIO_PRODUCTION_PACKET_KIND,
   CONTENT_STUDIO_SCHEMA_VERSION,
+  createContentStudioProductionPacket,
   createContentStudioProjectHandoff,
   getContentStudioProjectProgress,
   normalizeContentStudioWorkspace,
   parseContentStudioPacket,
 } from "../apps/studio/src/app/content-studio/content-studio-model.ts";
+import { validateHgoEpisodeProjection } from "../apps/web/src/lib/hgo/projection-validation.ts";
 
 const createdAt = "2026-05-24T01:00:00.000Z";
 
@@ -151,5 +154,78 @@ test("blocks unsafe imported packets", () => {
       "Packet cannot be imported after public publishing.",
       "Packet cannot claim to contain real manuscript text.",
     ]);
+  }
+});
+
+test("creates a safe production packet for podcast work", () => {
+  const [project] = createWorkspace().projects;
+  const packet = createContentStudioProductionPacket(
+    project,
+    "2026-05-24T02:30:00.000Z",
+  );
+
+  assert.equal(packet.kind, CONTENT_STUDIO_PRODUCTION_PACKET_KIND);
+  assert.equal(packet.workflow, "podcast-production");
+  assert.equal(packet.safety.providerCalls, false);
+  assert.equal(packet.safety.publicPublished, false);
+  assert.equal(packet.safety.containsRealManuscriptText, false);
+  assert.equal(packet.safety.requiresHumanReview, true);
+  assert.equal(packet.taskChecklist.length, 6);
+  assert.equal(packet.agentTasks.every((task) => task.reviewRequired), true);
+  assert.deepEqual(
+    packet.deliveryTargets.map((target) => target.kind),
+    ["podcast-host", "hgo-stage", "studio-cut", "social"],
+  );
+  assert.ok(packet.hgoProjectionDraft);
+
+  const validation = validateHgoEpisodeProjection(packet.hgoProjectionDraft);
+
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.errors, []);
+  assert.match(validation.warnings.join(" "), /staged review/);
+});
+
+test("creates production packets for non-HGO project kinds without provider calls", () => {
+  const workspace = {
+    ...createWorkspace(),
+    projects: [
+      {
+        ...createWorkspace().projects[0],
+        id: "project-book-1",
+        kind: "book",
+        title: "Book publishing packet",
+        activeStage: "publish",
+      },
+      {
+        ...createWorkspace().projects[0],
+        id: "project-monetization-1",
+        kind: "monetization",
+        title: "Supporter offer packet",
+        activeStage: "source",
+      },
+      {
+        ...createWorkspace().projects[0],
+        id: "project-coaching-1",
+        kind: "coaching",
+        title: "Coaching operations packet",
+        activeStage: "shape",
+      },
+    ],
+  };
+
+  const [bookPacket, monetizationPacket, coachingPacket] = workspace.projects.map(
+    (project) => createContentStudioProductionPacket(project),
+  );
+
+  assert.equal(bookPacket.workflow, "book-publishing");
+  assert.equal(bookPacket.hgoProjectionDraft, undefined);
+  assert.equal(monetizationPacket.workflow, "worldhub-follow-through");
+  assert.equal(monetizationPacket.deliveryTargets.at(-1)?.status, "blocked");
+  assert.equal(coachingPacket.workflow, "coaching-operations");
+
+  for (const packet of [bookPacket, monetizationPacket, coachingPacket]) {
+    assert.equal(packet.safety.providerCalls, false);
+    assert.equal(packet.safety.publicPublished, false);
+    assert.equal(packet.safety.containsRealManuscriptText, false);
   }
 });
