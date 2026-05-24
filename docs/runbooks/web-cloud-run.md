@@ -89,9 +89,15 @@ Expected health response:
   - applies the same Cloud Run disabled invoker-IAM-check setting used by
     Studio during first-service creation when org policy blocks public invoker
     IAM binding
+- `scripts/web-domain-readiness.mjs`
+  - read-only checker for the `app.highgroundodyssey.com` Cloud Run domain
+    mapping, public DNS, certificate state, and runtime origin values
+  - prints the exact DNS, Google OAuth callback, and Cloud Run env cutover
+    steps without changing DNS, OAuth, Cloud Run, secrets, IAM, or databases
 - `scripts/web-cloud-run-readiness.test.mjs`
   - tests health response shape, Dockerfile expectations, standalone config,
-    Cloud Build config, deploy-helper wiring, and preflight read-only behavior
+    Cloud Build config, deploy-helper wiring, domain-readiness wiring, and
+    preflight read-only behavior
 - `.dockerignore`
   - keeps env files, dependencies, build artifacts, logs, and raw
     staging/inbox source material out of the Docker context
@@ -173,6 +179,12 @@ Cloud Build config, preflight script, or runbook:
 
 ```bash
 pnpm web:cloudrun:test
+```
+
+Check custom-domain readiness without changing cloud state:
+
+```bash
+pnpm web:domain:check
 ```
 
 If the expected web secrets exist but do not have enabled versions yet, seed
@@ -477,6 +489,12 @@ Current staging target:
 app.highgroundodyssey.com
 ```
 
+Read-only status check:
+
+```bash
+pnpm web:domain:check
+```
+
 Create a mapping:
 
 ```bash
@@ -492,19 +510,36 @@ Cloud Run currently requests:
 app CNAME ghs.googlehosted.com.
 ```
 
-After DNS is added and the certificate is ready, update the runtime origin:
+Current public DNS findings from 2026-05-23:
+
+- `highgroundodyssey.com` is registered through Squarespace Domains.
+- Authoritative nameservers are `ns-cloud-a1` through `ns-cloud-a4`.
+- root `highgroundodyssey.com` has an A record to `216.198.79.1`.
+- `www.highgroundodyssey.com` is a CNAME to a Vercel DNS target.
+- `app.highgroundodyssey.com` is currently NXDOMAIN until the CNAME above is
+  added.
+- Cloud DNS API is not enabled in the accessible Google Cloud projects checked
+  from this workstation, so the DNS record likely needs to be added in
+  Squarespace Domains or the legacy Google Domains DNS surface.
+
+Add only the `app` CNAME first. Do not change root or `www` as part of this
+staging-domain pass.
+
+After DNS is added, `pnpm web:domain:check` should report that the CNAME is
+visible and the Cloud Run managed certificate is ready. Then add the OAuth
+callback:
+
+```text
+https://app.highgroundodyssey.com/api/auth/callback/google
+```
+
+Only after the OAuth callback exists, update the runtime origin:
 
 ```bash
 gcloud run services update web \
   --project=high-ground-odyssey \
   --region=us-central1 \
   --update-env-vars=AUTH_URL=https://app.highgroundodyssey.com,HGO_SITE_URL=https://app.highgroundodyssey.com,AUTH_TRUST_HOST=true
-```
-
-Then add the OAuth callback:
-
-```text
-https://app.highgroundodyssey.com/api/auth/callback/google
 ```
 
 Do not move root `highgroundodyssey.com` until the current public-site owner,

@@ -215,3 +215,25 @@ checks, blockers, and next handoff.
   - Studio:
     `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00026-hpm=100`
 - Live health smokes passed after deploy for web and Studio.
+
+### Codex / `main` web custom-domain readiness
+
+- Rechecked the live `web` and `studio` Cloud Run services after the OpenSSL
+  hardening deploy:
+  - web: `web-00005-r68`, serving 100% at
+    `https://web-hm2odnvjga-uc.a.run.app`
+  - Studio: `studio-00027-8gx`, serving 100% at
+    `https://studio-hm2odnvjga-uc.a.run.app`
+- Confirmed the Cloud Run mapping for `app.highgroundodyssey.com` routes to
+  `web`, is domain-routable, and is waiting on DNS/certificate issuance.
+- Confirmed the required DNS record remains:
+  `app CNAME ghs.googlehosted.com.`
+- Public DNS still returns NXDOMAIN for `app.highgroundodyssey.com`; root and
+  `www` still point at the current public/Vercel-facing site records.
+- WHOIS reports the registrar as Squarespace Domains LLC. Cloud DNS API was not
+  enabled in the accessible Google Cloud projects checked from this workstation,
+  so DNS likely needs to be added in Squarespace Domains or the legacy Google
+  Domains DNS surface.
+- Added `pnpm web:domain:check` as a read-only custom-domain readiness command.
+- Added `docs/sessions/web-domain-readiness-result.md` with the DNS, OAuth, and
+  Cloud Run origin cutover sequence.
