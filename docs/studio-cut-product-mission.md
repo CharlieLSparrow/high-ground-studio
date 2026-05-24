@@ -68,6 +68,8 @@ The current system already has:
   generation, and synthetic smoke coverage
 - local render CLI for rough 16:9 output from Sync Map plus Studio Cut decisions
 - `pnpm studio-cut:verify` as the integrated safety gate
+- agentic decision-review and decision-operation commands so current Codex CLI
+  agents can inspect, propose, apply, verify, and roll back semantic edits
 
 The current system does not yet have:
 
@@ -85,9 +87,11 @@ The current system does not yet have:
 3. Harden shared-room package publishing and Sync Review.
 4. Improve local render quality from Sync Map, starting with audio and layout
    correctness.
-5. Add cloud worker orchestration only after rules, retention, cost, and failure
+5. Expand agentic editing support: transcript-aware review, operation JSON
+   import in the web cockpit, and assistant-visible episode workspace manifests.
+6. Add cloud worker orchestration only after rules, retention, cost, and failure
    modes are explicit.
-6. Use the video workflow lessons to shape the larger Content Management Studio.
+7. Use the video workflow lessons to shape the larger Content Management Studio.
 
 ## Non-Goals For The Current Sprint
 
@@ -97,4 +101,3 @@ The current system does not yet have:
 - Do not make Mako handle JSON or local paths as the primary flow.
 - Do not remove the local/offline fallback while cloud collaboration is still
   being hardened.
-

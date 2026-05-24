@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from typing import Any
 
 
@@ -579,6 +580,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print a machine-readable JSON package validation report.",
     )
     validate_package_parser.set_defaults(handler=run_validate_generated_package)
+
+    agent_review_parser = subparsers.add_parser(
+        "agent-review-edit",
+        help="Review a Studio Cut decision file and emit agent-friendly editing diagnostics.",
+    )
+    agent_review_parser.add_argument("--manifest", required=True, type=Path)
+    agent_review_parser.add_argument("--decisions", required=True, type=Path)
+    agent_review_parser.add_argument(
+        "--profile",
+        default="youtube_16x9",
+        choices=sorted(SUPPORTED_PROFILES),
+        help="Render profile used for segment/layout diagnostics. Default: youtube_16x9.",
+    )
+    agent_review_parser.add_argument(
+        "--out",
+        type=Path,
+        help="Optional path to write the machine-readable review report JSON.",
+    )
+    agent_review_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print only the machine-readable review report JSON.",
+    )
+    agent_review_parser.set_defaults(handler=run_agent_review_edit)
+
+    agent_ops_parser = subparsers.add_parser(
+        "apply-decision-ops",
+        help="Apply a transparent agent decision-operation JSON file to a decision export.",
+    )
+    agent_ops_parser.add_argument("--manifest", required=True, type=Path)
+    agent_ops_parser.add_argument("--decisions", required=True, type=Path)
+    agent_ops_parser.add_argument("--ops", required=True, type=Path)
+    agent_ops_parser.add_argument("--out", required=True, type=Path)
+    agent_ops_parser.add_argument(
+        "--created-by",
+        default="codex-agent",
+        help="Attribution used for generated decisions and tombstones. Default: codex-agent.",
+    )
+    agent_ops_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate and preview operations without writing --out.",
+    )
+    agent_ops_parser.set_defaults(handler=run_apply_decision_ops)
 
     return parser
 
@@ -3245,6 +3290,489 @@ def run_validate_generated_package(args: argparse.Namespace) -> int:
     return 0 if not report["errors"] else 1
 
 
+def run_agent_review_edit(args: argparse.Namespace) -> int:
+    manifest, decision_events = load_inputs(args.manifest, args.decisions)
+    report = build_agent_edit_review_report(
+        manifest=manifest,
+        decision_events=decision_events,
+        profile=args.profile,
+        manifest_path=args.manifest,
+        decisions_path=args.decisions,
+    )
+
+    if args.out:
+        write_json(args.out, report)
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print_agent_edit_review_report(report)
+        if args.out:
+            print(f"\nWrote agent edit review JSON: {args.out}")
+
+    return 0 if not report["errors"] else 1
+
+
+def run_apply_decision_ops(args: argparse.Namespace) -> int:
+    manifest, decision_events = load_inputs(args.manifest, args.decisions)
+    ops_payload = load_json_file(args.ops, "agent decision operations")
+    result = apply_agent_decision_ops(
+        manifest=manifest,
+        decision_events=decision_events,
+        ops_payload=ops_payload,
+        created_by=args.created_by,
+    )
+
+    if args.dry_run:
+        print_agent_decision_ops_result(result, dry_run=True, out_path=args.out)
+        return 0 if not result["errors"] else 1
+
+    if result["errors"]:
+        print_agent_decision_ops_result(result, dry_run=False, out_path=args.out)
+        return 1
+
+    output_payload = {
+        "schemaVersion": 1,
+        "exportedAt": result["appliedAt"],
+        "projectId": result["projectId"],
+        "branchId": result["branchId"],
+        "decisionEvents": result["decisionEvents"],
+        "agentEdit": {
+            "appliedAt": result["appliedAt"],
+            "createdBy": args.created_by,
+            "operationCount": result["operationCount"],
+            "appliedOperationCount": result["appliedOperationCount"],
+            "dryRun": False,
+        },
+    }
+    write_json(args.out, output_payload)
+    print_agent_decision_ops_result(result, dry_run=False, out_path=args.out)
+    return 0
+
+
+def build_agent_edit_review_report(
+    *,
+    manifest: dict[str, Any],
+    decision_events: list[dict[str, Any]],
+    profile: str,
+    manifest_path: Path,
+    decisions_path: Path,
+) -> dict[str, Any]:
+    duration_ms = int(round(float(manifest["durationMs"])))
+    active_events = get_active_decision_events(decision_events)
+    tombstoned_events = [
+        event for event in decision_events if is_decision_event_removed(event)
+    ]
+    plan = build_render_plan(
+        manifest=manifest,
+        decision_events=decision_events,
+        profile=profile,
+        manifest_path=manifest_path,
+        decisions_path=decisions_path,
+    )
+    warnings: list[str] = []
+    errors: list[str] = []
+    tasks: list[dict[str, Any]] = []
+    state_durations = {state: 0 for state in PROGRAM_STATE_ORDER}
+
+    for segment in [*plan["activeSegments"], *plan["cutSegments"]]:
+        state_durations[str(segment["programState"])] += int(segment["durationMs"])
+
+    if not active_events:
+        warnings.append("No active decisions are present.")
+        tasks.append(
+            {
+                "priority": "high",
+                "kind": "missing_initial_state",
+                "message": "Add the first semantic state at 0:00 before editing or rendering.",
+                "suggestedOperation": {
+                    "op": "addDecision",
+                    "sourceTimeMs": 0,
+                    "state": "both",
+                    "note": "Initial state; verify before applying.",
+                },
+            }
+        )
+    elif int(active_events[0]["sourceTimeMs"]) != 0:
+        warnings.append("First active decision starts after 0:00.")
+        tasks.append(
+            {
+                "priority": "high",
+                "kind": "gap_before_first_decision",
+                "message": (
+                    "Source time before the first decision has no program state. "
+                    "Review the opening and add an initial decision if needed."
+                ),
+                "firstDecisionTimeMs": active_events[0]["sourceTimeMs"],
+            }
+        )
+
+    clip_states_present = any(
+        state_requires_clip(str(event["state"])) for event in active_events
+    )
+    if clip_states_present and "clip" not in manifest["sourceMonitorProxy"]["panes"]:
+        warnings.append("Clip states are used, but the manifest has no Clip pane.")
+        tasks.append(
+            {
+                "priority": "medium",
+                "kind": "clip_pane_missing",
+                "message": "Either add Clip pane metadata or replace Clip states before publishing/rendering.",
+            }
+        )
+
+    long_segment_threshold_ms = min(max(duration_ms // 4, 120000), 600000)
+    for segment in plan["activeSegments"]:
+        if int(segment["durationMs"]) >= long_segment_threshold_ms:
+            tasks.append(
+                {
+                    "priority": "medium",
+                    "kind": "long_active_segment",
+                    "message": (
+                        f"{segment['programState']} holds for "
+                        f"{format_time_ms(segment['durationMs'])}; review for missing cuts."
+                    ),
+                    "sourceEventId": segment["sourceEventId"],
+                    "startSourceTimeMs": segment["startSourceTimeMs"],
+                    "endSourceTimeMs": segment["endSourceTimeMs"],
+                    "state": segment["programState"],
+                }
+            )
+
+    if plan["summary"]["activeSegmentCount"] == 0 and active_events:
+        errors.append("All active decisions are Cut; render output would be empty.")
+
+    return {
+        "schemaVersion": 1,
+        "generatedAt": utc_now_iso(),
+        "kind": "studio-cut-agent-edit-review",
+        "manifest": {
+            "id": manifest["id"],
+            "title": manifest["title"],
+            "durationMs": duration_ms,
+        },
+        "inputs": {
+            "manifestPath": str(manifest_path),
+            "decisionsPath": str(decisions_path),
+        },
+        "summary": {
+            "decisionEventCount": len(decision_events),
+            "activeDecisionEventCount": len(active_events),
+            "tombstonedDecisionEventCount": len(tombstoned_events),
+            "derivedSegmentCount": plan["summary"]["derivedSegmentCount"],
+            "activeSegmentCount": plan["summary"]["activeSegmentCount"],
+            "cutSegmentCount": plan["summary"]["cutSegmentCount"],
+            "activeDurationMs": plan["summary"]["activeDurationMs"],
+            "cutDurationMs": plan["summary"]["cutDurationMs"],
+            "cutPercent": (
+                round(plan["summary"]["cutDurationMs"] / duration_ms, 4)
+                if duration_ms
+                else 0
+            ),
+            "stateDurationsMs": state_durations,
+        },
+        "agentEditingContract": build_agent_editing_contract(),
+        "tasks": tasks,
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+def print_agent_edit_review_report(report: dict[str, Any]) -> None:
+    manifest = report["manifest"]
+    summary = report["summary"]
+
+    print("Studio Cut Agent Edit Review")
+    print("============================")
+    print(f"Episode: {manifest['title']} ({manifest['id']})")
+    print(f"Duration: {format_time_ms(manifest['durationMs'])}")
+    print(
+        "Decisions: "
+        f"{summary['activeDecisionEventCount']} active / "
+        f"{summary['tombstonedDecisionEventCount']} tombstoned"
+    )
+    print(
+        "Program: "
+        f"{summary['activeSegmentCount']} active segment(s), "
+        f"{summary['cutSegmentCount']} Cut segment(s), "
+        f"{format_percent(summary['cutPercent'])} cut"
+    )
+
+    print("\nState duration:")
+    for state in PROGRAM_STATE_ORDER:
+        duration_ms = summary["stateDurationsMs"].get(state, 0)
+        if duration_ms:
+            print(f"  - {state}: {format_time_ms(duration_ms)}")
+
+    if report["tasks"]:
+        print("\nAgent review tasks:")
+        for task in report["tasks"]:
+            print(f"  - [{task['priority']}] {task['kind']}: {task['message']}")
+    else:
+        print("\nAgent review tasks: none")
+
+    if report["warnings"]:
+        print("\nWarnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+    if report["errors"]:
+        print("\nErrors:")
+        for error in report["errors"]:
+            print(f"  - {error}")
+
+    print("\nDecision operation shape:")
+    print("  {\"schemaVersion\":1,\"operations\":[{\"op\":\"addDecision\",\"sourceTimeMs\":0,\"state\":\"both\",\"note\":\"...\"}]}")
+    print("  Apply with: studio-cut-local apply-decision-ops --manifest ... --decisions ... --ops ... --out ...")
+
+
+def build_agent_editing_contract() -> dict[str, Any]:
+    return {
+        "principle": (
+            "Agents edit the semantic decision layer only. Source media remains whole; "
+            "Cut means inactive/skipped, not deleted."
+        ),
+        "operationFileShape": {
+            "schemaVersion": 1,
+            "operations": [
+                {
+                    "op": "addDecision",
+                    "sourceTimeMs": 0,
+                    "state": "both",
+                    "note": "Human-readable reason.",
+                    "id": "optional-stable-id",
+                },
+                {
+                    "op": "removeDecision",
+                    "id": "existing-decision-id",
+                    "reason": "Human-readable reason.",
+                },
+            ],
+        },
+        "supportedOps": ["addDecision", "removeDecision"],
+        "rollback": (
+            "Keep the previous decision JSON or exported checkpoint. apply-decision-ops "
+            "writes a new file and never mutates the input file."
+        ),
+    }
+
+
+def apply_agent_decision_ops(
+    *,
+    manifest: dict[str, Any],
+    decision_events: list[dict[str, Any]],
+    ops_payload: Any,
+    created_by: str,
+) -> dict[str, Any]:
+    if not isinstance(ops_payload, dict):
+        raise StudioCutCliError("agent decision operations must be a JSON object")
+
+    if ops_payload.get("schemaVersion") != 1:
+        raise StudioCutCliError("agent decision operations schemaVersion must be 1")
+
+    operations = ops_payload.get("operations")
+    if not isinstance(operations, list):
+        raise StudioCutCliError("agent decision operations must include operations[]")
+
+    applied_at = utc_now_iso()
+    duration_ms = int(round(float(manifest["durationMs"])))
+    project_id = str(
+        ops_payload.get("projectId")
+        or (decision_events[0]["projectId"] if decision_events else manifest["id"])
+    )
+    branch_id = str(
+        ops_payload.get("branchId")
+        or (decision_events[0]["branchId"] if decision_events else "main")
+    )
+    next_events = [dict(event) for event in decision_events]
+    errors: list[str] = []
+    warnings: list[str] = []
+    applied_operations: list[dict[str, Any]] = []
+
+    for index, operation in enumerate(operations):
+        label = f"operations[{index}]"
+
+        if not isinstance(operation, dict):
+            errors.append(f"{label} must be an object")
+            continue
+
+        op = operation.get("op")
+        if op == "addDecision":
+            event, op_errors = build_agent_add_decision_event(
+                operation=operation,
+                label=label,
+                project_id=project_id,
+                branch_id=branch_id,
+                created_by=created_by,
+                created_at=applied_at,
+                duration_ms=duration_ms,
+            )
+            if op_errors:
+                errors.extend(op_errors)
+                continue
+
+            if any(existing_event["id"] == event["id"] for existing_event in next_events):
+                errors.append(f"{label}.id already exists in decision file: {event['id']}")
+                continue
+
+            next_events.append(event)
+            applied_operations.append(
+                {
+                    "op": "addDecision",
+                    "id": event["id"],
+                    "sourceTimeMs": event["sourceTimeMs"],
+                    "state": event["state"],
+                }
+            )
+            continue
+
+        if op == "removeDecision":
+            target_id = operation.get("id")
+            if not isinstance(target_id, str) or not target_id.strip():
+                errors.append(f"{label}.id must be a non-empty string")
+                continue
+
+            target_index = next(
+                (
+                    event_index
+                    for event_index, event in enumerate(next_events)
+                    if event["id"] == target_id
+                ),
+                None,
+            )
+            if target_index is None:
+                errors.append(f"{label}.id does not exist in decision file: {target_id}")
+                continue
+
+            target_event = dict(next_events[target_index])
+            if is_decision_event_removed(target_event):
+                warnings.append(f"{label}: decision {target_id} was already tombstoned")
+            target_event["removedAt"] = applied_at
+            target_event["removedBy"] = created_by
+            target_event["operation"] = "remove"
+            reason = operation.get("reason")
+            if isinstance(reason, str) and reason.strip():
+                target_event["note"] = append_decision_note(
+                    target_event.get("note"),
+                    f"Agent remove: {reason.strip()}",
+                )
+            next_events[target_index] = target_event
+            applied_operations.append({"op": "removeDecision", "id": target_id})
+            continue
+
+        errors.append(
+            f"{label}.op must be one of addDecision, removeDecision; got {op!r}"
+        )
+
+    next_events = merge_decision_events(next_events)
+    active_events = get_active_decision_events(next_events)
+    review = build_agent_edit_review_report(
+        manifest=manifest,
+        decision_events=next_events,
+        profile="youtube_16x9",
+        manifest_path=Path("<manifest>"),
+        decisions_path=Path("<agent-output>"),
+    )
+
+    return {
+        "schemaVersion": 1,
+        "appliedAt": applied_at,
+        "projectId": project_id,
+        "branchId": branch_id,
+        "operationCount": len(operations),
+        "appliedOperationCount": len(applied_operations),
+        "appliedOperations": applied_operations,
+        "decisionEvents": next_events,
+        "activeDecisionEventCount": len(active_events),
+        "tombstonedDecisionEventCount": sum(
+            1 for event in next_events if is_decision_event_removed(event)
+        ),
+        "reviewSummary": review["summary"],
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+def build_agent_add_decision_event(
+    *,
+    operation: dict[str, Any],
+    label: str,
+    project_id: str,
+    branch_id: str,
+    created_by: str,
+    created_at: str,
+    duration_ms: int,
+) -> tuple[dict[str, Any], list[str]]:
+    errors: list[str] = []
+    raw_source_time_ms = operation.get("sourceTimeMs")
+    state = operation.get("state")
+
+    if not isinstance(raw_source_time_ms, (int, float)):
+        errors.append(f"{label}.sourceTimeMs must be a number")
+    if state not in PROGRAM_STATES:
+        errors.append(
+            f"{label}.state must be one of: {', '.join(PROGRAM_STATE_ORDER)}"
+        )
+
+    if errors:
+        return {}, errors
+
+    source_time_ms = clamp_ms(float(raw_source_time_ms), duration_ms)
+    event_id = operation.get("id")
+    if not isinstance(event_id, str) or not event_id.strip():
+        event_id = create_agent_decision_id(project_id, branch_id, source_time_ms, str(state))
+
+    event: dict[str, Any] = {
+        "id": event_id,
+        "projectId": project_id,
+        "branchId": branch_id,
+        "sourceTimeMs": source_time_ms,
+        "state": str(state),
+        "createdBy": created_by,
+        "createdAt": created_at,
+        "clientId": "studio-cut-local-agent",
+        "operation": "upsert",
+    }
+    note = operation.get("note")
+    if isinstance(note, str) and note.strip():
+        event["note"] = note.strip()
+
+    return event, []
+
+
+def print_agent_decision_ops_result(
+    result: dict[str, Any], *, dry_run: bool, out_path: Path
+) -> None:
+    print("Studio Cut Agent Decision Ops")
+    print("=============================")
+    print(f"Mode: {'dry run' if dry_run else 'write'}")
+    print(f"Operations: {result['appliedOperationCount']} applied / {result['operationCount']} requested")
+    print(f"Active decisions: {result['activeDecisionEventCount']}")
+    print(f"Tombstoned decisions: {result['tombstonedDecisionEventCount']}")
+    print(f"Output: {out_path if not dry_run else f'{out_path} (not written)'}")
+
+    if result["appliedOperations"]:
+        print("\nApplied:")
+        for operation in result["appliedOperations"]:
+            if operation["op"] == "addDecision":
+                print(
+                    "  - add "
+                    f"{operation['state']} at {format_time_ms(operation['sourceTimeMs'])} "
+                    f"({operation['id']})"
+                )
+            else:
+                print(f"  - remove {operation['id']}")
+
+    if result["warnings"]:
+        print("\nWarnings:")
+        for warning in result["warnings"]:
+            print(f"  - {warning}")
+
+    if result["errors"]:
+        print("\nErrors:")
+        for error in result["errors"]:
+            print(f"  - {error}")
+
+
 def build_generated_package_validation_report(
     *,
     manifest_path: Path,
@@ -4252,14 +4780,7 @@ def parse_decision_events(payload: Any) -> list[dict[str, Any]]:
     if rejected_count:
         print(f"warning: rejected {rejected_count} invalid decision event(s)", file=sys.stderr)
 
-    return sorted(
-        valid_events,
-        key=lambda event: (
-            float(event["sourceTimeMs"]),
-            str(event["createdAt"]),
-            str(event["id"]),
-        ),
-    )
+    return sort_decision_events(valid_events)
 
 
 def state_requires_clip(state: str) -> bool:
@@ -4370,14 +4891,19 @@ def derive_segments(
     decision_events: list[dict[str, Any]], duration_ms: int
 ) -> list[dict[str, Any]]:
     segments = []
+    active_decision_events = get_active_decision_events(decision_events)
 
-    for index, event in enumerate(decision_events):
+    for index, event in enumerate(active_decision_events):
         start_ms = clamp_ms(float(event["sourceTimeMs"]), duration_ms)
 
         if start_ms >= duration_ms:
             continue
 
-        next_event = decision_events[index + 1] if index + 1 < len(decision_events) else None
+        next_event = (
+            active_decision_events[index + 1]
+            if index + 1 < len(active_decision_events)
+            else None
+        )
         end_ms = (
             clamp_ms(float(next_event["sourceTimeMs"]), duration_ms)
             if next_event
@@ -4398,6 +4924,38 @@ def derive_segments(
         )
 
     return segments
+
+
+def get_active_decision_events(
+    decision_events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return sort_decision_events(
+        [event for event in decision_events if not is_decision_event_removed(event)]
+    )
+
+
+def is_decision_event_removed(event: dict[str, Any]) -> bool:
+    return isinstance(event.get("removedAt"), str) and bool(event["removedAt"].strip())
+
+
+def sort_decision_events(decision_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        decision_events,
+        key=lambda event: (
+            float(event["sourceTimeMs"]),
+            str(event["createdAt"]),
+            str(event["id"]),
+        ),
+    )
+
+
+def merge_decision_events(decision_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    events_by_id: dict[str, dict[str, Any]] = {}
+
+    for event in decision_events:
+        events_by_id[str(event["id"])] = dict(event)
+
+    return sort_decision_events(list(events_by_id.values()))
 
 
 def print_render_plan(plan: dict[str, Any]) -> None:
@@ -5428,7 +5986,20 @@ def is_decision_event(event: Any) -> bool:
         and bool(event["createdBy"].strip())
         and isinstance(event.get("createdAt"), str)
         and bool(event["createdAt"].strip())
+        and (event.get("clientId") is None or isinstance(event.get("clientId"), str))
+        and (
+            event.get("operation") is None
+            or event.get("operation") in {"upsert", "import", "remove"}
+        )
         and (event.get("note") is None or isinstance(event.get("note"), str))
+        and (
+            event.get("removedAt") is None
+            or (
+                isinstance(event.get("removedAt"), str)
+                and bool(event["removedAt"].strip())
+            )
+        )
+        and (event.get("removedBy") is None or isinstance(event.get("removedBy"), str))
     )
 
 
@@ -5528,6 +6099,24 @@ def format_time_ms(value: int | float) -> str:
 
 def format_percent(value: int | float) -> str:
     return f"{round(max(0, min(1, float(value))) * 100)}%"
+
+
+def utc_now_iso() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def create_agent_decision_id(
+    project_id: str, branch_id: str, source_time_ms: int, state: str
+) -> str:
+    slug = safe_file_part(f"{project_id}-{branch_id}-{state}-{source_time_ms}")
+    return f"agent-{slug}-{uuid.uuid4().hex[:10]}"
+
+
+def append_decision_note(existing_note: Any, addition: str) -> str:
+    if isinstance(existing_note, str) and existing_note.strip():
+        return f"{existing_note.strip()} | {addition}"
+
+    return addition
 
 
 def format_seconds(value: float) -> str:

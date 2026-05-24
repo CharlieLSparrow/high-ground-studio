@@ -462,6 +462,39 @@ pnpm studio-cut:verify
 Use `pnpm studio-cut:web-smoke` when the change only needs browser cockpit
 coverage. Use the full verifier before deploying.
 
+## Agentic Decision Editing
+
+Agents can review and edit decision exports without browser clicking or ad-hoc
+JSON mutation.
+
+Review an edit:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-review-edit \
+  --manifest path/to/episode-manifest.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --out path/to/agent-edit-review.json
+```
+
+Apply transparent operation JSON:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py apply-decision-ops \
+  --manifest path/to/episode-manifest.json \
+  --decisions path/to/studio-cut-decisions.json \
+  --ops path/to/agent-ops.json \
+  --out path/to/studio-cut-decisions.agent-edited.json \
+  --created-by codex-agent \
+  --dry-run
+```
+
+Remove `--dry-run` to write the new decision file. The command never mutates the
+input decision export. Remove operations create tombstones with `removedAt` and
+`removedBy` so the edit remains auditable.
+
+See `docs/studio-cut-agentic-editing.md` for the operation file shape and the
+recommended human-transparent agent workflow.
+
 ## Inputs
 
 - Episode Manifest JSON from the Premiere bootstrap workflow.

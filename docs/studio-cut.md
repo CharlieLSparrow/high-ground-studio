@@ -366,9 +366,27 @@ The CLI supports:
 - `render-rescue-sync-session`: wraps `render-from-sync-map` for the standard
   one-folder Rescue Sync workspace, using `generated/`, `edit/`, and `renders/`
   paths so operators do not have to retype Sync Map file locations.
+- `agent-review-edit`: reads an Episode Manifest and decision JSON, then writes
+  an agent-friendly review report with decision counts, state durations, Cut
+  duration, warnings, and suggested review tasks.
+- `apply-decision-ops`: applies a transparent operation JSON file to a decision
+  export and writes a new decision file. It supports adding decisions and
+  tombstoning decisions; it never mutates the input decision file.
 - `agent-smoke-test`: generates synthetic media and structured files, runs the
   planning/render path, and validates the output without private media or
   browser interaction.
+
+The agentic editing contract is documented in:
+
+```text
+docs/studio-cut-agentic-editing.md
+```
+
+The intent is to make Studio Cut usable by the current Codex CLI through
+structured files and commands before training any specialized editing model.
+Agents inspect a review report, write a small operation JSON file, dry-run it,
+then apply it to a new decision export that humans can inspect, import, render,
+or roll back.
 
 The web editor also shows a `Local Render Handoff` panel after an episode is
 loaded. It previews the expected decision export filename, the session folder

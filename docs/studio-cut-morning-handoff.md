@@ -54,6 +54,10 @@ Related durable docs:
   anchor-based waveform correlation v0.
 - One-command verifier: `pnpm studio-cut:verify`, including Firebase emulator
   rules tests.
+- Agentic decision editing commands:
+  `agent-review-edit` for machine-readable edit diagnostics and
+  `apply-decision-ops` for transparent add/tombstone operations that write a new
+  decision file without mutating the input export.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification
@@ -349,6 +353,9 @@ warning.
   Java before running the verifier.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
   checkpoints remain the durable rollback path.
+- Agentic editing is file-first for now. Agents can review/apply decision
+  operation JSON locally, but the web cockpit does not yet preview operation
+  files before import.
 
 ## Rollback Pattern
 
@@ -373,3 +380,10 @@ Improve Sync Map render quality:
 - use Sync Map drift guidance during local original render
 - add render-profile output presets beyond rough `youtube_16x9`
 - generate production-grade source-monitor labels/proxy quality
+
+Improve agentic editing:
+
+- import/preview decision operation JSON inside the web cockpit
+- add transcript/speaker-aware review reports
+- let agents propose silence/filler/awkward-hold cuts with confidence and
+  explicit human approval points
