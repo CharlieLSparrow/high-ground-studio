@@ -21,6 +21,8 @@ import {
   createHgoEpisodePublishDraftMdxFileName,
   createHgoEpisodePublishDraftPacket,
   HGO_EPISODE_PUBLISH_DRAFT_PACKET_KIND,
+  parseHgoEpisodePublishDraftPacketJson,
+  validateHgoEpisodePublishDraftPacket,
 } from "../apps/web/src/lib/hgo/publish-draft-packet.ts";
 
 function createCandidateProjection(overrides = {}) {
@@ -267,6 +269,65 @@ test("creates a private publish-draft packet without public side effects", () =>
     createHgoEpisodePublishDraftFrontmatterFileName(packet),
     "synthetic-candidate-projection.frontmatter.json",
   );
+});
+
+test("validates portable private publish-draft packets", () => {
+  const { artifact, record } = createArtifactAndRecord();
+  const candidate = createHgoEpisodePublishCandidatePacket({
+    record,
+    createdAt: "2026-05-24T12:20:00.000Z",
+  });
+  const packet = createHgoEpisodePublishDraftPacket({
+    artifact,
+    candidate,
+    createdAt: "2026-05-24T12:30:00.000Z",
+  });
+  const validation = validateHgoEpisodePublishDraftPacket(packet);
+  const parsed = parseHgoEpisodePublishDraftPacketJson(
+    JSON.stringify(packet, null, 2),
+  );
+
+  assert.equal(validation.ok, true);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.packet.episodePage.slug, "synthetic-candidate-projection");
+  assert.deepEqual(parsed.warnings, []);
+});
+
+test("rejects publish-draft packets that imply public side effects", () => {
+  const { artifact, record } = createArtifactAndRecord();
+  const candidate = createHgoEpisodePublishCandidatePacket({
+    record,
+    createdAt: "2026-05-24T12:20:00.000Z",
+  });
+  const packet = createHgoEpisodePublishDraftPacket({
+    artifact,
+    candidate,
+    createdAt: "2026-05-24T12:30:00.000Z",
+  });
+  const validation = validateHgoEpisodePublishDraftPacket({
+    ...packet,
+    packetKind: "not-a-publish-draft",
+    frontmatter: {
+      ...packet.frontmatter,
+      access: "public",
+      publicSafetyReview: "certified",
+    },
+    safety: {
+      ...packet.safety,
+      writesContentFiles: true,
+      createsPublicRoute: true,
+    },
+  });
+  const jsonParse = parseHgoEpisodePublishDraftPacketJson("{bad json");
+
+  assert.equal(validation.ok, false);
+  assert.match(validation.errors.join("\n"), /packetKind/);
+  assert.match(validation.errors.join("\n"), /frontmatter.access/);
+  assert.match(validation.errors.join("\n"), /publicSafetyReview/);
+  assert.match(validation.errors.join("\n"), /writesContentFiles/);
+  assert.match(validation.errors.join("\n"), /createsPublicRoute/);
+  assert.equal(jsonParse.ok, false);
+  assert.match(jsonParse.errors.join("\n"), /Invalid JSON/);
 });
 
 test("warns when real content or non-public lifecycle state needs human review", () => {

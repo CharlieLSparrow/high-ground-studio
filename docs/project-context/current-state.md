@@ -230,6 +230,10 @@ High Ground Studio is a monorepo with:
   route work begins. It does not create public routes, mutate content files,
   publish pages, certify citation/public-safety review, mutate stored
   artifacts, or call providers.
+- HGO also has a private `/team/hgo-publish-draft-lab` route for portable
+  `hgo-episode-publish-draft-v1` packets. A team operator can paste a packet,
+  validate the private-review boundary, inspect the generated MDX draft, and
+  copy/download frontmatter without touching public content or the database.
 - HGO has a pure staged artifact contract test command,
   `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
   validator state, invalid version, persisted/published safety failures,

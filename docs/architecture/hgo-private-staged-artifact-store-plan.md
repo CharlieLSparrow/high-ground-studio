@@ -36,6 +36,8 @@ The first private persistence slice exists:
   MDX draft, and generated frontmatter JSON
 - private per-artifact render previews at
   `/team/hgo-publish-queue/[recordId]/preview`
+- private publish-draft packet review lab at
+  `/team/hgo-publish-draft-lab`
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -91,6 +93,14 @@ providers, and does not certify citation or public-safety review.
 from the saved staged artifact through the shared HGO projection renderer. This
 is the private page-shape review surface before public `/episodes` work starts.
 It is team-gated, read-only, and still separate from live publishing.
+
+`/team/hgo-publish-draft-lab` makes a publish-draft packet portable. A team
+operator can paste packet JSON, validate that it remains a private
+`hgo-episode-publish-draft-v1` packet, inspect the generated MDX draft, inspect
+frontmatter, and copy/download those private handoff files. The validator
+rejects wrong packet kinds, public frontmatter state, and safety flags that
+would imply writing files, mutating the database, creating public routes, or
+calling providers.
 
 ## Why This Came After The Lab
 
@@ -168,6 +178,9 @@ API/server actions should remain private and explicit:
 - derive private episode-page publish-review brief: implemented
 - derive private episode-page publish-draft packet: implemented
 - copy/download private publish-draft MDX and frontmatter exports: implemented
+- parse/validate portable private publish-draft packet JSON: implemented
+- review portable private publish-draft packets in a team lab: implemented at
+  `/team/hgo-publish-draft-lab`
 - copy/download/reopen saved artifact handoff: implemented in the team route
 - view private episode publish queue: implemented at `/team/hgo-publish-queue`
 - load one staged artifact by id: implemented for private queue detail pages
