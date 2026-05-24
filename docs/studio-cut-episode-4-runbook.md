@@ -145,6 +145,11 @@ Use that status report as the checklist. It says what is missing, whether the
 generated package is ready to publish, whether exported decisions are present,
 and what command to run next.
 
+During tagging, use `Decision Refinement` instead of removing/recreating a tag
+when the state or timestamp is slightly wrong. Select the decision from the
+Decision Events list, adjust state/time/note, and save. The same semantic event
+id is updated, undo/redo still works, and no source media is touched.
+
 The older Premiere-aligned fallback still uses `create-episode-bootstrap`:
 
 From the repo root:

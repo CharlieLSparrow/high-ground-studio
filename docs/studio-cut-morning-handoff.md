@@ -222,6 +222,11 @@ To publish the generated package:
 Mako opens the room link and edits live. Mako does not import JSON, load local
 media, or touch sync files in the primary path.
 
+For messy tagging passes, use `Decision Refinement` in the Decision Events
+panel. It edits the selected semantic event in place: state, source time, and
+note. This keeps the decision id stable for shared-room/cloud upserts while
+preserving browser undo/redo and local checkpoint rollback.
+
 After publish, check `Sync Review` in the editor. It should show the attached
 Sync Map job id, canonical duration, asset roles, reference pieces, offset
 count, lowest confidence, and warning count. If it says the Sync Map is missing

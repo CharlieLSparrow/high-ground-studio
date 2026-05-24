@@ -37,6 +37,12 @@ export type PresenceUpdateInput = {
   currentState?: ProgramState;
 };
 
+export type DecisionUpdateInput = {
+  sourceTimeMs?: number;
+  state?: ProgramState;
+  note?: string;
+};
+
 export function useDecisionPersistence(
   createdByOverride: string | undefined,
   roomSelection: StudioCutRoomSelection,
@@ -189,6 +195,40 @@ export function useDecisionPersistence(
     if (eventToRemove && storeRef.current) {
       void tombstoneCloudEvent(eventToRemove, removal);
     }
+  }
+
+  function updateDecision(eventId: string, update: DecisionUpdateInput) {
+    const currentEvent = decisionEvents.find((event) => event.id === eventId);
+
+    if (!currentEvent) {
+      return undefined;
+    }
+
+    const nextEvent: DecisionEvent = {
+      ...currentEvent,
+      sourceTimeMs:
+        update.sourceTimeMs === undefined
+          ? currentEvent.sourceTimeMs
+          : Math.max(0, Math.round(update.sourceTimeMs)),
+      state: update.state ?? currentEvent.state,
+      clientId: currentEvent.clientId ?? sessionId,
+      operation: "upsert",
+    };
+    const trimmedNote =
+      update.note === undefined ? currentEvent.note?.trim() : update.note.trim();
+
+    if (trimmedNote) {
+      nextEvent.note = trimmedNote;
+    } else if (update.note !== undefined) {
+      nextEvent.note = "";
+    } else {
+      delete nextEvent.note;
+    }
+
+    setAllDecisionEvents((events) => mergeDecisionEvents([...events, nextEvent]));
+    void upsertCloudEvent(nextEvent);
+
+    return nextEvent;
   }
 
   function clearDecisions() {
@@ -367,6 +407,7 @@ export function useDecisionPersistence(
     collaborators,
     status,
     createDecision,
+    updateDecision,
     removeDecision,
     clearDecisions,
     replaceDecisionEvents,

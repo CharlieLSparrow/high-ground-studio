@@ -699,7 +699,10 @@ async function runBrowserSmoke() {
       "Proxy Program Preview",
     );
 
-    const secondsInput = page.getByLabel("Seconds");
+    const secondsInput = page.getByRole("spinbutton", {
+      name: "Seconds",
+      exact: true,
+    });
     await secondsInput.fill("5");
     await secondsInput.evaluate((element) => element.blur());
     await page.keyboard.press("3");
@@ -765,6 +768,24 @@ async function runBrowserSmoke() {
     await page.locator(".local-checkpoints").getByRole("button", { name: "Restore" }).click();
     await expectSectionText(decisionSection, "1 event");
     await expectSectionText(decisionSection, "Both");
+    await decisionSection.getByRole("button", { name: /Edit decision/ }).first().click();
+    const refinementPanel = page.getByLabel("Decision refinement");
+    await expect(refinementPanel).toContainText("Decision Refinement");
+    await refinementPanel.getByLabel("Selected decision state").selectOption("charlie");
+    await refinementPanel.getByLabel("Selected decision source time seconds").fill("6");
+    await refinementPanel.getByLabel("Selected decision note").fill("Corrected in smoke");
+    await refinementPanel.getByRole("button", { name: "Save Refinement" }).click();
+    await expect(decisionSection.locator("tbody")).toContainText("Charlie");
+    await expect(decisionSection.locator("tbody")).toContainText("0:06");
+    await expect(decisionSection.locator("tbody")).toContainText(
+      "Corrected in smoke",
+    );
+    await page.keyboard.press(`${shortcutModifier}+Z`);
+    await expect(decisionSection.locator("tbody")).toContainText("Both");
+    await expect(decisionSection.locator("tbody")).toContainText("0:05");
+    await page.keyboard.press(`${shortcutModifier}+Shift+Z`);
+    await expect(decisionSection.locator("tbody")).toContainText("Charlie");
+    await expect(decisionSection.locator("tbody")).toContainText("0:06");
 
     await page
       .getByLabel("Import agent decision operation JSON")

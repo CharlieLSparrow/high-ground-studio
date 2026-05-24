@@ -309,7 +309,7 @@ function serializeDecisionEvent(event: DecisionEvent) {
     createdAt: event.createdAt,
     ...(event.clientId ? { clientId: event.clientId } : {}),
     ...(event.operation ? { operation: event.operation } : {}),
-    ...(event.note ? { note: event.note } : {}),
+    ...(event.note !== undefined ? { note: event.note } : {}),
     ...(event.removedAt ? { removedAt: event.removedAt } : {}),
     ...(event.removedBy ? { removedBy: event.removedBy } : {}),
   };

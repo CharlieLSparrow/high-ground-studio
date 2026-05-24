@@ -114,10 +114,15 @@ whether Program Playback will include or skip that span. Decision export uses
 the manifest id when present, for example `episode-004-decisions.json`.
 
 Decision edits are reversible in the browser. Undo/redo covers adding,
-removing, clearing, and importing decisions. The undo stack is bounded and
-stored in localStorage with the current browser working set so a refresh does
-not immediately erase local edit history. This is still a local safety layer,
-not collaborative branching or a Firestore rollback system.
+refining, removing, clearing, and importing decisions. `Decision Refinement`
+lets an editor select an existing decision, change its state, retime it by
+typing seconds or nudging by tenths/seconds, reuse the current playhead time,
+and update the note without removing and recreating the event. In cloud mode the
+refinement upserts the same decision id; in local mode it updates the browser
+working set. The undo stack is bounded and stored in localStorage with the
+current browser working set so a refresh does not immediately erase local edit
+history. This is still a local safety layer, not collaborative branching or a
+Firestore rollback system.
 
 `Export Checkpoint` writes the same decision-layer JSON payload as normal export
 with a timestamped filename such as

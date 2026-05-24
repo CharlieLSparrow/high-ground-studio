@@ -572,7 +572,8 @@ h2 {
 .rescue-package-panel,
 .shared-room-diagnostics-panel,
 .sync-review-panel,
-.agent-ops-panel {
+.agent-ops-panel,
+.decision-refinement-panel {
   display: grid;
   gap: 14px;
 }
@@ -591,7 +592,8 @@ h2 {
 .rescue-package-panel,
 .shared-room-diagnostics-panel,
 .sync-review-panel,
-.agent-ops-panel {
+.agent-ops-panel,
+.decision-refinement-panel {
   border: 1px solid rgba(238, 242, 238, 0.11);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -1535,6 +1537,75 @@ h2 {
     rgba(255, 255, 255, 0.04);
 }
 
+.decision-refinement-panel {
+  margin-top: 12px;
+  border-color: rgba(145, 219, 183, 0.24);
+  background:
+    linear-gradient(135deg, rgba(145, 219, 183, 0.09), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.decision-refinement-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.decision-refinement-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(220px, 1.4fr);
+  gap: 8px;
+}
+
+.decision-refinement-form label {
+  display: grid;
+  gap: 6px;
+  color: #aeb9b4;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.decision-refinement-form input,
+.decision-refinement-form select,
+.decision-refinement-form textarea {
+  min-width: 0;
+  border: 1px solid rgba(238, 242, 238, 0.14);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #eef2ee;
+  padding: 8px 9px;
+  font: inherit;
+  text-transform: none;
+}
+
+.decision-refinement-form textarea {
+  min-height: 40px;
+  resize: vertical;
+}
+
+.decision-refinement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.decision-refinement-actions button {
+  border: 1px solid rgba(238, 242, 238, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #eef2ee;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.decision-refinement-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .readiness-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2003,6 +2074,11 @@ td {
   box-shadow: inset 0 1px 0 rgba(240, 201, 106, 0.18);
 }
 
+.is-selected-row td {
+  outline: 1px solid rgba(125, 178, 255, 0.3);
+  outline-offset: -1px;
+}
+
 .state-pill {
   display: inline-flex;
   min-height: 26px;
@@ -2226,6 +2302,8 @@ td {
   .cloud-sync-controls,
   .cloud-sync-role-row,
   .cloud-sync-selected-file,
+  .decision-refinement-grid,
+  .decision-refinement-form,
   .rescue-package-grid,
   .sync-review-grid,
   .sync-review-detail-grid,

@@ -174,6 +174,12 @@ type DecisionHistoryState = {
   lastAction: string;
 };
 
+type DecisionRefinementDraft = {
+  sourceTimeMs: number;
+  state: ProgramState;
+  note: string;
+};
+
 type PaneRectField = keyof SourcePaneRect;
 
 type LocalDecisionCheckpoint = {
@@ -354,6 +360,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryState>(
     loadStoredDecisionHistory,
   );
+  const [selectedDecisionId, setSelectedDecisionId] = useState<string | undefined>(
+    undefined,
+  );
+  const [decisionRefinementDraft, setDecisionRefinementDraft] =
+    useState<DecisionRefinementDraft | null>(null);
   const [localCheckpoints, setLocalCheckpoints] = useState<
     LocalDecisionCheckpoint[]
   >(loadStoredLocalCheckpoints);
@@ -383,6 +394,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     collaborators,
     status,
     createDecision,
+    updateDecision,
     removeDecision,
     clearDecisions,
     replaceDecisionEvents,
@@ -412,6 +424,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     [derivedSegments, sourceDurationMs, sourceTimeMs],
   );
   const latestEventId = sortedEvents[sortedEvents.length - 1]?.id;
+  const selectedDecision =
+    sortedEvents.find((event) => event.id === selectedDecisionId) ?? null;
   const currentState = currentEvent?.state;
   const canUndoDecisionChange = decisionHistory.undoStack.length > 0;
   const canRedoDecisionChange = decisionHistory.redoStack.length > 0;
@@ -770,6 +784,29 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   }, [decisionHistory]);
 
   useEffect(() => {
+    if (!selectedDecisionId) {
+      setDecisionRefinementDraft(null);
+      return;
+    }
+
+    const selectedEvent = sortedEvents.find(
+      (event) => event.id === selectedDecisionId,
+    );
+
+    if (!selectedEvent) {
+      setSelectedDecisionId(undefined);
+      setDecisionRefinementDraft(null);
+      return;
+    }
+
+    setDecisionRefinementDraft({
+      sourceTimeMs: selectedEvent.sourceTimeMs,
+      state: selectedEvent.state,
+      note: selectedEvent.note ?? "",
+    });
+  }, [selectedDecisionId, sortedEvents]);
+
+  useEffect(() => {
     saveStoredLocalCheckpoints(localCheckpoints);
   }, [localCheckpoints]);
 
@@ -1040,12 +1077,113 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     stopProgramPlayback();
     const event = createDecision(state, sourceTimeMs, note);
     const nextEvents = mergeDecisionEvents([...decisionEvents, event]);
+    setSelectedDecisionId(event.id);
     recordDecisionMutation(
       `Added ${PROGRAM_STATE_LABELS[state]} at ${formatSourceTime(sourceTimeMs)}`,
       decisionEvents,
       nextEvents,
     );
     setNote("");
+  }
+
+  function selectDecisionForRefinement(eventId: string) {
+    const event = sortedEvents.find((candidateEvent) => candidateEvent.id === eventId);
+
+    if (!event) {
+      return;
+    }
+
+    setSelectedDecisionId(event.id);
+    setDecisionRefinementDraft({
+      sourceTimeMs: event.sourceTimeMs,
+      state: event.state,
+      note: event.note ?? "",
+    });
+  }
+
+  function selectActiveDecisionForRefinement() {
+    const event = currentEvent ?? sortedEvents[sortedEvents.length - 1];
+
+    if (event) {
+      selectDecisionForRefinement(event.id);
+    }
+  }
+
+  function updateDecisionRefinementDraft(
+    patch: Partial<DecisionRefinementDraft>,
+  ) {
+    setDecisionRefinementDraft((currentDraft) =>
+      currentDraft
+        ? {
+            ...currentDraft,
+            ...patch,
+            sourceTimeMs: clampSourceTime(
+              patch.sourceTimeMs ?? currentDraft.sourceTimeMs,
+              sourceDurationMs,
+            ),
+          }
+        : currentDraft,
+    );
+  }
+
+  function setSelectedDecisionDraftToCurrentTime() {
+    updateDecisionRefinementDraft({ sourceTimeMs });
+  }
+
+  function nudgeSelectedDecisionDraft(deltaMs: number) {
+    if (!decisionRefinementDraft) {
+      return;
+    }
+
+    updateDecisionRefinementDraft({
+      sourceTimeMs: decisionRefinementDraft.sourceTimeMs + deltaMs,
+    });
+  }
+
+  function saveDecisionRefinement() {
+    if (!selectedDecision || !decisionRefinementDraft) {
+      return;
+    }
+
+    const trimmedNote = decisionRefinementDraft.note.trim();
+    const normalizedNextEvent: DecisionEvent = {
+      ...selectedDecision,
+      sourceTimeMs: clampSourceTime(
+        decisionRefinementDraft.sourceTimeMs,
+        sourceDurationMs,
+      ),
+      state: decisionRefinementDraft.state,
+    };
+
+    if (trimmedNote) {
+      normalizedNextEvent.note = trimmedNote;
+    } else {
+      normalizedNextEvent.note = "";
+    }
+
+    const nextEvents = mergeDecisionEvents([
+      ...decisionEvents.filter((event) => event.id !== selectedDecision.id),
+      normalizedNextEvent,
+    ]);
+
+    stopProgramPlayback();
+    recordDecisionMutation(
+      `Refined ${PROGRAM_STATE_LABELS[selectedDecision.state]} at ${formatSourceTime(
+        selectedDecision.sourceTimeMs,
+      )}`,
+      decisionEvents,
+      nextEvents,
+    );
+    const updatedEvent = updateDecision(selectedDecision.id, {
+      sourceTimeMs: normalizedNextEvent.sourceTimeMs,
+      state: normalizedNextEvent.state,
+      note: normalizedNextEvent.note ?? "",
+    });
+
+    if (updatedEvent) {
+      setSelectedDecisionId(updatedEvent.id);
+      scrubToSourceTime(updatedEvent.sourceTimeMs);
+    }
   }
 
   function removeDecisionWithHistory(eventId: string) {
@@ -1066,6 +1204,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       nextEvents,
     );
     removeDecision(eventId);
+    if (selectedDecisionId === eventId) {
+      setSelectedDecisionId(undefined);
+    }
   }
 
   function removeCurrentOrLatestDecision() {
@@ -3001,11 +3142,29 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             onApply={handleApplyAgentDecisionOps}
             onDismiss={() => setAgentOpsPreview(null)}
           />
+          <DecisionRefinementPanel
+            selectedEvent={selectedDecision}
+            draft={decisionRefinementDraft}
+            currentEvent={currentEvent}
+            latestEvent={sortedEvents[sortedEvents.length - 1] ?? null}
+            sourceTimeMs={sourceTimeMs}
+            sourceDurationMs={sourceDurationMs}
+            onSelectActive={selectActiveDecisionForRefinement}
+            onDraftChange={updateDecisionRefinementDraft}
+            onUseCurrentTime={setSelectedDecisionDraftToCurrentTime}
+            onNudge={nudgeSelectedDecisionDraft}
+            onSave={saveDecisionRefinement}
+            onJump={scrubToSourceTime}
+            onRemove={(eventId) => removeDecisionWithHistory(eventId)}
+            onClearSelection={() => setSelectedDecisionId(undefined)}
+          />
           <DecisionList
             events={sortedEvents}
             currentEventId={currentEvent?.id}
             latestEventId={latestEventId}
+            selectedEventId={selectedDecisionId}
             onJump={scrubToSourceTime}
+            onSelect={selectDecisionForRefinement}
             onRemove={(eventId) => {
               removeDecisionWithHistory(eventId);
             }}
@@ -5304,17 +5463,184 @@ function AgentDecisionOpsPanel({
   );
 }
 
+function DecisionRefinementPanel({
+  selectedEvent,
+  draft,
+  currentEvent,
+  latestEvent,
+  sourceTimeMs,
+  sourceDurationMs,
+  onSelectActive,
+  onDraftChange,
+  onUseCurrentTime,
+  onNudge,
+  onSave,
+  onJump,
+  onRemove,
+  onClearSelection,
+}: {
+  selectedEvent: DecisionEvent | null;
+  draft: DecisionRefinementDraft | null;
+  currentEvent?: DecisionEvent;
+  latestEvent: DecisionEvent | null;
+  sourceTimeMs: number;
+  sourceDurationMs: number;
+  onSelectActive: () => void;
+  onDraftChange: (patch: Partial<DecisionRefinementDraft>) => void;
+  onUseCurrentTime: () => void;
+  onNudge: (deltaMs: number) => void;
+  onSave: () => void;
+  onJump: (sourceTimeMs: number) => void;
+  onRemove: (eventId: string) => void;
+  onClearSelection: () => void;
+}) {
+  const canSave = Boolean(
+    selectedEvent &&
+      draft &&
+      (selectedEvent.sourceTimeMs !== draft.sourceTimeMs ||
+        selectedEvent.state !== draft.state ||
+        (selectedEvent.note ?? "") !== draft.note.trim()),
+  );
+
+  return (
+    <section
+      className="decision-refinement-panel"
+      aria-label="Decision refinement"
+    >
+      <div className="timeline-header">
+        <div>
+          <strong>Decision Refinement</strong>
+          <p>
+            Correct a tag in place. This edits the semantic decision event; no
+            source media is touched.
+          </p>
+        </div>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onSelectActive}
+          disabled={!currentEvent && !latestEvent}
+        >
+          Select Active
+        </button>
+      </div>
+
+      {!selectedEvent || !draft ? (
+        <p className="panel-empty">
+          Select a decision from the list, or use Select Active while parked on a
+          tagged segment.
+        </p>
+      ) : (
+        <>
+          <div className="decision-refinement-grid">
+            <ReadinessMetric label="Event" value={shortId(selectedEvent.id)} />
+            <ReadinessMetric
+              label="Original"
+              value={`${PROGRAM_STATE_LABELS[selectedEvent.state]} at ${formatSourceTime(
+                selectedEvent.sourceTimeMs,
+              )}`}
+            />
+            <ReadinessMetric
+              label="Current playhead"
+              value={formatSourceTime(sourceTimeMs)}
+            />
+            <ReadinessMetric
+              label="Episode duration"
+              value={formatSourceTime(sourceDurationMs)}
+            />
+          </div>
+          <div className="decision-refinement-form">
+            <label>
+              State
+              <select
+                value={draft.state}
+                onChange={(event) =>
+                  onDraftChange({ state: event.target.value as ProgramState })
+                }
+                aria-label="Selected decision state"
+              >
+                {PROGRAM_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {PROGRAM_STATE_LABELS[state]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Source time seconds
+              <input
+                type="number"
+                min={0}
+                max={Math.ceil(sourceDurationMs / 1000)}
+                step={0.1}
+                value={roundSeconds(draft.sourceTimeMs)}
+                onChange={(event) =>
+                  onDraftChange({
+                    sourceTimeMs: Number(event.target.value) * 1000,
+                  })
+                }
+                aria-label="Selected decision source time seconds"
+              />
+            </label>
+            <label className="decision-refinement-note">
+              Note
+              <textarea
+                value={draft.note}
+                onChange={(event) => onDraftChange({ note: event.target.value })}
+                aria-label="Selected decision note"
+              />
+            </label>
+          </div>
+          <div className="decision-refinement-actions">
+            <button type="button" onClick={() => onNudge(-1000)}>
+              -1s
+            </button>
+            <button type="button" onClick={() => onNudge(-100)}>
+              -0.1s
+            </button>
+            <button type="button" onClick={onUseCurrentTime}>
+              Use Current Time
+            </button>
+            <button type="button" onClick={() => onNudge(100)}>
+              +0.1s
+            </button>
+            <button type="button" onClick={() => onNudge(1000)}>
+              +1s
+            </button>
+            <button type="button" onClick={() => onJump(draft.sourceTimeMs)}>
+              Jump Draft
+            </button>
+            <button type="button" onClick={onSave} disabled={!canSave}>
+              Save Refinement
+            </button>
+            <button type="button" onClick={() => onRemove(selectedEvent.id)}>
+              Remove
+            </button>
+            <button type="button" onClick={onClearSelection}>
+              Deselect
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function DecisionList({
   events,
   currentEventId,
   latestEventId,
+  selectedEventId,
   onJump,
+  onSelect,
   onRemove,
 }: {
   events: DecisionEvent[];
   currentEventId?: string;
   latestEventId?: string;
+  selectedEventId?: string;
   onJump: (sourceTimeMs: number) => void;
+  onSelect: (eventId: string) => void;
   onRemove: (eventId: string) => void;
 }) {
   if (events.length === 0) {
@@ -5337,6 +5663,7 @@ function DecisionList({
           {events.map((event) => {
             const isCurrent = event.id === currentEventId;
             const isLatest = event.id === latestEventId;
+            const isSelected = event.id === selectedEventId;
 
             return (
               <tr
@@ -5344,6 +5671,7 @@ function DecisionList({
                 className={[
                   isCurrent ? "is-current-row" : "",
                   isLatest ? "is-latest-row" : "",
+                  isSelected ? "is-selected-row" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -5371,6 +5699,13 @@ function DecisionList({
                 </td>
                 <td>
                   <div className="row-actions">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(event.id)}
+                      aria-label={`Edit decision ${shortId(event.id)}`}
+                    >
+                      Edit
+                    </button>
                     <button
                       type="button"
                       onClick={() => onJump(event.sourceTimeMs)}
@@ -6446,6 +6781,10 @@ function sanitizeFileNamePart(value: string) {
 
 function getStoragePathLeaf(path: string, fallback: string) {
   return path.split("/").filter(Boolean).at(-1) ?? fallback;
+}
+
+function roundSeconds(sourceTimeMs: number) {
+  return Math.round((sourceTimeMs / 1000) * 10) / 10;
 }
 
 function formatFileSize(sizeBytes: number) {
