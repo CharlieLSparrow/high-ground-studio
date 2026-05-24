@@ -1,7 +1,41 @@
 {
-  "updatedAt": "2026-05-24T04:12:00.000Z",
+  "updatedAt": "2026-05-24T05:00:00.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-staged-artifact-review-controls",
+      "date": "2026-05-24",
+      "title": "Saved HGO artifacts can move through private review",
+      "kicker": "The private review shelf now has status buttons instead of inert cards",
+      "mood": "Workflow moving",
+      "summary": "The saved HGO staged artifact list now lets team operators mark artifacts as needing fixes, needing human review, ready as a future staging candidate, or archived.",
+      "body": [
+        "Saving a staged artifact gave us a private shelf. This slice made the shelf useful: each saved packet now carries review event counts, last-reviewed metadata, and explicit private review controls.",
+        "The controls are intentionally narrow. They update review metadata and append event-log entries. They do not publish pages, create episode routes, call providers, or turn an artifact save into public approval.",
+        "The API now also supports PATCH updates for team-gated review and archive actions, so future Studio and HGO surfaces can move artifacts through the same private lifecycle."
+      ],
+      "commits": [
+        {
+          "sha": "5e9599a",
+          "label": "feat(web): review HGO staged artifacts"
+        }
+      ],
+      "links": [
+        {
+          "label": "Private HGO stage list",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/team/hgo-staged-artifacts"
+        },
+        {
+          "label": "HGO staged import",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/projection-stage/import"
+        },
+        {
+          "label": "Artifact store plan",
+          "href": "docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Review", "Episode Pages", "Private Workflow"]
+    },
     {
       "id": "hgo-private-staged-artifact-store",
       "date": "2026-05-24",
