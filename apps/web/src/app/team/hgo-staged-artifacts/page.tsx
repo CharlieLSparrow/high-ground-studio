@@ -11,6 +11,10 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { resolveTeamAccess } from "@/lib/content-access";
 import {
+  createHgoEpisodePublishCandidateFileName,
+  createHgoEpisodePublishCandidatePacket,
+} from "@/lib/hgo/publish-candidate-packet";
+import {
   listHgoStagedArtifactsForOwner,
   type HgoStagedArtifactRecordDto,
 } from "@/lib/server/hgo-staged-artifacts";
@@ -103,6 +107,14 @@ function ReviewActionForm({
 
 function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
   const isArchived = Boolean(record.archivedAt);
+  const publishCandidatePacket = createHgoEpisodePublishCandidatePacket({
+    record,
+    createdAt: record.updatedAt,
+  });
+  const publishCandidateJson = JSON.stringify(publishCandidatePacket, null, 2);
+  const publishCandidateFileName = createHgoEpisodePublishCandidateFileName(
+    publishCandidatePacket,
+  );
 
   return (
     <article className="rounded-[24px] border border-white/10 bg-white/8 p-5 text-[var(--text-light)] shadow-glass">
@@ -179,12 +191,84 @@ function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
           {formatDateTime(record.reviewedAt)}
           {record.reviewedByEmail ? ` by ${record.reviewedByEmail}` : ""}
         </div>
-        {record.note ? (
+      {record.note ? (
           <div>
             <strong className="text-[rgba(245,239,230,0.94)]">Note:</strong>{" "}
             {record.note}
           </div>
         ) : null}
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm leading-6 text-emerald-50">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase text-emerald-100/75">
+              Episode page handoff
+            </div>
+            <h4 className="m-0 mt-1 text-lg leading-tight text-emerald-50">
+              Publish-candidate packet
+            </h4>
+          </div>
+          <span className="rounded-full border border-emerald-200/25 bg-black/20 px-3 py-1 font-mono text-xs text-emerald-50">
+            {publishCandidatePacket.readiness.state}
+          </span>
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div>
+            <div className="text-xs font-semibold uppercase text-emerald-100/70">
+              Proposed route
+            </div>
+            <code className="mt-1 block break-all rounded-xl bg-black/20 px-3 py-2 text-emerald-50">
+              {publishCandidatePacket.episodePage.proposedRoute}
+            </code>
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase text-emerald-100/70">
+              Packet file
+            </div>
+            <code className="mt-1 block break-all rounded-xl bg-black/20 px-3 py-2 text-emerald-50">
+              {publishCandidateFileName}
+            </code>
+          </div>
+        </div>
+
+        {publishCandidatePacket.readiness.blockers.length ? (
+          <div className="mt-3 rounded-xl border border-rose-300/25 bg-rose-300/10 p-3 text-rose-50">
+            <div className="text-xs font-semibold uppercase">Blockers</div>
+            <ul className="m-0 mt-2 space-y-1 pl-5">
+              {publishCandidatePacket.readiness.blockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-emerald-200/25 bg-black/15 p-3">
+            Ready for human publish review. This still does not create a public
+            route, call providers, certify source review, or mutate stored
+            artifact JSON.
+          </div>
+        )}
+
+        {publishCandidatePacket.readiness.warnings.length ? (
+          <div className="mt-3 rounded-xl border border-amber-200/25 bg-amber-200/10 p-3 text-amber-50">
+            <div className="text-xs font-semibold uppercase">Warnings</div>
+            <ul className="m-0 mt-2 space-y-1 pl-5">
+              {publishCandidatePacket.readiness.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <details className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+          <summary className="cursor-pointer text-sm font-semibold">
+            View private packet JSON
+          </summary>
+          <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/25 p-3 text-xs leading-5 text-emerald-50">
+            {publishCandidateJson}
+          </pre>
+        </details>
       </div>
 
       {!isArchived ? (

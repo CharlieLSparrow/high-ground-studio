@@ -21,6 +21,8 @@ The first private persistence slice exists:
 - import route action: explicit `Save private review artifact` button on
   `/projection-stage/import`
 - private review/archive controls on `/team/hgo-staged-artifacts`
+- private episode-page publish-candidate packets on
+  `/team/hgo-staged-artifacts`
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -29,6 +31,13 @@ packet.
 
 The first slice still does not publish pages, create public routes, call
 providers, verify public safety, delete artifacts, or replace `/episodes`.
+
+Approved staged artifacts can now derive an
+`hgo-episode-publish-candidate-v1` packet. This packet names the proposed
+`/episodes/...` route, carries blockers/warnings/human review actions, and
+records rollback expectations. It is private planning metadata only: generating
+it does not create route files, mutate the database, call providers, certify
+public-safety review, or change the immutable staged artifact JSON.
 
 ## Why This Came After The Lab
 
@@ -102,6 +111,7 @@ API/server actions should remain private and explicit:
 - list staged artifacts visible to the current operator: implemented
 - mark review status for a staged artifact: implemented
 - archive staged artifact: implemented
+- derive private episode-page publish-candidate packet: implemented
 - load one staged artifact by id
 - later, create a separate promotion candidate
 
