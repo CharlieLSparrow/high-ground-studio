@@ -1,7 +1,37 @@
 {
-  "updatedAt": "2026-05-24T18:41:07.446Z",
+  "updatedAt": "2026-05-24T18:50:05.302Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "content-studio-copy-handoff",
+      "date": "2026-05-24",
+      "title": "Content Studio handoffs got easier to move",
+      "kicker": "Podcast and episode packets can jump toward HGO staging faster",
+      "mood": "Less copy friction",
+      "summary": "Content Studio now gives operators one-click copy actions for production packets and HGO projection drafts, plus a direct link to the HGO staged importer.",
+      "body": [
+        "The production packet already carried the useful podcast, book, and episode-page handoff data. This slice makes that data easier to move: copy the selected production packet, copy just the HGO projection draft when it exists, or open the HGO staged importer from the Studio panel.",
+        "This keeps the safety boundary intact. The buttons do not publish, call providers, mutate production content, or send data automatically across services; they reduce the manual work needed to pass the packet to the next private review surface.",
+        "For the top-priority workflows, this means podcast production and episode-page staging can move from Studio to HGO review with fewer little papercuts while the project still keeps explicit human review."
+      ],
+      "commits": [
+        {
+          "sha": "pending-merge",
+          "label": "feat(studio): add content studio handoff copy actions"
+        }
+      ],
+      "links": [
+        {
+          "label": "Content Studio",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app/content-studio"
+        },
+        {
+          "label": "HGO import",
+          "href": "https://app.highgroundodyssey.com/projection-stage/import"
+        }
+      ],
+      "tags": ["Content Studio", "Podcast", "Episode Pages"]
+    },
     {
       "id": "progress-story-helper",
       "date": "2026-05-24",

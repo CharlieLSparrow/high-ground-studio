@@ -14,6 +14,8 @@ import {
 
 const STORAGE_KEY = "high-ground-studio.content-studio.v1";
 const SCHEMA_VERSION = 1;
+const HGO_STAGE_IMPORT_URL =
+  "https://app.highgroundodyssey.com/projection-stage/import";
 
 type ProjectKind =
   | "podcast"
@@ -542,6 +544,7 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
     [],
   );
   const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
+  const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -723,6 +726,49 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
     downloadJsonFile(
       `hgo-projection-${selectedProductionPacket.hgoProjectionDraft.slug}.json`,
       selectedProductionPacket.hgoProjectionDraft,
+    );
+  }
+
+  function copyToClipboard(label: string, value: string) {
+    setClipboardMessage(null);
+
+    if (!value.trim()) {
+      setClipboardMessage(`${label} is empty.`);
+      return;
+    }
+
+    if (!navigator.clipboard?.writeText) {
+      setClipboardMessage("Clipboard access is not available in this browser.");
+      return;
+    }
+
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => setClipboardMessage(`${label} copied to clipboard.`))
+      .catch(() =>
+        setClipboardMessage(
+          `${label} copy failed. Download or select the JSON manually.`,
+        ),
+      );
+  }
+
+  function copyProductionPacket() {
+    if (!productionPacketJson) {
+      return;
+    }
+
+    copyToClipboard("Production packet", productionPacketJson);
+  }
+
+  function copyHgoProjectionDraft() {
+    if (!selectedProductionPacket?.hgoProjectionDraft) {
+      setClipboardMessage("No HGO projection draft exists for this project.");
+      return;
+    }
+
+    copyToClipboard(
+      "HGO projection draft",
+      JSON.stringify(selectedProductionPacket.hgoProjectionDraft, null, 2),
     );
   }
 
@@ -1071,10 +1117,13 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
 
               <ExportPanel
                 exportJson={exportJson}
+                clipboardMessage={clipboardMessage}
                 importDraft={importDraft}
                 importMessage={importMessage}
                 lastSaved={workspace.updatedAt}
                 loaded={loaded}
+                onCopyHgoProjectionDraft={copyHgoProjectionDraft}
+                onCopyProductionPacket={copyProductionPacket}
                 isServerSnapshotBusy={isServerSnapshotBusy}
                 onDownload={downloadExport}
                 onDownloadHgoProjectionDraft={downloadHgoProjectionDraft}
@@ -1429,12 +1478,15 @@ function StageColumn({
 }
 
 function ExportPanel({
+  clipboardMessage,
   exportJson,
   importDraft,
   importMessage,
   isServerSnapshotBusy,
   lastSaved,
   loaded,
+  onCopyHgoProjectionDraft,
+  onCopyProductionPacket,
   onDownload,
   onDownloadHgoProjectionDraft,
   onDownloadProductionPacket,
@@ -1449,12 +1501,15 @@ function ExportPanel({
   serverSnapshots,
   serverSnapshotStatus,
 }: {
+  clipboardMessage: string | null;
   exportJson: string;
   importDraft: string;
   importMessage: { tone: "source" | "review" | "danger"; text: string } | null;
   isServerSnapshotBusy: boolean;
   lastSaved: string;
   loaded: boolean;
+  onCopyHgoProjectionDraft: () => void;
+  onCopyProductionPacket: () => void;
   onDownload: () => void;
   onDownloadHgoProjectionDraft: () => void;
   onDownloadProductionPacket: () => void;
@@ -1609,11 +1664,28 @@ function ExportPanel({
 
           <div className="grid grid-cols-2 gap-2">
             <button
+              className="min-h-11 rounded-lg border border-studio-tag/55 bg-studio-tag/10 px-3 text-sm font-black text-studio-tag"
+              onClick={onCopyProductionPacket}
+              type="button"
+            >
+              Copy Production
+            </button>
+
+            <button
               className="min-h-11 rounded-lg border border-studio-source/55 bg-studio-source/10 px-3 text-sm font-black text-studio-source"
               onClick={onDownloadProductionPacket}
               type="button"
             >
-              Download Production
+              Download
+            </button>
+
+            <button
+              className="min-h-11 rounded-lg border border-studio-review/55 bg-studio-review/10 px-3 text-sm font-black text-studio-review disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!productionPacket.hgoProjectionDraft}
+              onClick={onCopyHgoProjectionDraft}
+              type="button"
+            >
+              Copy HGO Draft
             </button>
 
             <button
@@ -1622,9 +1694,26 @@ function ExportPanel({
               onClick={onDownloadHgoProjectionDraft}
               type="button"
             >
-              Download HGO Draft
+              Download HGO
             </button>
           </div>
+
+          {productionPacket.hgoProjectionDraft ? (
+            <a
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-studio-node/55 bg-studio-node/10 px-3 text-center text-sm font-black text-studio-node no-underline"
+              href={HGO_STAGE_IMPORT_URL}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open HGO Import
+            </a>
+          ) : null}
+
+          {clipboardMessage ? (
+            <p className="m-0 rounded-lg border border-studio-line bg-black/15 p-2 text-xs font-bold leading-relaxed text-studio-muted">
+              {clipboardMessage}
+            </p>
+          ) : null}
 
           <textarea
             className="min-h-[260px] resize-y rounded-lg border border-studio-line bg-black/25 p-3 font-mono text-[0.72rem] leading-relaxed text-studio-muted outline-none focus:border-studio-review/65"
