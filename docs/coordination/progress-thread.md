@@ -237,3 +237,10 @@ checks, blockers, and next handoff.
 - Added `pnpm web:domain:check` as a read-only custom-domain readiness command.
 - Added `docs/sessions/web-domain-readiness-result.md` with the DNS, OAuth, and
   Cloud Run origin cutover sequence.
+- Merged PR #13 to `main` as `4de9fb8`.
+- GitHub Actions run `26348319193` redeployed both services successfully:
+  - web: `web-00006-m6l`, serving 100%
+  - Studio: `studio-00028-qlk`, serving 100%
+- Live smokes passed for web `/api/health`, Studio `/api/health`, and web
+  `/team/progress` unauthenticated redirect.
+- Added a team progress story entry for this domain-readiness/deploy loop.

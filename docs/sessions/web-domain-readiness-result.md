@@ -10,7 +10,7 @@ public site.
 
 ## Live Cloud Run State
 
-Current web service:
+Initial web service:
 
 ```text
 project: high-ground-odyssey
@@ -21,7 +21,7 @@ url: https://web-hm2odnvjga-uc.a.run.app
 runtime service account: web-cloud-run@high-ground-odyssey.iam.gserviceaccount.com
 ```
 
-Current Studio service:
+Initial Studio service:
 
 ```text
 project: high-ground-odyssey
@@ -42,6 +42,22 @@ HGO_SITE_URL=https://web-hm2odnvjga-uc.a.run.app
 
 Those values should stay on the Cloud Run URL until the custom-domain DNS,
 managed certificate, and Google OAuth callback are ready.
+
+After PR #13 merged to `main` as `4de9fb8`, GitHub Actions run
+`26348319193` redeployed both services successfully:
+
+```text
+web latest ready revision: web-00006-m6l
+studio latest ready revision: studio-00028-qlk
+```
+
+Live smokes passed:
+
+```text
+https://web-hm2odnvjga-uc.a.run.app/api/health
+https://studio-hm2odnvjga-uc.a.run.app/api/health
+https://web-hm2odnvjga-uc.a.run.app/team/progress unauthenticated redirect
+```
 
 ## Domain Mapping State
 
