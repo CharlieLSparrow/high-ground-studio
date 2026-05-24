@@ -71,6 +71,7 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /WEB_CLOUD_RUN_CREATE_SERVICE/);
   assert.match(deployScript, /web-cloud-run@/);
   assert.match(deployScript, /--set-secrets/);
+  assert.match(deployScript, /projection-stage\/import/);
   assert.match(deployScript, /team\/progress/);
   assert.match(deployScript, /gha-creds-/);
   assert.match(deployScript, /WEB_IMAGE_BUILD_STRATEGY/);
