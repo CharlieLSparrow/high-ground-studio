@@ -204,7 +204,10 @@ manifest, Sync Map, and sync report are stored under
 assets are not uploaded by this publish flow. The panel includes a package
 preflight summary before upload: generated file selection, Manifest/Sync Map
 compatibility, active room target, proxy upload readiness, and optional sync
-report attachment. A blocked preflight should be fixed before publishing.
+report attachment. A blocked preflight should be fixed before publishing. If the
+package target room differs from the active collaboration room, the panel offers
+`Use Package Room` so the operator does not have to manually copy project and
+branch IDs.
 
 Shared rooms now include a compact `Sync Review` panel. For Rescue Sync rooms,
 the browser loads the attached Sync Map and optional sync report from Firebase

@@ -232,7 +232,8 @@ Publishing flow:
    JSON, and optional sync report JSON in `Publish Rescue Sync Package`.
 5. Confirm the package preflight shows the generated files, Manifest/Sync Map,
    room target, proxy upload, and optional sync report checks as ready or
-   intentionally optional.
+   intentionally optional. If the active room does not match the package, use
+   `Use Package Room` to switch from the selected manifest and Sync Map.
 6. Click `Publish Generated Package`.
 7. Send the shared room link to Mako.
 

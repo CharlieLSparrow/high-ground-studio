@@ -214,7 +214,8 @@ To publish the generated package:
 4. Select the generated manifest JSON, source-monitor proxy MP4, Sync Map JSON,
    and optional sync report JSON.
 5. Confirm the package preflight marks the required checks ready: generated
-   files, Manifest/Sync Map compatibility, room target, and proxy upload.
+   files, Manifest/Sync Map compatibility, room target, and proxy upload. Use
+   `Use Package Room` if the selected package targets a different room.
 6. Click `Publish Generated Package`.
 7. Send the room link to Mako.
 

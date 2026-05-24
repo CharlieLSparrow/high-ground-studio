@@ -303,7 +303,7 @@ async function createProxyPreviewSmokeFiles() {
   };
   const agentOps = {
     schemaVersion: 1,
-    projectId: "studio-cut-local-project",
+    projectId: "web-smoke-episode",
     branchId: "local-main",
     operations: [
       {
@@ -591,6 +591,9 @@ async function runBrowserSmoke() {
     await expect(rescuePackageSection).toContainText("Manifest and Sync Map");
     await expect(rescuePackageSection).toContainText("Room target");
     await expect(rescuePackageSection).toContainText("Waiting for source-monitor proxy");
+    await expect(
+      rescuePackageSection.getByRole("button", { name: "Use Package Room" }),
+    ).toBeVisible();
     await expect(page.getByLabel("Sync review")).toContainText("Selected package");
     await expect(page.getByLabel("Sync review")).toContainText("web-smoke-sync-job");
     await expect(page.getByLabel("Sync review")).toContainText("Reference pieces");
@@ -626,6 +629,15 @@ async function runBrowserSmoke() {
       "local-main",
     );
     await expect(collaborationSection.getByText(/Collaborator presence appears here/i)).toBeVisible();
+    await rescuePackageSection
+      .getByRole("button", { name: "Use Package Room" })
+      .click();
+    await expect(rescuePackageSection).toContainText(
+      "Publishing to web-smoke-episode / local-main",
+    );
+    await expect(collaborationSection).toContainText(
+      "web-smoke-episode / local-main",
+    );
 
     for (const label of stateButtonLabels) {
       await expect(stateButton(page, label)).toBeVisible();

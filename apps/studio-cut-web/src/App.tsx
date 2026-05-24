@@ -928,8 +928,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     setSourceTimeMs(clampSourceTime(nextValue, sourceDurationMs));
   }
 
-  function applyRoomSelection() {
-    const nextRoom = normalizeRoomSelection(roomDraft, runtimeConfig);
+  function applyNextRoomSelection(roomSelection: StudioCutRoomSelection) {
+    const nextRoom = normalizeRoomSelection(roomSelection, runtimeConfig);
 
     setRoomDraft(nextRoom);
 
@@ -952,6 +952,31 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     updateBrowserRoomUrl(nextRoom);
     setImportMessage(
       `Switched collaboration room to ${nextRoom.projectId} / ${nextRoom.branchId}.`,
+    );
+  }
+
+  function applyRoomSelection() {
+    applyNextRoomSelection(roomDraft);
+  }
+
+  function useRescuePackageRoom() {
+    if (!rescueSyncPackage.manifest || !rescueSyncPackage.syncMap) {
+      updateRescueSyncPackageMessage(
+        "error",
+        "Select a generated manifest and Sync Map before switching rooms.",
+      );
+      return;
+    }
+
+    const nextRoom = {
+      projectId: sanitizeSharedRoomPart(rescueSyncPackage.manifest.id),
+      branchId: sanitizeSharedRoomPart(rescueSyncPackage.syncMap.branchId),
+    };
+
+    applyNextRoomSelection(nextRoom);
+    updateRescueSyncPackageMessage(
+      "info",
+      `Switched to the generated package room ${nextRoom.projectId} / ${nextRoom.branchId}.`,
     );
   }
 
@@ -2633,6 +2658,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onSelectProxy={() => rescueProxyInputRef.current?.click()}
           onSelectSyncMap={() => rescueSyncMapInputRef.current?.click()}
           onSelectSyncReport={() => rescueSyncReportInputRef.current?.click()}
+          onUsePackageRoom={useRescuePackageRoom}
           onPublish={() => void handlePublishRescueSyncPackage()}
         />
         <input
@@ -3529,6 +3555,7 @@ function PublishRescueSyncPackagePanel({
   onSelectProxy,
   onSelectSyncMap,
   onSelectSyncReport,
+  onUsePackageRoom,
   onPublish,
 }: {
   status: PersistenceStatus;
@@ -3540,6 +3567,7 @@ function PublishRescueSyncPackagePanel({
   onSelectProxy: () => void;
   onSelectSyncMap: () => void;
   onSelectSyncReport: () => void;
+  onUsePackageRoom: () => void;
   onPublish: () => void;
 }) {
   const cloudReady =
@@ -3567,6 +3595,12 @@ function PublishRescueSyncPackagePanel({
     Boolean(packageSelection.syncMapFile) &&
     preflight.canPublish &&
     uploadState.status !== "uploading";
+  const targetRoom = preflight.targetRoom;
+  const canUsePackageRoom = Boolean(
+    targetRoom &&
+      (targetRoom.projectId !== roomSelection.projectId ||
+        targetRoom.branchId !== roomSelection.branchId),
+  );
 
   return (
     <section
@@ -3638,6 +3672,16 @@ function PublishRescueSyncPackagePanel({
       <PackagePreflightSummary checks={preflight.checks} status={preflight.status} />
 
       <div className="shared-room-actions">
+        {canUsePackageRoom ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onUsePackageRoom}
+            disabled={uploadState.status === "uploading"}
+          >
+            Use Package Room
+          </button>
+        ) : null}
         <button
           className="secondary-button"
           type="button"
