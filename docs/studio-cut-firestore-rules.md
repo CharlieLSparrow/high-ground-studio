@@ -28,6 +28,22 @@ Rules deploy:
 firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 ```
 
+Current live deployment note, 2026-05-24:
+
+- Firestore rules deployed successfully with
+  `firebase deploy --project high-ground-odyssey --only firestore:rules`.
+- Storage rules are tested but not deployed yet because Firebase Storage has not
+  been initialized on `high-ground-odyssey`. The CLI reports:
+  `Firebase Storage has not been set up on project 'high-ground-odyssey'.`
+- To unblock Storage rules, open
+  `https://console.firebase.google.com/project/high-ground-odyssey/storage`,
+  click `Get Started`, choose the intended bucket/location, then rerun:
+
+```bash
+pnpm studio-cut:verify
+firebase deploy --project high-ground-odyssey --only storage
+```
+
 Do not deploy rules if the emulator-backed rules test fails.
 
 ## Collections

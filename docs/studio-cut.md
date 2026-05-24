@@ -1173,6 +1173,20 @@ firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 The local rules-test wrapper can use Homebrew OpenJDK when installed. CI sets up
 Temurin Java before running the verifier.
 
+Current live rules status, 2026-05-24:
+
+- Firestore rules are deployed.
+- Storage rules are tested but not deployed because Firebase Storage has not
+  been initialized for `high-ground-odyssey`.
+- To finish Storage rules deploy, open
+  `https://console.firebase.google.com/project/high-ground-odyssey/storage`,
+  click `Get Started`, then rerun:
+
+```bash
+pnpm studio-cut:verify
+firebase deploy --project high-ground-odyssey --only storage
+```
+
 Production env workflow:
 
 1. Confirm the Firebase Web App exists:

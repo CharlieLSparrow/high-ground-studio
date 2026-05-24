@@ -29,6 +29,9 @@ Related durable docs:
 - Firestore and Storage rules are wired into `firebase.json`; emulator-backed
   rules tests are part of `pnpm studio-cut:verify`. Rules deploy remains a
   separate explicit command from Hosting.
+- Firestore rules are deployed live. Storage rules are tested but blocked until
+  Firebase Storage is initialized in the Firebase console for
+  `high-ground-odyssey`.
 - Episode Manifest import with Premiere bootstrap metadata.
 - Browser-local source-monitor proxy playback for backup/local mode, plus
   Firebase Storage proxy loading for shared rooms.
