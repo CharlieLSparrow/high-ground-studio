@@ -6,6 +6,45 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO publish draft preview
+
+- Added `hgo-episode-publish-draft-v1` packets derived from saved staged HGO
+  artifacts and publish candidates. The packet carries proposed private MDX
+  draft content, proposed frontmatter, deferred file targets, review state, and
+  explicit safety flags.
+- Added the private render preview route at
+  `/team/hgo-publish-queue/[recordId]/preview`. It uses the shared HGO
+  projection renderer plus the existing review gate so the team can see the
+  projected episode page before any public route or content file is created.
+- Extended the saved artifact handoff panel so the publish review detail page
+  can copy or download the publish-draft packet alongside the immutable staged
+  artifact, publish candidate, and review brief.
+- Guardrails preserved: no public route creation, no content-file mutation, no
+  staged artifact mutation, no provider calls, no citation/public-safety
+  certification, no live publish action, and no `/episodes` replacement.
+- Validation passed: `pnpm hgo:publish-candidate:test`,
+  `pnpm progress:story:test`, `pnpm web:cloudrun:test`,
+  `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+- Local functional commit: `1077be8`
+  `feat(web): add HGO publish draft preview`.
+- Pushed final deploy head `e718122`
+  `docs: log HGO publish draft preview`.
+- GitHub Actions run `26372871262` completed successfully:
+  - Web revision `web-00051-7qm`, serving 100%.
+  - Studio deploy skipped because this slice did not touch Studio runtime
+    paths.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new publish-draft-preview story entry.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue` returned the
+    expected unauthenticated team sign-in redirect.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue/synthetic-record/preview`
+    returned the expected unauthenticated team sign-in redirect.
+- Post-deploy readiness test passed: `pnpm web:cloudrun:test`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00050-6wd=100`
+
 ### Codex / `main` HGO publish review detail
 
 - Added a private per-artifact review detail route at

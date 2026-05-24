@@ -23,11 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the HGO publish review detail deploy on 2026-05-24.
+Verified after the HGO publish draft preview deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | HGO publish review detail `0d4b29b` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy selected production packet plus open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, per-artifact publish review details/briefs, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | HGO publish draft preview `e718122` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy selected production packet plus open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, per-artifact publish review details/briefs, private publish-draft packets, private render previews, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -115,11 +115,17 @@ Verified after the HGO publish review detail deploy on 2026-05-24.
   - `/team/hgo-publish-queue/[recordId]` opens one saved artifact as a private
     review detail page with proposed file targets, validation commands, safety
     flags, copy/download controls, and future rollback notes
+  - `/team/hgo-publish-queue/[recordId]/preview` renders the private projected
+    episode page through the shared HGO projection renderer before any public
+    route or content file is created
   - approved saved artifacts derive private
     `hgo-episode-publish-candidate-v1` packets with proposed route, blockers,
     warnings, human review steps, and rollback notes
   - queue detail pages derive private
     `hgo-episode-publish-review-brief-v1` packets for operator/agent handoff
+  - queue detail pages also derive private `hgo-episode-publish-draft-v1`
+    packets with proposed MDX draft content, proposed frontmatter, safety flags,
+    and deferred file targets
   - live schema was first synced by Cloud Run Job `web-db-push-b07c73d`
   - web persistence has moved from Neon to the staged Cloud SQL target:
     database `web`, user `web_app`, secret `web-cloudsql-database-url`
@@ -128,8 +134,8 @@ Verified after the HGO publish review detail deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00050-6wd` from `main` commit `0d4b29b`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00049-6jd`
+  - latest web deploy is `web-00051-7qm` from `main` commit `e718122`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00050-6wd`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
