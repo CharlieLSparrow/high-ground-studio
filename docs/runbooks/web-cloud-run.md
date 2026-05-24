@@ -414,6 +414,49 @@ Expected:
 
 Do not use real payment, Patreon, POD, or provider credentials for this smoke.
 
+## Custom Domain Staging
+
+Use a subdomain before moving the root public site.
+
+Current staging target:
+
+```text
+app.highgroundodyssey.com
+```
+
+Create a mapping:
+
+```bash
+gcloud beta run domain-mappings create \
+  --service=web \
+  --domain=app.highgroundodyssey.com \
+  --region=us-central1
+```
+
+Cloud Run currently requests:
+
+```text
+app CNAME ghs.googlehosted.com.
+```
+
+After DNS is added and the certificate is ready, update the runtime origin:
+
+```bash
+gcloud run services update web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --update-env-vars=AUTH_URL=https://app.highgroundodyssey.com,HGO_SITE_URL=https://app.highgroundodyssey.com,AUTH_TRUST_HOST=true
+```
+
+Then add the OAuth callback:
+
+```text
+https://app.highgroundodyssey.com/api/auth/callback/google
+```
+
+Do not move root `highgroundodyssey.com` until the current public-site owner,
+DNS zone, and rollback path are confirmed.
+
 ## Rollback
 
 List revisions:

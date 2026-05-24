@@ -130,3 +130,15 @@ checks, blockers, and next handoff.
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00002-vjt=100`
 - DNS and Google OAuth callback mutation are still pending.
+
+### Codex / `codex/web-domain-mapping-001`
+
+- Created Cloud Run domain mapping for `app.highgroundodyssey.com` to service
+  `web`.
+- Cloud Run requested DNS record: `app CNAME ghs.googlehosted.com.`
+- Mapping is domain-routable but certificate-pending until DNS is configured.
+- Public nameservers are `ns-cloud-a1` through `ns-cloud-a4`, but no Cloud DNS
+  zone is visible in project `high-ground-odyssey`; DNS likely lives in another
+  Google project/account or DNS management surface.
+- Root `highgroundodyssey.com` and `www.highgroundodyssey.com` DNS were not
+  changed.
