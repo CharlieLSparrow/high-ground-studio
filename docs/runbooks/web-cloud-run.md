@@ -269,9 +269,9 @@ The copy job expects:
 | `TARGET_DATABASE_URL` | `web-cloudsql-database-url:latest` |
 
 The entrypoint uses PostgreSQL 17 client tools, strips trailing line breaks from
-injected Secret Manager env vars, runs a plain `pg_dump --data-only`, removes
-the Postgres 17-only `SET transaction_timeout` line for the current Cloud SQL
-Postgres 16 target, and pipes the result through `psql` with
+injected Secret Manager env vars, runs a plain `pg_dump --schema=public
+--data-only`, removes the Postgres 17-only `SET transaction_timeout` line for
+the current Cloud SQL Postgres 16 target, and pipes the result through `psql` with
 `ON_ERROR_STOP=1`. It refuses to restore into a non-empty target unless
 `POSTGRES_COPY_ALLOW_NONEMPTY_TARGET=1` is explicitly set, and prints only table
 row counts. It does not print database URLs or row data.

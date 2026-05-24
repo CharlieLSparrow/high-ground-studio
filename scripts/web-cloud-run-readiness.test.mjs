@@ -65,6 +65,7 @@ test("postgres copy job image is guarded for staged Cloud SQL migration", () => 
   assert.match(entrypoint, /TARGET_DATABASE_URL is required/);
   assert.match(entrypoint, /POSTGRES_COPY_ALLOW_NONEMPTY_TARGET/);
   assert.match(entrypoint, /tr -d '\\r\\n'/);
+  assert.match(entrypoint, /--schema=public/);
   assert.match(entrypoint, /--data-only/);
   assert.match(entrypoint, /--no-owner/);
   assert.match(entrypoint, /SET transaction_timeout/);

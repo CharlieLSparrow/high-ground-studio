@@ -73,6 +73,7 @@ fi
 
 pg_dump \
   --format=plain \
+  --schema=public \
   --data-only \
   --no-owner \
   --no-privileges \
