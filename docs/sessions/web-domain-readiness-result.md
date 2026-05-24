@@ -161,6 +161,67 @@ direct Google Cloud DNS management, move only the authoritative DNS zone after
 the app subdomain is stable; do not attempt a registrar transfer during renewal
 week.
 
+2026-05-24 cutover completion:
+
+- The operator added the app-domain redirect URI to the correct Google OAuth
+  client:
+
+  ```text
+  https://app.highgroundodyssey.com/api/auth/callback/google
+  ```
+
+- A direct Google OAuth endpoint check no longer returns
+  `redirect_uri_mismatch`; Google redirects to the normal sign-in flow.
+- `pnpm web:domain:check` reports no pending work:
+  - `app.highgroundodyssey.com` CNAME is `ghs.googlehosted.com.`
+  - Cloud Run domain mapping is Ready
+  - Cloud Run managed certificate is provisioned
+  - `AUTH_URL` and `HGO_SITE_URL` use
+    `https://app.highgroundodyssey.com`
+  - `AUTH_TRUST_HOST=true`
+- Cloud Run origin env was updated with:
+
+  ```bash
+  gcloud run services update web \
+    --project=high-ground-odyssey \
+    --region=us-central1 \
+    --update-env-vars=AUTH_URL=https://app.highgroundodyssey.com,HGO_SITE_URL=https://app.highgroundodyssey.com,AUTH_TRUST_HOST=true
+  ```
+
+- Because traffic was pinned to `web-00039-9nw`, the env update created
+  `web-00040-zjr` but did not move traffic. Traffic was then routed with:
+
+  ```bash
+  gcloud run services update-traffic web \
+    --project=high-ground-odyssey \
+    --region=us-central1 \
+    --to-revisions=web-00040-zjr=100
+  ```
+
+- Final live revision:
+
+  ```text
+  web-00040-zjr
+  ```
+
+- Immediate rollback:
+
+  ```bash
+  gcloud run services update-traffic web \
+    --project=high-ground-odyssey \
+    --region=us-central1 \
+    --to-revisions=web-00039-9nw=100
+  ```
+
+Final smokes:
+
+```text
+https://app.highgroundodyssey.com/api/health -> 200
+https://app.highgroundodyssey.com/team/progress -> 307 to app-domain sign-in
+Generated Auth.js Google form -> accounts.google.com with
+redirect_uri=https://app.highgroundodyssey.com/api/auth/callback/google
+```
+
 ## Required DNS Record
 
 Add only this staging record:
@@ -225,6 +286,8 @@ secrets, IAM, or databases.
 ## Safety Notes
 
 - No root or `www` DNS records were changed.
-- No Google OAuth client was changed.
-- No Cloud Run env vars were changed in this pass.
+- The Google OAuth client was changed manually by the operator to add the
+  app-domain callback.
+- Cloud Run env vars were changed to make `app.highgroundodyssey.com` the web
+  runtime origin.
 - No secrets, IAM, databases, Prisma schema, or deploy targets were changed.

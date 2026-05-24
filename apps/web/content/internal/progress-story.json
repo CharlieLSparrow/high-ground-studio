@@ -1,23 +1,23 @@
 {
-  "updatedAt": "2026-05-24T16:45:16.000Z",
+  "updatedAt": "2026-05-24T17:57:57.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
     {
-      "id": "app-domain-dns-visible-cert-wait",
+      "id": "app-domain-cloud-run-cutover",
       "date": "2026-05-24",
-      "title": "The app subdomain is now pointing at Cloud Run",
-      "kicker": "DNS is visible; Google is issuing TLS",
-      "mood": "Close to the real address",
-      "summary": "app.highgroundodyssey.com now has the Cloud Run CNAME in public DNS and routes to the web service, with the managed certificate still pending before cutover.",
+      "title": "The app domain is live on Cloud Run",
+      "kicker": "app.highgroundodyssey.com is now the web origin",
+      "mood": "On the real address",
+      "summary": "app.highgroundodyssey.com now has DNS, HTTPS, OAuth callback wiring, Cloud Run origin settings, and 100% traffic on the app-domain revision.",
       "body": [
-        "The domain check moved from missing DNS to visible DNS. Public lookup now returns app.highgroundodyssey.com as a CNAME to ghs.googlehosted.com, and the Cloud Run domain mapping routes the subdomain to the web service.",
-        "Google has not finished the managed HTTPS certificate yet. That means the Cloud Run URL stays the live origin for now, and AUTH_URL plus HGO_SITE_URL stay pointed at https://web-hm2odnvjga-uc.a.run.app until the cert is ready and the Google OAuth callback has been added.",
-        "The registrar side is separate from the app cutover. WHOIS shows Squarespace Domains LLC as registrar and a 2026-05-28 expiration, so the low-risk admin move is to renew at Squarespace now and move DNS or registration later only when there is no deadline pressure."
+        "The custom domain finished its handoff. Public DNS points app.highgroundodyssey.com to ghs.googlehosted.com, Cloud Run's managed certificate is provisioned, and the Google OAuth client accepts the app-domain callback URI.",
+        "Cloud Run now runs the web service with AUTH_URL and HGO_SITE_URL set to https://app.highgroundodyssey.com. The traffic split was moved to revision web-00040-zjr after the env update created the new revision but left traffic pinned to web-00039-9nw.",
+        "The smoke checks passed: the app-domain health endpoint returns 200, protected team routes redirect to sign-in, and the generated Google sign-in form sends users to Google with redirect_uri=https://app.highgroundodyssey.com/api/auth/callback/google. Rollback stays simple: route traffic back to web-00039-9nw."
       ],
       "commits": [
         {
           "sha": "pending-merge",
-          "label": "docs(web): record app domain DNS progress"
+          "label": "docs(web): record app domain cutover"
         }
       ],
       "links": [
@@ -27,11 +27,11 @@
         },
         {
           "label": "Web live",
-          "href": "https://web-hm2odnvjga-uc.a.run.app"
+          "href": "https://app.highgroundodyssey.com"
         },
         {
           "label": "Team progress",
-          "href": "https://web-hm2odnvjga-uc.a.run.app/team/progress"
+          "href": "https://app.highgroundodyssey.com/team/progress"
         }
       ],
       "tags": ["DNS", "Squarespace", "Cloud Run", "OAuth"]
