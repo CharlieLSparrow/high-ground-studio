@@ -392,6 +392,10 @@ await assertHttpOk(`${serviceUrl}/`, (body) =>
   body.includes("High Ground Odyssey"),
 );
 
+await assertHttpOk(`${serviceUrl}/projection-stage/import`, (body) =>
+  body.includes("Projection or Content Studio packet JSON"),
+);
+
 await assertTeamRedirect(`${serviceUrl}/team/progress`);
 
 console.log("\nDeploy complete");

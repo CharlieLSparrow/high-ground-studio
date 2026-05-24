@@ -39,6 +39,8 @@ Useful smoke routes:
 - `/api/health` - public, non-sensitive health response
 - `/` - public High Ground Odyssey home
 - `/coaching` - public coaching front door
+- `/projection-stage/import` - browser-only HGO staged projection and Content
+  Studio packet review
 - `/team/worldhub` - internal WorldHub shell behind existing team auth
 
 Expected health response:
