@@ -1,6 +1,7 @@
-// Studio Cut Firestore rules draft.
-// This file is wired into firebase.json for emulator tests and explicit rules
-// deploys. Do not deploy it without passing rules tests and operator review.
+// Studio Cut Firestore rules.
+// This file is wired into firebase.json and is deployable after
+// `pnpm studio-cut:verify` passes. Keep rules deploys explicit and separate
+// from Hosting deploys.
 rules_version = '2';
 
 service cloud.firestore {

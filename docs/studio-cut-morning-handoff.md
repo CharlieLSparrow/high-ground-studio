@@ -26,8 +26,9 @@ Related durable docs:
   but it is not deployed as a cloud worker.
 - Shared Room Diagnostics shows metadata/proxy/listener/Storage status for the
   active room.
-- Firestore and Storage rules are wired into `firebase.json` and have an
-  emulator test command, but rules deploy remains separate from Hosting.
+- Firestore and Storage rules are wired into `firebase.json`; emulator-backed
+  rules tests are part of `pnpm studio-cut:verify`. Rules deploy remains a
+  separate explicit command from Hosting.
 - Episode Manifest import with Premiere bootstrap metadata.
 - Browser-local source-monitor proxy playback for backup/local mode, plus
   Firebase Storage proxy loading for shared rooms.
@@ -48,7 +49,8 @@ Related durable docs:
   to local files, inspects media with `ffprobe`, extracts mono 48 kHz WAV files
   with `ffmpeg`, assembles `reference-rail.wav`, and estimates offsets with
   anchor-based waveform correlation v0.
-- One-command verifier: `pnpm studio-cut:verify`.
+- One-command verifier: `pnpm studio-cut:verify`, including Firebase emulator
+  rules tests.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification
@@ -73,11 +75,11 @@ Deploy is operator-local for now:
 firebase deploy --project high-ground-odyssey --only hosting
 ```
 
-Rules deploy is separate and should happen only after the emulator rules test
+Rules deploy is separate from Hosting and should happen after the full verifier
 passes:
 
 ```bash
-pnpm studio-cut:rules-test
+pnpm studio-cut:verify
 firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 ```
 
@@ -327,13 +329,12 @@ warning.
 - The rough aligned renderer assumes Premiere exported timeline-aligned media
   starting at sequence time `00:00:00`.
 - The renderer does not parse Premiere XML/EDL yet.
-- Firestore collaboration is experimental, and branch history is still shallow;
-  do not trust sensitive collaboration data in Firestore/Storage until
-  `pnpm studio-cut:rules-test` passes and rules are deployed.
+- Firestore collaboration is experimental, and branch history is still shallow.
+  Rules are test-gated, but collaborative branch/rollback UX is still young.
 - Shared rooms upload only source-monitor proxies. Full-resolution aligned
   media remains local for render.
-- Rescue Sync raw uploads can be large and should not be used with sensitive
-  footage until rules have passed emulator tests and lifecycle cleanup exists.
+- Rescue Sync raw uploads can be large and should not be used heavily until
+  lifecycle cleanup exists.
 - Rescue Sync Worker extracts audio, builds the reference rail, estimates
   offsets with anchor-based waveform correlation, writes a Sync Map, generates
   low-res aligned proxies, composes a source-monitor proxy, and drafts a
@@ -341,8 +342,8 @@ warning.
 - The first Sync Map renderer can render rough 16:9 output from local assets,
   but final quality, drift-aware trim correction, and render-profile polish are
   still ahead.
-- The emulator rules test requires Java. If Java is missing locally, install a
-  JRE/JDK before deploying rules.
+- The local rules-test wrapper can use Homebrew OpenJDK. CI installs Temurin
+  Java before running the verifier.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
   checkpoints remain the durable rollback path.
 

@@ -23,7 +23,7 @@
     "studio-cut:cloud-sync-smoke": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs",
     "studio-cut:rescue-sync-package": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs --only-scenario short --publish-package-scenario short --publish-package-dir tools/studio-cut-local/output/rescue-sync-publish-package",
     "studio-cut:rules-config-test": "node --test scripts/studio-cut-rules-config.test.mjs",
-    "studio-cut:rules-test": "firebase emulators:exec --project demo-studio-cut-rules --only firestore,storage \"node --test scripts/studio-cut-rules.test.mjs\"",
+    "studio-cut:rules-test": "node scripts/studio-cut-rules-emulator-test.mjs",
     "studio-cut:typecheck": "pnpm --filter @high-ground/studio-cut-schema typecheck && pnpm --filter studio-cut-web typecheck",
     "studio-cut:verify": "node scripts/verify-studio-cut.mjs",
     "studio-cut:web-smoke": "node scripts/studio-cut-web-smoke.mjs",

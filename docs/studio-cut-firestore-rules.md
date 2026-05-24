@@ -1,12 +1,13 @@
-# Studio Cut Firestore Collaboration Rules Draft
+# Studio Cut Firestore And Storage Rules
 
-Date: 2026-05-22
+Date: 2026-05-24
 
-This is the rules and data-shape draft for Studio Cut collaboration. It is not a
-deployed security policy and should not be described as production-safe until the
-emulator tests pass and the rules are deployed intentionally.
+This is the tested rules and data-shape reference for Studio Cut collaboration.
+Rules deploys are now part of the Studio Cut CI/CD lane: they are safe to deploy
+when `pnpm studio-cut:verify` passes, because the verifier includes the
+emulator-backed Firestore and Storage rules tests.
 
-Draft scaffold files exist at repo root:
+Rules files live at repo root:
 
 ```text
 firestore.rules
@@ -14,21 +15,20 @@ storage.rules
 ```
 
 They are wired into `firebase.json` for emulator tests and explicit rules
-deploys. The normal Studio Cut Hosting deploy remains separate because Codex and
-operators use:
+deploys. Hosting deploys and rules deploys remain separate commands so one can
+be rolled back or redeployed without surprising the other:
 
 ```bash
 firebase deploy --project high-ground-odyssey --only hosting
 ```
 
-Rules deploy is intentionally explicit:
+Rules deploy:
 
 ```bash
 firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 ```
 
-Do not deploy rules until `pnpm studio-cut:rules-test` passes against the
-emulators.
+Do not deploy rules if the emulator-backed rules test fails.
 
 ## Collections
 
@@ -248,14 +248,16 @@ final security/cost policy.
 
 ## Rules Tests
 
-Static config checks run inside the normal verifier:
+Static config checks and emulator rules tests run inside the normal verifier:
 
 ```bash
 pnpm studio-cut:rules-config-test
+pnpm studio-cut:rules-test
 pnpm studio-cut:verify
 ```
 
-Full rules tests run under the Firebase Emulator Suite:
+The standalone Firebase Emulator Suite command remains useful while iterating on
+rules:
 
 ```bash
 pnpm studio-cut:rules-test
@@ -275,17 +277,18 @@ The emulator test covers:
 - deletes are denied
 - wrong project/branch/document data is denied where practical
 
-The Firebase emulators require Java on the local machine. If Java is missing,
-install a JRE/JDK, then rerun `pnpm studio-cut:rules-test`.
+The local `pnpm studio-cut:rules-test` wrapper will use Homebrew OpenJDK when it
+is installed at `/opt/homebrew/opt/openjdk/bin`. CI installs Temurin Java before
+running `pnpm studio-cut:verify`.
 
-Before deploying rules:
+Rules deployment checklist:
 
 1. Confirm the Firebase project is `high-ground-odyssey`.
 2. Confirm Google sign-in emits verified email claims for the intended accounts.
 3. Decide whether outside-domain collaborators need explicit email allowlist
    support in rules, custom claims, or a separate membership document.
-4. Run `pnpm studio-cut:rules-test`.
-5. Deploy rules separately from Hosting with:
+4. Run `pnpm studio-cut:verify`.
+5. Deploy rules separately from Hosting:
 
 ```bash
 firebase deploy --project high-ground-odyssey --only firestore:rules,storage

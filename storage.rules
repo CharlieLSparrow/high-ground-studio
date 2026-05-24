@@ -1,6 +1,7 @@
-// Studio Cut Storage rules draft.
-// This file is wired into firebase.json for emulator tests and explicit rules
-// deploys. Do not deploy it without passing rules tests and operator review.
+// Studio Cut Storage rules.
+// This file is wired into firebase.json and is deployable after
+// `pnpm studio-cut:verify` passes. Keep rules deploys explicit and separate
+// from Hosting deploys.
 rules_version = '2';
 
 service firebase.storage {
@@ -17,7 +18,7 @@ service firebase.storage {
 
     match /studioCutProjects/{projectId}/branches/{branchId}/source-monitor-proxy/{fileName} {
       allow read: if highGroundEmail();
-      allow write: if highGroundEmail()
+      allow create, update: if highGroundEmail()
         && request.resource.size < 1024 * 1024 * 1024
         && request.resource.contentType.matches('video/.*');
       allow delete: if false;
@@ -25,7 +26,7 @@ service firebase.storage {
 
     match /studioCutSyncJobs/{syncJobId}/uploads/{role}/{fileName} {
       allow read: if highGroundEmail();
-      allow write: if highGroundEmail()
+      allow create, update: if highGroundEmail()
         && role.matches('homerVideo|charlieVideo|homerAudio|charlieAudio|phoneReferenceAudio|clipVideo|other')
         && request.resource.size < 20 * 1024 * 1024 * 1024
         && request.resource.contentType.matches('(video/.*|audio/.*|application/json)');
@@ -34,7 +35,7 @@ service firebase.storage {
 
     match /studioCutSyncJobs/{syncJobId}/outputs/{fileName} {
       allow read: if highGroundEmail();
-      allow write: if highGroundEmail()
+      allow create, update: if highGroundEmail()
         && request.resource.size < 1024 * 1024 * 1024
         && request.resource.contentType.matches('(video/.*|application/json)');
       allow delete: if false;

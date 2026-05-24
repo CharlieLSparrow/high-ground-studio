@@ -6,22 +6,30 @@ on:
       - "apps/studio-cut-web/**"
       - "packages/studio-cut-schema/**"
       - "tools/studio-cut-local/**"
+      - "tools/studio-cut-cloud-sync/**"
+      - "scripts/studio-cut-*.mjs"
       - "scripts/verify-studio-cut.mjs"
-      - "scripts/studio-cut-web-smoke.mjs"
+      - "firebase.json"
+      - "firestore.rules"
+      - "storage.rules"
       - "package.json"
       - "pnpm-lock.yaml"
-      - "docs/studio-cut.md"
+      - "docs/studio-cut*.md"
       - ".github/workflows/studio-cut-verify.yml"
   push:
     paths:
       - "apps/studio-cut-web/**"
       - "packages/studio-cut-schema/**"
       - "tools/studio-cut-local/**"
+      - "tools/studio-cut-cloud-sync/**"
+      - "scripts/studio-cut-*.mjs"
       - "scripts/verify-studio-cut.mjs"
-      - "scripts/studio-cut-web-smoke.mjs"
+      - "firebase.json"
+      - "firestore.rules"
+      - "storage.rules"
       - "package.json"
       - "pnpm-lock.yaml"
-      - "docs/studio-cut.md"
+      - "docs/studio-cut*.md"
       - ".github/workflows/studio-cut-verify.yml"
 
 permissions:
@@ -52,6 +60,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - name: Setup Java for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
 
       - name: Install ffmpeg
         run: |
@@ -86,5 +100,5 @@ jobs:
             echo "- Command: \`pnpm studio-cut:verify\`"
             echo "- Failure artifact name: \`studio-cut-web-smoke-artifacts\`"
             echo "- Failure artifact path: \`tools/studio-cut-local/output/web-smoke-artifacts\`"
-            echo "- CI boundary: verify-only; this workflow does not deploy to Firebase Hosting and does not use secrets."
+            echo "- CI boundary: verify-only; this workflow does not deploy to Firebase Hosting/rules and does not use secrets."
           } >> "$GITHUB_STEP_SUMMARY"

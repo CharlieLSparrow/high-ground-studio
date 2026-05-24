@@ -87,6 +87,11 @@ const verificationSteps = [
     args: ["studio-cut:rules-config-test"],
   },
   {
+    label: "Studio Cut emulator rules test",
+    command: "pnpm",
+    args: ["studio-cut:rules-test"],
+  },
+  {
     label: "Cloud sync worker compile",
     command: pythonCommand,
     args: ["-m", "py_compile", "tools/studio-cut-cloud-sync/cloud_sync_worker.py"],

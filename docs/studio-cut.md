@@ -621,6 +621,7 @@ pnpm studio-cut:verify
 ```
 
 It runs Python syntax compilation, auth/collaboration/shared-room helper tests,
+static rules config checks, emulator-backed Firestore/Storage rules tests,
 `agent-smoke-test --json`, Studio Cut typecheck, browser smoke, and Studio Cut
 build in order. It fails fast on the first nonzero command and prints a short
 smoke-test summary including golden assertion status, assertion count, output
@@ -633,10 +634,12 @@ GitHub Actions runs the same verifier from:
 ```
 
 That workflow triggers on pushes and pull requests that touch Studio Cut web,
-schema, local renderer, verifier, package lock/config, this doc, or the workflow
-file. It installs dependencies, Python, `ffmpeg`, and Playwright Chromium, then
+schema, local/cloud render tooling, rules, verifier scripts, package
+lock/config, Studio Cut docs, or the workflow file. It installs dependencies,
+Python, Java for Firebase emulators, `ffmpeg`, and Playwright Chromium, then
 runs `pnpm studio-cut:verify`. It does not use secrets and does not deploy to
-Firebase Hosting; deployment remains a separate local/operator step for now.
+Firebase Hosting or rules; deployment remains a separate local/operator step for
+now.
 
 If the verifier fails in GitHub Actions, the workflow uploads the web smoke
 artifact directory as:
@@ -1159,15 +1162,16 @@ pnpm studio-cut:build
 firebase deploy --project high-ground-odyssey --only hosting
 ```
 
-Rules deploy is deliberately separate from Hosting:
+Rules deploy is deliberately separate from Hosting, but is now part of the
+normal verified Studio Cut deployment lane:
 
 ```bash
-pnpm studio-cut:rules-test
+pnpm studio-cut:verify
 firebase deploy --project high-ground-odyssey --only firestore:rules,storage
 ```
 
-The emulator-backed rules test requires Java. If Java is unavailable locally,
-do not deploy rules; install Java and rerun the test first.
+The local rules-test wrapper can use Homebrew OpenJDK when installed. CI sets up
+Temurin Java before running the verifier.
 
 Production env workflow:
 
@@ -1230,17 +1234,16 @@ Current safety state:
 - If production Firebase env vars are missing, the editor is hidden instead of
   falling back to public local mode.
 - Do not enter real local media paths, credentials, personal recordings, or
-  full-resolution media. Do not trust private collaboration data in
-  Firestore/Storage until `pnpm studio-cut:rules-test` passes and rules are
-  deployed. Shared rooms should contain only the lightweight source-monitor
-  proxy and manifest metadata.
+  full-resolution media. Shared rooms should contain only lightweight generated
+  source-monitor proxies, generated package metadata, presence, and semantic
+  decisions.
 
 Near-term internal-only task:
 
-- Run the emulator rules tests on a machine with Java.
-- Deploy Firestore and Storage rules with the explicit rules deploy command.
-- Only then trust live Firestore/Storage for real collaboration or private
-  podcast data.
+- Keep Firestore/Storage rules deployed after `pnpm studio-cut:verify`.
+- Add lifecycle cleanup before using raw cloud uploads heavily.
+- Keep full-resolution render media local until the final render architecture is
+  intentionally changed.
 
 Manual Firebase Hosting path after future build-verified changes:
 

@@ -15,6 +15,11 @@ const ROOM_META_PATH = `studioCutProjects/${ROOM_PROJECT_ID}/branches/${ROOM_BRA
 const DECISION_EVENT_PATH = `studioCutProjects/${ROOM_PROJECT_ID}/branches/${ROOM_BRANCH_ID}/decisionEvents/decision-1`;
 const PRESENCE_PATH = `studioCutProjects/${ROOM_PROJECT_ID}/branches/${ROOM_BRANCH_ID}/presence/session-charlie`;
 const STORAGE_PROXY_PATH = `studioCutProjects/${ROOM_PROJECT_ID}/branches/${ROOM_BRANCH_ID}/source-monitor-proxy/source-monitor.mp4`;
+const SYNC_JOB_ID = "episode-004-rescue-sync";
+const SYNC_JOB_PATH = `studioCutSyncJobs/${SYNC_JOB_ID}`;
+const STORAGE_SYNC_UPLOAD_PATH = `studioCutSyncJobs/${SYNC_JOB_ID}/uploads/phoneReferenceAudio/phone-reference-01.m4a`;
+const STORAGE_SYNC_OUTPUT_PROXY_PATH = `studioCutSyncJobs/${SYNC_JOB_ID}/outputs/source-monitor-proxy.mp4`;
+const STORAGE_SYNC_OUTPUT_MAP_PATH = `studioCutSyncJobs/${SYNC_JOB_ID}/outputs/sync-map.json`;
 
 let testEnv;
 
@@ -84,6 +89,25 @@ test("room metadata must match the project and branch path", async () => {
   );
 });
 
+test("approved users can publish room metadata that points at generated worker output proxy", async () => {
+  const db = approvedContext("charlie").firestore();
+
+  await assertSucceeds(
+    db.doc(ROOM_META_PATH).set(
+      createRoomMetadata({
+        sourceMonitorProxyStoragePath: STORAGE_SYNC_OUTPUT_PROXY_PATH,
+        sourceMonitorProxyFileName: "source-monitor-proxy.mp4",
+        sourceMonitorProxySizeBytes: 0,
+        packageKind: "rescue_sync_generated",
+        syncJobId: SYNC_JOB_ID,
+        manifestStoragePath: `studioCutSyncJobs/${SYNC_JOB_ID}/outputs/episode-manifest.json`,
+        syncMapStoragePath: STORAGE_SYNC_OUTPUT_MAP_PATH,
+        syncReportStoragePath: `studioCutSyncJobs/${SYNC_JOB_ID}/outputs/sync-report.json`,
+      }),
+    ),
+  );
+});
+
 test("approved users can create decisions and tombstone them without deletes", async () => {
   const db = approvedContext("charlie").firestore();
   const decision = createDecisionEvent();
@@ -145,6 +169,45 @@ test("approved users can write only their own presence document data", async () 
   await assertFails(db.doc(PRESENCE_PATH).delete());
 });
 
+test("approved users can create and update their own cloud sync jobs without deletes", async () => {
+  const db = approvedContext("charlie").firestore();
+  const job = createSyncJob();
+
+  await assertSucceeds(db.doc(SYNC_JOB_PATH).set(job));
+  await assertSucceeds(
+    db.doc(SYNC_JOB_PATH).set(
+      {
+        ...job,
+        status: "queued",
+        updatedAt: "2026-05-22T12:20:00.000Z",
+      },
+      { merge: true },
+    ),
+  );
+  await assertFails(db.doc(SYNC_JOB_PATH).delete());
+});
+
+test("cloud sync job ids and creator must match the Firestore path and signed-in user", async () => {
+  const charlieDb = approvedContext("charlie").firestore();
+  const makoDb = approvedContext("mako").firestore();
+
+  await assertFails(
+    charlieDb.doc(SYNC_JOB_PATH).set(
+      createSyncJob({
+        syncJobId: "other-sync-job",
+      }),
+    ),
+  );
+  await assertFails(
+    charlieDb.doc(SYNC_JOB_PATH).set(
+      createSyncJob({
+        createdBy: "mako@highgroundodyssey.com",
+      }),
+    ),
+  );
+  await assertFails(makoDb.doc(SYNC_JOB_PATH).set(createSyncJob()));
+});
+
 test("approved users can upload and read source-monitor proxy files only on the intended path", async () => {
   const storage = approvedContext("charlie").storage(BUCKET_URL);
   const proxyRef = storage.ref(STORAGE_PROXY_PATH);
@@ -171,6 +234,64 @@ test("approved users can upload and read source-monitor proxy files only on the 
         contentType: "text/plain",
       },
     ),
+  );
+});
+
+test("approved users can upload raw sync inputs and generated worker outputs", async () => {
+  const storage = approvedContext("charlie").storage(BUCKET_URL);
+
+  await assertSucceeds(
+    storage.ref(STORAGE_SYNC_UPLOAD_PATH).put(new Uint8Array([1, 2, 3, 4]), {
+      contentType: "audio/mp4",
+    }),
+  );
+  await assertSucceeds(storage.ref(STORAGE_SYNC_UPLOAD_PATH).getMetadata());
+  await assertFails(storage.ref(STORAGE_SYNC_UPLOAD_PATH).delete());
+
+  await assertSucceeds(
+    storage.ref(STORAGE_SYNC_OUTPUT_PROXY_PATH).put(new Uint8Array([1, 2, 3, 4]), {
+      contentType: "video/mp4",
+    }),
+  );
+  await assertSucceeds(
+    storage.ref(STORAGE_SYNC_OUTPUT_MAP_PATH).put(
+      new TextEncoder().encode("{}"),
+      {
+        contentType: "application/json",
+      },
+    ),
+  );
+  await assertSucceeds(storage.ref(STORAGE_SYNC_OUTPUT_PROXY_PATH).getMetadata());
+  await assertSucceeds(storage.ref(STORAGE_SYNC_OUTPUT_MAP_PATH).getMetadata());
+  await assertFails(storage.ref(STORAGE_SYNC_OUTPUT_PROXY_PATH).delete());
+  await assertFails(storage.ref(STORAGE_SYNC_OUTPUT_MAP_PATH).delete());
+});
+
+test("sync input and output storage paths reject wrong role, content type, and outside-domain users", async () => {
+  const approved = approvedContext("charlie").storage(BUCKET_URL);
+  const outside = outsideContext("guest").storage(BUCKET_URL);
+
+  await assertFails(
+    approved
+      .ref(`studioCutSyncJobs/${SYNC_JOB_ID}/uploads/fullResVideo/homer.mov`)
+      .put(new Uint8Array([1, 2, 3, 4]), {
+        contentType: "video/quicktime",
+      }),
+  );
+  await assertFails(
+    approved.ref(STORAGE_SYNC_UPLOAD_PATH).put(new Uint8Array([1, 2, 3, 4]), {
+      contentType: "text/plain",
+    }),
+  );
+  await assertFails(
+    approved.ref(STORAGE_SYNC_OUTPUT_MAP_PATH).put(new Uint8Array([1, 2, 3, 4]), {
+      contentType: "text/plain",
+    }),
+  );
+  await assertFails(
+    outside.ref(STORAGE_SYNC_OUTPUT_PROXY_PATH).put(new Uint8Array([1, 2, 3, 4]), {
+      contentType: "video/mp4",
+    }),
   );
 });
 
@@ -278,6 +399,48 @@ function createPresence(overrides = {}) {
     currentState: "both",
     updatedAt: "2026-05-22T12:06:00.000Z",
     appVersion: "studio-cut-web",
+    ...overrides,
+  };
+}
+
+function createSyncJob(overrides = {}) {
+  return {
+    syncJobId: SYNC_JOB_ID,
+    projectId: ROOM_PROJECT_ID,
+    branchId: ROOM_BRANCH_ID,
+    title: "Episode 004 Rescue Sync",
+    createdBy: "charlie@highgroundodyssey.com",
+    createdAt: "2026-05-22T12:00:00.000Z",
+    updatedAt: "2026-05-22T12:10:00.000Z",
+    status: "uploaded",
+    expectedInputs: {
+      homerVideo: true,
+      charlieVideo: true,
+      homerAudio: true,
+      charlieAudio: true,
+      phoneReferenceAudio: true,
+      clipVideo: true,
+    },
+    uploadedInputs: [
+      {
+        inputId: "phone-reference-01",
+        role: "phoneReferenceAudio",
+        storagePath: STORAGE_SYNC_UPLOAD_PATH,
+        fileName: "phone-reference-01.m4a",
+        contentType: "audio/mp4",
+        sizeBytes: 1024,
+        uploadedAt: "2026-05-22T12:05:00.000Z",
+        orderIndex: 0,
+      },
+    ],
+    outputs: {
+      manifestStoragePath: `studioCutSyncJobs/${SYNC_JOB_ID}/outputs/episode-manifest.json`,
+      sourceMonitorProxyStoragePath: STORAGE_SYNC_OUTPUT_PROXY_PATH,
+      syncReportStoragePath: `studioCutSyncJobs/${SYNC_JOB_ID}/outputs/sync-report.json`,
+      syncMapStoragePath: STORAGE_SYNC_OUTPUT_MAP_PATH,
+      sharedRoomUrl:
+        "https://high-ground-odyssey.web.app/?projectId=episode-004&branchId=main",
+    },
     ...overrides,
   };
 }
