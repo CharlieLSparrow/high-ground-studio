@@ -7,7 +7,7 @@ set -euo pipefail
 SOURCE_DATABASE_URL="$(printf '%s' "$SOURCE_DATABASE_URL" | tr -d '\r\n')"
 TARGET_DATABASE_URL="$(printf '%s' "$TARGET_DATABASE_URL" | tr -d '\r\n')"
 ALLOW_NONEMPTY_TARGET="${POSTGRES_COPY_ALLOW_NONEMPTY_TARGET:-0}"
-DUMP_FILE="$(mktemp -t hgo-postgres-copy.XXXXXX.dump)"
+DUMP_FILE="$(mktemp -t hgo-postgres-copy.XXXXXX.sql)"
 
 cleanup() {
   rm -f "$DUMP_FILE"
@@ -72,20 +72,15 @@ if [[ "$TARGET_TOTAL" != "0" && "$ALLOW_NONEMPTY_TARGET" != "1" ]]; then
 fi
 
 pg_dump \
-  --format=custom \
+  --format=plain \
   --data-only \
   --no-owner \
   --no-privileges \
   --file="$DUMP_FILE" \
   "$SOURCE_DATABASE_URL"
 
-pg_restore \
-  --data-only \
-  --no-owner \
-  --no-privileges \
-  --exit-on-error \
-  --dbname="$TARGET_DATABASE_URL" \
-  "$DUMP_FILE"
+sed '/^SET transaction_timeout/d' "$DUMP_FILE" |
+  psql "$TARGET_DATABASE_URL" -v ON_ERROR_STOP=1
 
 TARGET_AFTER_TOTAL="$(count_rows "$TARGET_DATABASE_URL" "target-after")"
 

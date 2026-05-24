@@ -67,6 +67,8 @@ test("postgres copy job image is guarded for staged Cloud SQL migration", () => 
   assert.match(entrypoint, /tr -d '\\r\\n'/);
   assert.match(entrypoint, /--data-only/);
   assert.match(entrypoint, /--no-owner/);
+  assert.match(entrypoint, /SET transaction_timeout/);
+  assert.match(entrypoint, /ON_ERROR_STOP=1/);
   assert.match(entrypoint, /Database URLs and row data are never printed/);
 });
 
