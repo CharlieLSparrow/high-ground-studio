@@ -37,7 +37,7 @@ Verified after the HGO publish-candidate packet deploy on 2026-05-24.
 | `project/worldhub` | `32a6179` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Merged to `main` by PR #4; keep as integration reference until next cycle. |
 | `codex/content-studio-command-001` | `bfa9dc0` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded; final continuity note is being cherry-picked to `main`. |
 | `codex/worldhub-001-foundation` | `ee26a41` | no active terminal | WorldHub / monetization foundation | Included in PR #4. Terminal can remain closed. |
-| `codex/studio-cut-001-web-shell` | `46031ff` | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Only remaining active outside agent. Coordinate before touching video/media files. |
+| `codex/studio-cut-001-web-shell` | `64c024a` | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Jason reports the worktree is clean and the lane will stay out of HGO/web deploy files without coordination. |
 
 ## Active Lanes
 
@@ -167,7 +167,8 @@ Verified after the HGO publish-candidate packet deploy on 2026-05-24.
   - `tools/studio-cut-local/*`
   - Studio Cut docs
 - current status:
-  - pushed at `46031ff`
+  - pushed at `64c024a`
+  - Jason reports the dedicated Studio Cut worktree is clean
   - user reports this is the only remaining active outside agent terminal
 - no-touch without handoff:
   - main `apps/studio` routes

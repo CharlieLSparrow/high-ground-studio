@@ -156,6 +156,17 @@ checks, blockers, and next handoff.
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00036-rl9=100`.
 
+### Jason / Studio Cut lane handoff
+
+- Jason reports dedicated worktree
+  `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` is clean.
+- Branch `codex/studio-cut-001-web-shell` is at `64c024a`.
+- Intended media-lane paths remain `apps/studio-cut-web/*`,
+  `packages/studio-cut-schema/*`, `tools/studio-cut-local/*`,
+  `scripts/studio-cut-*`, and `docs/studio-cut*`.
+- Jason will not touch HGO projection paths, web Cloud Run scripts, or
+  `docs/runbooks/web-cloud-run.md` without coordination.
+
 ## 2026-05-23
 
 ### Codex / `codex/content-studio-command-001`
