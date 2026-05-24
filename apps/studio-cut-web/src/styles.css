@@ -563,6 +563,7 @@ h2 {
 .current-segment-panel,
 .command-center-panel,
 .readiness-panel,
+.transcript-review-panel,
 .render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
@@ -581,6 +582,7 @@ h2 {
 .current-segment-panel,
 .command-center-panel,
 .readiness-panel,
+.transcript-review-panel,
 .render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
@@ -1378,6 +1380,13 @@ h2 {
     rgba(255, 255, 255, 0.04);
 }
 
+.transcript-review-panel {
+  border-color: rgba(125, 178, 255, 0.2);
+  background:
+    linear-gradient(135deg, rgba(125, 178, 255, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
 .render-handoff-panel {
   border-color: rgba(125, 178, 255, 0.22);
   background:
@@ -1407,6 +1416,7 @@ h2 {
 }
 
 .agent-ops-grid,
+.transcript-review-grid,
 .render-handoff-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1415,6 +1425,7 @@ h2 {
 
 .readiness-grid div,
 .agent-ops-grid div,
+.transcript-review-grid div,
 .readiness-export,
 .render-handoff-grid div,
 .render-handoff-command {
@@ -1428,6 +1439,7 @@ h2 {
 
 .readiness-grid span,
 .agent-ops-grid span,
+.transcript-review-grid span,
 .readiness-export span,
 .render-handoff-grid span,
 .render-handoff-command span {
@@ -1439,6 +1451,7 @@ h2 {
 
 .readiness-grid strong,
 .agent-ops-grid strong,
+.transcript-review-grid strong,
 .readiness-export strong,
 .render-handoff-grid strong {
   overflow-wrap: anywhere;
@@ -1506,6 +1519,61 @@ h2 {
   border: 1px solid rgba(255, 183, 183, 0.28);
   background: rgba(255, 183, 183, 0.08);
   color: #ffd2d2;
+}
+
+.transcript-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.transcript-meta {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.transcript-meta span,
+.transcript-task-list strong {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.transcript-meta strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.transcript-task-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.transcript-task-list li {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(240, 201, 106, 0.18);
+  border-radius: 7px;
+  background: rgba(240, 201, 106, 0.07);
+  color: #d7e0dc;
+  padding: 9px;
+}
+
+.transcript-task-list span,
+.transcript-more {
+  color: #c8d2ce;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .readiness-ok,

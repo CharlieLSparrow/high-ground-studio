@@ -396,11 +396,20 @@ It previews the operation JSON before applying it, shows add/remove counts and
 blocking validation errors, and then applies accepted operations through the
 same localStorage/Firestore decision persistence path as normal edits.
 
+The browser cockpit can also import a timed transcript JSON from the episode
+manifest area. The `Transcript Review` panel stays browser-local, summarizes
+coverage/word/clip-reference/filler counts, and surfaces agent-review tasks for
+speaker/state mismatches, likely clip-reference moments, transcript gaps, and
+filler clusters. The transcript is only included in `Export Agent Context` when
+the operator imports it; media bytes, local paths, and object URLs are still
+excluded.
+
 Use `Export Agent Context` when an agent needs the live browser room state. The
 export includes the manifest, current source time, proxy loaded status,
 persistence/shared-room status, active and tombstoned decisions, derived
-segments, readiness warnings, and the supported operation contract. It does not
-include media bytes, local filesystem paths, or browser object URLs.
+segments, transcript review when loaded, readiness warnings, and the supported
+operation contract. It does not include media bytes, local filesystem paths, or
+browser object URLs.
 
 The web editor also shows a `Local Render Handoff` panel after an episode is
 loaded. It previews the expected decision export filename, the session folder

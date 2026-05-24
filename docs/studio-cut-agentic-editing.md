@@ -165,6 +165,8 @@ The exported JSON includes:
 - source-monitor proxy status without object URLs or local paths
 - persistence mode and shared-room attachment status
 - Sync Map/sync report summaries when available
+- imported timed transcript segments and transcript-review diagnostics when
+  available
 - active and tombstoned decision events
 - derived semantic segments
 - readiness warnings
@@ -174,19 +176,33 @@ This is the preferred web-to-agent handoff for live editing discussions. It is
 still a decision-layer snapshot only: no media, proxy bytes, local filesystem
 paths, or browser object URLs are exported.
 
+## Browser Transcript Review
+
+Use `Import Transcript JSON` in the Episode Manifest area when a timed
+transcript is available. The browser validates the same transcript shape used by
+the CLI, stores it only in local browser storage, and shows a compact
+`Transcript Review` panel with coverage, word count, clip-reference count,
+filler count, warnings, and agent-review tasks.
+
+Those diagnostics are included in `Export Agent Context`, so Codex can review a
+live room with manifest, decisions, transcript, and current derived segments in
+one media-safe JSON file. The transcript import does not upload media, local
+paths, object URLs, or source-monitor proxy bytes.
+
 ## Agent Workflow
 
 For a real editing pass:
 
-1. Export Agent Context from the web cockpit, or run `agent-review-edit` from a
+1. Import a timed transcript in the web cockpit if one exists.
+2. Export Agent Context from the web cockpit, or run `agent-review-edit` from a
    decision JSON export.
-2. Discuss the proposed operations with the human when the intent is ambiguous.
-3. Write an operation JSON file.
-4. Run `apply-decision-ops --dry-run`.
-5. Apply the operations through `Import Agent Ops` in the browser or to a new
+3. Discuss the proposed operations with the human when the intent is ambiguous.
+4. Write an operation JSON file.
+5. Run `apply-decision-ops --dry-run`.
+6. Apply the operations through `Import Agent Ops` in the browser or to a new
    decision file with `apply-decision-ops`.
-6. Run `plan-render` or `render-rescue-sync-session --dry-run`.
-7. Keep the previous decision JSON or checkpoint as rollback.
+7. Run `plan-render` or `render-rescue-sync-session --dry-run`.
+8. Keep the previous decision JSON or checkpoint as rollback.
 
 This lets an agent do real editing work while keeping every mutation visible as
 plain JSON and every result verifiable by command.
@@ -205,7 +221,6 @@ plain JSON and every result verifiable by command.
 
 ## Next Agent-Friendly Steps
 
-- Add web transcript import and transcript-aware cockpit panels.
 - Add stronger review reports for awkward camera holds, long silence, repeated
   Cut spans, and missing Clip context.
 - Add an episode workspace index that lists generated session files for local

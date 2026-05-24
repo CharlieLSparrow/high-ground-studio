@@ -65,8 +65,12 @@ Related durable docs:
   local or shared room.
 - `Export Agent Context` writes a media-safe room snapshot for Codex: manifest,
   current source time, proxy status, persistence/shared-room status, decisions,
-  derived segments, warnings, and the operation contract. It omits media bytes,
-  local paths, and browser object URLs.
+  derived segments, warnings, transcript review when loaded, and the operation
+  contract. It omits media bytes, local paths, and browser object URLs.
+- The web cockpit can import timed transcript JSON in the Episode Manifest
+  area. The browser-side `Transcript Review` panel surfaces coverage, likely
+  clip references, filler clusters, transcript gaps, and speaker/state mismatch
+  tasks so an agent can inspect them through `Export Agent Context`.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification
@@ -392,7 +396,6 @@ Improve Sync Map render quality:
 
 Improve agentic editing:
 
-- add transcript import to the web cockpit, not only the local CLI
 - let agents propose silence/filler/awkward-hold cuts with confidence and
   explicit human approval points
 - add a local episode workspace index so agents can discover generated session

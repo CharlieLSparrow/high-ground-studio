@@ -163,6 +163,7 @@ async function createProxyPreviewSmokeFiles() {
   const syncMapPath = path.join(workdir, "sync-map.web-smoke.json");
   const syncReportPath = path.join(workdir, "sync-report.web-smoke.json");
   const agentOpsPath = path.join(workdir, "agent-ops.web-smoke.json");
+  const transcriptPath = path.join(workdir, "transcript.web-smoke.json");
   const generatedAt = "2026-05-23T00:00:00.000Z";
   const manifest = {
     id: "web-smoke-episode",
@@ -314,11 +315,38 @@ async function createProxyPreviewSmokeFiles() {
       },
     ],
   };
+  const transcript = {
+    schemaVersion: 1,
+    episodeId: "web-smoke-episode",
+    generatedAt,
+    language: "en",
+    segments: [
+      {
+        id: "transcript-001",
+        startSourceTimeMs: 5000,
+        endSourceTimeMs: 9000,
+        speaker: "Charlie",
+        speakerRole: "charlie",
+        text: "Let's look at the clip on screen in this synthetic browser smoke.",
+        confidence: 0.98,
+      },
+      {
+        id: "transcript-002",
+        startSourceTimeMs: 9000,
+        endSourceTimeMs: 11500,
+        speaker: "Homer",
+        speakerRole: "homer",
+        text: "Um uh you know this is a browser smoke filler cluster.",
+        confidence: 0.96,
+      },
+    ],
+  };
 
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
   await writeFile(syncMapPath, JSON.stringify(syncMap, null, 2), "utf8");
   await writeFile(syncReportPath, JSON.stringify(syncReport, null, 2), "utf8");
   await writeFile(agentOpsPath, JSON.stringify(agentOps, null, 2), "utf8");
+  await writeFile(transcriptPath, JSON.stringify(transcript, null, 2), "utf8");
 
   const ffmpegResult = spawnSync(
     "ffmpeg",
@@ -353,6 +381,7 @@ async function createProxyPreviewSmokeFiles() {
     syncMapPath,
     syncReportPath,
     agentOpsPath,
+    transcriptPath,
   };
 }
 
@@ -600,6 +629,7 @@ async function runBrowserSmoke() {
       .setInputFiles(smokeFiles.manifestPath);
     await expect(page.getByText(/Loaded manifest web-smoke-episode/i)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Episode Readiness" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Transcript Review" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Episode Command Center" })).toBeVisible();
     await expect(page.getByLabel("Episode command center")).toContainText(
       "Browser edit",
@@ -613,6 +643,12 @@ async function runBrowserSmoke() {
     );
     await expect(page.getByRole("heading", { name: "Proxy Pane Calibration" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export Adjusted Manifest" })).toBeVisible();
+    await page
+      .getByLabel("Import timed transcript JSON")
+      .setInputFiles(smokeFiles.transcriptPath);
+    await expect(page.getByLabel("Transcript review")).toContainText("Loaded");
+    await expect(page.getByLabel("Transcript review")).toContainText("Clip refs");
+    await expect(page.getByLabel("Transcript review")).toContainText("transcript_clip_reference");
     await expect(page.getByText(/No decisions yet/i)).toBeVisible();
     await page.getByLabel("Homer source pane width").fill("0.49");
     await expect(page.getByRole("button", { name: "Reset Panes" })).toBeEnabled();
@@ -712,6 +748,9 @@ async function runBrowserSmoke() {
     const agentContext = JSON.parse(await readFile(downloadPath, "utf8"));
     assert.equal(agentContext.schemaVersion, 1);
     assert.equal(agentContext.episode.id, "web-smoke-episode");
+    assert.equal(agentContext.transcript.loaded, true);
+    assert.equal(agentContext.transcript.segmentCount, 2);
+    assert.equal(agentContext.transcript.review.summary.clipReferenceCount, 1);
     assert.equal(agentContext.decisions.activeCount, 2);
     assert.equal(agentContext.decisions.tombstonedCount, 0);
     assert.equal(agentContext.media.sourceMonitorProxy.objectUrlPersisted, false);

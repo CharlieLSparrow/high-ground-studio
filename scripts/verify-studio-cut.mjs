@@ -88,6 +88,11 @@ const verificationSteps = [
     args: ["studio-cut:transcript-schema-test"],
   },
   {
+    label: "Studio Cut transcript review test",
+    command: "pnpm",
+    args: ["studio-cut:transcript-review-test"],
+  },
+  {
     label: "Studio Cut web agent operation helper test",
     command: "pnpm",
     args: ["studio-cut:agent-ops-web-test"],

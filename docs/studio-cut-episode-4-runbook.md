@@ -282,19 +282,23 @@ Operator checks while editing:
    local source-monitor proxy into the current semantic layout.
 3. Check the Episode Readiness panel. It should show the manifest and proxy
    loaded, decision and `Cut` counts, and the expected export filename.
-4. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
+4. If a timed transcript is available, import it with `Import Transcript JSON`
+   in the Episode Manifest area. The browser-side `Transcript Review` panel can
+   flag speaker/state mismatches, likely clip-reference moments, transcript
+   gaps, and filler clusters for human or agent review.
+5. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
    normalized pane rectangles, then use `Export Adjusted Manifest` and keep that
    adjusted manifest with the local Episode 4 bootstrap files.
-5. Use Program Playback to simulate output playback with `Cut` spans skipped.
-6. Tag semantic state decisions.
-7. Watch the Decision Timeline. Colored source-time blocks should match the
+6. Use Program Playback to simulate output playback with `Cut` spans skipped.
+7. Tag semantic state decisions.
+8. Watch the Decision Timeline. Colored source-time blocks should match the
    derived segments; click a block to jump to its in-point.
-8. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
+9. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
    restore point.
-9. Use `Export Checkpoint` before any risky cleanup/import pass or before
+10. Use `Export Checkpoint` before any risky cleanup/import pass or before
    leaving the machine.
-10. Export final decision JSON before rendering.
-11. Save or move the downloaded decision file to:
+11. Export final decision JSON before rendering.
+12. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json

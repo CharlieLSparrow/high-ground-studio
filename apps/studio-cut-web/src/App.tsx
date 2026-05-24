@@ -19,6 +19,7 @@ import {
   PROGRAM_STATES,
   parseCloudSyncReportPayload,
   parseEpisodeManifestPayload,
+  parseEpisodeTranscriptPayload,
   parseDecisionEventsPayload,
   parseSyncMapPayload,
   sortDecisionEvents,
@@ -30,6 +31,7 @@ import {
   type DecisionEvent,
   type DerivedSegment,
   type EpisodeManifest,
+  type EpisodeTranscript,
   type ProgramState,
   type SourceRole,
   type SyncMap,
@@ -50,6 +52,10 @@ import {
   type AgentDecisionOpsPreview,
 } from "./agentDecisionOps";
 import { buildAgentWorkspaceBrief } from "./agentWorkspaceBrief";
+import {
+  buildTranscriptReview,
+  type TranscriptReview,
+} from "./transcriptReview";
 import {
   useDecisionPersistence,
   type StudioCutRoomSelection,
@@ -86,6 +92,8 @@ const EPISODE_MANIFEST_STORAGE_KEY =
   "high-ground-studio.studio-cut.episode-manifest.v1";
 const EPISODE_MANIFEST_BASELINE_STORAGE_KEY =
   "high-ground-studio.studio-cut.episode-manifest-baseline.v1";
+const EPISODE_TRANSCRIPT_STORAGE_KEY =
+  "high-ground-studio.studio-cut.episode-transcript.v1";
 const DECISION_HISTORY_STORAGE_KEY =
   "high-ground-studio.studio-cut.decision-history.v1";
 const LOCAL_CHECKPOINTS_STORAGE_KEY =
@@ -299,6 +307,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   );
   const [importedEpisodeManifestBaseline, setImportedEpisodeManifestBaseline] =
     useState<EpisodeManifest | null>(loadStoredEpisodeManifestBaseline);
+  const [episodeTranscript, setEpisodeTranscript] =
+    useState<EpisodeTranscript | null>(loadStoredEpisodeTranscript);
   const [localProxyVideo, setLocalProxyVideo] =
     useState<LocalProxyVideo | null>(null);
   const [localProxyFile, setLocalProxyFile] = useState<File | null>(null);
@@ -350,6 +360,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const agentOpsInputRef = useRef<HTMLInputElement>(null);
   const manifestInputRef = useRef<HTMLInputElement>(null);
+  const transcriptInputRef = useRef<HTMLInputElement>(null);
   const proxyVideoInputRef = useRef<HTMLInputElement>(null);
   const rescueManifestInputRef = useRef<HTMLInputElement>(null);
   const rescueProxyInputRef = useRef<HTMLInputElement>(null);
@@ -421,10 +432,24 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       }),
     [episodeManifest, sortedEvents],
   );
+  const transcriptReview = useMemo(
+    () =>
+      buildTranscriptReview({
+        manifest: episodeManifest,
+        transcript: episodeTranscript,
+        derivedSegments,
+        sourceDurationMs,
+      }),
+    [derivedSegments, episodeManifest, episodeTranscript, sourceDurationMs],
+  );
 
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
   }, [episodeManifest]);
+
+  useEffect(() => {
+    saveStoredEpisodeTranscript(episodeTranscript);
+  }, [episodeTranscript]);
 
   useEffect(() => {
     saveStoredRoomSelection(selectedRoom);
@@ -1109,6 +1134,8 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       persistenceStatus: status,
       sharedRoomMetadata,
       syncReview,
+      transcript: episodeTranscript,
+      transcriptReview,
       allDecisionEvents,
       derivedSegments,
       warnings: readinessWarnings,
@@ -1353,6 +1380,36 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setImportMessage(`Manifest import failed: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleImportTranscriptJson(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const result = parseEpisodeTranscriptPayload(payload);
+
+      if (!result.ok) {
+        setImportMessage(`Transcript import failed: ${result.reason}`);
+        return;
+      }
+
+      setEpisodeTranscript(result.transcript);
+      setImportMessage(
+        `Loaded transcript ${result.transcript.episodeId}: ${result.transcript.segments.length} segment${
+          result.transcript.segments.length === 1 ? "" : "s"
+        }.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setImportMessage(`Transcript import failed: ${message}`);
     } finally {
       event.target.value = "";
     }
@@ -2597,6 +2654,15 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onLoadLocalProxy={() => proxyVideoInputRef.current?.click()}
           onClearLocalProxy={clearLocalProxyVideo}
         />
+        <TranscriptReviewPanel
+          transcript={episodeTranscript}
+          review={transcriptReview}
+          onImport={() => transcriptInputRef.current?.click()}
+          onClear={() => {
+            setEpisodeTranscript(null);
+            setImportMessage("Cleared browser-local transcript review data.");
+          }}
+        />
         <input
           ref={manifestInputRef}
           className="file-input"
@@ -2604,6 +2670,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           accept="application/json,.json"
           onChange={handleImportManifestJson}
           aria-label="Import episode manifest JSON"
+        />
+        <input
+          ref={transcriptInputRef}
+          className="file-input"
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => void handleImportTranscriptJson(event)}
+          aria-label="Import timed transcript JSON"
         />
         <input
           ref={proxyVideoInputRef}
@@ -4020,6 +4094,123 @@ function EpisodeManifestPanel({
   );
 }
 
+function TranscriptReviewPanel({
+  transcript,
+  review,
+  onImport,
+  onClear,
+}: {
+  transcript: EpisodeTranscript | null;
+  review: TranscriptReview;
+  onImport: () => void;
+  onClear: () => void;
+}) {
+  const statusLabel =
+    review.status === "missing"
+      ? "Optional"
+      : review.status === "ready"
+        ? "Ready"
+        : "Check";
+  const visibleTasks = review.tasks.slice(0, 5);
+
+  return (
+    <section className="transcript-review-panel" aria-label="Transcript review">
+      <div className="panel-heading">
+        <div>
+          <h2>Transcript Review</h2>
+          <p>
+            Browser-local timed transcript diagnostics for agent-assisted edit
+            review.
+          </p>
+        </div>
+        <strong>{statusLabel}</strong>
+      </div>
+
+      <div className="transcript-actions">
+        <button className="secondary-button" type="button" onClick={onImport}>
+          Import Transcript JSON
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onClear}
+          disabled={!transcript}
+        >
+          Clear Transcript
+        </button>
+      </div>
+
+      <div className="transcript-review-grid">
+        <ReadinessMetric
+          label="Transcript"
+          value={transcript ? "Loaded" : "Not loaded"}
+        />
+        <ReadinessMetric
+          label="Segments"
+          value={String(review.summary.segmentCount)}
+        />
+        <ReadinessMetric label="Words" value={String(review.summary.wordCount)} />
+        <ReadinessMetric
+          label="Coverage"
+          value={`${Math.round(review.summary.coveragePercent * 100)}%`}
+        />
+        <ReadinessMetric
+          label="Clip refs"
+          value={String(review.summary.clipReferenceCount)}
+        />
+        <ReadinessMetric
+          label="Filler"
+          value={String(review.summary.fillerMarkerCount)}
+        />
+      </div>
+
+      {transcript ? (
+        <>
+          <div className="transcript-meta">
+            <span>Episode</span>
+            <strong>{transcript.episodeId}</strong>
+          </div>
+          {visibleTasks.length > 0 ? (
+            <ul className="transcript-task-list">
+              {visibleTasks.map((task) => (
+                <li
+                  key={`${task.kind}-${task.segmentId ?? task.startSourceTimeMs ?? task.message}`}
+                >
+                  <strong>{task.kind}</strong>
+                  <span>{task.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="readiness-ok">
+              No transcript-aware review tasks for the current edit.
+            </p>
+          )}
+          {review.tasks.length > visibleTasks.length ? (
+            <p className="transcript-more">
+              {review.tasks.length - visibleTasks.length} more task
+              {review.tasks.length - visibleTasks.length === 1 ? "" : "s"} in
+              exported Agent Context.
+            </p>
+          ) : null}
+          {review.warnings.length > 0 ? (
+            <ul className="readiness-warnings">
+              {review.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : (
+        <p className="panel-empty">
+          Import a timed transcript JSON when available. Transcript text stays in
+          this browser unless you explicitly export Agent Context.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ProxyPaneCalibrationPanel({
   manifest,
   importedManifestBaseline,
@@ -5375,6 +5566,36 @@ function saveStoredManifest(storageKey: string, manifest: EpisodeManifest | null
     }
 
     localStorage.setItem(storageKey, JSON.stringify(manifest));
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
+function loadStoredEpisodeTranscript() {
+  try {
+    const rawValue = localStorage.getItem(EPISODE_TRANSCRIPT_STORAGE_KEY);
+
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+    const result = parseEpisodeTranscriptPayload(parsedValue);
+
+    return result.ok ? result.transcript : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredEpisodeTranscript(transcript: EpisodeTranscript | null) {
+  try {
+    if (!transcript) {
+      localStorage.removeItem(EPISODE_TRANSCRIPT_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(EPISODE_TRANSCRIPT_STORAGE_KEY, JSON.stringify(transcript));
   } catch {
     // Browser storage can be unavailable in private or restricted contexts.
   }

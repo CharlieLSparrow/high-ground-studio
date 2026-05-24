@@ -6,11 +6,13 @@ import {
   type DecisionEvent,
   type DerivedSegment,
   type EpisodeManifest,
+  type EpisodeTranscript,
   type ProgramState,
   type SyncMap,
 } from "@high-ground/studio-cut-schema";
 import type { PersistenceStatus } from "./persistence/decisionPersistence";
 import type { SharedRoomMetadata } from "./sharedRoom";
+import type { TranscriptReview } from "./transcriptReview";
 
 export type AgentWorkspaceBrief = {
   schemaVersion: 1;
@@ -61,6 +63,14 @@ export type AgentWorkspaceBrief = {
     syncReport?: CloudSyncReport;
     reportWarning?: string;
   };
+  transcript: {
+    loaded: boolean;
+    episodeId?: string;
+    segmentCount: number;
+    transcript?: EpisodeTranscript;
+    review?: TranscriptReview;
+    note: string;
+  };
   decisions: {
     allCount: number;
     activeCount: number;
@@ -101,6 +111,8 @@ export function buildAgentWorkspaceBrief({
   persistenceStatus,
   sharedRoomMetadata,
   syncReview,
+  transcript,
+  transcriptReview,
   allDecisionEvents,
   derivedSegments,
   warnings,
@@ -131,6 +143,8 @@ export function buildAgentWorkspaceBrief({
     syncReport?: CloudSyncReport;
     reportWarning?: string;
   };
+  transcript?: EpisodeTranscript | null;
+  transcriptReview?: TranscriptReview | null;
   allDecisionEvents: readonly DecisionEvent[];
   derivedSegments: readonly DerivedSegment[];
   warnings: readonly string[];
@@ -209,6 +223,19 @@ export function buildAgentWorkspaceBrief({
       ...(syncReview.reportWarning
         ? { reportWarning: syncReview.reportWarning }
         : {}),
+    },
+    transcript: {
+      loaded: Boolean(transcript),
+      ...(transcript
+        ? {
+            episodeId: transcript.episodeId,
+            segmentCount: transcript.segments.length,
+            transcript,
+          }
+        : { segmentCount: 0 }),
+      ...(transcriptReview ? { review: transcriptReview } : {}),
+      note:
+        "Transcript text is exported only through this explicit agent context action. It is not uploaded with local proxy media.",
     },
     decisions: {
       allCount: sortedAllEvents.length,
