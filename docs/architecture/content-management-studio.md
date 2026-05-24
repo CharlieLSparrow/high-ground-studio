@@ -48,6 +48,11 @@ Current capabilities:
 - export a browser JSON handoff packet with explicit safety flags and derived
   project handoff summaries
 - import a Content Studio packet or raw workspace JSON back into the board
+- generate a selected-project production packet with provider-safe delivery
+  targets, flattened task checklist, agent task prompts, and workflow-specific
+  publishing handoffs
+- generate a valid staged HGO projection draft for podcast and episode-page
+  projects so HGO can review it through `/projection-stage/import`
 - manually save/load server checkpoints through private
   `StudioContentWorkspaceSnapshot` rows when the Studio database schema has
   been applied
@@ -64,6 +69,7 @@ This slice does not:
 - autosave Prisma data
 - call provider APIs
 - publish public content
+- promote HGO staged projection drafts to live/public pages
 - deploy anything
 - use real manuscript or HGO source content
 - change canonical manuscript truth
@@ -138,6 +144,9 @@ Content Studio should not own everything. It should coordinate creative state
 and hand off clean packets:
 
 - HGO owns public episode/page rendering and public-safe promotion.
+- Content Studio can emit staged HGO projection drafts, but HGO review gates
+  decide whether a projection is blocked, needs review, or a future
+  promotion candidate.
 - WorldHub owns offers, entitlements, payments, supporter state, merch,
   provider connections, and business follow-through.
 - Studio Cut owns media-editing workflows and rescue/publish packages.

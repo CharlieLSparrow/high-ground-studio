@@ -15,6 +15,11 @@ Date: 2026-05-23
 - Keep WorldHub as the business/access follow-through layer, not the creative source layer.
 - Export and import JSON handoff packets with safety flags and derived
   next-action project packets.
+- Generate selected-project production packets with provider-safe delivery
+  targets for podcast host metadata, HGO staged episode pages, book publishing,
+  Studio Cut, WorldHub, social/email, and coaching follow-through.
+- For podcast and episode-page projects, include a staged HGO projection draft
+  that validates against the current HGO projection import contract.
 - Deploy coherent Studio slices to the existing private Cloud Run service when
   validation passes and gcloud credentials are available.
 - Keep coordination lightweight through:
@@ -23,12 +28,15 @@ Date: 2026-05-23
 
 ## Next
 
-- Add a real content-project packet model when the first workflow stabilizes: project, source, research note, quote/example, principle, outline, draft, production task, schedule item, publishing target, review state, and agent task packet.
+- Promote the production-packet shape toward a real content-project packet
+  model as the first workflows stabilize: project, source, research note,
+  quote/example, principle, outline, draft, production task, schedule item,
+  publishing target, review state, and agent task packet.
 - Extend the pure domain package only when a field is needed by a real workflow or test.
 - Decide whether persistence should be Prisma-backed Studio state, an API
   boundary, or a small service.
-- Connect episode-page projects to HGO staged artifact review without automatic
-  public publishing.
+- Connect downloaded HGO projection drafts to staged artifact review without
+  automatic public publishing.
 - Connect podcast projects to Studio Cut media package state.
 - Connect follow-through ideas to WorldHub offers, supporter, merch, Patreon,
   and coaching concepts.

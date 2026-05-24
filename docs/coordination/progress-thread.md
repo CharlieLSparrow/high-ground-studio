@@ -294,3 +294,15 @@ checks, blockers, and next handoff.
     `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00028-qlk=100`
   - Web:
     `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00007-7p8=100`
+
+### Codex / `codex/content-studio-production-packets-001`
+
+- Added selected-project production packets inside Content Studio.
+- Production packets include provider-safe delivery targets, flattened
+  checklist state, review-required agent task prompts, and safety flags.
+- Podcast and episode-page packets include a staged HGO projection draft that
+  validates against the existing HGO projection import contract.
+- The UI can download the full production packet or just the HGO projection
+  draft for review in `/projection-stage/import`.
+- Guardrails remain: no provider calls, no public publishing, no real
+  manuscript/HGO source text, no automatic promotion.
