@@ -436,3 +436,56 @@ checks, blockers, and next handoff.
   - Web `/team/progress` unauthenticated redirect
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00019-tkx=100`
+
+### Codex / `main` web database target report
+
+- Added `pnpm web:db:target:report`, a read-only operator check that reports
+  the active web database target without printing the `DATABASE_URL` secret.
+- Committed and pushed as `8c1df32`:
+  `ops(web): report database target state`.
+- Live report results:
+  - Cloud Run web revision was `web-00021-t2b` at report time.
+  - `DATABASE_URL` is mounted from `web-database-url`.
+  - Cloud Run has Cloud SQL attachment
+    `high-ground-odyssey:us-central1:studio-postgres`.
+  - `web-database-url` provider is Neon, database `neondb`, with SSL required.
+  - Cloud SQL instance `studio-postgres` is `RUNNABLE`, PostgreSQL 16, backups
+    enabled, deletion protection enabled.
+  - Cloud SQL databases visible: `postgres`, `studio`.
+  - Cloud SQL users visible: `postgres`, `studio_app`.
+  - Pending for full GCP database cutover: create/stage a web Cloud SQL
+    database, least-privilege web user, staged secret, schema sync, data
+    migration, smoke, and rollback before swapping `web-database-url`.
+- GitHub Actions auto-deployed this operator-tool commit as `web-00022-vb8`.
+
+### Codex / `main` HGO staged artifact review controls
+
+- Added private review/archive lifecycle controls for saved HGO staged
+  artifacts.
+- Added server action support from `/team/hgo-staged-artifacts` and PATCH
+  support on `/api/hgo/staged-artifacts`.
+- Saved artifacts can now be marked `needs-fixes`, `human-review`,
+  `approved-for-future-staging`, or `archived`.
+- Review actions update server metadata and append event-log entries only; they
+  do not publish pages, create episode routes, call providers, or certify
+  public-safety review.
+- Committed and pushed as `5e9599a`:
+  `feat(web): review HGO staged artifacts`.
+- Added the team-readable story entry
+  `hgo-staged-artifact-review-controls`.
+- Committed and pushed as `3ab47aa`:
+  `docs: record HGO artifact review controls`.
+- Validation passed: `pnpm hgo:store-lab:test`, `pnpm hgo:artifact:test`,
+  `pnpm web:cloudrun:test`, webpack build, and `git diff --check`.
+- Deployed web with Cloud Build `83ad3e2f-03e6-4c78-aa8f-72908adbbeae`.
+- Web revision `web-00025-x2s` is serving 100% with image `web:3ab47aa`.
+- Live smokes passed:
+  - Web `/api/health`
+  - Web `/`
+  - Web `/projection-stage/import`
+  - Web `/team/progress` unauthenticated redirect
+  - Web `/api/hgo/staged-artifacts` GET unauthenticated `401`
+  - Web `/api/hgo/staged-artifacts` PATCH unauthenticated `401`
+  - Web `/team/hgo-staged-artifacts` unauthenticated sign-in redirect
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00022-vb8=100`
