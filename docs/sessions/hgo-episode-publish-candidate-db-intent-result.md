@@ -72,31 +72,97 @@ pnpm --filter web exec next build --webpack
 git diff --check
 ```
 
-## Live Schema Requirement
+Progress-story validation passed before deploy:
 
-Deploying this code before the live web database has the new table would break
-signed-in access to `/team/hgo-publish-queue/[recordId]`, because the page now
-queries `HgoEpisodePublishCandidate`.
-
-Before routing this runtime live, apply the schema with the existing one-off
-Cloud Run Job pattern using an image built from this schema and
-`DATABASE_URL=web-cloudsql-database-url:latest`.
-
-Expected verification query:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'HgoEpisodePublishCandidate';
+```bash
+pnpm progress:story:test
+pnpm --filter web exec next build --webpack
+git diff --check
 ```
 
-## Next Step
+The deploy helper also reran:
 
-After schema sync and runtime deploy, record:
+```bash
+pnpm web:cloudrun:test
+pnpm --filter web exec next build --webpack
+```
 
-- Cloud Run Job name and execution id
-- deploy commit
-- web revision
-- rollback revision
-- smoke results
+## Live Schema Sync
+
+The live schema was synced before routing the runtime live, because deploying
+this code before the live web database had the new table would break signed-in
+access to `/team/hgo-publish-queue/[recordId]`.
+
+Schema image:
+
+```text
+Cloud Build: 438935c4-c21c-4051-9164-2de33577e759
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6416979
+```
+
+Schema job:
+
+```text
+job: web-cloudsql-db-push-6416979
+execution: web-cloudsql-db-push-6416979-wjxmt
+secret: web-cloudsql-database-url:latest
+Cloud SQL attachment: high-ground-odyssey:us-central1:studio-postgres
+service account: web-cloud-run@high-ground-odyssey.iam.gserviceaccount.com
+result: succeeded
+```
+
+Logs reported:
+
+```text
+Your database is now in sync with your Prisma schema.
+```
+
+## Deploy
+
+The deploy head was:
+
+```text
+6416979 docs: log HGO publish intent progress
+```
+
+Web image:
+
+```text
+Cloud Build: e42fae06-9711-4ceb-8c0d-02faaf4e4424
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:6416979
+```
+
+Live Cloud Run:
+
+```text
+service: web
+revision: web-00055-b4r
+traffic: 100%
+service URL: https://web-hm2odnvjga-uc.a.run.app
+custom domain: https://app.highgroundodyssey.com
+```
+
+Live smoke passed:
+
+```text
+https://web-hm2odnvjga-uc.a.run.app/api/health -> 200
+https://web-hm2odnvjga-uc.a.run.app/ -> 200
+https://web-hm2odnvjga-uc.a.run.app/projection-stage/import -> 200
+https://web-hm2odnvjga-uc.a.run.app/team/progress -> 307 sign-in redirect
+https://web-hm2odnvjga-uc.a.run.app/team/hgo-publish-queue -> 307 sign-in redirect
+https://app.highgroundodyssey.com/api/health -> 200
+https://app.highgroundodyssey.com/updates -> 200 and includes the publish-intent story
+https://app.highgroundodyssey.com/team/hgo-publish-queue -> 307 sign-in redirect
+https://app.highgroundodyssey.com/team/hgo-publish-queue/synthetic-record -> 307 sign-in redirect
+```
+
+## Rollback
+
+Immediate Cloud Run rollback:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=web-00053-2tv=100
+```

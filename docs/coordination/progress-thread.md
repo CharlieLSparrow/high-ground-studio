@@ -6,6 +6,58 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO durable publish intent
+
+- Added the first durable private publish-intent database slice for HGO episode
+  publishing:
+  - additive Prisma model `HgoEpisodePublishCandidate`
+  - pure store-record builder for ready publish-candidate packets
+  - server helper and team server action for saving one private intent row
+  - `/team/hgo-publish-queue/[recordId]` now shows saved intent status or a
+    `Save Publish Intent` button when the packet is ready
+- This deliberately relaxes the old no-schema/no-write boundary, but only for
+  private review state.
+- Guardrails preserved: no public route creation, no content-file mutation, no
+  provider calls, no citation/public-safety certification, no live publish
+  action, no staged artifact JSON mutation, and no `/episodes` replacement.
+- Validation passed: `pnpm hgo:publish-candidate:test`,
+  `pnpm db:generate`, `pnpm progress:story:test`,
+  `pnpm web:cloudrun:test`, `pnpm --filter web exec next build --webpack`,
+  and `git diff --check`.
+- Local functional commit: `3b12d49`
+  `feat(web): persist HGO publish intent`.
+- Pushed final deploy head `6416979`
+  `docs: log HGO publish intent progress`.
+- Live schema sync:
+  - Cloud Build `438935c4-c21c-4051-9164-2de33577e759` built
+    `prisma-db-push:6416979`.
+  - Cloud Run Job `web-cloudsql-db-push-6416979`, execution
+    `web-cloudsql-db-push-6416979-wjxmt`, completed successfully.
+  - Logs reported `Your database is now in sync with your Prisma schema`.
+- Deployed web directly through `pnpm web:cloudrun:deploy` because no GitHub
+  Actions Cloud Run build appeared after the push:
+  - Cloud Build `e42fae06-9711-4ceb-8c0d-02faaf4e4424`
+  - Web image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:6416979`
+  - Web revision `web-00055-b4r`, serving 100%
+- Live smoke passed:
+  - `https://web-hm2odnvjga-uc.a.run.app/api/health` returned 200.
+  - `https://web-hm2odnvjga-uc.a.run.app/` returned 200.
+  - `https://web-hm2odnvjga-uc.a.run.app/projection-stage/import` returned
+    200.
+  - `https://web-hm2odnvjga-uc.a.run.app/team/progress` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://web-hm2odnvjga-uc.a.run.app/team/hgo-publish-queue` returned the
+    expected unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new durable-publish-intent story entry.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue` returned the
+    expected unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue/synthetic-record`
+    returned the expected unauthenticated sign-in redirect.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00053-2tv=100`
+
 ### Codex / `main` HGO draft packet lab
 
 - Added portable validation for `hgo-episode-publish-draft-v1` packets:

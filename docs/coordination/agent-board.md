@@ -131,7 +131,15 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `/team/hgo-publish-draft-lab` validates portable private publish-draft
     packet JSON, rejects public/write/provider safety drift, and lets operators
     inspect/copy/download generated MDX and frontmatter without DB writes
+  - `/team/hgo-publish-queue/[recordId]` can now save one durable private
+    `HgoEpisodePublishCandidate` publish-intent row for ready packets; this is
+    additive DB persistence only and still does not create public routes, write
+    content files, call providers, publish live pages, or replace `/episodes`
   - live schema was first synced by Cloud Run Job `web-db-push-b07c73d`
+  - latest live schema sync ran through Cloud Run Job
+    `web-cloudsql-db-push-6416979`, execution
+    `web-cloudsql-db-push-6416979-wjxmt`, for
+    `HgoEpisodePublishCandidate`
   - web persistence has moved from Neon to the staged Cloud SQL target:
     database `web`, user `web_app`, secret `web-cloudsql-database-url`
   - successful copy job `web-neon-to-cloudsql-copy-f14c4c7-w27bk` copied 20
@@ -139,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00053-2tv` from `main` commit `3f97c92`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00052-vjs`
+  - latest web deploy is `web-00055-b4r` from `main` commit `6416979`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00053-2tv`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 

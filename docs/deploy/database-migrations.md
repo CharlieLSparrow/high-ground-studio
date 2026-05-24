@@ -415,6 +415,12 @@ For the live web Cloud Run database, prefer running `pnpm db:push` from a
 Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
 same Cloud SQL attachment as the `web` service.
 
+Live operator note from 2026-05-24: this schema was applied to the live web
+Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-6416979`, execution
+`web-cloudsql-db-push-6416979-wjxmt`, using image
+`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6416979`.
+Logs reported that the database is now in sync with the Prisma schema.
+
 SQL verification:
 
 ```sql
