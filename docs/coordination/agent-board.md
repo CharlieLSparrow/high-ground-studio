@@ -23,11 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the web app-domain cutover on 2026-05-24.
+Verified after the public build journal deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | App domain cutover `7daa473` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, publish-candidate packets, the web Cloud SQL cutover, and `app.highgroundodyssey.com` Cloud Run cutover are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | Public updates page `4bd64a2` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, publish-candidate packets, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -184,7 +184,10 @@ Verified after the web app-domain cutover on 2026-05-24.
 | `apps/studio/src/app/studio-nav.tsx` | Shared Studio navigation | Declare before editing. |
 | `apps/web/src/app/team/worldhub/*` | WorldHub lane | Keep provider-neutral until business model is stable. |
 | `apps/web/src/app/team/progress/*` | Integration / team visibility lane | Team-only readable build journal. |
+| `apps/web/src/app/updates/*` | Integration / team visibility lane | Public build journal route powered by the same story data. |
+| `apps/web/src/components/progress/*` | Integration / team visibility lane | Shared progress story renderer. |
 | `apps/web/content/internal/progress-story.json` | Integration / team visibility lane | Add short narrative entries for meaningful commits, merges, and deploys. |
+| `scripts/progress-story-add-entry.*` | Integration / team visibility lane | CLI helper and tests for appending build journal entries. |
 | `packages/content-studio-domain` | Content Studio lane | Provider-neutral content project contract. |
 | `packages/worldhub-domain` | WorldHub lane | Provider-neutral business/access contract. |
 | `packages/*` | Shared | Coordinate package creation and lockfile changes. |

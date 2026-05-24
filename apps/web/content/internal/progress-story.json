@@ -1,7 +1,37 @@
 {
-  "updatedAt": "2026-05-24T18:31:33.000Z",
+  "updatedAt": "2026-05-24T18:41:07.446Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "progress-story-helper",
+      "date": "2026-05-24",
+      "title": "The build journal now has a one-command entry helper",
+      "kicker": "Future agents can keep the story alive faster",
+      "mood": "Less friction",
+      "summary": "A repo script now adds validated progress-story entries, so future agents can update the public build journal without hand-editing the JSON.",
+      "body": [
+        "The new helper keeps the story data as the single source of truth while making updates cheaper: pass a title, summary, paragraphs, commit chips, links, and tags, and it prepends a valid entry.",
+        "This matters because the journal is only useful if it stays current. The script turns the team-facing story into a normal release habit instead of a special chore.",
+        "The helper has a focused node:test suite and a package script, so future agents can prove the entry writer still behaves before they trust it on the live story file."
+      ],
+      "commits": [
+        {
+          "sha": "pending-merge",
+          "label": "chore(repo): add progress story helper"
+        }
+      ],
+      "links": [
+        {
+          "label": "Build updates",
+          "href": "https://app.highgroundodyssey.com/updates"
+        },
+        {
+          "label": "Progress script",
+          "href": "scripts/progress-story-add-entry.mjs"
+        }
+      ],
+      "tags": ["Updates", "Agents", "Release Notes"]
+    },
     {
       "id": "public-build-updates-page",
       "date": "2026-05-24",

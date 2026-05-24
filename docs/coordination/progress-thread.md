@@ -6,6 +6,25 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` public build journal
+
+- Published a public `/updates` page at
+  `https://app.highgroundodyssey.com/updates` using the same checked-in story
+  data as protected `/team/progress`.
+- Extracted the progress renderer into
+  `apps/web/src/components/progress/ProgressStoryView.tsx` so the public and
+  team pages stay aligned instead of drifting.
+- Added `Updates` to the public site header.
+- Committed and pushed `4bd64a2`: `feat(web): publish build updates page`.
+- GitHub Actions run `26369417848` deployed web revision `web-00043-hp2`,
+  serving 100% traffic.
+- Live smoke passed: `/updates` returned 200 and rendered the new story entry;
+  `/team/progress` still redirects unauthenticated users to sign-in.
+- Immediate rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00042-nw9=100`.
+- Follow-up added `pnpm progress:story:add` so future agents can append journal
+  entries without hand-editing `apps/web/content/internal/progress-story.json`.
+
 ### Codex / `codex/hgo-content-studio-packet-import-001`
 
 - Created a focused web/HGO bridge branch from `main` so feature work stayed

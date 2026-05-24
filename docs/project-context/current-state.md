@@ -52,6 +52,10 @@ High Ground Studio is a monorepo with:
   OAuth callback, and runtime `AUTH_URL` / `HGO_SITE_URL` aligned to that app
   domain. The generated Cloud Run URL remains an operational fallback, not the
   canonical user-facing origin.
+- `/updates` is a public build journal for the High Ground Odyssey team and
+  friends. It renders the same checked-in progress story data as protected
+  `/team/progress`, and future agents can add entries with
+  `pnpm progress:story:add`.
 - The internal Learning to Lead Story Map can save database-backed Live Story Drafts attached to Story Candidates and Homer source blocks. These drafts are live app state, not canonical manuscript truth.
 - The private Studio `/manuscript` desk can save and load manual server snapshots through Cloud SQL-backed `StudioManuscriptSnapshot` rows. The browser-local draft remains the active working copy; server snapshots are cross-device checkpoints, not autosave, collaboration, or canonical manuscript truth.
 - The private Studio `/manuscript` desk now has a Manuscript Library MVP in

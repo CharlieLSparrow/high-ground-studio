@@ -106,3 +106,10 @@ If you discover a stable repo truth, update one of:
 - `docs/runbooks/*`
 - `docs/workflows/*`
 - a new `docs/sessions/*.md` file if it is still an in-flight conclusion
+
+For human-readable release notes on the live site, update the public build
+journal with:
+
+```bash
+pnpm progress:story:add -- --title "Short title" --summary "What changed"
+```
