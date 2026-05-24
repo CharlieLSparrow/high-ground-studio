@@ -577,6 +577,46 @@ model StudioContentWorkspaceSnapshot {
   @@index([ownerEmail, createdAt])
 }
 
+model HgoStagedProjectionArtifact {
+  id                    String   @id @default(cuid())
+  ownerUserId           String?
+  ownerEmail            String
+  recordId              String
+  artifactVersion       String
+  artifactId            String
+  projectionId          String
+  projectionSlug        String
+  projectionTitle       String
+  projectionStatus      String
+  projectionVisibility  String
+  sourceBridgeVersion   String?
+  artifactStatus        String
+  recommendedNextAction String
+  reviewStatus          String
+  promotionReadiness    String
+  artifactHash          String
+  artifactJson          Json
+  artifactSummaryJson   Json
+  eventLogJson          Json
+  blockerCount          Int      @default(0)
+  warningCount          Int      @default(0)
+  containsRealContent   String   @default("unknown")
+  note                  String?
+  reviewedAt            DateTime?
+  reviewedByEmail       String?
+  archivedAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([ownerEmail, artifactHash])
+  @@unique([ownerEmail, recordId])
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, archivedAt, updatedAt])
+  @@index([ownerEmail, projectionSlug, updatedAt])
+  @@index([ownerEmail, reviewStatus, updatedAt])
+  @@index([artifactId])
+}
+
 model StudioDocumentBlock {
   id               String                 @id @default(cuid())
   documentId       String

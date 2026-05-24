@@ -1,17 +1,35 @@
 # HGO Private Staged Artifact Store Plan
 
-Date: 2026-05-22
+Date: 2026-05-24
 
 ## Position
 
 Persistence comes after the browser contract and roundtrip. The staged artifact
-store should save review packets only after the artifact shape, review gate, and
+store saves review packets only after the artifact shape, review gate, and
 safety boundaries have been proven without server writes.
 
 The artifact is not the source. It is a projection packet plus validation and
 review-gate state. Studio remains the private source/tagging cockpit.
 
-## Why This Comes Later
+## What Exists Now
+
+The first private persistence slice exists:
+
+- Prisma model: `HgoStagedProjectionArtifact`
+- API route: `/api/hgo/staged-artifacts`
+- team route: `/team/hgo-staged-artifacts`
+- import route action: explicit `Save private review artifact` button on
+  `/projection-stage/import`
+
+The API is team-gated through the existing internal role rules. It saves only
+validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
+JSON immutable, and stores server persistence metadata outside the artifact
+packet.
+
+The first slice still does not publish pages, create public routes, call
+providers, verify public safety, delete artifacts, or replace `/episodes`.
+
+## Why This Came After The Lab
 
 The current browser-only flow proves:
 
@@ -22,8 +40,9 @@ The current browser-only flow proves:
 5. HGO can model session-only private-store lifecycle state without persisting
    the artifact.
 
-Only after that roundtrip is stable should HGO add a private store. Otherwise
-the database/API would be guessing at a contract that has not been exercised.
+Only after that roundtrip was stable did HGO add the first private store.
+Otherwise the database/API would have guessed at a contract that had not been
+exercised.
 
 ## Browser Store Lab
 
@@ -35,16 +54,16 @@ Before persistence, HGO now has a browser-session Store Lab:
 
 The Store Lab imports validated `hgo-staged-artifact-v1` packets into React
 state only. It models review status, promotion readiness, archive behavior,
-duplicate artifact handling, and event logs. It does not write localStorage,
-call a server route, mutate Prisma, or publish anything.
+duplicate artifact handling, and event logs. It remains useful as a no-write
+lifecycle simulator, even now that the first private API exists.
 
 The lab intentionally keeps persistence metadata outside the embedded artifact.
 The browser-created artifact remains unchanged with `persisted: false` and
 `published: false`.
 
-## Proposed Future Model
+## Current Model
 
-A future table could store private staged artifacts with fields like:
+The table stores private staged artifacts with fields including:
 
 - `id`
 - `artifactVersion`
@@ -66,16 +85,18 @@ A future table could store private staged artifacts with fields like:
 - `blockerCount`
 - `warningCount`
 - `containsRealContent`
+- `eventLogJson`
+- `artifactSummaryJson`
 
 The stored JSON should be the validated artifact packet, not raw Studio draft
 state.
 
 ## API Shape
 
-Future API/server actions should remain private and explicit:
+API/server actions should remain private and explicit:
 
-- create staged artifact from validated browser artifact JSON
-- list staged artifacts visible to the current operator
+- create staged artifact from validated browser artifact JSON: implemented
+- list staged artifacts visible to the current operator: implemented
 - load one staged artifact by id
 - archive staged artifact
 - mark human-review status
@@ -85,15 +106,16 @@ No API should publish public pages as a side effect of saving a staged artifact.
 
 ## Access Control
 
-The store requires access control before it exists:
+The store uses access control:
 
 - authenticated Studio/HGO operator only
-- role gate for `OWNER`, `TEAM_SCHEDULER`, or a future HGO editorial role
+- role gate for `OWNER`, `TEAM_SCHEDULER`, or `COACH`
 - per-workspace or owner boundary if multiple workspaces arrive
 - no anonymous artifact reads
 - no public route serving private staged artifacts
 
-If access control is unclear, persistence should stay blocked.
+If access control becomes more nuanced, add a narrower HGO editorial policy
+before broadening access.
 
 ## Fields Never To Store
 
@@ -146,7 +168,7 @@ browser artifact should remain an immutable record of what the browser created.
 
 ## Future Migration Checklist
 
-Before any DB/API work, confirm:
+Before expanding DB/API work, confirm:
 
 - access control is explicit and private by default
 - schema adds no public reads or public publish behavior
@@ -176,13 +198,11 @@ separate admin workflows, not part of the MVP store.
 
 Still deferred:
 
-- Prisma model
-- DB migration or `db:push`
-- Cloud SQL mutation
-- API route or server action
 - public publishing
 - live `/episodes` replacement
 - QuipLore / Quote Engine authority layer
 - simultaneous editing
 - autosave
-- deployment
+- deletion/destructive cleanup
+- promotion candidate persistence
+- public route generation

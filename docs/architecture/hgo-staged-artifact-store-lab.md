@@ -1,6 +1,6 @@
 # HGO Staged Artifact Store Lab
 
-Date: 2026-05-22
+Date: 2026-05-24
 
 ## Position
 
@@ -8,8 +8,9 @@ The Store Lab is a browser-session simulator for a future private staged
 artifact store. It is not persistence, not local storage, not a server route,
 and not publishing.
 
-The lab exists to prove lifecycle behavior before any Prisma model, API route,
-Cloud SQL mutation, or public route promotion is designed around it.
+The lab proved lifecycle behavior before the first private Prisma/API slice.
+It remains the no-write simulator for archive, review, and promotion-candidate
+behavior.
 
 ## Current Surface
 
@@ -78,10 +79,13 @@ create a public route, and does not produce canonical public content.
 ## Future Persistence Requirements
 
 Real persistence remains blocked until there is an explicit operator-approved
-schema and access-control plan. The future private store still needs:
+schema and access-control plan. The first private store slice now exists with
+`HgoStagedProjectionArtifact`, `/api/hgo/staged-artifacts`, and
+`/team/hgo-staged-artifacts`.
 
-- access control for private staged artifacts
-- schema review and migration plan
+The future private store still needs:
+
+- archive/update API actions
 - rollback and archive policy
 - server-side validation using the same artifact contract
 - separate persistence metadata outside the submitted artifact packet

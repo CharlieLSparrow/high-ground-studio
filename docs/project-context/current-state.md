@@ -161,12 +161,16 @@ High Ground Studio is a monorepo with:
   visible but does not offer a real publish action.
 - HGO has a no-persistence staged import review route at
   `/projection-stage/import`. It accepts pasted Studio/HGO projection JSON in
-  browser state only, validates it, runs the staged review gate against it, and
-  renders it through the shared projection renderer with staged links. It can
-  also create a browser-only downloadable staged artifact JSON review packet
-  containing the projection, validation warnings, review gate, and explicit
-  `persisted: false` / `published: false` safety flags. It does not persist,
-  publish, write local storage, replace public `/episodes`, or use real content.
+  browser state, validates it, runs the staged review gate against it, and
+  renders it through the shared projection renderer with staged links. It also
+  accepts full Content Studio production packets and extracts
+  `hgoProjectionDraft` after packet safety checks. It can create a browser-only
+  downloadable staged artifact JSON review packet containing the projection,
+  validation warnings, review gate, and explicit `persisted: false` /
+  `published: false` safety flags. Signed-in team operators can explicitly save
+  that artifact to the private staged artifact store; anonymous visitors still
+  only get browser review. It does not publish, replace public `/episodes`, or
+  use real content in tests.
 - HGO has a browser-only staged artifact inspection route at
   `/projection-stage/artifact`. It accepts pasted `hgo-staged-artifact-v1`
   JSON, validates the artifact contract, validates the embedded projection,
@@ -181,6 +185,14 @@ High Ground Studio is a monorepo with:
   simulated promotion-candidate boundary. It does not persist, write
   localStorage/sessionStorage, call a server route, publish, replace
   `/episodes`, or use real content.
+- HGO now has a private staged artifact store slice:
+  - Prisma model: `HgoStagedProjectionArtifact`
+  - API route: `/api/hgo/staged-artifacts`
+  - team route: `/team/hgo-staged-artifacts`
+  The API is team-gated, saves only validated `hgo-staged-artifact-v1` review
+  packets, preserves embedded artifact JSON with `persisted: false` and
+  `published: false`, stores server persistence metadata outside the artifact,
+  and does not publish public pages.
 - HGO has a pure staged artifact contract test command,
   `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
   validator state, invalid version, persisted/published safety failures,
@@ -191,10 +203,11 @@ High Ground Studio is a monorepo with:
   rejection, persisted/published rejection, duplicate active artifact behavior,
   review status updates, simulated promotion-candidate gating, archive behavior,
   summary counts, lookup, and status grouping.
-- HGO has a docs-only future private staged artifact store plan in
-  `docs/architecture/hgo-private-staged-artifact-store-plan.md`. It deliberately
-  does not add Prisma schema, API routes, server writes, Cloud SQL mutation, or
-  publish behavior.
+- HGO has a private staged artifact store plan in
+  `docs/architecture/hgo-private-staged-artifact-store-plan.md`. The first
+  additive model/API slice now exists, while public promotion, deletion,
+  provider calls, live `/episodes` replacement, and real content workflows are
+  still deferred.
 - The repo now has an agentic Studio/HGO smoke command,
   `pnpm studio:hgo:agentic-smoke`, that uses synthetic data only to exercise
   Studio manuscript helper payloads, HGO projection generation, HGO validation,
@@ -287,25 +300,30 @@ High Ground Studio is a monorepo with:
 - Studio Manuscript synthetic readiness checks are browser-local safety
   guidance. They do not write canonical content and do not replace the manual
   judgment required for the first real manuscript import.
-- The Studio-to-HGO projection bridge is browser-only/manual. It does not create
-  a DB projection table, live publish API, public deployment pipeline, autosave,
-  collaboration layer, or server-side staged artifact store.
+- The Studio-to-HGO projection bridge is still manual, but no longer purely
+  browser-only: Content Studio production packets can be reviewed in HGO, and
+  team operators can explicitly save generated staged artifacts to a private
+  server-side store. It does not create a live publish API, public deployment
+  pipeline, autosave, collaboration layer, or public `/episodes` replacement.
 - The HGO staged projection surface is synthetic-only. It is a review-stage
   architecture prototype, not a public publishing system or real staged content
   store.
 - The HGO staged review gate is also synthetic-only. It prepares future
   staged-to-live promotion checks but does not publish, persist, or approve
   anything.
-- The HGO staged import review route is no-persistence. It prepares a later
-  private staged artifact store and can download browser-created artifact JSON,
-  but pasted JSON and generated artifacts are not saved to local storage, server
-  state, content files, or Prisma.
+- The HGO staged import review route is browser-first and explicit-save only.
+  Pasted JSON is not autosaved, but team operators can save generated staged
+  artifacts through the private API after validation. This writes Prisma review
+  metadata and immutable artifact JSON, not public content.
 - The HGO staged artifact inspection route is also no-persistence. It validates
   browser-created artifact JSON and renders embedded projection state, but it
   does not save, approve, publish, or verify real public-safety status.
 - The HGO staged artifact Store Lab is session-only. It models private-store
   lifecycle state without writing localStorage, server state, Prisma rows,
   content files, or public routes.
+- The private HGO staged artifact store is additive and team-gated. It does not
+  publish, approve, delete, replace `/episodes`, or verify real public-safety
+  status.
 - Agentic Studio/HGO browser smoke does not automate Google OAuth and has no
   committed auth state. Operators must create private storage state locally
   before a full browser run. Missing auth state is a `blocked` result, not a

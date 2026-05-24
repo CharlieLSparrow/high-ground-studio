@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createHgoProjectionReviewGate } from "../apps/web/src/lib/hgo/projection-review-gate.ts";
+import { buildHgoStagedArtifactStoreRecordInput } from "../apps/web/src/lib/hgo/staged-artifact-store-record.ts";
 import { syntheticEpisodeProjection } from "../apps/web/src/lib/hgo/synthetic-episode-projection.ts";
 import {
   createEmptyHgoStagedArtifactStoreLabState,
@@ -283,4 +284,33 @@ test("Store Lab record lookup and status grouping are deterministic", () => {
   assert.equal(byStatus["needs-fixes"].length, 1);
   assert.equal(byStatus.imported.length, 0);
   assert.equal(byStatus.archived.length, 0);
+});
+
+test("private store record input preserves artifact safety and server metadata separately", () => {
+  const result = buildHgoStagedArtifactStoreRecordInput({
+    artifactJson: createArtifactJson(),
+    ownerEmail: "operator@example.com",
+    ownerUserId: "user-1",
+    note: "Save synthetic staged artifact.",
+    now: "2026-05-22T13:05:00.000Z",
+  });
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  assert.equal(result.record.ownerEmail, "operator@example.com");
+  assert.equal(result.record.ownerUserId, "user-1");
+  assert.equal(result.record.reviewStatus, "needs-fixes");
+  assert.equal(result.record.promotionReadiness, "blocked");
+  assert.equal(result.record.projectionSlug, syntheticEpisodeProjection.slug);
+  assert.equal(result.record.artifactVersion, "hgo-staged-artifact-v1");
+  assert.equal(result.record.containsRealContent, "unknown");
+  assert.equal(result.record.note, "Save synthetic staged artifact.");
+  assert.equal(typeof result.record.artifactHash, "string");
+  assert.equal(result.record.blockerCount > 0, true);
+  assert.match(result.warnings.join("\n"), /review packet/i);
+  assert.match(result.warnings.join("\n"), /not source material/i);
 });
