@@ -1,6 +1,8 @@
 import { resolveTeamAccess } from "@/lib/content-access";
 import {
+  archiveHgoStagedArtifactForOwner,
   listHgoStagedArtifactsForOwner,
+  markHgoStagedArtifactReviewForOwner,
   saveHgoStagedArtifactForOwner,
 } from "@/lib/server/hgo-staged-artifacts";
 
@@ -118,4 +120,73 @@ export async function POST(request: Request) {
   }
 
   return Response.json(result, { status: result.created ? 201 : 200 });
+}
+
+export async function PATCH(request: Request) {
+  const operator = await requireTeamOperator();
+
+  if (!operator.ok) {
+    return operator.response;
+  }
+
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      { ok: false, errors: ["Request body must be JSON."] },
+      { status: 400 },
+    );
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json(
+      { ok: false, errors: ["Request body must be a JSON object."] },
+      { status: 400 },
+    );
+  }
+
+  const payload = body as Record<string, unknown>;
+  const recordId =
+    typeof payload.recordId === "string" ? payload.recordId.trim() : "";
+  const reviewStatus =
+    typeof payload.reviewStatus === "string" ? payload.reviewStatus.trim() : "";
+  const note = typeof payload.note === "string" ? payload.note : undefined;
+
+  if (!recordId) {
+    return Response.json(
+      { ok: false, errors: ["recordId is required."] },
+      { status: 400 },
+    );
+  }
+
+  if (!reviewStatus) {
+    return Response.json(
+      { ok: false, errors: ["reviewStatus is required."] },
+      { status: 400 },
+    );
+  }
+
+  const result =
+    reviewStatus === "archived"
+      ? await archiveHgoStagedArtifactForOwner({
+          ownerEmail: operator.ownerEmail,
+          recordId,
+          operatorEmail: operator.ownerEmail,
+          note,
+        })
+      : await markHgoStagedArtifactReviewForOwner({
+          ownerEmail: operator.ownerEmail,
+          recordId,
+          reviewStatus,
+          operatorEmail: operator.ownerEmail,
+          note,
+        });
+
+  if (!result.ok) {
+    return Response.json(result, { status: 400 });
+  }
+
+  return Response.json(result);
 }

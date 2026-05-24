@@ -20,6 +20,7 @@ The first private persistence slice exists:
 - team route: `/team/hgo-staged-artifacts`
 - import route action: explicit `Save private review artifact` button on
   `/projection-stage/import`
+- private review/archive controls on `/team/hgo-staged-artifacts`
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -99,9 +100,9 @@ API/server actions should remain private and explicit:
 
 - create staged artifact from validated browser artifact JSON: implemented
 - list staged artifacts visible to the current operator: implemented
+- mark review status for a staged artifact: implemented
+- archive staged artifact: implemented
 - load one staged artifact by id
-- archive staged artifact
-- mark human-review status
 - later, create a separate promotion candidate
 
 No API should publish public pages as a side effect of saving a staged artifact.

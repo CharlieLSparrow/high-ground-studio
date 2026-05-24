@@ -4,6 +4,7 @@ import {
   FileJson,
   ShieldCheck,
   TriangleAlert,
+  Wrench,
 } from "lucide-react";
 
 import GlassPanel from "@/components/ui/GlassPanel";
@@ -13,6 +14,7 @@ import {
   listHgoStagedArtifactsForOwner,
   type HgoStagedArtifactRecordDto,
 } from "@/lib/server/hgo-staged-artifacts";
+import { markHgoStagedArtifactReviewAction } from "./actions";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
   return (
@@ -71,7 +73,37 @@ function StatCard({
   );
 }
 
+function ReviewActionForm({
+  recordId,
+  reviewStatus,
+  label,
+  icon,
+  tone,
+}: {
+  recordId: string;
+  reviewStatus: string;
+  label: string;
+  icon: React.ReactNode;
+  tone: string;
+}) {
+  return (
+    <form action={markHgoStagedArtifactReviewAction}>
+      <input type="hidden" name="recordId" value={recordId} />
+      <input type="hidden" name="reviewStatus" value={reviewStatus} />
+      <button
+        type="submit"
+        className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition hover:-translate-y-0.5 ${tone}`}
+      >
+        {icon}
+        {label}
+      </button>
+    </form>
+  );
+}
+
 function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
+  const isArchived = Boolean(record.archivedAt);
+
   return (
     <article className="rounded-[24px] border border-white/10 bg-white/8 p-5 text-[var(--text-light)] shadow-glass">
       <div className="flex flex-wrap gap-2">
@@ -138,6 +170,15 @@ function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
           <strong className="text-[rgba(245,239,230,0.94)]">Real content:</strong>{" "}
           {record.containsRealContent}
         </div>
+        <div>
+          <strong className="text-[rgba(245,239,230,0.94)]">Review events:</strong>{" "}
+          {record.eventCount}
+        </div>
+        <div>
+          <strong className="text-[rgba(245,239,230,0.94)]">Last reviewed:</strong>{" "}
+          {formatDateTime(record.reviewedAt)}
+          {record.reviewedByEmail ? ` by ${record.reviewedByEmail}` : ""}
+        </div>
         {record.note ? (
           <div>
             <strong className="text-[rgba(245,239,230,0.94)]">Note:</strong>{" "}
@@ -145,6 +186,39 @@ function ArtifactCard({ record }: { record: HgoStagedArtifactRecordDto }) {
           </div>
         ) : null}
       </div>
+
+      {!isArchived ? (
+        <div className="mt-5 flex flex-wrap gap-2">
+          <ReviewActionForm
+            recordId={record.recordId}
+            reviewStatus="needs-fixes"
+            label="Needs fixes"
+            icon={<Wrench aria-hidden="true" className="h-4 w-4" />}
+            tone="border-rose-200/25 bg-rose-300/12 text-rose-50 hover:bg-rose-300/18"
+          />
+          <ReviewActionForm
+            recordId={record.recordId}
+            reviewStatus="human-review"
+            label="Human review"
+            icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
+            tone="border-amber-200/25 bg-amber-300/12 text-amber-50 hover:bg-amber-300/18"
+          />
+          <ReviewActionForm
+            recordId={record.recordId}
+            reviewStatus="approved-for-future-staging"
+            label="Stage candidate"
+            icon={<CheckCircle2 aria-hidden="true" className="h-4 w-4" />}
+            tone="border-emerald-200/25 bg-emerald-300/12 text-emerald-50 hover:bg-emerald-300/18"
+          />
+          <ReviewActionForm
+            recordId={record.recordId}
+            reviewStatus="archived"
+            label="Archive"
+            icon={<Archive aria-hidden="true" className="h-4 w-4" />}
+            tone="border-white/10 bg-black/20 text-[rgba(245,239,230,0.82)] hover:bg-white/10"
+          />
+        </div>
+      ) : null}
     </article>
   );
 }
