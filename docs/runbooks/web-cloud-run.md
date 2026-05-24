@@ -55,6 +55,8 @@ Expected health response:
 
 - `apps/web/Dockerfile`
   - builds the pnpm monorepo
+  - installs `openssl` and `ca-certificates` in build and runtime stages so
+    Prisma can detect the expected SSL library in the slim Node image
   - runs `pnpm --filter web exec next build --webpack`
   - uses a non-secret build-time `DATABASE_URL` placeholder only so Prisma
     configuration can load during the Next page-data phase

@@ -32,6 +32,7 @@ test("defines a non-sensitive web health response", async () => {
 test("web Dockerfile uses standalone webpack build path", () => {
   const dockerfile = readFileSync("apps/web/Dockerfile", "utf8");
   assert.match(dockerfile, /pnpm --filter web exec next build --webpack/);
+  assert.match(dockerfile, /ca-certificates openssl/);
   assert.match(
     dockerfile,
     /DATABASE_URL=postgresql:\/\/build:build@localhost:5432\/high_ground_build/,

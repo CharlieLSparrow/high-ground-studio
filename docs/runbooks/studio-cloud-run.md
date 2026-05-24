@@ -78,6 +78,8 @@ keep other development seed writes disabled in Cloud Run.
 
 - `apps/studio/Dockerfile`
   - builds the pnpm monorepo
+  - installs `openssl` and `ca-certificates` in build and runtime stages so
+    Prisma can detect the expected SSL library in the slim Node image
   - runs `pnpm --filter studio build`
   - uses Next standalone output
   - listens on Cloud Run's `PORT`, defaulting to `8080`

@@ -99,12 +99,14 @@ test("defines a non-sensitive Studio health response", async () => {
 
 test("Studio deploy helper ignores GitHub auth credential files only", () => {
   const deployScript = readFileSync("scripts/studio-cloud-run-deploy.mjs", "utf8");
+  const dockerfile = readFileSync("apps/studio/Dockerfile", "utf8");
 
   assert.match(deployScript, /getDeployBlockingDirtyStatus/);
   assert.match(deployScript, /gha-creds-/);
   assert.match(deployScript, /ALLOW_DIRTY_DEPLOY/);
   assert.match(deployScript, /STUDIO_IMAGE_BUILD_STRATEGY/);
   assert.match(deployScript, /apps\/studio\/Dockerfile/);
+  assert.match(dockerfile, /ca-certificates openssl/);
 });
 
 test("preflight script is read-only and completes repository checks", () => {

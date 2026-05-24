@@ -181,6 +181,47 @@ role: roles/artifactregistry.writer
 member: github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
 ```
 
+## First Successful Push-To-Main Deploy
+
+The direct Docker strategy succeeded from `main`:
+
+```text
+run: 26347727705
+commit: b80f140274d94e2a5d7a85f4bdb386d56a769867
+```
+
+Web:
+
+```text
+revision: web-00004-fml
+url: https://web-hm2odnvjga-uc.a.run.app
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:b80f140274d94e2a5d7a85f4bdb386d56a769867
+rollback: gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00003-fc2=100
+```
+
+Studio:
+
+```text
+revision: studio-00026-hpm
+url: https://studio-hm2odnvjga-uc.a.run.app
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:b80f140274d94e2a5d7a85f4bdb386d56a769867
+rollback: gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00025-shp=100
+```
+
+Live smokes passed:
+
+```text
+https://web-hm2odnvjga-uc.a.run.app/api/health
+https://web-hm2odnvjga-uc.a.run.app/
+https://web-hm2odnvjga-uc.a.run.app/team/progress redirects to sign-in
+https://studio-hm2odnvjga-uc.a.run.app/api/health
+https://studio-hm2odnvjga-uc.a.run.app/content-studio
+```
+
+The Docker logs exposed a Prisma/OpenSSL warning in the slim images, so the
+next hardening slice should install `openssl` and `ca-certificates` in both
+builder and runner stages for web and Studio.
+
 ## Rollback
 
 Cloud Run rollback remains service-specific:
