@@ -64,9 +64,14 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
     "scripts/web-cloud-run-seed-secrets-from-env.mjs",
     "utf8",
   );
+  const databaseReportScript = readFileSync(
+    "scripts/web-database-target-report.mjs",
+    "utf8",
+  );
 
   assert.match(packageJson, /web:cloudrun:deploy/);
   assert.match(packageJson, /web:cloudrun:seed-secrets/);
+  assert.match(packageJson, /web:db:target:report/);
   assert.match(packageJson, /web:domain:check/);
   assert.match(deployScript, /WEB_CLOUD_RUN_CREATE_SERVICE/);
   assert.match(deployScript, /web-cloud-run@/);
@@ -82,6 +87,10 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(domainScript, /api\/auth\/callback\/google/);
   assert.match(seedScript, /Secret values are not printed/);
   assert.match(seedScript, /web-database-url/);
+  assert.match(databaseReportScript, /Web database target report/);
+  assert.match(databaseReportScript, /never prints the full URL/);
+  assert.match(databaseReportScript, /web-cloudsql-database-url/);
+  assert.match(databaseReportScript, /Cloud SQL attachment alone does not cut over Prisma/);
 });
 
 test("web runbook mounts OAuth client id from Secret Manager", () => {

@@ -189,6 +189,25 @@ Check custom-domain readiness without changing cloud state:
 pnpm web:domain:check
 ```
 
+Check the active web database target without printing the `DATABASE_URL` secret:
+
+```bash
+pnpm web:db:target:report
+```
+
+This report reads Cloud Run, the mounted `web-database-url` secret, and the
+configured Cloud SQL instance. It prints only derived target metadata such as
+provider, host, database name, Cloud SQL databases, and Cloud SQL users. It does
+not print the full URL, username, or password.
+
+As of the 2026-05-24 HGO staged artifact rollout, the web service has the
+Cloud SQL attachment but the `web-database-url` secret still points at a Neon
+PostgreSQL pooler. The Cloud SQL attachment alone does not move Prisma writes.
+Treat the web database move as an explicit migration/cutover: create a staged
+Cloud SQL database/user/secret, run schema sync against that staged secret,
+copy and verify data, then swap `web-database-url` only after rollback is
+clear.
+
 If the expected web secrets exist but do not have enabled versions yet, seed
 them from local env files:
 
