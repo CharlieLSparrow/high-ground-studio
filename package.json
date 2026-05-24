@@ -26,6 +26,7 @@
     "web:cloudrun:preflight": "node scripts/web-cloud-run-preflight.mjs",
     "web:cloudrun:seed-secrets": "node scripts/web-cloud-run-seed-secrets-from-env.mjs",
     "web:cloudrun:deploy": "node scripts/web-cloud-run-deploy.mjs",
+    "web:cloudsql:prepare": "node scripts/web-cloudsql-target-prepare.mjs",
     "web:db:target:report": "node scripts/web-database-target-report.mjs",
     "web:domain:check": "node scripts/web-domain-readiness.mjs",
     "web:cloudrun:test": "node --test scripts/web-cloud-run-readiness.test.mjs",

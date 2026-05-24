@@ -208,6 +208,42 @@ Cloud SQL database/user/secret, run schema sync against that staged secret,
 copy and verify data, then swap `web-database-url` only after rollback is
 clear.
 
+Stage the separate Cloud SQL web target without changing the active runtime
+secret:
+
+```bash
+pnpm web:cloudsql:prepare
+```
+
+By default this prepares:
+
+| Resource | Name |
+| --- | --- |
+| Cloud SQL instance | `studio-postgres` |
+| Cloud SQL database | `web` |
+| Cloud SQL user | `web_app` |
+| Staged Secret Manager secret | `web-cloudsql-database-url` |
+| Runtime service account | `web-cloud-run@PROJECT_ID.iam.gserviceaccount.com` |
+
+The command creates a generated password and Cloud SQL Unix-socket
+`DATABASE_URL`, adds it as a version of `web-cloudsql-database-url`, grants the
+web runtime service account access to that staged secret, and verifies or grants
+`roles/cloudsql.client`. It does **not** update `web-database-url`, redeploy
+web, copy data, or cut traffic over to Cloud SQL. Generated passwords and full
+connection URLs are never printed.
+
+Useful controls:
+
+```bash
+WEB_CLOUDSQL_PREPARE_DRY_RUN=1 pnpm web:cloudsql:prepare
+FORCE_WEB_CLOUDSQL_PASSWORD=1 FORCE_WEB_CLOUDSQL_SECRET_VERSION=1 pnpm web:cloudsql:prepare
+WEB_CLOUDSQL_GRANT_CLIENT=0 pnpm web:cloudsql:prepare
+```
+
+After staging the target, apply the Prisma schema to
+`web-cloudsql-database-url` through a one-off Cloud Run Job before any data
+copy or runtime-secret swap.
+
 If the expected web secrets exist but do not have enabled versions yet, seed
 them from local env files:
 
