@@ -367,7 +367,17 @@ tools/studio-cut-local/output/rescue-sync-publish-package/
 ```
 
 Use those generated files in `Publish Rescue Sync Package` to test Firebase
-room publishing without private footage or real episode metadata.
+room publishing without private footage or real episode metadata. The generated
+package includes optional demo decision and timed transcript JSON files for
+seeding the shared room after publish.
+
+For a clearer demo path:
+
+```bash
+pnpm studio-cut:demo-package
+```
+
+That writes to `tools/studio-cut-local/output/demo-shared-room-package/`.
 
 Run the synthetic local-media canary:
 

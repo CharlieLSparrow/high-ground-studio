@@ -198,8 +198,17 @@ tools/studio-cut-local/output/rescue-sync-publish-package/
 
 Open the generated `README.md` in that directory for the exact live-app publish
 test. The package includes a manifest, source-monitor proxy MP4, Sync Map, sync
-report, sync job JSON, and package summary. None of those files should be
-committed.
+report, sync job JSON, package summary, optional demo decision JSON, and
+optional timed transcript JSON. None of those files should be committed.
+
+For an operator-friendly output path, use:
+
+```bash
+pnpm studio-cut:demo-package
+```
+
+That writes the same synthetic package shape under
+`tools/studio-cut-local/output/demo-shared-room-package/`.
 
 Keep real episode assets, generated proxies, private paths, and credentials out
 of git.

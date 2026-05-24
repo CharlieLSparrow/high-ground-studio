@@ -524,6 +524,8 @@ async function writePublishPackage(outputDir, result) {
     syncMap: "sync-map.synthetic.json",
     syncReport: "sync-report.synthetic.json",
     syncJob: "sync-job.synthetic.json",
+    decisions: "studio-cut-decisions.synthetic.json",
+    transcript: "episode-transcript.synthetic.json",
     summary: "package-summary.json",
     readme: "README.md",
   };
@@ -549,6 +551,14 @@ async function writePublishPackage(outputDir, result) {
   await copyFile(
     result.packageFiles.syncJobPath,
     path.join(resolvedOutputDir, files.syncJob),
+  );
+  await writeJson(
+    path.join(resolvedOutputDir, files.decisions),
+    buildDemoDecisionExport(result),
+  );
+  await writeJson(
+    path.join(resolvedOutputDir, files.transcript),
+    buildDemoTranscript(result),
   );
 
   await writeJson(path.join(resolvedOutputDir, files.summary), {
@@ -599,6 +609,10 @@ private footage, local paths, credentials, or real episode metadata.
    - package: Rescue Sync
    - Sync Map attached
    - sync report attached
+7. Optional: seed the room with demo edit data:
+   - Import decisions: \`${files.decisions}\`
+   - Import transcript: \`${files.transcript}\`
+   - Confirm Transcript Review shows clip-reference and filler diagnostics.
 
 This does not test private footage, real sync quality, or full-res rendering.
 `,
@@ -606,6 +620,89 @@ This does not test private footage, real sync quality, or full-res rendering.
   );
 
   return resolvedOutputDir;
+}
+
+function buildDemoDecisionExport(result) {
+  const exportedAt = "2026-05-24T00:00:00.000Z";
+  const events = [
+    ["demo-001", 0, "both", "Demo open with both hosts."],
+    ["demo-002", 1000, "charlie", "Demo cut to Charlie."],
+    ["demo-003", 2000, "homer", "Demo cut to Homer."],
+    ["demo-004", 3000, "charlie_clip", "Demo transcript calls out on-screen clip."],
+    ["demo-005", 4000, "both_clip", "Demo both hosts plus clip."],
+    ["demo-006", Math.max(4500, result.sourceMonitorDurationMs - 500), "cut", "Demo skip the tail."],
+  ].filter(([, sourceTimeMs]) => sourceTimeMs < result.sourceMonitorDurationMs);
+
+  return {
+    schemaVersion: 1,
+    exportedAt,
+    projectId: result.projectId,
+    branchId: result.branchId,
+    decisionEvents: events.map(([id, sourceTimeMs, state, note], index) => ({
+      id: `${result.projectId}-${id}`,
+      projectId: result.projectId,
+      branchId: result.branchId,
+      sourceTimeMs,
+      state,
+      createdBy: "studio-cut-demo-package",
+      createdAt: new Date(Date.parse(exportedAt) + index * 1000).toISOString(),
+      clientId: "studio-cut-demo-package",
+      operation: "import",
+      note,
+    })),
+  };
+}
+
+function buildDemoTranscript(result) {
+  const durationMs = result.sourceMonitorDurationMs;
+  const clamp = (value) => Math.min(durationMs, value);
+
+  return {
+    schemaVersion: 1,
+    episodeId: result.projectId,
+    generatedAt: "2026-05-24T00:00:00.000Z",
+    language: "en",
+    notes:
+      "Synthetic transcript for Studio Cut room demos only. It contains no private episode material.",
+    segments: [
+      {
+        id: "demo-transcript-001",
+        startSourceTimeMs: 200,
+        endSourceTimeMs: clamp(1500),
+        speaker: "Charlie",
+        speakerRole: "charlie",
+        text: "Welcome to the synthetic Studio Cut room. This is safe demo material.",
+        confidence: 0.98,
+      },
+      {
+        id: "demo-transcript-002",
+        startSourceTimeMs: clamp(1600),
+        endSourceTimeMs: clamp(2800),
+        speaker: "Homer",
+        speakerRole: "homer",
+        text: "We can scrub, tag states, and see the shared decisions update.",
+        confidence: 0.97,
+      },
+      {
+        id: "demo-transcript-003",
+        startSourceTimeMs: clamp(3000),
+        endSourceTimeMs: clamp(4100),
+        speaker: "Charlie",
+        speakerRole: "charlie",
+        text: "Let's look at the clip on screen and confirm the proxy preview.",
+        confidence: 0.96,
+      },
+      {
+        id: "demo-transcript-004",
+        startSourceTimeMs: clamp(4100),
+        endSourceTimeMs: clamp(durationMs),
+        speaker: "Homer",
+        speakerRole: "homer",
+        text: "Um uh you know this ending is intentionally rough for filler review.",
+        confidence: 0.94,
+      },
+    ].filter((segment) => segment.endSourceTimeMs > segment.startSourceTimeMs),
+  };
 }
 
 async function main() {

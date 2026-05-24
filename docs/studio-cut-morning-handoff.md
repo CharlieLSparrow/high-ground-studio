@@ -248,6 +248,17 @@ This creates a synthetic-only package at
 that package in the deployed app before putting real Episode 4 artifacts through
 the same flow.
 
+For a cleaner demo folder, run:
+
+```bash
+pnpm studio-cut:demo-package
+```
+
+The demo package includes synthetic manifest/proxy/Sync Map/report plus optional
+decision and transcript seed JSON. Publish the package, then import the seed
+decisions/transcript to show the full room-edit-agent-review loop without real
+media.
+
 Create bootstrap files after calculating the real duration in milliseconds:
 
 ```bash

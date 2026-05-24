@@ -1091,7 +1091,18 @@ pnpm studio-cut:rescue-sync-package
 It writes ignored files under
 `tools/studio-cut-local/output/rescue-sync-publish-package/`, including a README
 with the exact `Publish Rescue Sync Package` rehearsal. Use it to test shared
-room publishing without private media.
+room publishing without private media. The package now includes optional demo
+decision and transcript JSON files so the room can be seeded with realistic
+state changes and transcript review without any real episode material.
+
+For a clearer demo folder name, use:
+
+```bash
+pnpm studio-cut:demo-package
+```
+
+That writes the same synthetic package shape under
+`tools/studio-cut-local/output/demo-shared-room-package/`.
 
 The actual Cloud Run sync worker remains scaffold only. FFT/refined drift
 analysis and production-grade labels/proxy quality are not implemented yet. Sync

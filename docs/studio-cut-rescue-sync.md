@@ -255,7 +255,19 @@ pnpm studio-cut:rescue-sync-package
 The command writes synthetic files and a local README under
 `tools/studio-cut-local/output/rescue-sync-publish-package/`. Use those files in
 `Publish Rescue Sync Package` to validate the room metadata, Storage upload,
-Sync Map attachment, and shared proxy load path without private media.
+Sync Map attachment, and shared proxy load path without private media. It also
+includes optional demo decision and timed transcript JSON files so Charlie can
+seed the synthetic room and exercise tagging, Transcript Review, and Agent
+Context without real episode material.
+
+For a cleaner demo path:
+
+```bash
+pnpm studio-cut:demo-package
+```
+
+This writes the same package shape under
+`tools/studio-cut-local/output/demo-shared-room-package/`.
 
 Before publishing a real generated package, validate the artifact set:
 
