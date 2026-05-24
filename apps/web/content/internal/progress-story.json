@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T19:12:05.638Z",
+  "updatedAt": "2026-05-24T20:00:08.500Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-artifact-handoff-controls",
+      "date": "2026-05-24",
+      "title": "Saved HGO artifacts became easier to reopen",
+      "kicker": "The private team shelf now has copy, download, and inspect controls",
+      "mood": "Shipped and traceable",
+      "summary": "Saved HGO staged artifacts can now be copied, downloaded, reopened in the artifact inspector, or turned into private publish-candidate packets from the team shelf.",
+      "body": [
+        "This turns the private HGO artifact shelf into a working handoff station instead of a passive list. A team operator can copy the immutable artifact JSON, download it, open the artifact inspector with the JSON already on the clipboard, or copy/download the derived episode-page publish-candidate packet.",
+        "The boundary stays intact: these controls do not publish, approve, mutate the stored artifact, create /episodes routes, call providers, or certify public safety. They just make review and agent handoff faster."
+      ],
+      "commits": [
+        {
+          "sha": "409c625",
+          "label": "feat(web): add HGO artifact handoff controls"
+        }
+      ],
+      "links": [
+        {
+          "label": "HGO staged artifacts",
+          "href": "https://app.highgroundodyssey.com/team/hgo-staged-artifacts"
+        },
+        {
+          "label": "Artifact inspector",
+          "href": "https://app.highgroundodyssey.com/projection-stage/artifact"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Review", "Team Ops"]
+    },
     {
       "id": "studio-hgo-import-clipboard-bridge",
       "date": "2026-05-24",

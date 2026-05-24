@@ -6,6 +6,26 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO artifact handoff controls
+
+- Added a private team-shelf handoff panel to `/team/hgo-staged-artifacts`:
+  - copy/download immutable saved artifact JSON
+  - copy/open the artifact inspector for a saved artifact
+  - copy/download the derived private episode-page publish-candidate packet
+- Added clipboard-load and clear controls to `/projection-stage/artifact` so
+  copied artifacts can be inspected without file downloads.
+- Guardrails preserved: no public publish, no provider call, no approval action,
+  no `/episodes` route creation, no artifact mutation, and no public-safety
+  certification.
+- Validation passed:
+  `pnpm hgo:artifact:test`, `pnpm hgo:publish-candidate:test`,
+  `pnpm --filter web build`,
+  `pnpm hgo:projection:browser-smoke`,
+  `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`,
+  and `git diff --check`.
+- Local functional commit: `409c625`
+  `feat(web): add HGO artifact handoff controls`.
+
 ### Codex / `main` Studio-to-HGO import bridge
 
 - Tightened the Content Studio to HGO staged-review handoff:
