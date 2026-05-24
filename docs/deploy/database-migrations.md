@@ -339,6 +339,46 @@ Expected result:
 
 - one row for `StudioContentWorkspaceSnapshot`
 
+## HGO Private Staged Artifact Store Change
+
+The first private HGO staged artifact store slice added:
+
+- `HgoStagedProjectionArtifact`
+
+This is an additive private review-store schema change. It stores validated
+`hgo-staged-artifact-v1` review packets and server-side review metadata for
+signed-in team operators. The embedded browser artifact JSON remains a review
+packet with `persisted: false` and `published: false`; server persistence
+metadata lives outside that packet.
+
+The table does not publish public pages, replace `/episodes`, call providers,
+certify public-safety review, or store raw canonical manuscript files.
+
+Apply the schema to a target database only through the approved operator path
+for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+For the live web Cloud Run database, prefer running `pnpm db:push` from a
+Cloud Run Job image that has the `web-database-url` secret and the same Cloud
+SQL attachment as the `web` service.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name = 'HgoStagedProjectionArtifact';
+```
+
+Expected result:
+
+- one row for `HgoStagedProjectionArtifact`
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 

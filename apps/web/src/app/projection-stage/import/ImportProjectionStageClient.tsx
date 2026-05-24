@@ -37,6 +37,32 @@ type ParsedProjection =
       projection: HgoEpisodeProjection;
     };
 
+type SaveArtifactState =
+  | {
+      status: "idle";
+      message: string;
+      errors: string[];
+      warnings: string[];
+    }
+  | {
+      status: "saving";
+      message: string;
+      errors: string[];
+      warnings: string[];
+    }
+  | {
+      status: "saved";
+      message: string;
+      errors: string[];
+      warnings: string[];
+    }
+  | {
+      status: "error";
+      message: string;
+      errors: string[];
+      warnings: string[];
+    };
+
 function parseProjectionJson(value: string): ParsedProjection {
   if (!value.trim()) {
     return {
@@ -133,11 +159,15 @@ function ArtifactSummaryPanel({
   artifactJson,
   onGenerateArtifactJson,
   onDownloadArtifactJson,
+  onSaveArtifact,
+  saveArtifactState,
 }: {
   artifact: HgoStagedProjectionArtifact;
   artifactJson: string;
   onGenerateArtifactJson: () => void;
   onDownloadArtifactJson: () => void;
+  onSaveArtifact: () => void;
+  saveArtifactState: SaveArtifactState;
 }) {
   const summary = summarizeHgoStagedProjectionArtifact(artifact);
   const safety = assertHgoStagedProjectionArtifactIsBrowserOnlySafe(artifact);
@@ -179,6 +209,17 @@ function ArtifactSummaryPanel({
               onClick={onDownloadArtifactJson}
             >
               Download staged artifact JSON
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-emerald-300/35 bg-emerald-300/12 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+              data-testid="hgo-stage-import-save-private-artifact"
+              disabled={saveArtifactState.status === "saving"}
+              onClick={onSaveArtifact}
+            >
+              {saveArtifactState.status === "saving"
+                ? "Saving..."
+                : "Save private review artifact"}
             </button>
           </div>
         </div>
@@ -255,6 +296,36 @@ function ArtifactSummaryPanel({
           {artifact.safety.operatorWarning}
         </p>
 
+        {saveArtifactState.message ? (
+          <div
+            className={`mt-4 rounded-[18px] border p-4 text-sm ${
+              saveArtifactState.status === "error"
+                ? "border-rose-300/35 bg-rose-300/10 text-rose-100"
+                : "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
+            }`}
+            data-testid="hgo-stage-import-save-result"
+          >
+            <p className="font-black uppercase">
+              {saveArtifactState.status === "error" ? "Save blocked" : "Save status"}
+            </p>
+            <p className="mt-2 font-bold leading-6">{saveArtifactState.message}</p>
+            {saveArtifactState.errors.length ? (
+              <ul className="mt-3 grid gap-2 pl-5 leading-6">
+                {saveArtifactState.errors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            ) : null}
+            {saveArtifactState.warnings.length ? (
+              <ul className="mt-3 grid gap-2 pl-5 leading-6 text-amber-100">
+                {saveArtifactState.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
         {!safety.ok ? (
           <div className="mt-4 rounded-[18px] border border-rose-300/35 bg-rose-300/10 p-4 text-sm text-rose-100">
             <p className="font-black uppercase">Safety check failed</p>
@@ -290,6 +361,13 @@ export default function ImportProjectionStageClient() {
   const [artifact, setArtifact] =
     useState<HgoStagedProjectionArtifact | null>(null);
   const [artifactJson, setArtifactJson] = useState("");
+  const [saveArtifactState, setSaveArtifactState] =
+    useState<SaveArtifactState>({
+      status: "idle",
+      message: "",
+      errors: [],
+      warnings: [],
+    });
   const parsedProjection = useMemo(
     () => parseProjectionJson(rawProjectionJson),
     [rawProjectionJson],
@@ -310,6 +388,12 @@ export default function ImportProjectionStageClient() {
     if (!parsedProjection.projection || !reviewGate) {
       setArtifact(null);
       setArtifactJson("");
+      setSaveArtifactState({
+        status: "idle",
+        message: "",
+        errors: [],
+        warnings: [],
+      });
       return;
     }
 
@@ -323,6 +407,12 @@ export default function ImportProjectionStageClient() {
       }),
     );
     setArtifactJson("");
+    setSaveArtifactState({
+      status: "idle",
+      message: "",
+      errors: [],
+      warnings: [],
+    });
   }, [parsedProjection, reviewGate]);
 
   function generateArtifactJson() {
@@ -354,6 +444,75 @@ export default function ImportProjectionStageClient() {
     link.click();
     link.remove();
     URL.revokeObjectURL(href);
+  }
+
+  async function saveArtifactToPrivateStore() {
+    if (!artifact) {
+      return;
+    }
+
+    setSaveArtifactState({
+      status: "saving",
+      message: "Saving private review artifact...",
+      errors: [],
+      warnings: [],
+    });
+
+    try {
+      const nextArtifactJson = artifactJson || generateArtifactJson();
+      const response = await fetch("/api/hgo/staged-artifacts", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          artifactJson: nextArtifactJson,
+          note: "Saved from HGO staged import.",
+        }),
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        created?: boolean;
+        record?: {
+          recordId?: string;
+          projectionTitle?: string;
+        };
+        errors?: string[];
+        warnings?: string[];
+      };
+
+      if (!response.ok || !payload.ok) {
+        setSaveArtifactState({
+          status: "error",
+          message:
+            response.status === 401
+              ? "Sign in with a team account to save private staged artifacts."
+              : "The staged artifact was not saved.",
+          errors: payload.errors ?? [],
+          warnings: payload.warnings ?? [],
+        });
+        return;
+      }
+
+      setSaveArtifactState({
+        status: "saved",
+        message: payload.created
+          ? `Saved private review artifact: ${payload.record?.recordId ?? "record created"}.`
+          : `This artifact was already saved: ${payload.record?.recordId ?? "existing record"}.`,
+        errors: [],
+        warnings: payload.warnings ?? [],
+      });
+    } catch (error) {
+      setSaveArtifactState({
+        status: "error",
+        message:
+          error instanceof Error
+            ? `Save failed: ${error.message}`
+            : "Save failed.",
+        errors: [],
+        warnings: [],
+      });
+    }
   }
 
   return (
@@ -483,6 +642,8 @@ export default function ImportProjectionStageClient() {
           artifactJson={artifactJson}
           onGenerateArtifactJson={generateArtifactJson}
           onDownloadArtifactJson={downloadArtifactJson}
+          onSaveArtifact={saveArtifactToPrivateStore}
+          saveArtifactState={saveArtifactState}
         />
       ) : null}
 
