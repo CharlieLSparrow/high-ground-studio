@@ -2243,6 +2243,17 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onApplyRoom={applyRoomSelection}
         />
 
+        <EpisodeCommandCenterPanel
+          status={status}
+          metadata={sharedRoomMetadata}
+          manifest={episodeManifest}
+          localProxyVideo={localProxyVideo}
+          packageSelection={rescueSyncPackage}
+          syncReview={syncReview}
+          decisionCount={sortedEvents.length}
+          exportFileNamePreview={exportFileNamePreview}
+        />
+
         <EpisodeReadinessPanel
           manifest={episodeManifest}
           localProxyVideo={localProxyVideo}
@@ -3706,6 +3717,143 @@ function EpisodeReadinessPanel({
   );
 }
 
+type CommandCenterStep = {
+  label: string;
+  status: "ready" | "next" | "waiting" | "blocked";
+  detail: string;
+  action: string;
+};
+
+function EpisodeCommandCenterPanel({
+  status,
+  metadata,
+  manifest,
+  localProxyVideo,
+  packageSelection,
+  syncReview,
+  decisionCount,
+  exportFileNamePreview,
+}: {
+  status: PersistenceStatus;
+  metadata: SharedRoomMetadata | null;
+  manifest: EpisodeManifest | null;
+  localProxyVideo: LocalProxyVideo | null;
+  packageSelection: RescueSyncPackageSelection;
+  syncReview: SyncReviewState;
+  decisionCount: number;
+  exportFileNamePreview: string;
+}) {
+  const selectedPackagePartCount = [
+    packageSelection.manifest,
+    packageSelection.proxyFile,
+    packageSelection.syncMap,
+  ].filter(Boolean).length;
+  const packageSelected = Boolean(
+    packageSelection.manifest && packageSelection.proxyFile && packageSelection.syncMap,
+  );
+  const packagePartiallySelected = selectedPackagePartCount > 0 && !packageSelected;
+  const roomPublished = Boolean(metadata);
+  const proxyVisible = Boolean(localProxyVideo || metadata?.sourceMonitorProxyStoragePath);
+  const syncMapAvailable = Boolean(
+    syncReview.syncMap || packageSelection.syncMap || metadata?.syncMapStoragePath,
+  );
+  const canUseCloudRoom = status.mode === "cloud_connected";
+  const steps: CommandCenterStep[] = [
+    {
+      label: "Generated package",
+      status: roomPublished
+        ? "ready"
+        : packageSelected
+          ? "next"
+          : packagePartiallySelected
+            ? "next"
+            : "waiting",
+      detail: roomPublished
+        ? getSharedRoomPackageKindLabel(metadata?.packageKind)
+        : packageSelected
+          ? "Manifest, proxy, and Sync Map selected"
+          : packagePartiallySelected
+            ? `${selectedPackagePartCount} of 3 generated files selected`
+          : "Run Rescue Sync and select generated files",
+      action: roomPublished
+        ? "Review attached Sync Map."
+        : packageSelected
+          ? "Publish Rescue Sync package."
+          : packagePartiallySelected
+            ? "Select remaining generated package files."
+          : "Generate package locally first.",
+    },
+    {
+      label: "Shared room",
+      status: roomPublished ? "ready" : canUseCloudRoom ? "waiting" : "blocked",
+      detail: roomPublished
+        ? `${metadata?.projectId}/${metadata?.branchId}`
+        : canUseCloudRoom
+          ? "Cloud connected"
+          : status.label,
+      action: roomPublished
+        ? "Send the room link."
+        : canUseCloudRoom
+          ? "Create or publish a room."
+          : "Use local backup flow until cloud is available.",
+    },
+    {
+      label: "Browser edit",
+      status: decisionCount > 0 ? "ready" : manifest && proxyVisible ? "next" : "waiting",
+      detail: decisionCount > 0 ? `${decisionCount} decisions` : manifest?.title ?? "No episode loaded",
+      action:
+        decisionCount > 0
+          ? "Continue tagging or export decisions."
+          : manifest && proxyVisible
+            ? "Play, scrub, and tag states."
+            : "Load or join an episode room.",
+    },
+    {
+      label: "Decision handoff",
+      status: decisionCount > 0 ? "next" : "waiting",
+      detail: `Save as ${exportFileNamePreview}`,
+      action:
+        decisionCount > 0
+          ? "Export decisions into the session edit folder."
+          : "Create at least one semantic decision.",
+    },
+    {
+      label: "Local render",
+      status: decisionCount > 0 && syncMapAvailable ? "next" : "waiting",
+      detail: syncMapAvailable ? "Sync Map available" : "Needs Sync Map",
+      action:
+        decisionCount > 0 && syncMapAvailable
+          ? "Run the dry-run render command below."
+          : "Publish or attach a Rescue Sync package first.",
+    },
+  ];
+
+  return (
+    <section className="command-center-panel" aria-label="Episode command center">
+      <div className="panel-heading">
+        <div>
+          <h2>Episode Command Center</h2>
+          <p>Primary path from generated package to shared edit to local render.</p>
+        </div>
+        <strong>{getCommandCenterPhase(steps)}</strong>
+      </div>
+      <div className="command-center-steps">
+        {steps.map((step) => (
+          <div
+            className={`command-center-step is-${step.status}`}
+            key={step.label}
+          >
+            <span>{step.label}</span>
+            <strong>{getCommandCenterStatusLabel(step.status)}</strong>
+            <p>{step.detail}</p>
+            <small>{step.action}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function LocalRenderHandoffPanel({
   manifest,
   decisionCount,
@@ -3769,6 +3917,41 @@ function ReadinessMetric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function getCommandCenterStatusLabel(status: CommandCenterStep["status"]) {
+  if (status === "ready") {
+    return "Ready";
+  }
+
+  if (status === "next") {
+    return "Next";
+  }
+
+  if (status === "blocked") {
+    return "Blocked";
+  }
+
+  return "Waiting";
+}
+
+function getCommandCenterPhase(steps: readonly CommandCenterStep[]) {
+  const blockedStep = steps.find((step) => step.status === "blocked");
+  if (blockedStep) {
+    return `Blocked at ${blockedStep.label}`;
+  }
+
+  const nextStep = steps.find((step) => step.status === "next");
+  if (nextStep) {
+    return `Next: ${nextStep.label}`;
+  }
+
+  const waitingStep = steps.find((step) => step.status === "waiting");
+  if (waitingStep) {
+    return `Waiting on ${waitingStep.label}`;
+  }
+
+  return "Ready";
 }
 
 function PrototypeNotice({ authStatus }: { authStatus: StudioCutAuthStatus }) {

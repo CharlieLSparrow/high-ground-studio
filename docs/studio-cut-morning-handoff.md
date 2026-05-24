@@ -289,6 +289,8 @@ python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session \
 The web `Local Render Handoff` panel shows the same wrapper command while
 editing. It also shows the decision JSON name to save under `edit/`, whether a
 Sync Map is available, and the suggested session folder.
+The web `Episode Command Center` panel summarizes the full operator chain:
+generated package, shared room, browser edit, decision handoff, and local render.
 
 The wrapper expects generated files under `generated/`, decisions under `edit/`,
 and writes rough output under `renders/`. The Sync Map local media map should

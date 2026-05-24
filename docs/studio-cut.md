@@ -368,6 +368,11 @@ loaded. It previews the expected decision export filename, the session folder
 shape, and the `render-rescue-sync-session` dry-run command so the local render
 handoff is visible from the tagging cockpit.
 
+The `Episode Command Center` panel summarizes the primary workflow in one
+place: generated package, shared room, browser edit, decision handoff, and local
+render. It is intentionally operator-facing so the next action is visible
+without reading the runbook during a tagging session.
+
 Current `youtube_16x9` planning maps semantic states this way:
 
 | State | 16:9 layout intent |

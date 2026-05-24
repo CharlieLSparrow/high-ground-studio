@@ -561,6 +561,7 @@ h2 {
 .persistence-panel,
 .manifest-panel,
 .current-segment-panel,
+.command-center-panel,
 .readiness-panel,
 .render-handoff-panel,
 .pane-calibration-panel,
@@ -577,6 +578,7 @@ h2 {
 .persistence-panel,
 .manifest-panel,
 .current-segment-panel,
+.command-center-panel,
 .readiness-panel,
 .render-handoff-panel,
 .pane-calibration-panel,
@@ -596,6 +598,69 @@ h2 {
   background:
     linear-gradient(135deg, rgba(125, 178, 255, 0.08), transparent 58%),
     rgba(255, 255, 255, 0.04);
+}
+
+.command-center-panel {
+  border-color: rgba(240, 201, 106, 0.24);
+  background:
+    linear-gradient(135deg, rgba(240, 201, 106, 0.1), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.command-center-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.command-center-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  border: 1px solid rgba(238, 242, 238, 0.11);
+  border-left: 4px solid rgba(174, 185, 180, 0.45);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.command-center-step.is-ready {
+  border-left-color: #91dbb7;
+}
+
+.command-center-step.is-next {
+  border-left-color: #f0c96a;
+}
+
+.command-center-step.is-blocked {
+  border-left-color: #ff7474;
+}
+
+.command-center-step span {
+  color: #eef2ee;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.command-center-step strong {
+  border: 1px solid rgba(238, 242, 238, 0.14);
+  border-radius: 999px;
+  color: #eef2ee;
+  padding: 2px 7px;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.command-center-step p,
+.command-center-step small {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #aeb9b4;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.command-center-step small {
+  color: #d7dfdc;
 }
 
 .current-segment-panel.is-cut {

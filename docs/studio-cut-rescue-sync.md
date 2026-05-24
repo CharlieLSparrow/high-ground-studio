@@ -186,6 +186,9 @@ The web editor's `Local Render Handoff` panel mirrors this flow while tagging:
 it shows the expected decision filename, whether a Sync Map is attached, and the
 same dry-run command. That panel is intentionally operator-facing so Charlie can
 move from shared-room editing to local render without hunting through docs.
+The `Episode Command Center` panel sits above it and shows the broader state of
+the episode: generated package, shared room, browser edit, decision handoff, and
+local render.
 
 ## Generated Proxy Package
 

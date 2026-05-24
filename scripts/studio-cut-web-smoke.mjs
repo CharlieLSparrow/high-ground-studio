@@ -533,6 +533,15 @@ async function runBrowserSmoke() {
     await expect(page.getByLabel("Sync review")).toContainText("web-smoke-sync-job");
     await expect(page.getByLabel("Sync review")).toContainText("Reference pieces");
     await expect(page.getByLabel("Sync review")).toContainText("Homer video x1");
+    await expect(page.getByLabel("Episode command center")).toContainText(
+      "Generated package",
+    );
+    await expect(page.getByLabel("Episode command center")).toContainText(
+      "2 of 3 generated files selected",
+    );
+    await expect(page.getByLabel("Episode command center")).toContainText(
+      "Select remaining generated package files",
+    );
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Room metadata");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync Map");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync report");
@@ -562,6 +571,10 @@ async function runBrowserSmoke() {
       .setInputFiles(smokeFiles.manifestPath);
     await expect(page.getByText(/Loaded manifest web-smoke-episode/i)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Episode Readiness" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Episode Command Center" })).toBeVisible();
+    await expect(page.getByLabel("Episode command center")).toContainText(
+      "Browser edit",
+    );
     await expect(page.getByRole("heading", { name: "Local Render Handoff" })).toBeVisible();
     await expect(page.getByLabel("Local render handoff")).toContainText(
       "render-rescue-sync-session",
