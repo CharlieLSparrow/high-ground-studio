@@ -20,6 +20,9 @@ Date: 2026-05-23
   Studio Cut, WorldHub, social/email, and coaching follow-through.
 - For podcast and episode-page projects, include a staged HGO projection draft
   that validates against the current HGO projection import contract.
+- Let HGO staged import accept the full Content Studio production packet and
+  extract `hgoProjectionDraft` after safety checks, so the operator does not
+  have to manually split packets before review.
 - Deploy coherent Studio slices to the existing private Cloud Run service when
   validation passes and gcloud credentials are available.
 - Keep coordination lightweight through:
@@ -35,8 +38,8 @@ Date: 2026-05-23
 - Extend the pure domain package only when a field is needed by a real workflow or test.
 - Decide whether persistence should be Prisma-backed Studio state, an API
   boundary, or a small service.
-- Connect downloaded HGO projection drafts to staged artifact review without
-  automatic public publishing.
+- Turn the current browser-only HGO staged import bridge into the right
+  persistence/API boundary once packet handoffs become regular work.
 - Connect podcast projects to Studio Cut media package state.
 - Connect follow-through ideas to WorldHub offers, supporter, merch, Patreon,
   and coaching concepts.

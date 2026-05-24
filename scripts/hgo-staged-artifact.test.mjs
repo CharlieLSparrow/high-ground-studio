@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { createContentStudioProductionPacket } from "../apps/studio/src/app/content-studio/content-studio-model.ts";
+import { extractHgoProjectionInputFromContentStudioPacket } from "../apps/web/src/lib/hgo/content-studio-production-packet.ts";
 import { createHgoProjectionReviewGate } from "../apps/web/src/lib/hgo/projection-review-gate.ts";
 import { syntheticEpisodeProjection } from "../apps/web/src/lib/hgo/synthetic-episode-projection.ts";
 import {
@@ -38,6 +40,56 @@ function createSyntheticArtifact() {
 
 function cloneArtifact() {
   return structuredClone(createSyntheticArtifact());
+}
+
+function createContentStudioPodcastProject() {
+  return {
+    id: "project-podcast-hgo-import",
+    title: "Podcast HGO packet import",
+    kind: "podcast",
+    priority: "primary",
+    status: "active",
+    activeStage: "produce",
+    updatedAt: "2026-05-24T02:00:00.000Z",
+    notes: "Synthetic Content Studio production packet for HGO import review.",
+    stages: {
+      source: [
+        {
+          id: "task-source-1",
+          label: "Collect synthetic transcript",
+          done: true,
+        },
+      ],
+      shape: [
+        {
+          id: "task-shape-1",
+          label: "Confirm episode thesis",
+          done: true,
+        },
+      ],
+      produce: [
+        {
+          id: "task-produce-1",
+          label: "Run rough edit pass",
+          done: false,
+        },
+      ],
+      publish: [
+        {
+          id: "task-publish-1",
+          label: "Generate staged episode page",
+          done: false,
+        },
+      ],
+      "follow-through": [
+        {
+          id: "task-loop-1",
+          label: "Capture follow-through notes",
+          done: false,
+        },
+      ],
+    },
+  };
 }
 
 test("known staged artifact contract enums are stable", () => {
@@ -165,4 +217,52 @@ test("import summary returns expected staged artifact fields", () => {
   assert.equal(summary.projectionVisibility, artifact.projection.visibility);
   assert.equal(summary.validationWarningCount, artifact.validationWarnings.length);
   assert.equal(summary.validationErrorCount, artifact.validationErrors.length);
+});
+
+test("Content Studio production packets expose an HGO projection draft for staged import", () => {
+  const packet = createContentStudioProductionPacket(
+    createContentStudioPodcastProject(),
+    "2026-05-24T02:30:00.000Z",
+  );
+  const result = extractHgoProjectionInputFromContentStudioPacket(packet);
+
+  assert.equal(result.ok, true);
+
+  if (!result.ok) {
+    return;
+  }
+
+  assert.equal(result.source, "content-studio-production-packet");
+  assert.match(result.warnings.join("\n"), /Content Studio production packet/i);
+
+  const validation = validateHgoEpisodeProjection(result.projectionInput);
+
+  assert.equal(validation.ok, true);
+  assert.deepEqual(validation.errors, []);
+});
+
+test("unsafe Content Studio production packets are rejected before staged import", () => {
+  const packet = createContentStudioProductionPacket(
+    createContentStudioPodcastProject(),
+    "2026-05-24T02:30:00.000Z",
+  );
+  const result = extractHgoProjectionInputFromContentStudioPacket({
+    ...packet,
+    safety: {
+      ...packet.safety,
+      providerCalls: true,
+      publicPublished: true,
+      containsRealManuscriptText: true,
+    },
+  });
+
+  assert.equal(result.ok, false);
+
+  if (result.ok) {
+    return;
+  }
+
+  assert.match(result.errors.join("\n"), /provider calls/i);
+  assert.match(result.errors.join("\n"), /public publishing/i);
+  assert.match(result.errors.join("\n"), /real manuscript text/i);
 });
