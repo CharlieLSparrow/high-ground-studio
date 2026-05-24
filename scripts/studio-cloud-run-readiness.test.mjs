@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -94,6 +95,14 @@ test("defines a non-sensitive Studio health response", async () => {
 
   assert.deepEqual(await response.json(), STUDIO_HEALTH_RESPONSE);
   assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
+test("Studio deploy helper ignores GitHub auth credential files only", () => {
+  const deployScript = readFileSync("scripts/studio-cloud-run-deploy.mjs", "utf8");
+
+  assert.match(deployScript, /getDeployBlockingDirtyStatus/);
+  assert.match(deployScript, /gha-creds-/);
+  assert.match(deployScript, /ALLOW_DIRTY_DEPLOY/);
 });
 
 test("preflight script is read-only and completes repository checks", () => {

@@ -82,6 +82,18 @@ function getShortHead() {
   return read("git", ["rev-parse", "--short", "HEAD"]);
 }
 
+function isIgnorableGitStatusLine(line) {
+  return /^\?\? gha-creds-[\w-]+\.json$/.test(line.trim());
+}
+
+function getDeployBlockingDirtyStatus() {
+  return read("git", ["status", "--short"])
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) => !isIgnorableGitStatusLine(line))
+    .join("\n");
+}
+
 function buildSecretArg() {
   return WEB_SECRET_BINDINGS.map(
     ([envName, secretName]) => `${envName}=${secretName}:latest`,
@@ -158,7 +170,7 @@ const cloudSqlInstance =
   `${project}:${region}:${DEFAULT_CLOUD_SQL_INSTANCE}`;
 const imageUri = `${region}-docker.pkg.dev/${project}/${artifactRepository}/${imageName}:${imageTag}`;
 
-const dirtyStatus = read("git", ["status", "--short"]);
+const dirtyStatus = getDeployBlockingDirtyStatus();
 
 if (dirtyStatus && process.env.ALLOW_DIRTY_DEPLOY !== "1") {
   throw new Error(

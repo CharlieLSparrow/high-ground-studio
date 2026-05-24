@@ -117,6 +117,29 @@ After merging:
 3. A manual GitHub Actions dispatch with target `all` should deploy both live
    Cloud Run services and print rollback commands in the job logs.
 
+## First Workflow Run
+
+The first push run started correctly:
+
+```text
+run: 26347264413
+url: https://github.com/CharlieLSparrow/high-ground-studio/actions/runs/26347264413
+```
+
+The plan job selected `web` and skipped `studio`, as expected for the checked-in
+web story update.
+
+The first deploy attempt failed before Cloud Build because
+`google-github-actions/auth` created a temporary `gha-creds-*.json` file in the
+GitHub Actions checkout. The deploy helper refused the dirty working tree.
+
+Follow-up fix:
+
+- keep the dirty-tree safety check
+- ignore only the known ephemeral `gha-creds-*.json` auth file
+- apply the same fix to web and Studio deploy helpers
+- cover the behavior through the Cloud Run readiness tests
+
 ## Rollback
 
 Cloud Run rollback remains service-specific:

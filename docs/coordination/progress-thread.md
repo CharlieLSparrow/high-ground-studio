@@ -167,3 +167,9 @@ checks, blockers, and next handoff.
 - The workflow reuses `pnpm web:cloudrun:deploy` and
   `pnpm studio:cloudrun:deploy` so CI deploys keep the same validation, Cloud
   Build, smoke, and rollback behavior as operator deploys.
+- Merged PR #8 to `main` as `e2f0a83`.
+- First GitHub Actions run `26347264413` started successfully and selected
+  `web`, but failed before Cloud Build because
+  `google-github-actions/auth` generated a temporary `gha-creds-*.json` file in
+  the checkout and the deploy helper correctly refused a dirty tree.
+- Follow-up fix branch: `codex/github-cloud-deploy-fix-001`.
