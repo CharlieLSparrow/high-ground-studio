@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T21:10:12.531Z",
+  "updatedAt": "2026-05-24T21:21:42.008Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-24-draft-exports-are-easier-to-hand-off",
+      "date": "2026-05-24",
+      "title": "Draft exports are easier to hand off",
+      "kicker": "HGO publishing",
+      "mood": "Closer to draft handoff",
+      "summary": "The private HGO publish review now exposes the generated MDX draft and frontmatter as first-class handoff files.",
+      "body": [
+        "This keeps episode-page publishing moving toward a real draft workflow while staying inside the private review boundary: no public route is created, no content file is written, and no provider is called.",
+        "The operator can still download the full publish-draft packet, but now the actual proposed MDX and frontmatter are one click away for review, sharing, or a future publish step."
+      ],
+      "commits": [
+        {
+          "sha": "2e90a18",
+          "label": "HGO draft export handoff"
+        }
+      ],
+      "links": [
+        {
+          "label": "Publish queue",
+          "href": "/team/hgo-publish-queue"
+        },
+        {
+          "label": "Private staged artifact plan",
+          "href": "docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Publishing"]
+    },
     {
       "id": "2026-05-24-episode-drafts-can-be-previewed-before-publishing",
       "date": "2026-05-24",
