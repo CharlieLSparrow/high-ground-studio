@@ -281,16 +281,15 @@ python tools/studio-cut-local/studio_cut_local.py render-youtube-16x9-aligned \
 Sync Map rough render after Rescue Sync:
 
 ```bash
-python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
-  --sync-map tools/studio-cut-local/output/episode-004-rescue-sync/sync-map.json \
-  --decisions tools/studio-cut-local/output/episode-004-rescue-sync/episode-004-decisions.json \
-  --media-map tools/studio-cut-local/output/episode-004-rescue-sync/sync-map-local-media.json \
-  --out tools/studio-cut-local/output/episode-004-rescue-sync/episode-004-youtube-16x9.mp4 \
+python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
   --dry-run
 ```
 
-The Sync Map local media map should stay ignored and should point Sync Map
-`inputId` values at Charlie's local original or higher-quality proxy assets.
+The wrapper expects generated files under `generated/`, decisions under `edit/`,
+and writes rough output under `renders/`. The Sync Map local media map should
+stay ignored and should point Sync Map `inputId` values at Charlie's local
+original or higher-quality proxy assets.
 If the map does not include `audio.program`, `render-from-sync-map` will mix
 mapped `homerAudio` and `charlieAudio` clean-audio assets when the Sync Map
 contains those input roles. Otherwise it renders silent audio and prints a

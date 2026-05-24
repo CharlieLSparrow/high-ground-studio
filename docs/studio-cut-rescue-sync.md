@@ -169,6 +169,18 @@ provided, it can now mix mapped `homerAudio` and `charlieAudio` Sync Map assets
 from the same local media map. Final quality, drift-aware rendering, and profile
 polish remain future work.
 
+For a standard one-folder session, prefer the wrapper after decisions are
+exported into `edit/<episode-id>-decisions.json`:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
+  --dry-run
+```
+
+Remove `--dry-run` to write the rough output into the session `renders/`
+directory.
+
 ## Generated Proxy Package
 
 Worker v0 can now turn Sync Map offsets into a local browser editing package:

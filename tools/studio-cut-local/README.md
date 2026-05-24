@@ -134,6 +134,26 @@ python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
   --json
 ```
 
+After Studio Cut decisions are exported into the session `edit/` folder, render
+from the predictable one-folder layout:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
+  --dry-run
+```
+
+The same command is available through pnpm with argument forwarding:
+
+```bash
+pnpm studio-cut:local:render-rescue-sync-session -- \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
+  --dry-run
+```
+
+Remove `--dry-run` to write
+`~/Movies/StudioCut/episode-004/renders/episode-004-youtube-16x9.mp4`.
+
 Validate a generated manifest and local media map before rendering:
 
 ```bash

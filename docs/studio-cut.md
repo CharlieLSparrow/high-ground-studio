@@ -356,6 +356,9 @@ The CLI supports:
 - `render-from-sync-map`: uses a Rescue Sync `Sync Map` plus local original or
   proxy asset paths to translate canonical episode timeline spans into
   asset-local time, then applies the rough `youtube_16x9` layouts.
+- `render-rescue-sync-session`: wraps `render-from-sync-map` for the standard
+  one-folder Rescue Sync workspace, using `generated/`, `edit/`, and `renders/`
+  paths so operators do not have to retype Sync Map file locations.
 - `agent-smoke-test`: generates synthetic media and structured files, runs the
   planning/render path, and validates the output without private media or
   browser interaction.

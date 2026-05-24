@@ -480,6 +480,51 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rescue_status_parser.set_defaults(handler=run_rescue_sync_status)
 
+    rescue_render_parser = subparsers.add_parser(
+        "render-rescue-sync-session",
+        help="Render a one-folder Rescue Sync workspace from generated Sync Map files.",
+    )
+    rescue_render_parser.add_argument(
+        "--episode-id",
+        help=(
+            "Episode id. Optional when --episode-dir is supplied; otherwise "
+            "defaults to the episode directory name."
+        ),
+    )
+    rescue_render_parser.add_argument(
+        "--episode-dir",
+        type=Path,
+        help=(
+            "Episode workspace directory. Default: "
+            "~/Movies/StudioCut/<episode-id>."
+        ),
+    )
+    rescue_render_parser.add_argument(
+        "--out",
+        type=Path,
+        help=(
+            "Output MP4 path. Default: "
+            "<episode-dir>/renders/<episode-id>-youtube-16x9.mp4."
+        ),
+    )
+    rescue_render_parser.add_argument(
+        "--include-clip",
+        default=True,
+        type=parse_bool_arg,
+        help="Whether to expect/scan optional clip/screen video. Default: true.",
+    )
+    rescue_render_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the segment plan and ffmpeg commands without rendering files.",
+    )
+    rescue_render_parser.add_argument(
+        "--keep-temp",
+        action="store_true",
+        help="Keep temporary segment files after a real render.",
+    )
+    rescue_render_parser.set_defaults(handler=run_render_rescue_sync_session)
+
     validate_episode_parser = subparsers.add_parser(
         "validate-episode-files",
         help="Validate a real-episode manifest and local media map before rendering.",
@@ -680,6 +725,7 @@ def execute_agent_smoke_test(
     media_map_path = workdir / "synthetic-media-map.json"
     sync_map_path = workdir / "sync-map.synthetic.json"
     sync_map_media_map_path = workdir / "sync-map-media-map.synthetic.json"
+    rescue_session_dir = workdir / "rescue-sync-session"
     render_plan_path = output_dir / "render-plan.youtube-16x9.json"
     output_path = output_dir / "studio-cut-agent-smoke-output.mp4"
     sync_map_output_path = output_dir / "studio-cut-agent-smoke-sync-map-output.mp4"
@@ -766,6 +812,7 @@ def execute_agent_smoke_test(
                 "mediaMap": str(media_map_path),
                 "syncMap": str(sync_map_path),
                 "syncMapMediaMap": str(sync_map_media_map_path),
+                "rescueSession": str(rescue_session_dir),
                 "renderPlan": str(render_plan_path),
             }
         )
@@ -878,6 +925,27 @@ def execute_agent_smoke_test(
                 source_duration_ms=source_duration_ms,
                 expected_output_duration_ms=expected_output_duration_ms,
                 report=report,
+            )
+            write_agent_smoke_rescue_sync_session(
+                session_dir=rescue_session_dir,
+                manifest=manifest,
+                decisions_path=decisions_path,
+                sync_map_path=sync_map_path,
+                sync_map_media_map_path=sync_map_media_map_path,
+            )
+            run_command_capture(
+                [
+                    sys.executable,
+                    str(script_path),
+                    "render-rescue-sync-session",
+                    "--episode-id",
+                    str(manifest["id"]),
+                    "--episode-dir",
+                    str(rescue_session_dir),
+                    "--dry-run",
+                ],
+                "agent smoke render-rescue-sync-session dry run",
+                commands_run,
             )
         else:
             warnings.append("--skip-render set; output MP4 validation was skipped.")
@@ -1133,6 +1201,29 @@ def build_agent_smoke_sync_map_media_map(
         },
         "audio": {},
     }
+
+
+def write_agent_smoke_rescue_sync_session(
+    *,
+    session_dir: Path,
+    manifest: dict[str, Any],
+    decisions_path: Path,
+    sync_map_path: Path,
+    sync_map_media_map_path: Path,
+) -> None:
+    episode_id = str(manifest["id"])
+    generated_dir = session_dir / "generated"
+    edit_dir = session_dir / "edit"
+    renders_dir = session_dir / "renders"
+    inbox_dir = session_dir / "inbox"
+
+    for directory in (generated_dir, edit_dir, renders_dir, inbox_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    write_json(generated_dir / "episode-manifest.json", manifest)
+    shutil.copyfile(sync_map_path, generated_dir / "sync-map.json")
+    shutil.copyfile(sync_map_media_map_path, generated_dir / "local-media-map.json")
+    shutil.copyfile(decisions_path, edit_dir / f"{episode_id}-decisions.json")
 
 
 def assert_agent_smoke_golden_plan(render_plan_path: Path) -> dict[str, Any]:
@@ -3024,6 +3115,76 @@ def run_rescue_sync_status(args: argparse.Namespace) -> int:
     report = build_rescue_sync_status_report(session)
     print_rescue_sync_status_report(report, json_mode=bool(args.json))
     return 0
+
+
+def run_render_rescue_sync_session(args: argparse.Namespace) -> int:
+    episode_dir = args.episode_dir.expanduser().resolve() if args.episode_dir else None
+    episode_id = args.episode_id.strip() if args.episode_id else None
+
+    if not episode_id and episode_dir:
+        episode_id = episode_dir.name
+
+    if not episode_id:
+        raise StudioCutCliError("--episode-id is required when --episode-dir is not supplied")
+
+    if episode_dir is None:
+        episode_dir = (DEFAULT_STUDIO_CUT_WORKSPACE_ROOT / episode_id).resolve()
+
+    session = build_rescue_sync_session(
+        episode_id=episode_id,
+        title=episode_id,
+        branch_id="main",
+        created_by="local-rescue-sync-render",
+        episode_dir=episode_dir,
+        include_clip=bool(args.include_clip),
+    )
+    report = build_rescue_sync_status_report(session)
+
+    blockers = list(report["errors"])
+    if not Path(session["syncMapPath"]).is_file():
+        blockers.append(f"missing Sync Map: {session['syncMapPath']}")
+    if not Path(session["localMediaMapPath"]).is_file():
+        blockers.append(f"missing local media map: {session['localMediaMapPath']}")
+
+    decision_report = report.get("decisions") or {}
+    if not decision_report.get("eventCount"):
+        blockers.append(
+            "missing Studio Cut decisions; export decisions into "
+            f"{session['editDir'] / f'{episode_id}-decisions.json'}"
+        )
+
+    if blockers:
+        details = "\n".join(f"- {blocker}" for blocker in blockers)
+        next_actions = "\n".join(f"- {action}" for action in report["nextActions"])
+        raise StudioCutCliError(
+            "Rescue Sync session is not ready to render.\n"
+            f"{details}\n\nNext actions:\n{next_actions}"
+        )
+
+    out_path = (
+        args.out.expanduser().resolve()
+        if args.out
+        else session["rendersDir"] / f"{episode_id}-youtube-16x9.mp4"
+    )
+
+    print("Studio Cut Rescue Sync Session Render")
+    print("=====================================")
+    print(f"Episode: {episode_id}")
+    print(f"Session: {session['episodeDir']}")
+    print(f"Sync Map: {session['syncMapPath']}")
+    print(f"Decisions: {decision_report['path']}")
+    print(f"Local media map: {session['localMediaMapPath']}")
+    print(f"Output: {out_path}")
+
+    render_args = argparse.Namespace(
+        sync_map=session["syncMapPath"],
+        decisions=Path(decision_report["path"]),
+        media_map=session["localMediaMapPath"],
+        out=out_path,
+        dry_run=bool(args.dry_run),
+        keep_temp=bool(args.keep_temp),
+    )
+    return run_render_from_sync_map(render_args)
 
 
 def run_validate_episode_files(args: argparse.Namespace) -> int:
