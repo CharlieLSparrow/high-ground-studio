@@ -9,6 +9,13 @@ recording workflow. It is not a Premiere clone and does not destructively cut
 media. The full synced source timeline stays intact; editing creates semantic
 decision events over source time.
 
+Canonical direction docs:
+
+- `docs/studio-cut-product-mission.md`: product mission, north star, current
+  workflow truth, non-goals, and near-term build path
+- `docs/studio-cut-agent-coordination.md`: how multiple Codex agents should
+  split work, verify changes, and hand off Studio Cut context
+
 Current slice:
 
 - `apps/studio-cut-web`: Vite + React + TypeScript editor shell

@@ -28,6 +28,13 @@ Read in this order:
 
 ## Files Future Agents Will Commonly Need
 
+Studio Cut:
+- `docs/studio-cut-product-mission.md`
+- `docs/studio-cut-agent-coordination.md`
+- `docs/studio-cut.md`
+- `docs/studio-cut-rescue-sync.md`
+- `tools/studio-cut-local/README.md`
+
 Auth and identity:
 - `apps/web/src/auth.ts`
 - `apps/web/src/lib/server/user-identity.ts`

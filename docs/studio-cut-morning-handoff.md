@@ -5,6 +5,11 @@ Date: 2026-05-22
 This is the morning operator brief for the current Studio Cut Episode 4 path.
 It contains no private paths, media, credentials, or real episode data.
 
+Related durable docs:
+
+- `docs/studio-cut-product-mission.md`
+- `docs/studio-cut-agent-coordination.md`
+
 ## What Works Now
 
 - Deployed Studio Cut web editor: <https://high-ground-odyssey.web.app>
