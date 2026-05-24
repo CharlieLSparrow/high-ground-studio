@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T21:21:42.008Z",
+  "updatedAt": "2026-05-24T21:34:50.240Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-24-draft-packets-now-have-a-private-review-lab",
+      "date": "2026-05-24",
+      "title": "Draft packets now have a private review lab",
+      "kicker": "HGO publishing",
+      "mood": "Portable draft review",
+      "summary": "The team console can paste a generated HGO publish-draft packet, validate its safety boundary, and inspect the MDX/frontmatter outside the saved-artifact page.",
+      "body": [
+        "This makes the episode-page pipeline more portable: a packet can move through chat, file download, or another agent handoff and still be checked before anyone touches public content.",
+        "The lab rejects packets that claim public state or write/publish/provider side effects, keeping the next publishing step honest."
+      ],
+      "commits": [
+        {
+          "sha": "37270e5",
+          "label": "HGO publish draft packet lab"
+        }
+      ],
+      "links": [
+        {
+          "label": "Draft Lab",
+          "href": "/team/hgo-publish-draft-lab"
+        },
+        {
+          "label": "Private staged artifact plan",
+          "href": "docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Publishing"]
+    },
     {
       "id": "2026-05-24-draft-exports-are-easier-to-hand-off",
       "date": "2026-05-24",
