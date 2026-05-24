@@ -160,6 +160,10 @@ High Ground Studio is a monorepo with:
   call provider APIs, publish public pages, or certify public safety. The
   provider-neutral type/sample-data contract lives in
   `packages/content-studio-domain` for future shared packets and persistence.
+  The Content Studio HGO handoff copies the full selected production packet into
+  `/projection-stage/import` so HGO can extract the staged projection draft
+  without losing packet context, and it links to the private HGO publish queue
+  after staged artifacts are saved.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.

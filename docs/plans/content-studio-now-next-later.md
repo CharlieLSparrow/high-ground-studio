@@ -23,6 +23,9 @@ Date: 2026-05-23
 - Let HGO staged import accept the full Content Studio production packet and
   extract `hgoProjectionDraft` after safety checks, so the operator does not
   have to manually split packets before review.
+- Copy the full selected production packet when opening HGO staged import, and
+  link directly from Studio to the private HGO publish queue for saved artifact
+  follow-through.
 - Deploy coherent Studio slices to the existing private Cloud Run service when
   validation passes and gcloud credentials are available.
 - Keep coordination lightweight through:
