@@ -15,6 +15,7 @@ import {
   HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND,
   HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND,
 } from "../apps/web/src/lib/hgo/publish-candidate-packet.ts";
+import { buildHgoEpisodePublishCandidateStoreRecordInput } from "../apps/web/src/lib/hgo/publish-candidate-store-record.ts";
 import {
   createHgoEpisodePublishDraftFileName,
   createHgoEpisodePublishDraftFrontmatterFileName,
@@ -328,6 +329,52 @@ test("rejects publish-draft packets that imply public side effects", () => {
   assert.match(validation.errors.join("\n"), /createsPublicRoute/);
   assert.equal(jsonParse.ok, false);
   assert.match(jsonParse.errors.join("\n"), /Invalid JSON/);
+});
+
+test("builds a durable private publish-candidate store record", () => {
+  const { artifact, record } = createArtifactAndRecord();
+  const result = buildHgoEpisodePublishCandidateStoreRecordInput({
+    artifact,
+    createdByEmail: "charlie@example.test",
+    record,
+    now: "2026-05-24T12:40:00.000Z",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(
+    result.record.candidateId,
+    /^hgo-store-lab-synthetic-candidate-artifact-[a-f0-9]+-episode-publish-candidate$/,
+  );
+  assert.equal(result.record.ownerEmail, "charlie@example.test");
+  assert.equal(result.record.sourceStagedArtifactId, "synthetic-db-id");
+  assert.equal(result.record.proposedRoute, "/episodes/synthetic-candidate-projection");
+  assert.equal(result.record.readinessState, "ready-for-human-publish-review");
+  assert.equal(result.record.candidateStatus, "private-review");
+  assert.equal(result.record.blockerCount, 0);
+  assert.equal(result.record.createdByEmail, "charlie@example.test");
+  assert.equal(result.record.packetJson.packetKind, HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND);
+  assert.equal(result.record.draftPacketJson.packetKind, HGO_EPISODE_PUBLISH_DRAFT_PACKET_KIND);
+  assert.match(result.record.mdxDraft, /# Synthetic Candidate Projection/);
+});
+
+test("blocks durable publish-candidate records for not-ready artifacts", () => {
+  const { artifact, record } = createArtifactAndRecord({
+    record: {
+      reviewStatus: "needs-fixes",
+      promotionReadiness: "blocked",
+      blockerCount: 1,
+    },
+  });
+  const result = buildHgoEpisodePublishCandidateStoreRecordInput({
+    artifact,
+    createdByEmail: "charlie@example.test",
+    record,
+    now: "2026-05-24T12:40:00.000Z",
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /not-ready/);
+  assert.match(result.errors.join("\n"), /expected approved-for-future-staging/);
 });
 
 test("warns when real content or non-public lifecycle state needs human review", () => {

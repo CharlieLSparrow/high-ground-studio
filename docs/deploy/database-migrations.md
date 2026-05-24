@@ -386,6 +386,48 @@ Expected result:
 
 - one row for `HgoStagedProjectionArtifact`
 
+## HGO Episode Publish Candidate Change
+
+The private HGO publish-intent slice added:
+
+- relation field `HgoStagedProjectionArtifact.publishCandidates`
+- `HgoEpisodePublishCandidate`
+
+This is an additive private review-state schema change. It stores one durable
+episode-page publish intent for a saved staged artifact, including the generated
+candidate packet, review brief, draft packet, frontmatter, and MDX draft. The
+row is linked to the staged artifact and is unique per `ownerEmail` and source
+record id.
+
+The table does not publish public pages, create public route files, replace
+`/episodes`, call providers, certify citation/public-safety review, or store
+canonical manuscript source.
+
+Apply the schema to a target database only through the approved operator path
+for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+For the live web Cloud Run database, prefer running `pnpm db:push` from a
+Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
+same Cloud SQL attachment as the `web` service.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name = 'HgoEpisodePublishCandidate';
+```
+
+Expected result:
+
+- one row for `HgoEpisodePublishCandidate`
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 

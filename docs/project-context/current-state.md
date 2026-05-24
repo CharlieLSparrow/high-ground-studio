@@ -230,6 +230,14 @@ High Ground Studio is a monorepo with:
   route work begins. It does not create public routes, mutate content files,
   publish pages, certify citation/public-safety review, mutate stored
   artifacts, or call providers.
+- HGO private publish review can now save a durable DB-backed publish intent.
+  The `/team/hgo-publish-queue/[recordId]` detail page exposes an explicit
+  `Save Publish Intent` action for ready packets. That action creates one
+  `HgoEpisodePublishCandidate` row linked to the saved staged artifact and
+  stores the candidate packet, review brief, draft packet, frontmatter, and MDX
+  draft as private review data. It is additive persistence only: it does not
+  create public routes, write content files, replace `/episodes`, call
+  providers, or mark the page live.
 - HGO also has a private `/team/hgo-publish-draft-lab` route for portable
   `hgo-episode-publish-draft-v1` packets. A team operator can paste a packet,
   validate the private-review boundary, inspect the generated MDX draft, and

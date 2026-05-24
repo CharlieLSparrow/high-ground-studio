@@ -36,6 +36,10 @@ The first private persistence slice exists:
   MDX draft, and generated frontmatter JSON
 - private per-artifact render previews at
   `/team/hgo-publish-queue/[recordId]/preview`
+- durable private publish-intent rows through
+  `HgoEpisodePublishCandidate`
+- explicit `Save Publish Intent` action on
+  `/team/hgo-publish-queue/[recordId]`
 - private publish-draft packet review lab at
   `/team/hgo-publish-draft-lab`
 
@@ -93,6 +97,17 @@ providers, and does not certify citation or public-safety review.
 from the saved staged artifact through the shared HGO projection renderer. This
 is the private page-shape review surface before public `/episodes` work starts.
 It is team-gated, read-only, and still separate from live publishing.
+
+The detail page can now save a durable private publish intent. The
+`Save Publish Intent` action is available only for publish packets that are
+ready for human publish review. It creates one `HgoEpisodePublishCandidate` row
+linked to the saved staged artifact and stores the candidate packet, review
+brief, draft packet, frontmatter, and generated MDX draft as private review
+data. This intentionally crosses from no-write packet derivation into additive
+database persistence, but it still does not create route files, write
+`apps/web/content/_staging`, write `apps/web/content/publish`, call providers,
+publish a live page, certify citation or public-safety review, or replace
+`/episodes`.
 
 `/team/hgo-publish-draft-lab` makes a publish-draft packet portable. A team
 operator can paste packet JSON, validate that it remains a private
@@ -166,6 +181,42 @@ The table stores private staged artifacts with fields including:
 The stored JSON should be the validated artifact packet, not raw Studio draft
 state.
 
+The publish-intent table stores private episode-page publish candidates with
+fields including:
+
+- `id`
+- `ownerUserId`
+- `ownerEmail`
+- `candidateId`
+- `sourceStagedArtifactId`
+- `sourceRecordId`
+- `sourceArtifactId`
+- `sourceArtifactHash`
+- `projectionId`
+- `projectionSlug`
+- `projectionTitle`
+- `proposedRoute`
+- `readinessState`
+- `candidateStatus`
+- `packetJson`
+- `reviewBriefJson`
+- `draftPacketJson`
+- `frontmatterJson`
+- `mdxDraft`
+- `blockerCount`
+- `warningCount`
+- `containsRealContent`
+- `createdByEmail`
+- `approvedAt`
+- `approvedByEmail`
+- `archivedAt`
+- `createdAt`
+- `updatedAt`
+
+The publish-intent row is private review state. It stores generated handoff
+material and route intent; it is not canonical source material and is not the
+public page.
+
 ## API Shape
 
 API/server actions should remain private and explicit:
@@ -186,9 +237,12 @@ API/server actions should remain private and explicit:
 - load one staged artifact by id: implemented for private queue detail pages
 - render one private staged artifact as a publish preview: implemented at
   `/team/hgo-publish-queue/[recordId]/preview`
+- save durable private episode-page publish intent: implemented on
+  `/team/hgo-publish-queue/[recordId]`
 - later, create a separate promotion candidate
 
-No API should publish public pages as a side effect of saving a staged artifact.
+No API should publish public pages as a side effect of saving a staged artifact
+or saving a publish intent.
 
 ## Access Control
 

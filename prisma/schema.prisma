@@ -608,6 +608,8 @@ model HgoStagedProjectionArtifact {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  publishCandidates     HgoEpisodePublishCandidate[]
+
   @@unique([ownerEmail, artifactHash])
   @@unique([ownerEmail, recordId])
   @@index([ownerEmail, updatedAt])
@@ -615,6 +617,48 @@ model HgoStagedProjectionArtifact {
   @@index([ownerEmail, projectionSlug, updatedAt])
   @@index([ownerEmail, reviewStatus, updatedAt])
   @@index([artifactId])
+}
+
+model HgoEpisodePublishCandidate {
+  id                       String   @id @default(cuid())
+  ownerUserId              String?
+  ownerEmail               String
+  candidateId              String
+  sourceStagedArtifactId   String
+  sourceRecordId           String
+  sourceArtifactId         String
+  sourceArtifactHash       String
+  projectionId             String
+  projectionSlug           String
+  projectionTitle          String
+  proposedRoute            String
+  readinessState           String
+  candidateStatus          String   @default("private-review")
+  packetJson               Json
+  reviewBriefJson          Json
+  draftPacketJson          Json
+  frontmatterJson          Json
+  mdxDraft                 String
+  blockerCount             Int      @default(0)
+  warningCount             Int      @default(0)
+  containsRealContent      String   @default("unknown")
+  note                     String?
+  createdByEmail           String?
+  approvedAt               DateTime?
+  approvedByEmail          String?
+  archivedAt               DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  sourceStagedArtifact HgoStagedProjectionArtifact @relation(fields: [sourceStagedArtifactId], references: [id], onDelete: Restrict)
+
+  @@unique([ownerEmail, candidateId])
+  @@unique([ownerEmail, sourceRecordId])
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, candidateStatus, updatedAt])
+  @@index([ownerEmail, proposedRoute])
+  @@index([sourceStagedArtifactId])
+  @@index([projectionSlug])
 }
 
 model StudioDocumentBlock {

@@ -9,6 +9,7 @@ import {
   FileWarning,
   History,
   ListChecks,
+  Save,
   Route,
   ShieldCheck,
   Terminal,
@@ -34,8 +35,10 @@ import {
   createHgoEpisodePublishDraftMdxFileName,
   createHgoEpisodePublishDraftPacket,
 } from "@/lib/hgo/publish-draft-packet";
+import { getHgoEpisodePublishCandidateForOwner } from "@/lib/server/hgo-episode-publish-candidates";
 import { getHgoStagedArtifactForOwner } from "@/lib/server/hgo-staged-artifacts";
 import ArtifactHandoffPanel from "../../hgo-staged-artifacts/ArtifactHandoffPanel";
+import { saveHgoEpisodePublishCandidateAction } from "./actions";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
   return (
@@ -189,6 +192,10 @@ export default async function TeamHgoPublishQueueDetailPage({
   );
   const publishDraftFrontmatterFileName =
     createHgoEpisodePublishDraftFrontmatterFileName(publishDraft);
+  const persistedCandidate = await getHgoEpisodePublishCandidateForOwner({
+    ownerEmail,
+    sourceRecordId: record.recordId,
+  });
   const isReady =
     packet.readiness.state === "ready-for-human-publish-review";
 
@@ -388,6 +395,66 @@ export default async function TeamHgoPublishQueueDetailPage({
               ]}
             />
           </SectionBlock>
+
+          <SectionBlock
+            title="Durable Publish Intent"
+            icon={<Save aria-hidden="true" className="h-4 w-4" />}
+            tone={persistedCandidate ? "safe" : isReady ? "warning" : "danger"}
+          >
+            {persistedCandidate ? (
+              <>
+                <p className="m-0 text-sm leading-6">
+                  This staged artifact has a private DB-backed publish intent.
+                  It is still not public and has not written any content files.
+                </p>
+                <DefinitionList
+                  rows={[
+                    {
+                      label: "Candidate",
+                      value: <code>{persistedCandidate.candidateId}</code>,
+                    },
+                    {
+                      label: "Status",
+                      value: persistedCandidate.candidateStatus,
+                    },
+                    {
+                      label: "Route",
+                      value: <code>{persistedCandidate.proposedRoute}</code>,
+                    },
+                    {
+                      label: "Updated",
+                      value: formatDateTime(persistedCandidate.updatedAt),
+                    },
+                  ]}
+                />
+              </>
+            ) : (
+              <>
+                <p className="m-0 text-sm leading-6">
+                  Save this as a durable private publish intent when the packet
+                  is ready. This creates a database row only; it does not create
+                  a public route, write MDX files, call providers, or publish.
+                </p>
+                <form action={saveHgoEpisodePublishCandidateAction} className="mt-3">
+                  <input type="hidden" name="recordId" value={record.recordId} />
+                  <button
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/30 bg-amber-300/12 px-3 py-2 text-sm font-semibold text-amber-50 transition hover:bg-amber-300/18 disabled:cursor-not-allowed disabled:opacity-55"
+                    disabled={!isReady}
+                    type="submit"
+                  >
+                    <Save aria-hidden="true" className="h-4 w-4" />
+                    Save Publish Intent
+                  </button>
+                </form>
+                {!isReady ? (
+                  <p className="m-0 mt-3 rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs font-semibold leading-5 text-rose-50">
+                    Resolve packet blockers before saving durable publish
+                    intent.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </SectionBlock>
         </div>
 
         <aside className="space-y-4">
@@ -419,8 +486,12 @@ export default async function TeamHgoPublishQueueDetailPage({
                   value: reviewBrief.safety.createsPublicRoute ? "yes" : "no",
                 },
                 {
-                  label: "Mutates database",
+                  label: "Packet mutates database",
                   value: reviewBrief.safety.mutatesDatabase ? "yes" : "no",
+                },
+                {
+                  label: "Save intent mutates database",
+                  value: "yes, private row only",
                 },
                 {
                   label: "Calls providers",
