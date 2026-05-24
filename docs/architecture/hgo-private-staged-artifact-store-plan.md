@@ -26,6 +26,10 @@ The first private persistence slice exists:
 - copy/download/open controls for immutable artifact JSON and derived
   publish-candidate packets on `/team/hgo-staged-artifacts`
 - private episode publish queue at `/team/hgo-publish-queue`
+- private per-artifact publish review detail pages at
+  `/team/hgo-publish-queue/[recordId]`
+- derived `hgo-episode-publish-review-brief-v1` packets for operator/agent
+  handoff before any public route work starts
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -56,6 +60,16 @@ visible, carries blockers and warnings forward, and keeps artifact handoff
 controls beside the human review and rollback posture. It is still planning
 metadata only; it does not create route files, mutate public content, call
 providers, or certify public-safety review.
+
+Each queue item now links to `/team/hgo-publish-queue/[recordId]`, a private
+operator detail page for that saved artifact. The detail page loads one staged
+artifact record for the current owner, derives the publish-candidate packet,
+derives an `hgo-episode-publish-review-brief-v1`, and shows proposed future
+file targets, validation commands, safety flags, rollback notes, blockers, and
+copy/download handoff controls. The review brief is still private planning
+metadata only. Generating it does not create public routes, write content
+files, mutate the database, call providers, mutate the staged artifact, publish
+a live page, or certify public-safety review.
 
 ## Why This Came After The Lab
 
@@ -130,9 +144,10 @@ API/server actions should remain private and explicit:
 - mark review status for a staged artifact: implemented
 - archive staged artifact: implemented
 - derive private episode-page publish-candidate packet: implemented
+- derive private episode-page publish-review brief: implemented
 - copy/download/reopen saved artifact handoff: implemented in the team route
 - view private episode publish queue: implemented at `/team/hgo-publish-queue`
-- load one staged artifact by id
+- load one staged artifact by id: implemented for private queue detail pages
 - later, create a separate promotion candidate
 
 No API should publish public pages as a side effect of saving a staged artifact.

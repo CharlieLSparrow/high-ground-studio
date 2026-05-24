@@ -10,7 +10,10 @@ import {
   createHgoEpisodePublishCandidateFileName,
   createHgoEpisodePublishCandidatePacket,
   createHgoEpisodePublishQueue,
+  createHgoEpisodePublishReviewBrief,
+  createHgoEpisodePublishReviewBriefFileName,
   HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND,
+  HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND,
 } from "../apps/web/src/lib/hgo/publish-candidate-packet.ts";
 
 function createCandidateProjection(overrides = {}) {
@@ -116,6 +119,53 @@ test("keeps non-candidate artifacts blocked from publish review", () => {
   assert.match(packet.readiness.blockers.join("\n"), /expected candidate/);
   assert.match(packet.readiness.blockers.join("\n"), /1 blocker/);
   assert.equal(packet.safety.createsPublicRoute, false);
+});
+
+test("creates a private publish-review brief from a candidate packet", () => {
+  const candidate = createHgoEpisodePublishCandidatePacket({
+    record: createStoredRecord({
+      record: {
+        reviewStatus: "needs-fixes",
+        promotionReadiness: "blocked",
+        blockerCount: 1,
+      },
+    }),
+    createdAt: "2026-05-24T12:20:00.000Z",
+  });
+  const brief = createHgoEpisodePublishReviewBrief({
+    candidate,
+    createdAt: "2026-05-24T12:25:00.000Z",
+  });
+
+  assert.equal(brief.packetKind, HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND);
+  assert.equal(brief.createdAt, "2026-05-24T12:25:00.000Z");
+  assert.equal(
+    brief.source.publishCandidatePacketKind,
+    HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND,
+  );
+  assert.equal(brief.episodePage.proposedRoute, "/episodes/synthetic-candidate-projection");
+  assert.equal(brief.reviewState.readinessState, "not-ready");
+  assert.match(
+    brief.reviewState.blockers.join("\n"),
+    /expected approved-for-future-staging/,
+  );
+  assert.equal(brief.safety.createsPublicRoute, false);
+  assert.equal(brief.safety.writesContentFiles, false);
+  assert.equal(brief.safety.mutatesDatabase, false);
+  assert.equal(brief.safety.callsProviders, false);
+  assert.equal(brief.safety.publishesLivePage, false);
+  assert.equal(brief.safety.certifiesPublicSafety, false);
+  assert.equal(brief.safety.mutatesStagedArtifact, false);
+  assert.equal(brief.safety.usesImmutableStagedArtifact, true);
+  assert.ok(
+    brief.proposedWork.files.some((file) =>
+      file.path.includes("synthetic-candidate-projection"),
+    ),
+  );
+  assert.equal(
+    createHgoEpisodePublishReviewBriefFileName(brief),
+    "synthetic-candidate-projection.hgo-episode-publish-review-brief.json",
+  );
 });
 
 test("warns when real content or non-public lifecycle state needs human review", () => {

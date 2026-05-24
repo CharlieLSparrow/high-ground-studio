@@ -1,5 +1,7 @@
 export const HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND =
   "hgo-episode-publish-candidate-v1" as const;
+export const HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND =
+  "hgo-episode-publish-review-brief-v1" as const;
 
 export type HgoEpisodePublishCandidateRecord = {
   recordId: string;
@@ -55,6 +57,43 @@ export type HgoEpisodePublishCandidatePacket = {
     publicRollbackRequired: false;
     artifactRollback: "archive-staged-artifact-or-mark-needs-fixes";
     notes: string[];
+  };
+};
+
+export type HgoEpisodePublishReviewBrief = {
+  packetKind: typeof HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND;
+  createdAt: string;
+  source: HgoEpisodePublishCandidatePacket["source"] & {
+    publishCandidatePacketKind: typeof HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND;
+  };
+  episodePage: HgoEpisodePublishCandidatePacket["episodePage"];
+  reviewState: {
+    readinessState: HgoEpisodePublishCandidatePacket["readiness"]["state"];
+    blockers: string[];
+    warnings: string[];
+    requiredHumanActions: string[];
+  };
+  proposedWork: {
+    files: {
+      path: string;
+      purpose: string;
+      status: "proposed-not-created" | "deferred-public-target";
+    }[];
+    validationCommands: string[];
+  };
+  safety: {
+    createsPublicRoute: false;
+    writesContentFiles: false;
+    mutatesDatabase: false;
+    callsProviders: false;
+    publishesLivePage: false;
+    certifiesPublicSafety: false;
+    mutatesStagedArtifact: false;
+    usesImmutableStagedArtifact: true;
+  };
+  rollback: {
+    currentPacketRollback: string;
+    futurePublishRollback: string[];
   };
 };
 
@@ -202,6 +241,85 @@ export function createHgoEpisodePublishCandidateFileName(
   packet: HgoEpisodePublishCandidatePacket,
 ) {
   return `${packet.episodePage.slug}.hgo-episode-publish-candidate.json`;
+}
+
+export function createHgoEpisodePublishReviewBrief({
+  candidate,
+  createdAt = candidate.createdAt,
+}: {
+  candidate: HgoEpisodePublishCandidatePacket;
+  createdAt?: string;
+}): HgoEpisodePublishReviewBrief {
+  const { slug } = candidate.episodePage;
+
+  return {
+    packetKind: HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND,
+    createdAt,
+    source: {
+      ...candidate.source,
+      publishCandidatePacketKind: candidate.packetKind,
+    },
+    episodePage: candidate.episodePage,
+    reviewState: {
+      readinessState: candidate.readiness.state,
+      blockers: [...candidate.readiness.blockers],
+      warnings: [...candidate.readiness.warnings],
+      requiredHumanActions: [...candidate.readiness.requiredHumanActions],
+    },
+    proposedWork: {
+      files: [
+        {
+          path: `apps/web/content/_staging/hgo/${slug}.json`,
+          purpose:
+            "Private staging source for the reviewed episode-page projection.",
+          status: "proposed-not-created",
+        },
+        {
+          path: `apps/web/content/_staging/hgo/${slug}.mdx`,
+          purpose:
+            "Private editorial draft if the episode page needs prose before public publishing.",
+          status: "proposed-not-created",
+        },
+        {
+          path: `apps/web/content/publish/${slug}.mdx`,
+          purpose:
+            "Deferred public publishing target after source, quote, route, and rollback review.",
+          status: "deferred-public-target",
+        },
+      ],
+      validationCommands: [
+        "pnpm hgo:publish-candidate:test",
+        "pnpm --filter web build",
+        "pnpm --filter web exec next build --webpack",
+        "pnpm web:cloudrun:test",
+      ],
+    },
+    safety: {
+      createsPublicRoute: false,
+      writesContentFiles: false,
+      mutatesDatabase: false,
+      callsProviders: false,
+      publishesLivePage: false,
+      certifiesPublicSafety: false,
+      mutatesStagedArtifact: false,
+      usesImmutableStagedArtifact: true,
+    },
+    rollback: {
+      currentPacketRollback:
+        "Delete or ignore this generated brief; it is private planning metadata only.",
+      futurePublishRollback: [
+        "Record the pre-publish commit SHA before creating any public route.",
+        "Keep the staged artifact immutable and restore the previous route/content diff if the public page is backed out.",
+        "Record the Cloud Run rollback revision after the future publish deploy.",
+      ],
+    },
+  };
+}
+
+export function createHgoEpisodePublishReviewBriefFileName(
+  brief: HgoEpisodePublishReviewBrief,
+) {
+  return `${brief.episodePage.slug}.hgo-episode-publish-review-brief.json`;
 }
 
 export function createHgoEpisodePublishQueue<

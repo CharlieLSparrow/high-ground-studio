@@ -118,6 +118,12 @@ function QueueCard({
           <div className="mt-1 font-semibold text-[var(--text-light)]">
             {formatDateTime(record.updatedAt)}
           </div>
+          <Link
+            className="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-xs font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+            href={`/team/hgo-publish-queue/${encodeURIComponent(record.recordId)}`}
+          >
+            Review Detail
+          </Link>
         </div>
       </div>
 

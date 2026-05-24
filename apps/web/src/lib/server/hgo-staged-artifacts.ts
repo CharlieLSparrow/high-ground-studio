@@ -224,6 +224,25 @@ export async function listHgoStagedArtifactsForOwner({
   return records.map(toDto);
 }
 
+export async function getHgoStagedArtifactForOwner({
+  ownerEmail,
+  recordId,
+}: {
+  ownerEmail: string;
+  recordId: string;
+}) {
+  const record = await prisma.hgoStagedProjectionArtifact.findUnique({
+    where: {
+      ownerEmail_recordId: {
+        ownerEmail,
+        recordId,
+      },
+    },
+  });
+
+  return record ? toDto(record) : null;
+}
+
 export async function markHgoStagedArtifactReviewForOwner({
   ownerEmail,
   recordId,

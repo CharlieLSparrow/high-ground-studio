@@ -9,6 +9,8 @@ type ArtifactHandoffPanelProps = {
   artifactTitle: string;
   publishCandidateFileName: string;
   publishCandidateJson: string;
+  publishReviewBriefFileName?: string;
+  publishReviewBriefJson?: string;
 };
 
 function downloadJsonFile(fileName: string, value: string) {
@@ -33,8 +35,13 @@ export default function ArtifactHandoffPanel({
   artifactTitle,
   publishCandidateFileName,
   publishCandidateJson,
+  publishReviewBriefFileName,
+  publishReviewBriefJson,
 }: ArtifactHandoffPanelProps) {
   const [message, setMessage] = useState("");
+  const hasReviewBrief = Boolean(
+    publishReviewBriefFileName && publishReviewBriefJson,
+  );
 
   function copyToClipboard(label: string, value: string) {
     setMessage("");
@@ -129,6 +136,36 @@ export default function ArtifactHandoffPanel({
           <Download aria-hidden="true" className="h-4 w-4" />
           Download Publish-Candidate Packet
         </button>
+        {hasReviewBrief ? (
+          <>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/25 bg-amber-300/12 px-3 py-2 text-sm font-semibold text-amber-50 transition hover:bg-amber-300/18"
+              onClick={() =>
+                copyToClipboard(
+                  "Publish-review brief",
+                  publishReviewBriefJson || "",
+                )
+              }
+              type="button"
+            >
+              <Copy aria-hidden="true" className="h-4 w-4" />
+              Copy Review Brief
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-amber-50 transition hover:bg-amber-300/12"
+              onClick={() =>
+                downloadJsonFile(
+                  publishReviewBriefFileName || "hgo-episode-publish-review-brief.json",
+                  publishReviewBriefJson || "",
+                )
+              }
+              type="button"
+            >
+              <Download aria-hidden="true" className="h-4 w-4" />
+              Download Review Brief
+            </button>
+          </>
+        ) : null}
       </div>
 
       {message ? (
