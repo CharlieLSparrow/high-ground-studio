@@ -210,6 +210,12 @@ High Ground Studio is a monorepo with:
   and does not publish public pages. The team route exposes copy/download/open
   handoff controls for saved artifact JSON and derived private episode-page
   publish-candidate packets.
+- HGO now has a private episode publish queue at `/team/hgo-publish-queue`.
+  It derives `hgo-episode-publish-candidate-v1` packets from saved staged
+  artifacts, groups them into ready/not-ready/archived review lanes, and keeps
+  proposed routes, blockers, warnings, required human review steps, handoff
+  packets, and rollback posture together. It does not create public routes,
+  mutate content files, publish pages, certify public safety, or call providers.
 - HGO has a pure staged artifact contract test command,
   `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
   validator state, invalid version, persisted/published safety failures,

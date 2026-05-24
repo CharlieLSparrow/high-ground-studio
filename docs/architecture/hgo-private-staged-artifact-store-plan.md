@@ -25,6 +25,7 @@ The first private persistence slice exists:
   `/team/hgo-staged-artifacts`
 - copy/download/open controls for immutable artifact JSON and derived
   publish-candidate packets on `/team/hgo-staged-artifacts`
+- private episode publish queue at `/team/hgo-publish-queue`
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -47,6 +48,14 @@ operator can copy the artifact, download it, reopen it in
 publish-candidate packet. These controls are private convenience actions around
 existing data; they do not publish, approve, call providers, or mutate the
 stored artifact.
+
+`/team/hgo-publish-queue` turns those saved artifact records into a private
+episode-page review queue. It groups derived publish-candidate packets into
+ready, not-ready, and archived lanes, keeps the proposed `/episodes/...` route
+visible, carries blockers and warnings forward, and keeps artifact handoff
+controls beside the human review and rollback posture. It is still planning
+metadata only; it does not create route files, mutate public content, call
+providers, or certify public-safety review.
 
 ## Why This Came After The Lab
 
@@ -122,6 +131,7 @@ API/server actions should remain private and explicit:
 - archive staged artifact: implemented
 - derive private episode-page publish-candidate packet: implemented
 - copy/download/reopen saved artifact handoff: implemented in the team route
+- view private episode publish queue: implemented at `/team/hgo-publish-queue`
 - load one staged artifact by id
 - later, create a separate promotion candidate
 

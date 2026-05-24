@@ -445,6 +445,7 @@ await assertHttpOk(`${serviceUrl}/projection-stage/import`, (body) =>
 );
 
 await assertTeamRedirect(`${serviceUrl}/team/progress`);
+await assertTeamRedirect(`${serviceUrl}/team/hgo-publish-queue`);
 
 console.log("\nDeploy complete");
 console.log(`url: ${serviceUrl}`);

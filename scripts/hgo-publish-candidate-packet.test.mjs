@@ -9,6 +9,7 @@ import { createHgoStagedProjectionArtifact } from "../apps/web/src/lib/hgo/stage
 import {
   createHgoEpisodePublishCandidateFileName,
   createHgoEpisodePublishCandidatePacket,
+  createHgoEpisodePublishQueue,
   HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND,
 } from "../apps/web/src/lib/hgo/publish-candidate-packet.ts";
 
@@ -135,4 +136,35 @@ test("warns when real content or non-public lifecycle state needs human review",
   assert.match(packet.readiness.warnings.join("\n"), /real content/);
   assert.match(packet.readiness.warnings.join("\n"), /visibility is team/);
   assert.match(packet.readiness.warnings.join("\n"), /status is staged/);
+});
+
+test("summarizes a private episode publish queue from staged records", () => {
+  const queue = createHgoEpisodePublishQueue([
+    createStoredRecord(),
+    createStoredRecord({
+      record: {
+        recordId: "synthetic-blocked-record",
+        reviewStatus: "needs-fixes",
+        promotionReadiness: "blocked",
+        blockerCount: 2,
+      },
+    }),
+    createStoredRecord({
+      record: {
+        recordId: "synthetic-archived-record",
+        reviewStatus: "archived",
+        promotionReadiness: "archived",
+        archivedAt: "2026-05-24T12:30:00.000Z",
+      },
+    }),
+  ]);
+
+  assert.equal(queue.totals.all, 3);
+  assert.equal(queue.totals.ready, 1);
+  assert.equal(queue.totals.notReady, 1);
+  assert.equal(queue.totals.archived, 1);
+  assert.equal(queue.totals.blockers, 3);
+  assert.equal(queue.ready[0].packet.episodePage.proposedRoute, "/episodes/synthetic-candidate-projection");
+  assert.equal(queue.notReady[0].record.recordId, "synthetic-blocked-record");
+  assert.equal(queue.archived[0].record.recordId, "synthetic-archived-record");
 });

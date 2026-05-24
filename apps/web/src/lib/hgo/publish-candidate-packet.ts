@@ -58,6 +58,26 @@ export type HgoEpisodePublishCandidatePacket = {
   };
 };
 
+export type HgoEpisodePublishQueueItem<TRecord extends HgoEpisodePublishCandidateRecord> = {
+  record: TRecord;
+  packet: HgoEpisodePublishCandidatePacket;
+};
+
+export type HgoEpisodePublishQueue<TRecord extends HgoEpisodePublishCandidateRecord> = {
+  items: HgoEpisodePublishQueueItem<TRecord>[];
+  ready: HgoEpisodePublishQueueItem<TRecord>[];
+  notReady: HgoEpisodePublishQueueItem<TRecord>[];
+  archived: HgoEpisodePublishQueueItem<TRecord>[];
+  totals: {
+    all: number;
+    ready: number;
+    notReady: number;
+    archived: number;
+    blockers: number;
+    warnings: number;
+  };
+};
+
 function normalizeSlug(slug: string) {
   return (
     slug
@@ -182,4 +202,47 @@ export function createHgoEpisodePublishCandidateFileName(
   packet: HgoEpisodePublishCandidatePacket,
 ) {
   return `${packet.episodePage.slug}.hgo-episode-publish-candidate.json`;
+}
+
+export function createHgoEpisodePublishQueue<
+  TRecord extends HgoEpisodePublishCandidateRecord,
+>(records: readonly TRecord[]): HgoEpisodePublishQueue<TRecord> {
+  const items = records.map((record) => ({
+    record,
+    packet: createHgoEpisodePublishCandidatePacket({
+      record,
+      createdAt: record.updatedAt,
+    }),
+  }));
+  const archived = items.filter(
+    ({ record }) => Boolean(record.archivedAt) || record.reviewStatus === "archived",
+  );
+  const active = items.filter((item) => !archived.includes(item));
+  const ready = active.filter(
+    ({ packet }) => packet.readiness.state === "ready-for-human-publish-review",
+  );
+  const notReady = active.filter(
+    ({ packet }) => packet.readiness.state === "not-ready",
+  );
+
+  return {
+    items,
+    ready,
+    notReady,
+    archived,
+    totals: {
+      all: items.length,
+      ready: ready.length,
+      notReady: notReady.length,
+      archived: archived.length,
+      blockers: active.reduce(
+        (total, item) => total + item.packet.readiness.blockers.length,
+        0,
+      ),
+      warnings: active.reduce(
+        (total, item) => total + item.packet.readiness.warnings.length,
+        0,
+      ),
+    },
+  };
 }

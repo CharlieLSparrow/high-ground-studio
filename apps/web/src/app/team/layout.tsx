@@ -120,6 +120,13 @@ export default async function TeamLayout({
             </Link>
 
             <Link
+              href="/team/hgo-publish-queue"
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+            >
+              Publish Queue
+            </Link>
+
+            <Link
               href="/team/progress"
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
             >

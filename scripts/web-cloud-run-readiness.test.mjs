@@ -106,6 +106,7 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /update-traffic/);
   assert.match(deployScript, /projection-stage\/import/);
   assert.match(deployScript, /team\/progress/);
+  assert.match(deployScript, /team\/hgo-publish-queue/);
   assert.match(deployScript, /gha-creds-/);
   assert.match(deployScript, /WEB_IMAGE_BUILD_STRATEGY/);
   assert.match(deployScript, /apps\/web\/Dockerfile/);
