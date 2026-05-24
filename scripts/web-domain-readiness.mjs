@@ -17,6 +17,14 @@ const passed = [];
 const pending = [];
 const warnings = [];
 const blocked = [];
+const readiness = {
+  cname: false,
+  domainMappingReady: false,
+  domainRoutesToService: false,
+  certificateReady: false,
+  originReady: false,
+  trustHost: false,
+};
 
 function normalizeDnsTarget(value) {
   if (!value) {
@@ -76,6 +84,17 @@ function printList(title, entries) {
   }
 }
 
+function isCutoverComplete() {
+  return (
+    readiness.cname &&
+    readiness.domainMappingReady &&
+    readiness.domainRoutesToService &&
+    readiness.certificateReady &&
+    readiness.originReady &&
+    readiness.trustHost
+  );
+}
+
 async function readNameservers() {
   const baseDomain = parentDomain(domain);
 
@@ -95,6 +114,7 @@ async function readCustomDomainCname() {
 
     if (records.includes(expectedCname)) {
       passed.push(`${domain} CNAME is ${expectedCname}`);
+      readiness.cname = true;
       return;
     }
 
@@ -146,6 +166,7 @@ function readCloudRunMapping() {
 
   if (routeName === service) {
     passed.push(`Cloud Run domain mapping routes ${domain} to ${service}`);
+    readiness.domainRoutesToService = true;
   } else {
     blocked.push(
       `Cloud Run domain mapping routes ${domain} to ${routeName ?? "unknown"}; expected ${service}`,
@@ -160,6 +181,7 @@ function readCloudRunMapping() {
 
   if (ready?.status === "True") {
     passed.push(`Cloud Run domain mapping is Ready`);
+    readiness.domainMappingReady = true;
   } else {
     pending.push(
       `Cloud Run domain mapping is ${ready?.reason ?? "not Ready"}: ${ready?.message ?? "waiting for DNS and certificate issuance"}`,
@@ -168,6 +190,7 @@ function readCloudRunMapping() {
 
   if (certificate?.status === "True") {
     passed.push(`Cloud Run managed certificate is provisioned`);
+    readiness.certificateReady = true;
   } else {
     pending.push(
       `Cloud Run managed certificate is ${certificate?.reason ?? "pending"}: ${certificate?.message ?? "waiting for DNS propagation"}`,
@@ -211,6 +234,7 @@ function readCloudRunService() {
 
   if (authUrl === origin && siteUrl === origin) {
     passed.push(`AUTH_URL and HGO_SITE_URL already use ${origin}`);
+    readiness.originReady = true;
   } else {
     pending.push(
       `AUTH_URL is ${authUrl ?? "unset"} and HGO_SITE_URL is ${siteUrl ?? "unset"}; keep these unchanged until DNS and Google OAuth callback are ready`,
@@ -219,6 +243,7 @@ function readCloudRunService() {
 
   if (plainEnv.get("AUTH_TRUST_HOST") === "true") {
     passed.push("AUTH_TRUST_HOST=true");
+    readiness.trustHost = true;
   } else {
     pending.push("AUTH_TRUST_HOST should be true for the Cloud Run web service");
   }
@@ -244,20 +269,30 @@ printList("Pending work", pending);
 printList("Warnings", warnings);
 printList("Blocked items", blocked);
 
-console.log("\nNext cutover steps");
-console.log(`  1. In the DNS manager for ${parentDomain(domain)}, add:`);
-console.log(`     ${domain} CNAME ${expectedCname}`);
-console.log("  2. Wait for this command to report the CNAME and Ready certificate.");
-console.log("  3. Add this Google OAuth authorized redirect URI:");
-console.log(`     ${oauthCallback}`);
-console.log("  4. After the callback exists, update the web runtime origin:");
-console.log(
-  `     gcloud run services update ${service} --project=${project} --region=${region} --update-env-vars=AUTH_URL=${origin},HGO_SITE_URL=${origin},AUTH_TRUST_HOST=true`,
-);
+if (isCutoverComplete()) {
+  console.log("\nCutover complete");
+  console.log(`  - ${domain} is mapped to Cloud Run service ${service}`);
+  console.log(`  - ${origin} is the configured web runtime origin`);
+  console.log(`  - Expected Google OAuth callback: ${oauthCallback}`);
+  console.log("  - Keep the Cloud Run generated URL as an operational fallback.");
+} else {
+  console.log("\nNext cutover steps");
+  console.log(`  1. In the DNS manager for ${parentDomain(domain)}, add:`);
+  console.log(`     ${domain} CNAME ${expectedCname}`);
+  console.log("  2. Wait for this command to report the CNAME and Ready certificate.");
+  console.log("  3. Add this Google OAuth authorized redirect URI:");
+  console.log(`     ${oauthCallback}`);
+  console.log("  4. After the callback exists, update the web runtime origin:");
+  console.log(
+    `     gcloud run services update ${service} --project=${project} --region=${region} --update-env-vars=AUTH_URL=${origin},HGO_SITE_URL=${origin},AUTH_TRUST_HOST=true`,
+  );
+}
 
 if (blocked.length > 0) {
   console.log("\nResult: custom domain is not ready yet.");
   process.exitCode = 1;
+} else if (isCutoverComplete()) {
+  console.log("\nResult: custom domain cutover is complete.");
 } else {
   console.log("\nResult: no hard custom-domain blockers detected.");
 }

@@ -630,11 +630,11 @@ Expected:
 
 Do not use real payment, Patreon, POD, or provider credentials for this smoke.
 
-## Custom Domain Staging
+## Custom Domain
 
-Use a subdomain before moving the root public site.
+The web app now uses a subdomain before moving the root public site.
 
-Current staging target:
+Current production app origin:
 
 ```text
 app.highgroundodyssey.com
@@ -646,7 +646,25 @@ Read-only status check:
 pnpm web:domain:check
 ```
 
-Create a mapping:
+Current state as of the 2026-05-24 app-domain cutover:
+
+- `app.highgroundodyssey.com` is mapped to Cloud Run service `web`.
+- Public DNS has `app.highgroundodyssey.com CNAME ghs.googlehosted.com.`
+- Cloud Run managed certificate is provisioned.
+- Cloud Run runtime env uses:
+  - `AUTH_URL=https://app.highgroundodyssey.com`
+  - `HGO_SITE_URL=https://app.highgroundodyssey.com`
+  - `AUTH_TRUST_HOST=true`
+- The Google OAuth client has this authorized redirect URI:
+
+  ```text
+  https://app.highgroundodyssey.com/api/auth/callback/google
+  ```
+
+The Cloud Run generated URL remains useful for operations and fallback, but it
+is no longer the canonical web origin.
+
+If rebuilding the mapping from scratch, create it with:
 
 ```bash
 gcloud beta run domain-mappings create \
@@ -661,14 +679,13 @@ Cloud Run currently requests:
 app CNAME ghs.googlehosted.com.
 ```
 
-Current public DNS findings from 2026-05-24:
+Public DNS and registrar findings from 2026-05-24:
 
 - `highgroundodyssey.com` is registered through Squarespace Domains.
 - Authoritative nameservers are `ns-cloud-a1` through `ns-cloud-a4`.
 - root `highgroundodyssey.com` has an A record to `216.198.79.1`.
 - `www.highgroundodyssey.com` is a CNAME to a Vercel DNS target.
-- `app.highgroundodyssey.com` is currently NXDOMAIN until the CNAME above is
-  added.
+- `app.highgroundodyssey.com` points to `ghs.googlehosted.com.`
 - Cloud DNS API is now enabled in `high-ground-odyssey` and
   `gen-lang-client-0819080752`, but no managed zone for
   `highgroundodyssey.com` is visible in either project.
@@ -680,24 +697,23 @@ Current public DNS findings from 2026-05-24:
   Domains, legacy Google Domains, or another Google Cloud project/account that
   owns the zone.
 
-Add only the `app` CNAME first. Do not change root or `www` as part of this
-staging-domain pass.
-
-After DNS is added, `pnpm web:domain:check` should report that the CNAME is
-visible and the Cloud Run managed certificate is ready. Then add the OAuth
-callback:
-
-```text
-https://app.highgroundodyssey.com/api/auth/callback/google
-```
-
-Only after the OAuth callback exists, update the runtime origin:
+If the app-domain env ever needs to be restored, update the runtime origin:
 
 ```bash
 gcloud run services update web \
   --project=high-ground-odyssey \
   --region=us-central1 \
   --update-env-vars=AUTH_URL=https://app.highgroundodyssey.com,HGO_SITE_URL=https://app.highgroundodyssey.com,AUTH_TRUST_HOST=true
+```
+
+If traffic is pinned and the env update creates a new revision without moving
+traffic, route to the new app-domain revision explicitly:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=<new-revision>=100
 ```
 
 Do not move root `highgroundodyssey.com` until the current public-site owner,

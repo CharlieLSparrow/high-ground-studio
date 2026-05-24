@@ -222,6 +222,17 @@ Generated Auth.js Google form -> accounts.google.com with
 redirect_uri=https://app.highgroundodyssey.com/api/auth/callback/google
 ```
 
+Follow-up hardening:
+
+- `pnpm web:domain:check` now reports `Cutover complete` when DNS, Cloud Run
+  domain mapping, managed certificate, runtime origin env, and
+  `AUTH_TRUST_HOST` are all aligned. It only prints the staged cutover checklist
+  when work is still pending.
+- `docs/runbooks/web-cloud-run.md`, `docs/project-context/current-state.md`,
+  and `docs/coordination/agent-board.md` now treat
+  `app.highgroundodyssey.com` as the current web origin instead of a future
+  staging target.
+
 ## Required DNS Record
 
 Add only this staging record:

@@ -113,6 +113,8 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(domainScript, /ghs\.googlehosted\.com\./);
   assert.match(domainScript, /does not change DNS, OAuth, Cloud Run/);
   assert.match(domainScript, /api\/auth\/callback\/google/);
+  assert.match(domainScript, /isCutoverComplete/);
+  assert.match(domainScript, /Cutover complete/);
   assert.match(seedScript, /Secret values are not printed/);
   assert.match(seedScript, /web-database-url/);
   assert.match(databaseReportScript, /Web database target report/);
