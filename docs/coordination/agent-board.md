@@ -23,14 +23,15 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the Content Studio production-packet merge and deploy on
+Verified after the Content Studio checkpoint-history merge and deploy on
 2026-05-23.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | `95b367a` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints and production packets are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | `695645b` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, and checkpoint history are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/content-studio-packet-import-001` | `b2fd9ac` | none active | Content Studio persistence | Merged by PR #16 as `3cc1fae`; branch can be left closed. |
 | `codex/content-studio-production-packets-001` | `6078172` | none active | Content Studio production packets | Merged by PR #17 as `95b367a`; branch can be left closed. |
+| `codex/content-studio-checkpoint-history-001` | `7aac0c9` | none active | Content Studio checkpoint history | Merged by PR #18 as `695645b`; branch can be left closed. |
 | `project/worldhub` | `32a6179` | `/Users/wall-e/Dev/hgs-worldhub-project` | WorldHub / Content Studio integration | Merged to `main` by PR #4; keep as integration reference until next cycle. |
 | `codex/content-studio-command-001` | `bfa9dc0` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded; final continuity note is being cherry-picked to `main`. |
 | `codex/worldhub-001-foundation` | `ee26a41` | no active terminal | WorldHub / monetization foundation | Included in PR #4. Terminal can remain closed. |
@@ -60,6 +61,8 @@ Verified after the Content Studio production-packet merge and deploy on
 - source branch: `codex/content-studio-packet-import-001`, merged by PR #16
 - latest branch: `codex/content-studio-production-packets-001`, merged by PR
   #17
+- latest checkpoint branch: `codex/content-studio-checkpoint-history-001`,
+  merged by PR #18
 - previous branch: `codex/content-studio-command-001`, merged to `main` by PR #4
 - owns:
   - `apps/studio/src/app/content-studio/*`
@@ -82,8 +85,8 @@ Verified after the Content Studio production-packet merge and deploy on
   - deploy coherent Studio slices to the existing private Cloud Run service after validation
   - record live URL, smoke result, and rollback command in the progress thread
 - current live revision:
-  - `studio-00030-ncf` from `main` commit `95b367a`
-  - rollback to `studio-00029-nqp`
+  - `studio-00031-rkx` from `main` commit `695645b`
+  - rollback to `studio-00030-ncf`
 
 ### WorldHub / Business Infrastructure
 

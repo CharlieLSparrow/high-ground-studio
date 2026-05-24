@@ -1,7 +1,37 @@
 {
-  "updatedAt": "2026-05-24T02:30:20.000Z",
+  "updatedAt": "2026-05-24T02:47:36.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "content-studio-checkpoint-history",
+      "date": "2026-05-23",
+      "title": "Content Studio checkpoints became usable recovery points",
+      "kicker": "Manual saves now have history, counts, and specific restore buttons",
+      "mood": "Safer to move fast",
+      "summary": "The Studio can now refresh recent Content Studio checkpoints, show project/status counts, and load a specific checkpoint instead of only the latest.",
+      "body": [
+        "The previous slice made manual server checkpoints real. This one made them practical. Inside Content Studio, the operator can refresh checkpoint history, inspect project counts and blocked/ready state, and load the exact checkpoint they want.",
+        "That matters because we are intentionally moving quickly. Browser-local state is still the fast working surface, but server checkpoints now behave like a usable recovery rail instead of a single blind save slot.",
+        "This does not introduce autosave or canonical publishing state. Checkpoints are still explicit, private Studio recovery anchors."
+      ],
+      "commits": [
+        {
+          "sha": "695645b",
+          "label": "feat(studio): add content studio checkpoint history"
+        }
+      ],
+      "links": [
+        {
+          "label": "Studio live",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app"
+        },
+        {
+          "label": "Content Studio architecture",
+          "href": "docs/architecture/content-management-studio.md"
+        }
+      ],
+      "tags": ["Content Studio", "Checkpoints", "Recovery", "Cloud Run"]
+    },
     {
       "id": "content-studio-production-packets",
       "date": "2026-05-23",

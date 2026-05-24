@@ -323,3 +323,11 @@ checks, blockers, and next handoff.
   a specific checkpoint instead of only loading the latest.
 - This keeps manual checkpoints useful as recovery/rollback anchors without
   introducing autosave or canonical publishing state.
+- Merged PR #18 to `main` as `695645b`.
+- GitHub Actions run `26349970858` deployed Studio and skipped web, as
+  expected for a Studio-only code change.
+- Studio revision `studio-00031-rkx` is serving 100% with image
+  `studio:695645b7438d9344dd164329a9246f7811f9bbb0`.
+- Live smokes passed for Studio `/api/health` and `/content-studio`.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00030-ncf=100`
