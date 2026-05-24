@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
+import assert from "node:assert/strict";
 import http from "node:http";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -471,6 +472,7 @@ async function runBrowserSmoke() {
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
+      acceptDownloads: true,
     });
     await context.tracing.start({
       screenshots: true,
@@ -591,6 +593,7 @@ async function runBrowserSmoke() {
     await expect(page.locator(".shortcut-legend")).toContainText("Play/Pause");
     await expect(page.getByRole("button", { name: "Export Decisions" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export Checkpoint" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export Agent Context" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save Local Checkpoint" })).toBeDisabled();
     await page
       .getByLabel("Import episode manifest JSON")
@@ -699,6 +702,23 @@ async function runBrowserSmoke() {
     await page.getByRole("button", { name: "Apply Agent Ops" }).click();
     await expectSectionText(decisionSection, "2 events");
     await expectSectionText(decisionSection, "Charlie/Clip");
+
+    const agentContextDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export Agent Context" }).click();
+    const download = await agentContextDownload;
+    assert.match(download.suggestedFilename(), /web-smoke-episode-agent-context-/);
+    const downloadPath = await download.path();
+    assert(downloadPath, "agent context download path should be available");
+    const agentContext = JSON.parse(await readFile(downloadPath, "utf8"));
+    assert.equal(agentContext.schemaVersion, 1);
+    assert.equal(agentContext.episode.id, "web-smoke-episode");
+    assert.equal(agentContext.decisions.activeCount, 2);
+    assert.equal(agentContext.decisions.tombstonedCount, 0);
+    assert.equal(agentContext.media.sourceMonitorProxy.objectUrlPersisted, false);
+    assert(
+      !JSON.stringify(agentContext).includes("blob:"),
+      "agent context must not include browser object URLs",
+    );
 
     const actionablePageErrors = pageErrors.filter(
       (entry) => !isBenignBlobRevocationError(entry),

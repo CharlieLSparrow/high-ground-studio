@@ -49,6 +49,7 @@ import {
   buildAgentDecisionOpsPreview,
   type AgentDecisionOpsPreview,
 } from "./agentDecisionOps";
+import { buildAgentWorkspaceBrief } from "./agentWorkspaceBrief";
 import {
   useDecisionPersistence,
   type StudioCutRoomSelection,
@@ -362,6 +363,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const {
     config,
     roomSelection,
+    allDecisionEvents,
     decisionEvents,
     collaborators,
     status,
@@ -1088,6 +1090,41 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     setDecisionHistory((currentHistory) => ({
       ...currentHistory,
       lastAction: `Exported checkpoint ${checkpointTimestamp}`,
+    }));
+  }
+
+  function handleExportAgentContext() {
+    const exportedAt = new Date();
+    const checkpointTimestamp = formatCheckpointTimestamp(exportedAt);
+    const brief = buildAgentWorkspaceBrief({
+      exportedAt: exportedAt.toISOString(),
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      roomUrl: buildCurrentSharedRoomUrl(roomSelection),
+      manifest: episodeManifest,
+      sourceDurationMs,
+      currentSourceTimeMs: sourceTimeMs,
+      currentState,
+      localProxyVideo,
+      persistenceStatus: status,
+      sharedRoomMetadata,
+      syncReview,
+      allDecisionEvents,
+      derivedSegments,
+      warnings: readinessWarnings,
+    });
+
+    downloadJsonFile(
+      brief,
+      getAgentContextFileName(
+        episodeManifest,
+        roomSelection,
+        checkpointTimestamp,
+      ),
+    );
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Exported agent context ${checkpointTimestamp}`,
     }));
   }
 
@@ -2780,6 +2817,13 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
                 onClick={handleExportCheckpoint}
               >
                 Export Checkpoint
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={handleExportAgentContext}
+              >
+                Export Agent Context
               </button>
               <button
                 className="secondary-button"
@@ -5877,6 +5921,18 @@ function getDecisionCheckpointFileName(
   const baseName = manifest?.id
     ? `${manifest.id}-checkpoint`
     : `studio-cut-${payload.projectId}-${payload.branchId}-checkpoint`;
+
+  return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
+}
+
+function getAgentContextFileName(
+  manifest: EpisodeManifest | null,
+  roomSelection: StudioCutRoomSelection,
+  checkpointTimestamp: string,
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-agent-context`
+    : `studio-cut-${roomSelection.projectId}-${roomSelection.branchId}-agent-context`;
 
   return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
 }

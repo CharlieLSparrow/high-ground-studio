@@ -362,6 +362,7 @@ export function useDecisionPersistence(
   return {
     config,
     roomSelection: { projectId, branchId },
+    allDecisionEvents,
     decisionEvents,
     collaborators,
     status,

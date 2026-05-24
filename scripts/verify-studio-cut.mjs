@@ -78,6 +78,11 @@ const verificationSteps = [
     args: ["studio-cut:agent-edit-test"],
   },
   {
+    label: "Studio Cut agent context helper test",
+    command: "pnpm",
+    args: ["studio-cut:agent-context-test"],
+  },
+  {
     label: "Studio Cut web agent operation helper test",
     command: "pnpm",
     args: ["studio-cut:agent-ops-web-test"],

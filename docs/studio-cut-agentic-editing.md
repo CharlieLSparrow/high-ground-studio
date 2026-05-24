@@ -117,15 +117,39 @@ the applied operations upsert/tombstone decision events through the same
 Firestore persistence path as normal edits. In local-only mode they stay in
 localStorage. Either way, the source media and proxy files are untouched.
 
+## Export Agent Context
+
+Use `Export Agent Context` from the Decision Events toolbar when Codex or
+another agent needs to inspect the current room without scraping the UI.
+
+The exported JSON includes:
+
+- project and branch room ids
+- episode manifest metadata when loaded
+- current source time and current state
+- source-monitor proxy status without object URLs or local paths
+- persistence mode and shared-room attachment status
+- Sync Map/sync report summaries when available
+- active and tombstoned decision events
+- derived semantic segments
+- readiness warnings
+- the supported agent operation contract
+
+This is the preferred web-to-agent handoff for live editing discussions. It is
+still a decision-layer snapshot only: no media, proxy bytes, local filesystem
+paths, or browser object URLs are exported.
+
 ## Agent Workflow
 
 For a real editing pass:
 
-1. Run `agent-review-edit`.
+1. Export Agent Context from the web cockpit, or run `agent-review-edit` from a
+   decision JSON export.
 2. Discuss the proposed operations with the human when the intent is ambiguous.
 3. Write an operation JSON file.
 4. Run `apply-decision-ops --dry-run`.
-5. Apply the operations to a new decision file.
+5. Apply the operations through `Import Agent Ops` in the browser or to a new
+   decision file with `apply-decision-ops`.
 6. Run `plan-render` or `render-rescue-sync-session --dry-run`.
 7. Keep the previous decision JSON or checkpoint as rollback.
 
@@ -149,5 +173,5 @@ plain JSON and every result verifiable by command.
   timestamps.
 - Add review reports for awkward camera holds, long silence, repeated Cut spans,
   and missing Clip context.
-- Add an assistant-visible episode workspace manifest that lists every local
-  generated file without exposing private absolute paths.
+- Add an episode workspace index that lists generated session files for local
+  agents without exposing private absolute paths.

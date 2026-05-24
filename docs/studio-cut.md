@@ -393,6 +393,12 @@ It previews the operation JSON before applying it, shows add/remove counts and
 blocking validation errors, and then applies accepted operations through the
 same localStorage/Firestore decision persistence path as normal edits.
 
+Use `Export Agent Context` when an agent needs the live browser room state. The
+export includes the manifest, current source time, proxy loaded status,
+persistence/shared-room status, active and tombstoned decisions, derived
+segments, readiness warnings, and the supported operation contract. It does not
+include media bytes, local filesystem paths, or browser object URLs.
+
 The web editor also shows a `Local Render Handoff` panel after an episode is
 loaded. It previews the expected decision export filename, the session folder
 shape, and the `render-rescue-sync-session` dry-run command so the local render

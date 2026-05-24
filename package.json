@@ -14,6 +14,7 @@
     "studio-cut": "pnpm --filter studio-cut-web dev",
     "studio-cut:agent-smoke": "python tools/studio-cut-local/studio_cut_local.py agent-smoke-test",
     "studio-cut:agent-edit-test": "node --test scripts/studio-cut-agent-edit.test.mjs",
+    "studio-cut:agent-context-test": "node --experimental-strip-types --test scripts/studio-cut-agent-context.test.mjs",
     "studio-cut:agent-ops-web-test": "node --experimental-strip-types --test scripts/studio-cut-agent-ops-web.test.mjs",
     "studio-cut:build": "pnpm --filter @high-ground/studio-cut-schema build && pnpm --filter studio-cut-web build",
     "studio-cut:local:doctor": "python tools/studio-cut-local/studio_cut_local.py doctor",

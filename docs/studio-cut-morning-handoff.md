@@ -61,6 +61,10 @@ Related durable docs:
 - The web cockpit can import agent operation JSON with `Import Agent Ops`,
   preview add/tombstone changes, and apply accepted operations into the current
   local or shared room.
+- `Export Agent Context` writes a media-safe room snapshot for Codex: manifest,
+  current source time, proxy status, persistence/shared-room status, decisions,
+  derived segments, warnings, and the operation contract. It omits media bytes,
+  local paths, and browser object URLs.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification
@@ -389,3 +393,5 @@ Improve agentic editing:
 - add transcript/speaker-aware review reports
 - let agents propose silence/filler/awkward-hold cuts with confidence and
   explicit human approval points
+- add a local episode workspace index so agents can discover generated session
+  files without private absolute paths
