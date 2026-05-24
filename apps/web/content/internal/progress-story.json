@@ -1,7 +1,41 @@
 {
-  "updatedAt": "2026-05-24T11:36:29.000Z",
+  "updatedAt": "2026-05-24T12:07:43.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-publish-candidate-packets",
+      "date": "2026-05-24",
+      "title": "Episode-page candidates now get a private handoff packet",
+      "kicker": "Approved HGO artifacts can move toward publishing without publishing",
+      "mood": "Closer to episode pages",
+      "summary": "The private HGO staged artifact shelf now derives an episode-page publish-candidate packet for each saved artifact, with route, blockers, warnings, human review steps, and rollback notes.",
+      "body": [
+        "The previous HGO slice let us save staged artifacts and move them through private review. This one makes the next step concrete: when an artifact is marked as a staging candidate, the team page can show the proposed `/episodes/...` route and a structured handoff packet.",
+        "The packet is deliberately not a publish button. It creates no route files, mutates no database rows, calls no providers, and does not certify public safety. It is the checklist and JSON handoff that tells the next agent or human what still has to be true before an episode page can go public.",
+        "This is the shape we want for fast creative work: turn review state into the next concrete artifact, keep rollback visible, and preserve the boundary between private staging and public publishing."
+      ],
+      "commits": [
+        {
+          "sha": "pending-merge",
+          "label": "feat(web): add HGO publish candidate packets"
+        }
+      ],
+      "links": [
+        {
+          "label": "Private HGO stage list",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/team/hgo-staged-artifacts"
+        },
+        {
+          "label": "HGO staged import",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/projection-stage/import"
+        },
+        {
+          "label": "Artifact store plan",
+          "href": "docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Publishing", "Review"]
+    },
     {
       "id": "web-cloudsql-cutover",
       "date": "2026-05-24",
