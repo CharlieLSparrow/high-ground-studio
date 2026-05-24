@@ -287,6 +287,54 @@ gcloud run services update-traffic studio \
   --to-revisions=PREVIOUS_REVISION=100
 ```
 
+## GitHub Actions CI/CD
+
+`main` now has a GitHub Actions workflow for Cloud Run deploys:
+
+```text
+.github/workflows/deploy-cloud-run.yml
+```
+
+The workflow uses Google Workload Identity Federation, not a checked-in service
+account key. It impersonates:
+
+```text
+github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
+```
+
+Google Cloud identity resources:
+
+```text
+pool: github-actions
+provider: github
+provider resource:
+projects/659427658635/locations/global/workloadIdentityPools/github-actions/providers/github
+```
+
+The provider is restricted to:
+
+```text
+CharlieLSparrow/high-ground-studio
+```
+
+On pushes to `main`, the workflow deploys `studio` only when changed files
+touch `apps/studio`, shared packages, Prisma, workspace dependency files, the
+Studio Cloud Build configs, Studio Cloud Run scripts, or `.dockerignore`.
+
+Manual dispatch is available from GitHub Actions with target choices:
+
+```text
+all
+web
+studio
+auto
+```
+
+Manual `all` deploys both `studio` and `web` in parallel. The Studio job runs
+`pnpm studio:cloudrun:deploy`, so it keeps the same typecheck, readiness test,
+Cloud Build image build, Cloud Run deploy, smoke checks, and rollback output as
+the operator helper.
+
 ## Cloud Build Trigger Path
 
 `cloudbuild.studio.deploy.yaml` is the checked-in config for a push-to-deploy

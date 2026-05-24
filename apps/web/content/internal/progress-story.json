@@ -3,6 +3,36 @@
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
     {
+      "id": "github-cloud-run-cicd",
+      "date": "2026-05-23",
+      "title": "Deploys started moving into the pipeline",
+      "kicker": "GitHub Actions can now deploy Cloud Run without long-lived keys",
+      "mood": "Less hand work",
+      "summary": "The Google Cloud side now has a dedicated GitHub Actions deployer, Workload Identity Federation, and a checked-in workflow for web and Studio Cloud Run deploys from main.",
+      "body": [
+        "This is the beginning of the tighter release loop: merge to main, let the workflow decide which live service should move, and keep manual dispatch available when the team wants to redeploy both services on purpose.",
+        "The deployer uses GitHub OIDC instead of a downloaded service account key. It has the Cloud Build and Cloud Run permissions needed to deploy, and it can act only as the existing web and Studio runtime service accounts.",
+        "The workflow reuses the deploy helpers we already proved locally. That means each deploy still builds through Cloud Build, runs the same app-specific checks, smokes the live route, and prints rollback commands."
+      ],
+      "commits": [
+        {
+          "sha": "1b6309c",
+          "label": "ops: add GitHub Actions Cloud Run deploy workflow"
+        }
+      ],
+      "links": [
+        {
+          "label": "Web runbook",
+          "href": "docs/runbooks/web-cloud-run.md"
+        },
+        {
+          "label": "Studio runbook",
+          "href": "docs/runbooks/studio-cloud-run.md"
+        }
+      ],
+      "tags": ["CI/CD", "Google Cloud", "Cloud Run", "GitHub Actions"]
+    },
+    {
       "id": "web-cloud-run-first-deploy",
       "date": "2026-05-23",
       "title": "The web app reached Google Cloud",
