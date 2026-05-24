@@ -23,12 +23,13 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the HGO Content Studio packet-import bridge merge and web deploy
-on 2026-05-24.
+Verified after the private HGO staged artifact store merge, web database sync,
+and web deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | runtime deploy `97d6bd6` plus docs follow-ups | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, and the HGO import deploy smoke are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | runtime deploy `b07c73d` plus docs/story follow-ups | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, and private HGO staged artifact store are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
 | `codex/content-studio-packet-import-001` | `b2fd9ac` | none active | Content Studio persistence | Merged by PR #16 as `3cc1fae`; branch can be left closed. |
@@ -93,7 +94,8 @@ on 2026-05-24.
 ### HGO Staged Episode Pages
 
 - owner: integration captain until reassigned
-- latest branch: `codex/hgo-content-studio-packet-import-001`, merged by PR #19
+- latest branch: `codex/hgo-staged-artifact-store-001`, merged by PR #21
+- previous branch: `codex/hgo-content-studio-packet-import-001`, merged by PR #19
 - owns:
   - `apps/web/src/app/projection-stage/*`
   - `apps/web/src/lib/hgo/*`
@@ -103,9 +105,14 @@ on 2026-05-24.
     Studio production packets
   - Content Studio packets are safety-checked before `hgoProjectionDraft` is
     extracted for browser-only staged review
+  - validated `hgo-staged-artifact-v1` packets can be saved through an explicit
+    private team action
+  - `/api/hgo/staged-artifacts` and `/team/hgo-staged-artifacts` are
+    authenticated/team-gated
+  - live schema was synced by Cloud Run Job `web-db-push-b07c73d`
 - current live revision:
-  - `web-00017-mgg` from `main` commit `97d6bd6`
-  - rollback to `web-00015-9vs`
+  - `web-00019-tkx` from `main` commit `b07c73d`
+  - rollback to `web-00018-wjt`
 
 ### WorldHub / Business Infrastructure
 

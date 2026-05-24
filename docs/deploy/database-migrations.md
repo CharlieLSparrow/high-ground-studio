@@ -366,6 +366,13 @@ For the live web Cloud Run database, prefer running `pnpm db:push` from a
 Cloud Run Job image that has the `web-database-url` secret and the same Cloud
 SQL attachment as the `web` service.
 
+Live operator note from 2026-05-24: the `web-database-url` secret used by
+Cloud Run Job `web-db-push-b07c73d` resolved to a Neon PostgreSQL pooler. The
+job still had the Cloud SQL attachment, but the secret controls the actual
+Prisma target. If the web app is moving fully onto Google Cloud SQL, plan that
+as an explicit database migration/cutover instead of assuming the Cloud SQL
+attachment means the web database is already Cloud SQL-backed.
+
 SQL verification:
 
 ```sql

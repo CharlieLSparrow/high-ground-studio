@@ -75,10 +75,12 @@ The table stores private staged artifacts with fields including:
 - `artifactStatus`
 - `recommendedNextAction`
 - `createdAt`
-- `createdByUserId`
+- `ownerUserId`
+- `ownerEmail`
+- `recordId`
 - `updatedAt`
 - `reviewedAt`
-- `reviewedByUserId`
+- `reviewedByEmail`
 - `archivedAt`
 - `artifactJson`
 - `artifactHash`

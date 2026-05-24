@@ -381,3 +381,41 @@ checks, blockers, and next handoff.
 - Live smokes passed for Studio `/api/health` and `/content-studio`.
 - Rollback:
   `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00030-ncf=100`
+
+### Codex / `codex/hgo-staged-artifact-store-001`
+
+- Added the first private HGO staged artifact store for validated
+  `hgo-staged-artifact-v1` review packets.
+- Added additive Prisma model `HgoStagedProjectionArtifact`, team-gated API
+  route `/api/hgo/staged-artifacts`, private team list route
+  `/team/hgo-staged-artifacts`, and an explicit `Save private review artifact`
+  action on `/projection-stage/import`.
+- The save action does not publish pages, promote artifacts, call providers,
+  certify public-safety review, or mutate the embedded browser-created artifact
+  packet.
+- Validation before merge passed: `pnpm db:generate`,
+  `pnpm hgo:store-lab:test`, `pnpm hgo:artifact:test`,
+  `pnpm web:cloudrun:test`, webpack build, and `git diff --check`.
+- Merged PR #21 to `main` as `b07c73d`.
+- Built the one-off Prisma db-push image with Cloud Build
+  `d87f4471-4542-4744-8af8-b237cc946e44`:
+  `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:b07c73d`.
+- Created and executed Cloud Run Job `web-db-push-b07c73d` using the web
+  runtime service account, Cloud SQL attachment, and `web-database-url:latest`.
+- Job execution `web-db-push-b07c73d-4rhhc` completed successfully; logs report
+  `Your database is now in sync with your Prisma schema`.
+- Operator note: the `web-database-url` secret currently resolves to a Neon
+  PostgreSQL pooler even though the job also has the Cloud SQL attachment. Plan
+  a deliberate web database migration/cutover if the goal is to move all web
+  persistence onto Google Cloud SQL.
+- Deployed web with Cloud Build `fb9356b7-9a6d-4bfb-ab2f-32fe2c3e136b`.
+- Web revision `web-00019-tkx` is serving 100% with image `web:b07c73d`.
+- Live smokes passed:
+  - Web `/api/health`
+  - Web `/`
+  - Web `/projection-stage/import`
+  - Web `/team/progress` unauthenticated redirect
+  - Web `/api/hgo/staged-artifacts` unauthenticated `401`
+  - Web `/team/hgo-staged-artifacts` unauthenticated sign-in redirect
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00018-wjt=100`

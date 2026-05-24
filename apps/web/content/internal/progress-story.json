@@ -1,7 +1,41 @@
 {
-  "updatedAt": "2026-05-24T03:15:20.000Z",
+  "updatedAt": "2026-05-24T04:12:00.000Z",
   "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-private-staged-artifact-store",
+      "date": "2026-05-24",
+      "title": "HGO review artifacts can now be saved privately",
+      "kicker": "The staged episode-page workflow has its first server-backed review shelf",
+      "mood": "More durable",
+      "summary": "The HGO staged importer can now save validated review artifacts for signed-in team operators, giving episode-page drafts a private recovery and review path before anything goes public.",
+      "body": [
+        "The browser-only HGO review loop proved the packet shape first. This slice added the first private persistence layer: a team-gated API, a private team list page, and an explicit save button on the staged importer.",
+        "Saving still does not publish anything. The submitted artifact remains the browser-created review packet, while the server stores separate metadata for review status, promotion readiness, blockers, warnings, and rollback.",
+        "The schema was applied through a one-off Cloud Run Job using the web database secret, then the web service deployed to Cloud Run revision web-00019-tkx. Live checks confirmed the public import page loads, the artifact API rejects anonymous users with 401, and the team artifact page redirects to sign-in."
+      ],
+      "commits": [
+        {
+          "sha": "b07c73d",
+          "label": "feat(web): add private HGO staged artifact store"
+        }
+      ],
+      "links": [
+        {
+          "label": "HGO staged import",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/projection-stage/import"
+        },
+        {
+          "label": "Private HGO stage list",
+          "href": "https://web-hm2odnvjga-uc.a.run.app/team/hgo-staged-artifacts"
+        },
+        {
+          "label": "Artifact store plan",
+          "href": "docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Database", "Cloud Run"]
+    },
     {
       "id": "hgo-content-studio-packet-import",
       "date": "2026-05-24",
