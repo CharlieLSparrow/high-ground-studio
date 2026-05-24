@@ -127,6 +127,35 @@ checks, blockers, and next handoff.
 - Current handoff: add only this DNS record wherever the authoritative zone is
   managed: `app.highgroundodyssey.com CNAME ghs.googlehosted.com.`
 
+### Codex / `codex/hgo-publish-candidate-packets-001`
+
+- Added `hgo-episode-publish-candidate-v1`, a private episode-page handoff
+  packet derived from saved HGO staged artifacts.
+- `/team/hgo-staged-artifacts` now shows the proposed `/episodes/...` route,
+  readiness state, blockers, warnings, packet filename, and private packet JSON
+  for each saved artifact.
+- The packet is explicitly not publishing: it does not create route files,
+  mutate the database, call providers, certify public safety, or change the
+  immutable staged artifact JSON.
+- Added `pnpm hgo:publish-candidate:test` and updated the team progress story
+  plus HGO private staged artifact store plan.
+- Validation passed:
+  `pnpm hgo:publish-candidate:test`, `pnpm hgo:artifact:test`,
+  `pnpm hgo:store-lab:test`, `pnpm web:cloudrun:test`,
+  `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio pnpm --filter web exec next build --webpack`,
+  and `git diff --check HEAD`.
+- Opened and merged PR #22 as `aaf3568`:
+  `feat(web): add HGO publish candidate packets`.
+- Deployed web with Cloud Build `a47a0bcb-4388-4d3d-9ea9-99676036ac9d`.
+- Web revision `web-00038-jxl` is serving 100% with image `web:aaf3568`.
+- Live smokes passed:
+  `/api/health`, `/`, `/projection-stage/import`, and `/team/progress`
+  unauthenticated redirect.
+- `pnpm web:db:target:report` confirms latest ready revision `web-00038-jxl`
+  still mounts `DATABASE_URL` from `web-cloudsql-database-url`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00036-rl9=100`.
+
 ## 2026-05-23
 
 ### Codex / `codex/content-studio-command-001`
