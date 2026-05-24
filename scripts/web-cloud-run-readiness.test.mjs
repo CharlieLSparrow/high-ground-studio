@@ -60,10 +60,11 @@ test("postgres copy job image is guarded for staged Cloud SQL migration", () => 
 
   assert.match(cloudbuild, /ops\/postgres-copy\.Dockerfile/);
   assert.match(cloudbuild, /_IMAGE_NAME: postgres-copy/);
-  assert.match(dockerfile, /FROM postgres:16-bookworm/);
+  assert.match(dockerfile, /FROM postgres:17-bookworm/);
   assert.match(entrypoint, /SOURCE_DATABASE_URL is required/);
   assert.match(entrypoint, /TARGET_DATABASE_URL is required/);
   assert.match(entrypoint, /POSTGRES_COPY_ALLOW_NONEMPTY_TARGET/);
+  assert.match(entrypoint, /tr -d '\\r\\n'/);
   assert.match(entrypoint, /--data-only/);
   assert.match(entrypoint, /--no-owner/);
   assert.match(entrypoint, /Database URLs and row data are never printed/);

@@ -268,8 +268,9 @@ The copy job expects:
 | `SOURCE_DATABASE_URL` | `web-database-url:latest` |
 | `TARGET_DATABASE_URL` | `web-cloudsql-database-url:latest` |
 
-The entrypoint uses `pg_dump --data-only` and `pg_restore --data-only`, refuses
-to restore into a non-empty target unless
+The entrypoint uses PostgreSQL 17 client tools, strips trailing line breaks from
+injected Secret Manager env vars, runs `pg_dump --data-only` and
+`pg_restore --data-only`, refuses to restore into a non-empty target unless
 `POSTGRES_COPY_ALLOW_NONEMPTY_TARGET=1` is explicitly set, and prints only table
 row counts. It does not print database URLs or row data.
 

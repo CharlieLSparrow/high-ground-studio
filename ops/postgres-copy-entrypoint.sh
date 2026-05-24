@@ -4,6 +4,8 @@ set -euo pipefail
 : "${SOURCE_DATABASE_URL:?SOURCE_DATABASE_URL is required}"
 : "${TARGET_DATABASE_URL:?TARGET_DATABASE_URL is required}"
 
+SOURCE_DATABASE_URL="$(printf '%s' "$SOURCE_DATABASE_URL" | tr -d '\r\n')"
+TARGET_DATABASE_URL="$(printf '%s' "$TARGET_DATABASE_URL" | tr -d '\r\n')"
 ALLOW_NONEMPTY_TARGET="${POSTGRES_COPY_ALLOW_NONEMPTY_TARGET:-0}"
 DUMP_FILE="$(mktemp -t hgo-postgres-copy.XXXXXX.dump)"
 
@@ -26,8 +28,16 @@ count_rows() {
   local label="$2"
   local total=0
   local tables=()
+  local table_output
 
-  mapfile -t tables < <(list_tables "$database_url")
+  if ! table_output="$(list_tables "$database_url")"; then
+    echo "$label table listing failed" >&2
+    exit 1
+  fi
+
+  if [[ -n "$table_output" ]]; then
+    mapfile -t tables <<< "$table_output"
+  fi
 
   if [[ "${#tables[@]}" -eq 0 ]]; then
     echo "$label has no public tables" >&2

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM postgres:16-bookworm
+FROM postgres:17-bookworm
 
 WORKDIR /ops
 
