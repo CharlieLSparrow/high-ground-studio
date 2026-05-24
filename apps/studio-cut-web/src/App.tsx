@@ -46,6 +46,10 @@ import {
   isRequiredCloudSyncSelectionComplete,
 } from "./cloudSync";
 import {
+  buildAgentDecisionOpsPreview,
+  type AgentDecisionOpsPreview,
+} from "./agentDecisionOps";
+import {
   useDecisionPersistence,
   type StudioCutRoomSelection,
 } from "./hooks/useDecisionPersistence";
@@ -340,7 +344,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   >(loadStoredLocalCheckpoints);
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [agentOpsPreview, setAgentOpsPreview] =
+    useState<AgentDecisionOpsPreview | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const agentOpsInputRef = useRef<HTMLInputElement>(null);
   const manifestInputRef = useRef<HTMLInputElement>(null);
   const proxyVideoInputRef = useRef<HTMLInputElement>(null);
   const rescueManifestInputRef = useRef<HTMLInputElement>(null);
@@ -1200,6 +1207,85 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     } finally {
       event.target.value = "";
     }
+  }
+
+  async function handleImportAgentOpsJson(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const preview = buildAgentDecisionOpsPreview({
+        payload,
+        fileName: file.name,
+        currentEvents: decisionEvents,
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+        createdBy: createdBy ?? config.createdBy,
+        sourceDurationMs,
+        clientId: sessionId,
+      });
+
+      setAgentOpsPreview(preview);
+      setImportMessage(
+        preview.errors.length > 0
+          ? `Agent ops preview blocked: ${preview.errors.length} issue${
+              preview.errors.length === 1 ? "" : "s"
+            } found.`
+          : `Agent ops preview loaded from ${file.name}. Review before applying.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setAgentOpsPreview({
+        fileName: file.name,
+        operationCount: 0,
+        addCount: 0,
+        removeCount: 0,
+        activeDecisionCountAfterApply: decisionEvents.length,
+        tombstonedDecisionCountAfterApply: 0,
+        decisionEvents,
+        activeDecisionEvents: decisionEvents,
+        summaries: [],
+        warnings: [],
+        errors: [`Agent ops import failed: ${message}`],
+      });
+      setImportMessage(`Agent ops import failed: ${message}`);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function handleApplyAgentDecisionOps() {
+    if (!agentOpsPreview || agentOpsPreview.errors.length > 0) {
+      return;
+    }
+
+    stopProgramPlayback();
+    recordDecisionMutation(
+      `Applied ${agentOpsPreview.operationCount} agent operation${
+        agentOpsPreview.operationCount === 1 ? "" : "s"
+      } from ${agentOpsPreview.fileName}`,
+      decisionEvents,
+      agentOpsPreview.activeDecisionEvents,
+    );
+    const result = importDecisionEvents({
+      schemaVersion: 1,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      decisionEvents: agentOpsPreview.decisionEvents,
+    });
+
+    setImportMessage(
+      `Applied ${agentOpsPreview.operationCount} agent operation${
+        agentOpsPreview.operationCount === 1 ? "" : "s"
+      }. Imported/upserted ${result.importedCount} event${
+        result.importedCount === 1 ? "" : "s"
+      }.`,
+    );
+    setAgentOpsPreview(null);
   }
 
   async function handleImportManifestJson(event: ChangeEvent<HTMLInputElement>) {
@@ -2677,6 +2763,13 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
               <button
                 className="secondary-button"
                 type="button"
+                onClick={() => agentOpsInputRef.current?.click()}
+              >
+                Import Agent Ops
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
                 onClick={handleExportJson}
               >
                 Export Decisions
@@ -2714,7 +2807,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             onChange={handleImportJson}
             aria-label="Import decision events JSON"
           />
+          <input
+            ref={agentOpsInputRef}
+            className="file-input"
+            type="file"
+            accept="application/json,.json"
+            onChange={(event) => void handleImportAgentOpsJson(event)}
+            aria-label="Import agent decision operation JSON"
+          />
           {importMessage ? <p className="import-message">{importMessage}</p> : null}
+          <AgentDecisionOpsPanel
+            preview={agentOpsPreview}
+            onApply={handleApplyAgentDecisionOps}
+            onDismiss={() => setAgentOpsPreview(null)}
+          />
           <DecisionList
             events={sortedEvents}
             currentEventId={currentEvent?.id}
@@ -4684,6 +4790,93 @@ function ProxyCropPane({
       />
       <span className="proxy-crop-label">{SOURCE_ROLE_LABELS[role]}</span>
     </div>
+  );
+}
+
+function AgentDecisionOpsPanel({
+  preview,
+  onApply,
+  onDismiss,
+}: {
+  preview: AgentDecisionOpsPreview | null;
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  if (!preview) {
+    return null;
+  }
+
+  const canApply = preview.errors.length === 0 && preview.operationCount > 0;
+
+  return (
+    <section
+      className={`agent-ops-panel${preview.errors.length > 0 ? " is-error" : ""}`}
+      aria-label="Agent decision operation preview"
+    >
+      <div className="panel-heading">
+        <div>
+          <h3>Agent Operation Preview</h3>
+          <p>
+            Review generated decision-layer operations before applying them to
+            this room.
+          </p>
+        </div>
+        <strong>{canApply ? "Ready" : "Check"}</strong>
+      </div>
+
+      <div className="agent-ops-grid">
+        <ReadinessMetric label="File" value={preview.fileName} />
+        <ReadinessMetric label="Operations" value={String(preview.operationCount)} />
+        <ReadinessMetric label="Adds" value={String(preview.addCount)} />
+        <ReadinessMetric label="Removes" value={String(preview.removeCount)} />
+        <ReadinessMetric
+          label="Active after"
+          value={String(preview.activeDecisionCountAfterApply)}
+        />
+        <ReadinessMetric
+          label="Tombstones after"
+          value={String(preview.tombstonedDecisionCountAfterApply)}
+        />
+      </div>
+
+      {preview.summaries.length > 0 ? (
+        <ul className="agent-ops-list">
+          {preview.summaries.map((summary) => (
+            <li key={summary}>{summary}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {preview.warnings.length > 0 ? (
+        <ul className="agent-ops-warnings">
+          {preview.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {preview.errors.length > 0 ? (
+        <ul className="agent-ops-errors">
+          {preview.errors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="toolbar-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onApply}
+          disabled={!canApply}
+        >
+          Apply Agent Ops
+        </button>
+        <button className="secondary-button" type="button" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </div>
+    </section>
   );
 }
 

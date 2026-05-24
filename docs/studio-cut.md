@@ -388,6 +388,11 @@ Agents inspect a review report, write a small operation JSON file, dry-run it,
 then apply it to a new decision export that humans can inspect, import, render,
 or roll back.
 
+The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
+It previews the operation JSON before applying it, shows add/remove counts and
+blocking validation errors, and then applies accepted operations through the
+same localStorage/Firestore decision persistence path as normal edits.
+
 The web editor also shows a `Local Render Handoff` panel after an episode is
 loaded. It previews the expected decision export filename, the session folder
 shape, and the `render-rescue-sync-session` dry-run command so the local render

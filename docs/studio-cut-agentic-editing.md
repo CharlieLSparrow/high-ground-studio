@@ -97,6 +97,26 @@ The input decision file is never mutated. Remove operations tombstone decisions
 with `removedAt`, `removedBy`, and `operation=remove`, so the edit remains
 auditable and reversible.
 
+## Preview And Apply In The Web Cockpit
+
+The Studio Cut web editor can import the same operation JSON through
+`Import Agent Ops` in the Decision Events toolbar.
+
+The browser does not apply the operations immediately. It opens an `Agent
+Operation Preview` panel that shows:
+
+- operation count
+- add/remove count
+- active decision count after apply
+- tombstone count after apply
+- human-readable operation summaries
+- validation warnings and blocking errors
+
+Use `Apply Agent Ops` only after the preview is sane. In cloud shared-room mode,
+the applied operations upsert/tombstone decision events through the same
+Firestore persistence path as normal edits. In local-only mode they stay in
+localStorage. Either way, the source media and proxy files are untouched.
+
 ## Agent Workflow
 
 For a real editing pass:
@@ -119,8 +139,9 @@ plain JSON and every result verifiable by command.
   decisions.
 - There is not yet automatic transcript-aware editing or silence/filler-word
   detection.
-- Cloud shared-room agent operations are not automated yet; use exported
-  checkpoint JSON as the durable handoff for now.
+- The web cockpit can preview/apply operation JSON, but agents still need a
+  structured input such as transcript, source notes, or operator instructions
+  before they can make high-quality creative choices.
 
 ## Next Agent-Friendly Steps
 
@@ -128,7 +149,5 @@ plain JSON and every result verifiable by command.
   timestamps.
 - Add review reports for awkward camera holds, long silence, repeated Cut spans,
   and missing Clip context.
-- Add web import for operation JSON so human operators can preview/apply agent
-  edits inside Studio Cut.
 - Add an assistant-visible episode workspace manifest that lists every local
   generated file without exposing private absolute paths.

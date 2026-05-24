@@ -161,6 +161,7 @@ async function createProxyPreviewSmokeFiles() {
   const proxyPath = path.join(workdir, "source-monitor-proxy.web-smoke.mp4");
   const syncMapPath = path.join(workdir, "sync-map.web-smoke.json");
   const syncReportPath = path.join(workdir, "sync-report.web-smoke.json");
+  const agentOpsPath = path.join(workdir, "agent-ops.web-smoke.json");
   const generatedAt = "2026-05-23T00:00:00.000Z";
   const manifest = {
     id: "web-smoke-episode",
@@ -298,10 +299,25 @@ async function createProxyPreviewSmokeFiles() {
     ],
     globalWarnings: ["Synthetic browser smoke sync report."],
   };
+  const agentOps = {
+    schemaVersion: 1,
+    projectId: "studio-cut-local-project",
+    branchId: "local-main",
+    operations: [
+      {
+        op: "addDecision",
+        id: "web-smoke-agent-charlie-clip",
+        sourceTimeMs: 11000,
+        state: "charlie_clip",
+        note: "Synthetic agent operation for browser smoke.",
+      },
+    ],
+  };
 
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
   await writeFile(syncMapPath, JSON.stringify(syncMap, null, 2), "utf8");
   await writeFile(syncReportPath, JSON.stringify(syncReport, null, 2), "utf8");
+  await writeFile(agentOpsPath, JSON.stringify(agentOps, null, 2), "utf8");
 
   const ffmpegResult = spawnSync(
     "ffmpeg",
@@ -329,7 +345,14 @@ async function createProxyPreviewSmokeFiles() {
     throw new Error(`ffmpeg could not create web smoke proxy video: ${detail}`);
   }
 
-  return { workdir, manifestPath, proxyPath, syncMapPath, syncReportPath };
+  return {
+    workdir,
+    manifestPath,
+    proxyPath,
+    syncMapPath,
+    syncReportPath,
+    agentOpsPath,
+  };
 }
 
 function getErrorStack(error) {
@@ -666,6 +689,16 @@ async function runBrowserSmoke() {
     await page.locator(".local-checkpoints").getByRole("button", { name: "Restore" }).click();
     await expectSectionText(decisionSection, "1 event");
     await expectSectionText(decisionSection, "Both");
+
+    await page
+      .getByLabel("Import agent decision operation JSON")
+      .setInputFiles(smokeFiles.agentOpsPath);
+    const agentOpsPreview = page.getByLabel("Agent decision operation preview");
+    await expect(agentOpsPreview).toContainText("Ready");
+    await expect(agentOpsPreview).toContainText("Add Charlie/Clip at 0:11");
+    await page.getByRole("button", { name: "Apply Agent Ops" }).click();
+    await expectSectionText(decisionSection, "2 events");
+    await expectSectionText(decisionSection, "Charlie/Clip");
 
     const actionablePageErrors = pageErrors.filter(
       (entry) => !isBenignBlobRevocationError(entry),

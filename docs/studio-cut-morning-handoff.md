@@ -58,6 +58,9 @@ Related durable docs:
   `agent-review-edit` for machine-readable edit diagnostics and
   `apply-decision-ops` for transparent add/tombstone operations that write a new
   decision file without mutating the input export.
+- The web cockpit can import agent operation JSON with `Import Agent Ops`,
+  preview add/tombstone changes, and apply accepted operations into the current
+  local or shared room.
 - GitHub Actions verification workflow. CI verifies only and does not deploy.
 
 ## Branch And Verification
@@ -383,7 +386,6 @@ Improve Sync Map render quality:
 
 Improve agentic editing:
 
-- import/preview decision operation JSON inside the web cockpit
 - add transcript/speaker-aware review reports
 - let agents propose silence/filler/awkward-hold cuts with confidence and
   explicit human approval points
