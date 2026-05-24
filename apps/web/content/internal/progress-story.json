@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T21:34:50.240Z",
+  "updatedAt": "2026-05-24T23:26:16.313Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "hgo-durable-publish-intent",
+      "date": "2026-05-24",
+      "title": "HGO gets a durable publish intent",
+      "kicker": "Progress update",
+      "mood": "Bigger swing, still guarded",
+      "summary": "The private episode publish queue can now save a ready staged artifact as a database-backed publish intent without making it public.",
+      "body": [
+        "This is the first careful step past our old no-database-write boundary for the HGO publishing flow. A team operator can open a ready staged artifact, review the proposed episode route and generated draft packet, then save one private publish-intent row for follow-up.",
+        "The important part is what it still does not do: no public route is created, no MDX file is written into published content, no provider is called, and /episodes is untouched. We now have a durable checkpoint for future publishing instead of another copy-and-paste handoff."
+      ],
+      "commits": [
+        {
+          "sha": "3b12d49",
+          "label": "Persist HGO publish intent"
+        }
+      ],
+      "links": [
+        {
+          "label": "Publish queue",
+          "href": "/team/hgo-publish-queue"
+        },
+        {
+          "label": "Updates",
+          "href": "/updates"
+        }
+      ],
+      "tags": ["HGO", "Publishing", "Database", "Studio"]
+    },
     {
       "id": "2026-05-24-draft-packets-now-have-a-private-review-lab",
       "date": "2026-05-24",
