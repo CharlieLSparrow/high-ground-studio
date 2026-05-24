@@ -1,7 +1,37 @@
 {
-  "updatedAt": "2026-05-24T17:57:57.000Z",
-  "intro": "A readable mission log for the internal High Ground Odyssey team. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
+  "updatedAt": "2026-05-24T18:31:33.000Z",
+  "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "public-build-updates-page",
+      "date": "2026-05-24",
+      "title": "The build journal is becoming a public team story",
+      "kicker": "Progress can be read without terminal transcripts",
+      "mood": "More visible",
+      "summary": "The internal progress story now powers a public /updates page, so Homer, Mako, Melissa, and friendly observers can follow the build as a readable journal.",
+      "body": [
+        "The progress thread already existed as an internal team route. This slice turns it into a public-facing build journal without creating a second source of truth: /team/progress and /updates now render the same story data through one shared view.",
+        "The page is meant to read like short field notes from the build, not like raw git output. Each entry can keep the useful commit, deploy, rollback, and trail links while still explaining why the work matters in plain language.",
+        "This is also a coordination move. Future agents have a visible place to record meaningful commits, merges, and deploys, and the team can see momentum without needing to sit inside every terminal window."
+      ],
+      "commits": [
+        {
+          "sha": "pending-merge",
+          "label": "feat(web): publish build updates page"
+        }
+      ],
+      "links": [
+        {
+          "label": "Build updates",
+          "href": "https://app.highgroundodyssey.com/updates"
+        },
+        {
+          "label": "Team progress",
+          "href": "https://app.highgroundodyssey.com/team/progress"
+        }
+      ],
+      "tags": ["Updates", "Team", "Coordination", "Cloud Run"]
+    },
     {
       "id": "app-domain-cloud-run-cutover",
       "date": "2026-05-24",
@@ -30,8 +60,8 @@
           "href": "https://app.highgroundodyssey.com"
         },
         {
-          "label": "Team progress",
-          "href": "https://app.highgroundodyssey.com/team/progress"
+          "label": "Build updates",
+          "href": "https://app.highgroundodyssey.com/updates"
         }
       ],
       "tags": ["DNS", "Squarespace", "Cloud Run", "OAuth"]

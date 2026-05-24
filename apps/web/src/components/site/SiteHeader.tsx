@@ -34,6 +34,13 @@ export default async function SiteHeader() {
             </Link>
 
             <Link
+              href="/updates"
+              className="text-sm font-semibold text-[rgba(245,239,230,0.9)] no-underline transition hover:text-[var(--accent)]"
+            >
+              Updates
+            </Link>
+
+            <Link
               href="/coaching"
               className="text-sm font-semibold text-[rgba(245,239,230,0.9)] no-underline transition hover:text-[var(--accent)]"
             >
