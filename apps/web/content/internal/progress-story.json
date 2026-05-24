@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T20:46:27.271Z",
+  "updatedAt": "2026-05-24T21:10:12.531Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-24-episode-drafts-can-be-previewed-before-publishing",
+      "date": "2026-05-24",
+      "title": "Episode drafts can be previewed before publishing",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Saved HGO staged artifacts now generate a private publish-draft packet and a team-only render preview, so the future episode page can be reviewed before any public file or route is created.",
+      "body": [
+        "This is the next step between staging and publishing. The review detail page can now export a draft packet with proposed frontmatter, a private MDX body, file targets, review state, and safety flags.",
+        "The new preview route renders the saved artifact through the same HGO projection renderer used by staged and synthetic pages. It stays behind team auth and does not write content files, publish /episodes, mutate the stored artifact, call providers, or certify public-safety review."
+      ],
+      "commits": [
+        {
+          "sha": "1077be8",
+          "label": "feat(web): add HGO publish draft preview"
+        }
+      ],
+      "links": [
+        {
+          "label": "Publish queue",
+          "href": "/team/hgo-publish-queue"
+        },
+        {
+          "label": "Artifact store plan",
+          "href": "https://github.com/CharlieLSparrow/high-ground-studio/blob/main/docs/architecture/hgo-private-staged-artifact-store-plan.md"
+        }
+      ],
+      "tags": ["HGO", "Episode Pages", "Publishing", "Preview"]
+    },
     {
       "id": "2026-05-24-publish-candidates-got-review-briefs",
       "date": "2026-05-24",
