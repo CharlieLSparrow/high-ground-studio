@@ -221,9 +221,14 @@ High Ground Studio is a monorepo with:
   packets, and rollback posture together. Each saved artifact also has a
   private `/team/hgo-publish-queue/[recordId]` review detail page that derives
   an `hgo-episode-publish-review-brief-v1` packet with proposed file targets,
-  validation commands, safety flags, and future rollback notes. It does not
-  create public routes, mutate content files, publish pages, certify public
-  safety, or call providers.
+  validation commands, safety flags, and future rollback notes. The detail page
+  also derives an `hgo-episode-publish-draft-v1` packet with proposed
+  frontmatter, a private MDX draft body, and copy/download controls. Its
+  private `/team/hgo-publish-queue/[recordId]/preview` route renders the saved
+  staged artifact through the shared HGO projection renderer before any public
+  route work begins. It does not create public routes, mutate content files,
+  publish pages, certify citation/public-safety review, mutate stored
+  artifacts, or call providers.
 - HGO has a pure staged artifact contract test command,
   `pnpm hgo:artifact:test`, covering synthetic artifact creation, parser and
   validator state, invalid version, persisted/published safety failures,

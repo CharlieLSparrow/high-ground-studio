@@ -11,6 +11,8 @@ type ArtifactHandoffPanelProps = {
   publishCandidateJson: string;
   publishReviewBriefFileName?: string;
   publishReviewBriefJson?: string;
+  publishDraftFileName?: string;
+  publishDraftJson?: string;
 };
 
 function downloadJsonFile(fileName: string, value: string) {
@@ -37,11 +39,14 @@ export default function ArtifactHandoffPanel({
   publishCandidateJson,
   publishReviewBriefFileName,
   publishReviewBriefJson,
+  publishDraftFileName,
+  publishDraftJson,
 }: ArtifactHandoffPanelProps) {
   const [message, setMessage] = useState("");
   const hasReviewBrief = Boolean(
     publishReviewBriefFileName && publishReviewBriefJson,
   );
+  const hasPublishDraft = Boolean(publishDraftFileName && publishDraftJson);
 
   function copyToClipboard(label: string, value: string) {
     setMessage("");
@@ -163,6 +168,33 @@ export default function ArtifactHandoffPanel({
             >
               <Download aria-hidden="true" className="h-4 w-4" />
               Download Review Brief
+            </button>
+          </>
+        ) : null}
+        {hasPublishDraft ? (
+          <>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-fuchsia-300/12 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/18"
+              onClick={() =>
+                copyToClipboard("Publish-draft packet", publishDraftJson || "")
+              }
+              type="button"
+            >
+              <Copy aria-hidden="true" className="h-4 w-4" />
+              Copy Draft Packet
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-fuchsia-200/25 bg-black/20 px-3 py-2 text-sm font-semibold text-fuchsia-50 transition hover:bg-fuchsia-300/12"
+              onClick={() =>
+                downloadJsonFile(
+                  publishDraftFileName || "hgo-episode-publish-draft.json",
+                  publishDraftJson || "",
+                )
+              }
+              type="button"
+            >
+              <Download aria-hidden="true" className="h-4 w-4" />
+              Download Draft Packet
             </button>
           </>
         ) : null}

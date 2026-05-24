@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  Eye,
   FileJson,
   FileWarning,
   History,
@@ -23,7 +24,14 @@ import {
   createHgoEpisodePublishReviewBrief,
   createHgoEpisodePublishReviewBriefFileName,
 } from "@/lib/hgo/publish-candidate-packet";
-import { createHgoStagedProjectionArtifactFileName } from "@/lib/hgo/staged-projection-artifact";
+import {
+  createHgoStagedProjectionArtifactFileName,
+  validateHgoStagedProjectionArtifact,
+} from "@/lib/hgo/staged-projection-artifact";
+import {
+  createHgoEpisodePublishDraftFileName,
+  createHgoEpisodePublishDraftPacket,
+} from "@/lib/hgo/publish-draft-packet";
 import { getHgoStagedArtifactForOwner } from "@/lib/server/hgo-staged-artifacts";
 import ArtifactHandoffPanel from "../../hgo-staged-artifacts/ArtifactHandoffPanel";
 
@@ -143,15 +151,24 @@ export default async function TeamHgoPublishQueueDetailPage({
     record,
     createdAt: record.updatedAt,
   });
+  const parsedArtifact = validateHgoStagedProjectionArtifact(record.artifactJson);
+
+  if (!parsedArtifact.artifact) {
+    notFound();
+  }
+
   const reviewBrief = createHgoEpisodePublishReviewBrief({
+    candidate: packet,
+    createdAt: record.updatedAt,
+  });
+  const publishDraft = createHgoEpisodePublishDraftPacket({
+    artifact: parsedArtifact.artifact,
     candidate: packet,
     createdAt: record.updatedAt,
   });
   const artifactJson = JSON.stringify(record.artifactJson, null, 2);
   const artifactFileName = createHgoStagedProjectionArtifactFileName(
-    record.artifactJson as Parameters<
-      typeof createHgoStagedProjectionArtifactFileName
-    >[0],
+    parsedArtifact.artifact,
   );
   const publishCandidateJson = JSON.stringify(packet, null, 2);
   const publishCandidateFileName =
@@ -159,6 +176,8 @@ export default async function TeamHgoPublishQueueDetailPage({
   const publishReviewBriefJson = JSON.stringify(reviewBrief, null, 2);
   const publishReviewBriefFileName =
     createHgoEpisodePublishReviewBriefFileName(reviewBrief);
+  const publishDraftJson = JSON.stringify(publishDraft, null, 2);
+  const publishDraftFileName = createHgoEpisodePublishDraftFileName(publishDraft);
   const isReady =
     packet.readiness.state === "ready-for-human-publish-review";
 
@@ -196,8 +215,18 @@ export default async function TeamHgoPublishQueueDetailPage({
               This is the private operator view for one saved staged artifact.
               It gathers the immutable artifact, publish-candidate packet, and
               publish-review brief before any public route or content file is
-              created.
+              created. It can also derive a private publish-draft packet and
+              render preview without writing public content.
             </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+                href={`/team/hgo-publish-queue/${encodeURIComponent(record.recordId)}/preview`}
+              >
+                <Eye aria-hidden="true" className="h-4 w-4" />
+                Private Render Preview
+              </Link>
+            </div>
           </div>
 
           <SectionBlock
@@ -265,7 +294,15 @@ export default async function TeamHgoPublishQueueDetailPage({
             icon={<FileJson aria-hidden="true" className="h-4 w-4" />}
           >
             <div className="grid gap-3">
-              {reviewBrief.proposedWork.files.map((file) => (
+              {[
+                ...reviewBrief.proposedWork.files,
+                {
+                  path: publishDraft.proposedFiles.privateDraftPath,
+                  purpose:
+                    "Generated private MDX draft target carried in the publish-draft packet.",
+                  status: "proposed-not-created" as const,
+                },
+              ].map((file) => (
                 <div
                   className="rounded-xl border border-white/10 bg-white/6 p-3"
                   key={`${file.path}-${file.status}`}
@@ -299,6 +336,38 @@ export default async function TeamHgoPublishQueueDetailPage({
               ))}
             </div>
           </SectionBlock>
+
+          <SectionBlock
+            title="Draft Packet"
+            icon={<FileJson aria-hidden="true" className="h-4 w-4" />}
+            tone="warning"
+          >
+            <p className="m-0 text-sm leading-6">
+              The generated draft packet includes a private MDX draft body and
+              proposed frontmatter. It is review material only and does not
+              write files or publish the proposed route.
+            </p>
+            <DefinitionList
+              rows={[
+                {
+                  label: "Draft file",
+                  value: <code>{publishDraft.proposedFiles.privateDraftPath}</code>,
+                },
+                {
+                  label: "Deferred public file",
+                  value: <code>{publishDraft.proposedFiles.deferredPublicPath}</code>,
+                },
+                {
+                  label: "Citation review",
+                  value: publishDraft.frontmatter.citationReview,
+                },
+                {
+                  label: "Public safety",
+                  value: publishDraft.frontmatter.publicSafetyReview,
+                },
+              ]}
+            />
+          </SectionBlock>
         </div>
 
         <aside className="space-y-4">
@@ -330,10 +399,6 @@ export default async function TeamHgoPublishQueueDetailPage({
                   value: reviewBrief.safety.createsPublicRoute ? "yes" : "no",
                 },
                 {
-                  label: "Writes content files",
-                  value: reviewBrief.safety.writesContentFiles ? "yes" : "no",
-                },
-                {
                   label: "Mutates database",
                   value: reviewBrief.safety.mutatesDatabase ? "yes" : "no",
                 },
@@ -343,11 +408,15 @@ export default async function TeamHgoPublishQueueDetailPage({
                 },
                 {
                   label: "Publishes live page",
-                  value: reviewBrief.safety.publishesLivePage ? "yes" : "no",
+                  value: publishDraft.safety.publishesLivePage ? "yes" : "no",
                 },
                 {
                   label: "Mutates artifact",
-                  value: reviewBrief.safety.mutatesStagedArtifact ? "yes" : "no",
+                  value: publishDraft.safety.mutatesStagedArtifact ? "yes" : "no",
+                },
+                {
+                  label: "Writes content files",
+                  value: publishDraft.safety.writesContentFiles ? "yes" : "no",
                 },
               ]}
             />
@@ -392,6 +461,8 @@ export default async function TeamHgoPublishQueueDetailPage({
         publishCandidateJson={publishCandidateJson}
         publishReviewBriefFileName={publishReviewBriefFileName}
         publishReviewBriefJson={publishReviewBriefJson}
+        publishDraftFileName={publishDraftFileName}
+        publishDraftJson={publishDraftJson}
       />
     </section>
   );

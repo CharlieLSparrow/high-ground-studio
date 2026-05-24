@@ -15,6 +15,11 @@ import {
   HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND,
   HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND,
 } from "../apps/web/src/lib/hgo/publish-candidate-packet.ts";
+import {
+  createHgoEpisodePublishDraftFileName,
+  createHgoEpisodePublishDraftPacket,
+  HGO_EPISODE_PUBLISH_DRAFT_PACKET_KIND,
+} from "../apps/web/src/lib/hgo/publish-draft-packet.ts";
 
 function createCandidateProjection(overrides = {}) {
   return {
@@ -74,6 +79,48 @@ function createStoredRecord(overrides = {}) {
     createdAt: "2026-05-24T12:10:00.000Z",
     updatedAt: "2026-05-24T12:15:00.000Z",
     ...(overrides.record ?? {}),
+  };
+}
+
+function createArtifactAndRecord(overrides = {}) {
+  const projection = createCandidateProjection(overrides.projection ?? {});
+  const validation = validateHgoEpisodeProjection(projection);
+  const reviewGate = createHgoProjectionReviewGate(projection);
+  const artifact = createHgoStagedProjectionArtifact({
+    projection,
+    reviewGate,
+    validationWarnings: validation.warnings,
+    validationErrors: validation.errors,
+    createdAt: "2026-05-24T12:05:00.000Z",
+    artifactId: "synthetic-candidate-artifact",
+  });
+  const built = buildHgoStagedArtifactStoreRecordInput({
+    artifactJson: JSON.stringify(artifact),
+    ownerEmail: "charlie@example.test",
+    ownerUserId: "user-synthetic",
+    now: "2026-05-24T12:10:00.000Z",
+  });
+
+  assert.equal(built.ok, true);
+
+  return {
+    artifact,
+    record: {
+      ...built.record,
+      id: "synthetic-db-id",
+      reviewStatus: "approved-for-future-staging",
+      promotionReadiness: "candidate",
+      blockerCount: 0,
+      warningCount: 0,
+      containsRealContent: "false",
+      eventCount: 1,
+      reviewedAt: "2026-05-24T12:15:00.000Z",
+      reviewedByEmail: "charlie@example.test",
+      archivedAt: null,
+      createdAt: "2026-05-24T12:10:00.000Z",
+      updatedAt: "2026-05-24T12:15:00.000Z",
+      ...(overrides.record ?? {}),
+    },
   };
 }
 
@@ -165,6 +212,50 @@ test("creates a private publish-review brief from a candidate packet", () => {
   assert.equal(
     createHgoEpisodePublishReviewBriefFileName(brief),
     "synthetic-candidate-projection.hgo-episode-publish-review-brief.json",
+  );
+});
+
+test("creates a private publish-draft packet without public side effects", () => {
+  const { artifact, record } = createArtifactAndRecord();
+  const candidate = createHgoEpisodePublishCandidatePacket({
+    record,
+    createdAt: "2026-05-24T12:20:00.000Z",
+  });
+  const packet = createHgoEpisodePublishDraftPacket({
+    artifact,
+    candidate,
+    createdAt: "2026-05-24T12:30:00.000Z",
+  });
+
+  assert.equal(packet.packetKind, HGO_EPISODE_PUBLISH_DRAFT_PACKET_KIND);
+  assert.equal(packet.createdAt, "2026-05-24T12:30:00.000Z");
+  assert.equal(packet.episodePage.proposedRoute, "/episodes/synthetic-candidate-projection");
+  assert.equal(
+    packet.proposedFiles.privateDraftPath,
+    "apps/web/content/_staging/hgo/synthetic-candidate-projection.mdx",
+  );
+  assert.equal(
+    packet.proposedFiles.deferredPublicPath,
+    "apps/web/content/publish/synthetic-candidate-projection.mdx",
+  );
+  assert.equal(packet.frontmatter.access, "private-review");
+  assert.equal(packet.frontmatter.status, "draft");
+  assert.equal(packet.frontmatter.citationReview, "not-certified");
+  assert.equal(packet.frontmatter.publicSafetyReview, "not-certified");
+  assert.match(packet.mdxDraft, /# Synthetic Candidate Projection/);
+  assert.match(packet.mdxDraft, /## Episode Beats/);
+  assert.match(packet.mdxDraft, /Citation review and public-safety review are not certified/);
+  assert.equal(packet.safety.writesContentFiles, false);
+  assert.equal(packet.safety.createsPublicRoute, false);
+  assert.equal(packet.safety.publishesLivePage, false);
+  assert.equal(packet.safety.mutatesDatabase, false);
+  assert.equal(packet.safety.callsProviders, false);
+  assert.equal(packet.safety.certifiesCitationReview, false);
+  assert.equal(packet.safety.certifiesPublicSafety, false);
+  assert.equal(packet.safety.mutatesStagedArtifact, false);
+  assert.equal(
+    createHgoEpisodePublishDraftFileName(packet),
+    "synthetic-candidate-projection.hgo-episode-publish-draft.json",
   );
 });
 

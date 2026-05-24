@@ -30,6 +30,10 @@ The first private persistence slice exists:
   `/team/hgo-publish-queue/[recordId]`
 - derived `hgo-episode-publish-review-brief-v1` packets for operator/agent
   handoff before any public route work starts
+- derived `hgo-episode-publish-draft-v1` packets with proposed private MDX
+  drafts and frontmatter
+- private per-artifact render previews at
+  `/team/hgo-publish-queue/[recordId]/preview`
 
 The API is team-gated through the existing internal role rules. It saves only
 validated `hgo-staged-artifact-v1` packets, keeps the embedded browser artifact
@@ -70,6 +74,19 @@ copy/download handoff controls. The review brief is still private planning
 metadata only. Generating it does not create public routes, write content
 files, mutate the database, call providers, mutate the staged artifact, publish
 a live page, or certify public-safety review.
+
+The detail page can also derive an `hgo-episode-publish-draft-v1` packet. That
+packet carries proposed private MDX frontmatter/body text, the deferred public
+file target, artifact identity, review blockers/warnings, and explicit safety
+flags. It is a handoff packet, not a writer. Generating it does not write
+`apps/web/content/_staging`, does not write `apps/web/content/publish`, does
+not create a public route, does not mutate stored artifacts, does not call
+providers, and does not certify citation or public-safety review.
+
+`/team/hgo-publish-queue/[recordId]/preview` renders the embedded projection
+from the saved staged artifact through the shared HGO projection renderer. This
+is the private page-shape review surface before public `/episodes` work starts.
+It is team-gated, read-only, and still separate from live publishing.
 
 ## Why This Came After The Lab
 
@@ -145,9 +162,12 @@ API/server actions should remain private and explicit:
 - archive staged artifact: implemented
 - derive private episode-page publish-candidate packet: implemented
 - derive private episode-page publish-review brief: implemented
+- derive private episode-page publish-draft packet: implemented
 - copy/download/reopen saved artifact handoff: implemented in the team route
 - view private episode publish queue: implemented at `/team/hgo-publish-queue`
 - load one staged artifact by id: implemented for private queue detail pages
+- render one private staged artifact as a publish preview: implemented at
+  `/team/hgo-publish-queue/[recordId]/preview`
 - later, create a separate promotion candidate
 
 No API should publish public pages as a side effect of saving a staged artifact.
