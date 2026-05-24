@@ -6,6 +6,46 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` HGO publish review detail
+
+- Added a private per-artifact review detail route at
+  `/team/hgo-publish-queue/[recordId]`.
+- Added `hgo-episode-publish-review-brief-v1` packets derived from
+  publish-candidate packets. The brief carries proposed future file targets,
+  validation commands, safety flags, blockers/warnings, and rollback notes for
+  operator/agent handoff.
+- Extended the saved artifact handoff controls so detail pages can copy or
+  download the review brief alongside immutable artifact JSON and the
+  publish-candidate packet.
+- Guardrails preserved: no public route creation, no content-file mutation, no
+  staged artifact mutation, no provider calls, no public-safety certification,
+  no live publish action, and no `/episodes` replacement.
+- Validation passed: `pnpm hgo:publish-candidate:test`,
+  `pnpm progress:story:test`, `pnpm web:cloudrun:test`,
+  `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+- The Turbopack `pnpm --filter web build` path was stopped after the known
+  long-running hang; webpack build remains the documented production gate and
+  passed.
+- Local functional commit: `05140de`
+  `feat(web): add HGO publish review detail`.
+- Pushed final deploy head `0d4b29b`
+  `docs: log HGO publish review detail`.
+- GitHub Actions run `26372364439` completed successfully:
+  - Web revision `web-00050-6wd`, serving 100%.
+  - Studio deploy skipped because this slice did not touch Studio runtime
+    paths.
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new publish-review-detail story entry.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue` returned the
+    expected unauthenticated team sign-in redirect.
+  - `https://app.highgroundodyssey.com/team/hgo-publish-queue/synthetic-record`
+    returned the expected unauthenticated team sign-in redirect.
+- Post-deploy readiness test passed: `pnpm web:cloudrun:test`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00049-6jd=100`
+
 ### Codex / `main` Studio full-packet HGO handoff
 
 - Updated Content Studio so `Copy Packet + Open HGO` copies the full selected
