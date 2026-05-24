@@ -28,7 +28,7 @@ and web deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | runtime deploy `b07c73d` plus docs/story follow-ups | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, and private HGO staged artifact store are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | story deploy `070f460` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, and latest progress story are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -111,8 +111,9 @@ and web deploy on 2026-05-24.
     authenticated/team-gated
   - live schema was synced by Cloud Run Job `web-db-push-b07c73d`
 - current live revision:
-  - `web-00019-tkx` from `main` commit `b07c73d`
-  - rollback to `web-00018-wjt`
+  - runtime code deployed as `web-00019-tkx` from `main` commit `b07c73d`
+  - latest web/story deploy is `web-00021-t2b` from `main` commit `070f460`
+  - rollback to `web-00019-tkx`
 
 ### WorldHub / Business Infrastructure
 

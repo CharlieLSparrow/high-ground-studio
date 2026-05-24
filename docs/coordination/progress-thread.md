@@ -419,3 +419,20 @@ checks, blockers, and next handoff.
   - Web `/team/hgo-staged-artifacts` unauthenticated sign-in redirect
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00018-wjt=100`
+
+### Codex / `main` progress-story follow-up
+
+- Added the team-readable story entry
+  `hgo-private-staged-artifact-store` to
+  `apps/web/content/internal/progress-story.json`.
+- Committed and pushed as `070f460`:
+  `docs: record HGO staged artifact deploy`.
+- Deployed web with Cloud Build `b46b2390-bc95-4a25-ada5-fec820a3a1fe`.
+- Web revision `web-00021-t2b` is serving 100% with image `web:070f460`.
+- Live smokes passed:
+  - Web `/api/health`
+  - Web `/`
+  - Web `/projection-stage/import`
+  - Web `/team/progress` unauthenticated redirect
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00019-tkx=100`
