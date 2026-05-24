@@ -153,6 +153,9 @@ pnpm studio-cut:local:render-rescue-sync-session -- \
 
 Remove `--dry-run` to write
 `~/Movies/StudioCut/episode-004/renders/episode-004-youtube-16x9.mp4`.
+When `--episode-id` is omitted, the command reads `generated/episode-manifest.json`,
+`generated/sync-map.json`, or `generated/sync-job.json` before falling back to
+the folder name.
 
 Validate a generated manifest and local media map before rendering:
 

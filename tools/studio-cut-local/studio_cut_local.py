@@ -938,8 +938,6 @@ def execute_agent_smoke_test(
                     sys.executable,
                     str(script_path),
                     "render-rescue-sync-session",
-                    "--episode-id",
-                    str(manifest["id"]),
                     "--episode-dir",
                     str(rescue_session_dir),
                     "--dry-run",
@@ -3091,12 +3089,37 @@ def run_rescue_sync_session(args: argparse.Namespace) -> int:
     return 0
 
 
+def infer_rescue_sync_episode_id(episode_dir: Path) -> str:
+    generated_dir = episode_dir / "generated"
+    candidates = [
+        (generated_dir / "episode-manifest.json", "id"),
+        (generated_dir / "sync-map.json", "projectId"),
+        (generated_dir / "sync-job.json", "projectId"),
+    ]
+
+    for path, key in candidates:
+        if not path.is_file():
+            continue
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        if isinstance(payload, dict) and isinstance(payload.get(key), str):
+            value = payload[key].strip()
+            if value:
+                return value
+
+    return episode_dir.name
+
+
 def run_rescue_sync_status(args: argparse.Namespace) -> int:
     episode_dir = args.episode_dir.expanduser().resolve() if args.episode_dir else None
     episode_id = args.episode_id.strip() if args.episode_id else None
 
     if not episode_id and episode_dir:
-        episode_id = episode_dir.name
+        episode_id = infer_rescue_sync_episode_id(episode_dir)
 
     if not episode_id:
         raise StudioCutCliError("--episode-id is required when --episode-dir is not supplied")
@@ -3122,7 +3145,7 @@ def run_render_rescue_sync_session(args: argparse.Namespace) -> int:
     episode_id = args.episode_id.strip() if args.episode_id else None
 
     if not episode_id and episode_dir:
-        episode_id = episode_dir.name
+        episode_id = infer_rescue_sync_episode_id(episode_dir)
 
     if not episode_id:
         raise StudioCutCliError("--episode-id is required when --episode-dir is not supplied")

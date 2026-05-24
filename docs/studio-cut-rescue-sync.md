@@ -179,7 +179,8 @@ python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session \
 ```
 
 Remove `--dry-run` to write the rough output into the session `renders/`
-directory.
+directory. If `--episode-id` is omitted, the wrapper reads the generated
+manifest, Sync Map, or sync job before falling back to the folder name.
 
 The web editor's `Local Render Handoff` panel mirrors this flow while tagging:
 it shows the expected decision filename, whether a Sync Map is attached, and the
