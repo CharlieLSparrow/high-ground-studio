@@ -592,6 +592,16 @@ private footage, local paths, credentials, or real episode metadata.
 
 ## Publish Test
 
+Before publishing, run the validator and keep the printed package fingerprint:
+
+\`\`\`bash
+pnpm studio-cut:local:validate-package -- \\
+  --manifest ${files.manifest} \\
+  --proxy ${files.sourceMonitorProxy} \\
+  --sync-map ${files.syncMap} \\
+  --sync-report ${files.syncReport}
+\`\`\`
+
 1. Open \`https://high-ground-odyssey.web.app\`.
 2. Sign in with an approved High Ground Google account.
 3. Switch Collaboration Mode to:
@@ -607,6 +617,7 @@ private footage, local paths, credentials, or real episode metadata.
    - room metadata loaded
    - shared proxy loaded
    - package: Rescue Sync
+   - package fingerprint matches the validator output
    - Sync Map attached
    - sync report attached
 7. Optional: seed the room with demo edit data:

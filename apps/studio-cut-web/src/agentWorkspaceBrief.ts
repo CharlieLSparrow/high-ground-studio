@@ -53,6 +53,8 @@ export type AgentWorkspaceBrief = {
   collaboration: {
     sharedRoomLoaded: boolean;
     packageKind?: string;
+    packageFingerprint?: string;
+    packageIntegrityAttached: boolean;
     syncMapAttached: boolean;
     syncReportAttached: boolean;
   };
@@ -145,7 +147,10 @@ export function buildAgentWorkspaceBrief({
   persistenceStatus: PersistenceStatus;
   sharedRoomMetadata?: Pick<
     SharedRoomMetadata,
-    "packageKind" | "syncMapStoragePath" | "syncReportStoragePath"
+    | "packageKind"
+    | "packageIntegrity"
+    | "syncMapStoragePath"
+    | "syncReportStoragePath"
   > | null;
   syncReview: {
     status: string;
@@ -219,6 +224,8 @@ export function buildAgentWorkspaceBrief({
     collaboration: {
       sharedRoomLoaded: Boolean(sharedRoomMetadata),
       packageKind: sharedRoomMetadata?.packageKind,
+      packageFingerprint: sharedRoomMetadata?.packageIntegrity?.packageFingerprint,
+      packageIntegrityAttached: Boolean(sharedRoomMetadata?.packageIntegrity),
       syncMapAttached: Boolean(
         sharedRoomMetadata?.syncMapStoragePath || syncReview.syncMap,
       ),

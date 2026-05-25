@@ -57,6 +57,8 @@ const events = [
   },
 ];
 
+const HASH_A = "a".repeat(64);
+
 test("agent workspace brief summarizes room context without local object URLs", () => {
   const brief = buildAgentWorkspaceBrief({
     exportedAt: "2026-05-24T00:02:00.000Z",
@@ -118,4 +120,60 @@ test("agent workspace brief summarizes room context without local object URLs", 
   const serialized = JSON.stringify(brief);
   assert(!serialized.includes("blob:http://localhost"));
   assert(!serialized.includes("/private/tmp"));
+});
+
+test("agent workspace brief includes shared room package integrity status", () => {
+  const brief = buildAgentWorkspaceBrief({
+    exportedAt: "2026-05-24T00:02:00.000Z",
+    projectId: "episode-004",
+    branchId: "main",
+    manifest,
+    sourceDurationMs: 12000,
+    currentSourceTimeMs: 3000,
+    currentState: "both",
+    persistenceStatus: {
+      mode: "cloud_connected",
+      label: "Cloud connected",
+      detail: "Synthetic cloud test.",
+      path: "studioCutProjects/episode-004/branches/main/decisionEvents",
+    },
+    sharedRoomMetadata: {
+      packageKind: "rescue_sync_generated",
+      packageIntegrity: {
+        manifest: {
+          fileName: "episode-manifest.json",
+          sizeBytes: 512,
+          sha256: HASH_A,
+        },
+        sourceMonitorProxy: {
+          fileName: "source-monitor-proxy.mp4",
+          sizeBytes: 1024,
+          sha256: HASH_A,
+        },
+        syncMap: {
+          fileName: "sync-map.json",
+          sizeBytes: 768,
+          sha256: HASH_A,
+        },
+        packageFingerprint: HASH_A,
+      },
+      syncMapStoragePath:
+        "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-map.json",
+      syncReportStoragePath:
+        "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-report.json",
+    },
+    syncReview: {
+      status: "loaded",
+      message: "Sync Map loaded.",
+    },
+    allDecisionEvents: events,
+    derivedSegments: [],
+    warnings: [],
+  });
+
+  assert.equal(brief.collaboration.packageKind, "rescue_sync_generated");
+  assert.equal(brief.collaboration.packageIntegrityAttached, true);
+  assert.equal(brief.collaboration.packageFingerprint, HASH_A);
+  assert.equal(brief.collaboration.syncMapAttached, true);
+  assert.equal(brief.collaboration.syncReportAttached, true);
 });

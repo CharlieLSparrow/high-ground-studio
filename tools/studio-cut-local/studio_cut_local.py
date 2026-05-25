@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -4978,6 +4979,7 @@ def build_generated_package_validation_report(
         "proxy": None,
         "syncMap": None,
         "syncReport": None,
+        "packageIntegrity": None,
         "publishChecklist": None,
         "warnings": [],
         "errors": [],
@@ -5119,6 +5121,12 @@ def build_generated_package_validation_report(
     if manifest and sync_map and proxy_path.is_file() and not errors:
         project_id = normalize_publish_id(str(manifest["id"]))
         branch_id = normalize_publish_id(str(sync_map["branchId"]), fallback="main")
+        report["packageIntegrity"] = build_generated_package_integrity_report(
+            manifest_path=manifest_path,
+            proxy_path=proxy_path,
+            sync_map_path=sync_map_path,
+            sync_report_path=sync_report_path if sync_report else None,
+        )
         report["publishChecklist"] = {
             "studioCutUrl": "https://high-ground-odyssey.web.app",
             "shareUrl": (
@@ -5133,8 +5141,12 @@ def build_generated_package_validation_report(
                 "syncMap": str(sync_map_path),
                 **({"syncReport": str(sync_report_path)} if sync_report_path else {}),
             },
+            "expectedPackageFingerprint": report["packageIntegrity"][
+                "packageFingerprint"
+            ],
             "postPublishChecks": [
                 "Shared Room Diagnostics shows room metadata, manifest, proxy, Sync Map, and optional sync report attached.",
+                "Shared Room Diagnostics package fingerprint matches this validation report.",
                 "Sync Review shows the Sync Map job id, canonical duration, reference pieces, offset count, confidence, and warning count.",
                 "Mako can open the room link without importing JSON or loading local media.",
             ],
@@ -5142,6 +5154,92 @@ def build_generated_package_validation_report(
 
     report["status"] = "ready" if not errors else "blocked"
     return report
+
+
+def build_generated_package_integrity_report(
+    *,
+    manifest_path: Path,
+    proxy_path: Path,
+    sync_map_path: Path,
+    sync_report_path: Path | None,
+) -> dict[str, Any]:
+    manifest_sha256 = sha256_file(manifest_path)
+    proxy_sha256 = sha256_file(proxy_path)
+    sync_map_sha256 = sha256_file(sync_map_path)
+    sync_report_sha256 = sha256_file(sync_report_path) if sync_report_path else None
+    package_fingerprint = sha256_text(
+        build_package_fingerprint_seed(
+            manifest_sha256=manifest_sha256,
+            source_monitor_proxy_sha256=proxy_sha256,
+            sync_map_sha256=sync_map_sha256,
+            sync_report_sha256=sync_report_sha256,
+        )
+    )
+
+    return {
+        "manifest": build_package_artifact_integrity(
+            path=manifest_path,
+            sha256=manifest_sha256,
+        ),
+        "sourceMonitorProxy": build_package_artifact_integrity(
+            path=proxy_path,
+            sha256=proxy_sha256,
+        ),
+        "syncMap": build_package_artifact_integrity(
+            path=sync_map_path,
+            sha256=sync_map_sha256,
+        ),
+        **(
+            {
+                "syncReport": build_package_artifact_integrity(
+                    path=sync_report_path,
+                    sha256=sync_report_sha256,
+                )
+            }
+            if sync_report_path and sync_report_sha256
+            else {}
+        ),
+        "packageFingerprint": package_fingerprint,
+    }
+
+
+def build_package_artifact_integrity(*, path: Path, sha256: str) -> dict[str, Any]:
+    return {
+        "fileName": path.name,
+        "sizeBytes": path.stat().st_size,
+        "sha256": sha256,
+    }
+
+
+def build_package_fingerprint_seed(
+    *,
+    manifest_sha256: str,
+    source_monitor_proxy_sha256: str,
+    sync_map_sha256: str,
+    sync_report_sha256: str | None,
+) -> str:
+    return "|".join(
+        [
+            f"manifest:{manifest_sha256}",
+            f"sourceMonitorProxy:{source_monitor_proxy_sha256}",
+            f"syncMap:{sync_map_sha256}",
+            f"syncReport:{sync_report_sha256 or 'none'}",
+        ]
+    )
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+
+    with path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+
+    return digest.hexdigest()
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def build_episode_file_validation_report(
@@ -5603,6 +5701,32 @@ def print_generated_package_validation_report(report: dict[str, Any]) -> None:
         print(f"  lowest confidence: {format_percent(sync_report['lowestConfidence'])}")
         print(f"  warnings: {sync_report['warningCount']}")
 
+    if report.get("packageIntegrity"):
+        integrity = report["packageIntegrity"]
+        print("\nPackage integrity:")
+        print(f"  fingerprint: {format_digest(integrity['packageFingerprint'])}")
+        print(
+            "  manifest: "
+            f"{integrity['manifest']['fileName']} "
+            f"{format_digest(integrity['manifest']['sha256'])}"
+        )
+        print(
+            "  proxy: "
+            f"{integrity['sourceMonitorProxy']['fileName']} "
+            f"{format_digest(integrity['sourceMonitorProxy']['sha256'])}"
+        )
+        print(
+            "  Sync Map: "
+            f"{integrity['syncMap']['fileName']} "
+            f"{format_digest(integrity['syncMap']['sha256'])}"
+        )
+        if integrity.get("syncReport"):
+            print(
+                "  sync report: "
+                f"{integrity['syncReport']['fileName']} "
+                f"{format_digest(integrity['syncReport']['sha256'])}"
+            )
+
     if report["warnings"]:
         print("\nWarnings:")
         for warning in report["warnings"]:
@@ -5618,6 +5742,11 @@ def print_generated_package_validation_report(report: dict[str, Any]) -> None:
         print("\nPublish checklist:")
         print(f"  Studio Cut: {checklist['studioCutUrl']}")
         print(f"  Room link: {checklist['shareUrl']}")
+        if checklist.get("expectedPackageFingerprint"):
+            print(
+                "  Expected package fingerprint: "
+                f"{format_digest(checklist['expectedPackageFingerprint'])}"
+            )
         print("  Select these files in Publish Rescue Sync Package:")
         for label, path_value in checklist["files"].items():
             print(f"    - {label}: {path_value}")
@@ -7284,6 +7413,13 @@ def format_time_ms(value: int | float) -> str:
 
 def format_percent(value: int | float) -> str:
     return f"{round(max(0, min(1, float(value))) * 100)}%"
+
+
+def format_digest(value: str) -> str:
+    if len(value) <= 20:
+        return value
+
+    return f"{value[:12]}...{value[-6:]}"
 
 
 def utc_now_iso() -> str:

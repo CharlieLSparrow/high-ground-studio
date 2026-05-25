@@ -114,9 +114,10 @@ python tools/studio-cut-local/studio_cut_local.py validate-generated-package \
 ```
 
 This checks JSON shape, manifest/Sync Map compatibility, proxy duration and
-resolution, sync report job id, local-path leakage, and prints the exact
-publish checklist plus expected `Sync Review` confirmation. The same command is
-available through pnpm:
+resolution, sync report job id, local-path leakage, and computes SHA-256
+digests plus the expected package fingerprint. After publishing, the fingerprint
+printed here should match Shared Room Diagnostics in the web app. The same
+command is available through pnpm:
 
 ```bash
 pnpm studio-cut:local:validate-package -- \

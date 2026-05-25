@@ -183,6 +183,9 @@ report from Storage and summarizes the sync job, canonical duration, asset
 roles, reference pieces, offset count, confidence, and warnings. Use that panel
 as the browser-side confirmation that a shared room was published from Rescue
 Sync outputs rather than a loose proxy-only package.
+Run `pnpm studio-cut:local:validate-package -- ...` before publish; it prints
+the expected package fingerprint. After publish, Shared Room Diagnostics should
+show the same fingerprint for the room.
 
 Generate a safe package for testing that UI path:
 
