@@ -465,7 +465,10 @@ python tools/studio-cut-local/studio_cut_local.py agent-edit-session \
 This writes the workspace index, transcript-aware edit review,
 `agent-suggested-ops.json`, a concise `agent-edit-session.md` rationale, and an
 optional preview decision file. It does not mutate the original decision export
-and still only touches the semantic decision layer.
+and still only touches the semantic decision layer. In a render-ready Rescue
+Sync workspace, it also writes `renders/<episode-id>-render-qa.json` and an
+inspection checklist that points agents at transcript issues, black padding,
+missing video coverage, or silence padding before a rough render.
 
 The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
 It previews the operation JSON before applying it, shows add/range/remove

@@ -165,9 +165,11 @@ python tools/studio-cut-local/studio_cut_local.py agent-edit-session \
 It writes `generated/agent-edit-review.json`,
 `generated/agent-suggested-ops.json`, and
 `generated/agent-edit-session.md`. If a transcript exists at
-`edit/episode-004-transcript.json`, it is included automatically. The preview
-decision file is a copy for inspection; do not replace the real export until the
-suggested operations make sense.
+`edit/episode-004-transcript.json`, it is included automatically. If the
+workspace has the generated Sync Map and local media map, it also writes
+`renders/episode-004-render-qa.json` and an inspection checklist for the next
+human/agent pass. The preview decision file is a copy for inspection; do not
+replace the real export until the suggested operations make sense.
 
 Use that status report as the checklist. It says what is missing, whether the
 generated package is ready to publish, whether exported decisions are present,

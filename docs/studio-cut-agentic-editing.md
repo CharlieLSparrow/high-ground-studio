@@ -265,6 +265,10 @@ The command finds the standard workspace files, writes a fresh sanitized
 `generated/agent-edit-review.json`, writes
 `generated/agent-suggested-ops.json`, and produces a concise
 `generated/agent-edit-session.md` rationale for a human or agent to inspect.
+When `generated/sync-map.json`, `generated/local-media-map.json`, and an
+exported decision file are present, it also writes
+`renders/<episode-id>-render-qa.json` in dry-run mode and folds render coverage
+warnings into an `inspectionChecklist`.
 
 If a transcript exists at `edit/<episode-id>-transcript.json`,
 `edit/episode-transcript.json`, `edit/transcript.json`, or the matching
@@ -277,6 +281,12 @@ operations to a copy of the current decision export; it does not mutate the
 original. Treat it as a preview/checkpoint until a human accepts it or imports
 the operation JSON in the browser cockpit.
 
+The `inspectionChecklist` is the shortest agent-facing todo list for the next
+pass. It combines transcript-aware edit tasks with render QA warnings such as
+black padding, missing video coverage, or silence padding. Paths remain relative
+to the episode workspace and the render QA does not include local original media
+paths.
+
 ## Current Limits
 
 - Agents still need human judgment for content taste, rhythm, and clip choice.
@@ -288,10 +298,12 @@ the operation JSON in the browser cockpit.
 - The web cockpit can preview/apply operation JSON, but agents still need
   source notes or operator instructions before they can make high-quality
   creative choices.
+- Render QA is structural. It can catch coverage and audio-source issues before
+  a render, but it does not judge whether the edit feels good.
 
 ## Next Agent-Friendly Steps
 
 - Add stronger review reports for awkward camera holds, long silence, repeated
   Cut spans, and missing Clip context.
-- Teach the one-command agent edit session to include Sync Map render QA and
-  transcript/proxy screenshots when those artifacts exist.
+- Add optional proxy screenshots or contact sheets beside the inspection
+  checklist so agents can reason from visuals without opening private media.

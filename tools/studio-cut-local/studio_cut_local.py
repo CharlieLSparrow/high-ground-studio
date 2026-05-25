@@ -2364,6 +2364,209 @@ def summarize_agent_operation_preview(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_agent_session_render_qa(
+    *,
+    session: dict[str, Any],
+    decisions_path: Path,
+    profile: str,
+    qa_path: Path,
+    render_output_path: Path,
+) -> dict[str, Any]:
+    sync_map_path = session["syncMapPath"]
+    media_map_path = session["localMediaMapPath"]
+
+    if profile != "youtube_16x9":
+        raise StudioCutCliError("agent render QA currently supports profile youtube_16x9")
+
+    sync_map = load_sync_map(sync_map_path)
+    decisions_payload = load_json_file(decisions_path, "decisions")
+    decision_events = parse_decision_events(decisions_payload)
+    media_map = load_sync_map_render_media_map(media_map_path)
+    manifest = build_manifest_from_sync_map(sync_map)
+    plan = build_render_plan(
+        manifest=manifest,
+        decision_events=decision_events,
+        profile=profile,
+        manifest_path=sync_map_path,
+        decisions_path=decisions_path,
+    )
+
+    if not plan["activeSegments"]:
+        raise StudioCutCliError("render QA skipped because the decision export has no active segments")
+
+    resolved_media = build_sync_map_render_media(
+        sync_map=sync_map,
+        media_map=media_map,
+        media_map_path=media_map_path,
+        segments=plan["activeSegments"],
+        require_existing=False,
+    )
+    qa_report = build_sync_map_render_qa_report(
+        sync_map=sync_map,
+        plan=plan,
+        media_map=media_map,
+        media_map_path=media_map_path,
+        resolved_media=resolved_media,
+        out_path=render_output_path,
+        dry_run=True,
+    )
+    write_json(qa_path, qa_report)
+    return qa_report
+
+
+def summarize_agent_render_qa(render_qa: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(render_qa, dict):
+        return {"available": False}
+
+    summary = render_qa.get("summary")
+    if not isinstance(summary, dict):
+        return {"available": False}
+
+    return {
+        "available": True,
+        "renderMode": render_qa.get("renderMode"),
+        "outputFileName": render_qa.get("outputFileName"),
+        "segmentCount": summary.get("segmentCount", 0),
+        "activeDurationMs": summary.get("activeDurationMs", 0),
+        "cutDurationMs": summary.get("cutDurationMs", 0),
+        "audioMode": summary.get("audioMode", "unknown"),
+        "videoPartialCoverageSegmentCount": summary.get(
+            "videoPartialCoverageSegmentCount", 0
+        ),
+        "videoFullyMissingRoleCount": summary.get("videoFullyMissingRoleCount", 0),
+        "totalBlackPaddingMs": summary.get("totalBlackPaddingMs", 0),
+        "silencePaddingMs": summary.get("silencePaddingMs", 0),
+        "warningCount": summary.get("warningCount", 0),
+    }
+
+
+def extract_agent_task_time(task: dict[str, Any]) -> tuple[int | None, int | None]:
+    start_ms = task.get("startSourceTimeMs", task.get("sourceTimeMs"))
+    end_ms = task.get("endSourceTimeMs")
+
+    suggested = task.get("suggestedOperation")
+    if isinstance(suggested, dict):
+        start_ms = start_ms if start_ms is not None else suggested.get("startSourceTimeMs")
+        start_ms = start_ms if start_ms is not None else suggested.get("sourceTimeMs")
+        end_ms = end_ms if end_ms is not None else suggested.get("endSourceTimeMs")
+
+    try:
+        start_value = int(round(float(start_ms))) if start_ms is not None else None
+    except (TypeError, ValueError):
+        start_value = None
+
+    try:
+        end_value = int(round(float(end_ms))) if end_ms is not None else None
+    except (TypeError, ValueError):
+        end_value = None
+
+    return start_value, end_value
+
+
+def build_agent_inspection_checklist(
+    *,
+    review: dict[str, Any] | None,
+    render_qa: dict[str, Any] | None,
+    limit: int = 18,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+
+    if isinstance(review, dict):
+        for task in review.get("tasks", []):
+            if not isinstance(task, dict):
+                continue
+
+            start_ms, end_ms = extract_agent_task_time(task)
+            kind = str(task.get("kind") or "review_task")
+            priority = str(task.get("priority") or "medium")
+            message = str(task.get("message") or task.get("reason") or kind)
+
+            if not start_ms and start_ms != 0:
+                continue
+
+            items.append(
+                {
+                    "priority": priority if priority in {"high", "medium", "low"} else "medium",
+                    "kind": kind,
+                    "startSourceTimeMs": start_ms,
+                    **({"endSourceTimeMs": end_ms} if end_ms is not None else {}),
+                    **({"state": task.get("state")} if task.get("state") else {}),
+                    "message": message,
+                    "evidence": [
+                        str(value)
+                        for value in (
+                            task.get("evidence", [])
+                            if isinstance(task.get("evidence"), list)
+                            else []
+                        )
+                    ],
+                }
+            )
+
+    if isinstance(render_qa, dict):
+        for segment in render_qa.get("segments", []):
+            if not isinstance(segment, dict):
+                continue
+
+            warnings = [
+                str(warning)
+                for warning in segment.get("warnings", [])
+                if isinstance(warning, str) and warning.strip()
+            ]
+            if not warnings:
+                continue
+
+            source_time = segment.get("sourceTime") if isinstance(segment.get("sourceTime"), dict) else {}
+            start_ms = source_time.get("inMs")
+            end_ms = source_time.get("outMs")
+            try:
+                start_value = int(round(float(start_ms)))
+            except (TypeError, ValueError):
+                start_value = None
+            try:
+                end_value = int(round(float(end_ms)))
+            except (TypeError, ValueError):
+                end_value = None
+
+            if start_value is None:
+                continue
+
+            items.append(
+                {
+                    "priority": "medium",
+                    "kind": "render_qa_warning",
+                    "startSourceTimeMs": start_value,
+                    **({"endSourceTimeMs": end_value} if end_value is not None else {}),
+                    "state": segment.get("programState"),
+                    "message": "; ".join(warnings[:3]),
+                    "evidence": [
+                        f"layout={segment.get('layoutBehavior')}",
+                        f"segmentIndex={segment.get('index')}",
+                    ],
+                }
+            )
+
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    return sorted(
+        items,
+        key=lambda item: (
+            priority_order.get(str(item.get("priority")), 1),
+            int(item.get("startSourceTimeMs") or 0),
+            str(item.get("kind") or ""),
+        ),
+    )[:limit]
+
+
+def format_agent_checklist_time(item: dict[str, Any]) -> str:
+    start_ms = item.get("startSourceTimeMs")
+    end_ms = item.get("endSourceTimeMs")
+    if isinstance(start_ms, int) and isinstance(end_ms, int):
+        return f"{format_time_ms(start_ms)}-{format_time_ms(end_ms)}"
+    if isinstance(start_ms, int):
+        return format_time_ms(start_ms)
+    return "unknown time"
+
+
 def build_agent_edit_session_report(
     *,
     session: dict[str, Any],
@@ -2372,6 +2575,8 @@ def build_agent_edit_session_report(
     review: dict[str, Any] | None,
     suggested_ops: dict[str, Any] | None,
     operation_preview: dict[str, Any] | None,
+    render_qa: dict[str, Any] | None,
+    inspection_checklist: list[dict[str, Any]],
     transcript_path: Path | None,
     output_paths: dict[str, Path],
     preview_decisions_written: bool,
@@ -2448,10 +2653,16 @@ def build_agent_edit_session_report(
             "suggestedOperationCount": suggested_operation_count,
             "approvalRequiredCount": approval_required_count,
             "previewDecisionFileWritten": preview_decisions_written,
+            "inspectionChecklistCount": len(inspection_checklist),
+            "renderQa": summarize_agent_render_qa(render_qa),
             **({"review": review_summary} if review_summary else {}),
             **({"transcriptReview": transcript_review} if transcript_review else {}),
         },
         "operationPreview": operation_preview,
+        "inspectionChecklist": sanitize_agent_workspace_payload(
+            inspection_checklist,
+            episode_dir,
+        ),
         "nextActions": agent_next_actions,
         "warnings": [
             sanitize_agent_workspace_payload(warning, episode_dir)
@@ -2521,7 +2732,20 @@ def build_agent_edit_session_markdown(report: dict[str, Any]) -> str:
         f"- Suggested operations: `{summary['suggestedOperationCount']}`",
         f"- Approval-required operations: `{summary['approvalRequiredCount']}`",
         f"- Preview decision file written: `{yes_no(bool(summary['previewDecisionFileWritten']))}`",
+        f"- Inspection checklist items: `{summary['inspectionChecklistCount']}`",
     ]
+
+    render_qa_summary = summary.get("renderQa") if isinstance(summary, dict) else None
+    if isinstance(render_qa_summary, dict) and render_qa_summary.get("available"):
+        lines.extend(
+            [
+                f"- Render QA mode: `{render_qa_summary.get('renderMode')}`",
+                f"- Render QA audio mode: `{render_qa_summary.get('audioMode')}`",
+                f"- Render QA warnings: `{render_qa_summary.get('warningCount', 0)}`",
+                f"- Render QA black padding: `{format_time_ms(int(render_qa_summary.get('totalBlackPaddingMs') or 0))}`",
+                f"- Render QA silence padding: `{format_time_ms(int(render_qa_summary.get('silencePaddingMs') or 0))}`",
+            ]
+        )
 
     review_summary = summary.get("review")
     if isinstance(review_summary, dict):
@@ -2562,6 +2786,20 @@ def build_agent_edit_session_markdown(report: dict[str, Any]) -> str:
             ]
         )
 
+    inspection_checklist = report.get("inspectionChecklist") or []
+    if inspection_checklist:
+        lines.extend(["", "## Inspection Checklist", ""])
+        for item in inspection_checklist:
+            state = f" state={item.get('state')}" if item.get("state") else ""
+            lines.append(
+                f"- `[{item.get('priority', 'medium')}]` "
+                f"`{format_agent_checklist_time(item)}` "
+                f"`{item.get('kind', 'review_task')}`{state}: {item.get('message')}"
+            )
+            evidence = item.get("evidence")
+            if isinstance(evidence, list) and evidence:
+                lines.append(f"  - Evidence: {'; '.join(str(value) for value in evidence[:3])}")
+
     if report["warnings"]:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {warning}" for warning in report["warnings"])
@@ -2587,6 +2825,7 @@ def print_agent_edit_session_report(report: dict[str, Any]) -> None:
     print(f"Review written: {yes_no(bool(summary['reviewWritten']))}")
     print(f"Suggested operations: {summary['suggestedOperationCount']}")
     print(f"Approval required: {summary['approvalRequiredCount']}")
+    print(f"Inspection checklist: {summary.get('inspectionChecklistCount', 0)} item(s)")
 
     if summary.get("transcriptReview"):
         transcript = summary["transcriptReview"]
@@ -2594,6 +2833,15 @@ def print_agent_edit_session_report(report: dict[str, Any]) -> None:
             "Transcript: "
             f"{transcript['segmentCount']} segment(s), "
             f"{format_percent(transcript['coveragePercent'])} coverage"
+        )
+
+    render_qa = summary.get("renderQa")
+    if isinstance(render_qa, dict) and render_qa.get("available"):
+        print(
+            "Render QA: "
+            f"{render_qa.get('segmentCount', 0)} segment(s), "
+            f"audio={render_qa.get('audioMode')}, "
+            f"warnings={render_qa.get('warningCount', 0)}"
         )
 
     print("\nOutputs:")
@@ -4359,6 +4607,7 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
         "session": out_dir / "agent-edit-session.json",
         "rationale": out_dir / "agent-edit-session.md",
         "previewDecisions": session["editDir"] / f"{episode_id}-agent-preview-decisions.json",
+        "renderQa": session["rendersDir"] / f"{episode_id}-render-qa.json",
     }
 
     workspace_index = build_agent_workspace_index(session, status_report)
@@ -4380,6 +4629,7 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
     review: dict[str, Any] | None = None
     suggested_ops: dict[str, Any] | None = None
     operation_preview: dict[str, Any] | None = None
+    render_qa: dict[str, Any] | None = None
     preview_decisions_written = False
 
     if not manifest_path.is_file():
@@ -4454,9 +4704,38 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
             write_json(output_paths["previewDecisions"], output_payload)
             preview_decisions_written = True
 
+        sync_map_exists = Path(session["syncMapPath"]).is_file()
+        local_media_map_exists = Path(session["localMediaMapPath"]).is_file()
+        if sync_map_exists and local_media_map_exists:
+            try:
+                render_qa = build_agent_session_render_qa(
+                    session=session,
+                    decisions_path=decisions_path,
+                    profile=args.profile,
+                    qa_path=output_paths["renderQa"],
+                    render_output_path=session["rendersDir"]
+                    / f"{episode_id}-youtube-16x9.mp4",
+                )
+            except StudioCutCliError as error:
+                report_warnings.append(f"Render QA unavailable: {error}")
+        elif sync_map_exists or local_media_map_exists:
+            missing = []
+            if not sync_map_exists:
+                missing.append(f"missing Sync Map: {session['syncMapPath']}")
+            if not local_media_map_exists:
+                missing.append(f"missing local media map: {session['localMediaMapPath']}")
+            report_warnings.append(
+                "Render QA skipped because the Rescue Sync render inputs are incomplete: "
+                + "; ".join(missing)
+            )
+
         write_json(output_paths["review"], review)
         write_json(output_paths["suggestedOps"], suggested_ops)
 
+    inspection_checklist = build_agent_inspection_checklist(
+        review=review,
+        render_qa=render_qa,
+    )
     session_report = build_agent_edit_session_report(
         session=session,
         status_report=status_report,
@@ -4464,6 +4743,8 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
         review=review,
         suggested_ops=suggested_ops,
         operation_preview=operation_preview,
+        render_qa=render_qa,
+        inspection_checklist=inspection_checklist,
         transcript_path=transcript_path,
         output_paths=output_paths,
         preview_decisions_written=preview_decisions_written,

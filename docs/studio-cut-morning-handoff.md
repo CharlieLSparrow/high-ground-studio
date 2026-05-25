@@ -443,5 +443,5 @@ Improve agentic editing:
 
 - add richer awkward-hold and bad-take detectors on top of the confidence and
   approval operation shape
-- extend `agent-edit-session` with Sync Map render QA and transcript/proxy
-  screenshot evidence when those artifacts exist
+- add transcript/proxy screenshot evidence beside the `agent-edit-session`
+  inspection checklist so agents can reason from visuals as well as render QA

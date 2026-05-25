@@ -539,8 +539,12 @@ This writes `generated/agent-workspace-index.json`,
 `generated/agent-edit-session.json`, and `generated/agent-edit-session.md`.
 When `--write-preview-decisions` is present, it also writes
 `edit/<episode-id>-agent-preview-decisions.json` without mutating the original
-decision export. The report uses workspace-relative paths so agents can inspect
-the folder without copying private absolute paths into chat.
+decision export. If the workspace also has `generated/sync-map.json`,
+`generated/local-media-map.json`, and exported decisions, the session writes
+`renders/<episode-id>-render-qa.json` and includes a compact inspection
+checklist that combines transcript tasks with render coverage warnings. The
+report uses workspace-relative paths so agents can inspect the folder without
+copying private absolute paths into chat.
 
 Create a sanitized index for a local Rescue Sync episode workspace:
 

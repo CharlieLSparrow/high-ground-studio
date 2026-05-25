@@ -123,6 +123,106 @@ function buildTranscript() {
   };
 }
 
+function buildSyncMap() {
+  const baseAsset = {
+    assetStartMs: 0,
+    confidence: 0.92,
+    driftPpm: 0,
+    warnings: [],
+  };
+
+  return {
+    schemaVersion: 1,
+    syncMapId: "sync-map-agent-edit-smoke",
+    syncJobId: "sync-job-agent-edit-smoke",
+    projectId: "agent-edit-smoke",
+    branchId: "main",
+    createdAt: "2026-05-24T00:00:00.000Z",
+    updatedAt: "2026-05-24T00:00:00.000Z",
+    canonicalTimeline: {
+      durationMs: 10000,
+      timebase: "milliseconds",
+      referenceRole: "phoneReferenceAudio",
+    },
+    assets: [
+      {
+        ...baseAsset,
+        assetId: "asset-homer-video",
+        inputId: "input-homer-video",
+        role: "homerVideo",
+        fileName: "homer-video.mp4",
+        timelineStartMs: 1000,
+        durationMs: 9000,
+        estimatedOffsetMs: 1000,
+      },
+      {
+        ...baseAsset,
+        assetId: "asset-charlie-video",
+        inputId: "input-charlie-video",
+        role: "charlieVideo",
+        fileName: "charlie-video.mp4",
+        timelineStartMs: 0,
+        durationMs: 10000,
+        estimatedOffsetMs: 0,
+      },
+      {
+        ...baseAsset,
+        assetId: "asset-homer-audio",
+        inputId: "input-homer-audio",
+        role: "homerAudio",
+        fileName: "homer-audio.wav",
+        timelineStartMs: 0,
+        durationMs: 10000,
+        estimatedOffsetMs: 0,
+      },
+      {
+        ...baseAsset,
+        assetId: "asset-charlie-audio",
+        inputId: "input-charlie-audio",
+        role: "charlieAudio",
+        fileName: "charlie-audio.wav",
+        timelineStartMs: 0,
+        durationMs: 10000,
+        estimatedOffsetMs: 0,
+      },
+    ],
+    referenceRail: {
+      syncJobId: "sync-job-agent-edit-smoke",
+      referenceRole: "phoneReferenceAudio",
+      totalDurationMs: 10000,
+      warnings: [],
+      segments: [
+        {
+          inputId: "input-phone-reference-001",
+          fileName: "phone-reference-001.wav",
+          railStartMs: 0,
+          sourceStartMs: 0,
+          durationMs: 10000,
+          confidence: 0.9,
+          warnings: [],
+        },
+      ],
+    },
+    globalWarnings: [],
+  };
+}
+
+function buildLocalMediaMap() {
+  return {
+    schemaVersion: 1,
+    episodeId: "agent-edit-smoke",
+    timelineAligned: false,
+    inputs: {
+      "input-homer-video": "missing/homer-video.mp4",
+      "input-charlie-video": "missing/charlie-video.mp4",
+      "input-homer-audio": "missing/homer-audio.wav",
+      "input-charlie-audio": "missing/charlie-audio.wav",
+    },
+    video: {},
+    audio: {},
+  };
+}
+
 test("agent edit review and decision ops are deterministic and transparent", async () => {
   const workdir = await mkdtemp(path.join(tmpdir(), "studio-cut-agent-edit-"));
 
@@ -274,10 +374,14 @@ test("agent edit session writes workspace review artifacts without private paths
     await mkdir(editDir, { recursive: true });
 
     const manifestPath = path.join(generatedDir, "episode-manifest.json");
+    const syncMapPath = path.join(generatedDir, "sync-map.json");
+    const localMediaMapPath = path.join(generatedDir, "local-media-map.json");
     const decisionsPath = path.join(editDir, "agent-edit-smoke-decisions.json");
     const transcriptPath = path.join(editDir, "agent-edit-smoke-transcript.json");
 
     await writeJson(manifestPath, buildManifest());
+    await writeJson(syncMapPath, buildSyncMap());
+    await writeJson(localMediaMapPath, buildLocalMediaMap());
     await writeJson(decisionsPath, buildDecisions());
     await writeJson(transcriptPath, buildTranscript());
 
@@ -301,6 +405,9 @@ test("agent edit session writes workspace review artifacts without private paths
       path.join(generatedDir, "agent-edit-session.md"),
       "utf8",
     );
+    const renderQa = JSON.parse(
+      await readFile(path.join(workdir, "renders", "agent-edit-smoke-render-qa.json"), "utf8"),
+    );
     const preview = JSON.parse(
       await readFile(path.join(editDir, "agent-edit-smoke-agent-preview-decisions.json"), "utf8"),
     );
@@ -309,6 +416,9 @@ test("agent edit session writes workspace review artifacts without private paths
     assert.equal(sessionReport.summary.reviewWritten, true);
     assert.equal(sessionReport.summary.suggestedOperationCount > 0, true);
     assert.equal(sessionReport.summary.transcriptReview.clipReferenceCount, 1);
+    assert.equal(sessionReport.summary.renderQa.available, true);
+    assert.equal(sessionReport.outputs.renderQa.exists, true);
+    assert.equal(sessionReport.summary.inspectionChecklistCount > 0, true);
     assert.equal(sessionReport.outputs.workspaceIndex.exists, true);
     assert.equal(sessionReport.outputs.review.exists, true);
     assert.equal(sessionReport.outputs.suggestedOps.exists, true);
@@ -316,9 +426,13 @@ test("agent edit session writes workspace review artifacts without private paths
     assert.equal(review.kind, "studio-cut-agent-edit-review");
     assert.equal(suggestedOps.operations.length > 0, true);
     assert.equal(preview.agentEdit.source, "agent-edit-session preview");
+    assert.equal(renderQa.kind, "studio-cut-sync-map-render-qa");
+    assert.equal(renderQa.summary.videoPartialCoverageSegmentCount > 0, true);
     assert.match(rationale, /Operation Preview/);
+    assert.match(rationale, /Inspection Checklist/);
 
-    const serialized = JSON.stringify(sessionReport) + JSON.stringify(review);
+    const serialized =
+      JSON.stringify(sessionReport) + JSON.stringify(review) + JSON.stringify(renderQa);
     assert.equal(serialized.includes(workdir), false);
     assert.equal(serialized.includes(tmpdir()), false);
   } finally {
