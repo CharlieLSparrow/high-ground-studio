@@ -303,7 +303,9 @@ original or higher-quality local media. It should not be committed. The command
 applies the rough `youtube_16x9` layouts, skips `Cut`, and pads partial asset
 coverage with black in v0. If no canonical `audio.program` file is supplied,
 the renderer mixes mapped `homerAudio` and `charlieAudio` clean-audio assets
-from the Sync Map when those input ids exist in the local media map.
+from the Sync Map when those input ids exist in the local media map. The rough
+renderer now normalizes video to 30 fps and audio to stereo 48 kHz AAC with a
+simple limiter on program/clean fallback audio.
 
 The worker can also draft an Episode Manifest from Sync Map metadata. That
 bridge is active in the local worker: it sets duration from

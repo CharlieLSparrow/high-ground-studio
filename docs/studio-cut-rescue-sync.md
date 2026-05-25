@@ -166,8 +166,9 @@ paths. The renderer translates each active semantic decision span from
 canonical episode time into asset-local time, pads missing role coverage with
 black, skips `Cut`, and writes a rough 16:9 output. If `audio.program` is not
 provided, it can now mix mapped `homerAudio` and `charlieAudio` Sync Map assets
-from the same local media map. Final quality, drift-aware rendering, and profile
-polish remain future work.
+from the same local media map. Rough local renders normalize to 1920x1080,
+30 fps, stereo 48 kHz AAC and apply a simple limiter. Final quality,
+drift-aware rendering, and profile polish remain future work.
 
 For a standard one-folder session, prefer the wrapper after decisions are
 exported into `edit/<episode-id>-decisions.json`:

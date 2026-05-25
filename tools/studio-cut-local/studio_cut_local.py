@@ -177,6 +177,9 @@ SUPPORTED_PROFILES = set(RENDER_PROFILE_LAYOUTS)
 MINIMUM_PYTHON = (3, 10)
 YOUTUBE_16X9_WIDTH = 1920
 YOUTUBE_16X9_HEIGHT = 1080
+YOUTUBE_16X9_FPS = 30
+RENDER_AUDIO_SAMPLE_RATE = 48000
+RENDER_AUDIO_CHANNEL_LAYOUT = "stereo"
 YOUTUBE_16X9_STATE_INPUTS = {
     "charlie": ["charlie"],
     "homer": ["homer"],
@@ -3021,7 +3024,7 @@ def validate_agent_smoke_output(
         "-show_entries",
         "format=duration",
         "-show_entries",
-        "stream=codec_type,width,height",
+        "stream=codec_type,width,height,sample_rate,channels,channel_layout",
         "-of",
         "json",
         str(output_path),
@@ -3050,6 +3053,34 @@ def validate_agent_smoke_output(
 
     if width != YOUTUBE_16X9_WIDTH or height != YOUTUBE_16X9_HEIGHT:
         errors.append(f"expected 1920x1080 output, got {width}x{height}")
+
+    audio_stream = next(
+        (
+            stream
+            for stream in payload.get("streams", [])
+            if stream.get("codec_type") == "audio"
+        ),
+        None,
+    )
+
+    if not audio_stream:
+        errors.append("output has no audio stream")
+    else:
+        sample_rate = audio_stream.get("sample_rate")
+        channels = audio_stream.get("channels")
+        report["actualOutputAudio"] = {
+            "sampleRate": int(sample_rate) if str(sample_rate).isdigit() else sample_rate,
+            "channels": channels,
+            "channelLayout": audio_stream.get("channel_layout"),
+        }
+
+        if str(sample_rate) != str(RENDER_AUDIO_SAMPLE_RATE):
+            errors.append(
+                f"expected {RENDER_AUDIO_SAMPLE_RATE}Hz audio, got {sample_rate}"
+            )
+
+        if channels != 2:
+            errors.append(f"expected stereo audio, got {channels} channel(s)")
 
     if actual_duration_ms >= source_duration_ms:
         errors.append(
@@ -3091,6 +3122,13 @@ def print_agent_smoke_report(report: dict[str, Any], *, json_mode: bool) -> None
     if report.get("actualOutputResolution"):
         resolution = report["actualOutputResolution"]
         print(f"Actual output resolution: {resolution['width']}x{resolution['height']}")
+
+    if report.get("actualOutputAudio"):
+        audio = report["actualOutputAudio"]
+        print(
+            "Actual output audio: "
+            f"{audio['sampleRate']}Hz / {audio['channels']} channel(s)"
+        )
 
     print("\nGenerated files:")
     for label, path in sorted(report["generatedFiles"].items()):
@@ -6494,7 +6532,10 @@ def build_youtube_16x9_segment_command(
                 str(resolve_media_path(program_audio, media_map_path)),
             ]
         )
-        audio_filter = f"[{audio_input_index}:a]aresample=48000,asetpts=PTS-STARTPTS[aout]"
+        audio_filter = build_program_audio_output_filter(
+            input_label=f"{audio_input_index}:a",
+            duration_seconds=duration_seconds,
+        )
     else:
         command.extend(
             [
@@ -6506,7 +6547,10 @@ def build_youtube_16x9_segment_command(
                 "anullsrc=channel_layout=stereo:sample_rate=48000",
             ]
         )
-        audio_filter = f"[{audio_input_index}:a]anull[aout]"
+        audio_filter = build_program_audio_output_filter(
+            input_label=f"{audio_input_index}:a",
+            duration_seconds=duration_seconds,
+        )
 
     filter_complex = ";".join(
         [build_youtube_16x9_video_filter(state), audio_filter]
@@ -6581,7 +6625,7 @@ def video_scale_filter_from_label(input_label: str, width: int, height: int, lab
     return (
         f"[{input_label}]"
         f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},setsar=1,setpts=PTS-STARTPTS"
+        f"crop={width}:{height},fps={YOUTUBE_16X9_FPS},setsar=1,setpts=PTS-STARTPTS"
         f"[{label}]"
     )
 
@@ -6962,7 +7006,10 @@ def build_sync_map_youtube_16x9_segment_command(
                 str(resolve_media_path(program_audio, media_map_path)),
             ]
         )
-        audio_filter = f"[{audio_input_index}:a]aresample=48000,asetpts=PTS-STARTPTS[aout]"
+        audio_filter = build_program_audio_output_filter(
+            input_label=f"{audio_input_index}:a",
+            duration_seconds=duration_seconds,
+        )
     elif resolved_media.get("__audio_assets__"):
         audio_filters = []
         audio_labels = []
@@ -6982,16 +7029,16 @@ def build_sync_map_youtube_16x9_segment_command(
             )
 
         if len(audio_labels) == 1:
-            mix_filter = (
-                f"[{audio_labels[0]}]apad,atrim=0:{format_seconds(duration_seconds)},"
-                "asetpts=PTS-STARTPTS[aout]"
+            mix_filter = build_audio_output_finalize_filter(
+                input_label=audio_labels[0],
+                duration_seconds=duration_seconds,
             )
         else:
             mix_filter = (
                 "".join(f"[{label}]" for label in audio_labels)
-                + f"amix=inputs={len(audio_labels)}:duration=longest:normalize=0,"
-                + f"apad,atrim=0:{format_seconds(duration_seconds)},"
-                + "asetpts=PTS-STARTPTS[aout]"
+                + f"amix=inputs={len(audio_labels)}:duration=longest:normalize=1,"
+                + "alimiter=limit=0.95,"
+                + build_audio_output_tail(duration_seconds=duration_seconds)
             )
 
         audio_filter = ";".join([*audio_filters, mix_filter])
@@ -7007,7 +7054,10 @@ def build_sync_map_youtube_16x9_segment_command(
                 "anullsrc=channel_layout=stereo:sample_rate=48000",
             ]
         )
-        audio_filter = f"[{audio_input_index}:a]anull[aout]"
+        audio_filter = build_program_audio_output_filter(
+            input_label=f"{audio_input_index}:a",
+            duration_seconds=duration_seconds,
+        )
 
     filter_complex = ";".join(
         [
@@ -7083,7 +7133,7 @@ def build_sync_map_role_video_filter(
         f"tpad=start_duration={format_seconds(leading_ms / 1000)}:"
         f"stop_duration={format_seconds(trailing_ms / 1000)}:color=black,"
         f"trim=duration={format_seconds(segment_duration_ms / 1000)},"
-        f"setpts=PTS-STARTPTS,format=yuv420p[{output_label}]"
+        f"fps={YOUTUBE_16X9_FPS},setpts=PTS-STARTPTS,format=yuv420p[{output_label}]"
     )
 
 
@@ -7119,10 +7169,45 @@ def build_sync_map_clean_audio_filter(
         f"[{input_index}:a]"
         f"atrim=start={format_seconds(source_start_ms / 1000)}:"
         f"duration={format_seconds(audible_duration_ms / 1000)},"
-        "asetpts=PTS-STARTPTS,aresample=48000,"
-        f"adelay={leading_ms}|{leading_ms},"
+        "asetpts=PTS-STARTPTS,"
+        f"aresample={RENDER_AUDIO_SAMPLE_RATE},"
+        f"aformat=sample_fmts=fltp:channel_layouts={RENDER_AUDIO_CHANNEL_LAYOUT},"
+        f"adelay={leading_ms}:all=1,"
         f"apad,atrim=0:{format_seconds(segment_duration_ms / 1000)},"
         f"asetpts=PTS-STARTPTS[{output_label}]"
+    )
+
+
+def build_program_audio_output_filter(
+    *, input_label: str, duration_seconds: float
+) -> str:
+    return (
+        f"[{input_label}]"
+        f"atrim=0:{format_seconds(duration_seconds)},"
+        "asetpts=PTS-STARTPTS,"
+        f"aresample={RENDER_AUDIO_SAMPLE_RATE},"
+        f"aformat=sample_fmts=fltp:channel_layouts={RENDER_AUDIO_CHANNEL_LAYOUT},"
+        "alimiter=limit=0.95,"
+        f"{build_audio_output_tail(duration_seconds=duration_seconds)}"
+    )
+
+
+def build_audio_output_finalize_filter(
+    *, input_label: str, duration_seconds: float
+) -> str:
+    return (
+        f"[{input_label}]"
+        "alimiter=limit=0.95,"
+        f"{build_audio_output_tail(duration_seconds=duration_seconds)}"
+    )
+
+
+def build_audio_output_tail(*, duration_seconds: float) -> str:
+    return (
+        f"apad,atrim=0:{format_seconds(duration_seconds)},"
+        f"aresample={RENDER_AUDIO_SAMPLE_RATE},"
+        f"aformat=sample_fmts=fltp:channel_layouts={RENDER_AUDIO_CHANNEL_LAYOUT},"
+        "asetpts=PTS-STARTPTS[aout]"
     )
 
 

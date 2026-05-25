@@ -529,7 +529,10 @@ provided, is still expected to already be canonical-timeline aligned. If no
 program audio is supplied, the Sync Map renderer looks for `homerAudio` and
 `charlieAudio` assets in the Sync Map and mixes any mapped clean-audio files
 from `inputs.{inputId}` in the local media map. If neither program audio nor
-mapped clean audio exists, it writes silent audio and warns.
+mapped clean audio exists, it writes silent audio and warns. Rough local renders
+now normalize output to 1920x1080, 30 fps, stereo 48 kHz AAC; clean-audio
+fallback uses a normalized mix plus limiter to avoid easy clipping in the first
+review pass.
 
 This renderer intentionally does not parse Premiere XML/EDL yet. Premiere owns
 timeline alignment for now by exporting local media files that share sequence

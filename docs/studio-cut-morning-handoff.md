@@ -373,8 +373,9 @@ stay ignored and should point Sync Map `inputId` values at Charlie's local
 original or higher-quality proxy assets.
 If the map does not include `audio.program`, `render-from-sync-map` will mix
 mapped `homerAudio` and `charlieAudio` clean-audio assets when the Sync Map
-contains those input roles. Otherwise it renders silent audio and prints a
-warning.
+contains those input roles. Rough renders now normalize to 1920x1080, 30 fps,
+stereo 48 kHz AAC with a simple limiter. Otherwise it renders silent audio and
+prints a warning.
 
 ## Known Limitations
 

@@ -293,7 +293,10 @@ inside the segment. `audio.program`, when supplied, is expected to be
 canonical-timeline aligned. If `audio.program` is absent, the renderer now looks
 for `homerAudio` and `charlieAudio` assets in the Sync Map and mixes any mapped
 clean-audio files from `inputs.{inputId}`. If neither program audio nor mapped
-clean audio exists, it writes silent audio.
+clean audio exists, it writes silent audio. Rough outputs are normalized to
+1920x1080, 30 fps, stereo 48 kHz AAC. Clean-audio fallback uses a normalized
+mix plus limiter so the first local render is less likely to clip while still
+remaining a transparent v0.
 
 Run the agentic end-to-end smoke test:
 
@@ -410,8 +413,9 @@ Sync Map `inputId`. It renders the same rough `youtube_16x9` layouts by
 translating canonical episode timeline spans into asset-local time. That means
 the browser can edit against a synced proxy room while local rendering can start
 from the original or higher-quality local assets. The command is still v0:
-program audio must already be canonical-timeline aligned if supplied, and final
-full-res quality/crop polish remains future work.
+program audio must already be canonical-timeline aligned if supplied. The rough
+output now enforces 30 fps video and stereo 48 kHz audio; final full-res
+quality/crop polish remains future work.
 
 ## Agent Smoke Test
 
