@@ -339,6 +339,38 @@ Expected result:
 
 - one row for `StudioContentWorkspaceSnapshot`
 
+## Content Studio Durable Project Change
+
+The Content Studio project persistence slice added:
+
+- `StudioContentProject`
+
+This is an additive private Studio schema change. It stores one durable
+project row per signed-in Studio owner and local Content Studio project id,
+including project JSON, derived handoff JSON, and derived production packet
+JSON. The table supports cross-device save/list/open for podcast, book, and
+episode-page working state. It does not autosave, publish public content, call
+providers, certify public safety, or replace HGO review gates.
+
+Live operator note from 2026-05-25: this schema was applied to the live Studio
+Cloud SQL database by Cloud Run Job `studio-db-push-6b12434`, execution
+`studio-db-push-6b12434-658xk`, using image
+`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6b12434`.
+Logs reported that the database is now in sync with the Prisma schema.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name = 'StudioContentProject';
+```
+
+Expected result:
+
+- one row for `StudioContentProject`
+
 ## HGO Private Staged Artifact Store Change
 
 The first private HGO staged artifact store slice added:
@@ -497,6 +529,40 @@ order by table_name;
 Expected result:
 
 - one row for each listed table
+
+## Coaching Weekly Commitments Change
+
+The first real coaching-tool data loop added:
+
+- enum `WeeklyCommitmentStatus`
+- relation fields from `User` to `WeeklyCommitment`
+- `WeeklyCommitment`
+
+This is an additive coaching/client schema change. It stores one client-owned
+weekly commitment entry per client/date key, with one to three commitments,
+support/progress notes, review status, coach notes, reviewer, and review
+timestamp. It is gated in application code by the existing
+`weekly_commitments` coaching feature grant. It does not call providers, send
+notifications, create subscription state, or publish public content.
+
+Live operator note from 2026-05-25: this schema was applied to the live web
+Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-6b12434`, execution
+`web-cloudsql-db-push-6b12434-49qpc`, using image
+`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6b12434`.
+Logs reported that the database is now in sync with the Prisma schema.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name = 'WeeklyCommitment';
+```
+
+Expected result:
+
+- one row for `WeeklyCommitment`
 
 ## WorldHub Growth Desk Change
 

@@ -1281,3 +1281,69 @@ checks, blockers, and next handoff.
   - Web `/team/hgo-staged-artifacts` unauthenticated sign-in redirect
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00022-vb8=100`
+
+### Codex / `codex/content-studio-persistence-supervisor-001` multi-agent fanout
+
+- Created supervisor branch `codex/content-studio-persistence-supervisor-001`
+  from `origin/main` at `29d78bc`.
+- Spawned Epicurus (`019e606f-35fd-72f2-831b-0c635974e12d`) for Content Studio
+  project-native persistence across podcast, book, and episode-page work.
+- Spawned Erdos (`019e6070-bbd8-7b10-9dcd-b8f5385820e7`) for the first real
+  persisted coaching tool loop for Homer/client use.
+- Spawned Plato (`019e6070-f3fe-74c3-9f80-cfc13365abcb`) for private HGO
+  episode publish workflow improvements.
+- Coordination note: `prisma/schema.prisma` is active shared territory during
+  this fanout. Workers were warned to inspect current diffs and preserve each
+  other's model changes.
+- Scope guardrails remain: no public publish action, provider calls,
+  production DB mutation commands, secrets/IAM/DNS/OAuth/billing changes, or
+  real manuscript/source-content test data from worker threads.
+- Epicurus completed Content Studio project persistence:
+  - new `StudioContentProject` Prisma model
+  - private `/api/content-studio/projects`
+  - `/content-studio` save/list/open durable project controls
+  - result note:
+    `docs/sessions/content-studio-project-persistence-result.md`
+- Erdos completed the first real coaching tool data loop:
+  - new `WeeklyCommitment` Prisma model and relations
+  - grant-gated client dashboard Weekly Commitments card
+  - `/team/coaching-tools` review queue for Homer/team
+  - result note:
+    `docs/sessions/coaching-weekly-commitments-result.md`
+- Plato completed the private HGO operator handoff slice:
+  - new `hgo-episode-publish-operator-handoff-v1` packet
+  - copy/download handoff panel on publish-queue detail pages
+  - result note:
+    `docs/sessions/hgo-episode-publish-operator-handoff-result.md`
+- Integrated validation passed:
+  - `pnpm db:generate`
+  - `pnpm content-studio:packet:test`
+  - `pnpm coaching:weekly-commitments:test`
+  - `pnpm coaching:features:test`
+  - `pnpm hgo:publish-candidate:test`
+  - `pnpm studio:cloudrun:test`
+  - `pnpm web:cloudrun:test`
+  - `pnpm --filter studio typecheck`
+  - `pnpm --filter studio build` outside sandbox after Turbopack hit sandbox
+    process/port restrictions
+  - `pnpm --filter web exec next build --webpack`
+  - `pnpm --filter web build` outside sandbox after clearing stale/competing
+    build locks
+  - `git diff --check`
+- No production DB mutation, deploy, provider call, public publish action,
+  `/episodes` replacement, secrets/IAM/DNS/OAuth/billing change, or real
+  manuscript/source-content test data was performed in the worker fanout.
+- Opened draft PR #23:
+  `https://github.com/CharlieLSparrow/high-ground-studio/pull/23`.
+- Reauthenticated gcloud as `charlie@highgroundodyssey.com` and verified
+  project `high-ground-odyssey`.
+- Built one-off Prisma db-push image with Cloud Build
+  `21a319e8-a70b-4d11-8619-3c274e947836`:
+  `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6b12434`.
+- Applied the schema to the live Studio Cloud SQL database with Cloud Run Job
+  `studio-db-push-6b12434`, execution `studio-db-push-6b12434-658xk`.
+  Logs reported: `Your database is now in sync with your Prisma schema.`
+- Applied the schema to the live Web Cloud SQL database with Cloud Run Job
+  `web-cloudsql-db-push-6b12434`, execution
+  `web-cloudsql-db-push-6b12434-49qpc`. Logs reported:
+  `Your database is now in sync with your Prisma schema.`

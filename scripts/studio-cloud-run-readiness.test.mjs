@@ -136,6 +136,36 @@ test("Content Studio checkpoints are wired through authenticated API", () => {
   assert.match(client, /No autosave, provider\s+call,\s+or public publish action/);
 });
 
+test("Content Studio durable projects are wired through authenticated API", () => {
+  const route = readFileSync(
+    "apps/studio/src/app/api/content-studio/projects/route.ts",
+    "utf8",
+  );
+  const serverModel = readFileSync(
+    "apps/studio/src/lib/server/studio-content-projects.ts",
+    "utf8",
+  );
+  const schema = readFileSync("prisma/schema.prisma", "utf8");
+  const client = readFileSync(
+    "apps/studio/src/app/content-studio/content-studio-client.tsx",
+    "utf8",
+  );
+
+  assert.match(route, /getStudioAccessState/);
+  assert.match(route, /getStudioDatabaseUrl/);
+  assert.match(route, /upsertStudioContentProject/);
+  assert.match(route, /listStudioContentProjects/);
+  assert.match(route, /getStudioContentProject/);
+  assert.match(serverModel, /studioContentProject/);
+  assert.match(serverModel, /createContentStudioProjectHandoff/);
+  assert.match(serverModel, /createContentStudioProductionPacket/);
+  assert.match(schema, /model StudioContentProject/);
+  assert.match(schema, /@@unique\(\[ownerEmail, localProjectId\]\)/);
+  assert.match(client, /Save Project/);
+  assert.match(client, /Refresh List/);
+  assert.match(client, /Open Project/);
+});
+
 test("Prisma db-push job image is available for Cloud SQL schema sync", () => {
   const dockerfile = readFileSync("ops/prisma-db-push.Dockerfile", "utf8");
   const cloudbuild = readFileSync("cloudbuild.prisma-db-push.yaml", "utf8");

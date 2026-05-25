@@ -80,6 +80,21 @@ type ServerSnapshotDetail = ServerSnapshotSummary & {
   workspace?: unknown;
 };
 
+type ServerProjectSummary = {
+  id: string;
+  localProjectId: string;
+  title: string;
+  kind: ProjectKind;
+  status: ProjectStatus;
+  stage: StageId;
+  updatedAt: string;
+  clientUpdatedAt: string | null;
+};
+
+type ServerProjectDetail = ServerProjectSummary & {
+  project?: unknown;
+};
+
 const stageDefinitions: Array<{
   id: StageId;
   label: string;
@@ -547,6 +562,13 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
     [],
   );
   const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
+  const [serverProjectStatus, setServerProjectStatus] = useState(
+    "Durable projects have not been checked in this browser.",
+  );
+  const [serverProjects, setServerProjects] = useState<ServerProjectSummary[]>(
+    [],
+  );
+  const [isServerProjectBusy, setIsServerProjectBusy] = useState(false);
   const [clipboardMessage, setClipboardMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1025,6 +1047,160 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
     }
   }
 
+  async function fetchServerProjects() {
+    const response = await fetch("/api/content-studio/projects");
+    const payload = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      message?: string;
+      projects?: ServerProjectSummary[];
+    } | null;
+
+    if (!response.ok || !payload?.ok || !Array.isArray(payload.projects)) {
+      throw new Error(
+        payload?.message ?? "Content Studio project list load failed.",
+      );
+    }
+
+    return payload.projects;
+  }
+
+  async function refreshServerProjects() {
+    setIsServerProjectBusy(true);
+    setServerProjectStatus("Loading durable project records...");
+
+    try {
+      const projects = await fetchServerProjects();
+      setServerProjects(projects);
+      setServerProjectStatus(
+        projects.length > 0
+          ? `Loaded ${projects.length} durable project${projects.length === 1 ? "" : "s"}.`
+          : "No durable Content Studio projects have been saved yet.",
+      );
+    } catch (error) {
+      setServerProjectStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio project list load failed.",
+      );
+    } finally {
+      setIsServerProjectBusy(false);
+    }
+  }
+
+  async function saveSelectedServerProject() {
+    if (!selectedProject) {
+      return;
+    }
+
+    setIsServerProjectBusy(true);
+    setServerProjectStatus(`Saving ${selectedProject.title} as a durable project...`);
+
+    try {
+      const response = await fetch("/api/content-studio/projects", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          project: selectedProject,
+          description: `Durable Content Studio project from ${actorLabel}.`,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        project?: ServerProjectSummary;
+      } | null;
+
+      if (!response.ok || !payload?.ok || !payload.project) {
+        throw new Error(
+          payload?.message ?? "Content Studio project save failed.",
+        );
+      }
+
+      setServerProjectStatus(
+        `Saved durable project ${payload.project.title} at ${formatDate(payload.project.updatedAt)}.`,
+      );
+      setServerProjects(await fetchServerProjects());
+    } catch (error) {
+      setServerProjectStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio project save failed.",
+      );
+    } finally {
+      setIsServerProjectBusy(false);
+    }
+  }
+
+  function loadDurableProject(project: ContentStudioProject, updatedAt: string) {
+    const nextProject = {
+      ...project,
+      updatedAt: project.updatedAt || updatedAt,
+    };
+
+    updateWorkspace((current) => {
+      const exists = current.projects.some(
+        (candidate) => candidate.id === nextProject.id,
+      );
+
+      return {
+        ...current,
+        projects: exists
+          ? current.projects.map((candidate) =>
+              candidate.id === nextProject.id ? nextProject : candidate,
+            )
+          : [nextProject, ...current.projects],
+      };
+    });
+    setSelectedProjectId(nextProject.id);
+    setTaskDraft("");
+  }
+
+  async function loadServerProject(projectId: string) {
+    setIsServerProjectBusy(true);
+    setServerProjectStatus(`Loading durable project ${projectId}...`);
+
+    try {
+      const response = await fetch(
+        `/api/content-studio/projects?id=${encodeURIComponent(projectId)}`,
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        message?: string;
+        project?: ServerProjectDetail | null;
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.message ?? "Content Studio project load failed.",
+        );
+      }
+
+      if (!payload.project?.project) {
+        setServerProjectStatus("That durable project was not found.");
+        return;
+      }
+
+      if (!isContentStudioProject(payload.project.project)) {
+        throw new Error("Stored durable project was invalid.");
+      }
+
+      loadDurableProject(payload.project.project, payload.project.updatedAt);
+      setServerProjectStatus(
+        `Loaded durable project ${payload.project.title} from ${formatDate(payload.project.updatedAt)}.`,
+      );
+    } catch (error) {
+      setServerProjectStatus(
+        error instanceof Error
+          ? error.message
+          : "Content Studio project load failed.",
+      );
+    } finally {
+      setIsServerProjectBusy(false);
+    }
+  }
+
   return (
     <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
       <aside className="grid content-start gap-4 rounded-lg border border-studio-line bg-studio-panel/95 p-4 shadow-studio-panel">
@@ -1095,6 +1271,71 @@ export function ContentStudioClient({ actorLabel }: { actorLabel: string }) {
               );
             })}
           </div>
+        </section>
+
+        <section className="grid gap-2" aria-label="Durable projects">
+          <div>
+            <p className="m-0 text-[0.72rem] font-black uppercase leading-tight tracking-normal text-studio-dim">
+              Durable Projects
+            </p>
+            <p className="m-0 mt-1 text-xs leading-relaxed text-studio-muted">
+              Manual save/list/load for project rows backed by the Studio
+              database.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className="min-h-11 rounded-lg border border-studio-source/55 bg-studio-source/10 px-3 text-sm font-black text-studio-source disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isServerProjectBusy || !selectedProject}
+              onClick={saveSelectedServerProject}
+              type="button"
+            >
+              Save Project
+            </button>
+
+            <button
+              className="min-h-11 rounded-lg border border-studio-tag/55 bg-studio-tag/10 px-3 text-sm font-black text-studio-tag disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isServerProjectBusy}
+              onClick={refreshServerProjects}
+              type="button"
+            >
+              Refresh List
+            </button>
+          </div>
+
+          {serverProjects.length > 0 ? (
+            <div className="grid gap-2">
+              {serverProjects.slice(0, 6).map((project) => (
+                <div
+                  className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-2"
+                  key={project.id}
+                >
+                  <div className="grid gap-1">
+                    <span className="text-sm font-black leading-tight text-studio-ink">
+                      {project.title}
+                    </span>
+                    <span className="font-mono text-[0.68rem] text-studio-muted">
+                      {projectKindLabel[project.kind]} / {statusLabel[project.status]} /{" "}
+                      {formatDate(project.updatedAt)}
+                    </span>
+                  </div>
+                  <button
+                    className="min-h-10 rounded-lg border border-studio-review/55 bg-studio-review/10 px-3 text-sm font-black text-studio-review disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isServerProjectBusy}
+                    onClick={() => loadServerProject(project.id)}
+                    type="button"
+                  >
+                    Open Project
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <p className="m-0 font-mono text-xs leading-relaxed text-studio-muted">
+            {serverProjectStatus}
+          </p>
         </section>
       </aside>
 

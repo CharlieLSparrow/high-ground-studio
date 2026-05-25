@@ -156,9 +156,12 @@ High Ground Studio is a monorepo with:
   projection drafts for podcast and episode-page projects, and can save/load
   explicit server checkpoints through private Prisma-backed
   `StudioContentWorkspaceSnapshot` rows when the Studio database schema is
-  applied. It can also refresh recent checkpoint history and load a specific
-  checkpoint as a manual recovery/rollback action. These checkpoints are manual
-  recovery/shared-work anchors, not autosave and not canonical publishing state.
+  applied. It can also save, list, and open individual durable project records
+  through private Prisma-backed `StudioContentProject` rows for cross-device
+  podcast, book, and episode-page working state. It can also refresh recent
+  checkpoint history and load a specific checkpoint as a manual recovery/
+  rollback action. These checkpoints and durable project records are manual
+  working anchors, not autosave and not canonical publishing state.
   The route does not call provider
   APIs, publish public content, use real manuscript/HGO source material in
   tests, or replace existing HGO/WorldHub/coaching workflows. The broader
@@ -386,10 +389,10 @@ High Ground Studio is a monorepo with:
   and are not embedded in production manual snapshots.
 - Studio materialized annotation state is a local replay view only. It proves
   current-state indexing/query behavior, not durable storage.
-- Content Studio project state is browser-local only in this slice. It is useful
-  as a command surface and handoff packet generator, but it is not yet shared
-  multi-device state, a Prisma-backed project system, a publishing queue, or a
-  provider integration.
+- Content Studio keeps browser-local state as the fast working surface, and now
+  has manual Prisma-backed durable project records for cross-device project
+  save/list/load. It is not autosave, collaboration, a public publishing queue,
+  or a provider integration.
 - Studio Manuscript Library deletion, destructive cleanup, ownership transfer,
   and automatic orphan-snapshot migration are not active.
 - Studio Manuscript publishing exports are working handoff artifacts, not a

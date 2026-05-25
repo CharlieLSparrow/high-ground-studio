@@ -2,6 +2,8 @@ export const HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND =
   "hgo-episode-publish-candidate-v1" as const;
 export const HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND =
   "hgo-episode-publish-review-brief-v1" as const;
+export const HGO_EPISODE_PUBLISH_OPERATOR_HANDOFF_KIND =
+  "hgo-episode-publish-operator-handoff-v1" as const;
 
 export type HgoEpisodePublishCandidateRecord = {
   recordId: string;
@@ -94,6 +96,50 @@ export type HgoEpisodePublishReviewBrief = {
   rollback: {
     currentPacketRollback: string;
     futurePublishRollback: string[];
+  };
+};
+
+export type HgoEpisodePublishOperatorHandoff = {
+  packetKind: typeof HGO_EPISODE_PUBLISH_OPERATOR_HANDOFF_KIND;
+  createdAt: string;
+  source: HgoEpisodePublishCandidatePacket["source"] & {
+    publishCandidatePacketKind: typeof HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND;
+    publishReviewBriefPacketKind: typeof HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND;
+  };
+  episodePage: HgoEpisodePublishCandidatePacket["episodePage"];
+  readiness: {
+    state: HgoEpisodePublishCandidatePacket["readiness"]["state"];
+    blockers: string[];
+    warnings: string[];
+    publicPublishApproval: "required-not-granted";
+    approvalStop: string;
+  };
+  preflight: {
+    routeCollisionChecks: string[];
+    validationCommands: string[];
+    requiredReviewEvidence: string[];
+  };
+  proposedPromotion: {
+    privateReviewSource: string;
+    deferredPublicTarget: string;
+    route: string;
+    publicWriteTargets: string[];
+    operatorSteps: string[];
+  };
+  safety: {
+    createsPublicRoute: false;
+    writesContentFiles: false;
+    mutatesDatabase: false;
+    callsProviders: false;
+    publishesLivePage: false;
+    certifiesCitationReview: false;
+    certifiesPublicSafety: false;
+    requiresExplicitPublicPublishApproval: true;
+  };
+  rollback: {
+    beforePublicPublish: string[];
+    afterPublicPublish: string[];
+    currentPacketRollback: string;
   };
 };
 
@@ -320,6 +366,97 @@ export function createHgoEpisodePublishReviewBriefFileName(
   brief: HgoEpisodePublishReviewBrief,
 ) {
   return `${brief.episodePage.slug}.hgo-episode-publish-review-brief.json`;
+}
+
+export function createHgoEpisodePublishOperatorHandoff({
+  candidate,
+  reviewBrief,
+  createdAt = reviewBrief.createdAt,
+}: {
+  candidate: HgoEpisodePublishCandidatePacket;
+  reviewBrief: HgoEpisodePublishReviewBrief;
+  createdAt?: string;
+}): HgoEpisodePublishOperatorHandoff {
+  const { slug, proposedRoute } = candidate.episodePage;
+  const privateReviewSource = `apps/web/content/_staging/hgo/${slug}.mdx`;
+  const deferredPublicTarget = `apps/web/content/publish/${slug}.mdx`;
+
+  return {
+    packetKind: HGO_EPISODE_PUBLISH_OPERATOR_HANDOFF_KIND,
+    createdAt,
+    source: {
+      ...candidate.source,
+      publishCandidatePacketKind: candidate.packetKind,
+      publishReviewBriefPacketKind: reviewBrief.packetKind,
+    },
+    episodePage: candidate.episodePage,
+    readiness: {
+      state: candidate.readiness.state,
+      blockers: [...candidate.readiness.blockers],
+      warnings: [...candidate.readiness.warnings],
+      publicPublishApproval: "required-not-granted",
+      approvalStop:
+        "Stop here until the owner explicitly approves a public publish action for this exact route and artifact hash.",
+    },
+    preflight: {
+      routeCollisionChecks: [
+        `test ! -e ${deferredPublicTarget}`,
+        `rg -n "href=\\\"${proposedRoute}\\\"|${proposedRoute}" apps/web/src apps/web/content/publish`,
+      ],
+      validationCommands: [
+        ...reviewBrief.proposedWork.validationCommands,
+        "git diff --check",
+      ],
+      requiredReviewEvidence: [
+        "Artifact hash matches the saved staged artifact record.",
+        "Citation/source-note review is complete and recorded outside this packet.",
+        "Public-safety review is complete and recorded outside this packet.",
+        "The proposed route has no collision with existing published content.",
+        "Rollback commit or Cloud Run revision is recorded before deployment.",
+      ],
+    },
+    proposedPromotion: {
+      privateReviewSource,
+      deferredPublicTarget,
+      route: proposedRoute,
+      publicWriteTargets: [deferredPublicTarget],
+      operatorSteps: [
+        "Export the private MDX draft and frontmatter from the publish-review detail page.",
+        "After explicit approval, create the public content diff in a separate publish change.",
+        "Run the preflight commands and both web build paths before deploy.",
+        "Record deploy and rollback revisions in a new docs/sessions result note.",
+      ],
+    },
+    safety: {
+      createsPublicRoute: false,
+      writesContentFiles: false,
+      mutatesDatabase: false,
+      callsProviders: false,
+      publishesLivePage: false,
+      certifiesCitationReview: false,
+      certifiesPublicSafety: false,
+      requiresExplicitPublicPublishApproval: true,
+    },
+    rollback: {
+      beforePublicPublish: [
+        "Discard this handoff packet or regenerate it from the saved staged artifact.",
+        "Archive or mark the staged artifact needs-fixes if review fails.",
+      ],
+      afterPublicPublish: [
+        `Remove or revert ${deferredPublicTarget}.`,
+        "Revert any discovery, route, or metadata diffs from the public publish change.",
+        "Roll Cloud Run traffic back to the recorded previous revision if the deploy is already live.",
+      ],
+      currentPacketRollback:
+        "This packet is private handoff metadata only; deleting or ignoring it has no public effect.",
+    },
+  };
+}
+
+export function createHgoEpisodePublishOperatorHandoffFileName(
+  handoff: HgoEpisodePublishOperatorHandoff,
+) {
+  return `${handoff.episodePage.slug}.hgo-episode-publish-operator-handoff.json`;
 }
 
 export function createHgoEpisodePublishQueue<
