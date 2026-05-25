@@ -235,7 +235,8 @@ Publishing flow:
    intentionally optional. If the active room does not match the package, use
    `Use Package Room` to switch from the selected manifest and Sync Map.
 6. Click `Publish Generated Package`.
-7. Send the shared room link to Mako.
+7. Check Shared Room Diagnostics for a package fingerprint.
+8. Send the shared room link to Mako.
 
 Mako opens the link, signs in, and edits against the shared proxy room. Mako
 does not import JSON, load local media, or touch sync files in the primary path.
@@ -248,6 +249,10 @@ reference pieces, per-track offset estimates, anchor/agreement details when
 available, and the first sync warnings. This gives Charlie a visible
 confirmation that the shared proxy room is backed by generated sync metadata,
 not just a loose MP4. The panel never shows local filesystem paths.
+Generated package publishing also stores SHA-256 digests for the manifest,
+source-monitor proxy, Sync Map, and optional sync report in the room metadata.
+The package fingerprint in Shared Room Diagnostics / Sync Review should change
+if Charlie republishes different generated artifacts.
 
 Before using real footage, generate a synthetic package and publish it through
 the live UI:

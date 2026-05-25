@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildPackageFingerprintSeed,
   buildGeneratedPackagePreflight,
   buildGeneratedPackageStoragePath,
   buildSharedRoomMetadataPath,
@@ -14,6 +15,12 @@ import {
   sanitizeStorageFileName,
   validateGeneratedPackageCompatibility,
 } from "../apps/studio-cut-web/src/sharedRoom.ts";
+
+const HASH_A = "a".repeat(64);
+const HASH_B = "b".repeat(64);
+const HASH_C = "c".repeat(64);
+const HASH_D = "d".repeat(64);
+const HASH_E = "e".repeat(64);
 
 const manifest = {
   id: "episode-004",
@@ -196,6 +203,37 @@ test("shared room metadata validates manifest and proxy storage fields", () => {
       "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-map.json",
     syncReportStoragePath:
       "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-report.json",
+    packageIntegrity: {
+      manifest: {
+        fileName: "episode-manifest.json",
+        sizeBytes: 512,
+        sha256: HASH_A,
+        storagePath:
+          "studioCutSyncJobs/episode-004-rescue-sync/outputs/episode-manifest.json",
+      },
+      sourceMonitorProxy: {
+        fileName: "source-monitor.mp4",
+        sizeBytes: 1024,
+        sha256: HASH_B,
+        storagePath:
+          "studioCutProjects/episode-004/branches/main/source-monitor-proxy/source-monitor.mp4",
+      },
+      syncMap: {
+        fileName: "sync-map.json",
+        sizeBytes: 768,
+        sha256: HASH_C,
+        storagePath:
+          "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-map.json",
+      },
+      syncReport: {
+        fileName: "sync-report.json",
+        sizeBytes: 384,
+        sha256: HASH_D,
+        storagePath:
+          "studioCutSyncJobs/episode-004-rescue-sync/outputs/sync-report.json",
+      },
+      packageFingerprint: HASH_E,
+    },
     generatedByWorkerVersion: "studio-cut-cloud-sync-worker-v0",
     packageCreatedAt: "2026-05-22T12:01:00.000Z",
     createdBy: "charlie@highgroundodyssey.com",
@@ -232,6 +270,32 @@ test("shared room metadata validates manifest and proxy storage fields", () => {
     }),
     false,
   );
+  assert.equal(
+    isSharedRoomMetadata({
+      ...metadata,
+      packageIntegrity: {
+        ...metadata.packageIntegrity,
+        manifest: {
+          ...metadata.packageIntegrity.manifest,
+          sha256: "not-a-sha",
+        },
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isSharedRoomMetadata({
+      ...metadata,
+      packageIntegrity: {
+        ...metadata.packageIntegrity,
+        syncMap: {
+          ...metadata.packageIntegrity.syncMap,
+          storagePath: "/tmp/sync-map.json",
+        },
+      },
+    }),
+    false,
+  );
 
   assert.equal(
     isSharedRoomMetadata({
@@ -243,6 +307,27 @@ test("shared room metadata validates manifest and proxy storage fields", () => {
         "Published directly from Cloud Sync worker outputs without local path metadata.",
     }),
     true,
+  );
+});
+
+test("shared room package fingerprint seed is deterministic", () => {
+  assert.equal(
+    buildPackageFingerprintSeed({
+      manifestSha256: HASH_A,
+      sourceMonitorProxySha256: HASH_B,
+      syncMapSha256: HASH_C,
+      syncReportSha256: HASH_D,
+    }),
+    `manifest:${HASH_A}|sourceMonitorProxy:${HASH_B}|syncMap:${HASH_C}|syncReport:${HASH_D}`,
+  );
+
+  assert.equal(
+    buildPackageFingerprintSeed({
+      manifestSha256: HASH_A,
+      sourceMonitorProxySha256: HASH_B,
+      syncMapSha256: HASH_C,
+    }),
+    `manifest:${HASH_A}|sourceMonitorProxy:${HASH_B}|syncMap:${HASH_C}|syncReport:none`,
   );
 });
 

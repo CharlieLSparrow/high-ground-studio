@@ -354,6 +354,12 @@ The validator checks package compatibility, proxy inspection, Sync Map/report
 job alignment, local-path leakage, and prints the files to select in `Publish
 Rescue Sync Package`.
 
+The web publish flow computes SHA-256 digests for the selected manifest,
+source-monitor proxy, Sync Map, and optional sync report before uploading them.
+Those digests plus a package fingerprint are stored in shared room metadata and
+shown in Shared Room Diagnostics / Sync Review, so operators can spot accidental
+wrong-file publishes before collaborators edit against the room.
+
 To generate a safe synthetic package for testing the live publish UI:
 
 ```bash

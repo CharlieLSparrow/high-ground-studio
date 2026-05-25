@@ -24,12 +24,28 @@ export type SharedRoomMetadata = {
   manifestStoragePath?: string;
   syncMapStoragePath?: string;
   syncReportStoragePath?: string;
+  packageIntegrity?: SharedRoomPackageIntegrity;
   generatedByWorkerVersion?: string;
   packageCreatedAt?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
   notes?: string;
+};
+
+export type PackageArtifactIntegrity = {
+  fileName: string;
+  sizeBytes: number;
+  sha256: string;
+  storagePath?: string;
+};
+
+export type SharedRoomPackageIntegrity = {
+  manifest: PackageArtifactIntegrity;
+  sourceMonitorProxy: PackageArtifactIntegrity;
+  syncMap: PackageArtifactIntegrity;
+  syncReport?: PackageArtifactIntegrity;
+  packageFingerprint: string;
 };
 
 export type GeneratedPackagePreflightCheckStatus =
@@ -88,6 +104,25 @@ export function buildGeneratedPackageStoragePath({
   return `studioCutSyncJobs/${sanitizeSharedRoomPart(
     syncJobId,
   )}/outputs/${sanitizeStorageFileName(fileName)}`;
+}
+
+export function buildPackageFingerprintSeed({
+  manifestSha256,
+  sourceMonitorProxySha256,
+  syncMapSha256,
+  syncReportSha256,
+}: {
+  manifestSha256: string;
+  sourceMonitorProxySha256: string;
+  syncMapSha256: string;
+  syncReportSha256?: string;
+}) {
+  return [
+    `manifest:${manifestSha256}`,
+    `sourceMonitorProxy:${sourceMonitorProxySha256}`,
+    `syncMap:${syncMapSha256}`,
+    `syncReport:${syncReportSha256 ?? "none"}`,
+  ].join("|");
 }
 
 export function parseSharedRoomQuery(
@@ -357,6 +392,8 @@ export function isSharedRoomMetadata(
       isSafeSharedRoomStoragePath(metadata.syncMapStoragePath)) &&
     (metadata.syncReportStoragePath === undefined ||
       isSafeSharedRoomStoragePath(metadata.syncReportStoragePath)) &&
+    (metadata.packageIntegrity === undefined ||
+      isSharedRoomPackageIntegrity(metadata.packageIntegrity)) &&
     (metadata.generatedByWorkerVersion === undefined ||
       (typeof metadata.generatedByWorkerVersion === "string" &&
         metadata.generatedByWorkerVersion.trim().length > 0)) &&
@@ -365,6 +402,50 @@ export function isSharedRoomMetadata(
         !Number.isNaN(Date.parse(metadata.packageCreatedAt)))) &&
     (metadata.notes === undefined || typeof metadata.notes === "string")
   );
+}
+
+export function isSharedRoomPackageIntegrity(
+  value: unknown,
+): value is SharedRoomPackageIntegrity {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const integrity = value as Partial<SharedRoomPackageIntegrity>;
+
+  return (
+    isPackageArtifactIntegrity(integrity.manifest) &&
+    isPackageArtifactIntegrity(integrity.sourceMonitorProxy) &&
+    isPackageArtifactIntegrity(integrity.syncMap) &&
+    (integrity.syncReport === undefined ||
+      isPackageArtifactIntegrity(integrity.syncReport)) &&
+    isSha256Hex(integrity.packageFingerprint)
+  );
+}
+
+export function isPackageArtifactIntegrity(
+  value: unknown,
+): value is PackageArtifactIntegrity {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const artifact = value as Partial<PackageArtifactIntegrity>;
+
+  return (
+    typeof artifact.fileName === "string" &&
+    artifact.fileName.trim().length > 0 &&
+    typeof artifact.sizeBytes === "number" &&
+    Number.isFinite(artifact.sizeBytes) &&
+    artifact.sizeBytes >= 0 &&
+    isSha256Hex(artifact.sha256) &&
+    (artifact.storagePath === undefined ||
+      isSafeSharedRoomStoragePath(artifact.storagePath))
+  );
+}
+
+export function isSha256Hex(value: unknown) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
 export function isSafeSharedRoomStoragePath(value: unknown) {

@@ -79,6 +79,7 @@ import {
   type SharedRoomUploadProgress,
 } from "./persistence/sharedRoomPersistence";
 import {
+  buildPackageFingerprintSeed,
   buildGeneratedPackageStoragePath,
   buildGeneratedPackagePreflight,
   buildSharedRoomUrl,
@@ -88,6 +89,7 @@ import {
   validateGeneratedPackageCompatibility,
   type GeneratedPackagePreflightCheck,
   type SharedRoomMetadata,
+  type SharedRoomPackageIntegrity,
 } from "./sharedRoom";
 import { getStudioCutRuntimeConfig } from "./studioCutConfig";
 
@@ -2326,12 +2328,64 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       setSharedRoomUploadState({
         status: "uploading",
         progressPercent: 0,
-        message: "Uploading generated source-monitor proxy.",
+        message: "Computing package fingerprints before upload.",
         shareUrl: "",
       });
       updateRescueSyncPackageMessage(
         "info",
-        "Publishing generated package to the shared room.",
+        "Computing package fingerprints for the generated room package.",
+      );
+
+      const manifestSha256 = await computeFileSha256(manifestFile);
+      const sourceMonitorProxySha256 = await computeFileSha256(proxyFile);
+      const syncMapSha256 = await computeFileSha256(syncMapFile);
+      const syncReportSha256 =
+        syncReportFile && syncReportStoragePath
+          ? await computeFileSha256(syncReportFile)
+          : undefined;
+      const packageFingerprint = await computeTextSha256(
+        buildPackageFingerprintSeed({
+          manifestSha256,
+          sourceMonitorProxySha256,
+          syncMapSha256,
+          ...(syncReportSha256 ? { syncReportSha256 } : {}),
+        }),
+      );
+      const packageIntegrity: SharedRoomPackageIntegrity = {
+        manifest: {
+          fileName: manifestFile.name,
+          sizeBytes: manifestFile.size,
+          sha256: manifestSha256,
+          storagePath: manifestStoragePath,
+        },
+        sourceMonitorProxy: {
+          fileName: proxyFile.name,
+          sizeBytes: proxyFile.size,
+          sha256: sourceMonitorProxySha256,
+          storagePath: sourceMonitorProxyStoragePath,
+        },
+        syncMap: {
+          fileName: syncMapFile.name,
+          sizeBytes: syncMapFile.size,
+          sha256: syncMapSha256,
+          storagePath: syncMapStoragePath,
+        },
+        ...(syncReportFile && syncReportSha256 && syncReportStoragePath
+          ? {
+              syncReport: {
+                fileName: syncReportFile.name,
+                sizeBytes: syncReportFile.size,
+                sha256: syncReportSha256,
+                storagePath: syncReportStoragePath,
+              },
+            }
+          : {}),
+        packageFingerprint,
+      };
+
+      updateRescueSyncPackageMessage(
+        "info",
+        `Package fingerprint ${formatDigest(packageFingerprint)} computed. Uploading generated package to the shared room.`,
       );
 
       await store.uploadSourceMonitorProxy(
@@ -2375,6 +2429,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         manifestStoragePath,
         syncMapStoragePath,
         ...(syncReportStoragePath ? { syncReportStoragePath } : {}),
+        packageIntegrity,
         generatedByWorkerVersion: "studio-cut-cloud-sync-worker-v0",
         packageCreatedAt: updatedAt,
         createdBy: createdBy ?? config.createdBy,
@@ -4300,6 +4355,14 @@ function SharedRoomDiagnosticsPanel({
           value={getSharedRoomPackageKindLabel(metadata?.packageKind)}
         />
         <ReadinessMetric
+          label="Package fingerprint"
+          value={formatDigest(metadata?.packageIntegrity?.packageFingerprint)}
+        />
+        <ReadinessMetric
+          label="Integrity"
+          value={metadata?.packageIntegrity ? "Digests attached" : "Missing"}
+        />
+        <ReadinessMetric
           label="Sync Map"
           value={metadata?.syncMapStoragePath ? "Attached" : "Not attached"}
         />
@@ -4337,6 +4400,41 @@ function SharedRoomDiagnosticsPanel({
         </p>
       )}
     </section>
+  );
+}
+
+function PackageIntegritySummary({
+  integrity,
+}: {
+  integrity: SharedRoomPackageIntegrity;
+}) {
+  const artifacts = [
+    { label: "Manifest", artifact: integrity.manifest },
+    { label: "Proxy", artifact: integrity.sourceMonitorProxy },
+    { label: "Sync Map", artifact: integrity.syncMap },
+    ...(integrity.syncReport
+      ? [{ label: "Sync report", artifact: integrity.syncReport }]
+      : []),
+  ];
+
+  return (
+    <div className="sync-review-integrity" aria-label="Published package integrity">
+      <div>
+        <span>Package fingerprint</span>
+        <strong>{formatDigest(integrity.packageFingerprint)}</strong>
+      </div>
+      <ul>
+        {artifacts.map(({ label, artifact }) => (
+          <li key={label}>
+            <strong>{label}</strong>
+            <span>
+              {artifact.fileName} · {formatFileSize(artifact.sizeBytes)} ·{" "}
+              {formatDigest(artifact.sha256)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -4412,6 +4510,9 @@ function SyncReviewPanel({
             <span>Asset roles</span>
             <strong>{summary.roleSummary}</strong>
           </div>
+          {metadata?.packageIntegrity ? (
+            <PackageIntegritySummary integrity={metadata.packageIntegrity} />
+          ) : null}
           <div className="sync-review-detail-grid">
             <div className="sync-review-detail-card">
               <h3>Reference Rail</h3>
@@ -7563,6 +7664,42 @@ function formatDateTimeLabel(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+async function computeFileSha256(file: File) {
+  const digest = await computeSha256(await file.arrayBuffer());
+
+  return digest;
+}
+
+async function computeTextSha256(value: string) {
+  const encoded = new TextEncoder().encode(value);
+  const source = encoded.buffer.slice(
+    encoded.byteOffset,
+    encoded.byteOffset + encoded.byteLength,
+  );
+
+  return computeSha256(source);
+}
+
+async function computeSha256(source: ArrayBuffer) {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("SHA-256 package fingerprinting requires browser crypto support.");
+  }
+
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", source);
+
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function formatDigest(value: string | undefined) {
+  if (!value) {
+    return "Missing";
+  }
+
+  return `${value.slice(0, 12)}…${value.slice(-6)}`;
 }
 
 function getSharedRoomPackageKindLabel(

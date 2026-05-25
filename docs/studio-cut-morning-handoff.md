@@ -273,6 +273,12 @@ decision and transcript seed JSON. Publish the package, then import the seed
 decisions/transcript to show the full room-edit-agent-review loop without real
 media.
 
+Published generated packages now carry SHA-256 integrity metadata in the shared
+room document. Shared Room Diagnostics shows the package fingerprint, and Sync
+Review shows the manifest/proxy/Sync Map/report digest summary when room
+metadata includes it. Use that fingerprint to confirm that collaborators are
+looking at the exact package Charlie intended to publish.
+
 Create bootstrap files after calculating the real duration in milliseconds:
 
 ```bash

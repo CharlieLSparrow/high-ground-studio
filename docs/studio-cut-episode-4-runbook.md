@@ -279,6 +279,10 @@ pnpm studio-cut:rescue-sync-package
 The command writes a safe generated package to
 `tools/studio-cut-local/output/rescue-sync-publish-package/`. Follow its README
 in the deployed app before uploading real Episode 4 generated artifacts.
+When a generated package is published, Studio Cut records SHA-256 digests for
+the manifest, source-monitor proxy, Sync Map, and optional sync report. Check
+Shared Room Diagnostics or Sync Review for the package fingerprint after
+publish; a changed fingerprint means a different package was published.
 
 Before trusting private collaboration data in the shared room, confirm that
 Firestore and Storage rules have been emulator-tested and deployed. JSON

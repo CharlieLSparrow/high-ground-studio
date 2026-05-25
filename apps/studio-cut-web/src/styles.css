@@ -1269,6 +1269,7 @@ h2 {
 .sync-review-grid div,
 .sync-review-roles,
 .sync-review-empty,
+.sync-review-integrity,
 .sync-review-detail-card,
 .sync-review-warnings {
   display: grid;
@@ -1281,7 +1282,8 @@ h2 {
 
 .diagnostics-grid span,
 .sync-review-grid span,
-.sync-review-roles span {
+.sync-review-roles span,
+.sync-review-integrity > div span {
   color: #aeb9b4;
   font-size: 0.68rem;
   font-weight: 850;
@@ -1291,7 +1293,8 @@ h2 {
 .diagnostics-grid strong,
 .sync-review-grid strong,
 .sync-review-roles strong,
-.sync-review-empty strong {
+.sync-review-empty strong,
+.sync-review-integrity > div strong {
   overflow-wrap: anywhere;
   color: #eef2ee;
   font-size: 0.84rem;
@@ -1318,6 +1321,7 @@ h2 {
 }
 
 .sync-review-detail-card ul,
+.sync-review-integrity ul,
 .sync-review-warnings ul {
   display: grid;
   gap: 7px;
@@ -1327,12 +1331,14 @@ h2 {
 }
 
 .sync-review-detail-card li,
+.sync-review-integrity li,
 .sync-review-warnings li {
   display: grid;
   gap: 2px;
 }
 
 .sync-review-detail-card li strong,
+.sync-review-integrity li strong,
 .sync-review-warnings li strong {
   overflow-wrap: anywhere;
   color: #eef2ee;
@@ -1340,6 +1346,7 @@ h2 {
 }
 
 .sync-review-detail-card li span,
+.sync-review-integrity li span,
 .sync-review-warnings li span,
 .sync-review-detail-card p,
 .sync-review-warnings p {

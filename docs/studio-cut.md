@@ -234,16 +234,21 @@ manifest, Sync Map, and sync report are stored under
 assets are not uploaded by this publish flow. The panel includes a package
 preflight summary before upload: generated file selection, Manifest/Sync Map
 compatibility, active room target, proxy upload readiness, and optional sync
-report attachment. A blocked preflight should be fixed before publishing. If the
-package target room differs from the active collaboration room, the panel offers
-`Use Package Room` so the operator does not have to manually copy project and
-branch IDs.
+report attachment. On publish, Studio Cut computes SHA-256 digests for the
+manifest, source-monitor proxy, Sync Map, and optional sync report, then stores a
+package fingerprint in shared room metadata. A blocked preflight should be fixed
+before publishing. If the package target room differs from the active
+collaboration room, the panel offers `Use Package Room` so the operator does
+not have to manually copy project and branch IDs.
 
 Shared rooms now include a compact `Sync Review` panel. For Rescue Sync rooms,
 the browser loads the attached Sync Map and optional sync report from Firebase
 Storage, validates them with the shared schema, and shows timeline duration,
 asset counts, reference-piece count, offset count, confidence, and warning
-counts. It also lists the ordered reference rail pieces, per-track estimated
+counts. Shared Room Diagnostics also shows whether package integrity metadata is
+attached. The package fingerprint is an operator-facing guardrail: if Charlie
+re-publishes or swaps files, the room metadata should show a new fingerprint.
+Sync Review also lists the ordered reference rail pieces, per-track estimated
 offsets with anchor/agreement details when available, and the first sync
 warnings that an operator should review before tagging. In local-only mode the
 same panel can preview the selected generated package before publish. It never

@@ -617,6 +617,8 @@ async function runBrowserSmoke() {
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Room metadata");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync Map");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Sync report");
+    await expect(page.getByLabel("Shared room diagnostics")).toContainText("Package fingerprint");
+    await expect(page.getByLabel("Shared room diagnostics")).toContainText("Integrity");
     await expect(page.getByLabel("Shared room diagnostics")).toContainText("Local only");
     await expect(sharedRoomSection.getByRole("button", { name: "Create Shared Room" })).toBeDisabled();
     await expect(sharedRoomSection.getByRole("button", { name: "Copy Room Link" })).toBeDisabled();

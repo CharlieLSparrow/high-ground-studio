@@ -237,6 +237,9 @@ function serializeRoomMetadata(metadata: SharedRoomMetadata) {
     ...(metadata.syncReportStoragePath
       ? { syncReportStoragePath: metadata.syncReportStoragePath }
       : {}),
+    ...(metadata.packageIntegrity
+      ? { packageIntegrity: metadata.packageIntegrity }
+      : {}),
     ...(metadata.generatedByWorkerVersion
       ? { generatedByWorkerVersion: metadata.generatedByWorkerVersion }
       : {}),
