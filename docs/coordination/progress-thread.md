@@ -1281,3 +1281,20 @@ checks, blockers, and next handoff.
   - Web `/team/hgo-staged-artifacts` unauthenticated sign-in redirect
 - Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00022-vb8=100`
+
+### Codex / `codex/content-studio-persistence-supervisor-001` multi-agent fanout
+
+- Created supervisor branch `codex/content-studio-persistence-supervisor-001`
+  from `origin/main` at `29d78bc`.
+- Spawned Epicurus (`019e606f-35fd-72f2-831b-0c635974e12d`) for Content Studio
+  project-native persistence across podcast, book, and episode-page work.
+- Spawned Erdos (`019e6070-bbd8-7b10-9dcd-b8f5385820e7`) for the first real
+  persisted coaching tool loop for Homer/client use.
+- Spawned Plato (`019e6070-f3fe-74c3-9f80-cfc13365abcb`) for private HGO
+  episode publish workflow improvements.
+- Coordination note: `prisma/schema.prisma` is active shared territory during
+  this fanout. Workers were warned to inspect current diffs and preserve each
+  other's model changes.
+- Scope guardrails remain: no public publish action, provider calls,
+  production DB mutation commands, secrets/IAM/DNS/OAuth/billing changes, or
+  real manuscript/source-content test data from worker threads.

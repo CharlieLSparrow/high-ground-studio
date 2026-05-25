@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-05-24
+Last updated: 2026-05-25
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -23,11 +23,12 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified after the HGO draft packet lab deploy on 2026-05-24.
+Verified at the start of the Content Studio persistence fanout on 2026-05-25.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | WorldHub Growth deploy docs `02e96df` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, HGO staging/publish-intent rails, WorldHub provider rails, Google Calendar sync jobs, the Growth desk, SEO briefs, analytics snapshots, ad/affiliate/sponsor placement planning, gated GA/AdSense runtime hooks, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `codex/content-studio-persistence-supervisor-001` | `29d78bc` | `/Users/wall-e/Dev/high-ground-studio` | Supervisor / integration fanout | Active coordination branch for the 2026-05-25 multi-agent push. Started from `origin/main` at `29d78bc`. Tracks three worker lanes: Content Studio project persistence, coaching tools, and private HGO episode publish workflow. |
+| `main` | Coaching feature grant deploy docs `29d78bc` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, HGO staging/publish-intent rails, WorldHub provider rails, Google Calendar sync jobs, the Growth desk, SEO briefs, analytics snapshots, ad/affiliate/sponsor placement planning, gated GA/AdSense runtime hooks, manual coaching feature grants, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -40,6 +41,29 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
 | `codex/studio-cut-001-web-shell` | `64c024a` | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Jason reports the worktree is clean and the lane will stay out of HGO/web deploy files without coordination. |
 
 ## Active Lanes
+
+### 2026-05-25 Sub-Agent Fanout
+
+- supervisor: Codex in this thread
+- coordination branch: `codex/content-studio-persistence-supervisor-001`
+- goal: move three mission-critical slices in parallel without turning the
+  supervisor into a bottleneck
+- active workers:
+  - Epicurus (`019e606f-35fd-72f2-831b-0c635974e12d`): Content Studio
+    project-native persistence for podcast, book, and episode-page work
+  - Erdos (`019e6070-bbd8-7b10-9dcd-b8f5385820e7`): first real coaching tool
+    data loop for Homer/client use
+  - Plato (`019e6070-f3fe-74c3-9f80-cfc13365abcb`): private HGO episode
+    publish workflow improvements
+- shared-file warning:
+  - `prisma/schema.prisma` is active shared territory during this fanout.
+    Workers must inspect current diffs and preserve each other's model changes.
+- no-touch boundaries during this fanout:
+  - no public publishing without explicit approval
+  - no provider calls
+  - no secrets, IAM, DNS, OAuth, billing, or Cloud Run config changes
+  - no production `db:push`/`db:migrate` from worker threads
+  - no real manuscript or unreleased HGO source content in tests
 
 ### Integration / Release Captain
 
