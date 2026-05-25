@@ -37,12 +37,18 @@ checks, blockers, and next handoff.
   `pnpm --filter web exec next build --webpack`, and `git diff --check`.
 - Local functional commit: `fdf37c3`
   `feat(web): add WorldHub provider adapter rails`.
-- Pushed final deploy head `b183d91`
+- Pushed runtime deploy head `b183d91`
   `docs: log WorldHub provider adapter rails`.
+- Pushed final deploy-tooling head `a166c4f`
+  `chore(web): wire optional WorldHub provider secrets`.
 - Deployed web directly through `pnpm web:cloudrun:deploy`:
-  - Cloud Build `0f3d1a23-754a-4413-8a39-49804889a628`
-  - Web image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:b183d91`
-  - Web revision `web-00059-xls`, serving 100%
+  - final Cloud Build `908aecbb-4eb1-4678-8eba-898cae520d6b`
+  - Web image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:a166c4f`
+  - Web revision `web-00062-bcw`, serving 100%
+  - optional provider secrets mounted: `0`
+  - live `AUTH_URL` and `HGO_SITE_URL` restored to
+    `https://app.highgroundodyssey.com` after testing the new secret-update
+    deploy path, then traffic was routed to `web-00062-bcw`
 - Live smoke passed:
   - `https://web-hm2odnvjga-uc.a.run.app/api/health` returned 200.
   - `https://web-hm2odnvjga-uc.a.run.app/` returned 200.
@@ -57,10 +63,12 @@ checks, blockers, and next handoff.
     new WorldHub provider-rails story entry.
   - `https://app.highgroundodyssey.com/team/worldhub` returned the expected
     unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/api/auth/signin` returned 200 and set
+    its callback cookie to `https://app.highgroundodyssey.com`.
   - Unsigned Stripe and Patreon webhook POSTs reached the live endpoints and
     returned 503 because provider webhook secrets are not mounted yet.
 - Rollback:
-  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00057-tww=100`
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00059-xls=100`
 
 ### Codex / `main` WorldHub provider integration workspace
 

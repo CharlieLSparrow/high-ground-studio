@@ -117,6 +117,13 @@ function getServiceUrl(service) {
   return service?.status?.url || service?.status?.address?.url || "";
 }
 
+function getServiceEnvValue(service, envName) {
+  const entries = service?.spec?.template?.spec?.containers?.[0]?.env ?? [];
+  const entry = entries.find((item) => item.name === envName);
+
+  return entry?.value || "";
+}
+
 function getTrafficPercentForRevision(service, revisionName) {
   return (service?.status?.traffic ?? [])
     .filter((entry) => entry.revisionName === revisionName)
@@ -303,9 +310,14 @@ const createService = process.env.WEB_CLOUD_RUN_CREATE_SERVICE === "1";
 const previousRevision = getLatestRevision(serviceBefore);
 const previousImage = getCurrentImage(serviceBefore);
 const existingUrl = getServiceUrl(serviceBefore);
-const requestedAuthUrl = process.env.WEB_AUTH_URL || existingUrl;
+const existingAuthUrl = getServiceEnvValue(serviceBefore, "AUTH_URL");
+const existingSiteUrl = getServiceEnvValue(serviceBefore, "HGO_SITE_URL");
+const requestedAuthUrl = process.env.WEB_AUTH_URL || existingAuthUrl || existingUrl;
 const requestedSiteUrl =
-  process.env.WEB_HGO_SITE_URL || requestedAuthUrl || "https://highgroundodyssey.com";
+  process.env.WEB_HGO_SITE_URL ||
+  existingSiteUrl ||
+  requestedAuthUrl ||
+  "https://highgroundodyssey.com";
 const optionalSecretBindings = getExistingOptionalSecretBindings();
 const deploySecretBindings = [
   ...WEB_REQUIRED_SECRET_BINDINGS,

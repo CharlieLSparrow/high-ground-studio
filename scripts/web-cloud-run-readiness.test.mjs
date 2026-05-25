@@ -108,6 +108,9 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /PATREON_WEBHOOK_SECRET/);
   assert.match(deployScript, /GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON/);
   assert.match(deployScript, /getTrafficPercentForRevision/);
+  assert.match(deployScript, /getServiceEnvValue/);
+  assert.match(deployScript, /existingAuthUrl/);
+  assert.match(deployScript, /existingSiteUrl/);
   assert.match(deployScript, /update-traffic/);
   assert.match(deployScript, /projection-stage\/import/);
   assert.match(deployScript, /team\/progress/);

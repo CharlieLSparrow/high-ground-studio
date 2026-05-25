@@ -107,27 +107,43 @@ pnpm --filter web exec next build --webpack
 
 ## Deploy
 
-The deployed head was:
+The final deployed head was:
 
 ```text
-b183d91 docs: log WorldHub provider adapter rails
+a166c4f chore(web): wire optional WorldHub provider secrets
 ```
 
 Web image:
 
 ```text
-Cloud Build: 0f3d1a23-754a-4413-8a39-49804889a628
-image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:b183d91
+Cloud Build: 908aecbb-4eb1-4678-8eba-898cae520d6b
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:a166c4f
 ```
 
 Live Cloud Run:
 
 ```text
 service: web
-revision: web-00059-xls
+revision: web-00062-bcw
 traffic: 100%
 service URL: https://web-hm2odnvjga-uc.a.run.app
 custom domain: https://app.highgroundodyssey.com
+```
+
+The provider-secret-aware deploy helper reported:
+
+```text
+optional provider secrets mounted: 0
+```
+
+No optional Stripe, Patreon, Google Calendar, merch, or Resend provider secrets
+exist in Secret Manager yet. After one deploy briefly tried to default
+`AUTH_URL` and `HGO_SITE_URL` to the generated Cloud Run URL, the live service
+was immediately corrected and routed to `web-00062-bcw` with:
+
+```text
+AUTH_URL=https://app.highgroundodyssey.com
+HGO_SITE_URL=https://app.highgroundodyssey.com
 ```
 
 Live smoke passed:
@@ -141,6 +157,7 @@ https://web-hm2odnvjga-uc.a.run.app/team/hgo-publish-queue -> 307 sign-in redire
 https://app.highgroundodyssey.com/api/health -> 200
 https://app.highgroundodyssey.com/updates -> 200 and includes "WorldHub gets provider rails"
 https://app.highgroundodyssey.com/team/worldhub -> 307 sign-in redirect
+https://app.highgroundodyssey.com/api/auth/signin -> 200 and callback cookie uses https://app.highgroundodyssey.com
 https://app.highgroundodyssey.com/api/worldhub/webhooks/stripe unsigned POST -> 503 until STRIPE_WEBHOOK_SECRET is mounted
 https://app.highgroundodyssey.com/api/worldhub/webhooks/patreon unsigned POST -> 503 until PATREON_WEBHOOK_SECRET is mounted
 ```
@@ -151,7 +168,7 @@ Immediate Cloud Run rollback:
 gcloud run services update-traffic web \
   --project=high-ground-odyssey \
   --region=us-central1 \
-  --to-revisions=web-00057-tww=100
+  --to-revisions=web-00059-xls=100
 ```
 
 ## Operator Notes

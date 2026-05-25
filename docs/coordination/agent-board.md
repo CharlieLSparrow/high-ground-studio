@@ -147,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00059-xls` from `main` commit `b183d91`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00057-tww`
+  - latest web deploy is `web-00062-bcw` from `main` commit `a166c4f`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00059-xls`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
@@ -176,6 +176,9 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
     webhook secrets are mounted
   - Google Calendar sync can queue appointment sync jobs and can create/update
     events once dedicated `GOOGLE_CALENDAR_*` credentials are mounted
+  - Cloud Run deploy tooling now mounts optional provider secrets automatically
+    when matching Secret Manager secrets exist; current live check found `0`
+    optional provider secrets mounted
   - no Stripe Checkout, payment reconciliation, Patreon entitlement mutation,
     merch provider call, or fulfillment call is active yet
 - next likely slice:
