@@ -102,6 +102,11 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /web-cloud-run@/);
   assert.match(deployScript, /--set-secrets/);
   assert.match(deployScript, /web-cloudsql-database-url/);
+  assert.match(deployScript, /--update-secrets/);
+  assert.match(deployScript, /WEB_OPTIONAL_SECRET_BINDINGS/);
+  assert.match(deployScript, /STRIPE_WEBHOOK_SECRET/);
+  assert.match(deployScript, /PATREON_WEBHOOK_SECRET/);
+  assert.match(deployScript, /GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON/);
   assert.match(deployScript, /getTrafficPercentForRevision/);
   assert.match(deployScript, /update-traffic/);
   assert.match(deployScript, /projection-stage\/import/);
@@ -117,7 +122,10 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(domainScript, /isCutoverComplete/);
   assert.match(domainScript, /Cutover complete/);
   assert.match(seedScript, /Secret values are not printed/);
-  assert.match(seedScript, /web-database-url/);
+  assert.match(seedScript, /web-cloudsql-database-url/);
+  assert.match(seedScript, /OPTIONAL_SECRET_MAPPINGS/);
+  assert.match(seedScript, /web-stripe-webhook-secret/);
+  assert.match(seedScript, /web-patreon-webhook-secret/);
   assert.match(databaseReportScript, /Web database target report/);
   assert.match(databaseReportScript, /never prints the full URL/);
   assert.match(databaseReportScript, /WEB_DB_TARGET_REPORT_REQUIRE_MOUNT/);

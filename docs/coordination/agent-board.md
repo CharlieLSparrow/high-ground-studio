@@ -147,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00057-tww` from `main` commit `2d165a8`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00055-b4r`
+  - latest web deploy is `web-00059-xls` from `main` commit `b183d91`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00057-tww`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
@@ -171,11 +171,17 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
     jobs
   - live schema sync ran through Cloud Run Job `web-cloudsql-db-push-2d165a8`,
     execution `web-cloudsql-db-push-2d165a8-8zbxl`
-  - no Stripe/Patreon/POD/Google Calendar provider calls are active yet
+  - Stripe and Patreon webhook endpoints are live and verify signatures before
+    writing provider-event summaries; live unsigned smokes return 503 until the
+    webhook secrets are mounted
+  - Google Calendar sync can queue appointment sync jobs and can create/update
+    events once dedicated `GOOGLE_CALENDAR_*` credentials are mounted
+  - no Stripe Checkout, payment reconciliation, Patreon entitlement mutation,
+    merch provider call, or fulfillment call is active yet
 - next likely slice:
-  - Google Calendar appointment sync job first, then Stripe hosted checkout and
-    webhook capture, then Patreon member/tier event capture, then merch catalog
-    and fulfillment handoff
+  - mount provider secrets, then add automatic Google Calendar sync enqueue,
+    then Stripe hosted checkout/order reconciliation, then Patreon
+    member/tier reconciliation, then merch catalog and fulfillment handoff
 
 ### Manuscript Collaboration
 
@@ -216,6 +222,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
 | `apps/studio/src/app/manuscript/*` | Manuscript lane | Do not mix collaboration lab changes into Content Studio slices. |
 | `apps/studio/src/app/studio-nav.tsx` | Shared Studio navigation | Declare before editing. |
 | `apps/web/src/app/team/worldhub/*` | WorldHub lane | Keep provider-neutral until business model is stable. |
+| `apps/web/src/app/api/worldhub/webhooks/*` | WorldHub lane | Provider webhooks must verify signatures and write replayable provider events before mutating app state. |
+| `apps/web/src/lib/server/google-calendar-sync.ts` | WorldHub lane | Calendar writes must stay behind dedicated `GOOGLE_CALENDAR_*` credentials and app-owned sync jobs. |
 | `apps/web/src/app/team/progress/*` | Integration / team visibility lane | Team-only readable build journal. |
 | `apps/web/src/app/updates/*` | Integration / team visibility lane | Public build journal route powered by the same story data. |
 | `apps/web/src/components/progress/*` | Integration / team visibility lane | Shared progress story renderer. |

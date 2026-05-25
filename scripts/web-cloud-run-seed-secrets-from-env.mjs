@@ -4,14 +4,49 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
 const DEFAULT_ENV_FILES = [".env", "apps/web/.env.local"];
-const SECRET_MAPPINGS = [
-  ["DATABASE_URL", "web-database-url"],
+const REQUIRED_SECRET_MAPPINGS = [
+  ["DATABASE_URL", "web-cloudsql-database-url"],
   ["AUTH_SECRET", "web-auth-secret"],
   ["GOOGLE_CLIENT_ID", "web-google-client-id"],
   ["GOOGLE_CLIENT_SECRET", "web-google-client-secret"],
   ["HGO_OWNER_EMAILS", "web-owner-emails"],
   ["HGO_TEAM_SCHEDULER_EMAILS", "web-team-scheduler-emails"],
   ["HGO_COACH_EMAILS", "web-coach-emails"],
+];
+const OPTIONAL_SECRET_MAPPINGS = [
+  ["STRIPE_SECRET_KEY", "web-stripe-secret-key"],
+  ["STRIPE_WEBHOOK_SECRET", "web-stripe-webhook-secret"],
+  ["STRIPE_PUBLISHABLE_KEY", "web-stripe-publishable-key"],
+  ["STRIPE_COACHING_PRICE_ID", "web-stripe-coaching-price-id"],
+  ["STRIPE_SUPPORTER_PRICE_ID", "web-stripe-supporter-price-id"],
+  ["STRIPE_SUCCESS_URL", "web-stripe-success-url"],
+  ["STRIPE_CANCEL_URL", "web-stripe-cancel-url"],
+  ["PATREON_CLIENT_ID", "web-patreon-client-id"],
+  ["PATREON_CLIENT_SECRET", "web-patreon-client-secret"],
+  ["PATREON_WEBHOOK_SECRET", "web-patreon-webhook-secret"],
+  ["PATREON_CAMPAIGN_ID", "web-patreon-campaign-id"],
+  ["PATREON_CREATOR_ACCESS_TOKEN", "web-patreon-creator-access-token"],
+  ["GOOGLE_CALENDAR_ID", "web-google-calendar-id"],
+  ["GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON", "web-google-calendar-service-account-json"],
+  ["GOOGLE_CALENDAR_REFRESH_TOKEN", "web-google-calendar-refresh-token"],
+  ["GOOGLE_CALENDAR_IMPERSONATION_EMAIL", "web-google-calendar-impersonation-email"],
+  ["GOOGLE_CALENDAR_SYNC_CLIENT_ID", "web-google-calendar-sync-client-id"],
+  ["GOOGLE_CALENDAR_SYNC_CLIENT_SECRET", "web-google-calendar-sync-client-secret"],
+  ["GOOGLE_CALENDAR_SEND_UPDATES", "web-google-calendar-send-updates"],
+  ["HGO_MERCH_PROVIDER", "web-hgo-merch-provider"],
+  ["SHOPIFY_ADMIN_ACCESS_TOKEN", "web-shopify-admin-access-token"],
+  ["SHOPIFY_STORE_DOMAIN", "web-shopify-store-domain"],
+  ["FOURTHWALL_API_KEY", "web-fourthwall-api-key"],
+  ["FOURTHWALL_SHOP_URL", "web-fourthwall-shop-url"],
+  ["PRINTFUL_API_KEY", "web-printful-api-key"],
+  ["PRINTFUL_STORE_ID", "web-printful-store-id"],
+  ["PRINTIFY_API_KEY", "web-printify-api-key"],
+  ["PRINTIFY_SHOP_ID", "web-printify-shop-id"],
+  ["GELATO_API_KEY", "web-gelato-api-key"],
+  ["GELATO_STORE_ID", "web-gelato-store-id"],
+  ["RESEND_API_KEY", "web-resend-api-key"],
+  ["HGO_EMAIL_FROM", "web-hgo-email-from"],
+  ["RESEND_WEBHOOK_SECRET", "web-resend-webhook-secret"],
 ];
 
 function run(command, args, options = {}) {
@@ -128,7 +163,7 @@ console.log(`project: ${project}`);
 console.log(`env files: ${envFiles.join(", ")}`);
 console.log("Secret values are not printed.");
 
-for (const [envName, secretName] of SECRET_MAPPINGS) {
+for (const [envName, secretName] of REQUIRED_SECRET_MAPPINGS) {
   const value = values[envName] || process.env[envName] || "";
 
   if (!value) {
@@ -156,6 +191,37 @@ for (const [envName, secretName] of SECRET_MAPPINGS) {
     { input: value },
   );
   console.log(`${secretName}: added secret version from ${envName}`);
+}
+
+for (const [envName, secretName] of OPTIONAL_SECRET_MAPPINGS) {
+  const value = values[envName] || process.env[envName] || "";
+
+  if (!value) {
+    console.log(`${secretName}: skipped; ${envName} is not set`);
+    continue;
+  }
+
+  const hasEnabledVersion = secretHasEnabledVersion(project, secretName);
+
+  if (hasEnabledVersion && !force) {
+    console.log(`${secretName}: enabled version already exists; skipped`);
+    continue;
+  }
+
+  runInherited(
+    "gcloud",
+    [
+      "secrets",
+      "versions",
+      "add",
+      secretName,
+      "--project",
+      project,
+      "--data-file=-",
+    ],
+    { input: value },
+  );
+  console.log(`${secretName}: added optional secret version from ${envName}`);
 }
 
 console.log("\nDone.");

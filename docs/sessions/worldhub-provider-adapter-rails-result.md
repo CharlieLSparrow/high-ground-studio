@@ -98,6 +98,62 @@ pnpm --filter web exec next build --webpack
 git diff --check
 ```
 
+The deploy helper also reran:
+
+```bash
+pnpm web:cloudrun:test
+pnpm --filter web exec next build --webpack
+```
+
+## Deploy
+
+The deployed head was:
+
+```text
+b183d91 docs: log WorldHub provider adapter rails
+```
+
+Web image:
+
+```text
+Cloud Build: 0f3d1a23-754a-4413-8a39-49804889a628
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:b183d91
+```
+
+Live Cloud Run:
+
+```text
+service: web
+revision: web-00059-xls
+traffic: 100%
+service URL: https://web-hm2odnvjga-uc.a.run.app
+custom domain: https://app.highgroundodyssey.com
+```
+
+Live smoke passed:
+
+```text
+https://web-hm2odnvjga-uc.a.run.app/api/health -> 200
+https://web-hm2odnvjga-uc.a.run.app/ -> 200
+https://web-hm2odnvjga-uc.a.run.app/projection-stage/import -> 200
+https://web-hm2odnvjga-uc.a.run.app/team/progress -> 307 sign-in redirect
+https://web-hm2odnvjga-uc.a.run.app/team/hgo-publish-queue -> 307 sign-in redirect
+https://app.highgroundodyssey.com/api/health -> 200
+https://app.highgroundodyssey.com/updates -> 200 and includes "WorldHub gets provider rails"
+https://app.highgroundodyssey.com/team/worldhub -> 307 sign-in redirect
+https://app.highgroundodyssey.com/api/worldhub/webhooks/stripe unsigned POST -> 503 until STRIPE_WEBHOOK_SECRET is mounted
+https://app.highgroundodyssey.com/api/worldhub/webhooks/patreon unsigned POST -> 503 until PATREON_WEBHOOK_SECRET is mounted
+```
+
+Immediate Cloud Run rollback:
+
+```bash
+gcloud run services update-traffic web \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=web-00057-tww=100
+```
+
 ## Operator Notes
 
 Provider setup URLs for the live app:
@@ -125,6 +181,10 @@ GOOGLE_CALENDAR_SYNC_CLIENT_SECRET
 
 `GOOGLE_CALENDAR_SEND_UPDATES` defaults to `none`. Use `externalOnly` or `all`
 only when you intentionally want Google to email attendees.
+
+The Cloud Run deploy helper now mounts optional WorldHub provider secrets when
+the matching Secret Manager secret already exists. That keeps provider admin
+work explicit while avoiding manual Cloud Run env drift on future deploys.
 
 ## Next Provider Slices
 

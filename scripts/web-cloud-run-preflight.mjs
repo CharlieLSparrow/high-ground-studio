@@ -214,14 +214,24 @@ if (hasGcloud) {
   }
 
   if (project) {
-    const webSecretNames = [
-      "web-database-url",
+    const requiredWebSecretNames = [
+      "web-cloudsql-database-url",
       "web-auth-secret",
       "web-google-client-id",
       "web-google-client-secret",
       "web-owner-emails",
       "web-team-scheduler-emails",
       "web-coach-emails",
+    ];
+    const optionalWebSecretNames = [
+      "web-stripe-webhook-secret",
+      "web-patreon-webhook-secret",
+      "web-google-calendar-id",
+      "web-google-calendar-service-account-json",
+      "web-google-calendar-refresh-token",
+      "web-google-calendar-sync-client-id",
+      "web-google-calendar-sync-client-secret",
+      "web-resend-api-key",
     ];
 
     checkOptionalGcloudResource("Artifact Registry repo high-ground-studio", [
@@ -250,7 +260,7 @@ if (hasGcloud) {
       "--format=value(email)",
     ]);
 
-    for (const secretName of webSecretNames) {
+    for (const secretName of requiredWebSecretNames) {
       const secretExists = checkOptionalGcloudResource(
         `Secret Manager secret ${secretName}`,
         ["secrets", "describe", secretName, "--format=value(name)"],
@@ -261,6 +271,17 @@ if (hasGcloud) {
       }
 
       checkSecretEnabledVersion(secretName);
+    }
+
+    for (const secretName of optionalWebSecretNames) {
+      const secretExists = checkOptionalGcloudResource(
+        `Optional Secret Manager secret ${secretName}`,
+        ["secrets", "describe", secretName, "--format=value(name)"],
+      );
+
+      if (secretExists) {
+        checkSecretEnabledVersion(secretName);
+      }
     }
   }
 }

@@ -346,13 +346,54 @@ The helper reads `.env` and `apps/web/.env.local` by default. It maps:
 
 | Env value | Secret |
 | --- | --- |
-| `DATABASE_URL` | `web-database-url` |
+| `DATABASE_URL` | `web-cloudsql-database-url` |
 | `AUTH_SECRET` | `web-auth-secret` |
 | `GOOGLE_CLIENT_ID` | `web-google-client-id` |
 | `GOOGLE_CLIENT_SECRET` | `web-google-client-secret` |
 | `HGO_OWNER_EMAILS` | `web-owner-emails` |
 | `HGO_TEAM_SCHEDULER_EMAILS` | `web-team-scheduler-emails` |
 | `HGO_COACH_EMAILS` | `web-coach-emails` |
+
+The deploy helper also mounts optional WorldHub provider secrets when matching
+Secret Manager secrets already exist. This lets billing, supporter, calendar,
+email, and merch integrations turn on without hand-editing Cloud Run
+configuration:
+
+| Env value | Optional secret |
+| --- | --- |
+| `STRIPE_SECRET_KEY` | `web-stripe-secret-key` |
+| `STRIPE_WEBHOOK_SECRET` | `web-stripe-webhook-secret` |
+| `STRIPE_PUBLISHABLE_KEY` | `web-stripe-publishable-key` |
+| `STRIPE_COACHING_PRICE_ID` | `web-stripe-coaching-price-id` |
+| `STRIPE_SUPPORTER_PRICE_ID` | `web-stripe-supporter-price-id` |
+| `STRIPE_SUCCESS_URL` | `web-stripe-success-url` |
+| `STRIPE_CANCEL_URL` | `web-stripe-cancel-url` |
+| `PATREON_CLIENT_ID` | `web-patreon-client-id` |
+| `PATREON_CLIENT_SECRET` | `web-patreon-client-secret` |
+| `PATREON_WEBHOOK_SECRET` | `web-patreon-webhook-secret` |
+| `PATREON_CAMPAIGN_ID` | `web-patreon-campaign-id` |
+| `PATREON_CREATOR_ACCESS_TOKEN` | `web-patreon-creator-access-token` |
+| `GOOGLE_CALENDAR_ID` | `web-google-calendar-id` |
+| `GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON` | `web-google-calendar-service-account-json` |
+| `GOOGLE_CALENDAR_REFRESH_TOKEN` | `web-google-calendar-refresh-token` |
+| `GOOGLE_CALENDAR_IMPERSONATION_EMAIL` | `web-google-calendar-impersonation-email` |
+| `GOOGLE_CALENDAR_SYNC_CLIENT_ID` | `web-google-calendar-sync-client-id` |
+| `GOOGLE_CALENDAR_SYNC_CLIENT_SECRET` | `web-google-calendar-sync-client-secret` |
+| `GOOGLE_CALENDAR_SEND_UPDATES` | `web-google-calendar-send-updates` |
+| `HGO_MERCH_PROVIDER` | `web-hgo-merch-provider` |
+| `SHOPIFY_ADMIN_ACCESS_TOKEN` | `web-shopify-admin-access-token` |
+| `SHOPIFY_STORE_DOMAIN` | `web-shopify-store-domain` |
+| `FOURTHWALL_API_KEY` | `web-fourthwall-api-key` |
+| `FOURTHWALL_SHOP_URL` | `web-fourthwall-shop-url` |
+| `PRINTFUL_API_KEY` | `web-printful-api-key` |
+| `PRINTFUL_STORE_ID` | `web-printful-store-id` |
+| `PRINTIFY_API_KEY` | `web-printify-api-key` |
+| `PRINTIFY_SHOP_ID` | `web-printify-shop-id` |
+| `GELATO_API_KEY` | `web-gelato-api-key` |
+| `GELATO_STORE_ID` | `web-gelato-store-id` |
+| `RESEND_API_KEY` | `web-resend-api-key` |
+| `HGO_EMAIL_FROM` | `web-hgo-email-from` |
+| `RESEND_WEBHOOK_SECRET` | `web-resend-webhook-secret` |
 
 It does not print secret values. To intentionally add fresh versions even when
 enabled versions already exist:

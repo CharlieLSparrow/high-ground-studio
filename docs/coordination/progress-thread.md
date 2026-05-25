@@ -26,6 +26,8 @@ checks, blockers, and next handoff.
   panels so the team can see provider progress without terminal logs.
 - Added focused tests for provider readiness, webhook signatures, and calendar
   event payloads under `pnpm worldhub:integrations:test`.
+- Updated Web Cloud Run deploy/secret tooling so optional WorldHub provider
+  secrets are mounted automatically when matching Secret Manager secrets exist.
 - Guardrails preserved: no secret-value storage, no full webhook payload
   storage, no payment-card handling, no Stripe Checkout creation, no automatic
   payment/order reconciliation, no Patreon entitlement mutation, no merch
@@ -33,6 +35,32 @@ checks, blockers, and next handoff.
 - Validation passed: `pnpm worldhub:integrations:test`, `pnpm db:generate`,
   `pnpm worldhub:domain:typecheck`, `pnpm web:cloudrun:test`,
   `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+- Local functional commit: `fdf37c3`
+  `feat(web): add WorldHub provider adapter rails`.
+- Pushed final deploy head `b183d91`
+  `docs: log WorldHub provider adapter rails`.
+- Deployed web directly through `pnpm web:cloudrun:deploy`:
+  - Cloud Build `0f3d1a23-754a-4413-8a39-49804889a628`
+  - Web image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:b183d91`
+  - Web revision `web-00059-xls`, serving 100%
+- Live smoke passed:
+  - `https://web-hm2odnvjga-uc.a.run.app/api/health` returned 200.
+  - `https://web-hm2odnvjga-uc.a.run.app/` returned 200.
+  - `https://web-hm2odnvjga-uc.a.run.app/projection-stage/import` returned
+    200.
+  - `https://web-hm2odnvjga-uc.a.run.app/team/progress` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://web-hm2odnvjga-uc.a.run.app/team/hgo-publish-queue` returned the
+    expected unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new WorldHub provider-rails story entry.
+  - `https://app.highgroundodyssey.com/team/worldhub` returned the expected
+    unauthenticated sign-in redirect.
+  - Unsigned Stripe and Patreon webhook POSTs reached the live endpoints and
+    returned 503 because provider webhook secrets are not mounted yet.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00057-tww=100`
 
 ### Codex / `main` WorldHub provider integration workspace
 

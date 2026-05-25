@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_SQL_INSTANCE = "studio-postgres";
 const DEFAULT_RUNTIME_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/high_ground_studio";
 
-const WEB_SECRET_BINDINGS = [
+const WEB_REQUIRED_SECRET_BINDINGS = [
   ["DATABASE_URL", "web-cloudsql-database-url"],
   ["AUTH_SECRET", "web-auth-secret"],
   ["GOOGLE_CLIENT_ID", "web-google-client-id"],
@@ -18,6 +18,41 @@ const WEB_SECRET_BINDINGS = [
   ["HGO_OWNER_EMAILS", "web-owner-emails"],
   ["HGO_TEAM_SCHEDULER_EMAILS", "web-team-scheduler-emails"],
   ["HGO_COACH_EMAILS", "web-coach-emails"],
+];
+const WEB_OPTIONAL_SECRET_BINDINGS = [
+  ["STRIPE_SECRET_KEY", "web-stripe-secret-key"],
+  ["STRIPE_WEBHOOK_SECRET", "web-stripe-webhook-secret"],
+  ["STRIPE_PUBLISHABLE_KEY", "web-stripe-publishable-key"],
+  ["STRIPE_COACHING_PRICE_ID", "web-stripe-coaching-price-id"],
+  ["STRIPE_SUPPORTER_PRICE_ID", "web-stripe-supporter-price-id"],
+  ["STRIPE_SUCCESS_URL", "web-stripe-success-url"],
+  ["STRIPE_CANCEL_URL", "web-stripe-cancel-url"],
+  ["PATREON_CLIENT_ID", "web-patreon-client-id"],
+  ["PATREON_CLIENT_SECRET", "web-patreon-client-secret"],
+  ["PATREON_WEBHOOK_SECRET", "web-patreon-webhook-secret"],
+  ["PATREON_CAMPAIGN_ID", "web-patreon-campaign-id"],
+  ["PATREON_CREATOR_ACCESS_TOKEN", "web-patreon-creator-access-token"],
+  ["GOOGLE_CALENDAR_ID", "web-google-calendar-id"],
+  ["GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON", "web-google-calendar-service-account-json"],
+  ["GOOGLE_CALENDAR_REFRESH_TOKEN", "web-google-calendar-refresh-token"],
+  ["GOOGLE_CALENDAR_IMPERSONATION_EMAIL", "web-google-calendar-impersonation-email"],
+  ["GOOGLE_CALENDAR_SYNC_CLIENT_ID", "web-google-calendar-sync-client-id"],
+  ["GOOGLE_CALENDAR_SYNC_CLIENT_SECRET", "web-google-calendar-sync-client-secret"],
+  ["GOOGLE_CALENDAR_SEND_UPDATES", "web-google-calendar-send-updates"],
+  ["HGO_MERCH_PROVIDER", "web-hgo-merch-provider"],
+  ["SHOPIFY_ADMIN_ACCESS_TOKEN", "web-shopify-admin-access-token"],
+  ["SHOPIFY_STORE_DOMAIN", "web-shopify-store-domain"],
+  ["FOURTHWALL_API_KEY", "web-fourthwall-api-key"],
+  ["FOURTHWALL_SHOP_URL", "web-fourthwall-shop-url"],
+  ["PRINTFUL_API_KEY", "web-printful-api-key"],
+  ["PRINTFUL_STORE_ID", "web-printful-store-id"],
+  ["PRINTIFY_API_KEY", "web-printify-api-key"],
+  ["PRINTIFY_SHOP_ID", "web-printify-shop-id"],
+  ["GELATO_API_KEY", "web-gelato-api-key"],
+  ["GELATO_STORE_ID", "web-gelato-store-id"],
+  ["RESEND_API_KEY", "web-resend-api-key"],
+  ["HGO_EMAIL_FROM", "web-hgo-email-from"],
+  ["RESEND_WEBHOOK_SECRET", "web-resend-webhook-secret"],
 ];
 
 function run(command, args, options = {}) {
@@ -104,8 +139,27 @@ function getDeployBlockingDirtyStatus() {
     .join("\n");
 }
 
-function buildSecretArg() {
-  return WEB_SECRET_BINDINGS.map(
+function secretExists(secretName) {
+  return Boolean(
+    readOptional("gcloud", [
+      "secrets",
+      "describe",
+      secretName,
+      "--project",
+      project,
+      "--format=value(name)",
+    ]),
+  );
+}
+
+function getExistingOptionalSecretBindings() {
+  return WEB_OPTIONAL_SECRET_BINDINGS.filter(([, secretName]) =>
+    secretExists(secretName),
+  );
+}
+
+function buildSecretArg(bindings) {
+  return bindings.map(
     ([envName, secretName]) => `${envName}=${secretName}:latest`,
   ).join(",");
 }
@@ -252,6 +306,11 @@ const existingUrl = getServiceUrl(serviceBefore);
 const requestedAuthUrl = process.env.WEB_AUTH_URL || existingUrl;
 const requestedSiteUrl =
   process.env.WEB_HGO_SITE_URL || requestedAuthUrl || "https://highgroundodyssey.com";
+const optionalSecretBindings = getExistingOptionalSecretBindings();
+const deploySecretBindings = [
+  ...WEB_REQUIRED_SECRET_BINDINGS,
+  ...optionalSecretBindings,
+];
 
 if (!serviceExists && !createService) {
   throw new Error(
@@ -264,6 +323,9 @@ console.log(`project: ${project}`);
 console.log(`region: ${region}`);
 console.log(`service: ${service}`);
 console.log(`image: ${imageUri}`);
+console.log(
+  `optional provider secrets mounted: ${optionalSecretBindings.length}`,
+);
 
 if (previousRevision) {
   console.log(`previous ready revision: ${previousRevision}`);
@@ -314,8 +376,18 @@ if (createService && !serviceExists) {
     "--add-cloudsql-instances",
     cloudSqlInstance,
     "--set-secrets",
-    buildSecretArg(),
+    buildSecretArg(deploySecretBindings),
     "--set-env-vars",
+    buildEnvArg({
+      authUrl: requestedAuthUrl,
+      siteUrl: requestedSiteUrl,
+    }),
+  );
+} else {
+  deployArgs.push(
+    "--update-secrets",
+    buildSecretArg(deploySecretBindings),
+    "--update-env-vars",
     buildEnvArg({
       authUrl: requestedAuthUrl,
       siteUrl: requestedSiteUrl,
