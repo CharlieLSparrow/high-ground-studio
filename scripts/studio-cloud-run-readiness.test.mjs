@@ -198,6 +198,11 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(serverModel, /studioManuscriptLiveRoom/);
   assert.match(serverModel, /studioManuscriptLiveRoomUpdate/);
   assert.match(serverModel, /studioManuscriptLivePresence/);
+  assert.match(serverModel, /where: \{ id: input\.roomId, archivedAt: null \}/);
+  assert.doesNotMatch(
+    serverModel,
+    /where: \{ id: input\.roomId, ownerEmail, archivedAt: null \}/,
+  );
   assert.match(schema, /model StudioManuscriptLiveRoom/);
   assert.match(schema, /model StudioManuscriptLiveRoomUpdate/);
   assert.match(schema, /model StudioManuscriptLivePresence/);

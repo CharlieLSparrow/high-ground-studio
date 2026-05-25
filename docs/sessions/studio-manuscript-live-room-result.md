@@ -14,9 +14,9 @@ The new route is:
 ```
 
 It creates authenticated live manuscript rooms backed by Cloud SQL-stored Yjs
-updates. Charlie and Homer can open the same room URL, edit one shared text
-surface, see active presence, copy the current text, and save the current room
-as a manual Manuscript Desk snapshot.
+updates. Charlie and Homer can open the same room URL when both accounts have
+Studio access, edit one shared text surface, see active presence, copy the
+current text, and save the current room as a manual Manuscript Desk snapshot.
 
 ## Implementation
 

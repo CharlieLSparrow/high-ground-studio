@@ -22,6 +22,8 @@ The route is protected by the normal private Studio access gate.
 
 - creates a private live manuscript room
 - accepts pasted or blank starting text
+- lets any authenticated Studio-access user join a room when they have the
+  share URL
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
 - records active presence heartbeats
