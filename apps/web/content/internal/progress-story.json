@@ -1,7 +1,26 @@
 {
-  "updatedAt": "2026-05-25T02:14:37.143Z",
+  "updatedAt": "2026-05-25T02:42:02.632Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-25-coaching-tools-get-manual-controls",
+      "date": "2026-05-25",
+      "title": "Coaching tools get manual controls",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Added a client-specific coaching tool catalog and manual grants so Homer can enable prep, reflection, accountability, resources, milestones, and check-ins without changing subscription tiers.",
+      "body": [
+        "Added a client-specific coaching tool catalog and manual grants so Homer can enable prep, reflection, accountability, resources, milestones, and check-ins without changing subscription tiers."
+      ],
+      "commits": [
+        {
+          "sha": "c80eeb4",
+          "label": "feat(web): add coaching feature grants"
+        }
+      ],
+      "links": [],
+      "tags": ["Progress"]
+    },
     {
       "id": "2026-05-25-monetization-research-library-begins",
       "date": "2026-05-25",
