@@ -74,3 +74,58 @@ The schema change is additive and requires a Prisma `db push` before the live
 route can create rooms in production.
 
 Deploy Studio after the schema is synced.
+
+## Live Deployment
+
+Merged through PR #25:
+
+```text
+main commit: 330f466
+```
+
+Built one-off Prisma db-push image:
+
+```text
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:330f466
+Cloud Build: c5b00e97-0bda-498c-9f6a-55af9dd4bb71
+```
+
+Applied the additive schema to the live Studio Cloud SQL database:
+
+```text
+job: studio-db-push-330f466
+execution: studio-db-push-330f466-4lntn
+database secret: studio-database-url
+```
+
+The job completed successfully and Prisma reported:
+
+```text
+Your database is now in sync with your Prisma schema.
+```
+
+Deployed Studio:
+
+```text
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:330f466
+Cloud Build: e7d0f864-6207-49ff-9d84-50f67f5ee964
+revision: studio-00049-lt2
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+Smokes passed:
+
+- `/api/health`
+- `/content-studio`
+- `/manuscript/live` direct Cloud Run URL returns `HTTP 200`
+- `/api/manuscript/live-rooms` direct Cloud Run URL returns the expected
+  unauthenticated `401`
+
+The `studio.highgroundodyssey.com` hostname did not resolve during this smoke,
+so use the direct Cloud Run Studio URL until a Studio custom domain is wired.
+
+Rollback:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00048-hs4=100
+```
