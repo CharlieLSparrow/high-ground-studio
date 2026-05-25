@@ -1,7 +1,40 @@
 {
-  "updatedAt": "2026-05-25T02:42:02.632Z",
+  "updatedAt": "2026-05-25T19:29:49.226Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "content-studio-persistence-fanout-live",
+      "date": "2026-05-25",
+      "title": "Content Studio learned to keep projects",
+      "kicker": "Project persistence, coaching tools, and episode handoffs went live",
+      "mood": "Live and ready to use",
+      "summary": "The private Studio can now save individual podcast, book, and episode-page projects to the database, coaching clients can submit Weekly Commitments when Homer enables the tool, and HGO publish reviews now produce explicit operator handoff packets.",
+      "body": [
+        "This was the first real sub-agent fanout: Epicurus took Content Studio persistence, Erdos built the Weekly Commitments coaching loop, and Plato tightened the HGO episode-page publish handoff. The work merged through PR #23 and shipped to both Studio and Web after Cloud SQL schema sync jobs completed.",
+        "The new pieces are still intentionally controlled: Content Studio project saves are manual, Weekly Commitments require a client-visible grant, and the HGO handoff packet stops before any public publish action. That keeps the system useful now without pretending review and publishing are automatic."
+      ],
+      "commits": [
+        {
+          "sha": "928d68f",
+          "label": "feat: add content studio persistence fanout"
+        }
+      ],
+      "links": [
+        {
+          "label": "Pull request",
+          "href": "https://github.com/CharlieLSparrow/high-ground-studio/pull/23"
+        },
+        {
+          "label": "Content Studio",
+          "href": "https://studio-hm2odnvjga-uc.a.run.app/content-studio"
+        },
+        {
+          "label": "Updates",
+          "href": "https://app.highgroundodyssey.com/updates"
+        }
+      ],
+      "tags": ["Content Studio", "Coaching", "Episode Pages", "Database"]
+    },
     {
       "id": "2026-05-25-coaching-tools-get-manual-controls",
       "date": "2026-05-25",
