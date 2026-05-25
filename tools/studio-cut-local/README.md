@@ -509,6 +509,19 @@ remains auditable.
 See `docs/studio-cut-agentic-editing.md` for the operation file shape and the
 recommended human-transparent agent workflow.
 
+Create a sanitized index for a local Rescue Sync episode workspace:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-workspace-index \
+  --episode-dir path/to/episode-workspace \
+  --out path/to/episode-workspace/generated/agent-workspace-index.json
+```
+
+The index is built for Codex and future agents. It lists relative inbox,
+generated, edit, and render paths, readiness flags, expected decision export
+locations, share URL, and command templates. It intentionally uses the
+`<episode-workspace>` placeholder instead of private absolute paths.
+
 ## Inputs
 
 - Episode Manifest JSON from the Premiere bootstrap workflow.

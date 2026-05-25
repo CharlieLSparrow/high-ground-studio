@@ -481,6 +481,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rescue_status_parser.set_defaults(handler=run_rescue_sync_status)
 
+    agent_workspace_index_parser = subparsers.add_parser(
+        "agent-workspace-index",
+        help="Write a sanitized agent-readable index for a local episode workspace.",
+    )
+    agent_workspace_index_parser.add_argument(
+        "--episode-id",
+        help=(
+            "Episode id. Optional when --episode-dir is supplied; otherwise "
+            "defaults to the episode directory name."
+        ),
+    )
+    agent_workspace_index_parser.add_argument(
+        "--episode-dir",
+        type=Path,
+        help=(
+            "Episode workspace directory. Default: "
+            "~/Movies/StudioCut/<episode-id>."
+        ),
+    )
+    agent_workspace_index_parser.add_argument(
+        "--include-clip",
+        default=True,
+        type=parse_bool_arg,
+        help="Whether to expect/scan optional clip/screen video. Default: true.",
+    )
+    agent_workspace_index_parser.add_argument(
+        "--out",
+        type=Path,
+        help=(
+            "Optional path to write the index JSON. Recommended local path: "
+            "<episode-workspace>/generated/agent-workspace-index.json."
+        ),
+    )
+    agent_workspace_index_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable sanitized index JSON.",
+    )
+    agent_workspace_index_parser.set_defaults(handler=run_agent_workspace_index)
+
     rescue_render_parser = subparsers.add_parser(
         "render-rescue-sync-session",
         help="Render a one-folder Rescue Sync workspace from generated Sync Map files.",
@@ -1897,6 +1937,18 @@ def build_rescue_sync_worker_command(session: dict[str, Any]) -> list[str]:
     ]
 
 
+def build_agent_workspace_index_command(session: dict[str, Any]) -> list[str]:
+    return [
+        sys.executable,
+        str(Path(__file__)),
+        "agent-workspace-index",
+        "--episode-dir",
+        str(session["episodeDir"]),
+        "--out",
+        str(session["generatedDir"] / "agent-workspace-index.json"),
+    ]
+
+
 def build_rescue_sync_session_readme(session: dict[str, Any]) -> str:
     episode_id = session["episodeId"]
     title = session["title"]
@@ -1925,6 +1977,9 @@ def build_rescue_sync_session_readme(session: dict[str, Any]) -> str:
             "--episode-dir",
             str(session["episodeDir"]),
         ]
+    )
+    agent_index_command = format_shell_command(
+        build_agent_workspace_index_command(session)
     )
 
     missing = "\n".join(
@@ -1981,6 +2036,12 @@ Check the local package/readiness state any time:
 {status_command}
 ```
 
+Write a media-safe agent workspace index:
+
+```bash
+{agent_index_command}
+```
+
 ## Publish Shared Room
 
 Open Studio Cut, use `Publish Rescue Sync Package`, and select:
@@ -2023,12 +2084,7 @@ def build_rescue_sync_status_report(session: dict[str, Any]) -> dict[str, Any]:
     generated_dir = session["generatedDir"]
     edit_dir = session["editDir"]
     episode_id = session["episodeId"]
-    decisions_candidates = [
-        edit_dir / f"{episode_id}-decisions.json",
-        edit_dir / "decisions.json",
-        generated_dir / f"{episode_id}-decisions.json",
-        generated_dir / "decisions.json",
-    ]
+    decisions_candidates = get_rescue_sync_decision_candidates(session)
     decisions_path = next((path for path in decisions_candidates if path.is_file()), None)
     report: dict[str, Any] = {
         "status": "blocked",
@@ -2123,6 +2179,267 @@ def build_rescue_sync_status_report(session: dict[str, Any]) -> dict[str, Any]:
     report["nextActions"] = build_rescue_sync_next_actions(report, session)
     report["status"] = "ready" if report["readiness"]["renderReady"] else "blocked"
     return report
+
+
+def get_rescue_sync_decision_candidates(session: dict[str, Any]) -> list[Path]:
+    episode_id = session["episodeId"]
+    edit_dir = session["editDir"]
+    generated_dir = session["generatedDir"]
+    return [
+        edit_dir / f"{episode_id}-decisions.json",
+        edit_dir / "decisions.json",
+        generated_dir / f"{episode_id}-decisions.json",
+        generated_dir / "decisions.json",
+    ]
+
+
+def build_agent_workspace_index(
+    session: dict[str, Any],
+    status_report: dict[str, Any],
+) -> dict[str, Any]:
+    episode_dir = Path(session["episodeDir"]).resolve()
+
+    def relative_workspace_path(path: Path | str) -> str:
+        candidate = Path(path)
+        try:
+            return candidate.resolve().relative_to(episode_dir).as_posix()
+        except (OSError, ValueError):
+            return candidate.name
+
+    def file_entry(path: Path, *, kind: str, label: str) -> dict[str, Any]:
+        exists = path.is_file()
+        return {
+            "label": label,
+            "kind": kind,
+            "path": relative_workspace_path(path),
+            "exists": exists,
+            **({"sizeBytes": path.stat().st_size} if exists else {}),
+        }
+
+    role_entries: list[dict[str, Any]] = []
+    for role, spec in RESCUE_SYNC_ROLE_SPECS.items():
+        if role == "clipVideo" and not session["includeClip"]:
+            continue
+
+        matches = session["roleMatches"].get(role, [])
+        role_entries.append(
+            {
+                "role": role,
+                "label": spec["label"],
+                "required": bool(spec["required"]),
+                "kind": spec["kind"],
+                "count": len(matches),
+                "files": [
+                    {
+                        "fileName": media_path.name,
+                        "relativePath": relative_workspace_path(media_path),
+                        "sizeBytes": media_path.stat().st_size if media_path.exists() else 0,
+                        **({"orderIndex": index} if role == "phoneReferenceAudio" else {}),
+                    }
+                    for index, media_path in enumerate(matches)
+                ],
+            }
+        )
+
+    files = {
+        "syncJob": file_entry(
+            session["syncJobPath"], kind="sync_job", label="Sync job JSON"
+        ),
+        "localMediaMap": file_entry(
+            session["localMediaMapPath"],
+            kind="local_media_map",
+            label="Local media map JSON",
+        ),
+        "syncReport": file_entry(
+            session["syncReportPath"], kind="sync_report", label="Sync report JSON"
+        ),
+        "syncMap": file_entry(
+            session["syncMapPath"], kind="sync_map", label="Sync Map JSON"
+        ),
+        "manifest": file_entry(
+            session["manifestPath"], kind="episode_manifest", label="Episode Manifest JSON"
+        ),
+        "sourceMonitorProxy": file_entry(
+            session["sourceMonitorProxyPath"],
+            kind="source_monitor_proxy",
+            label="Source-monitor proxy MP4",
+        ),
+        "agentIndex": file_entry(
+            session["generatedDir"] / "agent-workspace-index.json",
+            kind="agent_workspace_index",
+            label="Agent workspace index JSON",
+        ),
+        "readme": file_entry(
+            session["readmePath"], kind="operator_readme", label="Operator README"
+        ),
+    }
+
+    decision_candidates = [
+        file_entry(path, kind="decision_export", label="Studio Cut decision JSON")
+        for path in get_rescue_sync_decision_candidates(session)
+    ]
+
+    command_prefix = "python tools/studio-cut-local/studio_cut_local.py"
+    workspace = "<episode-workspace>"
+    generated = f"{workspace}/generated"
+    edit = f"{workspace}/edit"
+    renders = f"{workspace}/renders"
+    episode_id = session["episodeId"]
+    sync_job_status = (
+        status_report.get("syncJob")
+        if isinstance(status_report.get("syncJob"), dict)
+        else {}
+    )
+    branch_id = str(sync_job_status.get("branchId") or session["branchId"])
+    title = str(sync_job_status.get("title") or session["title"])
+
+    return {
+        "schemaVersion": 1,
+        "kind": "studio-cut-agent-workspace-index",
+        "generatedAt": utc_now_iso(),
+        "pathPolicy": (
+            "All paths are relative to the local episode workspace or use the "
+            "<episode-workspace> placeholder. Private absolute filesystem paths "
+            "are intentionally omitted."
+        ),
+        "episode": {
+            "id": episode_id,
+            "title": title,
+            "branchId": branch_id,
+            "workspaceName": Path(session["episodeDir"]).name,
+        },
+        "folders": {
+            "workspace": workspace,
+            "inbox": "inbox",
+            "generated": "generated",
+            "edit": "edit",
+            "checkpoints": "edit/checkpoints",
+            "renders": "renders",
+        },
+        "readiness": status_report["readiness"],
+        "status": status_report["status"],
+        "missingRequiredRoles": list(status_report["missingRequiredRoles"]),
+        "inputs": role_entries,
+        "files": files,
+        "decisionCandidates": decision_candidates,
+        "syncSummary": {
+            "syncJob": status_report.get("syncJob"),
+            "syncReport": status_report.get("syncReport"),
+            "syncMap": status_report.get("syncMap"),
+            "manifest": status_report.get("manifest"),
+            "proxy": sanitize_agent_index_proxy_status(status_report.get("proxy")),
+            "decisions": sanitize_agent_index_decision_status(
+                status_report.get("decisions")
+            ),
+        },
+        "shareUrl": (
+            "https://high-ground-odyssey.web.app/"
+            f"?projectId={episode_id}&branchId={branch_id}"
+        ),
+        "commands": {
+            "refreshStatus": (
+                f"{command_prefix} rescue-sync-status --episode-dir {workspace}"
+            ),
+            "refreshIndex": (
+                f"{command_prefix} agent-workspace-index --episode-dir {workspace} "
+                f"--out {generated}/agent-workspace-index.json"
+            ),
+            "runWorker": (
+                f"{command_prefix} rescue-sync-session --episode-id {episode_id} "
+                f"--title {json.dumps(title)} --episode-dir {workspace}"
+            ),
+            "validateGeneratedPackage": (
+                f"{command_prefix} validate-generated-package "
+                f"--manifest {generated}/episode-manifest.json "
+                f"--proxy {generated}/source-monitor-proxy.mp4 "
+                f"--sync-map {generated}/sync-map.json "
+                f"--sync-report {generated}/sync-report.json"
+            ),
+            "renderDryRun": (
+                f"{command_prefix} render-rescue-sync-session "
+                f"--episode-dir {workspace} --dry-run"
+            ),
+            "expectedDecisionExportPath": f"{edit}/{episode_id}-decisions.json",
+            "expectedRenderOutputPath": f"{renders}/{episode_id}-youtube-16x9.mp4",
+        },
+        "agentNextActions": build_agent_workspace_next_actions(status_report, session),
+        "warnings": [
+            sanitize_agent_index_text(warning, episode_dir)
+            for warning in status_report["warnings"]
+        ],
+        "errors": [
+            sanitize_agent_index_text(error, episode_dir)
+            for error in status_report["errors"]
+        ],
+    }
+
+
+def sanitize_agent_index_text(value: Any, episode_dir: Path) -> str:
+    return str(value).replace(str(episode_dir), "<episode-workspace>")
+
+
+def sanitize_agent_index_proxy_status(proxy_status: Any) -> dict[str, Any] | None:
+    if not isinstance(proxy_status, dict):
+        return None
+    return {
+        key: value
+        for key, value in proxy_status.items()
+        if key != "path"
+    }
+
+
+def sanitize_agent_index_decision_status(
+    decision_status: Any,
+) -> dict[str, Any] | None:
+    if not isinstance(decision_status, dict):
+        return None
+    return {
+        key: value
+        for key, value in decision_status.items()
+        if key not in {"path", "renderCommand"}
+    }
+
+
+def build_agent_workspace_next_actions(
+    status_report: dict[str, Any],
+    session: dict[str, Any],
+) -> list[str]:
+    readiness = status_report["readiness"]
+
+    if not readiness["inputReady"]:
+        missing = ", ".join(
+            RESCUE_SYNC_ROLE_SPECS[role]["label"]
+            for role in status_report["missingRequiredRoles"]
+        )
+        return [
+            f"Place missing inputs in inbox/: {missing}.",
+            "Run the runWorker command template after inbox files are present.",
+        ]
+
+    if not readiness["workerOutputsReady"]:
+        return [
+            "Run the runWorker command template to generate Sync Map, manifest, sync report, and source-monitor proxy.",
+        ]
+
+    if not readiness["publishReady"]:
+        return [
+            "Inspect generated/ outputs, then fix missing package files before publishing.",
+        ]
+
+    if not readiness["editDecisionsReady"]:
+        return [
+            "Publish generated package in Studio Cut, edit the shared room, and export decisions to the expectedDecisionExportPath.",
+        ]
+
+    if not readiness["renderReady"]:
+        return [
+            "Fix Sync Map, local media map, or decision JSON blockers before rendering.",
+        ]
+
+    return [
+        "Run the renderDryRun command template.",
+        "If the segment plan is correct, remove --dry-run for the rough local output.",
+    ]
 
 
 def build_rescue_sync_publish_package_status(
@@ -3196,6 +3513,74 @@ def run_rescue_sync_status(args: argparse.Namespace) -> int:
     report = build_rescue_sync_status_report(session)
     print_rescue_sync_status_report(report, json_mode=bool(args.json))
     return 0
+
+
+def run_agent_workspace_index(args: argparse.Namespace) -> int:
+    episode_dir = args.episode_dir.expanduser().resolve() if args.episode_dir else None
+    episode_id = args.episode_id.strip() if args.episode_id else None
+
+    if not episode_id and episode_dir:
+        episode_id = infer_rescue_sync_episode_id(episode_dir)
+
+    if not episode_id:
+        raise StudioCutCliError("--episode-id is required when --episode-dir is not supplied")
+
+    if episode_dir is None:
+        episode_dir = (DEFAULT_STUDIO_CUT_WORKSPACE_ROOT / episode_id).resolve()
+
+    session = build_rescue_sync_session(
+        episode_id=episode_id,
+        title=episode_id,
+        branch_id="main",
+        created_by="local-agent-workspace-index",
+        episode_dir=episode_dir,
+        include_clip=bool(args.include_clip),
+    )
+    status_report = build_rescue_sync_status_report(session)
+    index = build_agent_workspace_index(session, status_report)
+
+    if args.out:
+        write_json(args.out, index)
+
+    if args.json:
+        print(json.dumps(index, indent=2))
+    else:
+        print_agent_workspace_index(index, out_path=args.out)
+
+    return 0 if not index["errors"] else 1
+
+
+def print_agent_workspace_index(
+    index: dict[str, Any], *, out_path: Path | None
+) -> None:
+    print("Studio Cut Agent Workspace Index")
+    print("================================")
+    print(f"Episode: {index['episode']['id']}")
+    print(f"Status: {'READY' if index['status'] == 'ready' else 'BLOCKED'}")
+    print("Path policy: relative paths only; private absolute paths omitted.")
+    if out_path:
+        print(f"Wrote: {out_path}")
+
+    print("\nReadiness:")
+    for key, value in index["readiness"].items():
+        print(f"  - {key}: {yes_no(bool(value))}")
+
+    print("\nKey files:")
+    for key in (
+        "syncJob",
+        "localMediaMap",
+        "syncReport",
+        "syncMap",
+        "manifest",
+        "sourceMonitorProxy",
+    ):
+        entry = index["files"][key]
+        print(f"  - {entry['label']}: {entry['path']} ({'yes' if entry['exists'] else 'missing'})")
+
+    if index["agentNextActions"]:
+        print("\nAgent next actions:")
+        for action in index["agentNextActions"]:
+            print(f"  - {action}")
 
 
 def run_render_rescue_sync_session(args: argparse.Namespace) -> int:

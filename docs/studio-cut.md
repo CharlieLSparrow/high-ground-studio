@@ -382,6 +382,10 @@ The CLI supports:
   Rescue Sync worker when required files are present.
 - `rescue-sync-status`: inspects that one-folder workspace and reports input,
   sync package, publish, decision, and render readiness with exact next actions.
+- `agent-workspace-index`: writes a media-safe, agent-readable index for that
+  one-folder workspace. It lists relative inbox/generated/edit/render paths,
+  readiness flags, expected decision export locations, share URL, and command
+  templates without private absolute filesystem paths.
 - `validate-episode-files`: checks a real-episode manifest and local media map,
   confirms the episode id matches, verifies local file existence, and uses
   `ffprobe` to compare media durations against the manifest before rendering.
@@ -431,6 +435,17 @@ structured files and commands before training any specialized editing model.
 Agents inspect a review report, write a small operation JSON file, dry-run it,
 then apply it to a new decision export that humans can inspect, import, render,
 or roll back.
+
+For a local Rescue Sync episode folder, generate a sanitized agent index:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-workspace-index \
+  --episode-dir path/to/episode-workspace \
+  --out path/to/episode-workspace/generated/agent-workspace-index.json
+```
+
+Use this instead of pasting private local paths into chat. The JSON uses
+relative paths and the `<episode-workspace>` placeholder.
 
 The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
 It previews the operation JSON before applying it, shows add/range/remove

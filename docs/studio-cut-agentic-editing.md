@@ -234,6 +234,22 @@ For a real editing pass:
 This lets an agent do real editing work while keeping every mutation visible as
 plain JSON and every result verifiable by command.
 
+## Local Workspace Index
+
+For local Rescue Sync sessions, agents can inspect the episode folder through a
+sanitized index instead of reading private absolute paths from chat:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-workspace-index \
+  --episode-dir path/to/episode-workspace \
+  --out path/to/episode-workspace/generated/agent-workspace-index.json
+```
+
+The index lists inbox roles, generated package files, likely decision export
+locations, readiness flags, share URL, and command templates. Paths are relative
+to `<episode-workspace>` and local filesystem roots are intentionally omitted.
+Use it when handing a local Episode 4 workspace to Codex or another agent.
+
 ## Current Limits
 
 - Agents still need human judgment for content taste, rhythm, and clip choice.
@@ -250,5 +266,6 @@ plain JSON and every result verifiable by command.
 
 - Add stronger review reports for awkward camera holds, long silence, repeated
   Cut spans, and missing Clip context.
-- Add an episode workspace index that lists generated session files for local
-  agents without exposing private absolute paths.
+- Add a one-command agent editing assistant flow that reads the workspace index,
+  transcript, Sync Map, and decision JSON, then writes suggested operations plus
+  a human-readable rationale.

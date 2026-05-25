@@ -88,6 +88,11 @@ const verificationSteps = [
     args: ["studio-cut:agent-context-test"],
   },
   {
+    label: "Studio Cut agent workspace index test",
+    command: "pnpm",
+    args: ["studio-cut:agent-workspace-index-test"],
+  },
+  {
     label: "Studio Cut transcript schema test",
     command: "pnpm",
     args: ["studio-cut:transcript-schema-test"],

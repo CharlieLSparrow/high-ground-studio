@@ -62,6 +62,10 @@ Related durable docs:
   `agent-review-edit` now accepts optional timed transcript JSON so agents can
   flag speaker/state mismatches, clip-reference moments, transcript gaps, and
   filler clusters. Add `--out-ops` to write safe suggested operation JSON.
+- Agent workspace index command:
+  `agent-workspace-index` writes a media-safe, relative-path JSON index for a
+  one-folder Rescue Sync workspace so agents can discover inbox/generated/edit
+  files and command templates without private absolute paths.
 - The web cockpit can import agent operation JSON with `Import Agent Ops`,
   preview add/range/tombstone changes with confidence and approval metadata, and
   apply accepted operations into the current local or shared room.
@@ -426,7 +430,7 @@ Improve Sync Map render quality:
 
 Improve agentic editing:
 
-- add a local episode workspace index so agents can discover generated session
-  files without private absolute paths
 - add richer awkward-hold and bad-take detectors on top of the confidence and
   approval operation shape
+- add a single command that consumes `agent-workspace-index.json`, transcript,
+  and decisions, then writes both suggested ops and a rationale report

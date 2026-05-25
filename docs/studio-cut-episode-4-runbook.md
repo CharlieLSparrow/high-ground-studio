@@ -141,6 +141,18 @@ python tools/studio-cut-local/studio_cut_local.py rescue-sync-status \
   --episode-dir ~/Movies/StudioCut/episode-004
 ```
 
+For Codex or another agent, also write a media-safe workspace index:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-workspace-index \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
+  --out ~/Movies/StudioCut/episode-004/generated/agent-workspace-index.json
+```
+
+The index uses relative paths and `<episode-workspace>` command templates so
+agents can reason about the folder without copying private absolute paths into
+handoffs.
+
 Use that status report as the checklist. It says what is missing, whether the
 generated package is ready to publish, whether exported decisions are present,
 and what command to run next.
