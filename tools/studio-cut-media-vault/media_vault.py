@@ -13,6 +13,7 @@ import json
 import mimetypes
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -24,6 +25,9 @@ from typing import Any
 DEFAULT_BUCKET = "high-ground-odyssey-media"
 DEFAULT_LOCATION = "US"
 SCHEMA_VERSION = 1
+DEFAULT_INSTA360_COLLECTION_ID = "homer-insta360"
+DEFAULT_INSTA360_STAGING_ROOT = "~/Movies/StudioCut/media-vault-intake"
+DEFAULT_MAX_DISCOVERY_FILES = 1000
 
 VIDEO_EXTENSIONS = {
     ".insv",
@@ -59,6 +63,41 @@ SIDECAR_EXTENSIONS = {
     ".vtt",
     ".lrv",
 }
+INSTA360_SOURCE_EXTENSIONS = {
+    ".insv",
+    ".insp",
+    ".360",
+}
+INSTA360_EXPORT_EXTENSIONS = {
+    ".mp4",
+    ".mov",
+    ".m4v",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".dng",
+    ".heic",
+}
+INSTA360_MEDIA_EXTENSIONS = INSTA360_SOURCE_EXTENSIONS | INSTA360_EXPORT_EXTENSIONS
+
+
+def default_insta360_scan_dirs() -> list[Path]:
+    home = Path.home()
+    candidates = [
+        home / "Movies" / "Insta360",
+        home / "Movies" / "Insta360 Studio",
+        home / "Movies" / "Insta360Studio",
+        home / "Movies" / "StudioCut" / "insta360",
+        home / "Movies" / "StudioCut" / "episode-004" / "inbox",
+        home / "Pictures" / "Insta360",
+        home / "Pictures" / "Insta360 Studio",
+        home / "Documents" / "Insta360",
+        home / "Downloads" / "Insta360",
+        home / "Library" / "Application Support" / "Insta360",
+        home / "Library" / "Application Support" / "Insta360 Studio",
+        home / "Library" / "Containers" / "com.insta360.studio",
+    ]
+    return [path for path in candidates if path.exists()]
 
 
 @dataclass(frozen=True)
@@ -95,6 +134,22 @@ def sanitize_file_name(value: str) -> str:
     if suffix and suffix[1:].isalnum():
         return f"{stem}{suffix}"
     return stem
+
+
+def unique_child_path(directory: Path, file_name: str) -> Path:
+    candidate = directory / sanitize_file_name(file_name)
+    if not candidate.exists():
+        return candidate
+
+    source_name = Path(file_name)
+    stem = sanitize_part(source_name.stem)
+    suffix = source_name.suffix.lower()
+    counter = 2
+    while True:
+        candidate = directory / f"{stem}-{counter}{suffix}"
+        if not candidate.exists():
+            return candidate
+        counter += 1
 
 
 def classify_media_kind(path: Path) -> str:
@@ -165,6 +220,110 @@ def iter_media_files(source_dir: Path) -> list[Path]:
             continue
         files.append(path)
     return files
+
+
+def is_likely_insta360_media(path: Path, root: Path) -> bool:
+    suffix = path.suffix.lower()
+    if suffix not in INSTA360_MEDIA_EXTENSIONS:
+        return False
+    if suffix in INSTA360_SOURCE_EXTENSIONS:
+        return True
+
+    relative_text = path.relative_to(root).as_posix().lower()
+    path_text = path.as_posix().lower()
+    return (
+        "insta360" in relative_text
+        or "insta360" in path_text
+        or "360" in path.name.lower()
+        or path.name.lower().startswith(("insv", "insp"))
+    )
+
+
+def discover_insta360_files(
+    *,
+    scan_dirs: list[Path],
+    max_files: int,
+) -> tuple[list[Path], list[str]]:
+    discovered: list[Path] = []
+    warnings: list[str] = []
+    seen: set[Path] = set()
+
+    for scan_dir in scan_dirs:
+        resolved_scan_dir = scan_dir.expanduser().resolve()
+        if not resolved_scan_dir.exists():
+            warnings.append(f"Scan directory not found: {scan_dir}")
+            continue
+        if not resolved_scan_dir.is_dir():
+            warnings.append(f"Scan path is not a directory: {scan_dir}")
+            continue
+
+        for path in sorted(resolved_scan_dir.rglob("*")):
+            if len(discovered) >= max_files:
+                warnings.append(f"Stopped discovery at max file count: {max_files}")
+                return discovered, warnings
+            if not path.is_file():
+                continue
+            try:
+                relative_parts = path.relative_to(resolved_scan_dir).parts
+            except ValueError:
+                continue
+            if any(part.startswith(".") for part in relative_parts):
+                continue
+            if not is_likely_insta360_media(path, resolved_scan_dir):
+                continue
+            resolved_path = path.resolve()
+            if resolved_path in seen:
+                continue
+            seen.add(resolved_path)
+            discovered.append(resolved_path)
+
+    return discovered, warnings
+
+
+def file_summary(path: Path) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "fileName": path.name,
+        "sizeBytes": path.stat().st_size,
+        "mediaKind": classify_media_kind(path),
+        "contentType": guess_content_type(path),
+        "captureSource": infer_capture_source(path),
+    }
+
+
+def stage_files(
+    *,
+    files: list[Path],
+    out_dir: Path,
+    mode: str,
+) -> list[dict[str, Any]]:
+    staged: list[dict[str, Any]] = []
+    for source_path in files:
+        media_kind = classify_media_kind(source_path)
+        capture_source = infer_capture_source(source_path)
+        target_dir = out_dir / "inbox" / media_kind / capture_source
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = unique_child_path(target_dir, source_path.name)
+
+        if mode == "copy":
+            shutil.copy2(source_path, target_path)
+        elif mode == "symlink":
+            target_path.symlink_to(source_path)
+        else:
+            raise ValueError(f"Unknown staging mode: {mode}")
+
+        staged.append(
+            {
+                "sourcePath": str(source_path),
+                "stagedPath": str(target_path),
+                "relativePath": target_path.relative_to(out_dir / "inbox").as_posix(),
+                "mode": mode,
+                "mediaKind": media_kind,
+                "captureSource": capture_source,
+                "sizeBytes": source_path.stat().st_size,
+            }
+        )
+    return staged
 
 
 def build_asset(
@@ -397,6 +556,232 @@ def plan_upload_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def build_upload_commands(payload: dict[str, Any], source_dir: Path) -> list[tuple[Path, str]]:
+    bucket = payload["bucket"]
+    commands: list[tuple[Path, str]] = []
+    for asset in payload["assets"]:
+        local_path = source_dir / asset["relativePath"]
+        if local_path.is_symlink():
+            local_path = local_path.resolve()
+        destination = f"gs://{bucket}/{asset['cloudObjectPath']}"
+        commands.append((local_path, destination))
+    return commands
+
+
+def upload_manifest_command(args: argparse.Namespace) -> int:
+    manifest_path = Path(args.manifest).expanduser()
+    source_dir = Path(args.source_dir).expanduser().resolve()
+    payload = load_json(manifest_path)
+    errors = validate_manifest_payload(payload)
+
+    if errors:
+        print("Manifest is invalid:", file=sys.stderr)
+        for error in errors:
+            print(f"  - {error}", file=sys.stderr)
+        return 2
+
+    gcloud_path = shutil.which("gcloud")
+    if not gcloud_path:
+        print("gcloud is not on PATH; install Google Cloud CLI before uploading.", file=sys.stderr)
+        return 2
+
+    upload_items = build_upload_commands(payload, source_dir)
+    missing = [str(local_path) for local_path, _ in upload_items if not local_path.exists()]
+    if missing:
+        print("Upload blocked because local files are missing:", file=sys.stderr)
+        for path in missing:
+            print(f"  - {path}", file=sys.stderr)
+        return 2
+
+    print(
+        json.dumps(
+            {
+                "mode": "execute" if args.execute else "dry-run",
+                "manifestPath": str(manifest_path),
+                "sourceDir": str(source_dir),
+                "bucket": payload["bucket"],
+                "assetCount": len(upload_items),
+            },
+            indent=2,
+        )
+    )
+
+    if not args.execute:
+        for local_path, destination in upload_items:
+            print(f"DRY RUN: gcloud storage cp {shell_quote(str(local_path))} {shell_quote(destination)}")
+        print("Add --execute to upload these files.")
+        return 0
+
+    failures: list[str] = []
+    for index, (local_path, destination) in enumerate(upload_items, start=1):
+        print(f"[{index}/{len(upload_items)}] Uploading {local_path.name} -> {destination}")
+        result = subprocess.run(
+            [gcloud_path, "storage", "cp", str(local_path), destination],
+            check=False,
+        )
+        if result.returncode != 0:
+            failures.append(f"{local_path} -> {destination}")
+            if not args.continue_on_error:
+                break
+
+    if failures:
+        print("Upload failed for:", file=sys.stderr)
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return 1
+
+    print("Upload complete.")
+    return 0
+
+
+def discover_insta360_command(args: argparse.Namespace) -> int:
+    scan_dirs = (
+        [Path(value) for value in args.scan_dir]
+        if args.scan_dir
+        else default_insta360_scan_dirs()
+    )
+    files, warnings = discover_insta360_files(
+        scan_dirs=scan_dirs,
+        max_files=args.max_files,
+    )
+    result = {
+        "status": "ready" if files else "blocked",
+        "scanDirs": [str(path.expanduser()) for path in scan_dirs],
+        "assetCount": len(files),
+        "totalSizeBytes": sum(path.stat().st_size for path in files),
+        "assets": [file_summary(path) for path in files],
+        "warnings": warnings,
+    }
+
+    if args.out:
+        out_path = Path(args.out).expanduser()
+        write_json(out_path, result)
+        print(f"Wrote Insta360 discovery report: {out_path}")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if files else 1
+
+
+def create_insta360_package_command(args: argparse.Namespace) -> int:
+    out_dir = Path(args.out_dir).expanduser().resolve()
+    scan_dirs = (
+        [Path(value) for value in args.scan_dir]
+        if args.scan_dir
+        else default_insta360_scan_dirs()
+    )
+    files, warnings = discover_insta360_files(
+        scan_dirs=scan_dirs,
+        max_files=args.max_files,
+    )
+
+    if not files:
+        print("No Insta360 media found.", file=sys.stderr)
+        for warning in warnings:
+            print(f"  - {warning}", file=sys.stderr)
+        print("Use --scan-dir to point at an Insta360 Studio export/download folder.", file=sys.stderr)
+        return 1
+
+    staged = stage_files(files=files, out_dir=out_dir, mode=args.mode)
+    source_dir = out_dir / "inbox"
+    manifest = build_manifest(
+        source_dir=source_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+        bucket=args.bucket,
+        storage_prefix=args.storage_prefix,
+        notes=args.notes or "Generated from local Insta360 discovery/staging.",
+    )
+    manifest_path = out_dir / "media-vault-manifest.json"
+    upload_plan_path = out_dir / "upload-to-gcs.sh"
+    discovery_path = out_dir / "insta360-discovery.json"
+    readme_path = out_dir / "README.md"
+
+    write_json(manifest_path, manifest)
+    write_json(
+        discovery_path,
+        {
+            "createdAt": utc_now_iso(),
+            "scanDirs": [str(path.expanduser()) for path in scan_dirs],
+            "stagingMode": args.mode,
+            "staged": staged,
+            "warnings": warnings,
+        },
+    )
+
+    plan_args = argparse.Namespace(
+        manifest=str(manifest_path),
+        source_dir=str(source_dir),
+        out=str(upload_plan_path),
+    )
+    plan_status = plan_upload_command(plan_args)
+    readme_path.write_text(
+        "\n".join(
+            [
+                "# Studio Cut Insta360 Media Vault Package",
+                "",
+                "This folder was generated locally. Do not commit it.",
+                "",
+                "## Files",
+                "",
+                "- `inbox/`: staged local media, usually symlinks unless `--mode copy` was used",
+                "- `media-vault-manifest.json`: relative-path manifest for Google Cloud Storage",
+                "- `upload-to-gcs.sh`: reviewable upload plan",
+                "- `insta360-discovery.json`: local discovery/staging report",
+                "",
+                "## Upload",
+                "",
+                "Dry run:",
+                "",
+                "```bash",
+                f"pnpm studio-cut:media-vault -- upload-manifest --manifest {manifest_path} --source-dir {source_dir}",
+                "```",
+                "",
+                "Execute upload:",
+                "",
+                "```bash",
+                f"pnpm studio-cut:media-vault -- upload-manifest --manifest {manifest_path} --source-dir {source_dir} --execute",
+                "```",
+                "",
+                "The helper uploads only files listed in the manifest. It does not store third-party passwords.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = {
+        "status": "ready" if plan_status == 0 else "blocked",
+        "outDir": str(out_dir),
+        "sourceDir": str(source_dir),
+        "manifestPath": str(manifest_path),
+        "uploadPlanPath": str(upload_plan_path),
+        "discoveryPath": str(discovery_path),
+        "readmePath": str(readme_path),
+        "assetCount": manifest["assetCount"],
+        "totalSizeBytes": manifest["totalSizeBytes"],
+        "stagingMode": args.mode,
+        "warnings": warnings,
+        "nextCommands": [
+            f"pnpm studio-cut:media-vault -- upload-manifest --manifest {manifest_path} --source-dir {source_dir}",
+            f"pnpm studio-cut:media-vault -- upload-manifest --manifest {manifest_path} --source-dir {source_dir} --execute",
+        ],
+    }
+
+    if args.execute_upload:
+        upload_args = argparse.Namespace(
+            manifest=str(manifest_path),
+            source_dir=str(source_dir),
+            execute=True,
+            continue_on_error=False,
+        )
+        result["uploadStatus"] = upload_manifest_command(upload_args)
+
+    print(json.dumps(result, indent=2))
+    if args.execute_upload and result.get("uploadStatus") != 0:
+        return int(result["uploadStatus"])
+    return plan_status
+
+
 def doctor_command(_: argparse.Namespace) -> int:
     report = {
         "python": sys.version.split()[0],
@@ -452,13 +837,37 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             manifest["assetCount"] == 3,
             all(not os.path.isabs(asset["relativePath"]) for asset in manifest["assets"]),
             "gs://high-ground-odyssey-media/media-vault/raw/episode-004/homer-insta360-smoke/originals/video/insta360/" in plan_text,
-            "homer-travel.insv" not in [asset["cloudObjectPath"].split("/")[-1] for asset in manifest["assets"]],
+            "homer-travel.insv" in [asset["cloudObjectPath"].split("/")[-1][13:] for asset in manifest["assets"]],
             plan_status == 0,
         ]
+        insta360_package_dir = output_dir / "insta360-package"
+        package_args = argparse.Namespace(
+            project_id="episode-004",
+            collection_id="homer-insta360-smoke",
+            out_dir=str(insta360_package_dir),
+            scan_dir=[str(source_dir)],
+            max_files=20,
+            mode="symlink",
+            bucket=DEFAULT_BUCKET,
+            storage_prefix="media-vault/raw",
+            notes="synthetic Insta360 package smoke only",
+            execute_upload=False,
+        )
+        package_status = create_insta360_package_command(package_args)
+        package_manifest = load_json(insta360_package_dir / "media-vault-manifest.json")
+        assertions.extend(
+            [
+                package_status == 0,
+                package_manifest["assetCount"] == 2,
+                (insta360_package_dir / "upload-to-gcs.sh").exists(),
+                (insta360_package_dir / "README.md").exists(),
+            ]
+        )
         result = {
             "status": "pass" if all(assertions) else "fail",
             "manifestPath": str(manifest_path),
             "uploadPlanPath": str(plan_path),
+            "insta360PackagePath": str(insta360_package_dir),
             "assetCount": manifest["assetCount"],
             "assertionsPassed": sum(1 for assertion in assertions if assertion),
             "assertionCount": len(assertions),
@@ -502,6 +911,49 @@ def build_parser() -> argparse.ArgumentParser:
     plan_upload.add_argument("--source-dir", required=True)
     plan_upload.add_argument("--out")
     plan_upload.set_defaults(func=plan_upload_command)
+
+    upload_manifest = subparsers.add_parser(
+        "upload-manifest",
+        help="Dry-run or execute Google Cloud Storage uploads for a media vault manifest",
+    )
+    upload_manifest.add_argument("--manifest", required=True)
+    upload_manifest.add_argument("--source-dir", required=True)
+    upload_manifest.add_argument("--execute", action="store_true")
+    upload_manifest.add_argument("--continue-on-error", action="store_true")
+    upload_manifest.set_defaults(func=upload_manifest_command)
+
+    discover_insta360 = subparsers.add_parser(
+        "discover-insta360",
+        help="Discover likely Insta360 media in common local Studio/export folders",
+    )
+    discover_insta360.add_argument("--scan-dir", action="append", default=[])
+    discover_insta360.add_argument("--max-files", type=int, default=DEFAULT_MAX_DISCOVERY_FILES)
+    discover_insta360.add_argument("--out")
+    discover_insta360.set_defaults(func=discover_insta360_command)
+
+    insta360_package = subparsers.add_parser(
+        "create-insta360-package",
+        help="Discover, stage, manifest, and plan upload for local Insta360 media",
+    )
+    insta360_package.add_argument("--project-id", required=True)
+    insta360_package.add_argument("--collection-id", default=DEFAULT_INSTA360_COLLECTION_ID)
+    insta360_package.add_argument(
+        "--out-dir",
+        default=DEFAULT_INSTA360_STAGING_ROOT,
+        help="Local staging output folder; do not place this in git",
+    )
+    insta360_package.add_argument("--scan-dir", action="append", default=[])
+    insta360_package.add_argument("--max-files", type=int, default=DEFAULT_MAX_DISCOVERY_FILES)
+    insta360_package.add_argument("--mode", choices=["symlink", "copy"], default="symlink")
+    insta360_package.add_argument("--bucket", default=DEFAULT_BUCKET)
+    insta360_package.add_argument("--storage-prefix", default="media-vault/raw")
+    insta360_package.add_argument("--notes")
+    insta360_package.add_argument(
+        "--execute-upload",
+        action="store_true",
+        help="Upload immediately after creating the manifest; requires gcloud auth",
+    )
+    insta360_package.set_defaults(func=create_insta360_package_command)
 
     smoke = subparsers.add_parser("smoke-test", help="Run synthetic media vault checks")
     smoke.set_defaults(func=smoke_test_command)

@@ -564,8 +564,8 @@ async function runBrowserSmoke() {
     await expect(cloudSyncSection).toContainText(/raw asset intake is disabled|local only/i);
     await expect(cloudMediaVaultSection).toContainText("high-ground-odyssey-media");
     await expect(cloudMediaVaultSection).toContainText("Insta360");
-    await expect(cloudMediaVaultSection).toContainText("create-manifest");
-    await expect(cloudMediaVaultSection).toContainText("plan-upload");
+    await expect(cloudMediaVaultSection).toContainText("create-insta360-package");
+    await expect(cloudMediaVaultSection).toContainText("upload-manifest");
     await expect(
       cloudSyncSection.getByRole("button", {
         name: "Create Sync Job / Upload Raw Assets",

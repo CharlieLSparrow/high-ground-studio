@@ -164,11 +164,20 @@ Studio Cut media vault helper:
 
 ```bash
 pnpm studio-cut:media-vault:doctor
+pnpm studio-cut:media-vault -- discover-insta360
+pnpm studio-cut:media-vault -- create-insta360-package \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox
 pnpm studio-cut:media-vault:smoke
 ```
 
 Use this helper to create local manifests and reviewable Google Cloud Storage
-upload plans for video/photo/audio folders. Real manifests and upload scripts
+upload plans for video/photo/audio folders. `upload-manifest --execute` uploads
+through the local Google Cloud CLI session. Real manifests and upload scripts
 for private media stay outside git.
 
 ## Build Verification

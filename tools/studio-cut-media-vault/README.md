@@ -14,6 +14,49 @@ pnpm studio-cut:media-vault:doctor
 pnpm studio-cut:media-vault:smoke
 ```
 
+Discover likely local Insta360 Studio/export media:
+
+```bash
+pnpm studio-cut:media-vault -- discover-insta360
+```
+
+Create a complete local Insta360 package:
+
+```bash
+pnpm studio-cut:media-vault -- create-insta360-package \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package
+```
+
+If Insta360 Studio exports live somewhere else, point the helper at that folder:
+
+```bash
+pnpm studio-cut:media-vault -- create-insta360-package \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --scan-dir ~/Movies/Insta360 \
+  --scan-dir ~/Downloads/Insta360 \
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package
+```
+
+Dry-run upload:
+
+```bash
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox
+```
+
+Execute upload with the operator's Google Cloud CLI session:
+
+```bash
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox \
+  --execute
+```
+
 Create a manifest:
 
 ```bash
@@ -48,3 +91,6 @@ pnpm studio-cut:media-vault -- validate-manifest \
 - Use Google Cloud CLI auth from the operator's machine.
 - Full-resolution originals can live in the vault, but Studio Cut editing should
   still use generated proxies and Sync Maps.
+- `create-insta360-package` uses symlinks by default so the staging folder does
+  not duplicate huge camera files. `upload-manifest --execute` resolves symlinks
+  before calling `gcloud storage cp`.

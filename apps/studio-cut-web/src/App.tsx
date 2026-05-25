@@ -4548,8 +4548,9 @@ function CloudMediaVaultPanel({
   const collectionId = sanitizeFileNamePart(roomSelection.projectId);
   const originalPrefix = `${CLOUD_MEDIA_VAULT_PREFIX}/${collectionId}/homer-insta360/originals/`;
   const proxyPrefix = `media-vault/derived/${collectionId}/homer-insta360/proxies/`;
-  const manifestCommand = `pnpm studio-cut:media-vault -- create-manifest --source-dir ~/Movies/StudioCut/${collectionId}/inbox --project-id ${collectionId} --collection-id homer-insta360 --out /tmp/${collectionId}-media-vault.json`;
-  const uploadPlanCommand = `pnpm studio-cut:media-vault -- plan-upload --manifest /tmp/${collectionId}-media-vault.json --source-dir ~/Movies/StudioCut/${collectionId}/inbox --out /tmp/${collectionId}-media-vault-upload.sh`;
+  const packageDir = `~/Movies/StudioCut/${collectionId}/media-vault-package`;
+  const packageCommand = `pnpm studio-cut:media-vault -- create-insta360-package --project-id ${collectionId} --collection-id homer-insta360 --out-dir ${packageDir}`;
+  const uploadCommand = `pnpm studio-cut:media-vault -- upload-manifest --manifest ${packageDir}/media-vault-manifest.json --source-dir ${packageDir}/inbox --execute`;
 
   return (
     <section className="cloud-media-vault-panel" aria-label="Cloud Media Vault">
@@ -4575,12 +4576,12 @@ function CloudMediaVaultPanel({
       </div>
 
       <div className="cloud-media-vault-command">
-        <span>Manifest command</span>
-        <code>{manifestCommand}</code>
+        <span>Insta360 package command</span>
+        <code>{packageCommand}</code>
       </div>
       <div className="cloud-media-vault-command">
-        <span>Upload plan command</span>
-        <code>{uploadPlanCommand}</code>
+        <span>Upload command</span>
+        <code>{uploadCommand}</code>
       </div>
 
       <p className="cloud-media-vault-note">

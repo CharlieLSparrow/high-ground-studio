@@ -1066,8 +1066,12 @@ The broader cloud media storage plan is documented in
 vault is the Google Cloud Storage home for Insta360 originals, photos, audio,
 generated proxies, Sync Maps, and future travel-video artifacts. Studio Cut now
 shows a `Cloud Media Vault` panel with the intended bucket/prefix layout and the
-local manifest/upload-plan commands. This panel is guidance only; it does not
-upload media or store passwords.
+local Insta360 package/upload commands. This panel is guidance only; it does not
+upload media or store passwords. The local helper can scan common Insta360
+Studio/export folders, stage matching files into
+`~/Movies/StudioCut/{projectId}/media-vault-package`, create a manifest, dry-run
+the upload, and execute the upload with the local Google Cloud CLI session when
+`upload-manifest --execute` is used.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

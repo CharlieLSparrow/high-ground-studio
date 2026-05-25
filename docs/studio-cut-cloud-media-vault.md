@@ -73,12 +73,82 @@ media-vault/derived/episode-004/homer-insta360/proxies/source-monitor-proxy.mp4
 ## Local Operator Tool
 
 The media vault helper indexes local folders and writes reviewable upload plans.
-It does not upload by default.
+It does not upload by default. Upload only happens when `upload-manifest
+--execute` is used under the operator's Google Cloud CLI session.
 
 ```bash
 pnpm studio-cut:media-vault:doctor
 pnpm studio-cut:media-vault:smoke
 ```
+
+### Insta360 Studio Intake
+
+Use this when the Insta360 Studio app, browser download, or SD-card copy has
+already placed files somewhere on the Mac. The helper scans common local
+Insta360 folders, stages matching `.insv`, `.insp`, `.360`, `.mp4`, `.mov`, and
+photo exports into one predictable folder, creates a manifest, and writes an
+upload script.
+
+```bash
+pnpm studio-cut:media-vault -- discover-insta360
+```
+
+Create the local package:
+
+```bash
+pnpm studio-cut:media-vault -- create-insta360-package \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package
+```
+
+If the files are in a known export folder, pass it explicitly:
+
+```bash
+pnpm studio-cut:media-vault -- create-insta360-package \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --scan-dir ~/Movies/Insta360 \
+  --scan-dir ~/Downloads/Insta360 \
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package
+```
+
+Dry-run the upload:
+
+```bash
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox
+```
+
+Upload to the bucket:
+
+```bash
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox \
+  --execute
+```
+
+`create-insta360-package` stages with symlinks by default to avoid duplicating
+large files. The upload command resolves symlinks before calling `gcloud
+storage cp`. Use `--mode copy` only when the operator wants a physical duplicate
+inside the package folder.
+
+For a one-command path after the bucket and `gcloud` auth are ready:
+
+```bash
+pnpm studio-cut:media-vault -- create-insta360-package \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package \
+  --execute-upload
+```
+
+This still does not log in to Insta360 Cloud and does not store any third-party
+credentials. It only works with local files that already exist on the machine.
+
+### Generic Folder Intake
 
 Create a manifest:
 
@@ -115,17 +185,18 @@ be private.
 Short-term:
 
 1. Export/download Insta360 Cloud files using the official app or browser flow.
-2. Put `.insv`, `.insp`, `.mp4`, `.mov`, photos, and sidecars in a local intake
-   folder outside the repo, for example:
+2. Run `discover-insta360` or pass the export folder with `--scan-dir`.
+3. Run `create-insta360-package`.
+4. Dry-run `upload-manifest`.
+5. Upload to `gs://high-ground-odyssey-media` with `upload-manifest --execute`.
+6. Run the proxy/sync worker against the vault manifest.
+
+If discovery misses the app folder, put `.insv`, `.insp`, `.mp4`, `.mov`,
+photos, and sidecars in a local intake folder outside the repo, for example:
 
    ```text
    ~/Movies/StudioCut/episode-004/inbox/
    ```
-
-3. Run `create-manifest`.
-4. Run `plan-upload`.
-5. Upload to `gs://high-ground-odyssey-media`.
-6. Run the proxy/sync worker against the vault manifest.
 
 Future:
 

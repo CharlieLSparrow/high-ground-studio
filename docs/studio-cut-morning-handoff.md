@@ -168,19 +168,24 @@ Cloud media vault path for Insta360/travel assets:
 
 ```bash
 pnpm studio-cut:media-vault:doctor
-pnpm studio-cut:media-vault -- create-manifest \
-  --source-dir ~/Movies/StudioCut/episode-004/inbox \
+pnpm studio-cut:media-vault -- discover-insta360
+pnpm studio-cut:media-vault -- create-insta360-package \
   --project-id episode-004 \
   --collection-id homer-insta360 \
-  --out /tmp/episode-004-media-vault.json
-pnpm studio-cut:media-vault -- plan-upload \
-  --manifest /tmp/episode-004-media-vault.json \
-  --source-dir ~/Movies/StudioCut/episode-004/inbox \
-  --out /tmp/episode-004-media-vault-upload.sh
+  --out-dir ~/Movies/StudioCut/episode-004/media-vault-package
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox
+pnpm studio-cut:media-vault -- upload-manifest \
+  --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
+  --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox \
+  --execute
 ```
 
-Review the upload plan before running it. Generated real manifests/upload plans
-are local operator artifacts and should not be committed.
+The package command scans common local Insta360 Studio/export folders and can
+also take explicit `--scan-dir` arguments. Generated real manifests, discovery
+reports, and upload plans are local operator artifacts and should not be
+committed.
 
 Local worker metadata-only run:
 
