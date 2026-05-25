@@ -6,8 +6,11 @@ import {
   createClientAction,
   grantMembershipAction,
   promoteUserToClientAction,
+  seedCoachingFeaturesAction,
   seedMembershipPlansAction,
+  updateCoachingFeatureGrantStatusAction,
   updateMembershipStatusAction,
+  upsertCoachingFeatureGrantAction,
 } from "./actions";
 
 type SearchParams = Promise<{
@@ -50,6 +53,14 @@ function formatDateInput(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function formatLabel(value: string) {
+  return value
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default async function TeamClientsPage({
   searchParams,
 }: {
@@ -57,7 +68,8 @@ export default async function TeamClientsPage({
 }) {
   const { success, error } = await searchParams;
 
-  const [clientProfiles, signedInUsers, membershipPlans] = await Promise.all([
+  const [clientProfiles, signedInUsers, membershipPlans, coachingFeatures] =
+    await Promise.all([
     prisma.clientProfile.findMany({
       orderBy: [{ updatedAt: "desc" }],
       include: {
@@ -74,6 +86,12 @@ export default async function TeamClientsPage({
                 plan: true,
               },
               orderBy: [{ startsAt: "desc" }],
+            },
+            coachingFeatureGrants: {
+              include: {
+                feature: true,
+              },
+              orderBy: [{ updatedAt: "desc" }],
             },
             _count: {
               select: {
@@ -104,12 +122,20 @@ export default async function TeamClientsPage({
       },
       orderBy: [{ name: "asc" }],
     }),
+    prisma.coachingFeature.findMany({
+      where: {
+        status: "active",
+      },
+      orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+    }),
   ]);
 
   type ClientProfileItem = (typeof clientProfiles)[number];
   type AliasItem = ClientProfileItem["user"]["aliases"][number];
   type RoleItem = ClientProfileItem["user"]["roles"][number];
   type MembershipItem = ClientProfileItem["user"]["memberships"][number];
+  type FeatureGrantItem =
+    ClientProfileItem["user"]["coachingFeatureGrants"][number];
   type RoleLabel = RoleItem["role"];
   type AliasEmail = AliasItem["email"];
 
@@ -288,6 +314,59 @@ export default async function TeamClientsPage({
             )}
           </GlassPanel>
 
+          <GlassPanel className="mb-8 p-6 text-[var(--text-light)]">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <PageEyebrow>Coaching Tools</PageEyebrow>
+                <h2 className="m-0 text-[1.3rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                  Manual feature catalog
+                </h2>
+              </div>
+
+              <div className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-[rgba(245,239,230,0.88)]">
+                {coachingFeatures.length} active
+              </div>
+            </div>
+
+            {coachingFeatures.length === 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-dashed border-white/10 bg-white/4 px-5 py-6 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">
+                  No coaching tools are seeded yet. Sync the feature catalog to
+                  give Homer a menu of client tools he can enable manually
+                  outside subscription tiers.
+                </div>
+
+                <form action={seedCoachingFeaturesAction}>
+                  <button
+                    type="submit"
+                    className="rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
+                  >
+                    Sync coaching tools
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {coachingFeatures.map((feature) => (
+                  <div
+                    key={feature.id}
+                    className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-[rgba(245,239,230,0.9)]"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <strong>{feature.title}</strong>
+                      <span className="rounded-full border border-white/10 bg-white/8 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                        {formatLabel(feature.category)}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-[0.8rem] leading-6 text-[rgba(245,239,230,0.72)]">
+                      {feature.clientSummary}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassPanel>
+
           <GlassPanel className="p-6 text-[var(--text-light)]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -318,6 +397,9 @@ export default async function TeamClientsPage({
                     (role: RoleItem): RoleLabel => role.role,
                   );
                   const latestMembership = user.memberships[0] ?? null;
+                  const activeFeatureGrants = user.coachingFeatureGrants.filter(
+                    (grant: FeatureGrantItem) => grant.status === "enabled",
+                  );
 
                   return (
                     <div
@@ -477,6 +559,212 @@ export default async function TeamClientsPage({
                             </form>
                           )}
                         </div>
+                      </div>
+
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.72)]">
+                              Manual coaching tools
+                            </div>
+                            <p className="mb-0 mt-1 text-sm leading-6 text-[rgba(245,239,230,0.72)]">
+                              Toggle client-specific tools without changing the
+                              membership plan.
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
+                            {activeFeatureGrants.length} enabled
+                          </span>
+                        </div>
+
+                        {coachingFeatures.length === 0 ? (
+                          <div className="text-sm leading-6 text-[rgba(245,239,230,0.88)]">
+                            Sync the coaching tool catalog first.
+                          </div>
+                        ) : (
+                          <form
+                            action={upsertCoachingFeatureGrantAction}
+                            className="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_130px_150px_minmax(180px,1fr)_auto]"
+                          >
+                            <input type="hidden" name="userId" value={user.id} />
+
+                            <select
+                              name="featureId"
+                              required
+                              defaultValue=""
+                              className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                            >
+                              <option value="" disabled className="text-black">
+                                Select a tool
+                              </option>
+                              {coachingFeatures.map((feature) => (
+                                <option
+                                  key={feature.id}
+                                  value={feature.id}
+                                  className="text-black"
+                                >
+                                  {feature.title}
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              name="featureStatus"
+                              defaultValue="enabled"
+                              className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                            >
+                              <option className="text-black" value="enabled">
+                                Enabled
+                              </option>
+                              <option className="text-black" value="paused">
+                                Paused
+                              </option>
+                              <option className="text-black" value="disabled">
+                                Disabled
+                              </option>
+                            </select>
+
+                            <select
+                              name="featureVisibility"
+                              defaultValue="client_and_coach"
+                              className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
+                            >
+                              <option
+                                className="text-black"
+                                value="client_and_coach"
+                              >
+                                Client visible
+                              </option>
+                              <option className="text-black" value="coach_only">
+                                Coach only
+                              </option>
+                            </select>
+
+                            <input
+                              name="featureNotes"
+                              className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                              placeholder="Optional note"
+                            />
+
+                            <button
+                              type="submit"
+                              className="rounded-full border border-flare/25 bg-flare/15 px-4 py-2 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] transition hover:border-flare/40 hover:bg-flare/20"
+                            >
+                              Save
+                            </button>
+                          </form>
+                        )}
+
+                        {user.coachingFeatureGrants.length > 0 ? (
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            {user.coachingFeatureGrants.map(
+                              (grant: FeatureGrantItem) => (
+                                <div
+                                  key={grant.id}
+                                  className="rounded-2xl border border-white/10 bg-black/10 p-3"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                      <div className="font-semibold text-[var(--text-light)]">
+                                        {grant.feature.title}
+                                      </div>
+                                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.58)]">
+                                        {formatLabel(grant.feature.category)} /{" "}
+                                        {formatLabel(grant.visibility)}
+                                      </div>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
+                                      {formatLabel(grant.status)}
+                                    </span>
+                                  </div>
+
+                                  {grant.notes ? (
+                                    <p className="mb-0 mt-2 text-xs leading-5 text-[rgba(245,239,230,0.72)]">
+                                      {grant.notes}
+                                    </p>
+                                  ) : null}
+
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {grant.status !== "enabled" ? (
+                                      <form
+                                        action={
+                                          updateCoachingFeatureGrantStatusAction
+                                        }
+                                      >
+                                        <input
+                                          type="hidden"
+                                          name="grantId"
+                                          value={grant.id}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name="status"
+                                          value="enabled"
+                                        />
+                                        <button
+                                          type="submit"
+                                          className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-emerald-100"
+                                        >
+                                          Enable
+                                        </button>
+                                      </form>
+                                    ) : null}
+
+                                    {grant.status !== "paused" ? (
+                                      <form
+                                        action={
+                                          updateCoachingFeatureGrantStatusAction
+                                        }
+                                      >
+                                        <input
+                                          type="hidden"
+                                          name="grantId"
+                                          value={grant.id}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name="status"
+                                          value="paused"
+                                        />
+                                        <button
+                                          type="submit"
+                                          className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-amber-100"
+                                        >
+                                          Pause
+                                        </button>
+                                      </form>
+                                    ) : null}
+
+                                    {grant.status !== "disabled" ? (
+                                      <form
+                                        action={
+                                          updateCoachingFeatureGrantStatusAction
+                                        }
+                                      >
+                                        <input
+                                          type="hidden"
+                                          name="grantId"
+                                          value={grant.id}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name="status"
+                                          value="disabled"
+                                        />
+                                        <button
+                                          type="submit"
+                                          className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-red-100"
+                                        >
+                                          Disable
+                                        </button>
+                                      </form>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        ) : null}
                       </div>
 
                       {latestMembership ? (

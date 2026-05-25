@@ -82,7 +82,8 @@ The current coaching workflow is Prisma-backed and intentionally lightweight:
 - `/coaching` is the public front door and sign-in handoff, not a checkout route.
 - `/dashboard?intent=coaching` is the signed-in request form.
 - `submitCoachingRequestAction()` creates/updates the client role/profile, creates a `CoachingRequest`, sends a best-effort internal Resend email after the transaction commits, revalidates team/dashboard routes, and redirects to the dashboard or public requested state.
-- `/dashboard` shows the latest coaching request, recent request history, assigned coach, converted appointment summaries, generated Google Calendar links, and donation CTAs when configured.
+- `/dashboard` shows the latest coaching request, recent request history, assigned coach, converted appointment summaries, manual client-visible coaching tools, generated Google Calendar links, and donation CTAs when configured.
+- `/team/clients` can seed the coaching tool catalog and manually enable, pause, or disable specific coaching features for one client without changing subscription tiers.
 - `/team/coaching-requests` is the internal queue for request status changes, coach assignment, internal notes, and conversion into appointments.
 - `convertCoachingRequestToAppointmentAction()` creates an `Appointment`, marks the request `SCHEDULED`, assigns the coach, links `convertedAppointmentId`, and revalidates `/team/coaching-requests`, `/team/appointments`, and `/dashboard`.
 - `/team/appointments` remains the general appointment creation/editing queue.

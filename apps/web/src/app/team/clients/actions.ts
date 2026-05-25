@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canManageClients, canManageMemberships } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { syncCoachingFeatureCatalog } from "@/lib/server/coaching-features";
 import { syncMembershipPlans } from "@/lib/server/membership-plan-catalog.js";
 import { upsertPreprovisionedUser } from "@/lib/server/user-identity";
 
@@ -198,6 +199,32 @@ export async function seedMembershipPlansAction() {
   }
 }
 
+export async function seedCoachingFeaturesAction() {
+  await requireTeamClientAccess();
+
+  try {
+    await syncCoachingFeatureCatalog();
+
+    revalidatePath("/team/clients");
+    revalidatePath("/dashboard");
+
+    redirect(
+      buildClientsRedirect({
+        success: "Coaching feature catalog synced.",
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to seed coaching tools.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
 export async function grantMembershipAction(formData: FormData) {
   const session = await requireMembershipAccess();
 
@@ -257,6 +284,144 @@ export async function grantMembershipAction(formData: FormData) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to grant membership.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
+export async function upsertCoachingFeatureGrantAction(formData: FormData) {
+  const session = await requireTeamClientAccess();
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  const featureId = String(formData.get("featureId") ?? "").trim();
+  const status = String(formData.get("featureStatus") ?? "enabled").trim();
+  const visibility = String(
+    formData.get("featureVisibility") ?? "client_and_coach",
+  ).trim();
+  const notes = String(formData.get("featureNotes") ?? "").trim();
+
+  if (!userId || !featureId) {
+    redirect(
+      buildClientsRedirect({
+        error: "Missing coaching feature grant data.",
+      }),
+    );
+  }
+
+  if (status !== "enabled" && status !== "paused" && status !== "disabled") {
+    redirect(
+      buildClientsRedirect({
+        error: "Invalid coaching feature status.",
+      }),
+    );
+  }
+
+  if (visibility !== "client_and_coach" && visibility !== "coach_only") {
+    redirect(
+      buildClientsRedirect({
+        error: "Invalid coaching feature visibility.",
+      }),
+    );
+  }
+
+  try {
+    await prisma.coachingFeatureGrant.upsert({
+      where: {
+        userId_featureId: {
+          userId,
+          featureId,
+        },
+      },
+      create: {
+        userId,
+        featureId,
+        status,
+        visibility,
+        source: "manual",
+        notes: notes || null,
+        grantedByUserId: session.user.id,
+      },
+      update: {
+        status,
+        visibility,
+        notes: notes || null,
+        grantedByUserId: session.user.id,
+      },
+    });
+
+    revalidatePath("/team/clients");
+    revalidatePath("/dashboard");
+
+    redirect(
+      buildClientsRedirect({
+        success: "Coaching feature access updated.",
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to update coaching feature access.";
+
+    redirect(
+      buildClientsRedirect({
+        error: message,
+      }),
+    );
+  }
+}
+
+export async function updateCoachingFeatureGrantStatusAction(
+  formData: FormData,
+) {
+  await requireTeamClientAccess();
+
+  const grantId = String(formData.get("grantId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+
+  if (!grantId) {
+    redirect(
+      buildClientsRedirect({
+        error: "Missing coaching feature grant id.",
+      }),
+    );
+  }
+
+  if (status !== "enabled" && status !== "paused" && status !== "disabled") {
+    redirect(
+      buildClientsRedirect({
+        error: "Invalid coaching feature status.",
+      }),
+    );
+  }
+
+  try {
+    await prisma.coachingFeatureGrant.update({
+      where: {
+        id: grantId,
+      },
+      data: {
+        status,
+      },
+    });
+
+    revalidatePath("/team/clients");
+    revalidatePath("/dashboard");
+
+    redirect(
+      buildClientsRedirect({
+        success: `Coaching feature marked ${status}.`,
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to update coaching feature status.";
 
     redirect(
       buildClientsRedirect({

@@ -214,6 +214,7 @@ model User {
   roles               UserRole[]
   clientProfile       ClientProfile?
   memberships         Membership[]  @relation("MembershipUser")
+  coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
 
   clientAppointments  Appointment[] @relation("AppointmentClient")
   coachAppointments   Appointment[] @relation("AppointmentCoach")
@@ -227,6 +228,7 @@ model User {
   storyDraftsReviewed StoryDraft[] @relation("StoryDraftReviewedBy")
 
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
+  coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -332,6 +334,48 @@ model Membership {
 
   @@index([userId, status])
   @@index([planId])
+}
+
+model CoachingFeature {
+  id              String   @id @default(cuid())
+  featureKey      String   @unique
+  title           String
+  category        String   @default("tool")
+  clientSummary   String
+  coachSummary    String?
+  status          String   @default("active")
+  sortOrder       Int      @default(100)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  grants          CoachingFeatureGrant[]
+
+  @@index([category, status])
+  @@index([status, sortOrder])
+}
+
+model CoachingFeatureGrant {
+  id              String   @id @default(cuid())
+  userId          String
+  featureId       String
+  status          String   @default("enabled")
+  source          String   @default("manual")
+  visibility      String   @default("client_and_coach")
+  startsAt        DateTime @default(now())
+  endsAt          DateTime?
+  notes           String?
+  grantedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation("CoachingFeatureGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  feature         CoachingFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  grantedBy       User?    @relation("CoachingFeatureGrantGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, featureId])
+  @@index([featureId, status])
+  @@index([userId, status])
+  @@index([source, status])
 }
 
 // Appointment is the scheduling ledger tying client, coach, and creator roles

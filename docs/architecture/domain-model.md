@@ -242,6 +242,35 @@ Current reality:
 - this is not real-time collaboration or a canonical manuscript document model
 - SMS/Twilio notification sending is not wired into the current request flow
 
+## Coaching Feature Access
+
+Coaching tools are modeled separately from subscription tiers. This lets Homer
+turn a tool on for a specific client because it fits the coaching work, not
+because the client happened to be in a broad plan bucket.
+
+### `CoachingFeature`
+
+Internal catalog of coaching tools that can be shown to clients.
+
+Current reality:
+- seeded from `/team/clients`
+- stores feature key, title, category, client summary, coach summary, status,
+  and sort order
+- starter catalog includes session prep, weekly commitments, reflection journal,
+  values scorecard, milestone tracker, resource library, post-session actions,
+  and between-session check-ins
+
+### `CoachingFeatureGrant`
+
+Manual client-specific access row for one `User` and one `CoachingFeature`.
+
+Current reality:
+- written from `/team/clients`
+- supports `enabled`, `paused`, and `disabled` status values
+- supports `client_and_coach` and `coach_only` visibility
+- stores source, optional notes, optional end date, and the granting team user
+- `/dashboard` only shows enabled, non-expired, client-visible grants
+
 ## WorldHub Business Infrastructure
 
 WorldHub keeps provider state, growth work, and commercial follow-through

@@ -7,6 +7,7 @@ import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { buildGoogleCalendarEventUrl } from "@/lib/calendar-links";
+import { isClientVisibleCoachingFeatureGrant } from "@/lib/coaching/features";
 import { buildSignInHref } from "@/lib/content-access";
 import { prisma } from "@/lib/prisma";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
@@ -115,6 +116,14 @@ function formatAppointmentLocation(value: string) {
   }
 }
 
+function formatFeatureLabel(value: string) {
+  return value
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function buildAppointmentCalendarDetails({
   coachName,
   coachEmail,
@@ -188,6 +197,12 @@ export default async function DashboardPage({
         },
         orderBy: [{ startsAt: "desc" }],
       },
+      coachingFeatureGrants: {
+        include: {
+          feature: true,
+        },
+        orderBy: [{ updatedAt: "desc" }],
+      },
       clientAppointments: {
         orderBy: [{ scheduledStart: "asc" }],
         include: {
@@ -225,6 +240,16 @@ export default async function DashboardPage({
   const upcomingAppointments = user.clientAppointments.filter(
     (appointment) => appointment.status !== "CANCELED",
   );
+  const enabledCoachingFeatures = user.coachingFeatureGrants
+    .filter((grant) =>
+      isClientVisibleCoachingFeatureGrant({
+        status: grant.status,
+        visibility: grant.visibility,
+        startsAt: grant.startsAt,
+        endsAt: grant.endsAt,
+      }),
+    )
+    .sort((left, right) => left.feature.sortOrder - right.feature.sortOrder);
   const showCoachingPanel = intent === "coaching" && coaching !== "requested";
   const coachingSuccess =
     coaching === "requested"
@@ -497,6 +522,56 @@ export default async function DashboardPage({
               )}
             </GlassPanel>
           </div>
+
+          <GlassPanel className="p-6 text-[var(--text-light)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <PageEyebrow>Coaching Tools</PageEyebrow>
+                <h2 className="m-0 mt-3 text-[1.8rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                  Your active tools
+                </h2>
+                <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.9)]">
+                  Homer can turn these on as your coaching work needs them.
+                  They are separate from your subscription plan, so the support
+                  can match the actual person and season.
+                </p>
+              </div>
+
+              <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-[rgba(245,239,230,0.9)]">
+                {enabledCoachingFeatures.length} enabled
+              </span>
+            </div>
+
+            {enabledCoachingFeatures.length === 0 ? (
+              <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/4 px-5 py-8 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">
+                No coaching tools are enabled yet. If Homer assigns prep
+                prompts, weekly commitments, resource lists, or check-ins, they
+                will appear here.
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {enabledCoachingFeatures.map((grant) => (
+                  <article
+                    className="rounded-2xl border border-white/10 bg-white/6 p-5"
+                    key={grant.id}
+                  >
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                      <h3 className="m-0 text-[1.05rem] leading-tight text-[var(--text-light)]">
+                        {grant.feature.title}
+                      </h3>
+                      <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.74)]">
+                        {formatFeatureLabel(grant.feature.category)}
+                      </span>
+                    </div>
+
+                    <p className="mb-0 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
+                      {grant.feature.clientSummary}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </GlassPanel>
 
           {showCoachingPanel ? (
             <GlassPanel className="p-6 text-[var(--text-light)]">

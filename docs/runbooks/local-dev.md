@@ -94,6 +94,9 @@ Notes:
   skips Prisma provisioning and allows only verified Google emails listed in
   `STUDIO_ALLOWED_EMAILS`
 - `HGO_COACHING_DONATION_URL` enables the external pay-what-you-can contribution CTA; it is not full Stripe Checkout
+- `/team/clients` uses `CoachingFeature` and `CoachingFeatureGrant` for the
+  manual coaching tool catalog and client-specific tool access. These grants
+  are independent of subscription tiers.
 - `RESEND_API_KEY`, `HGO_EMAIL_FROM`, and `HGO_SITE_URL` enable best-effort internal coaching request email notifications
 - WorldHub provider env vars are optional readiness inputs for the internal
   `/team/worldhub` command center. The app stores only env names and provider

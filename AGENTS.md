@@ -31,11 +31,13 @@ Recent stabilization history lives in:
 ## Current Product Reality
 
 - Google/NextAuth sign-in is wired and promotes/updates app users in Prisma.
-- Users support primary email, alias emails, roles, client profiles, memberships, and appointments.
+- Users support primary email, alias emails, roles, client profiles, memberships, manual coaching feature grants, and appointments.
 - `/dashboard` is a working signed-in client dashboard backed by Prisma.
 - `/dashboard?intent=coaching` lets signed-in users submit a coaching request.
 - `/dashboard` shows recent coaching requests and converted appointment summaries.
 - `/team/clients`, `/team/coaching-requests`, and `/team/appointments` are working internal operations screens backed by server actions.
+- `/team/clients` can seed a manual coaching tool catalog and enable, pause, or disable client-specific coaching feature grants outside subscription tiers.
+- `/dashboard` shows enabled client-visible coaching tools from manual grants.
 - `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
 - `/team/worldhub` is the internal provider readiness, provider event, cart/order, fulfillment, and calendar-sync command center.
 - `/team/growth` is the internal SEO, analytics snapshot, ad slot, affiliate link, book recommendation, sponsor placement, and monetization research desk.

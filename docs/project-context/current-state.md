@@ -1,6 +1,6 @@
 # Current State
 
-Date: 2026-05-24
+Date: 2026-05-25
 
 ## What The Repo Is Right Now
 
@@ -8,7 +8,8 @@ High Ground Studio is a monorepo with:
 - a primary Next.js app in `apps/web`
 - a Vite motion playground in `apps/motion-lab`
 - a shared motion engine package in `packages/motion-engine`
-- a Prisma/Postgres data model for identity, clients, memberships, and appointments
+- a Prisma/Postgres data model for identity, clients, memberships, coaching
+  feature grants, and appointments
 - a large content tree spanning published MDX, staging content, and raw manuscript/research material
 
 ## What Is Real And Working
@@ -16,7 +17,9 @@ High Ground Studio is a monorepo with:
 - Google sign-in is wired through NextAuth in `apps/web/src/auth.ts`.
 - App users are persisted in Prisma and merged by primary/alias email in `apps/web/src/lib/server/user-identity.ts`.
 - Role-aware gating exists for team/internal access in `apps/web/src/lib/authz.ts` and `apps/web/src/lib/content-access.ts`.
-- `/dashboard` renders signed-in client membership, appointment, recent coaching request, and converted appointment data from Prisma.
+- `/dashboard` renders signed-in client membership, manual coaching feature
+  grants, appointment, recent coaching request, and converted appointment data
+  from Prisma.
 - `/dashboard?intent=coaching` renders the signed-in coaching request form and posts to `submitCoachingRequestAction`.
 - `/dashboard` shows recent coaching request status, assigned coach when present, converted appointment summaries, Google Calendar add links for converted appointments, and a pay-what-you-can contribution CTA when `HGO_COACHING_DONATION_URL` and appointment data are present.
 - `/team/clients` supports:
@@ -25,6 +28,9 @@ High Ground Studio is a monorepo with:
   - promoting existing users to clients
   - seeding membership plans
   - granting/updating memberships
+  - seeding a manual coaching tool catalog
+  - enabling, pausing, or disabling client-specific coaching feature grants
+    outside subscription tiers
 - `/team/coaching-requests` supports:
   - viewing the 50 most recent coaching requests
   - status counts for `NEW`, `CONTACTED`, `SCHEDULED`, `CLOSED`, and `DECLINED`

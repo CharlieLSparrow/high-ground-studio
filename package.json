@@ -55,6 +55,7 @@
     "worldhub:domain:build": "pnpm --filter @high-ground/worldhub-domain build",
     "worldhub:domain:typecheck": "pnpm --filter @high-ground/worldhub-domain typecheck",
     "worldhub:integrations:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/worldhub-provider-definitions.test.mjs scripts/worldhub-webhook-signatures.test.mjs scripts/worldhub-calendar-events.test.mjs scripts/worldhub-growth-tools.test.mjs",
+    "coaching:features:test": "node --experimental-strip-types --test scripts/coaching-features.test.mjs",
     "content-studio:domain:build": "pnpm --filter @high-ground/content-studio-domain build",
     "content-studio:domain:typecheck": "pnpm --filter @high-ground/content-studio-domain typecheck",
     "content-studio:packet:test": "node --experimental-strip-types --test scripts/content-studio-packet.test.mjs",

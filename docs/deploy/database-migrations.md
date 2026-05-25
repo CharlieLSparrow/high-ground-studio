@@ -569,3 +569,47 @@ pnpm db:push
 ```
 
 Run it in an environment where `DATABASE_URL` points at the production database that backs `highgroundodyssey.com`.
+
+## Coaching Feature Access Change
+
+The coaching feature access slice added:
+
+- `CoachingFeature`
+- `CoachingFeatureGrant`
+
+This is an additive coaching/client schema change. It creates an app-owned
+catalog for coaching tools and manual client-specific feature grants that are
+independent of membership tiers.
+
+The tables do not call external providers, send notifications, create
+subscription state, or publish public content. `/team/clients` writes the grant
+rows, and `/dashboard` reads enabled client-visible grants.
+
+Apply the schema to a target database only through the approved operator path
+for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+For the live web Cloud Run database, prefer running `pnpm db:push` from a
+Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
+same Cloud SQL attachment as the `web` service.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in (
+    'CoachingFeature',
+    'CoachingFeatureGrant'
+  )
+order by table_name;
+```
+
+Expected result:
+
+- one row for each listed table
