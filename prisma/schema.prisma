@@ -424,6 +424,194 @@ model CompanySupportRequest {
   @@index([userId, createdAt])
 }
 
+model WorldHubProviderConnection {
+  id                 String   @id @default(cuid())
+  providerKey        String   @unique
+  providerKind       String
+  displayName        String
+  status             String   @default("planned")
+  accountLabel       String?
+  capabilitiesJson   Json
+  requiredEnvJson    Json
+  configuredEnvJson  Json
+  missingEnvJson     Json
+  setupUrl           String?
+  setupNotes         String?
+  healthStatus       String   @default("not_checked")
+  lastCheckedAt      DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  events             WorldHubProviderEvent[]
+  syncJobs           WorldHubProviderSyncJob[]
+  offers             WorldHubOffer[]
+  orders             WorldHubOrder[]
+  fulfillmentJobs    WorldHubFulfillmentJob[]
+
+  @@index([providerKind, status])
+  @@index([status, updatedAt])
+}
+
+model WorldHubProviderEvent {
+  id                 String   @id @default(cuid())
+  connectionId       String
+  eventType          String
+  externalEventId    String?
+  idempotencyKey     String?
+  verificationStatus String   @default("unchecked")
+  processingStatus   String   @default("received")
+  payloadHash        String?
+  payloadSummaryJson Json
+  errorMessage       String?
+  occurredAt         DateTime?
+  receivedAt         DateTime @default(now())
+  processedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  connection         WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, idempotencyKey])
+  @@index([connectionId, receivedAt])
+  @@index([processingStatus, receivedAt])
+}
+
+model WorldHubProviderSyncJob {
+  id                 String   @id @default(cuid())
+  connectionId       String?
+  providerKey        String
+  jobType            String
+  subjectType        String
+  subjectId          String?
+  status             String   @default("queued")
+  payloadJson        Json
+  resultJson         Json?
+  errorMessage       String?
+  requestedByEmail   String?
+  requestedAt        DateTime @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  connection         WorldHubProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([providerKey, status, requestedAt])
+  @@index([subjectType, subjectId])
+}
+
+model WorldHubCatalogItem {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  kind               String
+  status             String   @default("draft")
+  description        String?
+  fulfillmentRequired Boolean @default(false)
+  metadataJson       Json
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([kind, status])
+}
+
+model WorldHubOffer {
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  name                 String
+  kind                 String
+  status               String   @default("draft")
+  checkoutMode         String   @default("external_link")
+  summary              String?
+  externalUrl          String?
+  providerConnectionId String?
+  catalogItemRefsJson  Json
+  priceRefsJson        Json
+  entitlementRefsJson  Json
+  metadataJson         Json
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  providerConnection   WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([kind, status])
+  @@index([providerConnectionId, status])
+}
+
+model WorldHubCart {
+  id             String   @id @default(cuid())
+  cartKey        String   @unique
+  ownerUserId    String?
+  email          String?
+  status         String   @default("draft")
+  currency       String   @default("USD")
+  lineItemsJson  Json
+  subtotalCents  Int      @default(0)
+  discountCents  Int      @default(0)
+  totalCents     Int      @default(0)
+  expiresAt      DateTime?
+  checkedOutAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([ownerUserId, updatedAt])
+  @@index([email, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model WorldHubOrder {
+  id                   String   @id @default(cuid())
+  orderNumber          String   @unique
+  sourceCartId         String?
+  ownerUserId          String?
+  email                String?
+  status               String   @default("pending")
+  currency             String   @default("USD")
+  lineItemsJson        Json
+  subtotalCents        Int      @default(0)
+  discountCents        Int      @default(0)
+  totalCents           Int      @default(0)
+  checkoutMode         String   @default("provider_checkout")
+  providerConnectionId String?
+  externalCheckoutUrl  String?
+  providerRefsJson     Json
+  placedAt             DateTime?
+  paidAt               DateTime?
+  canceledAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  providerConnection   WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+  fulfillmentJobs      WorldHubFulfillmentJob[]
+
+  @@index([ownerUserId, updatedAt])
+  @@index([email, updatedAt])
+  @@index([status, updatedAt])
+  @@index([providerConnectionId, updatedAt])
+}
+
+model WorldHubFulfillmentJob {
+  id                   String   @id @default(cuid())
+  orderId              String?
+  providerConnectionId String?
+  status               String   @default("queued")
+  lineItemsJson        Json
+  providerRefsJson     Json
+  queuedAt             DateTime @default(now())
+  sentAt               DateTime?
+  completedAt          DateTime?
+  failureReason        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  order                WorldHubOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  providerConnection   WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, status])
+  @@index([providerConnectionId, status])
+  @@index([status, queuedAt])
+}
+
 model StoryDraft {
   id                  String           @id @default(cuid())
   storyCandidateId    String

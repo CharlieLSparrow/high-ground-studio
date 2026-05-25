@@ -164,6 +164,18 @@ High Ground Studio is a monorepo with:
   `/projection-stage/import` so HGO can extract the staged projection draft
   without losing packet context, and it links to the private HGO publish queue
   after staged artifacts are saved.
+- WorldHub now has the first database-backed integration workspace at
+  `/team/worldhub`. The page can initialize or refresh provider connection
+  records for Stripe, Patreon, Google Calendar, merch storefront, merch
+  fulfillment, Resend, and the app-owned cart boundary. It checks whether
+  expected env names are present, stores only readiness metadata and env names,
+  and shows current app-owned counts for memberships, future appointments,
+  unsynced appointment candidates, carts, orders, fulfillment jobs, sync jobs,
+  and provider events. New private Prisma models include provider connections,
+  provider events, provider sync jobs, catalog items, offers, carts, orders, and
+  fulfillment jobs. This is integration plumbing only: no provider API calls,
+  no checkout session creation, no calendar event creation, no webhook handling,
+  no payment-card handling, and no merch fulfillment call is active yet.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -305,10 +317,16 @@ High Ground Studio is a monorepo with:
 - Stripe checkout is not active.
 - Stripe webhook/commercialization automation is not active.
 - Full Stripe Checkout is not active for coaching. The current donation path is an external link, typically a Stripe Payment Link, not app-owned checkout/session/webhook state.
-- The floating cart UI exists in layout, but checkout is placeholder-only client code in `src/components/cart/Cart.tsx`.
+- The floating cart UI exists in layout, but checkout is placeholder-only client
+  code in `src/components/cart/Cart.tsx`. WorldHub now has app-owned cart/order
+  tables and provider readiness metadata, but no active checkout creation or
+  payment reconciliation path yet.
 - The episodes route is not on a fully settled content-loading architecture yet.
 - SMS/Twilio notification delivery is not active.
-- Google Calendar API/OAuth synchronization is not active.
+- Google Calendar API/OAuth synchronization is not active. WorldHub now tracks
+  calendar provider readiness and has a provider sync-job table for future
+  appointment event upserts, but no event creation, update, cancellation, or
+  webhook sync path is active.
 - Email notification delivery has no retry queue or persisted delivery status.
 - Story Draft promotion into real `ManuscriptBlock` truth is not active.
 - Story Draft revision history is not active.

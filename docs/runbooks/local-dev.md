@@ -28,8 +28,38 @@ Derived from source usage:
 - `HGO_COACH_EMAILS`
 - `HGO_COACHING_DONATION_URL`
 - `HGO_COMPANY_FAMILY_SUPPORT_URL`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_COACHING_PRICE_ID`
+- `STRIPE_SUPPORTER_PRICE_ID`
+- `STRIPE_SUCCESS_URL`
+- `STRIPE_CANCEL_URL`
+- `PATREON_CLIENT_ID`
+- `PATREON_CLIENT_SECRET`
+- `PATREON_WEBHOOK_SECRET`
+- `PATREON_CAMPAIGN_ID`
+- `PATREON_CREATOR_ACCESS_TOKEN`
+- `GOOGLE_CALENDAR_ID`
+- `GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_CALENDAR_REFRESH_TOKEN`
+- `GOOGLE_CALENDAR_IMPERSONATION_EMAIL`
+- `GOOGLE_CALENDAR_SYNC_CLIENT_ID`
+- `GOOGLE_CALENDAR_SYNC_CLIENT_SECRET`
+- `HGO_MERCH_PROVIDER`
+- `SHOPIFY_ADMIN_ACCESS_TOKEN`
+- `SHOPIFY_STORE_DOMAIN`
+- `FOURTHWALL_API_KEY`
+- `FOURTHWALL_SHOP_URL`
+- `PRINTFUL_API_KEY`
+- `PRINTFUL_STORE_ID`
+- `PRINTIFY_API_KEY`
+- `PRINTIFY_SHOP_ID`
+- `GELATO_API_KEY`
+- `GELATO_STORE_ID`
 - `RESEND_API_KEY`
 - `HGO_EMAIL_FROM`
+- `RESEND_WEBHOOK_SECRET`
 - `HGO_SITE_URL`
 - `ENABLE_EPISODES_FUMADOCS`
 
@@ -43,6 +73,12 @@ Notes:
   `STUDIO_ALLOWED_EMAILS`
 - `HGO_COACHING_DONATION_URL` enables the external pay-what-you-can contribution CTA; it is not full Stripe Checkout
 - `RESEND_API_KEY`, `HGO_EMAIL_FROM`, and `HGO_SITE_URL` enable best-effort internal coaching request email notifications
+- WorldHub provider env vars are optional readiness inputs for the internal
+  `/team/worldhub` command center. The app stores only env names and provider
+  connection status, not secret values.
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are sign-in credentials.
+  Calendar sync requires separate `GOOGLE_CALENDAR_*` credentials before the
+  app should create or update calendar events server-side.
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
 - `apps/web/src/lib/server/sms.ts` reads Twilio env vars if called, but SMS/Twilio is not wired into the active coaching request flow and those vars are not required for local development today
 

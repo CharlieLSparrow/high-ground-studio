@@ -26,8 +26,9 @@ Current runtime state still lives in:
 - `apps/web/src/app/team/appointments/page.tsx`
 - `apps/web/src/app/team/appointments/actions.ts`
 
-WorldHub should first describe and wrap these concepts. It should not replace
-them in an early pass.
+WorldHub should first describe, wrap, and instrument these concepts. It should
+not replace the working coaching/client flows until a specific adapter or
+commerce workflow proves that the existing model is too small.
 
 ## Mapping Table
 
@@ -97,8 +98,9 @@ Future WorldHub can treat this as the seed of:
 - `Entitlement`
 - `EntitlementGrant`
 
-Do not wire Stripe or subscription automation until this mapping is reviewed
-against real admin workflows.
+Stripe or subscription automation should feed app-owned order, event, and
+entitlement records. It should not make Stripe the source of truth for app
+identity or route access.
 
 ## Person / User Boundary
 
@@ -164,28 +166,54 @@ Future provider adapters may map:
 Those mappings should feed WorldHub state through provider events and
 connections. They should not become the core model.
 
+## Current Implementation Step
+
+The first runtime WorldHub integration step now exists:
+
+- `WorldHubProviderConnection`
+- `WorldHubProviderEvent`
+- `WorldHubProviderSyncJob`
+- `WorldHubCatalogItem`
+- `WorldHubOffer`
+- `WorldHubCart`
+- `WorldHubOrder`
+- `WorldHubFulfillmentJob`
+- `/team/worldhub`
+
+This step creates the operations ledger for provider readiness, cart/order
+state, provider events, sync jobs, and fulfillment jobs. It stores env-name
+readiness and operational metadata only. It does not store secret values,
+create checkouts, call providers, create Google Calendar events, receive
+webhooks, or fulfill merch.
+
 ## What Not To Do Next
 
 Do not:
 
 - move coaching request actions out of `apps/web`
 - replace `Appointment` with `CoachingSession`
-- change `prisma/schema.prisma`
-- add Stripe, Patreon, POD, or social provider SDKs
-- create provider webhook routes
-- migrate memberships into subscriptions
+- treat provider readiness records as credential storage
+- migrate memberships into subscriptions before provider events can explain
+  why access exists
 - expose private Studio material in WorldHub
 - make `/team/worldhub` the only way to manage current clients or coaching
+- let Google sign-in OAuth credentials double as Calendar sync credentials
 
 ## Best Next Implementation Slice
 
-The next safe implementation slice is read-only:
+The next safe implementation slice is adapter-specific but still guarded:
 
 ```text
-current Prisma-backed coaching/member workflows
-  -> provider-neutral WorldHub summary objects
-  -> /team/worldhub read-only overview
+WorldHub provider connection
+  -> explicit credential/env readiness
+  -> provider event or sync-job record
+  -> app-owned state update
+  -> rollback/replay record
 ```
 
-That can prove the domain mapping without changing writes, data ownership,
-payment behavior, auth behavior, or provider state.
+Google Calendar is the best first provider call because it can be scoped to
+coaching `Appointment` records and still preserve generated calendar links as a
+fallback. Stripe Checkout should follow once offer/price rows exist for the
+specific coaching/supporter flows. Patreon and merch should start with webhook
+event capture and reconciliation before automatic entitlement or fulfillment
+changes.

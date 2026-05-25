@@ -434,6 +434,64 @@ Expected result:
 
 - one row for `HgoEpisodePublishCandidate`
 
+## WorldHub Provider Integration Workspace Change
+
+The first provider integration workspace slice added:
+
+- `WorldHubProviderConnection`
+- `WorldHubProviderEvent`
+- `WorldHubProviderSyncJob`
+- `WorldHubCatalogItem`
+- `WorldHubOffer`
+- `WorldHubCart`
+- `WorldHubOrder`
+- `WorldHubFulfillmentJob`
+
+This is an additive business-infrastructure schema change. It creates an
+app-owned ledger for provider readiness, provider events, sync jobs, catalog
+items, offers, carts, orders, and merch fulfillment jobs.
+
+The tables do not store secret values, payment card data, raw provider payloads,
+or canonical creative source material. The current `/team/worldhub`
+initializer stores provider connection metadata and env-name readiness only.
+No checkout creation, Patreon sync, Google Calendar event creation, webhook
+handling, or merch fulfillment call is active just because the schema exists.
+
+Apply the schema to a target database only through the approved operator path
+for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+For the live web Cloud Run database, prefer running `pnpm db:push` from a
+Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
+same Cloud SQL attachment as the `web` service.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in (
+    'WorldHubProviderConnection',
+    'WorldHubProviderEvent',
+    'WorldHubProviderSyncJob',
+    'WorldHubCatalogItem',
+    'WorldHubOffer',
+    'WorldHubCart',
+    'WorldHubOrder',
+    'WorldHubFulfillmentJob'
+  )
+order by table_name;
+```
+
+Expected result:
+
+- one row for each listed table
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 
