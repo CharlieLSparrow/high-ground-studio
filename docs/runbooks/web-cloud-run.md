@@ -161,12 +161,36 @@ Optional runtime values:
 - `HGO_EMAIL_FROM`
 - `HGO_SITE_URL`
 - `ENABLE_EPISODES_FUMADOCS`
+- `HGO_GA_MEASUREMENT_ID`
+- `GOOGLE_ANALYTICS_PROPERTY_ID`
+- `GOOGLE_ANALYTICS_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_ANALYTICS_REFRESH_TOKEN`
+- `GOOGLE_ANALYTICS_SYNC_CLIENT_ID`
+- `GOOGLE_ANALYTICS_SYNC_CLIENT_SECRET`
+- `GOOGLE_SEARCH_CONSOLE_SITE_URL`
+- `GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN`
+- `GOOGLE_SEARCH_CONSOLE_SYNC_CLIENT_ID`
+- `GOOGLE_SEARCH_CONSOLE_SYNC_CLIENT_SECRET`
+- `GOOGLE_ADSENSE_CLIENT`
+- `GOOGLE_ADSENSE_ADS_TXT_ACCOUNT`
+- `GOOGLE_ADSENSE_ADS_TXT_AUTHORITY`
+- `GOOGLE_ADSENSE_ADS_TXT_RELATIONSHIP`
+- `HGO_ADSENSE_AUTO_ADS_ENABLED`
+- `AMAZON_ASSOCIATES_TAG`
+- `BOOKSHOP_AFFILIATE_ID`
+- `HGO_AFFILIATE_DISCLOSURE_TEXT`
+- `HGO_SPONSOR_INQUIRY_URL`
+- `HGO_SPONSOR_MEDIA_KIT_URL`
 
 Dormant / not required for the current coaching flow:
 
 - Twilio values used by `apps/web/src/lib/server/sms.ts` if called later
 
 Do not commit real values. Store sensitive values in Secret Manager.
+The deploy helper treats the growth/analytics/ads/affiliate values as optional
+Secret Manager mounts and only mounts optional secrets that exist with enabled
+versions.
 
 ## Manual Setup Checklist
 

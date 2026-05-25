@@ -37,6 +37,11 @@ Main route areas in `apps/web/src/app`:
   - internal coaching request queue and request-to-appointment conversion surface
 - `/team/*`
   - internal team console for clients, coaching requests, and appointments
+- `/team/growth`
+  - internal SEO, analytics, ads, affiliate, and sponsor planning desk
+- `/team/worldhub`
+  - internal provider readiness, provider events, scheduling sync, cart/order,
+    and fulfillment command center
 - `/api/auth/[...nextauth]`
   - NextAuth route handlers
 
@@ -84,7 +89,9 @@ The current coaching workflow is Prisma-backed and intentionally lightweight:
 
 External integration posture:
 - Donation/payment is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
-- Google Calendar is event-template URL generation only.
+- Google Calendar event-template links remain a fallback, and `/team/worldhub`
+  can queue or run server-side calendar sync when dedicated
+  `GOOGLE_CALENDAR_*` credentials are configured.
 - Resend email is wired for new internal coaching request notifications.
 - SMS/Twilio is not called by the active coaching workflow.
 - Full Stripe Checkout is not active.
@@ -117,6 +124,24 @@ Current state:
 - client cart state via a small localStorage-backed context
 
 The cart is currently incidental and not part of the stabilized coaching flow.
+
+## Growth And Monetization Architecture
+
+WorldHub Growth is an app-owned first slice for search, analytics, and
+monetization work:
+
+- `/team/growth` stores SEO briefs, analytics snapshots, and monetization
+  placements in Prisma.
+- Google Analytics, Search Console, AdSense, affiliate, and sponsor providers
+  are represented as provider readiness records before provider API sync is
+  enabled.
+- The root layout can load the Google Analytics tag when
+  `HGO_GA_MEASUREMENT_ID` is present.
+- The root layout can load AdSense Auto ads only when
+  `GOOGLE_ADSENSE_CLIENT` and `HGO_ADSENSE_AUTO_ADS_ENABLED=1` are present.
+- `/ads.txt` is generated from configured AdSense env values.
+- Affiliate and sponsor placements stay private/reviewable before any public
+  content page uses them.
 
 ## Motion Stack
 

@@ -167,21 +167,33 @@ High Ground Studio is a monorepo with:
 - WorldHub now has the first database-backed integration workspace at
   `/team/worldhub`. The page can initialize or refresh provider connection
   records for Stripe, Patreon, Google Calendar, merch storefront, merch
-  fulfillment, Resend, and the app-owned cart boundary. It checks whether
-  expected env names are present, stores only readiness metadata and env names,
-  and shows current app-owned counts for memberships, future appointments,
-  unsynced appointment candidates, carts, orders, fulfillment jobs, sync jobs,
-  and provider events. New private Prisma models include provider connections,
-  provider events, provider sync jobs, catalog items, offers, carts, orders, and
-  fulfillment jobs. `/team/worldhub` can now queue the next unsynced Google
-  Calendar appointment jobs and, when `GOOGLE_CALENDAR_*` credentials are
-  configured, create or update Google Calendar events and write
+  fulfillment, Google Analytics, Google Search Console, Google AdSense,
+  affiliate links, direct sponsors, Resend, and the app-owned cart boundary. It
+  checks whether expected env names are present, stores only readiness metadata
+  and env names, and shows current app-owned counts for memberships, future
+  appointments, unsynced appointment candidates, carts, orders, fulfillment
+  jobs, sync jobs, and provider events. New private Prisma models include
+  provider connections, provider events, provider sync jobs, catalog items,
+  offers, carts, orders, fulfillment jobs, SEO briefs, analytics snapshots, and
+  monetization placements. `/team/worldhub` can now queue the next unsynced
+  Google Calendar appointment jobs and, when `GOOGLE_CALENDAR_*` credentials
+  are configured, create or update Google Calendar events and write
   `Appointment.googleEventId`. Stripe and Patreon webhook endpoints now verify
   provider signatures and store provider-event summaries in the WorldHub event
   inbox. This is still guarded integration plumbing: no checkout session
   creation, no automatic payment reconciliation, no Patreon entitlement
   mutation, no payment-card handling, no public publishing, and no merch
   fulfillment call is active yet.
+- WorldHub Growth now has a private `/team/growth` desk for SEO briefs, manual
+  analytics snapshots, AdSense/ad slot planning, affiliate/book recommendation
+  placements, and direct sponsor slots. The page can seed a starter foundation
+  and save app-owned records before Google Analytics, Search Console, AdSense,
+  or affiliate-provider accounts are connected. The root web layout can load a
+  Google Analytics tag from `HGO_GA_MEASUREMENT_ID`, can load AdSense Auto ads
+  only when `GOOGLE_ADSENSE_CLIENT` and `HGO_ADSENSE_AUTO_ADS_ENABLED=1` are
+  present, and serves `/ads.txt` from configured AdSense env values. Affiliate
+  placements carry disclosure text in the private ledger; public affiliate
+  publishing is still a later reviewed step.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.

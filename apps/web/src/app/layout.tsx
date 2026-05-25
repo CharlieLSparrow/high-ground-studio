@@ -1,5 +1,6 @@
 import "./globals.css";
 import SiteHeader from "@/components/site/SiteHeader";
+import MarketingScripts from "@/components/analytics/MarketingScripts";
 import Providers from "@/components/providers/Providers";
 import { CartProvider } from "@/components/cart/CartContext";
 
@@ -22,6 +23,7 @@ export default function RootLayout({
             {children}
           </CartProvider>
         </Providers>
+        <MarketingScripts />
       </body>
     </html>
   );

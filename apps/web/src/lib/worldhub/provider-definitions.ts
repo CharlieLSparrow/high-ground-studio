@@ -11,6 +11,12 @@ export type WorldHubProviderCapability =
   | "supporter_memberships"
   | "calendar_events"
   | "appointment_sync"
+  | "site_analytics"
+  | "search_console"
+  | "seo"
+  | "ads"
+  | "affiliate_marketing"
+  | "sponsor_slots"
   | "merch_catalog"
   | "fulfillment"
   | "email_delivery"
@@ -139,6 +145,90 @@ export const WORLDHUB_PROVIDER_DEFINITIONS: WorldHubProviderDefinition[] = [
     ],
     setupNotes:
       "Use for store catalog, merch checkout handoff, and customer-visible product availability. Fulfillment can be a separate provider connection.",
+  },
+  {
+    providerKey: "google-analytics",
+    providerKind: "analytics",
+    displayName: "Google Analytics",
+    accountLabel: "GA4 traffic, audience, and conversion reporting",
+    capabilities: ["site_analytics"],
+    requiredEnv: [
+      { allOf: ["HGO_GA_MEASUREMENT_ID"], label: "Site tag measurement id" },
+    ],
+    optionalEnv: [
+      "GOOGLE_ANALYTICS_PROPERTY_ID",
+      "GOOGLE_ANALYTICS_SERVICE_ACCOUNT_JSON",
+      "GOOGLE_ANALYTICS_REFRESH_TOKEN",
+      "GOOGLE_ANALYTICS_SYNC_CLIENT_ID",
+      "GOOGLE_ANALYTICS_SYNC_CLIENT_SECRET",
+    ],
+    setupUrl: "https://analytics.google.com/",
+    setupNotes:
+      "Use for sitewide GA4 tracking and later server-side report imports. The first app step is tag readiness plus manual analytics snapshots; API report sync can follow after a property id and auth are mounted.",
+  },
+  {
+    providerKey: "google-search-console",
+    providerKind: "search",
+    displayName: "Google Search Console",
+    accountLabel: "Indexing, query, and SEO inspection signals",
+    capabilities: ["search_console", "seo"],
+    requiredEnv: [
+      { allOf: ["GOOGLE_SEARCH_CONSOLE_SITE_URL"], label: "Verified site property" },
+    ],
+    optionalEnv: [
+      "GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON",
+      "GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN",
+      "GOOGLE_SEARCH_CONSOLE_SYNC_CLIENT_ID",
+      "GOOGLE_SEARCH_CONSOLE_SYNC_CLIENT_SECRET",
+    ],
+    setupUrl: "https://search.google.com/search-console/about",
+    setupNotes:
+      "Use for Search Console page/query reporting and future URL inspection. Growth briefs stay app-owned so SEO work can begin before API sync is enabled.",
+  },
+  {
+    providerKey: "google-adsense",
+    providerKind: "advertising",
+    displayName: "Google AdSense",
+    accountLabel: "Display ads and ads.txt readiness",
+    capabilities: ["ads"],
+    requiredEnv: [
+      { allOf: ["GOOGLE_ADSENSE_CLIENT"], label: "AdSense publisher client id" },
+    ],
+    optionalEnv: [
+      "GOOGLE_ADSENSE_ADS_TXT_ACCOUNT",
+      "GOOGLE_ADSENSE_ADS_TXT_AUTHORITY",
+      "GOOGLE_ADSENSE_ADS_TXT_RELATIONSHIP",
+      "HGO_ADSENSE_AUTO_ADS_ENABLED",
+    ],
+    setupUrl: "https://www.google.com/adsense/start/",
+    setupNotes:
+      "Use for optional display ad monetization. The app can expose ads.txt and load Auto ads only when explicit env is present; ad placements remain reviewable in the Growth workspace.",
+  },
+  {
+    providerKey: "affiliate-links",
+    providerKind: "affiliate",
+    displayName: "Affiliate Links",
+    accountLabel: "Book, gear, and resource affiliate tracking",
+    capabilities: ["affiliate_marketing"],
+    requiredEnv: [],
+    optionalEnv: [
+      "AMAZON_ASSOCIATES_TAG",
+      "BOOKSHOP_AFFILIATE_ID",
+      "HGO_AFFILIATE_DISCLOSURE_TEXT",
+    ],
+    setupNotes:
+      "Use for app-owned affiliate placement review. Each placement should carry disclosure text near the link before any public content uses it.",
+  },
+  {
+    providerKey: "direct-sponsors",
+    providerKind: "advertising",
+    displayName: "Direct Sponsors",
+    accountLabel: "Sponsor reads, placements, and campaign packages",
+    capabilities: ["sponsor_slots", "ads"],
+    requiredEnv: [],
+    optionalEnv: ["HGO_SPONSOR_INQUIRY_URL", "HGO_SPONSOR_MEDIA_KIT_URL"],
+    setupNotes:
+      "Use for sponsor packages and manually reviewed placements that do not belong to AdSense or affiliate programs.",
   },
   {
     providerKey: "merch-fulfillment",

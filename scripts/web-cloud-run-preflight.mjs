@@ -231,6 +231,12 @@ if (hasGcloud) {
       "web-google-calendar-refresh-token",
       "web-google-calendar-sync-client-id",
       "web-google-calendar-sync-client-secret",
+      "web-hgo-ga-measurement-id",
+      "web-google-analytics-property-id",
+      "web-google-search-console-site-url",
+      "web-google-adsense-client",
+      "web-amazon-associates-tag",
+      "web-bookshop-affiliate-id",
       "web-resend-api-key",
     ];
 

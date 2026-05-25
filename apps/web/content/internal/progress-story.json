@@ -1,7 +1,26 @@
 {
-  "updatedAt": "2026-05-25T00:37:07.669Z",
+  "updatedAt": "2026-05-24T19:29:31.056-06:00",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-24-growth-desk-opens",
+      "date": "2026-05-24",
+      "title": "Growth desk opens",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Added the internal Growth desk for SEO briefs, analytics snapshots, ad and affiliate placement planning, plus gated GA and AdSense runtime hooks.",
+      "body": [
+        "Added the internal Growth desk for SEO briefs, analytics snapshots, ad and affiliate placement planning, plus gated GA and AdSense runtime hooks."
+      ],
+      "commits": [
+        {
+          "sha": "f5750f7",
+          "label": "feat(web): add WorldHub growth desk"
+        }
+      ],
+      "links": [],
+      "tags": ["Progress"]
+    },
     {
       "id": "2026-05-24-worldhub-gets-provider-rails",
       "date": "2026-05-24",

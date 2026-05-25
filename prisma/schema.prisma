@@ -612,6 +612,75 @@ model WorldHubFulfillmentJob {
   @@index([status, queuedAt])
 }
 
+model WorldHubSeoBrief {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique
+  title                 String
+  contentKind           String   @default("episode_page")
+  status                String   @default("draft")
+  targetPath            String?
+  targetUrl             String?
+  primaryKeyword        String?
+  secondaryKeywordsJson Json
+  searchIntent          String?
+  audience              String?
+  metaTitle             String?
+  metaDescription       String?
+  canonicalUrl          String?
+  ogTitle               String?
+  ogDescription         String?
+  structuredDataType    String?
+  checklistJson         Json
+  notes                 String?
+  createdByEmail        String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([contentKind, status])
+  @@index([status, updatedAt])
+  @@index([targetPath])
+}
+
+model WorldHubAnalyticsSnapshot {
+  id              String   @id @default(cuid())
+  source          String
+  channel         String   @default("site")
+  contentPath     String?
+  periodStart     DateTime
+  periodEnd       DateTime
+  metricsJson     Json
+  notes           String?
+  capturedByEmail String?
+  capturedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([source, capturedAt])
+  @@index([channel, capturedAt])
+  @@index([contentPath, capturedAt])
+}
+
+model WorldHubMonetizationPlacement {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  placementType  String
+  status         String   @default("draft")
+  targetPath     String?
+  providerKey    String?
+  displayName    String
+  destinationUrl String?
+  disclosureText String?
+  callToAction   String?
+  metadataJson   Json
+  createdByEmail String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([placementType, status])
+  @@index([targetPath, status])
+  @@index([providerKey, status])
+}
+
 model StoryDraft {
   id                  String           @id @default(cuid())
   storyCandidateId    String

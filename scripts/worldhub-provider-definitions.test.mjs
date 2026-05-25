@@ -16,10 +16,55 @@ test("defines the first revenue and scheduling provider lanes", () => {
     "patreon",
     "google-calendar",
     "merch-storefront",
+    "google-analytics",
+    "google-search-console",
+    "google-adsense",
+    "affiliate-links",
+    "direct-sponsors",
     "merch-fulfillment",
     "resend",
     "app-cart",
   ]);
+});
+
+test("tracks analytics, search, ads, and affiliate provider readiness", () => {
+  const analytics = WORLDHUB_PROVIDER_DEFINITIONS.find(
+    (item) => item.providerKey === "google-analytics",
+  );
+  const searchConsole = WORLDHUB_PROVIDER_DEFINITIONS.find(
+    (item) => item.providerKey === "google-search-console",
+  );
+  const adsense = WORLDHUB_PROVIDER_DEFINITIONS.find(
+    (item) => item.providerKey === "google-adsense",
+  );
+  const affiliates = WORLDHUB_PROVIDER_DEFINITIONS.find(
+    (item) => item.providerKey === "affiliate-links",
+  );
+
+  assert.ok(analytics);
+  assert.ok(searchConsole);
+  assert.ok(adsense);
+  assert.ok(affiliates);
+
+  assert.equal(
+    getWorldHubProviderReadiness(analytics, {
+      HGO_GA_MEASUREMENT_ID: "G-TEST123",
+    }).status,
+    "configured",
+  );
+  assert.equal(
+    getWorldHubProviderReadiness(searchConsole, {
+      GOOGLE_SEARCH_CONSOLE_SITE_URL: "https://app.highgroundodyssey.com/",
+    }).status,
+    "configured",
+  );
+  assert.equal(
+    getWorldHubProviderReadiness(adsense, {
+      GOOGLE_ADSENSE_CLIENT: "ca-pub-1234567890123456",
+    }).status,
+    "configured",
+  );
+  assert.equal(getWorldHubProviderReadiness(affiliates, {}).status, "configured");
 });
 
 test("marks app cart configured without external secrets", () => {

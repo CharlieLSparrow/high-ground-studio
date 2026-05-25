@@ -37,11 +37,17 @@ Recent stabilization history lives in:
 - `/dashboard` shows recent coaching requests and converted appointment summaries.
 - `/team/clients`, `/team/coaching-requests`, and `/team/appointments` are working internal operations screens backed by server actions.
 - `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
+- `/team/worldhub` is the internal provider readiness, provider event, cart/order, fulfillment, and calendar-sync command center.
+- `/team/growth` is the internal SEO, analytics snapshot, ad slot, affiliate link, book recommendation, and sponsor placement desk.
 - `/coaching` is a public offer/front-door page and sign-in handoff, not a completed Stripe checkout flow.
 - Coaching donation support is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
-- Google Calendar support is generated event-template links only; there is no Google Calendar API/OAuth sync.
+- Google Calendar event-template links remain the fallback. `/team/worldhub`
+  can queue or run server-side calendar sync when dedicated
+  `GOOGLE_CALENDAR_*` credentials are configured.
 - New coaching request email notifications are best-effort Resend emails to active internal users with `OWNER`, `TEAM_SCHEDULER`, or `COACH`.
 - SMS/Twilio notification sending is not wired into the current coaching request flow.
+- Google Analytics and AdSense are runtime-gated by env values; `/ads.txt` is
+  generated only when AdSense config is present.
 - `/episodes/[[...slug]]` currently uses a guarded Fumadocs loader path.
 - The repo currently builds under both:
   - `pnpm --filter web build`
@@ -87,6 +93,19 @@ Documented from source usage:
 - `RESEND_API_KEY`
 - `HGO_EMAIL_FROM`
 - `HGO_SITE_URL`
+- `HGO_GA_MEASUREMENT_ID`
+- `GOOGLE_ANALYTICS_PROPERTY_ID`
+- `GOOGLE_SEARCH_CONSOLE_SITE_URL`
+- `GOOGLE_ADSENSE_CLIENT`
+- `GOOGLE_ADSENSE_ADS_TXT_ACCOUNT`
+- `GOOGLE_ADSENSE_ADS_TXT_AUTHORITY`
+- `GOOGLE_ADSENSE_ADS_TXT_RELATIONSHIP`
+- `HGO_ADSENSE_AUTO_ADS_ENABLED`
+- `AMAZON_ASSOCIATES_TAG`
+- `BOOKSHOP_AFFILIATE_ID`
+- `HGO_AFFILIATE_DISCLOSURE_TEXT`
+- `HGO_SPONSOR_INQUIRY_URL`
+- `HGO_SPONSOR_MEDIA_KIT_URL`
 - `ENABLE_EPISODES_FUMADOCS`
 
 Dormant/non-required for the current coaching flow:

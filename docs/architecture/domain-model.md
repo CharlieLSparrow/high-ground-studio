@@ -131,8 +131,10 @@ Current location enum:
 Current reality:
 - appointments are managed through internal forms and can also be created by converting a coaching request
 - request conversion creates an appointment with client, coach, creator, scheduled start/end, timezone, location, and notes
-- `googleEventId` exists in schema, but active calendar synchronization is not established in the current repo docs/code path
-- current calendar behavior is generated Google Calendar event-template links, not persisted Google API events
+- generated Google Calendar event-template links remain the fallback behavior
+- `/team/worldhub` can queue appointment sync jobs and, when dedicated
+  `GOOGLE_CALENDAR_*` credentials are mounted, create/update Google Calendar
+  events and write `googleEventId`
 
 ## Coaching Requests
 
@@ -239,6 +241,81 @@ Current reality:
   persist data
 - this is not real-time collaboration or a canonical manuscript document model
 - SMS/Twilio notification sending is not wired into the current request flow
+
+## WorldHub Business Infrastructure
+
+WorldHub keeps provider state, growth work, and commercial follow-through
+app-owned before specific providers mutate app state.
+
+### `WorldHubProviderConnection`
+
+Provider readiness ledger for Stripe, Patreon, Google Calendar, merch,
+transactional email, analytics, search, ads, affiliates, sponsors, and the
+app-owned cart boundary.
+
+Current reality:
+- stores provider kind, capabilities, expected env names, configured env names,
+  missing env names, setup notes, and health/readiness state
+- does not store secret values
+- refreshed from `/team/worldhub` and `/team/growth`
+
+### `WorldHubProviderEvent`
+
+Verified provider-event inbox.
+
+Current reality:
+- Stripe and Patreon webhook routes can verify signatures and write safe event
+  summaries
+- payment reconciliation, entitlement mutation, and fulfillment mutation are
+  still later steps
+
+### `WorldHubProviderSyncJob`
+
+App-owned job ledger for provider sync attempts.
+
+Current reality:
+- Google Calendar appointment sync writes queued/completed/failed job rows
+- the model is generic enough for analytics, search, merch, or fulfillment sync
+  jobs later
+
+### `WorldHubCatalogItem`, `WorldHubOffer`, `WorldHubCart`, `WorldHubOrder`,
+and `WorldHubFulfillmentJob`
+
+Commerce staging records.
+
+Current reality:
+- these are app-owned cart/order/catalog/fulfillment rails
+- no Stripe Checkout session creation, automatic payment reconciliation, or
+  merch fulfillment provider call is active yet
+
+### `WorldHubSeoBrief`
+
+Private SEO planning brief for a page, offer, episode page, book page, or
+collection.
+
+Current reality:
+- stores target path/URL, keyword fields, meta title/description, intended
+  structured data type, checklist JSON, notes, and creator email
+- written from `/team/growth`
+
+### `WorldHubAnalyticsSnapshot`
+
+Manual or future-provider-imported analytics snapshot.
+
+Current reality:
+- stores source, channel, content path, period dates, metrics JSON, notes, and
+  capture metadata
+- written manually from `/team/growth` until GA/Search Console/AdSense imports
+  are added
+
+### `WorldHubMonetizationPlacement`
+
+Private ad, affiliate, book recommendation, sponsor, or merch placement record.
+
+Current reality:
+- stores placement type, target path, provider key, destination URL, disclosure
+  text, call to action, and metadata JSON
+- public affiliate/ad publishing remains a reviewed later step
 
 ## Content Access Model
 

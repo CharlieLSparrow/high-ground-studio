@@ -92,6 +92,10 @@ export type WorldHubProviderKind =
   | "fulfillment"
   | "email"
   | "calendar"
+  | "analytics"
+  | "search"
+  | "advertising"
+  | "affiliate"
   | "custom";
 
 export type WorldHubProviderConnectionStatus =

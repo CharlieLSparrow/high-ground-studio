@@ -113,6 +113,13 @@ export default async function TeamLayout({
             </Link>
 
             <Link
+              href="/team/growth"
+              className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
+            >
+              Growth
+            </Link>
+
+            <Link
               href="/team/hgo-staged-artifacts"
               className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] no-underline transition hover:border-[rgba(255,122,24,0.35)] hover:text-[var(--accent)]"
             >

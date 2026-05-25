@@ -107,6 +107,10 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /STRIPE_WEBHOOK_SECRET/);
   assert.match(deployScript, /PATREON_WEBHOOK_SECRET/);
   assert.match(deployScript, /GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON/);
+  assert.match(deployScript, /HGO_GA_MEASUREMENT_ID/);
+  assert.match(deployScript, /GOOGLE_SEARCH_CONSOLE_SITE_URL/);
+  assert.match(deployScript, /GOOGLE_ADSENSE_CLIENT/);
+  assert.match(deployScript, /AMAZON_ASSOCIATES_TAG/);
   assert.match(deployScript, /getTrafficPercentForRevision/);
   assert.match(deployScript, /getServiceEnvValue/);
   assert.match(deployScript, /existingAuthUrl/);
@@ -131,6 +135,10 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(seedScript, /OPTIONAL_SECRET_MAPPINGS/);
   assert.match(seedScript, /web-stripe-webhook-secret/);
   assert.match(seedScript, /web-patreon-webhook-secret/);
+  assert.match(seedScript, /web-hgo-ga-measurement-id/);
+  assert.match(seedScript, /web-google-search-console-site-url/);
+  assert.match(seedScript, /web-google-adsense-client/);
+  assert.match(seedScript, /web-amazon-associates-tag/);
   assert.match(databaseReportScript, /Web database target report/);
   assert.match(databaseReportScript, /never prints the full URL/);
   assert.match(databaseReportScript, /WEB_DB_TARGET_REPORT_REQUIRE_MOUNT/);

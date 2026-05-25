@@ -47,6 +47,27 @@ Derived from source usage:
 - `GOOGLE_CALENDAR_SYNC_CLIENT_ID`
 - `GOOGLE_CALENDAR_SYNC_CLIENT_SECRET`
 - `GOOGLE_CALENDAR_SEND_UPDATES`
+- `HGO_GA_MEASUREMENT_ID`
+- `GOOGLE_ANALYTICS_PROPERTY_ID`
+- `GOOGLE_ANALYTICS_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_ANALYTICS_REFRESH_TOKEN`
+- `GOOGLE_ANALYTICS_SYNC_CLIENT_ID`
+- `GOOGLE_ANALYTICS_SYNC_CLIENT_SECRET`
+- `GOOGLE_SEARCH_CONSOLE_SITE_URL`
+- `GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN`
+- `GOOGLE_SEARCH_CONSOLE_SYNC_CLIENT_ID`
+- `GOOGLE_SEARCH_CONSOLE_SYNC_CLIENT_SECRET`
+- `GOOGLE_ADSENSE_CLIENT`
+- `GOOGLE_ADSENSE_ADS_TXT_ACCOUNT`
+- `GOOGLE_ADSENSE_ADS_TXT_AUTHORITY`
+- `GOOGLE_ADSENSE_ADS_TXT_RELATIONSHIP`
+- `HGO_ADSENSE_AUTO_ADS_ENABLED`
+- `AMAZON_ASSOCIATES_TAG`
+- `BOOKSHOP_AFFILIATE_ID`
+- `HGO_AFFILIATE_DISCLOSURE_TEXT`
+- `HGO_SPONSOR_INQUIRY_URL`
+- `HGO_SPONSOR_MEDIA_KIT_URL`
 - `HGO_MERCH_PROVIDER`
 - `SHOPIFY_ADMIN_ACCESS_TOKEN`
 - `SHOPIFY_STORE_DOMAIN`
@@ -83,6 +104,15 @@ Notes:
 - `GOOGLE_CALENDAR_SEND_UPDATES` may be `none`, `externalOnly`, or `all`; it
   defaults to `none` so early sync tests do not surprise clients with calendar
   email.
+- `/team/growth` uses the `WorldHubSeoBrief`, `WorldHubAnalyticsSnapshot`, and
+  `WorldHubMonetizationPlacement` tables for app-owned SEO briefs, manual
+  analytics snapshots, ad slots, affiliate links, and sponsor placements.
+- `HGO_GA_MEASUREMENT_ID` enables the Google Analytics site tag.
+- `GOOGLE_ADSENSE_CLIENT` plus `HGO_ADSENSE_AUTO_ADS_ENABLED=1` enables the
+  AdSense Auto ads script. `/ads.txt` is generated from
+  `GOOGLE_ADSENSE_ADS_TXT_*` values when configured.
+- Affiliate and sponsor env vars are readiness metadata. Public affiliate links
+  should still carry visible disclosure text near the link.
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
 - `apps/web/src/lib/server/sms.ts` reads Twilio env vars if called, but SMS/Twilio is not wired into the active coaching request flow and those vars are not required for local development today
 
