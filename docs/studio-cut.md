@@ -507,12 +507,20 @@ the range end. These range drafts include `confidence`, `approvalRequired`, and
 `Import Agent Ops` to preview and apply it through the normal decision
 persistence path.
 
+The `Clip Candidate Lane` is the first Magic Clips-style semantic layer. It can
+create clip candidates from the current derived segment, selected source range,
+selected transcript segment, or marker-to-marker range. Candidates store title,
+summary, source-time in/out, status, target render profiles, score, reasons, and
+provenance. They are browser-local semantic ranges, not rendered clips. Use
+`Export Clips` or `Export Agent Context` to hand those ranges to an agent or
+future render profile pass.
+
 Use `Export Agent Context` when an agent needs the live browser room state. The
 export includes the manifest, current source time, proxy loaded status,
 persistence/shared-room status, active and tombstoned decisions, derived
-segments, transcript review when loaded, readiness warnings, and the supported
-operation contract. It does not include media bytes, local filesystem paths, or
-browser object URLs.
+segments, transcript review when loaded, clip candidates, readiness warnings,
+and the supported operation contract. It does not include media bytes, local
+filesystem paths, or browser object URLs.
 
 The web editor also shows a `Local Render Handoff` panel after an episode is
 loaded. It previews the expected decision export filename, the session folder

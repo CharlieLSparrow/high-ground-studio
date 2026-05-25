@@ -82,7 +82,7 @@ make agent edits inspectable, selective, and reversible.
 
 ## Prompt 03: Clip Candidate Lane
 
-Status: next
+Status: complete in this pass
 
 Mission:
 Create the first Magic Clips-style internal lane without rendering clips yet.
@@ -104,7 +104,7 @@ semantic ranges until render time.
 
 ## Prompt 04: Episode Output Board
 
-Status: queued
+Status: next
 
 Mission:
 Create a Riverside/Descript-style output cockpit for full episode publishing

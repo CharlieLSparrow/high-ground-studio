@@ -3,6 +3,7 @@ import {
   PROGRAM_STATES,
   sortDecisionEvents,
   type CloudSyncReport,
+  type ClipCandidate,
   type DecisionEvent,
   type DerivedSegment,
   type EpisodeManifest,
@@ -73,6 +74,12 @@ export type AgentWorkspaceBrief = {
     review?: TranscriptReview;
     note: string;
   };
+  clipCandidates: {
+    count: number;
+    approvedCount: number;
+    candidates: ClipCandidate[];
+    note: string;
+  };
   decisions: {
     allCount: number;
     activeCount: number;
@@ -126,6 +133,7 @@ export function buildAgentWorkspaceBrief({
   syncReview,
   transcript,
   transcriptReview,
+  clipCandidates = [],
   allDecisionEvents,
   derivedSegments,
   warnings,
@@ -161,6 +169,7 @@ export function buildAgentWorkspaceBrief({
   };
   transcript?: EpisodeTranscript | null;
   transcriptReview?: TranscriptReview | null;
+  clipCandidates?: readonly ClipCandidate[];
   allDecisionEvents: readonly DecisionEvent[];
   derivedSegments: readonly DerivedSegment[];
   warnings: readonly string[];
@@ -254,6 +263,15 @@ export function buildAgentWorkspaceBrief({
       ...(transcriptReview ? { review: transcriptReview } : {}),
       note:
         "Transcript text is exported only through this explicit agent context action. It is not uploaded with local proxy media.",
+    },
+    clipCandidates: {
+      count: clipCandidates.length,
+      approvedCount: clipCandidates.filter(
+        (candidate) => candidate.status === "approved",
+      ).length,
+      candidates: clipCandidates.map((candidate) => ({ ...candidate })),
+      note:
+        "Clip candidates are semantic canonical-time ranges for future render profiles. They do not include rendered media.",
     },
     decisions: {
       allCount: sortedAllEvents.length,

@@ -10,6 +10,8 @@ import {
 import {
   CLOUD_SYNC_INPUT_ROLES,
   CLOUD_SYNC_REQUIRED_INPUT_ROLES,
+  CLIP_CANDIDATE_STATUSES,
+  CLIP_RENDER_PROFILES,
   deriveSegments,
   getCurrentDecisionEvent,
   isCloudSyncJobInputComplete,
@@ -28,6 +30,10 @@ import {
   type CloudSyncJob,
   type CloudSyncReport,
   type CloudSyncUploadedInput,
+  type ClipCandidate,
+  type ClipCandidateSource,
+  type ClipCandidateStatus,
+  type ClipRenderProfile,
   type DecisionEvent,
   type DerivedSegment,
   type EpisodeManifest,
@@ -108,6 +114,8 @@ const LOCAL_CHECKPOINTS_STORAGE_KEY =
   "high-ground-studio.studio-cut.local-checkpoints.v1";
 const TIMELINE_MARKERS_STORAGE_KEY =
   "high-ground-studio.studio-cut.timeline-markers.v1";
+const CLIP_CANDIDATES_STORAGE_KEY =
+  "high-ground-studio.studio-cut.clip-candidates.v1";
 const SELECTED_ROOM_STORAGE_KEY =
   "high-ground-studio.studio-cut.selected-room.v1";
 const LOCAL_PROXY_VIDEO_ACCEPT =
@@ -119,6 +127,7 @@ const LARGE_SCRUB_STEP_MS = 10000;
 const MAX_DECISION_HISTORY_ENTRIES = 40;
 const MAX_LOCAL_CHECKPOINTS = 12;
 const MAX_TIMELINE_MARKERS = 120;
+const MAX_CLIP_CANDIDATES = 200;
 const PRESENCE_UPDATE_INTERVAL_MS = 5000;
 const STALE_PRESENCE_MS = 30000;
 
@@ -131,6 +140,8 @@ const STATE_KEYBOARD_SHORTCUTS: Record<string, ProgramState> = {
   "6": "both_clip",
   x: "cut",
 };
+
+const CLIP_CANDIDATE_STATUS_OPTIONS = CLIP_CANDIDATE_STATUSES;
 
 const KEYBOARD_SHORTCUT_LEGEND = [
   { key: "1", label: "Charlie" },
@@ -400,6 +411,11 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [timelineMarkers, setTimelineMarkers] = useState<TimelineMarker[]>(
     loadStoredTimelineMarkers,
   );
+  const [clipCandidates, setClipCandidates] = useState<ClipCandidate[]>(
+    loadStoredClipCandidates,
+  );
+  const [clipCandidateTitleDraft, setClipCandidateTitleDraft] = useState("");
+  const [clipCandidateSummaryDraft, setClipCandidateSummaryDraft] = useState("");
   const [markerDraft, setMarkerDraft] = useState("");
   const [markerNoteDraft, setMarkerNoteDraft] = useState("");
   const [rangeSelection, setRangeSelection] = useState<RangeSelection>({});
@@ -544,6 +560,28 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     ) ??
     currentTranscriptSegment ??
     null;
+  const currentRoomClipCandidates = useMemo(
+    () =>
+      sortClipCandidates(
+        clipCandidates.filter(
+          (candidate) =>
+            candidate.projectId === roomSelection.projectId &&
+            candidate.branchId === roomSelection.branchId &&
+            (!episodeManifest?.id ||
+              !candidate.episodeId ||
+              candidate.episodeId === episodeManifest.id),
+        ),
+      ),
+    [
+      clipCandidates,
+      episodeManifest?.id,
+      roomSelection.branchId,
+      roomSelection.projectId,
+    ],
+  );
+  const approvedClipCandidateCount = currentRoomClipCandidates.filter(
+    (candidate) => candidate.status === "approved",
+  ).length;
 
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
@@ -552,6 +590,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredEpisodeTranscript(episodeTranscript);
   }, [episodeTranscript]);
+
+  useEffect(() => {
+    saveStoredClipCandidates(clipCandidates);
+  }, [clipCandidates]);
 
   useEffect(() => {
     saveStoredRoomSelection(selectedRoom);
@@ -1578,6 +1620,225 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     });
   }
 
+  function createClipCandidateFromCurrentSegment() {
+    if (!currentSegment) {
+      setImportMessage("Add or select a semantic segment before creating a clip candidate.");
+      return;
+    }
+
+    const endSourceTimeMs = currentSegment.endSourceTimeMs ?? sourceDurationMs;
+
+    addClipCandidate({
+      source: "current_segment",
+      sourceId: currentSegment.sourceEventId,
+      startSourceTimeMs: currentSegment.startSourceTimeMs,
+      endSourceTimeMs,
+      fallbackTitle: `${PROGRAM_STATE_LABELS[currentSegment.state]} clip at ${formatSourceTime(
+        currentSegment.startSourceTimeMs,
+      )}`,
+      fallbackSummary: `Candidate from current ${PROGRAM_STATE_LABELS[currentSegment.state]} segment.`,
+      reasons: [
+        `Current semantic state is ${PROGRAM_STATE_LABELS[currentSegment.state]}.`,
+        "Created manually from the active segment in Studio Cut.",
+      ],
+    });
+  }
+
+  function createClipCandidateFromSelectedRange() {
+    if (!normalizedRange) {
+      setImportMessage("Set a range before creating a clip candidate from range.");
+      return;
+    }
+
+    addClipCandidate({
+      source: "selected_range",
+      startSourceTimeMs: normalizedRange.startSourceTimeMs,
+      endSourceTimeMs: normalizedRange.endSourceTimeMs,
+      fallbackTitle: `Range clip ${formatSourceTime(
+        normalizedRange.startSourceTimeMs,
+      )}`,
+      fallbackSummary: "Candidate from the selected source-time range.",
+      reasons: [
+        "Created manually from the selected range.",
+        `Range duration ${formatSourceTime(
+          normalizedRange.endSourceTimeMs - normalizedRange.startSourceTimeMs,
+        )}.`,
+      ],
+    });
+  }
+
+  function createClipCandidateFromTranscriptSegment() {
+    if (!selectedTranscriptSegment) {
+      setImportMessage("Select a transcript segment before creating a clip candidate.");
+      return;
+    }
+
+    addClipCandidate({
+      source: "transcript_segment",
+      sourceId: selectedTranscriptSegment.id,
+      startSourceTimeMs: selectedTranscriptSegment.startSourceTimeMs,
+      endSourceTimeMs: selectedTranscriptSegment.endSourceTimeMs,
+      fallbackTitle: `Transcript clip ${formatSourceTime(
+        selectedTranscriptSegment.startSourceTimeMs,
+      )}`,
+      fallbackSummary: `${selectedTranscriptSegment.speaker}: ${truncateText(
+        selectedTranscriptSegment.text,
+        120,
+      )}`,
+      reasons: [
+        "Created manually from a timed transcript segment.",
+        selectedTranscriptSegment.speakerRole
+          ? `Speaker role ${selectedTranscriptSegment.speakerRole}.`
+          : `Speaker ${selectedTranscriptSegment.speaker}.`,
+      ],
+    });
+  }
+
+  function createClipCandidateFromMarkerRange() {
+    const previousMarker = [...currentRoomMarkers]
+      .reverse()
+      .find((marker) => marker.sourceTimeMs <= sourceTimeMs);
+    const nextMarker = currentRoomMarkers.find(
+      (marker) => marker.sourceTimeMs > sourceTimeMs,
+    );
+
+    if (!previousMarker || !nextMarker) {
+      setImportMessage(
+        "Need a marker at/before the playhead and another marker after it to create a marker-range clip.",
+      );
+      return;
+    }
+
+    addClipCandidate({
+      source: "marker_range",
+      sourceId: `${previousMarker.id}:${nextMarker.id}`,
+      startSourceTimeMs: previousMarker.sourceTimeMs,
+      endSourceTimeMs: nextMarker.sourceTimeMs,
+      fallbackTitle: `${previousMarker.label} clip`,
+      fallbackSummary: `Candidate from marker ${previousMarker.label} to ${nextMarker.label}.`,
+      reasons: [
+        "Created manually from marker-to-marker range.",
+        `Starts at marker ${previousMarker.label}.`,
+        `Ends at marker ${nextMarker.label}.`,
+      ],
+    });
+  }
+
+  function addClipCandidate({
+    source,
+    sourceId,
+    startSourceTimeMs,
+    endSourceTimeMs,
+    fallbackTitle,
+    fallbackSummary,
+    reasons,
+  }: {
+    source: ClipCandidateSource;
+    sourceId?: string;
+    startSourceTimeMs: number;
+    endSourceTimeMs: number;
+    fallbackTitle: string;
+    fallbackSummary: string;
+    reasons: string[];
+  }) {
+    const start = clampSourceTime(startSourceTimeMs, sourceDurationMs);
+    const end = clampSourceTime(endSourceTimeMs, sourceDurationMs);
+
+    if (end <= start) {
+      setImportMessage("Clip candidate end must be after start.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const title = clipCandidateTitleDraft.trim() || fallbackTitle;
+    const summary = clipCandidateSummaryDraft.trim() || fallbackSummary;
+    const candidate: ClipCandidate = {
+      id: createClipCandidateId(),
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      ...(episodeManifest?.id ? { episodeId: episodeManifest.id } : {}),
+      title,
+      summary,
+      startSourceTimeMs: start,
+      endSourceTimeMs: end,
+      status: "suggested",
+      targetProfiles: ["shorts_9x16", "youtube_16x9"],
+      score: estimateClipCandidateScore(start, end, sourceDurationMs),
+      reasons,
+      source,
+      ...(sourceId ? { sourceId } : {}),
+      createdBy: createdBy ?? config.createdBy,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setClipCandidates((currentCandidates) =>
+      sortClipCandidates([candidate, ...currentCandidates]).slice(
+        0,
+        MAX_CLIP_CANDIDATES,
+      ),
+    );
+    setClipCandidateTitleDraft("");
+    setClipCandidateSummaryDraft("");
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Created clip candidate ${title}`,
+    }));
+    setImportMessage(
+      `Created clip candidate "${title}" from ${formatSourceTime(start)} to ${formatSourceTime(
+        end,
+      )}.`,
+    );
+  }
+
+  function updateClipCandidateStatus(
+    candidateId: string,
+    status: ClipCandidateStatus,
+  ) {
+    const updatedAt = new Date().toISOString();
+    setClipCandidates((currentCandidates) =>
+      currentCandidates.map((candidate) =>
+        candidate.id === candidateId
+          ? {
+              ...candidate,
+              status,
+              updatedAt,
+            }
+          : candidate,
+      ),
+    );
+  }
+
+  function removeClipCandidate(candidateId: string) {
+    setClipCandidates((currentCandidates) =>
+      currentCandidates.filter((candidate) => candidate.id !== candidateId),
+    );
+  }
+
+  function jumpToClipCandidate(candidate: ClipCandidate) {
+    scrubToSourceTime(candidate.startSourceTimeMs);
+  }
+
+  function exportClipCandidatesJson() {
+    const payload = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      episodeId: episodeManifest?.id,
+      clipCandidates: currentRoomClipCandidates,
+    };
+
+    downloadJsonFile(
+      payload,
+      getClipCandidatesFileName(
+        episodeManifest,
+        roomSelection,
+        formatCheckpointTimestamp(new Date()),
+      ),
+    );
+  }
+
   function createSyntheticDecisionEvent({
     state,
     sourceTimeMs,
@@ -1678,6 +1939,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       syncReview,
       transcript: episodeTranscript,
       transcriptReview,
+      clipCandidates: currentRoomClipCandidates,
       allDecisionEvents,
       derivedSegments,
       warnings: readinessWarnings,
@@ -3451,6 +3713,29 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onJump={jumpToTranscriptSegment}
           onSetRange={setRangeFromTranscriptSegment}
           onApplyState={applyTranscriptSegmentState}
+        />
+        <ClipCandidateLanePanel
+          candidates={currentRoomClipCandidates}
+          approvedCount={approvedClipCandidateCount}
+          titleDraft={clipCandidateTitleDraft}
+          summaryDraft={clipCandidateSummaryDraft}
+          hasCurrentSegment={Boolean(currentSegment)}
+          hasSelectedRange={Boolean(normalizedRange)}
+          hasTranscriptSegment={Boolean(selectedTranscriptSegment)}
+          hasMarkerRange={hasMarkerRangeAroundPlayhead(
+            currentRoomMarkers,
+            sourceTimeMs,
+          )}
+          onTitleDraftChange={setClipCandidateTitleDraft}
+          onSummaryDraftChange={setClipCandidateSummaryDraft}
+          onCreateFromCurrentSegment={createClipCandidateFromCurrentSegment}
+          onCreateFromRange={createClipCandidateFromSelectedRange}
+          onCreateFromTranscript={createClipCandidateFromTranscriptSegment}
+          onCreateFromMarkers={createClipCandidateFromMarkerRange}
+          onStatusChange={updateClipCandidateStatus}
+          onJump={jumpToClipCandidate}
+          onRemove={removeClipCandidate}
+          onExport={exportClipCandidatesJson}
         />
         <input
           ref={manifestInputRef}
@@ -5379,6 +5664,202 @@ function TranscriptEditLanePanel({
           Context export for the full transcript payload.
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function ClipCandidateLanePanel({
+  candidates,
+  approvedCount,
+  titleDraft,
+  summaryDraft,
+  hasCurrentSegment,
+  hasSelectedRange,
+  hasTranscriptSegment,
+  hasMarkerRange,
+  onTitleDraftChange,
+  onSummaryDraftChange,
+  onCreateFromCurrentSegment,
+  onCreateFromRange,
+  onCreateFromTranscript,
+  onCreateFromMarkers,
+  onStatusChange,
+  onJump,
+  onRemove,
+  onExport,
+}: {
+  candidates: readonly ClipCandidate[];
+  approvedCount: number;
+  titleDraft: string;
+  summaryDraft: string;
+  hasCurrentSegment: boolean;
+  hasSelectedRange: boolean;
+  hasTranscriptSegment: boolean;
+  hasMarkerRange: boolean;
+  onTitleDraftChange: (value: string) => void;
+  onSummaryDraftChange: (value: string) => void;
+  onCreateFromCurrentSegment: () => void;
+  onCreateFromRange: () => void;
+  onCreateFromTranscript: () => void;
+  onCreateFromMarkers: () => void;
+  onStatusChange: (candidateId: string, status: ClipCandidateStatus) => void;
+  onJump: (candidate: ClipCandidate) => void;
+  onRemove: (candidateId: string) => void;
+  onExport: () => void;
+}) {
+  return (
+    <section className="clip-candidate-lane" aria-label="Clip candidate lane">
+      <div className="panel-heading">
+        <div>
+          <h2>Clip Candidate Lane</h2>
+          <p>Semantic short-form ranges for later render profiles.</p>
+        </div>
+        <strong>
+          {approvedCount}/{candidates.length} approved
+        </strong>
+      </div>
+
+      <div className="clip-candidate-drafts">
+        <label>
+          Clip title
+          <input
+            value={titleDraft}
+            onChange={(event) => onTitleDraftChange(event.target.value)}
+            placeholder="Optional title override"
+            aria-label="Clip candidate title"
+          />
+        </label>
+        <label>
+          Summary
+          <textarea
+            value={summaryDraft}
+            onChange={(event) => onSummaryDraftChange(event.target.value)}
+            placeholder="Optional clip summary"
+            aria-label="Clip candidate summary"
+          />
+        </label>
+      </div>
+
+      <div className="clip-candidate-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onCreateFromCurrentSegment}
+          disabled={!hasCurrentSegment}
+        >
+          From Current Segment
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onCreateFromRange}
+          disabled={!hasSelectedRange}
+        >
+          From Selected Range
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onCreateFromTranscript}
+          disabled={!hasTranscriptSegment}
+        >
+          From Transcript Segment
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onCreateFromMarkers}
+          disabled={!hasMarkerRange}
+        >
+          From Marker Range
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onExport}
+          disabled={candidates.length === 0}
+        >
+          Export Clips
+        </button>
+      </div>
+
+      {candidates.length > 0 ? (
+        <div className="clip-candidate-list">
+          {candidates.map((candidate) => (
+            <article
+              className={`clip-candidate-card status-${candidate.status}`}
+              key={candidate.id}
+            >
+              <div className="clip-candidate-card-main">
+                <strong>{candidate.title}</strong>
+                <span>
+                  {formatSourceTime(candidate.startSourceTimeMs)}-
+                  {formatSourceTime(candidate.endSourceTimeMs)} ·{" "}
+                  {formatSourceTime(
+                    candidate.endSourceTimeMs - candidate.startSourceTimeMs,
+                  )}
+                </span>
+                {candidate.summary ? <p>{candidate.summary}</p> : null}
+                <div className="clip-candidate-meta">
+                  <span>{candidate.status}</span>
+                  <span>{candidate.source}</span>
+                  {typeof candidate.score === "number" ? (
+                    <span>{Math.round(candidate.score * 100)} score</span>
+                  ) : null}
+                  {candidate.targetProfiles.map((profile) => (
+                    <span key={profile}>{formatClipRenderProfile(profile)}</span>
+                  ))}
+                </div>
+                {candidate.reasons.length > 0 ? (
+                  <ul>
+                    {candidate.reasons.slice(0, 3).map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <div className="clip-candidate-card-actions">
+                <select
+                  value={candidate.status}
+                  onChange={(event) =>
+                    onStatusChange(
+                      candidate.id,
+                      event.target.value as ClipCandidateStatus,
+                    )
+                  }
+                  aria-label={`Clip status for ${candidate.title}`}
+                >
+                  {CLIP_CANDIDATE_STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => onJump(candidate)}
+                >
+                  Jump
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => onRemove(candidate.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="panel-empty">
+          Create clip candidates from semantic segments, ranges, transcript
+          segments, or marker ranges. These are decision-layer ranges only; no
+          clips are rendered or uploaded here.
+        </p>
+      )}
     </section>
   );
 }
@@ -7351,6 +7832,25 @@ function findNextTimelineMarker(
   );
 }
 
+function hasMarkerRangeAroundPlayhead(
+  markers: readonly TimelineMarker[],
+  sourceTimeMs: number,
+) {
+  return Boolean(
+    markers.some((marker) => marker.sourceTimeMs <= sourceTimeMs) &&
+      markers.some((marker) => marker.sourceTimeMs > sourceTimeMs),
+  );
+}
+
+function sortClipCandidates(candidates: readonly ClipCandidate[]) {
+  return [...candidates].sort(
+    (left, right) =>
+      left.startSourceTimeMs - right.startSourceTimeMs ||
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.id.localeCompare(right.id),
+  );
+}
+
 function getTimelinePercent(sourceTimeMs: number, sourceDurationMs: number) {
   if (sourceDurationMs <= 0) {
     return 0;
@@ -7735,6 +8235,42 @@ function saveStoredTimelineMarkers(markers: readonly TimelineMarker[]) {
   }
 }
 
+function loadStoredClipCandidates(): ClipCandidate[] {
+  try {
+    const rawValue = localStorage.getItem(CLIP_CANDIDATES_STORAGE_KEY);
+
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return sortClipCandidates(parsedValue.filter(isClipCandidate)).slice(
+      0,
+      MAX_CLIP_CANDIDATES,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredClipCandidates(candidates: readonly ClipCandidate[]) {
+  try {
+    localStorage.setItem(
+      CLIP_CANDIDATES_STORAGE_KEY,
+      JSON.stringify(
+        sortClipCandidates(candidates).slice(0, MAX_CLIP_CANDIDATES),
+      ),
+    );
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
 function createEmptyDecisionHistory(): DecisionHistoryState {
   return {
     undoStack: [],
@@ -7824,6 +8360,49 @@ function isTimelineMarker(value: unknown): value is TimelineMarker {
   );
 }
 
+function isClipCandidate(value: unknown): value is ClipCandidate {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as ClipCandidate;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.projectId === "string" &&
+    typeof candidate.branchId === "string" &&
+    (candidate.episodeId === undefined ||
+      typeof candidate.episodeId === "string") &&
+    typeof candidate.title === "string" &&
+    (candidate.summary === undefined || typeof candidate.summary === "string") &&
+    typeof candidate.startSourceTimeMs === "number" &&
+    Number.isFinite(candidate.startSourceTimeMs) &&
+    candidate.startSourceTimeMs >= 0 &&
+    typeof candidate.endSourceTimeMs === "number" &&
+    Number.isFinite(candidate.endSourceTimeMs) &&
+    candidate.endSourceTimeMs > candidate.startSourceTimeMs &&
+    CLIP_CANDIDATE_STATUSES.includes(candidate.status) &&
+    Array.isArray(candidate.targetProfiles) &&
+    candidate.targetProfiles.every((profile) =>
+      CLIP_RENDER_PROFILES.includes(profile),
+    ) &&
+    (candidate.score === undefined ||
+      (typeof candidate.score === "number" &&
+        Number.isFinite(candidate.score) &&
+        candidate.score >= 0 &&
+        candidate.score <= 1)) &&
+    Array.isArray(candidate.reasons) &&
+    candidate.reasons.every((reason) => typeof reason === "string") &&
+    typeof candidate.source === "string" &&
+    (candidate.sourceId === undefined || typeof candidate.sourceId === "string") &&
+    typeof candidate.createdBy === "string" &&
+    typeof candidate.createdAt === "string" &&
+    !Number.isNaN(Date.parse(candidate.createdAt)) &&
+    typeof candidate.updatedAt === "string" &&
+    !Number.isNaN(Date.parse(candidate.updatedAt))
+  );
+}
+
 function trimDecisionHistoryStack(entries: readonly DecisionHistoryEntry[]) {
   return entries.slice(-MAX_DECISION_HISTORY_ENTRIES);
 }
@@ -7862,6 +8441,14 @@ function createTimelineMarkerId() {
   }
 
   return `marker-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createClipCandidateId() {
+  if ("randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `clip-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function createDecisionEventId() {
@@ -8177,6 +8764,18 @@ function getTranscriptSuggestedOpsFileName(
   return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
 }
 
+function getClipCandidatesFileName(
+  manifest: EpisodeManifest | null,
+  roomSelection: StudioCutRoomSelection,
+  checkpointTimestamp: string,
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-clip-candidates`
+    : `studio-cut-${roomSelection.projectId}-${roomSelection.branchId}-clip-candidates`;
+
+  return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
+}
+
 function getAdjustedManifestFileName(manifest: EpisodeManifest) {
   return `${sanitizeFileNamePart(`${manifest.id}-adjusted-manifest`)}.json`;
 }
@@ -8304,6 +8903,42 @@ function getStoragePathLeaf(path: string, fallback: string) {
 
 function roundSeconds(sourceTimeMs: number) {
   return Math.round((sourceTimeMs / 1000) * 10) / 10;
+}
+
+function estimateClipCandidateScore(
+  startSourceTimeMs: number,
+  endSourceTimeMs: number,
+  sourceDurationMs: number,
+) {
+  const durationMs = endSourceTimeMs - startSourceTimeMs;
+  const durationScore =
+    durationMs >= 15000 && durationMs <= 90000
+      ? 0.88
+      : durationMs >= 8000 && durationMs <= 120000
+        ? 0.72
+        : 0.56;
+  const timelineScore =
+    sourceDurationMs > 0
+      ? Math.max(0.4, 1 - Math.abs(startSourceTimeMs / sourceDurationMs - 0.45))
+      : 0.65;
+
+  return Math.round(Math.min(0.96, (durationScore * 0.7 + timelineScore * 0.3)) * 1000) / 1000;
+}
+
+function truncateText(value: string, maxLength: number) {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function formatClipRenderProfile(profile: ClipRenderProfile) {
+  const labels: Record<ClipRenderProfile, string> = {
+    youtube_16x9: "YouTube 16:9",
+    shorts_9x16: "Shorts 9:16",
+    square_1x1: "Square 1:1",
+    vertical_4x5: "Vertical 4:5",
+    audio_teaser: "Audio teaser",
+  };
+
+  return labels[profile];
 }
 
 function formatFileSize(sizeBytes: number) {

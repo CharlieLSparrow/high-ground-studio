@@ -97,6 +97,47 @@ export type EpisodeTranscript = {
   notes?: string;
 };
 
+export type ClipCandidateStatus =
+  | "suggested"
+  | "approved"
+  | "rendered"
+  | "published"
+  | "rejected";
+
+export type ClipRenderProfile =
+  | "youtube_16x9"
+  | "shorts_9x16"
+  | "square_1x1"
+  | "vertical_4x5"
+  | "audio_teaser";
+
+export type ClipCandidateSource =
+  | "current_segment"
+  | "selected_range"
+  | "transcript_segment"
+  | "marker_range"
+  | "agent";
+
+export type ClipCandidate = {
+  id: string;
+  projectId: string;
+  branchId: string;
+  episodeId?: string;
+  title: string;
+  summary?: string;
+  startSourceTimeMs: number;
+  endSourceTimeMs: number;
+  status: ClipCandidateStatus;
+  targetProfiles: ClipRenderProfile[];
+  score?: number;
+  reasons: string[];
+  source: ClipCandidateSource;
+  sourceId?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CloudSyncInputRole =
   | "homerVideo"
   | "charlieVideo"
@@ -288,6 +329,22 @@ export const CLOUD_SYNC_JOB_STATUSES: readonly CloudSyncJobStatus[] = [
   "processing",
   "ready",
   "failed",
+] as const;
+
+export const CLIP_CANDIDATE_STATUSES: readonly ClipCandidateStatus[] = [
+  "suggested",
+  "approved",
+  "rendered",
+  "published",
+  "rejected",
+] as const;
+
+export const CLIP_RENDER_PROFILES: readonly ClipRenderProfile[] = [
+  "youtube_16x9",
+  "shorts_9x16",
+  "square_1x1",
+  "vertical_4x5",
+  "audio_teaser",
 ] as const;
 
 export const PROGRAM_STATES: readonly ProgramState[] = [

@@ -683,6 +683,8 @@ async function runBrowserSmoke() {
     await expect(page.getByRole("heading", { name: "Transcript Edit Lane" })).toBeVisible();
     await expect(transcriptLane).toContainText("transcript-001");
     await expect(transcriptLane).toContainText("Charlie");
+    const clipLane = page.getByLabel("Clip candidate lane");
+    await expect(page.getByRole("heading", { name: "Clip Candidate Lane" })).toBeVisible();
     const transcriptOpsDownload = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export Suggested Ops" }).click();
     const transcriptOps = await transcriptOpsDownload;
@@ -748,6 +750,20 @@ async function runBrowserSmoke() {
     await decisionSection.getByRole("button", { name: "Undo" }).click();
     await expectSectionText(decisionSection, "0 events");
     await expectSectionText(decisionSection, "No local or imported decisions yet");
+    await clipLane.getByLabel("Clip candidate title").fill("Synthetic transcript clip");
+    await clipLane.getByRole("button", { name: "From Transcript Segment" }).click();
+    await expect(clipLane).toContainText("Synthetic transcript clip");
+    await clipLane
+      .getByLabel("Clip status for Synthetic transcript clip")
+      .selectOption("approved");
+    await expect(clipLane).toContainText("1/1 approved");
+    const clipCandidatesDownload = page.waitForEvent("download");
+    await clipLane.getByRole("button", { name: "Export Clips" }).click();
+    const clipCandidates = await clipCandidatesDownload;
+    assert.match(
+      clipCandidates.suggestedFilename(),
+      /web-smoke-episode-clip-candidates-/,
+    );
 
     await secondsInput.fill("5");
     await secondsInput.evaluate((element) => element.blur());
@@ -868,6 +884,8 @@ async function runBrowserSmoke() {
     assert.equal(agentContext.transcript.loaded, true);
     assert.equal(agentContext.transcript.segmentCount, 2);
     assert.equal(agentContext.transcript.review.summary.clipReferenceCount, 1);
+    assert.equal(agentContext.clipCandidates.count, 1);
+    assert.equal(agentContext.clipCandidates.approvedCount, 1);
     assert.equal(agentContext.decisions.activeCount, 2);
     assert.equal(agentContext.decisions.tombstonedCount, 0);
     assert.equal(agentContext.media.sourceMonitorProxy.objectUrlPersisted, false);
