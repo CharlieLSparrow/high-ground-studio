@@ -1,7 +1,36 @@
 {
-  "updatedAt": "2026-05-24T23:26:16.313Z",
+  "updatedAt": "2026-05-25T00:10:43.928Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "worldhub-integration-workspace",
+      "date": "2026-05-25",
+      "title": "WorldHub gets its integration workspace",
+      "kicker": "Progress update",
+      "mood": "Provider-ready rails",
+      "summary": "The team console now has database-backed rails for Stripe, Patreon, Google Calendar, merch, cart, orders, fulfillment, sync jobs, and provider events.",
+      "body": [
+        "This is the business-infra foundation for the next wave. WorldHub can initialize provider connection rows, check which environment names are configured, and show the operational ledger we will use for billing, supporter memberships, calendar sync, and merch fulfillment.",
+        "It still does not store secret values or call providers. That keeps the next provider adapters reversible: Google Calendar can write sync jobs, Stripe and Patreon can land webhook events, and merch can move through app-owned orders and fulfillment jobs."
+      ],
+      "commits": [
+        {
+          "sha": "3364428",
+          "label": "Add WorldHub integration workspace"
+        }
+      ],
+      "links": [
+        {
+          "label": "WorldHub",
+          "href": "/team/worldhub"
+        },
+        {
+          "label": "Updates",
+          "href": "/updates"
+        }
+      ],
+      "tags": ["WorldHub", "Integrations", "Billing", "Scheduling", "Merch"]
+    },
     {
       "id": "hgo-durable-publish-intent",
       "date": "2026-05-24",
