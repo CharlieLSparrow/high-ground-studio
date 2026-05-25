@@ -4,6 +4,54 @@ Append short updates here so the project has one readable async thread across
 agents and worktrees. Keep updates concrete: branch, action, files touched,
 checks, blockers, and next handoff.
 
+## 2026-05-25
+
+### Codex / `main` WorldHub monetization research library
+
+- Added `WorldHubMonetizationResearchNote` as an app-owned research table for
+  monetization options, comparable project patterns, source URLs, takeaways,
+  risks, next actions, confidence, and tags.
+- Extended `/team/growth` with:
+  - `Seed Research Library`
+  - manual research-note intake
+  - a research library panel beside the existing SEO, analytics, placement, and
+    provider readiness tools
+- Seed set covers Patreon-style memberships, paid publication patterns, Stripe
+  owned checkout, Apple/Spotify podcast subscriptions, YouTube monetization,
+  AdSense, Search Console, FTC disclosure, book affiliates, podcast sponsors,
+  and print-on-demand merch.
+- Added `docs/analysis/worldhub-monetization-research-map.md` so the research
+  options are readable even before the database seed action is run.
+- Validation passed: `pnpm db:generate`, `pnpm worldhub:integrations:test`,
+  `pnpm worldhub:domain:typecheck`, `pnpm progress:story:test`,
+  `pnpm web:cloudrun:test`, `pnpm --filter web exec next build --webpack`, and
+  `git diff --check`.
+- Functional commit: `810e8ae`
+  `feat(web): add monetization research library`.
+- Progress story commit: `54afb2e`
+  `docs: record monetization research progress`.
+- Live schema sync:
+  - Cloud Build `fff2a868-29ee-4c3a-bc29-0e655ed86f03`
+  - Image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:810e8ae`
+  - Cloud Run Job `web-cloudsql-db-push-810e8ae`, execution
+    `web-cloudsql-db-push-810e8ae-5xd7g`, completed successfully.
+  - Logs reported `Your database is now in sync with your Prisma schema`.
+- Deployed web through `pnpm web:cloudrun:deploy`:
+  - Cloud Build `36a9221f-f8fe-42c6-9011-91029ec7c4bb`
+  - Web image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:54afb2e`
+  - Web revision `web-00070-2c5`, serving 100%
+  - optional provider/growth secrets mounted: `0`
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/team/growth` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes
+    `Monetization research library begins` with commit `810e8ae`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00069-6vd=100`
+
 ## 2026-05-24
 
 ### Codex / `main` WorldHub Growth desk

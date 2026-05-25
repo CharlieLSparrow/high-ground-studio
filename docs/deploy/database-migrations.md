@@ -535,6 +535,13 @@ Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-e4b8543`, execution
 `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:e4b8543`.
 Logs reported that the database is now in sync with the Prisma schema.
 
+Live operator note from 2026-05-25: the additive monetization research table
+was applied to the live web Cloud SQL database by Cloud Run Job
+`web-cloudsql-db-push-810e8ae`, execution
+`web-cloudsql-db-push-810e8ae-5xd7g`, using image
+`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:810e8ae`.
+Logs reported that the database is now in sync with the Prisma schema.
+
 SQL verification:
 
 ```sql

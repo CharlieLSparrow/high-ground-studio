@@ -183,12 +183,16 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
     current live check found `0` optional provider secrets mounted
   - `/team/growth` is now live as a database-backed Growth desk for SEO briefs,
     manual analytics snapshots, AdSense/ad slot planning, affiliate/book
-    recommendation placements, and direct sponsor slots
+    recommendation placements, direct sponsor slots, and monetization research
+    notes
   - live schema sync for the Growth models ran through Cloud Run Job
     `web-cloudsql-db-push-e4b8543`, execution
     `web-cloudsql-db-push-e4b8543-t9454`
-  - final Growth deploy docs/story revision is `web-00067-2ww` from commit
-    `02e96df`
+  - live schema sync for `WorldHubMonetizationResearchNote` ran through Cloud
+    Run Job `web-cloudsql-db-push-810e8ae`, execution
+    `web-cloudsql-db-push-810e8ae-5xd7g`
+  - latest Growth deploy docs/story revision is `web-00070-2c5` from commit
+    `54afb2e`
   - Google Analytics and AdSense runtime scripts are gated by env; no GA,
     Search Console, AdSense, affiliate, or sponsor optional secrets are mounted
     yet
@@ -196,8 +200,9 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
     merch provider call, fulfillment call, analytics import, Search Console
     import, public ad placement, or public affiliate link is active yet
 - next likely slice:
-  - seed `/team/growth`, mount the first analytics/search/AdSense secrets,
-    add automatic Google Calendar sync enqueue, then Stripe hosted checkout/order
+  - seed `/team/growth`, convert the highest-confidence research notes into
+    placements/offers, mount the first analytics/search/AdSense secrets, add
+    automatic Google Calendar sync enqueue, then Stripe hosted checkout/order
     reconciliation, Patreon member/tier reconciliation, analytics/search import,
     and merch catalog/fulfillment handoff
 
