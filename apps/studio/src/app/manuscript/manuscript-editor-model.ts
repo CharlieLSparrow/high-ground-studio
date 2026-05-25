@@ -1203,6 +1203,44 @@ export function extractPlainText(json: ManuscriptEditorJson): string {
   return parts.join(" ");
 }
 
+function collectTightNodeText(node: ManuscriptEditorJson): string {
+  if (typeof node.text === "string") {
+    return node.text;
+  }
+
+  return Array.isArray(node.content)
+    ? node.content.map((child) => collectTightNodeText(child)).join("")
+    : "";
+}
+
+function collectManuscriptPlainTextBlock(
+  node: ManuscriptEditorJson,
+  blocks: string[],
+) {
+  if (["paragraph", "heading", "listItem"].includes(String(node.type ?? ""))) {
+    const text = collectTightNodeText(node).trim();
+
+    if (text) {
+      blocks.push(text);
+    }
+
+    return;
+  }
+
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      collectManuscriptPlainTextBlock(child, blocks);
+    }
+  }
+}
+
+export function createManuscriptDraftPlainText(draft: ManuscriptDraft) {
+  const blocks: string[] = [];
+  collectManuscriptPlainTextBlock(draft.editorJson, blocks);
+
+  return blocks.join("\n\n");
+}
+
 export function createTextPreview(value: string, maxLength = 92) {
   const normalized = value.trim().replace(/\s+/g, " ");
 

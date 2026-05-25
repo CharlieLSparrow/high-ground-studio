@@ -1409,3 +1409,11 @@ checks, blockers, and next handoff.
   `/team/hgo-publish-queue` sign-in redirect, and `/updates` (`HTTP 200`).
   Rollback:
   `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00077-h56=100`.
+- Started `codex/manuscript-live-room-launch-from-desk-001` to let Manuscript
+  Desk create and open a live room directly from the current browser-local
+  draft, avoiding an extra save/load hop before a shared writing session.
+- Validation passed on the launch-from-Desk branch:
+  `pnpm studio:cloudrun:test`, `pnpm studio:manuscript:live-room:test`,
+  `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
+  sandbox after the known Turbopack port-binding failure, and
+  `git diff --check`.
