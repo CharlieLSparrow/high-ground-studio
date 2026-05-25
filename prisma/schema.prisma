@@ -681,6 +681,35 @@ model WorldHubMonetizationPlacement {
   @@index([providerKey, status])
 }
 
+model WorldHubMonetizationResearchNote {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  title            String
+  projectProfile   String
+  monetizationType String
+  status           String   @default("research")
+  confidence       String   @default("medium")
+  sourceTitle      String
+  sourceUrl        String
+  sourcePublisher  String?
+  sourceDate       String?
+  sourceAccessedAt DateTime @default(now())
+  summary          String
+  takeawaysJson    Json
+  recommendedUse   String?
+  risksJson        Json
+  nextActionsJson  Json
+  tagsJson         Json
+  createdByEmail   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([monetizationType, status])
+  @@index([projectProfile, updatedAt])
+  @@index([sourcePublisher])
+  @@index([status, updatedAt])
+}
+
 model StoryDraft {
   id                  String           @id @default(cuid())
   storyCandidateId    String

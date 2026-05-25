@@ -186,12 +186,15 @@ High Ground Studio is a monorepo with:
   fulfillment call is active yet.
 - WorldHub Growth now has a private `/team/growth` desk for SEO briefs, manual
   analytics snapshots, AdSense/ad slot planning, affiliate/book recommendation
-  placements, and direct sponsor slots. The page can seed a starter foundation
-  and save app-owned records before Google Analytics, Search Console, AdSense,
-  or affiliate-provider accounts are connected. The root web layout can load a
-  Google Analytics tag from `HGO_GA_MEASUREMENT_ID`, can load AdSense Auto ads
-  only when `GOOGLE_ADSENSE_CLIENT` and `HGO_ADSENSE_AUTO_ADS_ENABLED=1` are
-  present, and serves `/ads.txt` from configured AdSense env values. Affiliate
+  placements, direct sponsor slots, and monetization research notes. The page
+  can seed a starter foundation and a research library covering memberships,
+  owned checkout, podcast subscriptions, video monetization, display ads, book
+  affiliates, sponsorships, merch, SEO loops, and disclosure rules before
+  Google Analytics, Search Console, AdSense, or affiliate-provider accounts are
+  connected. The root web layout can load a Google Analytics tag from
+  `HGO_GA_MEASUREMENT_ID`, can load AdSense Auto ads only when
+  `GOOGLE_ADSENSE_CLIENT` and `HGO_ADSENSE_AUTO_ADS_ENABLED=1` are present,
+  and serves `/ads.txt` from configured AdSense env values. Affiliate
   placements carry disclosure text in the private ledger; public affiliate
   publishing is still a later reviewed step.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted

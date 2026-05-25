@@ -7,8 +7,10 @@ import {
   buildSeoChecklist,
   normalizeContentPath,
   normalizeGrowthSlug,
+  normalizeSourceUrl,
   scoreSeoChecklist,
   splitKeywordList,
+  splitResearchList,
 } from "../apps/web/src/lib/worldhub/growth-tools.ts";
 
 test("normalizes growth slugs and content paths", () => {
@@ -28,6 +30,18 @@ test("deduplicates comma-separated SEO keywords", () => {
     "family",
     "legacy",
   ]);
+});
+
+test("normalizes research source lists and URLs", () => {
+  assert.deepEqual(
+    splitResearchList("- Keep source truth\n- Keep source truth; Map provider state"),
+    ["Keep source truth", "Map provider state"],
+  );
+  assert.equal(
+    normalizeSourceUrl("https://example.com/research?q=ads"),
+    "https://example.com/research?q=ads",
+  );
+  assert.equal(normalizeSourceUrl("not a url"), null);
 });
 
 test("scores SEO briefs from actionable checklist fields", () => {

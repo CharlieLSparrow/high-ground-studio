@@ -2,8 +2,10 @@ import {
   Activity,
   BadgeDollarSign,
   BarChart3,
+  BookOpen,
   CheckCircle2,
   ExternalLink,
+  FileText,
   LineChart,
   Megaphone,
   Search,
@@ -19,9 +21,11 @@ import { getWorldHubGrowthDashboard } from "@/lib/server/worldhub-growth";
 
 import {
   createMonetizationPlacementAction,
+  createResearchNoteAction,
   createSeoBriefAction,
   recordAnalyticsSnapshotAction,
   seedGrowthFoundationAction,
+  seedMonetizationResearchAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -191,6 +195,20 @@ function MetricsList({ metrics }: { metrics: unknown }) {
   );
 }
 
+function BulletList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul className="mb-0 mt-3 space-y-2 pl-4 text-xs leading-5 text-[rgba(245,239,230,0.72)]">
+      {items.slice(0, 3).map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
 export default async function TeamGrowthPage({
   searchParams,
 }: {
@@ -224,20 +242,28 @@ export default async function TeamGrowthPage({
             </p>
           </div>
 
-          <form action={seedGrowthFoundationAction}>
-            <button className={buttonClass} type="submit">
-              <Sparkles aria-hidden="true" className="h-4 w-4" />
-              Seed Growth Foundation
-            </button>
-            <p className="mb-0 mt-3 text-xs leading-5 text-[rgba(245,239,230,0.68)]">
-              Seeds starter SEO briefs and monetization placements, then refreshes
-              the provider readiness records.
+          <div className="space-y-3">
+            <form action={seedGrowthFoundationAction}>
+              <button className={buttonClass} type="submit">
+                <Sparkles aria-hidden="true" className="h-4 w-4" />
+                Seed Growth Foundation
+              </button>
+            </form>
+            <form action={seedMonetizationResearchAction}>
+              <button className={buttonClass} type="submit">
+                <BookOpen aria-hidden="true" className="h-4 w-4" />
+                Seed Research Library
+              </button>
+            </form>
+            <p className="mb-0 text-xs leading-5 text-[rgba(245,239,230,0.68)]">
+              Seeds starter SEO briefs, placements, and monetization research
+              notes without publishing anything publicly.
             </p>
-          </form>
+          </div>
         </div>
       </GlassPanel>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard
           icon={Activity}
           label="Growth providers"
@@ -257,6 +283,11 @@ export default async function TeamGrowthPage({
           icon={BadgeDollarSign}
           label="Placements"
           value={dashboard.counts.monetizationPlacements}
+        />
+        <StatCard
+          icon={BookOpen}
+          label="Research"
+          value={dashboard.counts.researchNotes}
         />
       </section>
 
@@ -301,6 +332,266 @@ export default async function TeamGrowthPage({
             </article>
           );
         })}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(320px,460px)_minmax(0,1fr)]">
+        <GlassPanel className="p-5 text-[var(--text-light)]">
+          <div className="mb-4 flex items-center gap-2">
+            <FileText
+              aria-hidden="true"
+              className="h-4 w-4 text-[var(--accent)]"
+            />
+            <PageEyebrow>Research Note</PageEyebrow>
+          </div>
+          <form action={createResearchNoteAction} className="space-y-4">
+            <Field id="researchTitle" label="Title">
+              <input
+                className={inputClass}
+                id="researchTitle"
+                name="researchTitle"
+                required
+              />
+            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field id="researchSlug" label="Slug">
+                <input
+                  className={inputClass}
+                  id="researchSlug"
+                  name="researchSlug"
+                />
+              </Field>
+              <Field id="projectProfile" label="Profile">
+                <select
+                  className={selectClass}
+                  defaultValue="podcast_book_coaching_brand"
+                  id="projectProfile"
+                  name="projectProfile"
+                >
+                  <option className="text-black" value="podcast_book_coaching_brand">
+                    Podcast/book/coaching
+                  </option>
+                  <option className="text-black" value="content_site_library">
+                    Content library
+                  </option>
+                  <option className="text-black" value="owned_commerce_brand">
+                    Owned commerce
+                  </option>
+                  <option className="text-black" value="video_podcast_education_brand">
+                    Video education
+                  </option>
+                </select>
+              </Field>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field id="monetizationType" label="Type">
+                <select
+                  className={selectClass}
+                  defaultValue="membership"
+                  id="monetizationType"
+                  name="monetizationType"
+                >
+                  <option className="text-black" value="membership">
+                    Membership
+                  </option>
+                  <option className="text-black" value="checkout">
+                    Checkout
+                  </option>
+                  <option className="text-black" value="book_affiliate">
+                    Book affiliate
+                  </option>
+                  <option className="text-black" value="sponsorship">
+                    Sponsorship
+                  </option>
+                  <option className="text-black" value="display_ads">
+                    Display ads
+                  </option>
+                  <option className="text-black" value="merch">
+                    Merch
+                  </option>
+                  <option className="text-black" value="seo_growth">
+                    SEO growth
+                  </option>
+                  <option className="text-black" value="compliance">
+                    Compliance
+                  </option>
+                </select>
+              </Field>
+              <Field id="confidence" label="Confidence">
+                <select
+                  className={selectClass}
+                  defaultValue="medium"
+                  id="confidence"
+                  name="confidence"
+                >
+                  <option className="text-black" value="high">
+                    High
+                  </option>
+                  <option className="text-black" value="medium">
+                    Medium
+                  </option>
+                  <option className="text-black" value="low">
+                    Low
+                  </option>
+                </select>
+              </Field>
+            </div>
+            <Field id="researchStatus" label="Status">
+              <select
+                className={selectClass}
+                defaultValue="research"
+                id="researchStatus"
+                name="researchStatus"
+              >
+                <option className="text-black" value="research">
+                  Research
+                </option>
+                <option className="text-black" value="candidate">
+                  Candidate
+                </option>
+                <option className="text-black" value="active">
+                  Active
+                </option>
+                <option className="text-black" value="parked">
+                  Parked
+                </option>
+              </select>
+            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field id="sourceTitle" label="Source title">
+                <input
+                  className={inputClass}
+                  id="sourceTitle"
+                  name="sourceTitle"
+                  required
+                />
+              </Field>
+              <Field id="sourcePublisher" label="Publisher">
+                <input
+                  className={inputClass}
+                  id="sourcePublisher"
+                  name="sourcePublisher"
+                />
+              </Field>
+            </div>
+            <Field id="sourceUrl" label="Source URL">
+              <input
+                className={inputClass}
+                id="sourceUrl"
+                name="sourceUrl"
+                required
+                type="url"
+              />
+            </Field>
+            <Field id="sourceDate" label="Source date">
+              <input className={inputClass} id="sourceDate" name="sourceDate" />
+            </Field>
+            <Field id="summary" label="Summary">
+              <textarea
+                className={inputClass}
+                id="summary"
+                name="summary"
+                required
+                rows={3}
+              />
+            </Field>
+            <Field id="takeaways" label="Takeaways">
+              <textarea
+                className={inputClass}
+                id="takeaways"
+                name="takeaways"
+                rows={3}
+              />
+            </Field>
+            <Field id="recommendedUse" label="Recommended use">
+              <textarea
+                className={inputClass}
+                id="recommendedUse"
+                name="recommendedUse"
+                rows={2}
+              />
+            </Field>
+            <Field id="risks" label="Risks">
+              <textarea className={inputClass} id="risks" name="risks" rows={2} />
+            </Field>
+            <Field id="nextActions" label="Next actions">
+              <textarea
+                className={inputClass}
+                id="nextActions"
+                name="nextActions"
+                rows={2}
+              />
+            </Field>
+            <Field id="tags" label="Tags">
+              <input
+                className={inputClass}
+                id="tags"
+                name="tags"
+                placeholder="comma separated"
+              />
+            </Field>
+            <button className={buttonClass} type="submit">
+              Save Research Note
+            </button>
+          </form>
+        </GlassPanel>
+
+        <GlassPanel className="p-5 text-[var(--text-light)]">
+          <div className="mb-4 flex items-center gap-2">
+            <BookOpen
+              aria-hidden="true"
+              className="h-4 w-4 text-[var(--accent)]"
+            />
+            <PageEyebrow>Research Library</PageEyebrow>
+          </div>
+          {dashboard.monetizationResearchNotes.length === 0 ? (
+            <p className="m-0 text-sm leading-6 text-[rgba(245,239,230,0.72)]">
+              No monetization research notes yet.
+            </p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {dashboard.monetizationResearchNotes.map((note) => (
+                <article
+                  className="rounded-xl border border-white/10 bg-black/15 p-4"
+                  key={note.id}
+                >
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="m-0 text-lg leading-tight">
+                        {note.title}
+                      </h3>
+                      <div className="mt-2 text-xs font-semibold uppercase text-[rgba(245,239,230,0.58)]">
+                        {formatLabel(note.projectProfile)} /{" "}
+                        {formatLabel(note.monetizationType)}
+                      </div>
+                    </div>
+                    <StatusPill status={note.confidence} />
+                  </div>
+                  <p className="mb-0 text-sm leading-6 text-[rgba(245,239,230,0.76)]">
+                    {note.summary}
+                  </p>
+                  <BulletList items={note.takeaways} />
+                  {note.recommendedUse ? (
+                    <p className="mb-0 mt-3 text-xs leading-5 text-amber-50">
+                      {note.recommendedUse}
+                    </p>
+                  ) : null}
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <StatusPill status={note.status} />
+                    <a
+                      className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--accent)] no-underline"
+                      href={note.sourceUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {note.sourcePublisher ?? note.sourceTitle}
+                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </GlassPanel>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-3">

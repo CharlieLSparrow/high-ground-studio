@@ -38,7 +38,7 @@ Recent stabilization history lives in:
 - `/team/clients`, `/team/coaching-requests`, and `/team/appointments` are working internal operations screens backed by server actions.
 - `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
 - `/team/worldhub` is the internal provider readiness, provider event, cart/order, fulfillment, and calendar-sync command center.
-- `/team/growth` is the internal SEO, analytics snapshot, ad slot, affiliate link, book recommendation, and sponsor placement desk.
+- `/team/growth` is the internal SEO, analytics snapshot, ad slot, affiliate link, book recommendation, sponsor placement, and monetization research desk.
 - `/coaching` is a public offer/front-door page and sign-in handoff, not a completed Stripe checkout flow.
 - Coaching donation support is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
 - Google Calendar event-template links remain the fallback. `/team/worldhub`

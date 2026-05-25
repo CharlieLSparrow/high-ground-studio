@@ -5,10 +5,12 @@ import { redirect } from "next/navigation";
 
 import { resolveTeamAccess } from "@/lib/content-access";
 import {
+  createWorldHubMonetizationResearchNote,
   createWorldHubMonetizationPlacement,
   createWorldHubSeoBrief,
   recordWorldHubAnalyticsSnapshot,
   seedWorldHubGrowthFoundation,
+  seedWorldHubMonetizationResearch,
 } from "@/lib/server/worldhub-growth";
 import { upsertWorldHubProviderConnections } from "@/lib/server/worldhub-integrations";
 
@@ -74,6 +76,23 @@ export async function seedGrowthFoundationAction() {
   redirect(buildRedirect({ success: "Growth foundation seeded." }));
 }
 
+export async function seedMonetizationResearchAction() {
+  const createdByEmail = await requireTeamOperator();
+
+  try {
+    await seedWorldHubMonetizationResearch(createdByEmail);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to seed monetization research.";
+    redirect(buildRedirect({ error: message }));
+  }
+
+  revalidatePath("/team/growth");
+  redirect(buildRedirect({ success: "Monetization research seeded." }));
+}
+
 export async function createSeoBriefAction(formData: FormData) {
   const createdByEmail = await requireTeamOperator();
 
@@ -106,6 +125,39 @@ export async function createSeoBriefAction(formData: FormData) {
 
   revalidatePath("/team/growth");
   redirect(buildRedirect({ success: "SEO brief saved." }));
+}
+
+export async function createResearchNoteAction(formData: FormData) {
+  const createdByEmail = await requireTeamOperator();
+
+  try {
+    await createWorldHubMonetizationResearchNote({
+      slug: getFormText(formData, "researchSlug"),
+      title: getFormText(formData, "researchTitle"),
+      projectProfile: getFormText(formData, "projectProfile"),
+      monetizationType: getFormText(formData, "monetizationType"),
+      status: getFormText(formData, "researchStatus"),
+      confidence: getFormText(formData, "confidence"),
+      sourceTitle: getFormText(formData, "sourceTitle"),
+      sourceUrl: getFormText(formData, "sourceUrl"),
+      sourcePublisher: getFormText(formData, "sourcePublisher"),
+      sourceDate: getFormText(formData, "sourceDate"),
+      summary: getFormText(formData, "summary"),
+      takeaways: getFormText(formData, "takeaways"),
+      recommendedUse: getFormText(formData, "recommendedUse"),
+      risks: getFormText(formData, "risks"),
+      nextActions: getFormText(formData, "nextActions"),
+      tags: getFormText(formData, "tags"),
+      createdByEmail,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to save research note.";
+    redirect(buildRedirect({ error: message }));
+  }
+
+  revalidatePath("/team/growth");
+  redirect(buildRedirect({ success: "Research note saved." }));
 }
 
 export async function recordAnalyticsSnapshotAction(formData: FormData) {

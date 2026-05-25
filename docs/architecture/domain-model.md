@@ -317,6 +317,19 @@ Current reality:
   text, call to action, and metadata JSON
 - public affiliate/ad publishing remains a reviewed later step
 
+### `WorldHubMonetizationResearchNote`
+
+Private research note for monetization options, comparable project patterns,
+provider rules, and commercial next actions.
+
+Current reality:
+- stores project profile, monetization type, status, confidence, source title
+  and URL, source publisher/date, summary, takeaways, risks, next actions, tags,
+  and creator email
+- seeded and written from `/team/growth`
+- supports the research map in
+  `docs/analysis/worldhub-monetization-research-map.md`
+
 ## Content Access Model
 
 Content access is currently an app-layer model, not a Prisma model.

@@ -104,9 +104,10 @@ Notes:
 - `GOOGLE_CALENDAR_SEND_UPDATES` may be `none`, `externalOnly`, or `all`; it
   defaults to `none` so early sync tests do not surprise clients with calendar
   email.
-- `/team/growth` uses the `WorldHubSeoBrief`, `WorldHubAnalyticsSnapshot`, and
-  `WorldHubMonetizationPlacement` tables for app-owned SEO briefs, manual
-  analytics snapshots, ad slots, affiliate links, and sponsor placements.
+- `/team/growth` uses the `WorldHubSeoBrief`, `WorldHubAnalyticsSnapshot`,
+  `WorldHubMonetizationPlacement`, and `WorldHubMonetizationResearchNote`
+  tables for app-owned SEO briefs, manual analytics snapshots, ad slots,
+  affiliate links, sponsor placements, and monetization research notes.
 - `HGO_GA_MEASUREMENT_ID` enables the Google Analytics site tag.
 - `GOOGLE_ADSENSE_CLIENT` plus `HGO_ADSENSE_AUTO_ADS_ENABLED=1` enables the
   AdSense Auto ads script. `/ads.txt` is generated from

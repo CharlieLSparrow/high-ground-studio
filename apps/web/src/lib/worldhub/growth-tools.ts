@@ -81,6 +81,40 @@ export function splitKeywordList(value: string) {
     .slice(0, 12);
 }
 
+export function splitResearchList(value: string, limit = 8) {
+  const seen = new Set<string>();
+
+  return value
+    .split(/\n|;/g)
+    .map((item) => item.trim().replace(/^[-*]\s*/, ""))
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+export function normalizeSourceUrl(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeContentPath(value: string) {
   const trimmed = value.trim();
 

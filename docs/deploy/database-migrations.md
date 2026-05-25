@@ -505,10 +505,12 @@ The first Growth desk slice added:
 - `WorldHubSeoBrief`
 - `WorldHubAnalyticsSnapshot`
 - `WorldHubMonetizationPlacement`
+- `WorldHubMonetizationResearchNote`
 
 This is an additive growth/monetization schema change. It creates app-owned
 records for SEO briefs, manual analytics snapshots, ad placements, affiliate
-links, book recommendations, and direct sponsor slots.
+links, book recommendations, direct sponsor slots, and monetization research
+notes.
 
 The tables do not call Google Analytics, Search Console, AdSense, affiliate
 networks, sponsor systems, or public publishing workflows. Public ads and
@@ -542,7 +544,8 @@ where table_schema = 'public'
   and table_name in (
     'WorldHubSeoBrief',
     'WorldHubAnalyticsSnapshot',
-    'WorldHubMonetizationPlacement'
+    'WorldHubMonetizationPlacement',
+    'WorldHubMonetizationResearchNote'
   )
 order by table_name;
 ```

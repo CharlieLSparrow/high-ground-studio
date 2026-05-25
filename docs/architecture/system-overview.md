@@ -130,8 +130,8 @@ The cart is currently incidental and not part of the stabilized coaching flow.
 WorldHub Growth is an app-owned first slice for search, analytics, and
 monetization work:
 
-- `/team/growth` stores SEO briefs, analytics snapshots, and monetization
-  placements in Prisma.
+- `/team/growth` stores SEO briefs, analytics snapshots, monetization
+  placements, and monetization research notes in Prisma.
 - Google Analytics, Search Console, AdSense, affiliate, and sponsor providers
   are represented as provider readiness records before provider API sync is
   enabled.
@@ -142,6 +142,10 @@ monetization work:
 - `/ads.txt` is generated from configured AdSense env values.
 - Affiliate and sponsor placements stay private/reviewable before any public
   content page uses them.
+- Research notes store source URLs, takeaways, risks, next actions, and
+  confidence levels so options like Patreon, Stripe, podcast subscriptions,
+  book affiliates, direct sponsorships, AdSense, Search Console, and merch can
+  be compared before public activation.
 
 ## Motion Stack
 
