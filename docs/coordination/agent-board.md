@@ -27,7 +27,7 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | WorldHub Growth desk `e4b8543` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, HGO staging/publish-intent rails, WorldHub provider rails, Google Calendar sync jobs, the Growth desk, SEO briefs, analytics snapshots, ad/affiliate/sponsor placement planning, gated GA/AdSense runtime hooks, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | WorldHub Growth deploy docs `02e96df` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, HGO staging/publish-intent rails, WorldHub provider rails, Google Calendar sync jobs, the Growth desk, SEO briefs, analytics snapshots, ad/affiliate/sponsor placement planning, gated GA/AdSense runtime hooks, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -147,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00066-xgr` from `main` commit `e4b8543`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00065-89q`
+  - latest web deploy is `web-00067-2ww` from `main` commit `02e96df`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00066-xgr`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
@@ -187,6 +187,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - live schema sync for the Growth models ran through Cloud Run Job
     `web-cloudsql-db-push-e4b8543`, execution
     `web-cloudsql-db-push-e4b8543-t9454`
+  - final Growth deploy docs/story revision is `web-00067-2ww` from commit
+    `02e96df`
   - Google Analytics and AdSense runtime scripts are gated by env; no GA,
     Search Console, AdSense, affiliate, or sponsor optional secrets are mounted
     yet

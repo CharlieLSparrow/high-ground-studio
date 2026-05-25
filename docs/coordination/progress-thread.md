@@ -51,6 +51,12 @@ checks, blockers, and next handoff.
   - optional provider/growth secrets mounted: `0`
   - live `AUTH_URL` and `HGO_SITE_URL` remain
     `https://app.highgroundodyssey.com`
+- Final docs/story deploy:
+  - Commit `02e96df` `docs: record WorldHub growth deploy`
+  - Cloud Build `741557d9-26f1-4c3e-901c-af87de49cf45`
+  - Web image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:02e96df`
+  - Web revision `web-00067-2ww`, serving 100%
 - Live smoke passed:
   - `https://app.highgroundodyssey.com/api/health` returned 200.
   - `https://app.highgroundodyssey.com/team/growth` returned the expected
@@ -58,11 +64,11 @@ checks, blockers, and next handoff.
   - `https://app.highgroundodyssey.com/ads.txt` returned 404 because AdSense is
     not configured yet.
   - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
-    new Growth desk story entry.
+    new Growth desk story entry with commit `e4b8543`.
   - `https://app.highgroundodyssey.com/api/auth/signin` returned 200 and set
     its callback cookie to `https://app.highgroundodyssey.com`.
 - Rollback:
-  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00065-89q=100`
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00066-xgr=100`
 
 ### Codex / `main` WorldHub provider adapter rails
 

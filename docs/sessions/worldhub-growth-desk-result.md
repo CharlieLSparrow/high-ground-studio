@@ -107,7 +107,7 @@ Your database is now in sync with your Prisma schema.
 
 ## Deploy
 
-Deploy head:
+Functional deploy head:
 
 ```text
 e4b8543 feat(web): add WorldHub growth desk
@@ -132,6 +132,31 @@ custom domain: https://app.highgroundodyssey.com
 optional provider/growth secrets mounted: 0
 ```
 
+Final docs/story deploy head:
+
+```text
+02e96df docs: record WorldHub growth deploy
+```
+
+Final web image:
+
+```text
+Cloud Build: 741557d9-26f1-4c3e-901c-af87de49cf45
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:02e96df
+digest: sha256:f19e25744b6793e93b522059f06f89074e951f1e3118c2975d331c150804686a
+```
+
+Final live Cloud Run:
+
+```text
+service: web
+revision: web-00067-2ww
+traffic: 100%
+service URL: https://web-hm2odnvjga-uc.a.run.app
+custom domain: https://app.highgroundodyssey.com
+optional provider/growth secrets mounted: 0
+```
+
 Runtime env values confirmed:
 
 ```text
@@ -150,7 +175,7 @@ Passed:
 - `https://app.highgroundodyssey.com/ads.txt` returned `404` because AdSense
   is not configured yet.
 - `https://app.highgroundodyssey.com/updates` returned `200` and includes the
-  Growth desk story entry.
+  Growth desk story entry with commit `e4b8543`.
 - `https://app.highgroundodyssey.com/api/auth/signin` returned `200` and set
   its callback cookie to `https://app.highgroundodyssey.com`.
 
@@ -159,12 +184,12 @@ Passed:
 Immediate runtime rollback:
 
 ```bash
-gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00065-89q=100
+gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00066-xgr=100
 ```
 
-The Prisma schema change is additive. If a rollback uses `web-00065-89q`, the
-new Growth tables can remain in Cloud SQL without affecting the previous
-runtime.
+The deeper runtime rollback from the functional deploy is `web-00065-89q`. The
+Prisma schema change is additive, so the new Growth tables can remain in Cloud
+SQL without affecting previous runtime revisions.
 
 ## Next Steps
 
