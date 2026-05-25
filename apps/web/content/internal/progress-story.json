@@ -1,10 +1,39 @@
 {
-  "updatedAt": "2026-05-25T00:10:43.928Z",
+  "updatedAt": "2026-05-25T00:37:07.669Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
     {
+      "id": "2026-05-24-worldhub-gets-provider-rails",
+      "date": "2026-05-24",
+      "title": "WorldHub gets provider rails",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "The business hub can now receive verified Stripe and Patreon webhook events, queue Google Calendar sync jobs, and create appointment calendar events once dedicated credentials are configured.",
+      "body": [
+        "The integration page is no longer only a readiness board. It now has a provider event inbox for verified webhook deliveries and a calendar sync lane that records every attempt as an app-owned job.",
+        "This moves billing, supporter, scheduling, and merch infrastructure closer to production while keeping the risky parts separated: no card handling, no automatic entitlement changes, no merch fulfillment, and no checkout creation until the offer path is ready."
+      ],
+      "commits": [
+        {
+          "sha": "fdf37c3",
+          "label": "WorldHub provider adapter rails"
+        }
+      ],
+      "links": [
+        {
+          "label": "WorldHub",
+          "href": "/team/worldhub"
+        },
+        {
+          "label": "Provider adapter notes",
+          "href": "/updates"
+        }
+      ],
+      "tags": ["WorldHub", "Integrations", "Calendar", "Billing"]
+    },
+    {
       "id": "worldhub-integration-workspace",
-      "date": "2026-05-25",
+      "date": "2026-05-24",
       "title": "WorldHub gets its integration workspace",
       "kicker": "Progress update",
       "mood": "Provider-ready rails",
