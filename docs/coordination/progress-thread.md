@@ -6,6 +6,34 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` WorldHub provider adapter rails
+
+- Added verified provider event intake routes:
+  - `/api/worldhub/webhooks/stripe`
+  - `/api/worldhub/webhooks/patreon`
+- Stripe intake verifies `Stripe-Signature` against the raw request body,
+  enforces a 5-minute timestamp tolerance, and records a safe
+  `WorldHubProviderEvent` summary.
+- Patreon intake verifies `X-Patreon-Signature` as a hex HMAC-MD5 body digest,
+  reads `X-Patreon-Event`, and records a safe `WorldHubProviderEvent` summary.
+- Added Google Calendar appointment sync rails:
+  - pure event payload builder
+  - service-account JWT token path
+  - refresh-token path
+  - `/team/worldhub` action to queue or run the next unsynced appointment jobs
+  - `Appointment.googleEventId` write after successful Google Calendar event upsert
+- Expanded `/team/worldhub` with recent sync jobs and provider event inbox
+  panels so the team can see provider progress without terminal logs.
+- Added focused tests for provider readiness, webhook signatures, and calendar
+  event payloads under `pnpm worldhub:integrations:test`.
+- Guardrails preserved: no secret-value storage, no full webhook payload
+  storage, no payment-card handling, no Stripe Checkout creation, no automatic
+  payment/order reconciliation, no Patreon entitlement mutation, no merch
+  provider call, and no public publishing.
+- Validation passed: `pnpm worldhub:integrations:test`, `pnpm db:generate`,
+  `pnpm worldhub:domain:typecheck`, `pnpm web:cloudrun:test`,
+  `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+
 ### Codex / `main` WorldHub provider integration workspace
 
 - Added database-backed WorldHub integration infrastructure:

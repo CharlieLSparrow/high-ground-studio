@@ -182,9 +182,24 @@ The first runtime WorldHub integration step now exists:
 
 This step creates the operations ledger for provider readiness, cart/order
 state, provider events, sync jobs, and fulfillment jobs. It stores env-name
-readiness and operational metadata only. It does not store secret values,
-create checkouts, call providers, create Google Calendar events, receive
-webhooks, or fulfill merch.
+readiness and operational metadata only.
+
+The first adapter rails now exist on top of that ledger:
+
+- `/api/worldhub/webhooks/stripe` verifies Stripe signatures from the raw
+  request body and writes a provider-event summary.
+- `/api/worldhub/webhooks/patreon` verifies Patreon `X-Patreon-Signature`
+  HMAC payloads and writes a provider-event summary.
+- `/team/worldhub` can queue Google Calendar sync jobs for unsynced future
+  appointments.
+- When dedicated `GOOGLE_CALENDAR_*` server credentials are present, the
+  calendar sync action can create or update Google Calendar events and write
+  `Appointment.googleEventId`.
+
+The ledger still does not store secret values, create checkout sessions, store
+payment-card data, mutate Patreon entitlements, call merch providers, fulfill
+merch, publish public content, or replace the current coaching and membership
+workflows.
 
 ## What Not To Do Next
 
@@ -211,9 +226,14 @@ WorldHub provider connection
   -> rollback/replay record
 ```
 
-Google Calendar is the best first provider call because it can be scoped to
-coaching `Appointment` records and still preserve generated calendar links as a
-fallback. Stripe Checkout should follow once offer/price rows exist for the
-specific coaching/supporter flows. Patreon and merch should start with webhook
-event capture and reconciliation before automatic entitlement or fulfillment
-changes.
+The next best slices are:
+
+1. Add automatic enqueue/retry around appointment create, update, cancel, and
+   completion so Google Calendar does not depend on a manual `/team/worldhub`
+   button.
+2. Add Stripe Checkout for one app-owned coaching/supporter offer and reconcile
+   the verified Stripe webhook event into an app-owned order.
+3. Add Patreon member/tier reconciliation from the verified event inbox into a
+   manual entitlement review lane.
+4. Add merch catalog import and order/fulfillment handoff after the app-owned
+   cart/order path can explain what should be fulfilled.

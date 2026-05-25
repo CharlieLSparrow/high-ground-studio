@@ -46,6 +46,7 @@ Derived from source usage:
 - `GOOGLE_CALENDAR_IMPERSONATION_EMAIL`
 - `GOOGLE_CALENDAR_SYNC_CLIENT_ID`
 - `GOOGLE_CALENDAR_SYNC_CLIENT_SECRET`
+- `GOOGLE_CALENDAR_SEND_UPDATES`
 - `HGO_MERCH_PROVIDER`
 - `SHOPIFY_ADMIN_ACCESS_TOKEN`
 - `SHOPIFY_STORE_DOMAIN`
@@ -79,6 +80,9 @@ Notes:
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are sign-in credentials.
   Calendar sync requires separate `GOOGLE_CALENDAR_*` credentials before the
   app should create or update calendar events server-side.
+- `GOOGLE_CALENDAR_SEND_UPDATES` may be `none`, `externalOnly`, or `all`; it
+  defaults to `none` so early sync tests do not surprise clients with calendar
+  email.
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
 - `apps/web/src/lib/server/sms.ts` reads Twilio env vars if called, but SMS/Twilio is not wired into the active coaching request flow and those vars are not required for local development today
 

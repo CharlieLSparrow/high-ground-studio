@@ -4,10 +4,12 @@ import {
   CheckCircle2,
   CreditCard,
   ExternalLink,
+  History,
   KeyRound,
   Package,
   Plug,
   RefreshCw,
+  Send,
   ShoppingCart,
   TriangleAlert,
   Users,
@@ -17,7 +19,10 @@ import type { LucideIcon } from "lucide-react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { getWorldHubIntegrationDashboard } from "@/lib/server/worldhub-integrations";
-import { initializeWorldHubIntegrationsAction } from "./actions";
+import {
+  initializeWorldHubIntegrationsAction,
+  syncGoogleCalendarAppointmentsAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +44,13 @@ function formatLabel(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 function statusTone(status: string): StatusTone {
@@ -159,6 +171,103 @@ function SecretList({
         </div>
       </div>
     </div>
+  );
+}
+
+function RecentSyncJobs({
+  jobs,
+}: {
+  jobs: Awaited<
+    ReturnType<typeof getWorldHubIntegrationDashboard>
+  >["recentSyncJobs"];
+}) {
+  return (
+    <GlassPanel className="p-5 text-[var(--text-light)]">
+      <div className="mb-4 flex items-center gap-2">
+        <History aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
+        <PageEyebrow>Sync Jobs</PageEyebrow>
+      </div>
+      {jobs.length === 0 ? (
+        <p className="m-0 text-sm leading-6 text-[rgba(245,239,230,0.74)]">
+          No provider sync jobs yet.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {jobs.map((job) => (
+            <div
+              className="rounded-xl border border-white/10 bg-black/15 p-3"
+              key={job.id}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-semibold">
+                  {formatLabel(job.providerKey)} / {formatLabel(job.jobType)}
+                </div>
+                <StatusPill status={job.status} />
+              </div>
+              <div className="mt-2 text-xs leading-5 text-[rgba(245,239,230,0.66)]">
+                {job.subjectType}
+                {job.subjectId ? ` ${job.subjectId}` : ""} -{" "}
+                {formatDateTime(job.requestedAt)}
+              </div>
+              {job.errorMessage ? (
+                <div className="mt-2 text-xs leading-5 text-amber-50">
+                  {job.errorMessage}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </GlassPanel>
+  );
+}
+
+function RecentProviderEvents({
+  events,
+}: {
+  events: Awaited<
+    ReturnType<typeof getWorldHubIntegrationDashboard>
+  >["recentProviderEvents"];
+}) {
+  return (
+    <GlassPanel className="p-5 text-[var(--text-light)]">
+      <div className="mb-4 flex items-center gap-2">
+        <Activity aria-hidden="true" className="h-4 w-4 text-[var(--accent)]" />
+        <PageEyebrow>Provider Events</PageEyebrow>
+      </div>
+      {events.length === 0 ? (
+        <p className="m-0 text-sm leading-6 text-[rgba(245,239,230,0.74)]">
+          Stripe and Patreon webhook events will appear here after verified
+          delivery.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {events.map((event) => (
+            <div
+              className="rounded-xl border border-white/10 bg-black/15 p-3"
+              key={event.id}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-semibold">
+                  {formatLabel(event.providerKey)} / {event.eventType}
+                </div>
+                <StatusPill status={event.processingStatus} />
+              </div>
+              <div className="mt-2 text-xs leading-5 text-[rgba(245,239,230,0.66)]">
+                {event.externalEventId || "No provider id"} -{" "}
+                {formatLabel(event.verificationStatus)} -{" "}
+                {formatDateTime(event.receivedAt)}
+              </div>
+              {event.errorMessage ? (
+                <div className="mt-2 text-xs leading-5 text-amber-50">
+                  {event.errorMessage}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </GlassPanel>
   );
 }
 
@@ -331,9 +440,9 @@ export default async function TeamWorldHubPage() {
             <PageEyebrow>Calendar</PageEyebrow>
           </div>
           <p className="m-0 text-sm leading-6 text-[rgba(245,239,230,0.78)]">
-            Existing Google Calendar links stay as a fallback. The new sync-job
-            table is ready for server-created event upserts tied to
-            appointments.
+            Existing Google Calendar links stay as a fallback. The sync action
+            queues eligible appointment jobs when credentials are missing and
+            creates Google Calendar events when calendar auth is configured.
           </p>
           <div className="mt-4 flex items-center gap-2">
             {dashboard.counts.unsyncedFutureAppointments > 0 ? (
@@ -351,6 +460,15 @@ export default async function TeamWorldHubPage() {
               {dashboard.counts.futureAppointments}
             </span>
           </div>
+          <form action={syncGoogleCalendarAppointmentsAction} className="mt-4">
+            <button
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-[var(--text-light)] transition hover:bg-white/12"
+              type="submit"
+            >
+              <Send aria-hidden="true" className="h-4 w-4" />
+              Sync Next Google Calendar Jobs
+            </button>
+          </form>
         </GlassPanel>
 
         <GlassPanel className="p-5 text-[var(--text-light)]">
@@ -377,6 +495,11 @@ export default async function TeamWorldHubPage() {
           </p>
         </GlassPanel>
       ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <RecentSyncJobs jobs={dashboard.recentSyncJobs} />
+        <RecentProviderEvents events={dashboard.recentProviderEvents} />
+      </section>
     </section>
   );
 }

@@ -173,9 +173,15 @@ High Ground Studio is a monorepo with:
   unsynced appointment candidates, carts, orders, fulfillment jobs, sync jobs,
   and provider events. New private Prisma models include provider connections,
   provider events, provider sync jobs, catalog items, offers, carts, orders, and
-  fulfillment jobs. This is integration plumbing only: no provider API calls,
-  no checkout session creation, no calendar event creation, no webhook handling,
-  no payment-card handling, and no merch fulfillment call is active yet.
+  fulfillment jobs. `/team/worldhub` can now queue the next unsynced Google
+  Calendar appointment jobs and, when `GOOGLE_CALENDAR_*` credentials are
+  configured, create or update Google Calendar events and write
+  `Appointment.googleEventId`. Stripe and Patreon webhook endpoints now verify
+  provider signatures and store provider-event summaries in the WorldHub event
+  inbox. This is still guarded integration plumbing: no checkout session
+  creation, no automatic payment reconciliation, no Patreon entitlement
+  mutation, no payment-card handling, no public publishing, and no merch
+  fulfillment call is active yet.
 - HGO has a browser-only `/projection-preview/import` route that accepts pasted
   projection JSON, validates lifecycle/visibility/citation state, and renders it
   with the same projection preview component without persisting or publishing it.
@@ -309,13 +315,13 @@ High Ground Studio is a monorepo with:
 - `/team/coaching-requests` is the internal request queue and appointment conversion screen. Conversion creates an `Appointment`, marks the request `SCHEDULED`, assigns the coach, links `convertedAppointmentId`, appends internal scheduling notes, and revalidates `/team/coaching-requests`, `/team/appointments`, and `/dashboard`.
 - `/team/appointments` remains the general internal appointment scheduling and editing screen. It can create appointments directly or manage appointments produced from coaching request conversion.
 - Donation support is currently an external pay-what-you-can link controlled by `HGO_COACHING_DONATION_URL`.
-- Google Calendar support is link-generation only through `buildGoogleCalendarEventUrl()`. No Google Calendar OAuth, API event creation, event update, or cancellation sync exists.
+- Google Calendar support still keeps link-generation through `buildGoogleCalendarEventUrl()` as the customer-facing fallback. The internal `/team/worldhub` page can now queue sync jobs and create/update Google Calendar events when dedicated `GOOGLE_CALENDAR_*` server credentials are configured. Appointment cancellation sync is not active yet.
 - SMS/Twilio sending is not wired into the current coaching request flow. A server-only Twilio helper exists, but there are no active call sites from coaching actions.
 
 ## What Is Intentionally Not Finished
 
 - Stripe checkout is not active.
-- Stripe webhook/commercialization automation is not active.
+- Stripe webhook event intake is active at `/api/worldhub/webhooks/stripe`, but Stripe checkout and payment reconciliation are not active.
 - Full Stripe Checkout is not active for coaching. The current donation path is an external link, typically a Stripe Payment Link, not app-owned checkout/session/webhook state.
 - The floating cart UI exists in layout, but checkout is placeholder-only client
   code in `src/components/cart/Cart.tsx`. WorldHub now has app-owned cart/order
@@ -323,10 +329,13 @@ High Ground Studio is a monorepo with:
   payment reconciliation path yet.
 - The episodes route is not on a fully settled content-loading architecture yet.
 - SMS/Twilio notification delivery is not active.
-- Google Calendar API/OAuth synchronization is not active. WorldHub now tracks
-  calendar provider readiness and has a provider sync-job table for future
-  appointment event upserts, but no event creation, update, cancellation, or
-  webhook sync path is active.
+- Google Calendar API synchronization is operator-triggered only from
+  `/team/worldhub`. It can create or update events for eligible appointments
+  when dedicated calendar credentials are configured, but automatic sync from
+  appointment create/update/cancel actions is not active.
+- Patreon webhook event intake is active at
+  `/api/worldhub/webhooks/patreon`, but Patreon member/tier reconciliation and
+  entitlement mutation are not active.
 - Email notification delivery has no retry queue or persisted delivery status.
 - Story Draft promotion into real `ManuscriptBlock` truth is not active.
 - Story Draft revision history is not active.

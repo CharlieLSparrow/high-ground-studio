@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import {
+  getWorldHubProviderDefinition,
   getWorldHubProviderReadiness,
   WORLDHUB_PROVIDER_DEFINITIONS,
   type WorldHubProviderDefinition,
@@ -36,6 +37,8 @@ export type WorldHubIntegrationDashboard = {
   providerConnections: WorldHubProviderConnectionDto[];
   providerDefinitions: WorldHubProviderDefinition[];
   readiness: WorldHubProviderReadiness[];
+  recentSyncJobs: WorldHubSyncJobDto[];
+  recentProviderEvents: WorldHubProviderEventDto[];
   counts: {
     activeMemberships: number;
     futureAppointments: number;
@@ -48,6 +51,30 @@ export type WorldHubIntegrationDashboard = {
     queuedSyncJobs: number;
     receivedProviderEvents: number;
   };
+};
+
+export type WorldHubSyncJobDto = {
+  id: string;
+  providerKey: string;
+  jobType: string;
+  subjectType: string;
+  subjectId: string | null;
+  status: string;
+  errorMessage: string | null;
+  requestedByEmail: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+};
+
+export type WorldHubProviderEventDto = {
+  id: string;
+  providerKey: string;
+  eventType: string;
+  externalEventId: string | null;
+  verificationStatus: string;
+  processingStatus: string;
+  errorMessage: string | null;
+  receivedAt: string;
 };
 
 function toJsonInput(value: unknown): Prisma.InputJsonValue {
@@ -124,6 +151,65 @@ export async function upsertWorldHubProviderConnections() {
   return records.map(toDto);
 }
 
+export async function ensureWorldHubProviderConnection(providerKey: string) {
+  const definition = getWorldHubProviderDefinition(providerKey);
+
+  if (!definition) {
+    throw new Error(`Unknown WorldHub provider: ${providerKey}`);
+  }
+
+  return prisma.worldHubProviderConnection.upsert({
+    where: {
+      providerKey,
+    },
+    create: {
+      providerKey,
+      ...buildConnectionData(definition),
+    },
+    update: buildConnectionData(definition),
+  });
+}
+
+function syncJobToDto(
+  job: Awaited<ReturnType<typeof prisma.worldHubProviderSyncJob.findFirst>>,
+): WorldHubSyncJobDto {
+  if (!job) {
+    throw new Error("Missing sync job.");
+  }
+
+  return {
+    id: job.id,
+    providerKey: job.providerKey,
+    jobType: job.jobType,
+    subjectType: job.subjectType,
+    subjectId: job.subjectId,
+    status: job.status,
+    errorMessage: job.errorMessage,
+    requestedByEmail: job.requestedByEmail,
+    requestedAt: job.requestedAt.toISOString(),
+    completedAt: job.completedAt?.toISOString() ?? null,
+  };
+}
+
+function providerEventToDto(
+  event: Awaited<ReturnType<typeof prisma.worldHubProviderEvent.findFirst>> & {
+    connection: {
+      providerKey: string;
+    };
+  },
+): WorldHubProviderEventDto {
+  return {
+    id: event.id,
+    providerKey: event.connection.providerKey,
+    eventType: event.eventType,
+    externalEventId: event.externalEventId,
+    verificationStatus: event.verificationStatus,
+    processingStatus: event.processingStatus,
+    errorMessage: event.errorMessage,
+    receivedAt: event.receivedAt.toISOString(),
+  };
+}
+
 export async function getWorldHubIntegrationDashboard(): Promise<WorldHubIntegrationDashboard> {
   const now = new Date();
   const [
@@ -138,6 +224,8 @@ export async function getWorldHubIntegrationDashboard(): Promise<WorldHubIntegra
     queuedFulfillmentJobs,
     queuedSyncJobs,
     receivedProviderEvents,
+    recentSyncJobs,
+    recentProviderEvents,
   ] = await Promise.all([
     prisma.worldHubProviderConnection.findMany({
       orderBy: [{ providerKind: "asc" }, { providerKey: "asc" }],
@@ -205,6 +293,21 @@ export async function getWorldHubIntegrationDashboard(): Promise<WorldHubIntegra
         },
       },
     }),
+    prisma.worldHubProviderSyncJob.findMany({
+      orderBy: [{ requestedAt: "desc" }],
+      take: 8,
+    }),
+    prisma.worldHubProviderEvent.findMany({
+      include: {
+        connection: {
+          select: {
+            providerKey: true,
+          },
+        },
+      },
+      orderBy: [{ receivedAt: "desc" }],
+      take: 8,
+    }),
   ]);
 
   return {
@@ -213,6 +316,8 @@ export async function getWorldHubIntegrationDashboard(): Promise<WorldHubIntegra
     readiness: WORLDHUB_PROVIDER_DEFINITIONS.map((definition) =>
       getWorldHubProviderReadiness(definition),
     ),
+    recentSyncJobs: recentSyncJobs.map(syncJobToDto),
+    recentProviderEvents: recentProviderEvents.map(providerEventToDto),
     counts: {
       activeMemberships,
       futureAppointments,

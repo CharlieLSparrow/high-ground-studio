@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { resolveTeamAccess } from "@/lib/content-access";
+import { syncUnsyncedGoogleCalendarAppointments } from "@/lib/server/google-calendar-sync";
 import { upsertWorldHubProviderConnections } from "@/lib/server/worldhub-integrations";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
@@ -33,4 +34,14 @@ export async function initializeWorldHubIntegrationsAction() {
   await requireTeamOperator();
   await upsertWorldHubProviderConnections();
   revalidatePath("/team/worldhub");
+}
+
+export async function syncGoogleCalendarAppointmentsAction() {
+  const requestedByEmail = await requireTeamOperator();
+
+  await syncUnsyncedGoogleCalendarAppointments({
+    requestedByEmail,
+  });
+  revalidatePath("/team/worldhub");
+  revalidatePath("/team/appointments");
 }

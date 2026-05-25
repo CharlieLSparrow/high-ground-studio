@@ -67,7 +67,7 @@ export const WORLDHUB_PROVIDER_DEFINITIONS: WorldHubProviderDefinition[] = [
     ],
     setupUrl: "https://dashboard.stripe.com/",
     setupNotes:
-      "Use for hosted checkout, invoices, subscriptions, and payment webhooks. Keep card handling inside Stripe-hosted surfaces.",
+      "Use for hosted checkout, invoices, subscriptions, and payment webhooks. Set the webhook endpoint to /api/worldhub/webhooks/stripe and keep card handling inside Stripe-hosted surfaces.",
   },
   {
     providerKey: "patreon",
@@ -83,7 +83,7 @@ export const WORLDHUB_PROVIDER_DEFINITIONS: WorldHubProviderDefinition[] = [
     optionalEnv: ["PATREON_CAMPAIGN_ID", "PATREON_CREATOR_ACCESS_TOKEN"],
     setupUrl: "https://www.patreon.com/portal/registration/register-clients",
     setupNotes:
-      "Use for supporter identity, tier state, and member events. Patreon state should grant app entitlements, not replace app identity.",
+      "Use for supporter identity, tier state, and member events. Set the webhook endpoint to /api/worldhub/webhooks/patreon. Patreon state should grant app entitlements, not replace app identity.",
   },
   {
     providerKey: "google-calendar",
@@ -105,6 +105,7 @@ export const WORLDHUB_PROVIDER_DEFINITIONS: WorldHubProviderDefinition[] = [
       "GOOGLE_CALENDAR_IMPERSONATION_EMAIL",
       "GOOGLE_CALENDAR_SYNC_CLIENT_ID",
       "GOOGLE_CALENDAR_SYNC_CLIENT_SECRET",
+      "GOOGLE_CALENDAR_SEND_UPDATES",
     ],
     setupUrl: "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com",
     setupNotes:
