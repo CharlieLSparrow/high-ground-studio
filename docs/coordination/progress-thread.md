@@ -1400,3 +1400,12 @@ checks, blockers, and next handoff.
   for `/manuscript/live` (`HTTP 200`) and unauthenticated
   `/api/manuscript/live-rooms` (`401`). Rollback:
   `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00051-zl8=100`.
+- Deployed Web from current `main` `8d84886` so `/updates` includes the latest
+  progress story content. Cloud Build `6b078d8d-15bb-4034-bde0-7aeb3dbfac64`,
+  image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:8d84886`,
+  revision `web-00078-x9q`, direct Cloud Run URL
+  `https://web-hm2odnvjga-uc.a.run.app`. Smokes passed for `/api/health`, `/`,
+  `/projection-stage/import`, `/team/progress` sign-in redirect,
+  `/team/hgo-publish-queue` sign-in redirect, and `/updates` (`HTTP 200`).
+  Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00077-h56=100`.
