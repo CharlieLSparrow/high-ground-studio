@@ -154,6 +154,38 @@ export function applyTextAreaValueToYText(yText: Y.Text, nextValue: string) {
   return true;
 }
 
+function collectEditorNodeText(node: ManuscriptEditorJson): string {
+  if (typeof node.text === "string") {
+    return node.text;
+  }
+
+  return (node.content ?? []).map(collectEditorNodeText).join("");
+}
+
+function collectManuscriptBlockText(
+  node: ManuscriptEditorJson,
+  blocks: string[],
+) {
+  if (["paragraph", "heading", "listItem"].includes(String(node.type ?? ""))) {
+    const text = collectEditorNodeText(node).trim();
+
+    if (text) {
+      blocks.push(text);
+    }
+
+    return;
+  }
+
+  (node.content ?? []).forEach((child) => collectManuscriptBlockText(child, blocks));
+}
+
+export function createLiveRoomTextFromManuscriptDraft(draft: ManuscriptDraft) {
+  const blocks: string[] = [];
+  collectManuscriptBlockText(draft.editorJson, blocks);
+
+  return normalizeLiveRoomText(blocks.join("\n\n"));
+}
+
 function createParagraphNode(text: string, index: number): ManuscriptEditorJson {
   const trimmed = text.trim();
 

@@ -20,10 +20,12 @@ import {
   applyTextAreaValueToYText,
   countLiveRoomTextStats,
   createManuscriptDraftFromLiveRoomText,
+  createLiveRoomTextFromManuscriptDraft,
   decodeLiveRoomUpdateBase64,
   encodeLiveRoomUpdateBase64,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
 } from "./studio-manuscript-live-room-model";
+import type { ManuscriptDraft } from "../manuscript-editor-model";
 
 type StudioManuscriptLiveRoomClientProps = {
   actor: {
@@ -66,6 +68,30 @@ type LiveRoomUpdate = {
   clock: number;
   updateBase64: string;
   createdAt: string;
+};
+
+type ManuscriptSnapshotSummary = {
+  id: string;
+  manuscriptId: string | null;
+  title: string;
+  wordCount: number;
+  characterCount: number;
+  blockCount: number;
+  updatedAt: string;
+};
+
+type ManuscriptSnapshotDetail = ManuscriptSnapshotSummary & {
+  draft: ManuscriptDraft;
+};
+
+type ManuscriptLibrarySummary = {
+  id: string;
+  title: string;
+  kind: "WORKING" | "SYNTHETIC";
+  snapshotCount: number;
+  latestSnapshot: ManuscriptSnapshotSummary | null;
+  lastSnapshotAt: string | null;
+  updatedAt: string;
 };
 
 type ApiResponse<T> = T | { ok: false; message: string };
@@ -152,6 +178,8 @@ export function StudioManuscriptLiveRoomClient({
   const [rooms, setRooms] = useState<LiveRoomSummary[]>([]);
   const [activeRoom, setActiveRoom] = useState<LiveRoomDetail | null>(null);
   const [presence, setPresence] = useState<LivePresence[]>([]);
+  const [manuscripts, setManuscripts] = useState<ManuscriptLibrarySummary[]>([]);
+  const [selectedManuscriptId, setSelectedManuscriptId] = useState("");
   const [draftTitle, setDraftTitle] = useState("Tonight manuscript room");
   const [initialText, setInitialText] = useState("");
   const [text, setText] = useState("");
@@ -159,6 +187,8 @@ export function StudioManuscriptLiveRoomClient({
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [isLoadingRoom, setIsLoadingRoom] = useState(false);
+  const [isLoadingManuscripts, setIsLoadingManuscripts] = useState(false);
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const yDocRef = useRef<Y.Doc | null>(null);
@@ -171,6 +201,12 @@ export function StudioManuscriptLiveRoomClient({
 
   const stats = useMemo(() => countLiveRoomTextStats(text), [text]);
   const shareUrl = useMemo(() => createShareUrl(activeRoom?.id ?? null), [activeRoom?.id]);
+  const selectedManuscript = useMemo(
+    () =>
+      manuscripts.find((manuscript) => manuscript.id === selectedManuscriptId) ??
+      null,
+    [manuscripts, selectedManuscriptId],
+  );
 
   const updateMessage = useCallback((nextMessage: string) => {
     setMessage(nextMessage);
@@ -197,6 +233,78 @@ export function StudioManuscriptLiveRoomClient({
 
     setRooms(body.rooms);
   }, [updateError]);
+
+  const loadManuscripts = useCallback(async () => {
+    setIsLoadingManuscripts(true);
+
+    const response = await fetch("/api/manuscript/library", {
+      cache: "no-store",
+    });
+    const body = await readJsonResponse<{
+      ok: true;
+      manuscripts: ManuscriptLibrarySummary[];
+    }>(response);
+
+    setIsLoadingManuscripts(false);
+
+    if (isErrorResponse(body)) {
+      updateError(body.message);
+      return;
+    }
+
+    setManuscripts(body.manuscripts);
+    setSelectedManuscriptId((currentId) => {
+      if (
+        currentId &&
+        body.manuscripts.some((manuscript) => manuscript.id === currentId)
+      ) {
+        return currentId;
+      }
+
+      return (
+        body.manuscripts.find((manuscript) => manuscript.latestSnapshot)?.id ??
+        body.manuscripts[0]?.id ??
+        ""
+      );
+    });
+  }, [updateError]);
+
+  const loadLatestSnapshotIntoStart = useCallback(async () => {
+    if (!selectedManuscriptId) {
+      updateError("Select a manuscript first.");
+      return;
+    }
+
+    setIsLoadingSnapshot(true);
+    updateMessage("Loading latest manuscript snapshot.");
+
+    const response = await fetch(
+      `/api/manuscript/snapshots/latest?manuscriptId=${encodeURIComponent(
+        selectedManuscriptId,
+      )}`,
+      { cache: "no-store" },
+    );
+    const body = await readJsonResponse<{
+      ok: true;
+      snapshot: ManuscriptSnapshotDetail | null;
+    }>(response);
+
+    setIsLoadingSnapshot(false);
+
+    if (isErrorResponse(body)) {
+      updateError(body.message);
+      return;
+    }
+
+    if (!body.snapshot) {
+      updateError("Selected manuscript has no saved snapshot yet.");
+      return;
+    }
+
+    setDraftTitle(`${body.snapshot.title} live room`.slice(0, 140));
+    setInitialText(createLiveRoomTextFromManuscriptDraft(body.snapshot.draft));
+    updateMessage(`Loaded latest snapshot from ${formatTime(body.snapshot.updatedAt)}.`);
+  }, [selectedManuscriptId, updateError, updateMessage]);
 
   const flushPendingUpdates = useCallback(async () => {
     const roomId = activeRoomIdRef.current;
@@ -334,6 +442,7 @@ export function StudioManuscriptLiveRoomClient({
       body: JSON.stringify({
         title: draftTitle,
         initialText,
+        manuscriptId: selectedManuscriptId || null,
       }),
     });
     const body = await readJsonResponse<{ ok: true; room: LiveRoomDetail }>(
@@ -353,7 +462,15 @@ export function StudioManuscriptLiveRoomClient({
     ]);
     router.replace(`/manuscript/live?room=${encodeURIComponent(body.room.id)}`);
     await loadRoom(body.room.id);
-  }, [draftTitle, initialText, loadRoom, router, updateError, updateMessage]);
+  }, [
+    draftTitle,
+    initialText,
+    loadRoom,
+    router,
+    selectedManuscriptId,
+    updateError,
+    updateMessage,
+  ]);
 
   const updateText = useCallback((nextText: string) => {
     const yText = yTextRef.current;
@@ -403,6 +520,7 @@ export function StudioManuscriptLiveRoomClient({
       body: JSON.stringify({
         draft,
         description: `Manual checkpoint from live room ${activeRoom.id}.`,
+        manuscriptId: activeRoom.manuscriptId,
         snapshotType: "manual",
       }),
     });
@@ -423,6 +541,10 @@ export function StudioManuscriptLiveRoomClient({
   useEffect(() => {
     void loadRooms();
   }, [loadRooms]);
+
+  useEffect(() => {
+    void loadManuscripts();
+  }, [loadManuscripts]);
 
   useEffect(() => {
     if (requestedRoomId && requestedRoomId !== activeRoomIdRef.current) {
@@ -572,6 +694,47 @@ export function StudioManuscriptLiveRoomClient({
                     value={draftTitle}
                   />
                 </label>
+                <div className="grid gap-2 border-y border-studio-line py-3">
+                  <label className="grid gap-1.5">
+                    <span className={labelClassName}>Start from library</span>
+                    <select
+                      className={fieldClassName}
+                      disabled={isLoadingManuscripts || !manuscripts.length}
+                      onChange={(event) => setSelectedManuscriptId(event.target.value)}
+                      value={selectedManuscriptId}
+                    >
+                      {!manuscripts.length ? (
+                        <option value="">No manuscripts available</option>
+                      ) : null}
+                      {manuscripts.map((manuscript) => (
+                        <option key={manuscript.id} value={manuscript.id}>
+                          {manuscript.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="m-0 text-[0.78rem] leading-5 text-studio-muted">
+                      {selectedManuscript?.latestSnapshot
+                        ? `${selectedManuscript.latestSnapshot.wordCount.toLocaleString()} words / ${selectedManuscript.latestSnapshot.blockCount.toLocaleString()} blocks / ${formatTime(selectedManuscript.latestSnapshot.updatedAt)}`
+                        : isLoadingManuscripts
+                          ? "Loading manuscript library."
+                          : "No saved snapshot for this manuscript yet."}
+                    </p>
+                    <button
+                      className={buttonClassName}
+                      disabled={
+                        !selectedManuscriptId ||
+                        !selectedManuscript?.latestSnapshot ||
+                        isLoadingSnapshot
+                      }
+                      onClick={() => void loadLatestSnapshotIntoStart()}
+                      type="button"
+                    >
+                      {isLoadingSnapshot ? "Loading..." : "Load latest snapshot"}
+                    </button>
+                  </div>
+                </div>
                 <label className="grid gap-1.5">
                   <span className={labelClassName}>Starting text</span>
                   <textarea

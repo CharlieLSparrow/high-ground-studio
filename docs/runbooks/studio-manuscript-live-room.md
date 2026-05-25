@@ -21,6 +21,7 @@ The route is protected by the normal private Studio access gate.
 ## What It Does
 
 - creates a private live manuscript room
+- can load the latest Manuscript Library snapshot into the room starting text
 - accepts pasted or blank starting text
 - lets any authenticated Studio-access user join a room when they have the
   share URL
@@ -61,9 +62,9 @@ presence state and should not be treated as manuscript content.
 
 1. Open Studio.
 2. Open `/manuscript/live`.
-3. Create a room with a clear title.
-4. Paste the current manuscript section into the starting text field, or start
-   blank.
+3. Select an existing Manuscript Library item and load its latest snapshot, or
+   paste the current manuscript section into the starting text field.
+4. Create a room with a clear title.
 5. Copy the room link and send it to Homer.
 6. Work in the shared text area.
 7. Use `Save manual snapshot` when a meaningful checkpoint is reached.

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   applyLiveRoomUpdateToDoc,
   applyTextAreaValueToYText,
+  createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
   createLiveRoomStateUpdateFromText,
   createManuscriptDraftFromLiveRoomText,
@@ -78,4 +79,51 @@ test("live room text can become a manual snapshot draft", () => {
   assert.equal(draft.editorJson.content?.length, 2);
   assert.equal(draft.editorJson.content?.[0]?.attrs?.blockId, "live-room-block-0001");
   assert.equal(draft.editorJson.content?.[1]?.content?.[0]?.text, "Second paragraph.");
+});
+
+test("manual snapshot draft can seed live room plain text", () => {
+  const text = createLiveRoomTextFromManuscriptDraft({
+    schemaVersion: 1,
+    title: "Library Draft",
+    sourceFileName: null,
+    importSummary: null,
+    structureRegions: [],
+    quoteReviews: {},
+    editorJson: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          content: [{ type: "text", text: "Chapter One" }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Alpha " },
+            { type: "text", text: "Beta." },
+          ],
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Nested note." }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    activeAuthorId: "homer",
+    showAuthorColors: true,
+    showSemanticColors: true,
+    lastUpdatedAt: "2026-05-25T20:00:00.000Z",
+  });
+
+  assert.equal(text, "Chapter One\n\nAlpha Beta.\n\nNested note.");
 });
