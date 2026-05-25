@@ -15,6 +15,8 @@ Canonical direction docs:
   workflow truth, non-goals, and near-term build path
 - `docs/studio-cut-agent-coordination.md`: how multiple Codex agents should
   split work, verify changes, and hand off Studio Cut context
+- `docs/analysis/studio-cut-riverside-descript-research.md`: Riverside and
+  Descript feature research, UI/UX notes, and Studio Cut parity plan
 
 Current slice:
 

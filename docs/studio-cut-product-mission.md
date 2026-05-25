@@ -97,6 +97,11 @@ The current system does not yet have:
    modes are explicit.
 7. Use the video workflow lessons to shape the larger Content Management Studio.
 
+Competitive research for the next video/editor feature wave lives in
+`docs/analysis/studio-cut-riverside-descript-research.md`. Use it as a
+feature-parity reference for Riverside/Descript-style jobs while keeping Studio
+Cut's implementation source-preserving, semantic, and agent-inspectable.
+
 ## Non-Goals For The Current Sprint
 
 - Do not rebuild Premiere as a generic nonlinear editor.
