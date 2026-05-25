@@ -168,3 +168,31 @@ The live editor still uses plain text. Loading from a Manuscript Desk snapshot
 extracts headings, paragraphs, and list items into readable text blocks; rich
 marks, quote reviews, structure regions, and publication metadata remain in the
 manual snapshot system rather than the live textarea.
+
+## Snapshot Start Deployment
+
+Merged through PR #29:
+
+```text
+main commit: 533151c
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:533151c
+Cloud Build: 2a62f5bd-2a9a-4cc5-8c28-8c1a85033bb0
+revision: studio-00053-rfn
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+Deploy validation passed:
+
+- `pnpm --filter studio typecheck`
+- `pnpm studio:cloudrun:test`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00051-zl8=100
+```
