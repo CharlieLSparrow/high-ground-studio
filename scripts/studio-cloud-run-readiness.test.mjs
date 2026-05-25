@@ -188,6 +188,10 @@ test("Manuscript live rooms are wired through authenticated API", () => {
     "apps/studio/src/app/manuscript/live/studio-manuscript-live-room-client.tsx",
     "utf8",
   );
+  const manuscriptDeskClient = readFileSync(
+    "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
+    "utf8",
+  );
 
   assert.match(route, /getStudioApiActor/);
   assert.match(route, /getStudioDatabaseUrl/);
@@ -216,6 +220,10 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(client, /Load latest snapshot/);
   assert.match(client, /Copy room link/);
   assert.match(client, /Save manual snapshot/);
+  assert.match(manuscriptDeskClient, /createManuscriptDraftPlainText/);
+  assert.match(manuscriptDeskClient, /\/api\/manuscript\/live-rooms/);
+  assert.match(manuscriptDeskClient, /manuscript-live-room-start-current/);
+  assert.match(manuscriptDeskClient, /Start live room/);
 });
 
 test("Prisma db-push job image is available for Cloud SQL schema sync", () => {

@@ -46,6 +46,7 @@ import {
   createRecordingHandoffMarkdown,
   createSyntheticManuscriptSmokeDraft,
   createStudioManuscriptLibraryInputFromDraft,
+  createManuscriptDraftPlainText,
   createManuscriptDraftCheckpointKey,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
@@ -176,6 +177,10 @@ type ManuscriptSnapshotLatestResponse =
 
 type ManuscriptSnapshotDetailResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
+  | { ok: false; message: string };
+
+type ManuscriptLiveRoomCreateResponse =
+  | { ok: true; room: { id: string } }
   | { ok: false; message: string };
 
 type ManuscriptSidePanelMode =
@@ -574,6 +579,7 @@ export function StudioManuscriptClient({
   const [serverSnapshotDescription, setServerSnapshotDescription] =
     useState("");
   const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
+  const [isStartingLiveRoom, setIsStartingLiveRoom] = useState(false);
   const [isServerSnapshotUnavailable, setIsServerSnapshotUnavailable] =
     useState(false);
   const [serverConnectionState, setServerConnectionState] = useState<
@@ -2704,6 +2710,66 @@ export function StudioManuscriptClient({
       setMessage("Server snapshot save failed.");
     } finally {
       setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function startLiveRoomFromCurrentDraft() {
+    const draft = createCurrentDraft();
+
+    if (!draft) {
+      return;
+    }
+
+    const initialText = createManuscriptDraftPlainText(draft);
+    const manuscriptTitle = selectedServerManuscript?.title ?? draft.title;
+
+    setIsStartingLiveRoom(true);
+    setServerSnapshotStatus(
+      manuscriptTitle
+        ? `Creating live room from ${manuscriptTitle}...`
+        : "Creating live room from current draft...",
+    );
+
+    try {
+      const response = await fetch("/api/manuscript/live-rooms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: `${(draft.title.trim() || "Manuscript Desk")} live room`,
+          initialText,
+          manuscriptId: selectedServerManuscriptId || null,
+        }),
+      });
+      const payload = (await response.json()) as ManuscriptLiveRoomCreateResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Live room could not be created.";
+        markServerSnapshotResponseState(response);
+        setServerSnapshotStatus(message);
+        setMessage(message);
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+      setServerSnapshotStatus("Live room created. Opening shared editor...");
+      setMessage("Live room created. Opening shared editor...");
+      window.location.assign(
+        `/manuscript/live?room=${encodeURIComponent(payload.room.id)}`,
+      );
+    } catch (error) {
+      console.error("Live room create from Manuscript Desk failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerSnapshotStatus("Live room create failed.");
+      setMessage("Live room create failed.");
+    } finally {
+      setIsStartingLiveRoom(false);
     }
   }
 
@@ -5152,7 +5218,7 @@ export function StudioManuscriptClient({
                     placeholder="Optional note, for example: ready for Homer phone recording."
                   />
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <button
                     className={smallButtonClassName}
                     data-testid="manuscript-snapshot-save"
@@ -5182,6 +5248,15 @@ export function StudioManuscriptClient({
                     onClick={() => void refreshServerSnapshots()}
                   >
                     Refresh
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    data-testid="manuscript-live-room-start-current"
+                    disabled={isStartingLiveRoom || isServerSnapshotUnavailable}
+                    type="button"
+                    onClick={() => void startLiveRoomFromCurrentDraft()}
+                  >
+                    {isStartingLiveRoom ? "Opening..." : "Start live room"}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
