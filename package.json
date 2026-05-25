@@ -24,6 +24,7 @@
     "studio-cut:local:rescue-sync-session": "python tools/studio-cut-local/studio_cut_local.py rescue-sync-session",
     "studio-cut:local:rescue-sync-status": "python tools/studio-cut-local/studio_cut_local.py rescue-sync-status",
     "studio-cut:local:render-rescue-sync-session": "python tools/studio-cut-local/studio_cut_local.py render-rescue-sync-session",
+    "studio-cut:local:agent-edit-session": "python tools/studio-cut-local/studio_cut_local.py agent-edit-session",
     "studio-cut:cloud-sync-smoke": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs",
     "studio-cut:demo-package": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs --only-scenario short --publish-package-scenario short --publish-package-dir tools/studio-cut-local/output/demo-shared-room-package",
     "studio-cut:rescue-sync-package": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs --only-scenario short --publish-package-scenario short --publish-package-dir tools/studio-cut-local/output/rescue-sync-publish-package",

@@ -443,5 +443,5 @@ Improve agentic editing:
 
 - add richer awkward-hold and bad-take detectors on top of the confidence and
   approval operation shape
-- add a single command that consumes `agent-workspace-index.json`, transcript,
-  and decisions, then writes both suggested ops and a rationale report
+- extend `agent-edit-session` with Sync Map render QA and transcript/proxy
+  screenshot evidence when those artifacts exist

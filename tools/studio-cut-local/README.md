@@ -525,6 +525,23 @@ remains auditable.
 See `docs/studio-cut-agentic-editing.md` for the operation file shape and the
 recommended human-transparent agent workflow.
 
+Run the one-command agent edit session for a standard local Rescue Sync
+workspace:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-edit-session \
+  --episode-dir path/to/episode-workspace \
+  --write-preview-decisions
+```
+
+This writes `generated/agent-workspace-index.json`,
+`generated/agent-edit-review.json`, `generated/agent-suggested-ops.json`,
+`generated/agent-edit-session.json`, and `generated/agent-edit-session.md`.
+When `--write-preview-decisions` is present, it also writes
+`edit/<episode-id>-agent-preview-decisions.json` without mutating the original
+decision export. The report uses workspace-relative paths so agents can inspect
+the folder without copying private absolute paths into chat.
+
 Create a sanitized index for a local Rescue Sync episode workspace:
 
 ```bash

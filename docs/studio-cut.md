@@ -454,6 +454,19 @@ python tools/studio-cut-local/studio_cut_local.py agent-workspace-index \
 Use this instead of pasting private local paths into chat. The JSON uses
 relative paths and the `<episode-workspace>` placeholder.
 
+For a fuller one-command assistant pass, run:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-edit-session \
+  --episode-dir path/to/episode-workspace \
+  --write-preview-decisions
+```
+
+This writes the workspace index, transcript-aware edit review,
+`agent-suggested-ops.json`, a concise `agent-edit-session.md` rationale, and an
+optional preview decision file. It does not mutate the original decision export
+and still only touches the semantic decision layer.
+
 The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
 It previews the operation JSON before applying it, shows add/range/remove
 counts, approval-required counts, blocking validation errors, and then applies

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -259,6 +259,68 @@ test("agent edit review and decision ops are deterministic and transparent", asy
     assert.match(rangeStart.note, /Agent range reason/);
     assert.equal(rangeRestore.state, "homer");
     assert.equal(rangeRestore.sourceTimeMs, 9500);
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("agent edit session writes workspace review artifacts without private paths", async () => {
+  const workdir = await mkdtemp(path.join(tmpdir(), "studio-cut-agent-session-"));
+
+  try {
+    const generatedDir = path.join(workdir, "generated");
+    const editDir = path.join(workdir, "edit");
+    await mkdir(generatedDir, { recursive: true });
+    await mkdir(editDir, { recursive: true });
+
+    const manifestPath = path.join(generatedDir, "episode-manifest.json");
+    const decisionsPath = path.join(editDir, "agent-edit-smoke-decisions.json");
+    const transcriptPath = path.join(editDir, "agent-edit-smoke-transcript.json");
+
+    await writeJson(manifestPath, buildManifest());
+    await writeJson(decisionsPath, buildDecisions());
+    await writeJson(transcriptPath, buildTranscript());
+
+    const result = runCli([
+      "agent-edit-session",
+      "--episode-dir",
+      workdir,
+      "--created-by",
+      "codex@test",
+      "--write-preview-decisions",
+      "--json",
+    ]);
+    const sessionReport = JSON.parse(result.stdout);
+    const review = JSON.parse(
+      await readFile(path.join(generatedDir, "agent-edit-review.json"), "utf8"),
+    );
+    const suggestedOps = JSON.parse(
+      await readFile(path.join(generatedDir, "agent-suggested-ops.json"), "utf8"),
+    );
+    const rationale = await readFile(
+      path.join(generatedDir, "agent-edit-session.md"),
+      "utf8",
+    );
+    const preview = JSON.parse(
+      await readFile(path.join(editDir, "agent-edit-smoke-agent-preview-decisions.json"), "utf8"),
+    );
+
+    assert.equal(sessionReport.kind, "studio-cut-agent-edit-session");
+    assert.equal(sessionReport.summary.reviewWritten, true);
+    assert.equal(sessionReport.summary.suggestedOperationCount > 0, true);
+    assert.equal(sessionReport.summary.transcriptReview.clipReferenceCount, 1);
+    assert.equal(sessionReport.outputs.workspaceIndex.exists, true);
+    assert.equal(sessionReport.outputs.review.exists, true);
+    assert.equal(sessionReport.outputs.suggestedOps.exists, true);
+    assert.equal(sessionReport.outputs.previewDecisions.exists, true);
+    assert.equal(review.kind, "studio-cut-agent-edit-review");
+    assert.equal(suggestedOps.operations.length > 0, true);
+    assert.equal(preview.agentEdit.source, "agent-edit-session preview");
+    assert.match(rationale, /Operation Preview/);
+
+    const serialized = JSON.stringify(sessionReport) + JSON.stringify(review);
+    assert.equal(serialized.includes(workdir), false);
+    assert.equal(serialized.includes(tmpdir()), false);
   } finally {
     await rm(workdir, { recursive: true, force: true });
   }

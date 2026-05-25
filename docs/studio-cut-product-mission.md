@@ -70,6 +70,9 @@ The current system already has:
 - `pnpm studio-cut:verify` as the integrated safety gate
 - agentic decision-review and decision-operation commands so current Codex CLI
   agents can inspect, propose, apply, verify, and roll back semantic edits
+- a one-command `agent-edit-session` pass for local Rescue Sync workspaces that
+  writes a sanitized workspace index, transcript-aware review, suggested ops,
+  and human-readable rationale without mutating the source decision export
 
 The current system does not yet have:
 

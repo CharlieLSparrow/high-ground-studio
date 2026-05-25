@@ -698,6 +698,57 @@ def build_parser() -> argparse.ArgumentParser:
     )
     agent_ops_parser.set_defaults(handler=run_apply_decision_ops)
 
+    agent_session_parser = subparsers.add_parser(
+        "agent-edit-session",
+        help=(
+            "Run a one-command agent editing review for a local Rescue Sync "
+            "episode workspace."
+        ),
+    )
+    agent_session_parser.add_argument("--episode-dir", required=True, type=Path)
+    agent_session_parser.add_argument(
+        "--episode-id",
+        help="Optional episode id override. Defaults to manifest/project id when available.",
+    )
+    agent_session_parser.add_argument(
+        "--transcript",
+        type=Path,
+        help=(
+            "Optional timed transcript JSON. Defaults to common edit/ or "
+            "generated/ transcript file names when present."
+        ),
+    )
+    agent_session_parser.add_argument(
+        "--profile",
+        default="youtube_16x9",
+        choices=sorted(SUPPORTED_PROFILES),
+        help="Render profile used for diagnostics. Default: youtube_16x9.",
+    )
+    agent_session_parser.add_argument(
+        "--created-by",
+        default="codex-agent",
+        help="Attribution used when previewing suggested operations.",
+    )
+    agent_session_parser.add_argument(
+        "--out-dir",
+        type=Path,
+        help="Output directory for agent review artifacts. Default: <episode-dir>/generated.",
+    )
+    agent_session_parser.add_argument(
+        "--write-preview-decisions",
+        action="store_true",
+        help=(
+            "Write a non-mutating preview decision JSON after applying suggested "
+            "operations to a copy of the current decisions."
+        ),
+    )
+    agent_session_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable session report JSON.",
+    )
+    agent_session_parser.set_defaults(handler=run_agent_edit_session)
+
     return parser
 
 
@@ -2017,6 +2068,15 @@ def build_rescue_sync_session_readme(session: dict[str, Any]) -> str:
     agent_index_command = format_shell_command(
         build_agent_workspace_index_command(session)
     )
+    agent_edit_session_command = format_shell_command(
+        [
+            sys.executable,
+            str(Path(__file__)),
+            "agent-edit-session",
+            "--episode-dir",
+            str(session["episodeDir"]),
+        ]
+    )
 
     missing = "\n".join(
         f"- {RESCUE_SYNC_ROLE_SPECS[role]['label']}"
@@ -2076,6 +2136,12 @@ Write a media-safe agent workspace index:
 
 ```bash
 {agent_index_command}
+```
+
+Run a one-command agent edit review after decisions are exported:
+
+```bash
+{agent_edit_session_command}
 ```
 
 ## Publish Shared Room
@@ -2229,6 +2295,326 @@ def get_rescue_sync_decision_candidates(session: dict[str, Any]) -> list[Path]:
     ]
 
 
+def get_rescue_sync_transcript_candidates(session: dict[str, Any]) -> list[Path]:
+    episode_id = session["episodeId"]
+    edit_dir = session["editDir"]
+    generated_dir = session["generatedDir"]
+    return [
+        edit_dir / f"{episode_id}-transcript.json",
+        edit_dir / "episode-transcript.json",
+        edit_dir / "transcript.json",
+        generated_dir / f"{episode_id}-transcript.json",
+        generated_dir / "episode-transcript.json",
+        generated_dir / "transcript.json",
+    ]
+
+
+def find_agent_edit_session_transcript_path(
+    *, session: dict[str, Any], explicit_path: Path | None
+) -> Path | None:
+    if explicit_path:
+        candidate = explicit_path.expanduser().resolve()
+        if not candidate.is_file():
+            raise StudioCutCliError(f"transcript file not found: {candidate}")
+        return candidate
+
+    return next(
+        (path for path in get_rescue_sync_transcript_candidates(session) if path.is_file()),
+        None,
+    )
+
+
+def relative_episode_workspace_path(path: Path | str, episode_dir: Path) -> str:
+    candidate = Path(path)
+    try:
+        return candidate.resolve().relative_to(episode_dir).as_posix()
+    except (OSError, ValueError):
+        return candidate.name
+
+
+def sanitize_agent_workspace_payload(value: Any, episode_dir: Path) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: sanitize_agent_workspace_payload(child, episode_dir)
+            for key, child in value.items()
+        }
+
+    if isinstance(value, list):
+        return [sanitize_agent_workspace_payload(child, episode_dir) for child in value]
+
+    if isinstance(value, str):
+        return value.replace(str(episode_dir), "<episode-workspace>")
+
+    return value
+
+
+def summarize_agent_operation_preview(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "appliedAt": result["appliedAt"],
+        "projectId": result["projectId"],
+        "branchId": result["branchId"],
+        "operationCount": result["operationCount"],
+        "appliedOperationCount": result["appliedOperationCount"],
+        "appliedOperations": result["appliedOperations"],
+        "activeDecisionEventCount": result["activeDecisionEventCount"],
+        "tombstonedDecisionEventCount": result["tombstonedDecisionEventCount"],
+        "reviewSummary": result["reviewSummary"],
+        "warnings": result["warnings"],
+        "errors": result["errors"],
+    }
+
+
+def build_agent_edit_session_report(
+    *,
+    session: dict[str, Any],
+    status_report: dict[str, Any],
+    workspace_index: dict[str, Any],
+    review: dict[str, Any] | None,
+    suggested_ops: dict[str, Any] | None,
+    operation_preview: dict[str, Any] | None,
+    transcript_path: Path | None,
+    output_paths: dict[str, Path],
+    preview_decisions_written: bool,
+    warnings: list[str],
+    errors: list[str],
+) -> dict[str, Any]:
+    episode_dir = Path(session["episodeDir"]).resolve()
+    output_files = {
+        key: {
+            "path": relative_episode_workspace_path(path, episode_dir),
+            "exists": path.is_file(),
+            **({"sizeBytes": path.stat().st_size} if path.is_file() else {}),
+        }
+        for key, path in output_paths.items()
+    }
+    suggested_operation_count = (
+        len(suggested_ops.get("operations", []))
+        if isinstance(suggested_ops, dict) and isinstance(suggested_ops.get("operations"), list)
+        else 0
+    )
+    approval_required_count = (
+        sum(
+            1
+            for operation in suggested_ops.get("operations", [])
+            if isinstance(operation, dict)
+            and operation.get("approvalRequired") is True
+        )
+        if isinstance(suggested_ops, dict)
+        else 0
+    )
+    review_summary = review.get("summary") if isinstance(review, dict) else None
+    transcript_review = review.get("transcriptReview") if isinstance(review, dict) else None
+    agent_next_actions = build_agent_edit_session_next_actions(
+        errors=errors,
+        suggested_operation_count=suggested_operation_count,
+        preview_decisions_written=preview_decisions_written,
+        operation_preview=operation_preview,
+    )
+
+    return {
+        "schemaVersion": 1,
+        "kind": "studio-cut-agent-edit-session",
+        "generatedAt": utc_now_iso(),
+        "pathPolicy": (
+            "Paths are relative to the local episode workspace. Private absolute "
+            "filesystem roots are intentionally omitted."
+        ),
+        "episode": {
+            "id": session["episodeId"],
+            "title": (status_report.get("syncJob") or {}).get("title")
+            or session["title"],
+            "branchId": (status_report.get("syncJob") or {}).get("branchId")
+            or session["branchId"],
+            "workspaceName": episode_dir.name,
+        },
+        "readiness": status_report["readiness"],
+        "workspaceStatus": workspace_index["status"],
+        "inputs": {
+            "manifest": relative_episode_workspace_path(session["manifestPath"], episode_dir),
+            "decisions": (
+                relative_episode_workspace_path(status_report["decisions"]["path"], episode_dir)
+                if isinstance(status_report.get("decisions"), dict)
+                else None
+            ),
+            "transcript": (
+                relative_episode_workspace_path(transcript_path, episode_dir)
+                if transcript_path
+                else None
+            ),
+        },
+        "outputs": output_files,
+        "summary": {
+            "reviewWritten": review is not None,
+            "suggestedOperationCount": suggested_operation_count,
+            "approvalRequiredCount": approval_required_count,
+            "previewDecisionFileWritten": preview_decisions_written,
+            **({"review": review_summary} if review_summary else {}),
+            **({"transcriptReview": transcript_review} if transcript_review else {}),
+        },
+        "operationPreview": operation_preview,
+        "nextActions": agent_next_actions,
+        "warnings": [
+            sanitize_agent_workspace_payload(warning, episode_dir)
+            for warning in warnings
+        ],
+        "errors": [
+            sanitize_agent_workspace_payload(error, episode_dir)
+            for error in errors
+        ],
+    }
+
+
+def build_agent_edit_session_next_actions(
+    *,
+    errors: list[str],
+    suggested_operation_count: int,
+    preview_decisions_written: bool,
+    operation_preview: dict[str, Any] | None,
+) -> list[str]:
+    if errors:
+        return [
+            "Fix the missing manifest or decision export, then rerun agent-edit-session.",
+            "Use rescue-sync-status for the broader workspace readiness view.",
+        ]
+
+    if not suggested_operation_count:
+        return [
+            "Review agent-edit-review.json; no safe suggested operation JSON was produced.",
+            "If a transcript exists, place it in edit/<episode-id>-transcript.json and rerun.",
+        ]
+
+    actions = [
+        "Inspect agent-edit-session.md and agent-edit-review.json.",
+        "Inspect agent-suggested-ops.json before applying anything.",
+        "Import agent-suggested-ops.json in the web cockpit with Import Agent Ops, or run apply-decision-ops --dry-run.",
+    ]
+
+    if operation_preview and operation_preview["errors"]:
+        actions.insert(0, "Resolve operation preview errors before applying suggested ops.")
+    elif preview_decisions_written:
+        actions.append("Compare the preview decision JSON before replacing any exported decisions.")
+
+    return actions
+
+
+def build_agent_edit_session_markdown(report: dict[str, Any]) -> str:
+    episode = report["episode"]
+    summary = report["summary"]
+    operation_preview = report.get("operationPreview") or {}
+    transcript_review = summary.get("transcriptReview") or {}
+
+    lines = [
+        f"# Studio Cut Agent Edit Session: {episode['title']}",
+        "",
+        "This file is generated for agent/human review. It contains decision-layer",
+        "guidance only; no media, local absolute paths, object URLs, or proxy bytes.",
+        "",
+        "## Episode",
+        "",
+        f"- Episode id: `{episode['id']}`",
+        f"- Branch id: `{episode['branchId']}`",
+        f"- Workspace: `{episode['workspaceName']}`",
+        "",
+        "## Summary",
+        "",
+        f"- Review written: `{yes_no(bool(summary['reviewWritten']))}`",
+        f"- Suggested operations: `{summary['suggestedOperationCount']}`",
+        f"- Approval-required operations: `{summary['approvalRequiredCount']}`",
+        f"- Preview decision file written: `{yes_no(bool(summary['previewDecisionFileWritten']))}`",
+    ]
+
+    review_summary = summary.get("review")
+    if isinstance(review_summary, dict):
+        lines.extend(
+            [
+                f"- Active decisions: `{review_summary['activeDecisionEventCount']}`",
+                f"- Active segments: `{review_summary['activeSegmentCount']}`",
+                f"- Cut segments: `{review_summary['cutSegmentCount']}`",
+                f"- Active duration: `{format_time_ms(review_summary['activeDurationMs'])}`",
+                f"- Cut duration: `{format_time_ms(review_summary['cutDurationMs'])}`",
+            ]
+        )
+
+    if transcript_review:
+        lines.extend(
+            [
+                "",
+                "## Transcript Review",
+                "",
+                f"- Transcript segments: `{transcript_review['segmentCount']}`",
+                f"- Word count: `{transcript_review['wordCount']}`",
+                f"- Coverage: `{format_percent(transcript_review['coveragePercent'])}`",
+                f"- Clip references: `{transcript_review['clipReferenceCount']}`",
+                f"- Filler markers: `{transcript_review['fillerMarkerCount']}`",
+            ]
+        )
+
+    if operation_preview:
+        lines.extend(
+            [
+                "",
+                "## Operation Preview",
+                "",
+                f"- Operation count: `{operation_preview['operationCount']}`",
+                f"- Applied operation count: `{operation_preview['appliedOperationCount']}`",
+                f"- Active decisions after apply: `{operation_preview['activeDecisionEventCount']}`",
+                f"- Tombstoned decisions after apply: `{operation_preview['tombstonedDecisionEventCount']}`",
+            ]
+        )
+
+    if report["warnings"]:
+        lines.extend(["", "## Warnings", ""])
+        lines.extend(f"- {warning}" for warning in report["warnings"])
+
+    if report["errors"]:
+        lines.extend(["", "## Errors", ""])
+        lines.extend(f"- {error}" for error in report["errors"])
+
+    lines.extend(["", "## Next Actions", ""])
+    lines.extend(f"- {action}" for action in report["nextActions"])
+    lines.append("")
+    return "\n".join(lines)
+
+
+def print_agent_edit_session_report(report: dict[str, Any]) -> None:
+    episode = report["episode"]
+    summary = report["summary"]
+
+    print("Studio Cut Agent Edit Session")
+    print("=============================")
+    print(f"Episode: {episode['title']} ({episode['id']})")
+    print(f"Workspace: {episode['workspaceName']}")
+    print(f"Review written: {yes_no(bool(summary['reviewWritten']))}")
+    print(f"Suggested operations: {summary['suggestedOperationCount']}")
+    print(f"Approval required: {summary['approvalRequiredCount']}")
+
+    if summary.get("transcriptReview"):
+        transcript = summary["transcriptReview"]
+        print(
+            "Transcript: "
+            f"{transcript['segmentCount']} segment(s), "
+            f"{format_percent(transcript['coveragePercent'])} coverage"
+        )
+
+    print("\nOutputs:")
+    for label, entry in report["outputs"].items():
+        print(f"  - {label}: {entry['path']} ({'yes' if entry['exists'] else 'missing'})")
+
+    if report["warnings"]:
+        print("\nWarnings:")
+        for warning in report["warnings"]:
+            print(f"  - {warning}")
+
+    if report["errors"]:
+        print("\nErrors:")
+        for error in report["errors"]:
+            print(f"  - {error}")
+
+    print("\nNext actions:")
+    for action in report["nextActions"]:
+        print(f"  - {action}")
+
+
 def build_agent_workspace_index(
     session: dict[str, Any],
     status_report: dict[str, Any],
@@ -2314,6 +2700,10 @@ def build_agent_workspace_index(
         file_entry(path, kind="decision_export", label="Studio Cut decision JSON")
         for path in get_rescue_sync_decision_candidates(session)
     ]
+    transcript_candidates = [
+        file_entry(path, kind="episode_transcript", label="Timed transcript JSON")
+        for path in get_rescue_sync_transcript_candidates(session)
+    ]
 
     command_prefix = "python tools/studio-cut-local/studio_cut_local.py"
     workspace = "<episode-workspace>"
@@ -2358,6 +2748,7 @@ def build_agent_workspace_index(
         "inputs": role_entries,
         "files": files,
         "decisionCandidates": decision_candidates,
+        "transcriptCandidates": transcript_candidates,
         "syncSummary": {
             "syncJob": status_report.get("syncJob"),
             "syncReport": status_report.get("syncReport"),
@@ -2395,7 +2786,11 @@ def build_agent_workspace_index(
                 f"{command_prefix} render-rescue-sync-session "
                 f"--episode-dir {workspace} --dry-run"
             ),
+            "agentEditSession": (
+                f"{command_prefix} agent-edit-session --episode-dir {workspace}"
+            ),
             "expectedDecisionExportPath": f"{edit}/{episode_id}-decisions.json",
+            "expectedTranscriptPath": f"{edit}/{episode_id}-transcript.json",
             "expectedRenderOutputPath": f"{renders}/{episode_id}-youtube-16x9.mp4",
         },
         "agentNextActions": build_agent_workspace_next_actions(status_report, session),
@@ -3933,6 +4328,160 @@ def run_apply_decision_ops(args: argparse.Namespace) -> int:
     write_json(args.out, output_payload)
     print_agent_decision_ops_result(result, dry_run=False, out_path=args.out)
     return 0
+
+
+def run_agent_edit_session(args: argparse.Namespace) -> int:
+    episode_dir = args.episode_dir.expanduser().resolve()
+    episode_id = args.episode_id.strip() if args.episode_id else None
+
+    if not episode_id:
+        episode_id = infer_rescue_sync_episode_id(episode_dir)
+
+    if not episode_id:
+        raise StudioCutCliError("--episode-id is required when it cannot be inferred")
+
+    session = build_rescue_sync_session(
+        episode_id=episode_id,
+        title=episode_id,
+        branch_id="main",
+        created_by=args.created_by,
+        episode_dir=episode_dir,
+        include_clip=True,
+    )
+    status_report = build_rescue_sync_status_report(session)
+    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else session["generatedDir"]
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    output_paths = {
+        "workspaceIndex": out_dir / "agent-workspace-index.json",
+        "review": out_dir / "agent-edit-review.json",
+        "suggestedOps": out_dir / "agent-suggested-ops.json",
+        "session": out_dir / "agent-edit-session.json",
+        "rationale": out_dir / "agent-edit-session.md",
+        "previewDecisions": session["editDir"] / f"{episode_id}-agent-preview-decisions.json",
+    }
+
+    workspace_index = build_agent_workspace_index(session, status_report)
+    write_json(output_paths["workspaceIndex"], workspace_index)
+
+    manifest_path = session["manifestPath"]
+    decisions_path_value = (
+        status_report.get("decisions", {}).get("path")
+        if isinstance(status_report.get("decisions"), dict)
+        else None
+    )
+    decisions_path = Path(decisions_path_value) if decisions_path_value else None
+    transcript_path = find_agent_edit_session_transcript_path(
+        session=session,
+        explicit_path=args.transcript,
+    )
+    report_errors: list[str] = []
+    report_warnings: list[str] = []
+    review: dict[str, Any] | None = None
+    suggested_ops: dict[str, Any] | None = None
+    operation_preview: dict[str, Any] | None = None
+    preview_decisions_written = False
+
+    if not manifest_path.is_file():
+        report_errors.append(f"missing Episode Manifest: {manifest_path}")
+    if not decisions_path or not decisions_path.is_file():
+        report_errors.append(
+            "missing Studio Cut decision export; expected one of: "
+            + ", ".join(str(path) for path in get_rescue_sync_decision_candidates(session))
+        )
+
+    if not report_errors:
+        manifest = load_json_file(manifest_path, "manifest")
+        validate_manifest(manifest)
+        decisions_payload = load_json_file(decisions_path, "decisions")
+        decision_events = parse_decision_events(decisions_payload)
+        transcript = (
+            parse_episode_transcript(
+                load_json_file(transcript_path, "transcript"),
+                manifest=manifest,
+            )
+            if transcript_path
+            else None
+        )
+        review = build_agent_edit_review_report(
+            manifest=manifest,
+            decision_events=decision_events,
+            profile=args.profile,
+            manifest_path=manifest_path,
+            decisions_path=decisions_path,
+            transcript=transcript,
+            transcript_path=transcript_path,
+        )
+        review = sanitize_agent_workspace_payload(review, episode_dir)
+        suggested_ops = build_agent_suggested_ops_payload(
+            report=review,
+            manifest=manifest,
+            decision_events=decision_events,
+        )
+        operation_preview_result = apply_agent_decision_ops(
+            manifest=manifest,
+            decision_events=decision_events,
+            ops_payload=suggested_ops,
+            created_by=args.created_by,
+        )
+        operation_preview = summarize_agent_operation_preview(
+            operation_preview_result
+        )
+
+        if operation_preview_result["errors"]:
+            report_warnings.append(
+                "Suggested operations have preview errors; inspect agent-suggested-ops.json before applying."
+            )
+
+        if args.write_preview_decisions and not operation_preview_result["errors"]:
+            output_payload = {
+                "schemaVersion": 1,
+                "exportedAt": operation_preview_result["appliedAt"],
+                "projectId": operation_preview_result["projectId"],
+                "branchId": operation_preview_result["branchId"],
+                "decisionEvents": operation_preview_result["decisionEvents"],
+                "agentEdit": {
+                    "appliedAt": operation_preview_result["appliedAt"],
+                    "createdBy": args.created_by,
+                    "operationCount": operation_preview_result["operationCount"],
+                    "appliedOperationCount": operation_preview_result[
+                        "appliedOperationCount"
+                    ],
+                    "dryRun": False,
+                    "source": "agent-edit-session preview",
+                },
+            }
+            write_json(output_paths["previewDecisions"], output_payload)
+            preview_decisions_written = True
+
+        write_json(output_paths["review"], review)
+        write_json(output_paths["suggestedOps"], suggested_ops)
+
+    session_report = build_agent_edit_session_report(
+        session=session,
+        status_report=status_report,
+        workspace_index=workspace_index,
+        review=review,
+        suggested_ops=suggested_ops,
+        operation_preview=operation_preview,
+        transcript_path=transcript_path,
+        output_paths=output_paths,
+        preview_decisions_written=preview_decisions_written,
+        warnings=report_warnings,
+        errors=report_errors,
+    )
+    write_json(output_paths["session"], session_report)
+    output_paths["rationale"].write_text(
+        build_agent_edit_session_markdown(session_report),
+        encoding="utf-8",
+    )
+
+    if args.json:
+        print(json.dumps(session_report, indent=2))
+    else:
+        print_agent_edit_session_report(session_report)
+
+    return 0 if not session_report["errors"] else 1
 
 
 def parse_episode_transcript(

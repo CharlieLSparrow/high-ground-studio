@@ -250,6 +250,33 @@ locations, readiness flags, share URL, and command templates. Paths are relative
 to `<episode-workspace>` and local filesystem roots are intentionally omitted.
 Use it when handing a local Episode 4 workspace to Codex or another agent.
 
+## One-Command Agent Edit Session
+
+After a local Rescue Sync workspace has a generated manifest and an exported
+decision JSON, run:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-edit-session \
+  --episode-dir path/to/episode-workspace
+```
+
+The command finds the standard workspace files, writes a fresh sanitized
+`generated/agent-workspace-index.json`, runs `agent-review-edit`, writes
+`generated/agent-edit-review.json`, writes
+`generated/agent-suggested-ops.json`, and produces a concise
+`generated/agent-edit-session.md` rationale for a human or agent to inspect.
+
+If a transcript exists at `edit/<episode-id>-transcript.json`,
+`edit/episode-transcript.json`, `edit/transcript.json`, or the matching
+`generated/` names, the session includes transcript-aware review automatically.
+Use `--transcript path/to/transcript.json` to override discovery.
+
+Add `--write-preview-decisions` to write
+`edit/<episode-id>-agent-preview-decisions.json`. That file applies suggested
+operations to a copy of the current decision export; it does not mutate the
+original. Treat it as a preview/checkpoint until a human accepts it or imports
+the operation JSON in the browser cockpit.
+
 ## Current Limits
 
 - Agents still need human judgment for content taste, rhythm, and clip choice.
@@ -266,6 +293,5 @@ Use it when handing a local Episode 4 workspace to Codex or another agent.
 
 - Add stronger review reports for awkward camera holds, long silence, repeated
   Cut spans, and missing Clip context.
-- Add a one-command agent editing assistant flow that reads the workspace index,
-  transcript, Sync Map, and decision JSON, then writes suggested operations plus
-  a human-readable rationale.
+- Teach the one-command agent edit session to include Sync Map render QA and
+  transcript/proxy screenshots when those artifacts exist.

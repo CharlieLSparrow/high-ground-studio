@@ -153,6 +153,22 @@ The index uses relative paths and `<episode-workspace>` command templates so
 agents can reason about the folder without copying private absolute paths into
 handoffs.
 
+After decisions are exported, use the one-command agent edit session for a
+transcript-aware assistant pass:
+
+```bash
+python tools/studio-cut-local/studio_cut_local.py agent-edit-session \
+  --episode-dir ~/Movies/StudioCut/episode-004 \
+  --write-preview-decisions
+```
+
+It writes `generated/agent-edit-review.json`,
+`generated/agent-suggested-ops.json`, and
+`generated/agent-edit-session.md`. If a transcript exists at
+`edit/episode-004-transcript.json`, it is included automatically. The preview
+decision file is a copy for inspection; do not replace the real export until the
+suggested operations make sense.
+
 Use that status report as the checklist. It says what is missing, whether the
 generated package is ready to publish, whether exported decisions are present,
 and what command to run next.
