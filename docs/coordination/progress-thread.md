@@ -1387,3 +1387,11 @@ checks, blockers, and next handoff.
   `010fcd7a-a46a-4352-901f-a96f9f9be94b`; final smokes passed for
   `/api/health`, `/content-studio`, `/manuscript/live`, and unauthenticated
   `401` on `/api/manuscript/live-rooms`.
+- Started follow-up branch `codex/manuscript-live-room-snapshot-start-001` so
+  `/manuscript/live` can seed new rooms from the latest Manuscript Library
+  snapshot and save checkpoints back to the selected manuscript.
+- Validation passed on the snapshot-start branch:
+  `pnpm studio:manuscript:live-room:test`, `pnpm studio:cloudrun:test`,
+  `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
+  sandbox after the known Turbopack port-binding failure, and
+  `git diff --check`.

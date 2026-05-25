@@ -156,3 +156,15 @@ Rollback from this final deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00049-lt2=100
 ```
+
+## Snapshot Start Follow-Up
+
+The next live-room slice lets Charlie start a room from the latest saved
+Manuscript Library snapshot instead of pasting text manually. Room creation
+stores the selected manuscript id when present, and `Save manual snapshot`
+writes the live-room checkpoint back under that same manuscript.
+
+The live editor still uses plain text. Loading from a Manuscript Desk snapshot
+extracts headings, paragraphs, and list items into readable text blocks; rich
+marks, quote reviews, structure regions, and publication metadata remain in the
+manual snapshot system rather than the live textarea.

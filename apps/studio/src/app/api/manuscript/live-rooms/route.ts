@@ -91,6 +91,10 @@ export async function POST(request: NextRequest) {
       manuscriptId: requestBody?.manuscriptId,
     });
 
+    if (!room) {
+      return studioJsonError("Selected manuscript was not found.", 404);
+    }
+
     return NextResponse.json({ ok: true, room }, { status: 201 });
   } catch (error) {
     return liveRoomServiceUnavailable(error);

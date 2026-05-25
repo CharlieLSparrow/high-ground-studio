@@ -192,12 +192,14 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(route, /getStudioApiActor/);
   assert.match(route, /getStudioDatabaseUrl/);
   assert.match(route, /createStudioManuscriptLiveRoom/);
+  assert.match(route, /manuscriptId/);
   assert.match(updateRoute, /appendStudioManuscriptLiveRoomUpdate/);
   assert.match(updateRoute, /listStudioManuscriptLiveRoomUpdates/);
   assert.match(presenceRoute, /heartbeatStudioManuscriptLivePresence/);
   assert.match(serverModel, /studioManuscriptLiveRoom/);
   assert.match(serverModel, /studioManuscriptLiveRoomUpdate/);
   assert.match(serverModel, /studioManuscriptLivePresence/);
+  assert.match(serverModel, /id: manuscriptId, ownerEmail, archivedAt: null/);
   assert.match(serverModel, /where: \{ id: input\.roomId, archivedAt: null \}/);
   assert.doesNotMatch(
     serverModel,
@@ -206,6 +208,12 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(schema, /model StudioManuscriptLiveRoom/);
   assert.match(schema, /model StudioManuscriptLiveRoomUpdate/);
   assert.match(schema, /model StudioManuscriptLivePresence/);
+  assert.match(client, /\/api\/manuscript\/library/);
+  assert.match(client, /\/api\/manuscript\/snapshots\/latest\?manuscriptId=/);
+  assert.match(client, /createLiveRoomTextFromManuscriptDraft/);
+  assert.match(client, /manuscriptId: selectedManuscriptId \|\| null/);
+  assert.match(client, /manuscriptId: activeRoom\.manuscriptId/);
+  assert.match(client, /Load latest snapshot/);
   assert.match(client, /Copy room link/);
   assert.match(client, /Save manual snapshot/);
 });

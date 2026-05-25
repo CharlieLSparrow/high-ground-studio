@@ -228,7 +228,7 @@ export async function createStudioManuscriptLiveRoom(input: {
   title: unknown;
   initialText?: unknown;
   manuscriptId?: unknown;
-}): Promise<StudioManuscriptLiveRoomDetail> {
+}): Promise<StudioManuscriptLiveRoomDetail | null> {
   const ownerEmail = normalizeOwnerEmail(input.ownerEmail);
   const title = normalizeLiveRoomTitle(input.title);
   const initialText = normalizeInitialText(input.initialText);
@@ -240,25 +240,42 @@ export async function createStudioManuscriptLiveRoom(input: {
       : null;
   const prisma = getPrismaClient();
 
-  const room = await prisma.studioManuscriptLiveRoom.create({
-    data: {
-      ownerEmail,
-      manuscriptId,
-      title,
-      schemaVersion: STUDIO_MANUSCRIPT_LIVE_ROOM_SCHEMA_VERSION,
-      ydocUpdate: Buffer.from(initialUpdate),
-      plainText: initialText,
-      wordCount: stats.words,
-      characterCount: stats.characters,
-      updatedByEmail: ownerEmail,
-    },
-    include: {
-      presences: {
-        where: createActivePresenceWhere(),
-        orderBy: { lastSeenAt: "desc" },
+  const room = await prisma.$transaction(async (tx) => {
+    if (manuscriptId) {
+      const manuscript = await tx.studioManuscript.findFirst({
+        where: { id: manuscriptId, ownerEmail, archivedAt: null },
+        select: { id: true },
+      });
+
+      if (!manuscript) {
+        return null;
+      }
+    }
+
+    return tx.studioManuscriptLiveRoom.create({
+      data: {
+        ownerEmail,
+        manuscriptId,
+        title,
+        schemaVersion: STUDIO_MANUSCRIPT_LIVE_ROOM_SCHEMA_VERSION,
+        ydocUpdate: Buffer.from(initialUpdate),
+        plainText: initialText,
+        wordCount: stats.words,
+        characterCount: stats.characters,
+        updatedByEmail: ownerEmail,
       },
-    },
+      include: {
+        presences: {
+          where: createActivePresenceWhere(),
+          orderBy: { lastSeenAt: "desc" },
+        },
+      },
+    });
   });
+
+  if (!room) {
+    return null;
+  }
 
   return mapRoomDetail(room);
 }
