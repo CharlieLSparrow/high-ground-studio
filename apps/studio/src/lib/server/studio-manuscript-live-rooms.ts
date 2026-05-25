@@ -267,13 +267,11 @@ export async function getStudioManuscriptLiveRoom(input: {
   ownerEmail: string;
   roomId: string;
 }): Promise<StudioManuscriptLiveRoomDetail | null> {
-  const ownerEmail = normalizeOwnerEmail(input.ownerEmail);
   const prisma = getPrismaClient();
 
   const room = await prisma.studioManuscriptLiveRoom.findFirst({
     where: {
       id: input.roomId,
-      ownerEmail,
       archivedAt: null,
     },
     include: {
@@ -293,7 +291,6 @@ export async function listStudioManuscriptLiveRoomUpdates(input: {
   afterClock: number;
   limit?: number;
 }): Promise<StudioManuscriptLiveRoomUpdateSummary[]> {
-  const ownerEmail = normalizeOwnerEmail(input.ownerEmail);
   const afterClock = Math.max(Math.floor(input.afterClock), 0);
   const take = Math.min(
     Math.max(Math.floor(input.limit ?? MAX_LIVE_ROOM_UPDATE_LIMIT), 1),
@@ -302,7 +299,7 @@ export async function listStudioManuscriptLiveRoomUpdates(input: {
   const prisma = getPrismaClient();
 
   const room = await prisma.studioManuscriptLiveRoom.findFirst({
-    where: { id: input.roomId, ownerEmail, archivedAt: null },
+    where: { id: input.roomId, archivedAt: null },
     select: { id: true },
   });
 
@@ -343,7 +340,7 @@ export async function appendStudioManuscriptLiveRoomUpdate(input: {
 
   return prisma.$transaction(async (tx) => {
     const room = await tx.studioManuscriptLiveRoom.findFirst({
-      where: { id: input.roomId, ownerEmail, archivedAt: null },
+      where: { id: input.roomId, archivedAt: null },
       include: {
         presences: {
           where: createActivePresenceWhere(),
@@ -411,7 +408,7 @@ export async function heartbeatStudioManuscriptLivePresence(input: {
 
   return prisma.$transaction(async (tx) => {
     const room = await tx.studioManuscriptLiveRoom.findFirst({
-      where: { id: input.roomId, ownerEmail, archivedAt: null },
+      where: { id: input.roomId, archivedAt: null },
       select: { id: true },
     });
 
@@ -455,11 +452,10 @@ export async function listStudioManuscriptLivePresence(input: {
   ownerEmail: string;
   roomId: string;
 }): Promise<StudioManuscriptLivePresenceSummary[] | null> {
-  const ownerEmail = normalizeOwnerEmail(input.ownerEmail);
   const prisma = getPrismaClient();
 
   const room = await prisma.studioManuscriptLiveRoom.findFirst({
-    where: { id: input.roomId, ownerEmail, archivedAt: null },
+    where: { id: input.roomId, archivedAt: null },
     select: { id: true },
   });
 
