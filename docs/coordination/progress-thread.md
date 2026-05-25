@@ -6,6 +6,63 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` WorldHub provider integration workspace
+
+- Added database-backed WorldHub integration infrastructure:
+  - `WorldHubProviderConnection`
+  - `WorldHubProviderEvent`
+  - `WorldHubProviderSyncJob`
+  - `WorldHubCatalogItem`
+  - `WorldHubOffer`
+  - `WorldHubCart`
+  - `WorldHubOrder`
+  - `WorldHubFulfillmentJob`
+- Rebuilt `/team/worldhub` as a dynamic team-gated integration command center
+  for Stripe, Patreon, Google Calendar, merch storefront, merch fulfillment,
+  Resend, and the app-owned cart boundary.
+- Added `Initialize / Refresh Integrations` to upsert provider connection rows
+  and record env-name readiness without storing secret values or calling
+  providers.
+- Added focused readiness tests in `pnpm worldhub:integrations:test`.
+- Guardrails preserved: no secret-value storage, no payment-card handling, no
+  Stripe/Patreon/Google Calendar/merch provider calls, no checkout session
+  creation, no webhook processing, no calendar event mutation, and no active
+  merch fulfillment.
+- Validation passed: `pnpm worldhub:integrations:test`,
+  `pnpm db:generate`, `pnpm worldhub:domain:typecheck`,
+  `pnpm progress:story:test`, `pnpm web:cloudrun:test`,
+  `pnpm --filter web exec next build --webpack`, and `git diff --check`.
+- Local functional commit: `3364428`
+  `feat(web): add WorldHub integration workspace`.
+- Pushed final deploy head `2d165a8`
+  `docs: log WorldHub integration workspace`.
+- Live schema sync:
+  - Cloud Build `ce91a3d8-7492-499b-818e-9a30f56a6f24` built
+    `prisma-db-push:2d165a8`.
+  - Cloud Run Job `web-cloudsql-db-push-2d165a8`, execution
+    `web-cloudsql-db-push-2d165a8-8zbxl`, completed successfully.
+  - Logs reported `Your database is now in sync with your Prisma schema`.
+- Deployed web directly through `pnpm web:cloudrun:deploy`:
+  - Cloud Build `fead82d5-7407-4b8e-a0f6-95733e809863`
+  - Web image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:2d165a8`
+  - Web revision `web-00057-tww`, serving 100%
+- Live smoke passed:
+  - `https://web-hm2odnvjga-uc.a.run.app/api/health` returned 200.
+  - `https://web-hm2odnvjga-uc.a.run.app/` returned 200.
+  - `https://web-hm2odnvjga-uc.a.run.app/projection-stage/import` returned
+    200.
+  - `https://web-hm2odnvjga-uc.a.run.app/team/progress` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://web-hm2odnvjga-uc.a.run.app/team/hgo-publish-queue` returned the
+    expected unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new WorldHub integration story entry.
+  - `https://app.highgroundodyssey.com/team/worldhub` returned the expected
+    unauthenticated sign-in redirect.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00055-b4r=100`
+
 ### Codex / `main` HGO durable publish intent
 
 - Added the first durable private publish-intent database slice for HGO episode

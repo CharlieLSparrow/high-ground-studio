@@ -147,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00055-b4r` from `main` commit `6416979`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00053-2tv`
+  - latest web deploy is `web-00057-tww` from `main` commit `2d165a8`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00055-b4r`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
@@ -166,9 +166,16 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - future offers, entitlements, merch, Patreon, coaching-package follow-through
 - current status:
   - provider-neutral foundation and current workflow map are merged to `main`
-  - no Stripe/Patreon/POD/provider calls are active
+  - `/team/worldhub` is now a database-backed integration command center for
+    provider readiness, carts, orders, fulfillment, provider events, and sync
+    jobs
+  - live schema sync ran through Cloud Run Job `web-cloudsql-db-push-2d165a8`,
+    execution `web-cloudsql-db-push-2d165a8-8zbxl`
+  - no Stripe/Patreon/POD/Google Calendar provider calls are active yet
 - next likely slice:
-  - read-only WorldHub summary of current workflows, then deliberate persistence or service boundary if that becomes the smallest useful move
+  - Google Calendar appointment sync job first, then Stripe hosted checkout and
+    webhook capture, then Patreon member/tier event capture, then merch catalog
+    and fulfillment handoff
 
 ### Manuscript Collaboration
 
