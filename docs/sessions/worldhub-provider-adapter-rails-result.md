@@ -110,21 +110,21 @@ pnpm --filter web exec next build --webpack
 The final deployed head was:
 
 ```text
-a166c4f chore(web): wire optional WorldHub provider secrets
+cbd4f60 fix(web): mount only ready provider secrets
 ```
 
 Web image:
 
 ```text
-Cloud Build: 908aecbb-4eb1-4678-8eba-898cae520d6b
-image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:a166c4f
+Cloud Build: e9974815-da48-4fec-ace6-65e53d7d4a07
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:cbd4f60
 ```
 
 Live Cloud Run:
 
 ```text
 service: web
-revision: web-00062-bcw
+revision: web-00065-89q
 traffic: 100%
 service URL: https://web-hm2odnvjga-uc.a.run.app
 custom domain: https://app.highgroundodyssey.com
@@ -139,7 +139,8 @@ optional provider secrets mounted: 0
 No optional Stripe, Patreon, Google Calendar, merch, or Resend provider secrets
 exist in Secret Manager yet. After one deploy briefly tried to default
 `AUTH_URL` and `HGO_SITE_URL` to the generated Cloud Run URL, the live service
-was immediately corrected and routed to `web-00062-bcw` with:
+was immediately corrected, and the final deploy was routed to `web-00065-89q`
+with:
 
 ```text
 AUTH_URL=https://app.highgroundodyssey.com
@@ -168,7 +169,7 @@ Immediate Cloud Run rollback:
 gcloud run services update-traffic web \
   --project=high-ground-odyssey \
   --region=us-central1 \
-  --to-revisions=web-00059-xls=100
+  --to-revisions=web-00062-bcw=100
 ```
 
 ## Operator Notes

@@ -147,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00062-bcw` from `main` commit `a166c4f`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00059-xls`
+  - latest web deploy is `web-00065-89q` from `main` commit `cbd4f60`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00062-bcw`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
