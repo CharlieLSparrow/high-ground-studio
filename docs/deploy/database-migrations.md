@@ -585,6 +585,12 @@ The tables do not call external providers, send notifications, create
 subscription state, or publish public content. `/team/clients` writes the grant
 rows, and `/dashboard` reads enabled client-visible grants.
 
+Live operator note from 2026-05-25: this schema was applied to the live web
+Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-456cc68`, execution
+`web-cloudsql-db-push-456cc68-kxx65`, using image
+`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:456cc68`.
+Logs reported that the database is now in sync with the Prisma schema.
+
 Apply the schema to a target database only through the approved operator path
 for that environment:
 

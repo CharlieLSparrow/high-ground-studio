@@ -147,10 +147,13 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00067-2ww` from `main` commit `02e96df`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00066-xgr`
+  - latest web deploy is `web-00072-2tl` from `main` commit `456cc68`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00071-w7g`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
+  - `/team/clients` now includes a manual coaching feature catalog and
+    client-specific feature grants; `/dashboard` shows enabled client-visible
+    coaching tools
 
 ### WorldHub / Business Infrastructure
 

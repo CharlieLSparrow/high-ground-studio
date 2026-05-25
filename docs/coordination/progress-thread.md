@@ -6,6 +6,50 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `main` coaching feature controls
+
+- Added manual coaching feature access independent of subscription tiers:
+  - `CoachingFeature`
+  - `CoachingFeatureGrant`
+- Added a seedable coaching tool catalog with session prep, weekly commitments,
+  reflection journal, values scorecard, milestone tracker, resource library,
+  post-session actions, and between-session check-ins.
+- Extended `/team/clients` so staff can sync the tool catalog and enable,
+  pause, or disable specific tools for one client with client-visible or
+  coach-only visibility.
+- Extended `/dashboard` with a Coaching Tools panel that shows enabled,
+  non-expired, client-visible grants.
+- Validation passed: `pnpm db:generate`, `pnpm coaching:features:test`,
+  `pnpm web:cloudrun:test`, `pnpm --filter web exec next build --webpack`, and
+  `git diff --check`.
+- Functional commit: `c80eeb4`
+  `feat(web): add coaching feature grants`.
+- Progress story commit: `456cc68`
+  `docs: record coaching feature controls`.
+- Live schema sync:
+  - Cloud Build `6a867633-5cad-4811-9a2e-d15b6f81d7b2`
+  - Image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:456cc68`
+  - Cloud Run Job `web-cloudsql-db-push-456cc68`, execution
+    `web-cloudsql-db-push-456cc68-kxx65`, completed successfully.
+  - Logs reported `Your database is now in sync with your Prisma schema`.
+- Deployed web through `pnpm web:cloudrun:deploy`:
+  - Cloud Build `223faf4d-a16e-4013-9382-659dbd2c8ec2`
+  - Web image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:456cc68`
+  - Web revision `web-00072-2tl`, serving 100%
+  - optional provider/growth secrets mounted: `0`
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/team/clients` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/dashboard` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes
+    `Coaching tools get manual controls` with commit `c80eeb4`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00071-w7g=100`
+
 ### Codex / `main` WorldHub monetization research library
 
 - Added `WorldHubMonetizationResearchNote` as an app-owned research table for
