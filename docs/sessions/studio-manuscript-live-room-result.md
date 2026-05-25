@@ -129,3 +129,30 @@ Rollback:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00048-hs4=100
 ```
+
+## Shared-Link Fix Deployment
+
+Follow-up PR #27 fixed live-room access so any authenticated Studio-access user
+with the room URL can join the room. Recent room listing remains creator-scoped.
+
+```text
+main commit: 9e46ce6
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:9e46ce6
+Cloud Build: 010fcd7a-a46a-4352-901f-a96f9f9be94b
+revision: studio-00051-zl8
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+Smokes passed:
+
+- `/api/health`
+- `/content-studio`
+- `/manuscript/live` direct Cloud Run URL returns `HTTP 200`
+- `/api/manuscript/live-rooms` direct Cloud Run URL returns the expected
+  unauthenticated `401`
+
+Rollback from this final deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00049-lt2=100
+```
