@@ -306,12 +306,19 @@ Operator checks while editing:
 7. Tag semantic state decisions.
 8. Watch the Decision Timeline. Colored source-time blocks should match the
    derived segments; click a block to jump to its in-point.
-9. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
+9. Use Timeline Power Tools for faster passes:
+   - add markers at topic changes, clips, sponsor reads, or “fix this later”
+     moments
+   - use `Set In` / `Set Out`, the range sliders, or 1-second nudges to select
+     a source range and bulk-apply a state
+   - use `Set From Here To Next Marker` when a state should hold until the next
+     beat marker
+10. Use `Save Local Checkpoint` during a messy pass if you want an in-browser
    restore point.
-10. Use `Export Checkpoint` before any risky cleanup/import pass or before
+11. Use `Export Checkpoint` before any risky cleanup/import pass or before
    leaving the machine.
-11. Export final decision JSON before rendering.
-12. Save or move the downloaded decision file to:
+12. Export final decision JSON before rendering.
+13. Save or move the downloaded decision file to:
 
 ```text
 tools/studio-cut-local/output/episode-004-bootstrap/episode-004-decisions.json

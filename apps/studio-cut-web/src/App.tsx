@@ -102,6 +102,8 @@ const DECISION_HISTORY_STORAGE_KEY =
   "high-ground-studio.studio-cut.decision-history.v1";
 const LOCAL_CHECKPOINTS_STORAGE_KEY =
   "high-ground-studio.studio-cut.local-checkpoints.v1";
+const TIMELINE_MARKERS_STORAGE_KEY =
+  "high-ground-studio.studio-cut.timeline-markers.v1";
 const SELECTED_ROOM_STORAGE_KEY =
   "high-ground-studio.studio-cut.selected-room.v1";
 const LOCAL_PROXY_VIDEO_ACCEPT =
@@ -112,6 +114,7 @@ const SMALL_SCRUB_STEP_MS = 1000;
 const LARGE_SCRUB_STEP_MS = 10000;
 const MAX_DECISION_HISTORY_ENTRIES = 40;
 const MAX_LOCAL_CHECKPOINTS = 12;
+const MAX_TIMELINE_MARKERS = 120;
 const PRESENCE_UPDATE_INTERVAL_MS = 5000;
 const STALE_PRESENCE_MS = 30000;
 
@@ -178,6 +181,28 @@ type DecisionRefinementDraft = {
   sourceTimeMs: number;
   state: ProgramState;
   note: string;
+};
+
+type TimelineMarker = {
+  id: string;
+  projectId: string;
+  branchId: string;
+  episodeId?: string;
+  sourceTimeMs: number;
+  label: string;
+  note?: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+type RangeSelection = {
+  startSourceTimeMs?: number;
+  endSourceTimeMs?: number;
+};
+
+type NormalizedRangeSelection = {
+  startSourceTimeMs: number;
+  endSourceTimeMs: number;
 };
 
 type PaneRectField = keyof SourcePaneRect;
@@ -368,6 +393,12 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [localCheckpoints, setLocalCheckpoints] = useState<
     LocalDecisionCheckpoint[]
   >(loadStoredLocalCheckpoints);
+  const [timelineMarkers, setTimelineMarkers] = useState<TimelineMarker[]>(
+    loadStoredTimelineMarkers,
+  );
+  const [markerDraft, setMarkerDraft] = useState("");
+  const [rangeSelection, setRangeSelection] = useState<RangeSelection>({});
+  const [rangeState, setRangeState] = useState<ProgramState>("both");
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [agentOpsPreview, setAgentOpsPreview] =
@@ -438,6 +469,31 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const cutDecisionCount = sortedEvents.filter(
     (event) => event.state === "cut",
   ).length;
+  const currentRoomMarkers = useMemo(
+    () =>
+      sortTimelineMarkers(
+        timelineMarkers.filter(
+          (marker) =>
+            marker.projectId === roomSelection.projectId &&
+            marker.branchId === roomSelection.branchId &&
+            (!episodeManifest?.id || !marker.episodeId || marker.episodeId === episodeManifest.id),
+        ),
+      ),
+    [
+      episodeManifest?.id,
+      roomSelection.branchId,
+      roomSelection.projectId,
+      timelineMarkers,
+    ],
+  );
+  const normalizedRange = normalizeRangeSelection(
+    rangeSelection,
+    sourceDurationMs,
+  );
+  const nextMarkerAfterPlayhead = findNextTimelineMarker(
+    currentRoomMarkers,
+    sourceTimeMs,
+  );
   const exportFileNamePreview = getDecisionExportFileName(episodeManifest, {
     projectId: roomSelection.projectId,
     branchId: roomSelection.branchId,
@@ -809,6 +865,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredLocalCheckpoints(localCheckpoints);
   }, [localCheckpoints]);
+
+  useEffect(() => {
+    saveStoredTimelineMarkers(timelineMarkers);
+  }, [timelineMarkers]);
 
   useEffect(() => {
     const videoToRevoke = localProxyVideo;
@@ -1229,6 +1289,209 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       );
       clearDecisions();
     }
+  }
+
+  function addTimelineMarkerAtPlayhead() {
+    const label = markerDraft.trim() || `Marker ${formatSourceTime(sourceTimeMs)}`;
+    const marker: TimelineMarker = {
+      id: createTimelineMarkerId(),
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      ...(episodeManifest?.id ? { episodeId: episodeManifest.id } : {}),
+      sourceTimeMs: clampSourceTime(sourceTimeMs, sourceDurationMs),
+      label,
+      createdBy: createdBy ?? config.createdBy,
+      createdAt: new Date().toISOString(),
+    };
+
+    setTimelineMarkers((currentMarkers) =>
+      sortTimelineMarkers([marker, ...currentMarkers]).slice(0, MAX_TIMELINE_MARKERS),
+    );
+    setMarkerDraft("");
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Added marker ${label} at ${formatSourceTime(marker.sourceTimeMs)}`,
+    }));
+  }
+
+  function removeTimelineMarker(markerId: string) {
+    const marker = timelineMarkers.find(
+      (candidateMarker) => candidateMarker.id === markerId,
+    );
+
+    setTimelineMarkers((currentMarkers) =>
+      currentMarkers.filter((currentMarker) => currentMarker.id !== markerId),
+    );
+
+    if (marker) {
+      setDecisionHistory((currentHistory) => ({
+        ...currentHistory,
+        lastAction: `Removed marker ${marker.label}`,
+      }));
+    }
+  }
+
+  function jumpToTimelineMarker(marker: TimelineMarker) {
+    scrubToSourceTime(marker.sourceTimeMs);
+  }
+
+  function setRangeStartAtPlayhead() {
+    setRangeSelection((currentRange) => ({
+      ...currentRange,
+      startSourceTimeMs: clampSourceTime(sourceTimeMs, sourceDurationMs),
+    }));
+  }
+
+  function setRangeEndAtPlayhead() {
+    setRangeSelection((currentRange) => ({
+      ...currentRange,
+      endSourceTimeMs: clampSourceTime(sourceTimeMs, sourceDurationMs),
+    }));
+  }
+
+  function nudgeRangeHandle(handle: "start" | "end", deltaMs: number) {
+    setRangeSelection((currentRange) => {
+      const key = handle === "start" ? "startSourceTimeMs" : "endSourceTimeMs";
+      const currentValue = currentRange[key] ?? sourceTimeMs;
+
+      return {
+        ...currentRange,
+        [key]: clampSourceTime(currentValue + deltaMs, sourceDurationMs),
+      };
+    });
+  }
+
+  function dragRangeHandle(handle: "start" | "end", nextSourceTimeMs: number) {
+    setRangeSelection((currentRange) => {
+      const key = handle === "start" ? "startSourceTimeMs" : "endSourceTimeMs";
+
+      return {
+        ...currentRange,
+        [key]: clampSourceTime(nextSourceTimeMs, sourceDurationMs),
+      };
+    });
+  }
+
+  function clearRangeSelection() {
+    setRangeSelection({});
+  }
+
+  function applyRangeState() {
+    if (!normalizedRange) {
+      setImportMessage("Set both range handles before applying a range state.");
+      return;
+    }
+
+    applyStateAcrossRange({
+      startSourceTimeMs: normalizedRange.startSourceTimeMs,
+      endSourceTimeMs: normalizedRange.endSourceTimeMs,
+      state: rangeState,
+      label: `Set ${PROGRAM_STATE_LABELS[rangeState]} from ${formatSourceTime(
+        normalizedRange.startSourceTimeMs,
+      )} to ${formatSourceTime(normalizedRange.endSourceTimeMs)}`,
+    });
+  }
+
+  function applyStateToNextMarker() {
+    const endSourceTimeMs = nextMarkerAfterPlayhead?.sourceTimeMs ?? sourceDurationMs;
+
+    if (endSourceTimeMs <= sourceTimeMs) {
+      setImportMessage("No future marker or episode time remains from the playhead.");
+      return;
+    }
+
+    applyStateAcrossRange({
+      startSourceTimeMs: sourceTimeMs,
+      endSourceTimeMs,
+      state: rangeState,
+      label: `Set ${PROGRAM_STATE_LABELS[rangeState]} from playhead to ${
+        nextMarkerAfterPlayhead
+          ? `marker ${nextMarkerAfterPlayhead.label}`
+          : "episode end"
+      }`,
+    });
+    setRangeSelection({
+      startSourceTimeMs: sourceTimeMs,
+      endSourceTimeMs,
+    });
+  }
+
+  function applyStateAcrossRange({
+    startSourceTimeMs,
+    endSourceTimeMs,
+    state,
+    label,
+  }: {
+    startSourceTimeMs: number;
+    endSourceTimeMs: number;
+    state: ProgramState;
+    label: string;
+  }) {
+    const start = clampSourceTime(startSourceTimeMs, sourceDurationMs);
+    const end = clampSourceTime(endSourceTimeMs, sourceDurationMs);
+
+    if (end <= start) {
+      setImportMessage("Range end must be after range start.");
+      return;
+    }
+
+    const restoreState = getCurrentDecisionEvent(decisionEvents, end)?.state;
+    const createdAt = new Date().toISOString();
+    const rangeEvents = [
+      createSyntheticDecisionEvent({
+        state,
+        sourceTimeMs: start,
+        createdAt,
+        note: `Range tool: ${label}`,
+      }),
+      ...(end < sourceDurationMs && restoreState && restoreState !== state
+        ? [
+            createSyntheticDecisionEvent({
+              state: restoreState,
+              sourceTimeMs: end,
+              createdAt,
+              note: `Range tool restore after ${PROGRAM_STATE_LABELS[state]}`,
+            }),
+          ]
+        : []),
+    ];
+    const nextEvents = mergeDecisionEvents([...decisionEvents, ...rangeEvents]);
+
+    stopProgramPlayback();
+    recordDecisionMutation(label, decisionEvents, nextEvents);
+    importDecisionEvents({ decisionEvents: rangeEvents });
+    setSelectedDecisionId(rangeEvents[0]?.id);
+    scrubToSourceTime(start);
+    setImportMessage(
+      `${label}. Added ${rangeEvents.length} semantic decision event${
+        rangeEvents.length === 1 ? "" : "s"
+      }.`,
+    );
+  }
+
+  function createSyntheticDecisionEvent({
+    state,
+    sourceTimeMs,
+    createdAt,
+    note,
+  }: {
+    state: ProgramState;
+    sourceTimeMs: number;
+    createdAt: string;
+    note: string;
+  }): DecisionEvent {
+    return {
+      id: createDecisionEventId(),
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      sourceTimeMs: clampSourceTime(sourceTimeMs, sourceDurationMs),
+      state,
+      createdBy: createdBy ?? config.createdBy,
+      createdAt,
+      clientId: sessionId,
+      operation: "upsert",
+      note,
+    };
   }
 
   function undoDecisionChange() {
@@ -3033,6 +3296,27 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             ))}
           </div>
         </section>
+
+        <TimelinePowerToolsPanel
+          markerDraft={markerDraft}
+          markers={currentRoomMarkers}
+          rangeSelection={rangeSelection}
+          normalizedRange={normalizedRange}
+          rangeState={rangeState}
+          sourceTimeMs={sourceTimeMs}
+          sourceDurationMs={sourceDurationMs}
+          nextMarker={nextMarkerAfterPlayhead}
+          onMarkerDraftChange={setMarkerDraft}
+          onAddMarker={addTimelineMarkerAtPlayhead}
+          onSetRangeStart={setRangeStartAtPlayhead}
+          onSetRangeEnd={setRangeEndAtPlayhead}
+          onNudgeRange={nudgeRangeHandle}
+          onDragRange={dragRangeHandle}
+          onClearRange={clearRangeSelection}
+          onRangeStateChange={setRangeState}
+          onApplyRange={applyRangeState}
+          onApplyToNextMarker={applyStateToNextMarker}
+        />
       </aside>
 
       <section className="lists-panel" aria-label="Decision and segment lists">
@@ -3186,9 +3470,17 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           </div>
           <DecisionTimeline
             segments={derivedSegments}
+            markers={currentRoomMarkers}
+            normalizedRange={normalizedRange}
             sourceDurationMs={sourceDurationMs}
             currentSegmentSourceEventId={currentSegment?.sourceEventId}
             onJump={scrubToSourceTime}
+          />
+          <MarkerLane
+            markers={currentRoomMarkers}
+            sourceDurationMs={sourceDurationMs}
+            onJump={jumpToTimelineMarker}
+            onRemove={removeTimelineMarker}
           />
           <SegmentList
             segments={derivedSegments}
@@ -5841,13 +6133,208 @@ function SegmentList({
   );
 }
 
+function TimelinePowerToolsPanel({
+  markerDraft,
+  markers,
+  rangeSelection,
+  normalizedRange,
+  rangeState,
+  sourceTimeMs,
+  sourceDurationMs,
+  nextMarker,
+  onMarkerDraftChange,
+  onAddMarker,
+  onSetRangeStart,
+  onSetRangeEnd,
+  onNudgeRange,
+  onDragRange,
+  onClearRange,
+  onRangeStateChange,
+  onApplyRange,
+  onApplyToNextMarker,
+}: {
+  markerDraft: string;
+  markers: TimelineMarker[];
+  rangeSelection: RangeSelection;
+  normalizedRange: NormalizedRangeSelection | null;
+  rangeState: ProgramState;
+  sourceTimeMs: number;
+  sourceDurationMs: number;
+  nextMarker?: TimelineMarker;
+  onMarkerDraftChange: (value: string) => void;
+  onAddMarker: () => void;
+  onSetRangeStart: () => void;
+  onSetRangeEnd: () => void;
+  onNudgeRange: (handle: "start" | "end", deltaMs: number) => void;
+  onDragRange: (handle: "start" | "end", nextSourceTimeMs: number) => void;
+  onClearRange: () => void;
+  onRangeStateChange: (state: ProgramState) => void;
+  onApplyRange: () => void;
+  onApplyToNextMarker: () => void;
+}) {
+  const rangeDurationMs = normalizedRange
+    ? normalizedRange.endSourceTimeMs - normalizedRange.startSourceTimeMs
+    : 0;
+
+  return (
+    <section className="timeline-power-tools-panel" aria-label="Timeline Power Tools">
+      <div className="panel-heading">
+        <div>
+          <h2>Timeline Power Tools</h2>
+          <p>Markers, range handles, and bulk state tagging</p>
+        </div>
+        <span className="panel-count-pill">
+          {markers.length} marker{markers.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="marker-control-row">
+        <label>
+          Marker label
+          <input
+            aria-label="Marker label"
+            type="text"
+            value={markerDraft}
+            onChange={(event) => onMarkerDraftChange(event.target.value)}
+            placeholder={`Marker ${formatSourceTime(sourceTimeMs)}`}
+          />
+        </label>
+        <button type="button" onClick={onAddMarker}>
+          Add Marker
+        </button>
+      </div>
+
+      <div className="timeline-power-grid">
+        <div>
+          <span>Playhead</span>
+          <strong>{formatSourceTime(sourceTimeMs)}</strong>
+        </div>
+        <div>
+          <span>Range In</span>
+          <strong>
+            {normalizedRange
+              ? formatSourceTime(normalizedRange.startSourceTimeMs)
+              : "Not set"}
+          </strong>
+        </div>
+        <div>
+          <span>Range Out</span>
+          <strong>
+            {normalizedRange
+              ? formatSourceTime(normalizedRange.endSourceTimeMs)
+              : "Not set"}
+          </strong>
+        </div>
+        <div>
+          <span>Duration</span>
+          <strong>
+            {normalizedRange ? formatSourceTime(rangeDurationMs) : "Not set"}
+          </strong>
+        </div>
+        <div>
+          <span>Next marker</span>
+          <strong>
+            {nextMarker
+              ? `${nextMarker.label} · ${formatSourceTime(nextMarker.sourceTimeMs)}`
+              : formatSourceTime(sourceDurationMs)}
+          </strong>
+        </div>
+      </div>
+
+      <div className="range-control-grid">
+        <button type="button" onClick={onSetRangeStart}>
+          Set In
+        </button>
+        <button type="button" onClick={onSetRangeEnd}>
+          Set Out
+        </button>
+        <button type="button" onClick={() => onNudgeRange("start", -1000)}>
+          In -1s
+        </button>
+        <button type="button" onClick={() => onNudgeRange("start", 1000)}>
+          In +1s
+        </button>
+        <button type="button" onClick={() => onNudgeRange("end", -1000)}>
+          Out -1s
+        </button>
+        <button type="button" onClick={() => onNudgeRange("end", 1000)}>
+          Out +1s
+        </button>
+      </div>
+
+      <div className="range-slider-grid">
+        <label>
+          Drag In
+          <input
+            aria-label="Drag range in"
+            type="range"
+            min={0}
+            max={sourceDurationMs}
+            step={1000}
+            value={rangeSelection.startSourceTimeMs ?? sourceTimeMs}
+            onChange={(event) =>
+              onDragRange("start", Number(event.target.value))
+            }
+          />
+        </label>
+        <label>
+          Drag Out
+          <input
+            aria-label="Drag range out"
+            type="range"
+            min={0}
+            max={sourceDurationMs}
+            step={1000}
+            value={rangeSelection.endSourceTimeMs ?? sourceTimeMs}
+            onChange={(event) => onDragRange("end", Number(event.target.value))}
+          />
+        </label>
+      </div>
+
+      <div className="range-apply-row">
+        <label>
+          Range state
+          <select
+            aria-label="Range state"
+            value={rangeState}
+            onChange={(event) => onRangeStateChange(event.target.value as ProgramState)}
+          >
+            {PROGRAM_STATES.map((state) => (
+              <option key={state} value={state}>
+                {PROGRAM_STATE_LABELS[state]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={onApplyRange}
+          disabled={!normalizedRange}
+        >
+          Apply Range State
+        </button>
+        <button type="button" onClick={onApplyToNextMarker}>
+          Set From Here To Next Marker
+        </button>
+        <button type="button" onClick={onClearRange} disabled={!normalizedRange}>
+          Clear Range
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function DecisionTimeline({
   segments,
+  markers,
+  normalizedRange,
   sourceDurationMs,
   currentSegmentSourceEventId,
   onJump,
 }: {
   segments: DerivedSegment[];
+  markers: TimelineMarker[];
+  normalizedRange: NormalizedRangeSelection | null;
   sourceDurationMs: number;
   currentSegmentSourceEventId?: string;
   onJump: (sourceTimeMs: number) => void;
@@ -5863,6 +6350,52 @@ function DecisionTimeline({
         <span>{formatSourceTime(sourceDurationMs)} source duration</span>
       </div>
       <div className="timeline-strip">
+        {normalizedRange ? (
+          <div
+            className="timeline-range-selection"
+            style={
+              {
+                "--range-left": `${getTimelinePercent(
+                  normalizedRange.startSourceTimeMs,
+                  sourceDurationMs,
+                )}%`,
+                "--range-width": `${Math.max(
+                  getTimelinePercent(
+                    normalizedRange.endSourceTimeMs -
+                      normalizedRange.startSourceTimeMs,
+                    sourceDurationMs,
+                  ),
+                  0.5,
+                )}%`,
+              } as CSSProperties
+            }
+            aria-hidden="true"
+          >
+            <span>Selected range</span>
+          </div>
+        ) : null}
+        {markers.map((marker) => (
+          <button
+            key={marker.id}
+            className="timeline-marker-pin"
+            style={
+              {
+                "--marker-left": `${getTimelinePercent(
+                  marker.sourceTimeMs,
+                  sourceDurationMs,
+                )}%`,
+              } as CSSProperties
+            }
+            type="button"
+            onClick={() => onJump(marker.sourceTimeMs)}
+            title={`${marker.label} at ${formatSourceTime(marker.sourceTimeMs)}`}
+            aria-label={`Jump to marker ${marker.label} at ${formatSourceTime(
+              marker.sourceTimeMs,
+            )}`}
+          >
+            <span>{marker.label}</span>
+          </button>
+        ))}
         {segments.map((segment) => {
           const endSourceTimeMs = segment.endSourceTimeMs ?? sourceDurationMs;
           const durationMs = Math.max(
@@ -5901,8 +6434,61 @@ function DecisionTimeline({
       </div>
       <div className="timeline-legend">
         <span>Click a block to jump to its source in-point.</span>
+        <span>Markers and range overlays are browser-local power tools.</span>
         <span>Cut spans are inactive in playback, not deleted.</span>
       </div>
+    </section>
+  );
+}
+
+function MarkerLane({
+  markers,
+  sourceDurationMs,
+  onJump,
+  onRemove,
+}: {
+  markers: TimelineMarker[];
+  sourceDurationMs: number;
+  onJump: (marker: TimelineMarker) => void;
+  onRemove: (markerId: string) => void;
+}) {
+  return (
+    <section className="marker-lane" aria-label="Marker Lane">
+      <div className="timeline-header">
+        <strong>Marker Lane</strong>
+        <span>{markers.length} local marker{markers.length === 1 ? "" : "s"}</span>
+      </div>
+      {markers.length === 0 ? (
+        <p className="empty-state">
+          Add markers at review beats, sponsor reads, clips, or cleanup targets.
+        </p>
+      ) : (
+        <div className="marker-list">
+          {markers.map((marker) => (
+            <div key={marker.id} className="marker-row">
+              <button
+                type="button"
+                onClick={() => onJump(marker)}
+                aria-label={`Jump to marker ${marker.label}`}
+              >
+                <span>{marker.label}</span>
+                <small>
+                  {formatSourceTime(marker.sourceTimeMs)} /{" "}
+                  {formatSourceTime(sourceDurationMs)}
+                </small>
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onRemove(marker.id)}
+                aria-label={`Remove marker ${marker.label}`}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -5948,6 +6534,59 @@ function getSegmentAtSourceTime(
 
 function clampSourceTime(sourceTimeMs: number, sourceDurationMs: number) {
   return Math.min(sourceDurationMs, Math.max(0, sourceTimeMs));
+}
+
+function sortTimelineMarkers(markers: readonly TimelineMarker[]) {
+  return [...markers].sort(
+    (left, right) =>
+      left.sourceTimeMs - right.sourceTimeMs ||
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.id.localeCompare(right.id),
+  );
+}
+
+function normalizeRangeSelection(
+  rangeSelection: RangeSelection,
+  sourceDurationMs: number,
+): NormalizedRangeSelection | null {
+  if (
+    rangeSelection.startSourceTimeMs === undefined ||
+    rangeSelection.endSourceTimeMs === undefined
+  ) {
+    return null;
+  }
+
+  const start = clampSourceTime(
+    rangeSelection.startSourceTimeMs,
+    sourceDurationMs,
+  );
+  const end = clampSourceTime(rangeSelection.endSourceTimeMs, sourceDurationMs);
+
+  if (start === end) {
+    return null;
+  }
+
+  return {
+    startSourceTimeMs: Math.min(start, end),
+    endSourceTimeMs: Math.max(start, end),
+  };
+}
+
+function findNextTimelineMarker(
+  markers: readonly TimelineMarker[],
+  sourceTimeMs: number,
+) {
+  return sortTimelineMarkers(markers).find(
+    (marker) => marker.sourceTimeMs > sourceTimeMs,
+  );
+}
+
+function getTimelinePercent(sourceTimeMs: number, sourceDurationMs: number) {
+  if (sourceDurationMs <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, (sourceTimeMs / sourceDurationMs) * 100));
 }
 
 function getProxyVideoSourceTime(video: HTMLVideoElement) {
@@ -6292,6 +6931,40 @@ function saveStoredLocalCheckpoints(checkpoints: readonly LocalDecisionCheckpoin
   }
 }
 
+function loadStoredTimelineMarkers(): TimelineMarker[] {
+  try {
+    const rawValue = localStorage.getItem(TIMELINE_MARKERS_STORAGE_KEY);
+
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return sortTimelineMarkers(parsedValue.filter(isTimelineMarker)).slice(
+      0,
+      MAX_TIMELINE_MARKERS,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredTimelineMarkers(markers: readonly TimelineMarker[]) {
+  try {
+    localStorage.setItem(
+      TIMELINE_MARKERS_STORAGE_KEY,
+      JSON.stringify(sortTimelineMarkers(markers).slice(0, MAX_TIMELINE_MARKERS)),
+    );
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
 function createEmptyDecisionHistory(): DecisionHistoryState {
   return {
     undoStack: [],
@@ -6357,6 +7030,30 @@ function isLocalDecisionCheckpoint(
   );
 }
 
+function isTimelineMarker(value: unknown): value is TimelineMarker {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as TimelineMarker;
+
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.projectId === "string" &&
+    typeof candidate.branchId === "string" &&
+    (candidate.episodeId === undefined ||
+      typeof candidate.episodeId === "string") &&
+    typeof candidate.sourceTimeMs === "number" &&
+    Number.isFinite(candidate.sourceTimeMs) &&
+    candidate.sourceTimeMs >= 0 &&
+    typeof candidate.label === "string" &&
+    (candidate.note === undefined || typeof candidate.note === "string") &&
+    typeof candidate.createdBy === "string" &&
+    typeof candidate.createdAt === "string" &&
+    !Number.isNaN(Date.parse(candidate.createdAt))
+  );
+}
+
 function trimDecisionHistoryStack(entries: readonly DecisionHistoryEntry[]) {
   return entries.slice(-MAX_DECISION_HISTORY_ENTRIES);
 }
@@ -6387,6 +7084,22 @@ function createLocalCheckpointId() {
   }
 
   return `checkpoint-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createTimelineMarkerId() {
+  if ("randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `marker-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createDecisionEventId() {
+  if ("randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `decision-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function createSessionId() {

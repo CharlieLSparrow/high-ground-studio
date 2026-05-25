@@ -644,6 +644,10 @@ async function runBrowserSmoke() {
     }
 
     await expect(page.locator(".shortcut-legend")).toContainText("Play/Pause");
+    await expect(page.getByRole("heading", { name: "Timeline Power Tools" })).toBeVisible();
+    await expect(page.getByLabel("Timeline Power Tools")).toContainText(
+      "Set From Here To Next Marker",
+    );
     await expect(page.getByRole("button", { name: "Export Decisions" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export Checkpoint" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export Agent Context" })).toBeVisible();
@@ -724,6 +728,9 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "Newest");
     await expect(page.locator(".decision-timeline")).toContainText("Decision Timeline");
     await expect(page.locator(".decision-timeline")).toContainText("Both");
+    await expect(page.getByLabel("Marker Lane")).toContainText(
+      "Add markers at review beats",
+    );
     await expectSectionText(currentSegmentSection, "Both");
     await expectSectionText(currentSegmentSection, "Included");
     await expect(
@@ -816,6 +823,22 @@ async function runBrowserSmoke() {
       !JSON.stringify(agentContext).includes("blob:"),
       "agent context must not include browser object URLs",
     );
+
+    await secondsInput.fill("8");
+    await page.getByLabel("Marker label").fill("Review stop");
+    await page.getByRole("button", { name: "Add Marker" }).click();
+    await expect(page.getByLabel("Marker Lane")).toContainText("Review stop");
+    await secondsInput.fill("6");
+    await page.getByLabel("Range state").selectOption("homer");
+    await page
+      .getByRole("button", { name: "Set From Here To Next Marker" })
+      .click();
+    await expect(page.getByLabel("Timeline Power Tools")).toContainText(
+      "Review stop",
+    );
+    await expect(decisionSection.locator("tbody")).toContainText("Homer");
+    await expect(decisionSection.locator("tbody")).toContainText("Range tool");
+    await expect(page.locator(".decision-timeline")).toContainText("Selected range");
 
     const actionablePageErrors = pageErrors.filter(
       (entry) => !isBenignBlobRevocationError(entry),

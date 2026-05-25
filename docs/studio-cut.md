@@ -156,6 +156,23 @@ visually distinct, the current segment is highlighted, and clicking a block
 jumps to that segment's source in-point. The strip is still source-time based;
 it does not create destructive cuts or a separate program timeline.
 
+The Timeline Power Tools panel adds browser-local markers and range handles for
+fast tagging passes:
+
+- `Add Marker` drops a labeled beat at the current source time. Use markers for
+  topic changes, clip boundaries, ad reads, or cleanup points.
+- `Set In` and `Set Out` define a source-time range. The range overlay appears
+  on the Decision Timeline and can be dragged with range sliders or nudged by 1
+  second at either edge.
+- `Apply Range State` creates semantic decision events at the range in-point and
+  restores the previous state at the range out-point when possible.
+- `Set From Here To Next Marker` applies the selected state from the current
+  playhead to the next marker, or to episode end if no later marker exists.
+
+Markers and range handles are editing aids stored in this browser. They are not
+media, they do not upload source/proxy files, and they do not change the core
+rule that decisions are semantic state events over canonical source time.
+
 ## Episode Manifest
 
 Studio Cut can import an Episode Manifest JSON file for the temporary
