@@ -443,5 +443,5 @@ Improve agentic editing:
 
 - add richer awkward-hold and bad-take detectors on top of the confidence and
   approval operation shape
-- add transcript/proxy screenshot evidence beside the `agent-edit-session`
-  inspection checklist so agents can reason from visuals as well as render QA
+- add short loop clips and waveform thumbnails beside the `agent-edit-session`
+  contact sheet so agents can reason from motion and audio cues, not only stills

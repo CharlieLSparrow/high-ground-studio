@@ -168,8 +168,10 @@ It writes `generated/agent-edit-review.json`,
 `edit/episode-004-transcript.json`, it is included automatically. If the
 workspace has the generated Sync Map and local media map, it also writes
 `renders/episode-004-render-qa.json` and an inspection checklist for the next
-human/agent pass. The preview decision file is a copy for inspection; do not
-replace the real export until the suggested operations make sense.
+human/agent pass. If `generated/source-monitor-proxy.mp4` exists, it also writes
+`generated/agent-contact-sheet.jpg` and `generated/agent-visual-review.json` as
+local visual evidence. The preview decision file is a copy for inspection; do
+not replace the real export until the suggested operations make sense.
 
 Use that status report as the checklist. It says what is missing, whether the
 generated package is ready to publish, whether exported decisions are present,

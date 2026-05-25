@@ -72,7 +72,8 @@ The current system already has:
   agents can inspect, propose, apply, verify, and roll back semantic edits
 - a one-command `agent-edit-session` pass for local Rescue Sync workspaces that
   writes a sanitized workspace index, transcript-aware review, suggested ops,
-  and human-readable rationale without mutating the source decision export
+  render QA, a local proxy contact sheet when available, and human-readable
+  rationale without mutating the source decision export
 
 The current system does not yet have:
 

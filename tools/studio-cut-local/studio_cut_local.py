@@ -180,6 +180,8 @@ YOUTUBE_16X9_HEIGHT = 1080
 YOUTUBE_16X9_FPS = 30
 RENDER_AUDIO_SAMPLE_RATE = 48000
 RENDER_AUDIO_CHANNEL_LAYOUT = "stereo"
+AGENT_VISUAL_REVIEW_MAX_FRAMES = 12
+AGENT_VISUAL_REVIEW_FRAME_WIDTH = 320
 YOUTUBE_16X9_STATE_INPUTS = {
     "charlie": ["charlie"],
     "homer": ["homer"],
@@ -2567,6 +2569,184 @@ def format_agent_checklist_time(item: dict[str, Any]) -> str:
     return "unknown time"
 
 
+def choose_agent_visual_review_time_ms(
+    item: dict[str, Any], *, duration_ms: int
+) -> int:
+    start_ms = item.get("startSourceTimeMs")
+    end_ms = item.get("endSourceTimeMs")
+
+    if isinstance(start_ms, int) and isinstance(end_ms, int) and end_ms > start_ms:
+        candidate = start_ms + max(250, min(1500, (end_ms - start_ms) // 2))
+    elif isinstance(start_ms, int):
+        candidate = start_ms + 500
+    else:
+        candidate = 0
+
+    return max(0, min(max(0, duration_ms - 1), int(candidate)))
+
+
+def build_agent_visual_review(
+    *,
+    session: dict[str, Any],
+    manifest: dict[str, Any] | None,
+    inspection_checklist: list[dict[str, Any]],
+    report_path: Path,
+    contact_sheet_path: Path,
+    frame_dir: Path,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    warnings: list[str] = []
+
+    if not inspection_checklist:
+        return None, []
+
+    proxy_path = Path(session["sourceMonitorProxyPath"])
+    if not proxy_path.is_file():
+        return None, [
+            "Visual review skipped because generated source-monitor proxy is missing."
+        ]
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return None, ["Visual review skipped because ffmpeg is not available on PATH."]
+
+    duration_ms = int(round(float((manifest or {}).get("durationMs") or 0)))
+    if duration_ms <= 0:
+        duration_ms = (
+            int(round(float(session.get("durationMs") or 0)))
+            if session.get("durationMs")
+            else 0
+        )
+    if duration_ms <= 0:
+        duration_ms = 60 * 60 * 1000
+
+    episode_dir = Path(session["episodeDir"]).resolve()
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    contact_sheet_path.parent.mkdir(parents=True, exist_ok=True)
+
+    selected_items = inspection_checklist[:AGENT_VISUAL_REVIEW_MAX_FRAMES]
+    frames: list[dict[str, Any]] = []
+
+    for index, item in enumerate(selected_items, start=1):
+        frame_path = frame_dir / f"agent-frame-{index:03d}.jpg"
+        source_time_ms = choose_agent_visual_review_time_ms(
+            item,
+            duration_ms=duration_ms,
+        )
+        command = [
+            ffmpeg_path,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            format_seconds(source_time_ms / 1000),
+            "-i",
+            str(proxy_path),
+            "-frames:v",
+            "1",
+            "-vf",
+            f"scale={AGENT_VISUAL_REVIEW_FRAME_WIDTH}:-2",
+            "-q:v",
+            "4",
+            str(frame_path),
+        ]
+
+        try:
+            run_command(command, f"ffmpeg extract visual review frame {index}")
+        except StudioCutCliError as error:
+            warnings.append(str(error))
+            continue
+
+        frames.append(
+            {
+                "index": index,
+                "path": relative_episode_workspace_path(frame_path, episode_dir),
+                "sourceTimeMs": source_time_ms,
+                "sourceTime": format_time_ms(source_time_ms),
+                "checklistKind": item.get("kind"),
+                "priority": item.get("priority", "medium"),
+                **({"state": item.get("state")} if item.get("state") else {}),
+                "message": item.get("message"),
+            }
+        )
+
+    if not frames:
+        return None, warnings or ["Visual review skipped because no frames could be extracted."]
+
+    columns = min(3, len(frames))
+    rows = (len(frames) + columns - 1) // columns
+    tile_command = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-framerate",
+        "1",
+        "-i",
+        str(frame_dir / "agent-frame-%03d.jpg"),
+        "-vf",
+        f"tile={columns}x{rows}:padding=8:margin=8:color=black",
+        "-frames:v",
+        "1",
+        str(contact_sheet_path),
+    ]
+
+    try:
+        run_command(tile_command, "ffmpeg build agent contact sheet")
+    except StudioCutCliError as error:
+        warnings.append(str(error))
+
+    report = {
+        "schemaVersion": 1,
+        "kind": "studio-cut-agent-visual-review",
+        "generatedAt": utc_now_iso(),
+        "pathPolicy": (
+            "Paths are relative to the local episode workspace. Source-monitor "
+            "proxy frames are derived local artifacts and are not uploaded."
+        ),
+        "source": {
+            "kind": "source-monitor-proxy",
+            "fileName": proxy_path.name,
+        },
+        "summary": {
+            "frameCount": len(frames),
+            "contactSheetWritten": contact_sheet_path.is_file(),
+            "maxFrames": AGENT_VISUAL_REVIEW_MAX_FRAMES,
+        },
+        "contactSheet": (
+            relative_episode_workspace_path(contact_sheet_path, episode_dir)
+            if contact_sheet_path.is_file()
+            else None
+        ),
+        "frames": frames,
+        "warnings": warnings,
+    }
+    write_json(report_path, report)
+    return report, warnings
+
+
+def summarize_agent_visual_review(
+    visual_review: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(visual_review, dict):
+        return {"available": False}
+
+    summary = visual_review.get("summary")
+    if not isinstance(summary, dict):
+        return {"available": False}
+
+    return {
+        "available": True,
+        "frameCount": summary.get("frameCount", 0),
+        "contactSheetWritten": bool(summary.get("contactSheetWritten")),
+        "contactSheet": visual_review.get("contactSheet"),
+        "warningCount": len(visual_review.get("warnings", []))
+        if isinstance(visual_review.get("warnings"), list)
+        else 0,
+    }
+
+
 def build_agent_edit_session_report(
     *,
     session: dict[str, Any],
@@ -2577,6 +2757,7 @@ def build_agent_edit_session_report(
     operation_preview: dict[str, Any] | None,
     render_qa: dict[str, Any] | None,
     inspection_checklist: list[dict[str, Any]],
+    visual_review: dict[str, Any] | None,
     transcript_path: Path | None,
     output_paths: dict[str, Path],
     preview_decisions_written: bool,
@@ -2655,6 +2836,7 @@ def build_agent_edit_session_report(
             "previewDecisionFileWritten": preview_decisions_written,
             "inspectionChecklistCount": len(inspection_checklist),
             "renderQa": summarize_agent_render_qa(render_qa),
+            "visualReview": summarize_agent_visual_review(visual_review),
             **({"review": review_summary} if review_summary else {}),
             **({"transcriptReview": transcript_review} if transcript_review else {}),
         },
@@ -2663,6 +2845,9 @@ def build_agent_edit_session_report(
             inspection_checklist,
             episode_dir,
         ),
+        "visualReview": sanitize_agent_workspace_payload(visual_review, episode_dir)
+        if visual_review
+        else None,
         "nextActions": agent_next_actions,
         "warnings": [
             sanitize_agent_workspace_payload(warning, episode_dir)
@@ -2747,6 +2932,18 @@ def build_agent_edit_session_markdown(report: dict[str, Any]) -> str:
             ]
         )
 
+    visual_review_summary = (
+        summary.get("visualReview") if isinstance(summary, dict) else None
+    )
+    if isinstance(visual_review_summary, dict) and visual_review_summary.get("available"):
+        lines.extend(
+            [
+                f"- Visual review frames: `{visual_review_summary.get('frameCount', 0)}`",
+                f"- Contact sheet written: `{yes_no(bool(visual_review_summary.get('contactSheetWritten')))}`",
+                f"- Contact sheet: `{visual_review_summary.get('contactSheet')}`",
+            ]
+        )
+
     review_summary = summary.get("review")
     if isinstance(review_summary, dict):
         lines.extend(
@@ -2800,6 +2997,17 @@ def build_agent_edit_session_markdown(report: dict[str, Any]) -> str:
             if isinstance(evidence, list) and evidence:
                 lines.append(f"  - Evidence: {'; '.join(str(value) for value in evidence[:3])}")
 
+    visual_review = report.get("visualReview")
+    if isinstance(visual_review, dict):
+        lines.extend(["", "## Visual Review Artifacts", ""])
+        if visual_review.get("contactSheet"):
+            lines.append(f"- Contact sheet: `{visual_review['contactSheet']}`")
+        for frame in visual_review.get("frames", [])[:AGENT_VISUAL_REVIEW_MAX_FRAMES]:
+            lines.append(
+                f"- `{frame.get('index')}` `{frame.get('sourceTime')}` "
+                f"`{frame.get('checklistKind')}`: `{frame.get('path')}`"
+            )
+
     if report["warnings"]:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {warning}" for warning in report["warnings"])
@@ -2842,6 +3050,14 @@ def print_agent_edit_session_report(report: dict[str, Any]) -> None:
             f"{render_qa.get('segmentCount', 0)} segment(s), "
             f"audio={render_qa.get('audioMode')}, "
             f"warnings={render_qa.get('warningCount', 0)}"
+        )
+
+    visual_review = summary.get("visualReview")
+    if isinstance(visual_review, dict) and visual_review.get("available"):
+        print(
+            "Visual review: "
+            f"{visual_review.get('frameCount', 0)} frame(s), "
+            f"contactSheet={yes_no(bool(visual_review.get('contactSheetWritten')))}"
         )
 
     print("\nOutputs:")
@@ -3125,6 +3341,8 @@ def build_rescue_sync_publish_package_status(
     report: dict[str, Any], session: dict[str, Any]
 ) -> dict[str, Any]:
     sync_report_exists = bool(report["files"]["syncReport"]["exists"])
+    sync_report = report.get("syncReport") if isinstance(report.get("syncReport"), dict) else {}
+    sync_map = report.get("syncMap") if isinstance(report.get("syncMap"), dict) else {}
 
     return {
         "studioCutUrl": "https://high-ground-odyssey.web.app",
@@ -3146,10 +3364,10 @@ def build_rescue_sync_publish_package_status(
             "syncMapAttached": True,
             "syncReportAttached": sync_report_exists,
             "referencePieces": (
-                report.get("syncReport", {}).get("referenceRailSegments")
-                or report.get("syncMap", {}).get("referenceRailSegments")
+                sync_report.get("referenceRailSegments")
+                or sync_map.get("referenceRailSegments")
             ),
-            "trackOffsets": report.get("syncReport", {}).get("trackOffsetCount"),
+            "trackOffsets": sync_report.get("trackOffsetCount"),
         },
         "postPublishCheck": (
             "After publishing, Shared Room Diagnostics should show the proxy, "
@@ -4608,6 +4826,8 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
         "rationale": out_dir / "agent-edit-session.md",
         "previewDecisions": session["editDir"] / f"{episode_id}-agent-preview-decisions.json",
         "renderQa": session["rendersDir"] / f"{episode_id}-render-qa.json",
+        "visualReview": out_dir / "agent-visual-review.json",
+        "contactSheet": out_dir / "agent-contact-sheet.jpg",
     }
 
     workspace_index = build_agent_workspace_index(session, status_report)
@@ -4630,6 +4850,8 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
     suggested_ops: dict[str, Any] | None = None
     operation_preview: dict[str, Any] | None = None
     render_qa: dict[str, Any] | None = None
+    visual_review: dict[str, Any] | None = None
+    manifest_payload: dict[str, Any] | None = None
     preview_decisions_written = False
 
     if not manifest_path.is_file():
@@ -4643,6 +4865,7 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
     if not report_errors:
         manifest = load_json_file(manifest_path, "manifest")
         validate_manifest(manifest)
+        manifest_payload = manifest
         decisions_payload = load_json_file(decisions_path, "decisions")
         decision_events = parse_decision_events(decisions_payload)
         transcript = (
@@ -4736,6 +4959,17 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
         review=review,
         render_qa=render_qa,
     )
+    if not report_errors:
+        visual_review, visual_warnings = build_agent_visual_review(
+            session=session,
+            manifest=manifest_payload,
+            inspection_checklist=inspection_checklist,
+            report_path=output_paths["visualReview"],
+            contact_sheet_path=output_paths["contactSheet"],
+            frame_dir=out_dir / "agent-visual-review-frames",
+        )
+        report_warnings.extend(visual_warnings)
+
     session_report = build_agent_edit_session_report(
         session=session,
         status_report=status_report,
@@ -4745,6 +4979,7 @@ def run_agent_edit_session(args: argparse.Namespace) -> int:
         operation_preview=operation_preview,
         render_qa=render_qa,
         inspection_checklist=inspection_checklist,
+        visual_review=visual_review,
         transcript_path=transcript_path,
         output_paths=output_paths,
         preview_decisions_written=preview_decisions_written,

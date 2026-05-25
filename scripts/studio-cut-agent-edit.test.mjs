@@ -30,6 +30,41 @@ async function writeJson(filePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function hasFfmpeg() {
+  const result = spawnSync("ffmpeg", ["-version"], {
+    encoding: "utf8",
+  });
+  return result.status === 0;
+}
+
+function generateSourceMonitorProxy(proxyPath) {
+  const result = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=s=640x360:r=24:d=10",
+      "-pix_fmt",
+      "yuv420p",
+      proxyPath,
+    ],
+    {
+      encoding: "utf8",
+    },
+  );
+
+  if (result.status !== 0) {
+    throw new Error(
+      `ffmpeg synthetic proxy generation failed\n${result.stdout}\n${result.stderr}`,
+    );
+  }
+}
+
 function buildManifest() {
   return {
     id: "agent-edit-smoke",
@@ -376,6 +411,7 @@ test("agent edit session writes workspace review artifacts without private paths
     const manifestPath = path.join(generatedDir, "episode-manifest.json");
     const syncMapPath = path.join(generatedDir, "sync-map.json");
     const localMediaMapPath = path.join(generatedDir, "local-media-map.json");
+    const sourceMonitorProxyPath = path.join(generatedDir, "source-monitor-proxy.mp4");
     const decisionsPath = path.join(editDir, "agent-edit-smoke-decisions.json");
     const transcriptPath = path.join(editDir, "agent-edit-smoke-transcript.json");
 
@@ -384,6 +420,11 @@ test("agent edit session writes workspace review artifacts without private paths
     await writeJson(localMediaMapPath, buildLocalMediaMap());
     await writeJson(decisionsPath, buildDecisions());
     await writeJson(transcriptPath, buildTranscript());
+
+    const canGenerateVisuals = hasFfmpeg();
+    if (canGenerateVisuals) {
+      generateSourceMonitorProxy(sourceMonitorProxyPath);
+    }
 
     const result = runCli([
       "agent-edit-session",
@@ -408,6 +449,9 @@ test("agent edit session writes workspace review artifacts without private paths
     const renderQa = JSON.parse(
       await readFile(path.join(workdir, "renders", "agent-edit-smoke-render-qa.json"), "utf8"),
     );
+    const visualReview = canGenerateVisuals
+      ? JSON.parse(await readFile(path.join(generatedDir, "agent-visual-review.json"), "utf8"))
+      : null;
     const preview = JSON.parse(
       await readFile(path.join(editDir, "agent-edit-smoke-agent-preview-decisions.json"), "utf8"),
     );
@@ -419,6 +463,9 @@ test("agent edit session writes workspace review artifacts without private paths
     assert.equal(sessionReport.summary.renderQa.available, true);
     assert.equal(sessionReport.outputs.renderQa.exists, true);
     assert.equal(sessionReport.summary.inspectionChecklistCount > 0, true);
+    assert.equal(sessionReport.summary.visualReview.available, canGenerateVisuals);
+    assert.equal(sessionReport.outputs.visualReview.exists, canGenerateVisuals);
+    assert.equal(sessionReport.outputs.contactSheet.exists, canGenerateVisuals);
     assert.equal(sessionReport.outputs.workspaceIndex.exists, true);
     assert.equal(sessionReport.outputs.review.exists, true);
     assert.equal(sessionReport.outputs.suggestedOps.exists, true);
@@ -428,11 +475,20 @@ test("agent edit session writes workspace review artifacts without private paths
     assert.equal(preview.agentEdit.source, "agent-edit-session preview");
     assert.equal(renderQa.kind, "studio-cut-sync-map-render-qa");
     assert.equal(renderQa.summary.videoPartialCoverageSegmentCount > 0, true);
+    if (canGenerateVisuals) {
+      assert.equal(visualReview.kind, "studio-cut-agent-visual-review");
+      assert.equal(visualReview.summary.frameCount > 0, true);
+      assert.equal(visualReview.summary.contactSheetWritten, true);
+      assert.match(rationale, /Visual Review Artifacts/);
+    }
     assert.match(rationale, /Operation Preview/);
     assert.match(rationale, /Inspection Checklist/);
 
     const serialized =
-      JSON.stringify(sessionReport) + JSON.stringify(review) + JSON.stringify(renderQa);
+      JSON.stringify(sessionReport) +
+      JSON.stringify(review) +
+      JSON.stringify(renderQa) +
+      JSON.stringify(visualReview);
     assert.equal(serialized.includes(workdir), false);
     assert.equal(serialized.includes(tmpdir()), false);
   } finally {

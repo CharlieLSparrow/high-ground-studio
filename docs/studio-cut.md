@@ -468,7 +468,10 @@ optional preview decision file. It does not mutate the original decision export
 and still only touches the semantic decision layer. In a render-ready Rescue
 Sync workspace, it also writes `renders/<episode-id>-render-qa.json` and an
 inspection checklist that points agents at transcript issues, black padding,
-missing video coverage, or silence padding before a rough render.
+missing video coverage, or silence padding before a rough render. If the
+generated source-monitor proxy is present, the session also writes a local
+`agent-contact-sheet.jpg` and `agent-visual-review.json` so agents can inspect
+sample frames from the checklist without touching original media.
 
 The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
 It previews the operation JSON before applying it, shows add/range/remove

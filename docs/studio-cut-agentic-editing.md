@@ -268,7 +268,10 @@ The command finds the standard workspace files, writes a fresh sanitized
 When `generated/sync-map.json`, `generated/local-media-map.json`, and an
 exported decision file are present, it also writes
 `renders/<episode-id>-render-qa.json` in dry-run mode and folds render coverage
-warnings into an `inspectionChecklist`.
+warnings into an `inspectionChecklist`. When
+`generated/source-monitor-proxy.mp4` is present, it extracts local thumbnail
+frames for those checklist items and writes `generated/agent-contact-sheet.jpg`
+plus `generated/agent-visual-review.json`.
 
 If a transcript exists at `edit/<episode-id>-transcript.json`,
 `edit/episode-transcript.json`, `edit/transcript.json`, or the matching
@@ -287,6 +290,11 @@ black padding, missing video coverage, or silence padding. Paths remain relative
 to the episode workspace and the render QA does not include local original media
 paths.
 
+The visual review artifacts are also local derived files. They sample the
+generated source-monitor proxy only; they do not read full-resolution originals,
+upload media, or store object URLs. Use the contact sheet as the first visual
+scan before deciding whether an agent operation should be accepted.
+
 ## Current Limits
 
 - Agents still need human judgment for content taste, rhythm, and clip choice.
@@ -300,10 +308,12 @@ paths.
   creative choices.
 - Render QA is structural. It can catch coverage and audio-source issues before
   a render, but it does not judge whether the edit feels good.
+- Contact sheets are sampled from checklist timestamps. They help orientation,
+  but they are not a replacement for reviewing playback before publishing.
 
 ## Next Agent-Friendly Steps
 
 - Add stronger review reports for awkward camera holds, long silence, repeated
   Cut spans, and missing Clip context.
-- Add optional proxy screenshots or contact sheets beside the inspection
-  checklist so agents can reason from visuals without opening private media.
+- Add richer visual packets: short loop clips around checklist items, waveform
+  thumbnails, and side-by-side before/after operation previews.

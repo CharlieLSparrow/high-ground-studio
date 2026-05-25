@@ -542,9 +542,12 @@ When `--write-preview-decisions` is present, it also writes
 decision export. If the workspace also has `generated/sync-map.json`,
 `generated/local-media-map.json`, and exported decisions, the session writes
 `renders/<episode-id>-render-qa.json` and includes a compact inspection
-checklist that combines transcript tasks with render coverage warnings. The
-report uses workspace-relative paths so agents can inspect the folder without
-copying private absolute paths into chat.
+checklist that combines transcript tasks with render coverage warnings. If
+`generated/source-monitor-proxy.mp4` is present, it also writes
+`generated/agent-contact-sheet.jpg`, `generated/agent-visual-review.json`, and
+local thumbnail frames for the checklist. The report uses workspace-relative
+paths so agents can inspect the folder without copying private absolute paths
+into chat.
 
 Create a sanitized index for a local Rescue Sync episode workspace:
 
