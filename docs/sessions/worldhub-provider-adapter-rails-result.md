@@ -200,8 +200,9 @@ GOOGLE_CALENDAR_SYNC_CLIENT_SECRET
 only when you intentionally want Google to email attendees.
 
 The Cloud Run deploy helper now mounts optional WorldHub provider secrets when
-the matching Secret Manager secret already exists. That keeps provider admin
-work explicit while avoiding manual Cloud Run env drift on future deploys.
+the matching Secret Manager secret exists and has an enabled version. That keeps
+provider admin work explicit while avoiding manual Cloud Run env drift on future
+deploys.
 
 ## Next Provider Slices
 

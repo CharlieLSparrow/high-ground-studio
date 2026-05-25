@@ -27,7 +27,8 @@ checks, blockers, and next handoff.
 - Added focused tests for provider readiness, webhook signatures, and calendar
   event payloads under `pnpm worldhub:integrations:test`.
 - Updated Web Cloud Run deploy/secret tooling so optional WorldHub provider
-  secrets are mounted automatically when matching Secret Manager secrets exist.
+  secrets are mounted automatically when matching Secret Manager secrets exist
+  and have enabled versions.
 - Guardrails preserved: no secret-value storage, no full webhook payload
   storage, no payment-card handling, no Stripe Checkout creation, no automatic
   payment/order reconciliation, no Patreon entitlement mutation, no merch

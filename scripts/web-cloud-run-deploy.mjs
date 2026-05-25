@@ -159,9 +159,30 @@ function secretExists(secretName) {
   );
 }
 
-function getExistingOptionalSecretBindings() {
+function secretHasEnabledVersion(secretName) {
+  const raw = readOptional("gcloud", [
+    "secrets",
+    "versions",
+    "list",
+    secretName,
+    "--project",
+    project,
+    "--format=json",
+    "--limit=20",
+  ]);
+
+  if (!raw) {
+    return false;
+  }
+
+  const versions = JSON.parse(raw);
+
+  return versions.some((version) => version.state === "ENABLED");
+}
+
+function getMountableOptionalSecretBindings() {
   return WEB_OPTIONAL_SECRET_BINDINGS.filter(([, secretName]) =>
-    secretExists(secretName),
+    secretExists(secretName) && secretHasEnabledVersion(secretName),
   );
 }
 
@@ -318,7 +339,7 @@ const requestedSiteUrl =
   existingSiteUrl ||
   requestedAuthUrl ||
   "https://highgroundodyssey.com";
-const optionalSecretBindings = getExistingOptionalSecretBindings();
+const optionalSecretBindings = getMountableOptionalSecretBindings();
 const deploySecretBindings = [
   ...WEB_REQUIRED_SECRET_BINDINGS,
   ...optionalSecretBindings,

@@ -111,6 +111,8 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /getServiceEnvValue/);
   assert.match(deployScript, /existingAuthUrl/);
   assert.match(deployScript, /existingSiteUrl/);
+  assert.match(deployScript, /secretHasEnabledVersion/);
+  assert.match(deployScript, /getMountableOptionalSecretBindings/);
   assert.match(deployScript, /update-traffic/);
   assert.match(deployScript, /projection-stage\/import/);
   assert.match(deployScript, /team\/progress/);

@@ -355,9 +355,9 @@ The helper reads `.env` and `apps/web/.env.local` by default. It maps:
 | `HGO_COACH_EMAILS` | `web-coach-emails` |
 
 The deploy helper also mounts optional WorldHub provider secrets when matching
-Secret Manager secrets already exist. This lets billing, supporter, calendar,
-email, and merch integrations turn on without hand-editing Cloud Run
-configuration:
+Secret Manager secrets already exist and have an enabled version. This lets
+billing, supporter, calendar, email, and merch integrations turn on without
+hand-editing Cloud Run configuration:
 
 | Env value | Optional secret |
 | --- | --- |

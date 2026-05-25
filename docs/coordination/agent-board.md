@@ -177,8 +177,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - Google Calendar sync can queue appointment sync jobs and can create/update
     events once dedicated `GOOGLE_CALENDAR_*` credentials are mounted
   - Cloud Run deploy tooling now mounts optional provider secrets automatically
-    when matching Secret Manager secrets exist; current live check found `0`
-    optional provider secrets mounted
+    when matching Secret Manager secrets exist and have enabled versions;
+    current live check found `0` optional provider secrets mounted
   - no Stripe Checkout, payment reconciliation, Patreon entitlement mutation,
     merch provider call, or fulfillment call is active yet
 - next likely slice:
