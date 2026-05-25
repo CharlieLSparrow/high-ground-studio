@@ -111,6 +111,34 @@ export type ClipRenderProfile =
   | "vertical_4x5"
   | "audio_teaser";
 
+export type RenderProfileDefinition = {
+  id: ClipRenderProfile;
+  label: string;
+  outputKind: "full_episode" | "short_clip" | "audio";
+  aspectRatio: "16:9" | "9:16" | "1:1" | "4:5" | "audio";
+  width?: number;
+  height?: number;
+  defaultCaptionPresetId?: CaptionStylePresetId;
+  notes: string;
+};
+
+export type CaptionStylePresetId =
+  | "clean_lower_third"
+  | "high_contrast_center"
+  | "shorts_bold_stack"
+  | "minimal_audio_teaser";
+
+export type CaptionStylePreset = {
+  id: CaptionStylePresetId;
+  label: string;
+  placement: "lower" | "center" | "upper";
+  maxLines: number;
+  casing: "sentence" | "uppercase";
+  fontScale: "small" | "medium" | "large";
+  safeAreaPercent: number;
+  notes: string;
+};
+
 export type ClipCandidateSource =
   | "current_segment"
   | "selected_range"
@@ -345,6 +373,100 @@ export const CLIP_RENDER_PROFILES: readonly ClipRenderProfile[] = [
   "square_1x1",
   "vertical_4x5",
   "audio_teaser",
+] as const;
+
+export const CAPTION_STYLE_PRESETS: readonly CaptionStylePreset[] = [
+  {
+    id: "clean_lower_third",
+    label: "Clean lower third",
+    placement: "lower",
+    maxLines: 2,
+    casing: "sentence",
+    fontScale: "medium",
+    safeAreaPercent: 12,
+    notes: "Default readable captions for YouTube 16:9 and full-episode review.",
+  },
+  {
+    id: "high_contrast_center",
+    label: "High contrast center",
+    placement: "center",
+    maxLines: 2,
+    casing: "sentence",
+    fontScale: "large",
+    safeAreaPercent: 18,
+    notes: "Large centered captions for clips where faces remain visible.",
+  },
+  {
+    id: "shorts_bold_stack",
+    label: "Shorts bold stack",
+    placement: "lower",
+    maxLines: 3,
+    casing: "uppercase",
+    fontScale: "large",
+    safeAreaPercent: 20,
+    notes: "Social vertical caption preset for Shorts, Reels, and TikTok.",
+  },
+  {
+    id: "minimal_audio_teaser",
+    label: "Minimal audio teaser",
+    placement: "center",
+    maxLines: 1,
+    casing: "sentence",
+    fontScale: "small",
+    safeAreaPercent: 10,
+    notes: "Sparse text overlay for waveform/audio teaser exports.",
+  },
+] as const;
+
+export const STUDIO_CUT_RENDER_PROFILES: readonly RenderProfileDefinition[] = [
+  {
+    id: "youtube_16x9",
+    label: "YouTube 16:9",
+    outputKind: "full_episode",
+    aspectRatio: "16:9",
+    width: 1920,
+    height: 1080,
+    defaultCaptionPresetId: "clean_lower_third",
+    notes: "Primary full episode output using semantic host/clip states.",
+  },
+  {
+    id: "shorts_9x16",
+    label: "Shorts/Reels/TikTok 9:16",
+    outputKind: "short_clip",
+    aspectRatio: "9:16",
+    width: 1080,
+    height: 1920,
+    defaultCaptionPresetId: "shorts_bold_stack",
+    notes: "Vertical short-form crop profile for approved clip candidates.",
+  },
+  {
+    id: "square_1x1",
+    label: "Square 1:1",
+    outputKind: "short_clip",
+    aspectRatio: "1:1",
+    width: 1080,
+    height: 1080,
+    defaultCaptionPresetId: "high_contrast_center",
+    notes: "Feed-friendly square clip variant.",
+  },
+  {
+    id: "vertical_4x5",
+    label: "Vertical 4:5",
+    outputKind: "short_clip",
+    aspectRatio: "4:5",
+    width: 1080,
+    height: 1350,
+    defaultCaptionPresetId: "shorts_bold_stack",
+    notes: "Instagram-style vertical feed variant.",
+  },
+  {
+    id: "audio_teaser",
+    label: "Audio teaser",
+    outputKind: "audio",
+    aspectRatio: "audio",
+    defaultCaptionPresetId: "minimal_audio_teaser",
+    notes: "Audio-first teaser or waveform export scaffold.",
+  },
 ] as const;
 
 export const PROGRAM_STATES: readonly ProgramState[] = [

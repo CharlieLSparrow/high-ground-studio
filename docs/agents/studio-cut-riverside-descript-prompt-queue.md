@@ -104,7 +104,7 @@ semantic ranges until render time.
 
 ## Prompt 04: Episode Output Board
 
-Status: next
+Status: implemented in commit pending this pass
 
 Mission:
 Create a Riverside/Descript-style output cockpit for full episode publishing
@@ -126,7 +126,7 @@ package can become useful immediately.
 
 ## Prompt 05: Upload/Sync Job Timeline
 
-Status: queued
+Status: implemented in workspace pending commit
 
 Mission:
 Make the cloud sync path visibly understandable to Charlie.
@@ -146,7 +146,7 @@ needs the same clarity around Rescue Sync.
 
 ## Prompt 06: Transcript Cleanup Suggestions
 
-Status: queued
+Status: implemented in workspace pending commit
 
 Mission:
 Convert filler clusters, transcript gaps, and likely fluff into reversible edit
@@ -164,7 +164,7 @@ This is the Studio Cut-native version of filler word and silence removal.
 
 ## Prompt 07: Caption And Social Profile Scaffold
 
-Status: queued
+Status: implemented in workspace pending commit
 
 Mission:
 Prepare render profiles for captioned clips and social variants.

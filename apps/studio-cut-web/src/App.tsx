@@ -10,6 +10,7 @@ import {
 import {
   CLOUD_SYNC_INPUT_ROLES,
   CLOUD_SYNC_REQUIRED_INPUT_ROLES,
+  CAPTION_STYLE_PRESETS,
   CLIP_CANDIDATE_STATUSES,
   CLIP_RENDER_PROFILES,
   deriveSegments,
@@ -26,6 +27,8 @@ import {
   parseSyncMapPayload,
   sortDecisionEvents,
   SOURCE_ROLE_LABELS,
+  STUDIO_CUT_RENDER_PROFILES,
+  type CaptionStylePreset,
   type CloudSyncInputRole,
   type CloudSyncJob,
   type CloudSyncReport,
@@ -39,6 +42,7 @@ import {
   type EpisodeManifest,
   type EpisodeTranscript,
   type ProgramState,
+  type RenderProfileDefinition,
   type SourceRole,
   type SyncMap,
   type TranscriptSegment,
@@ -220,6 +224,21 @@ type NormalizedRangeSelection = {
   endSourceTimeMs: number;
 };
 
+type TranscriptCleanupSuggestion = {
+  id: string;
+  priority: "high" | "medium" | "low";
+  kind: string;
+  message: string;
+  segmentId?: string;
+  speaker?: string;
+  text?: string;
+  startSourceTimeMs?: number;
+  endSourceTimeMs?: number;
+  confidence?: number;
+  reason?: string;
+  operations: AgentDecisionOperation[];
+};
+
 type PaneRectField = keyof SourcePaneRect;
 
 type LocalDecisionCheckpoint = {
@@ -261,6 +280,15 @@ type CloudSyncSelectedFiles = Partial<
   Record<CloudSyncInputRole, CloudSyncSelectedFile[]>
 >;
 
+type SyncJobTimelineStageStatus = "done" | "active" | "waiting" | "blocked";
+
+type SyncJobTimelineStage = {
+  id: string;
+  label: string;
+  status: SyncJobTimelineStageStatus;
+  detail: string;
+};
+
 type RescueSyncPackageSelection = {
   manifestFile?: File;
   manifest?: EpisodeManifest;
@@ -288,6 +316,83 @@ type CloudSyncJobWithCompleteOutputs = CloudSyncJob & {
     syncReportStoragePath: string;
     syncMapStoragePath: string;
   };
+};
+
+type OutputDurationSummary = {
+  activeDurationMs: number;
+  cutDurationMs: number;
+  totalDurationMs: number;
+};
+
+type EpisodeOutputPackage = {
+  schemaVersion: 1;
+  exportedAt: string;
+  projectId: string;
+  branchId: string;
+  episode: {
+    id?: string;
+    title: string;
+    durationMs: number;
+    manifestLoaded: boolean;
+  };
+  readiness: {
+    manifestLoaded: boolean;
+    proxyLoaded: boolean;
+    transcriptLoaded: boolean;
+    syncMapAttached: boolean;
+    decisionsReady: boolean;
+    approvedClipsReady: boolean;
+    renderReady: boolean;
+  };
+  metrics: {
+    decisionCount: number;
+    activeDurationMs: number;
+    cutDurationMs: number;
+    totalClipCount: number;
+    approvedClipCount: number;
+  };
+  titleCandidates: string[];
+  descriptionDraft: string;
+  chapterDrafts: Array<{
+    startSourceTimeMs: number;
+    title: string;
+    state: ProgramState;
+  }>;
+  captions: {
+    status: "not_started" | "transcript_ready";
+    note: string;
+  };
+  clips: ClipCandidate[];
+  renderCommands: string[];
+  checklist: string[];
+  notes: string[];
+};
+
+type RenderProfilePlan = {
+  schemaVersion: 1;
+  exportedAt: string;
+  projectId: string;
+  branchId: string;
+  episodeId?: string;
+  profiles: RenderProfileDefinition[];
+  captionPresets: CaptionStylePreset[];
+  fullEpisodeOutputs: Array<{
+    profileId: ClipRenderProfile;
+    label: string;
+    durationMs: number;
+    captionPresetId?: string;
+    notes: string;
+  }>;
+  clipOutputs: Array<{
+    clipCandidateId: string;
+    title: string;
+    profileId: ClipRenderProfile;
+    startSourceTimeMs: number;
+    endSourceTimeMs: number;
+    captionPresetId?: string;
+    status: ClipCandidateStatus;
+  }>;
+  warnings: string[];
 };
 
 const STATE_ACCENTS: Record<ProgramState, string> = {
@@ -424,6 +529,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     useState<ProgramState>("cut");
   const [selectedTranscriptSegmentId, setSelectedTranscriptSegmentId] =
     useState<string | undefined>(undefined);
+  const [
+    selectedTranscriptCleanupSuggestionIds,
+    setSelectedTranscriptCleanupSuggestionIds,
+  ] = useState<Set<string>>(() => new Set());
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [agentOpsPreview, setAgentOpsPreview] =
@@ -545,6 +654,17 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       }),
     [derivedSegments, episodeManifest, episodeTranscript, sourceDurationMs],
   );
+  const transcriptCleanupSuggestions = useMemo(
+    () =>
+      buildTranscriptCleanupSuggestions({
+        review: transcriptReview,
+        transcript: episodeTranscript,
+      }),
+    [episodeTranscript, transcriptReview],
+  );
+  const selectedTranscriptCleanupSuggestionCount = transcriptCleanupSuggestions.filter(
+    (suggestion) => selectedTranscriptCleanupSuggestionIds.has(suggestion.id),
+  ).length;
   const sortedTranscriptSegments = useMemo(
     () => sortTranscriptSegments(episodeTranscript?.segments ?? []),
     [episodeTranscript],
@@ -582,6 +702,49 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const approvedClipCandidateCount = currentRoomClipCandidates.filter(
     (candidate) => candidate.status === "approved",
   ).length;
+  const outputDurationSummary = useMemo(
+    () => summarizeDerivedSegmentDurations(derivedSegments, sourceDurationMs),
+    [derivedSegments, sourceDurationMs],
+  );
+  const episodeOutputPackage = useMemo(
+    () =>
+      buildEpisodeOutputPackage({
+        exportedAt: new Date().toISOString(),
+        roomSelection,
+        manifest: episodeManifest,
+        sourceDurationMs,
+        derivedSegments,
+        decisionEvents: sortedEvents,
+        clipCandidates: currentRoomClipCandidates,
+        transcript: episodeTranscript,
+        syncMap: syncReview.syncMap,
+        localProxyVideo,
+        outputDurationSummary,
+      }),
+    [
+      currentRoomClipCandidates,
+      derivedSegments,
+      episodeManifest,
+      episodeTranscript,
+      localProxyVideo,
+      outputDurationSummary,
+      roomSelection,
+      sortedEvents,
+      sourceDurationMs,
+      syncReview.syncMap,
+    ],
+  );
+  const renderProfilePlan = useMemo(
+    () =>
+      buildRenderProfilePlan({
+        exportedAt: new Date().toISOString(),
+        roomSelection,
+        manifest: episodeManifest,
+        sourceDurationMs,
+        clipCandidates: currentRoomClipCandidates,
+      }),
+    [currentRoomClipCandidates, episodeManifest, roomSelection, sourceDurationMs],
+  );
 
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
@@ -594,6 +757,12 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   useEffect(() => {
     saveStoredClipCandidates(clipCandidates);
   }, [clipCandidates]);
+
+  useEffect(() => {
+    setSelectedTranscriptCleanupSuggestionIds(
+      new Set(transcriptCleanupSuggestions.map((suggestion) => suggestion.id)),
+    );
+  }, [transcriptCleanupSuggestions]);
 
   useEffect(() => {
     saveStoredRoomSelection(selectedRoom);
@@ -1762,7 +1931,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       startSourceTimeMs: start,
       endSourceTimeMs: end,
       status: "suggested",
-      targetProfiles: ["shorts_9x16", "youtube_16x9"],
+      targetProfiles: [...CLIP_RENDER_PROFILES],
       score: estimateClipCandidateScore(start, end, sourceDurationMs),
       reasons,
       source,
@@ -1835,6 +2004,81 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         episodeManifest,
         roomSelection,
         formatCheckpointTimestamp(new Date()),
+      ),
+    );
+  }
+
+  function exportEpisodeOutputPackageJson() {
+    const exportedAt = new Date();
+    const payload = buildEpisodeOutputPackage({
+      exportedAt: exportedAt.toISOString(),
+      roomSelection,
+      manifest: episodeManifest,
+      sourceDurationMs,
+      derivedSegments,
+      decisionEvents: sortedEvents,
+      clipCandidates: currentRoomClipCandidates,
+      transcript: episodeTranscript,
+      syncMap: syncReview.syncMap,
+      localProxyVideo,
+      outputDurationSummary,
+    });
+
+    downloadJsonFile(
+      payload,
+      getEpisodeOutputPackageFileName(
+        episodeManifest,
+        roomSelection,
+        formatCheckpointTimestamp(exportedAt),
+        "json",
+      ),
+    );
+  }
+
+  function exportEpisodeOutputPackageMarkdown() {
+    const exportedAt = new Date();
+    const payload = buildEpisodeOutputPackage({
+      exportedAt: exportedAt.toISOString(),
+      roomSelection,
+      manifest: episodeManifest,
+      sourceDurationMs,
+      derivedSegments,
+      decisionEvents: sortedEvents,
+      clipCandidates: currentRoomClipCandidates,
+      transcript: episodeTranscript,
+      syncMap: syncReview.syncMap,
+      localProxyVideo,
+      outputDurationSummary,
+    });
+
+    downloadTextFile(
+      renderEpisodeOutputPackageMarkdown(payload),
+      getEpisodeOutputPackageFileName(
+        episodeManifest,
+        roomSelection,
+        formatCheckpointTimestamp(exportedAt),
+        "md",
+      ),
+      "text/markdown",
+    );
+  }
+
+  function exportRenderProfilePlanJson() {
+    const exportedAt = new Date();
+    const payload = buildRenderProfilePlan({
+      exportedAt: exportedAt.toISOString(),
+      roomSelection,
+      manifest: episodeManifest,
+      sourceDurationMs,
+      clipCandidates: currentRoomClipCandidates,
+    });
+
+    downloadJsonFile(
+      payload,
+      getRenderProfilePlanFileName(
+        episodeManifest,
+        roomSelection,
+        formatCheckpointTimestamp(exportedAt),
       ),
     );
   }
@@ -1988,6 +2232,75 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       ...currentHistory,
       lastAction: `Exported transcript agent ops ${checkpointTimestamp}`,
     }));
+  }
+
+  function toggleTranscriptCleanupSuggestion(suggestionId: string) {
+    setSelectedTranscriptCleanupSuggestionIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+
+      if (nextIds.has(suggestionId)) {
+        nextIds.delete(suggestionId);
+      } else {
+        nextIds.add(suggestionId);
+      }
+
+      return nextIds;
+    });
+  }
+
+  function selectAllTranscriptCleanupSuggestions() {
+    setSelectedTranscriptCleanupSuggestionIds(
+      new Set(transcriptCleanupSuggestions.map((suggestion) => suggestion.id)),
+    );
+  }
+
+  function clearTranscriptCleanupSuggestions() {
+    setSelectedTranscriptCleanupSuggestionIds(new Set());
+  }
+
+  function previewSelectedTranscriptCleanupSuggestions() {
+    const selectedOperations = transcriptCleanupSuggestions.flatMap((suggestion) =>
+      selectedTranscriptCleanupSuggestionIds.has(suggestion.id)
+        ? suggestion.operations
+        : [],
+    );
+
+    if (selectedOperations.length === 0) {
+      setImportMessage("Select at least one transcript cleanup suggestion first.");
+      return;
+    }
+
+    const payload = {
+      schemaVersion: 1 as const,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      operations: selectedOperations,
+    };
+    const preview = buildAgentDecisionOpsPreview({
+      payload,
+      fileName: `${episodeManifest?.id ?? roomSelection.projectId}-transcript-cleanup-inline.json`,
+      currentEvents: decisionEvents,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      createdBy: createdBy ?? config.createdBy,
+      sourceDurationMs,
+      clientId: sessionId,
+    });
+
+    setAgentOpsPreview(preview);
+    setSelectedAgentOperationIndexes(
+      new Set(preview.operations.map((_, index) => index)),
+    );
+    setRejectedAgentOperationIndexes(new Set());
+    setImportMessage(
+      preview.errors.length > 0
+        ? `Transcript cleanup preview blocked: ${preview.errors.length} issue${
+            preview.errors.length === 1 ? "" : "s"
+          } found.`
+        : `Transcript cleanup preview loaded with ${preview.operations.length} operation${
+            preview.operations.length === 1 ? "" : "s"
+          }. Review in Agent Suggestions Inbox before applying.`,
+    );
   }
 
   function handleSaveLocalCheckpoint() {
@@ -3611,6 +3924,14 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onQueue={() => void handleQueueCloudSyncJob()}
           onPublishOutputs={() => void handlePublishCloudSyncWorkerOutputs()}
         />
+        <SyncJobTimelinePanel
+          status={status}
+          includeClip={cloudSyncIncludeClip}
+          selectedFiles={cloudSyncFiles}
+          uploadStates={cloudSyncUploadStates}
+          syncJob={cloudSyncJob}
+          sharedRoomMetadata={sharedRoomMetadata}
+        />
 
         <SharedRoomPackagePanel
           status={status}
@@ -3714,6 +4035,15 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onSetRange={setRangeFromTranscriptSegment}
           onApplyState={applyTranscriptSegmentState}
         />
+        <TranscriptCleanupSuggestionsPanel
+          suggestions={transcriptCleanupSuggestions}
+          selectedSuggestionIds={selectedTranscriptCleanupSuggestionIds}
+          selectedCount={selectedTranscriptCleanupSuggestionCount}
+          onToggleSuggestion={toggleTranscriptCleanupSuggestion}
+          onSelectAll={selectAllTranscriptCleanupSuggestions}
+          onClearSelection={clearTranscriptCleanupSuggestions}
+          onPreviewSelected={previewSelectedTranscriptCleanupSuggestions}
+        />
         <ClipCandidateLanePanel
           candidates={currentRoomClipCandidates}
           approvedCount={approvedClipCandidateCount}
@@ -3736,6 +4066,15 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           onJump={jumpToClipCandidate}
           onRemove={removeClipCandidate}
           onExport={exportClipCandidatesJson}
+        />
+        <EpisodeOutputBoardPanel
+          outputPackage={episodeOutputPackage}
+          onExportJson={exportEpisodeOutputPackageJson}
+          onExportMarkdown={exportEpisodeOutputPackageMarkdown}
+        />
+        <CaptionSocialProfilePanel
+          plan={renderProfilePlan}
+          onExportPlan={exportRenderProfilePlanJson}
         />
         <input
           ref={manifestInputRef}
@@ -4393,6 +4732,100 @@ function CloudSyncOutputHandoff({ job }: { job: CloudSyncJob }) {
         ))}
       </dl>
     </div>
+  );
+}
+
+function SyncJobTimelinePanel({
+  status,
+  includeClip,
+  selectedFiles,
+  uploadStates,
+  syncJob,
+  sharedRoomMetadata,
+}: {
+  status: PersistenceStatus;
+  includeClip: boolean;
+  selectedFiles: CloudSyncSelectedFiles;
+  uploadStates: Record<CloudSyncInputRole, CloudSyncRoleUploadState>;
+  syncJob: CloudSyncJob | null;
+  sharedRoomMetadata: SharedRoomMetadata | null;
+}) {
+  const timeline = buildSyncJobTimeline({
+    status,
+    selectedFiles,
+    uploadStates,
+    syncJob,
+    sharedRoomMetadata,
+  });
+  const visibleRoles = CLOUD_SYNC_INPUT_ROLES.filter(
+    (role) => includeClip || role !== "clipVideo",
+  );
+  const nextAction = getSyncJobTimelineNextAction(timeline);
+
+  return (
+    <section className="sync-job-timeline-panel" aria-label="Sync Job Timeline">
+      <div className="panel-heading">
+        <div>
+          <h2>Sync Job Timeline</h2>
+          <p>Operator-readable progress from messy assets to shared room.</p>
+        </div>
+        <strong>{nextAction.label}</strong>
+      </div>
+
+      <div className="sync-job-timeline">
+        {timeline.map((stage) => (
+          <div
+            className={`sync-job-stage is-${stage.status}`}
+            key={stage.id}
+            aria-label={`${stage.label}: ${stage.status}`}
+          >
+            <span>{stage.label}</span>
+            <strong>{formatTimelineStageStatus(stage.status)}</strong>
+            <p>{stage.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="sync-role-health">
+        {visibleRoles.map((role) => {
+          const selectedCount = selectedFiles[role]?.length ?? 0;
+          const uploadState = uploadStates[role];
+          const uploadedCount = syncJob?.uploadedInputs.filter(
+            (input) => input.role === role,
+          ).length ?? 0;
+          const required = CLOUD_SYNC_REQUIRED_INPUT_ROLES.includes(role);
+
+          return (
+            <div
+              className={`sync-role-health-card is-${getSyncRoleHealthStatus({
+                selectedCount,
+                uploadedCount,
+                uploadState,
+                required,
+              })}`}
+              key={role}
+            >
+              <span>{CLOUD_SYNC_ROLE_LABELS[role]}</span>
+              <strong>
+                {uploadedCount > 0
+                  ? `${uploadedCount} uploaded`
+                  : selectedCount > 0
+                    ? `${selectedCount} selected`
+                    : required
+                      ? "Missing"
+                      : "Optional"}
+              </strong>
+              <small>{uploadState.message || CLOUD_SYNC_ROLE_HELP[role]}</small>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="sync-next-action">
+        <span>Next action</span>
+        <strong>{nextAction.detail}</strong>
+      </div>
+    </section>
   );
 }
 
@@ -5668,6 +6101,122 @@ function TranscriptEditLanePanel({
   );
 }
 
+function TranscriptCleanupSuggestionsPanel({
+  suggestions,
+  selectedSuggestionIds,
+  selectedCount,
+  onToggleSuggestion,
+  onSelectAll,
+  onClearSelection,
+  onPreviewSelected,
+}: {
+  suggestions: readonly TranscriptCleanupSuggestion[];
+  selectedSuggestionIds: ReadonlySet<string>;
+  selectedCount: number;
+  onToggleSuggestion: (suggestionId: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onPreviewSelected: () => void;
+}) {
+  return (
+    <section
+      className="transcript-cleanup-panel"
+      aria-label="Transcript cleanup suggestions"
+    >
+      <div className="panel-heading">
+        <div>
+          <h2>Transcript Cleanup Suggestions</h2>
+          <p>Review transcript-derived tightening suggestions before applying.</p>
+        </div>
+        <strong>
+          {selectedCount}/{suggestions.length} selected
+        </strong>
+      </div>
+
+      <div className="transcript-cleanup-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onSelectAll}
+          disabled={suggestions.length === 0}
+        >
+          Select All
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onClearSelection}
+          disabled={selectedCount === 0}
+        >
+          Clear Selection
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onPreviewSelected}
+          disabled={selectedCount === 0}
+        >
+          Review Selected In Agent Inbox
+        </button>
+      </div>
+
+      {suggestions.length > 0 ? (
+        <div className="transcript-cleanup-list">
+          {suggestions.slice(0, 12).map((suggestion) => (
+            <article
+              className={`transcript-cleanup-card priority-${suggestion.priority}`}
+              key={suggestion.id}
+            >
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selectedSuggestionIds.has(suggestion.id)}
+                  onChange={() => onToggleSuggestion(suggestion.id)}
+                  aria-label={`Select transcript cleanup suggestion ${suggestion.id}`}
+                />
+                <span>{suggestion.kind}</span>
+              </label>
+              <div>
+                <strong>{suggestion.message}</strong>
+                <p>{suggestion.text ?? "No transcript excerpt available."}</p>
+                <div className="transcript-cleanup-meta">
+                  {suggestion.startSourceTimeMs !== undefined ? (
+                    <span>
+                      {formatSourceTime(suggestion.startSourceTimeMs)}
+                      {suggestion.endSourceTimeMs !== undefined
+                        ? `-${formatSourceTime(suggestion.endSourceTimeMs)}`
+                        : ""}
+                    </span>
+                  ) : null}
+                  {suggestion.confidence !== undefined ? (
+                    <span>{formatConfidence(suggestion.confidence)} confidence</span>
+                  ) : null}
+                  {suggestion.reason ? <span>{suggestion.reason}</span> : null}
+                  <span>
+                    {suggestion.operations.length} op
+                    {suggestion.operations.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="panel-empty">
+          Import a timed transcript to surface cleanup suggestions. Suggestions
+          remain drafts until reviewed in the Agent Suggestions Inbox.
+        </p>
+      )}
+      {suggestions.length > 12 ? (
+        <p className="transcript-more">
+          Showing first 12 cleanup suggestions. Export Agent Context for the full
+          transcript review payload.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ClipCandidateLanePanel({
   candidates,
   approvedCount,
@@ -5860,6 +6409,214 @@ function ClipCandidateLanePanel({
           clips are rendered or uploaded here.
         </p>
       )}
+    </section>
+  );
+}
+
+function EpisodeOutputBoardPanel({
+  outputPackage,
+  onExportJson,
+  onExportMarkdown,
+}: {
+  outputPackage: EpisodeOutputPackage;
+  onExportJson: () => void;
+  onExportMarkdown: () => void;
+}) {
+  const readinessItems = [
+    {
+      label: "Manifest",
+      value: outputPackage.readiness.manifestLoaded ? "Loaded" : "Missing",
+    },
+    {
+      label: "Proxy",
+      value: outputPackage.readiness.proxyLoaded ? "Loaded" : "Missing",
+    },
+    {
+      label: "Transcript",
+      value: outputPackage.readiness.transcriptLoaded ? "Loaded" : "Optional",
+    },
+    {
+      label: "Sync Map",
+      value: outputPackage.readiness.syncMapAttached ? "Attached" : "Missing",
+    },
+    {
+      label: "Decisions",
+      value: String(outputPackage.metrics.decisionCount),
+    },
+    {
+      label: "Approved Clips",
+      value: `${outputPackage.metrics.approvedClipCount}/${outputPackage.metrics.totalClipCount}`,
+    },
+    {
+      label: "Active Program",
+      value: formatSourceTime(outputPackage.metrics.activeDurationMs),
+    },
+    {
+      label: "Cut Time",
+      value: formatSourceTime(outputPackage.metrics.cutDurationMs),
+    },
+  ];
+
+  return (
+    <section className="episode-output-board" aria-label="Episode output board">
+      <div className="panel-heading">
+        <div>
+          <h2>Episode Output Board</h2>
+          <p>Publishing package draft for render, clips, captions, and handoff.</p>
+        </div>
+        <strong>{outputPackage.readiness.renderReady ? "Render ready" : "Draft"}</strong>
+      </div>
+
+      <div className="output-board-grid">
+        {readinessItems.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="output-board-preview">
+        <div>
+          <span>Title candidates</span>
+          <ol>
+            {outputPackage.titleCandidates.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ol>
+        </div>
+        <div>
+          <span>Description draft</span>
+          <p>{outputPackage.descriptionDraft}</p>
+        </div>
+      </div>
+
+      <div className="output-board-columns">
+        <div>
+          <span>Chapters</span>
+          {outputPackage.chapterDrafts.length > 0 ? (
+            <ol>
+              {outputPackage.chapterDrafts.slice(0, 8).map((chapter) => (
+                <li key={`${chapter.startSourceTimeMs}-${chapter.state}`}>
+                  {formatSourceTime(chapter.startSourceTimeMs)} · {chapter.title}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>No chapter candidates until decisions exist.</p>
+          )}
+        </div>
+        <div>
+          <span>Checklist</span>
+          <ul>
+            {outputPackage.checklist.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="output-board-command">
+        <span>Render command seed</span>
+        <code>{outputPackage.renderCommands[0]}</code>
+      </div>
+
+      <div className="output-board-actions">
+        <button className="secondary-button" type="button" onClick={onExportJson}>
+          Export Output JSON
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onExportMarkdown}
+        >
+          Export Output Markdown
+        </button>
+      </div>
+
+      <p className="output-board-note">
+        Output packages contain semantic decisions, clip candidates, and planning
+        metadata only. They do not include local proxy object URLs or original
+        media paths.
+      </p>
+    </section>
+  );
+}
+
+function CaptionSocialProfilePanel({
+  plan,
+  onExportPlan,
+}: {
+  plan: RenderProfilePlan;
+  onExportPlan: () => void;
+}) {
+  return (
+    <section className="caption-profile-panel" aria-label="Caption and social profiles">
+      <div className="panel-heading">
+        <div>
+          <h2>Caption & Social Profiles</h2>
+          <p>Data-driven output profiles for captions, shorts, squares, and audio.</p>
+        </div>
+        <strong>{plan.clipOutputs.length} clip outputs</strong>
+      </div>
+
+      <div className="caption-profile-grid">
+        {plan.profiles.map((profile) => (
+          <article className="caption-profile-card" key={profile.id}>
+            <span>{profile.outputKind}</span>
+            <strong>{profile.label}</strong>
+            <small>
+              {profile.aspectRatio}
+              {profile.width && profile.height
+                ? ` · ${profile.width}x${profile.height}`
+                : ""}
+            </small>
+            <p>{profile.notes}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="caption-preset-list">
+        {plan.captionPresets.map((preset) => (
+          <div key={preset.id}>
+            <span>{preset.label}</span>
+            <strong>
+              {preset.placement} · {preset.maxLines} line
+              {preset.maxLines === 1 ? "" : "s"}
+            </strong>
+            <small>{preset.notes}</small>
+          </div>
+        ))}
+      </div>
+
+      <div className="caption-profile-summary">
+        <ReadinessMetric
+          label="Full episode outputs"
+          value={String(plan.fullEpisodeOutputs.length)}
+        />
+        <ReadinessMetric
+          label="Clip variants"
+          value={String(plan.clipOutputs.length)}
+        />
+        <ReadinessMetric
+          label="Warnings"
+          value={String(plan.warnings.length)}
+        />
+      </div>
+
+      {plan.warnings.length > 0 ? (
+        <ul className="readiness-warnings">
+          {plan.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="output-board-actions">
+        <button className="secondary-button" type="button" onClick={onExportPlan}>
+          Export Render Profile Plan
+        </button>
+      </div>
     </section>
   );
 }
@@ -7783,6 +8540,66 @@ function getTranscriptSegmentAtSourceTime(
   );
 }
 
+function buildTranscriptCleanupSuggestions({
+  review,
+  transcript,
+}: {
+  review: TranscriptReview;
+  transcript: EpisodeTranscript | null;
+}): TranscriptCleanupSuggestion[] {
+  const segmentsById = new Map(
+    (transcript?.segments ?? []).map((segment) => [segment.id, segment]),
+  );
+
+  return review.tasks.flatMap((task, taskIndex) => {
+    const operations = [
+      ...(task.suggestedOperation ? [task.suggestedOperation] : []),
+      ...(task.suggestedOperations ?? []),
+    ];
+
+    if (operations.length === 0) {
+      return [];
+    }
+
+    const segment = task.segmentId
+      ? segmentsById.get(task.segmentId)
+      : undefined;
+    const firstOperation = operations[0];
+    const confidence =
+      "confidence" in firstOperation ? firstOperation.confidence : undefined;
+    const reason = "reason" in firstOperation ? firstOperation.reason : undefined;
+
+    return [
+      {
+        id: `${task.kind}-${task.segmentId ?? task.startSourceTimeMs ?? taskIndex}`,
+        priority: task.priority,
+        kind: formatTranscriptCleanupKind(task.kind),
+        message: task.message,
+        ...(task.segmentId ? { segmentId: task.segmentId } : {}),
+        ...(segment?.speaker ? { speaker: segment.speaker } : {}),
+        ...(segment?.text ? { text: truncateText(segment.text, 220) } : {}),
+        ...(task.startSourceTimeMs !== undefined
+          ? { startSourceTimeMs: task.startSourceTimeMs }
+          : {}),
+        ...(task.endSourceTimeMs !== undefined
+          ? { endSourceTimeMs: task.endSourceTimeMs }
+          : {}),
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(reason ? { reason } : {}),
+        operations: operations.map((operation) => ({ ...operation })),
+      },
+    ];
+  });
+}
+
+function formatTranscriptCleanupKind(kind: string) {
+  return kind
+    .replace(/^transcript_/, "")
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function clampSourceTime(sourceTimeMs: number, sourceDurationMs: number) {
   return Math.min(sourceDurationMs, Math.max(0, sourceTimeMs));
 }
@@ -8717,6 +9534,361 @@ function shortId(id: string) {
   return id.slice(0, 8);
 }
 
+function summarizeDerivedSegmentDurations(
+  segments: readonly DerivedSegment[],
+  sourceDurationMs: number,
+): OutputDurationSummary {
+  return segments.reduce<OutputDurationSummary>(
+    (summary, segment) => {
+      const startSourceTimeMs = clampSourceTime(
+        segment.startSourceTimeMs,
+        sourceDurationMs,
+      );
+      const endSourceTimeMs = clampSourceTime(
+        segment.endSourceTimeMs ?? sourceDurationMs,
+        sourceDurationMs,
+      );
+      const durationMs = Math.max(0, endSourceTimeMs - startSourceTimeMs);
+
+      if (segment.state === "cut") {
+        return {
+          ...summary,
+          cutDurationMs: summary.cutDurationMs + durationMs,
+        };
+      }
+
+      return {
+        ...summary,
+        activeDurationMs: summary.activeDurationMs + durationMs,
+      };
+    },
+    {
+      activeDurationMs: 0,
+      cutDurationMs: 0,
+      totalDurationMs: sourceDurationMs,
+    },
+  );
+}
+
+function buildEpisodeOutputPackage({
+  exportedAt,
+  roomSelection,
+  manifest,
+  sourceDurationMs,
+  derivedSegments,
+  decisionEvents,
+  clipCandidates,
+  transcript,
+  syncMap,
+  localProxyVideo,
+  outputDurationSummary,
+}: {
+  exportedAt: string;
+  roomSelection: StudioCutRoomSelection;
+  manifest: EpisodeManifest | null;
+  sourceDurationMs: number;
+  derivedSegments: readonly DerivedSegment[];
+  decisionEvents: readonly DecisionEvent[];
+  clipCandidates: readonly ClipCandidate[];
+  transcript: EpisodeTranscript | null;
+  syncMap?: SyncMap;
+  localProxyVideo: LocalProxyVideo | null;
+  outputDurationSummary: OutputDurationSummary;
+}): EpisodeOutputPackage {
+  const episodeId = manifest?.id;
+  const episodeTitle = manifest?.title ?? roomSelection.projectId;
+  const approvedClipCount = clipCandidates.filter(
+    (candidate) => candidate.status === "approved",
+  ).length;
+  const visibleSegments = derivedSegments
+    .filter((segment) => segment.state !== "cut")
+    .slice(0, 12);
+  const chapterDrafts = visibleSegments.map((segment) => ({
+    startSourceTimeMs: segment.startSourceTimeMs,
+    title: PROGRAM_STATE_LABELS[segment.state],
+    state: segment.state,
+  }));
+  const renderCommandEpisodeDir = `<episode-workspace>/${sanitizeFileNamePart(
+    episodeId ?? roomSelection.projectId,
+  )}`;
+  const decisionFileName = episodeId
+    ? `${sanitizeFileNamePart(episodeId)}-decisions.json`
+    : "studio-cut-decisions.json";
+  const manifestFileName = episodeId
+    ? `${sanitizeFileNamePart(episodeId)}-manifest.json`
+    : "episode-manifest.json";
+
+  return {
+    schemaVersion: 1,
+    exportedAt,
+    projectId: roomSelection.projectId,
+    branchId: roomSelection.branchId,
+    episode: {
+      ...(episodeId ? { id: episodeId } : {}),
+      title: episodeTitle,
+      durationMs: sourceDurationMs,
+      manifestLoaded: Boolean(manifest),
+    },
+    readiness: {
+      manifestLoaded: Boolean(manifest),
+      proxyLoaded: Boolean(localProxyVideo),
+      transcriptLoaded: Boolean(transcript),
+      syncMapAttached: Boolean(syncMap),
+      decisionsReady: decisionEvents.length > 0,
+      approvedClipsReady: approvedClipCount > 0,
+      renderReady: Boolean(manifest && decisionEvents.length > 0),
+    },
+    metrics: {
+      decisionCount: decisionEvents.length,
+      activeDurationMs: outputDurationSummary.activeDurationMs,
+      cutDurationMs: outputDurationSummary.cutDurationMs,
+      totalClipCount: clipCandidates.length,
+      approvedClipCount,
+    },
+    titleCandidates: buildEpisodeTitleCandidates(episodeTitle),
+    descriptionDraft: buildEpisodeDescriptionDraft({
+      title: episodeTitle,
+      activeDurationMs: outputDurationSummary.activeDurationMs,
+      approvedClipCount,
+    }),
+    chapterDrafts,
+    captions: {
+      status: transcript ? "transcript_ready" : "not_started",
+      note: transcript
+        ? "Timed transcript is loaded for caption and description drafting."
+        : "Import or generate a timed transcript before final caption export.",
+    },
+    clips: cloneClipCandidates(clipCandidates),
+    renderCommands: [
+      `pnpm studio-cut:local:render-rescue-sync-session -- --episode-id ${sanitizeFileNamePart(
+        episodeId ?? roomSelection.projectId,
+      )} --episode-dir ${renderCommandEpisodeDir}`,
+      `python tools/studio-cut-local/studio_cut_local.py plan-render --manifest ${manifestFileName} --decisions ${decisionFileName} --profile youtube_16x9`,
+    ],
+    checklist: buildEpisodeOutputChecklist({
+      manifestLoaded: Boolean(manifest),
+      proxyLoaded: Boolean(localProxyVideo),
+      syncMapAttached: Boolean(syncMap),
+      decisionCount: decisionEvents.length,
+      approvedClipCount,
+      transcriptLoaded: Boolean(transcript),
+    }),
+    notes: [
+      "This package is a planning handoff. It does not contain media bytes, browser object URLs, or local original paths.",
+      "Semantic decisions use canonical episode/source time and remain reversible through JSON checkpoints.",
+      "Run local render QA before publishing any final output.",
+    ],
+  };
+}
+
+function buildEpisodeTitleCandidates(title: string) {
+  const normalizedTitle = title.trim() || "Studio Cut Episode";
+
+  return [
+    normalizedTitle,
+    `${normalizedTitle} | High Ground Odyssey`,
+    `${normalizedTitle} - Conversation Cut`,
+  ];
+}
+
+function buildEpisodeDescriptionDraft({
+  title,
+  activeDurationMs,
+  approvedClipCount,
+}: {
+  title: string;
+  activeDurationMs: number;
+  approvedClipCount: number;
+}) {
+  return `${title} semantic edit package. Active program runtime is ${formatSourceTime(
+    activeDurationMs,
+  )}; ${approvedClipCount} short-form clip candidate${
+    approvedClipCount === 1 ? "" : "s"
+  } approved for review.`;
+}
+
+function buildEpisodeOutputChecklist({
+  manifestLoaded,
+  proxyLoaded,
+  syncMapAttached,
+  decisionCount,
+  approvedClipCount,
+  transcriptLoaded,
+}: {
+  manifestLoaded: boolean;
+  proxyLoaded: boolean;
+  syncMapAttached: boolean;
+  decisionCount: number;
+  approvedClipCount: number;
+  transcriptLoaded: boolean;
+}) {
+  const checklist = [
+    manifestLoaded
+      ? "Manifest loaded"
+      : "Load or publish an Episode Manifest before handoff",
+    proxyLoaded
+      ? "Source-monitor proxy available for browser QA"
+      : "Load or publish a source-monitor proxy for visual QA",
+    decisionCount > 0
+      ? "Review semantic decision timeline"
+      : "Tag at least one semantic decision",
+    approvedClipCount > 0
+      ? "Review approved clip candidates"
+      : "Approve clip candidates if short-form output is needed",
+    transcriptLoaded
+      ? "Review transcript-derived captions and chapters"
+      : "Import transcript before caption handoff",
+    syncMapAttached
+      ? "Sync Map attached for original asset render planning"
+      : "Attach Sync Map before final original-asset render",
+    "Export decisions and checkpoint before render",
+    "Run local render dry-run and inspect output",
+  ];
+
+  return checklist;
+}
+
+function cloneClipCandidates(candidates: readonly ClipCandidate[]) {
+  return candidates.map((candidate) => ({
+    ...candidate,
+    reasons: [...candidate.reasons],
+    targetProfiles: [...candidate.targetProfiles],
+  }));
+}
+
+function renderEpisodeOutputPackageMarkdown(payload: EpisodeOutputPackage) {
+  const lines = [
+    `# ${payload.episode.title} Output Package`,
+    "",
+    `- Project: ${payload.projectId}`,
+    `- Branch: ${payload.branchId}`,
+    `- Exported: ${payload.exportedAt}`,
+    `- Duration: ${formatSourceTime(payload.episode.durationMs)}`,
+    `- Active runtime: ${formatSourceTime(payload.metrics.activeDurationMs)}`,
+    `- Cut runtime: ${formatSourceTime(payload.metrics.cutDurationMs)}`,
+    `- Decisions: ${payload.metrics.decisionCount}`,
+    `- Approved clips: ${payload.metrics.approvedClipCount}/${payload.metrics.totalClipCount}`,
+    "",
+    "## Readiness",
+    ...Object.entries(payload.readiness).map(
+      ([key, value]) => `- ${formatCamelCaseLabel(key)}: ${value ? "yes" : "no"}`,
+    ),
+    "",
+    "## Title Candidates",
+    ...payload.titleCandidates.map((title) => `- ${title}`),
+    "",
+    "## Description Draft",
+    payload.descriptionDraft,
+    "",
+    "## Chapters",
+    ...(payload.chapterDrafts.length > 0
+      ? payload.chapterDrafts.map(
+          (chapter) =>
+            `- ${formatSourceTime(chapter.startSourceTimeMs)} ${chapter.title}`,
+        )
+      : ["- No chapter candidates yet."]),
+    "",
+    "## Clips",
+    ...(payload.clips.length > 0
+      ? payload.clips.map(
+          (clip) =>
+            `- ${clip.status}: ${clip.title} (${formatSourceTime(
+              clip.startSourceTimeMs,
+            )}-${formatSourceTime(clip.endSourceTimeMs)})`,
+        )
+      : ["- No clip candidates yet."]),
+    "",
+    "## Render Commands",
+    ...payload.renderCommands.map((command) => `- \`${command}\``),
+    "",
+    "## Checklist",
+    ...payload.checklist.map((item) => `- ${item}`),
+    "",
+    "## Notes",
+    ...payload.notes.map((note) => `- ${note}`),
+    "",
+  ];
+
+  return lines.join("\n");
+}
+
+function buildRenderProfilePlan({
+  exportedAt,
+  roomSelection,
+  manifest,
+  sourceDurationMs,
+  clipCandidates,
+}: {
+  exportedAt: string;
+  roomSelection: StudioCutRoomSelection;
+  manifest: EpisodeManifest | null;
+  sourceDurationMs: number;
+  clipCandidates: readonly ClipCandidate[];
+}): RenderProfilePlan {
+  const profileById = new Map(
+    STUDIO_CUT_RENDER_PROFILES.map((profile) => [profile.id, profile]),
+  );
+  const approvedCandidates = clipCandidates.filter(
+    (candidate) => candidate.status === "approved",
+  );
+  const clipOutputs = approvedCandidates.flatMap((candidate) =>
+    candidate.targetProfiles.map((profileId) => {
+      const profile = profileById.get(profileId);
+
+      return {
+        clipCandidateId: candidate.id,
+        title: candidate.title,
+        profileId,
+        startSourceTimeMs: candidate.startSourceTimeMs,
+        endSourceTimeMs: candidate.endSourceTimeMs,
+        ...(profile?.defaultCaptionPresetId
+          ? { captionPresetId: profile.defaultCaptionPresetId }
+          : {}),
+        status: candidate.status,
+      };
+    }),
+  );
+  const youtubeProfile = profileById.get("youtube_16x9");
+  const warnings = [
+    ...(manifest ? [] : ["Import or publish a manifest before final render planning."]),
+    ...(approvedCandidates.length > 0
+      ? []
+      : ["No approved clip candidates yet; short-form profile outputs are empty."]),
+  ];
+
+  return {
+    schemaVersion: 1,
+    exportedAt,
+    projectId: roomSelection.projectId,
+    branchId: roomSelection.branchId,
+    ...(manifest?.id ? { episodeId: manifest.id } : {}),
+    profiles: STUDIO_CUT_RENDER_PROFILES.map((profile) => ({ ...profile })),
+    captionPresets: CAPTION_STYLE_PRESETS.map((preset) => ({ ...preset })),
+    fullEpisodeOutputs: youtubeProfile
+      ? [
+          {
+            profileId: youtubeProfile.id,
+            label: youtubeProfile.label,
+            durationMs: sourceDurationMs,
+            ...(youtubeProfile.defaultCaptionPresetId
+              ? { captionPresetId: youtubeProfile.defaultCaptionPresetId }
+              : {}),
+            notes:
+              "Full episode render should use semantic decisions, Sync Map, and the local original media map.",
+          },
+        ]
+      : [],
+    clipOutputs,
+    warnings,
+  };
+}
+
+function formatCamelCaseLabel(value: string) {
+  return value
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (character) => character.toUpperCase());
+}
+
 function getDecisionExportFileName(
   manifest: EpisodeManifest | null,
   payload: { projectId: string; branchId: string },
@@ -8776,6 +9948,31 @@ function getClipCandidatesFileName(
   return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
 }
 
+function getEpisodeOutputPackageFileName(
+  manifest: EpisodeManifest | null,
+  roomSelection: StudioCutRoomSelection,
+  checkpointTimestamp: string,
+  extension: "json" | "md",
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-output-package`
+    : `studio-cut-${roomSelection.projectId}-${roomSelection.branchId}-output-package`;
+
+  return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.${extension}`;
+}
+
+function getRenderProfilePlanFileName(
+  manifest: EpisodeManifest | null,
+  roomSelection: StudioCutRoomSelection,
+  checkpointTimestamp: string,
+) {
+  const baseName = manifest?.id
+    ? `${manifest.id}-render-profile-plan`
+    : `studio-cut-${roomSelection.projectId}-${roomSelection.branchId}-render-profile-plan`;
+
+  return `${sanitizeFileNamePart(baseName)}-${checkpointTimestamp}.json`;
+}
+
 function getAdjustedManifestFileName(manifest: EpisodeManifest) {
   return `${sanitizeFileNamePart(`${manifest.id}-adjusted-manifest`)}.json`;
 }
@@ -8783,6 +9980,18 @@ function getAdjustedManifestFileName(manifest: EpisodeManifest) {
 function downloadJsonFile(payload: unknown, fileName: string) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadTextFile(text: string, fileName: string, mimeType: string) {
+  const blob = new Blob([text], {
+    type: mimeType,
   });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -8865,6 +10074,223 @@ function getSharedRoomPackageKindLabel(
   }
 
   return "Unknown";
+}
+
+function buildSyncJobTimeline({
+  status,
+  selectedFiles,
+  uploadStates,
+  syncJob,
+  sharedRoomMetadata,
+}: {
+  status: PersistenceStatus;
+  selectedFiles: CloudSyncSelectedFiles;
+  uploadStates: Record<CloudSyncInputRole, CloudSyncRoleUploadState>;
+  syncJob: CloudSyncJob | null;
+  sharedRoomMetadata: SharedRoomMetadata | null;
+}): SyncJobTimelineStage[] {
+  const cloudReady =
+    status.mode === "cloud_connected" || status.mode === "cloud_ready";
+  const selectedFileArrays = getCloudSyncSelectedFileArrays(selectedFiles);
+  const requiredComplete = isRequiredCloudSyncSelectionComplete(selectedFileArrays);
+  const missingRequired = getMissingRequiredCloudSyncSelection(selectedFileArrays);
+  const isUploading = Object.values(uploadStates).some(
+    (uploadState) => uploadState.status === "uploading",
+  );
+  const hasUploadedInputs = Boolean(syncJob?.uploadedInputs.length);
+  const outputsComplete = syncJob ? isCloudSyncJobOutputComplete(syncJob) : false;
+  const isPublished =
+    Boolean(syncJob?.syncJobId && sharedRoomMetadata?.syncJobId === syncJob.syncJobId) ||
+    Boolean(sharedRoomMetadata?.packageKind === "rescue_sync_generated");
+  const jobStatus = syncJob?.status;
+  const jobFailed = jobStatus === "failed";
+
+  return [
+    {
+      id: "draft",
+      label: "Draft",
+      status: !cloudReady
+        ? "blocked"
+        : syncJob || requiredComplete
+          ? "done"
+          : "active",
+      detail: !cloudReady
+        ? "Firebase config is absent, so raw asset upload stays disabled."
+        : requiredComplete
+          ? "Required assets are selected."
+          : `Missing ${missingRequired
+              .map((role) => CLOUD_SYNC_ROLE_LABELS[role])
+              .join(", ")}.`,
+    },
+    {
+      id: "uploading",
+      label: "Uploading",
+      status: jobFailed
+        ? "blocked"
+        : isUploading
+          ? "active"
+          : hasUploadedInputs || ["uploaded", "queued", "processing", "ready"].includes(jobStatus ?? "")
+            ? "done"
+            : requiredComplete
+              ? "waiting"
+              : "blocked",
+      detail: isUploading
+        ? "Uploading selected raw assets to the sync job intake bucket."
+        : hasUploadedInputs
+          ? `${syncJob?.uploadedInputs.length ?? 0} input file${
+              syncJob?.uploadedInputs.length === 1 ? "" : "s"
+            } recorded on the sync job.`
+          : "Create the sync job after all required assets are selected.",
+    },
+    {
+      id: "uploaded",
+      label: "Uploaded",
+      status: jobFailed
+        ? "blocked"
+        : ["uploaded", "queued", "processing", "ready"].includes(jobStatus ?? "")
+          ? "done"
+          : hasUploadedInputs
+            ? "active"
+            : "waiting",
+      detail:
+        jobStatus === "uploaded"
+          ? "Inputs are uploaded and ready to queue for sync."
+          : hasUploadedInputs
+            ? "Upload record exists; check whether every required role finished."
+            : "Waiting for raw asset upload.",
+    },
+    {
+      id: "inspected",
+      label: "Inspected",
+      status: jobFailed
+        ? "blocked"
+        : jobStatus === "processing"
+          ? "active"
+          : outputsComplete || jobStatus === "ready"
+            ? "done"
+            : jobStatus === "queued"
+              ? "waiting"
+              : "waiting",
+      detail:
+        jobStatus === "processing"
+          ? "Worker is expected to inspect media, extract audio, and build the reference rail."
+          : outputsComplete
+            ? "Generated package metadata exists."
+            : "Future worker milestone: media inspection and reference rail.",
+    },
+    {
+      id: "syncing",
+      label: "Syncing",
+      status: jobFailed
+        ? "blocked"
+        : jobStatus === "processing"
+          ? "active"
+          : outputsComplete || jobStatus === "ready"
+            ? "done"
+            : jobStatus === "queued"
+              ? "active"
+              : "waiting",
+      detail:
+        jobStatus === "queued"
+          ? "Sync job is queued for waveform correlation and proxy generation."
+          : jobStatus === "processing"
+            ? "Worker should estimate offsets and generate package outputs."
+            : outputsComplete
+              ? "Sync Map, manifest, report, and source-monitor proxy are present."
+              : "Waiting for worker queue.",
+    },
+    {
+      id: "package_ready",
+      label: "Package Ready",
+      status: jobFailed
+        ? "blocked"
+        : outputsComplete
+          ? "done"
+          : jobStatus === "ready"
+            ? "active"
+            : "waiting",
+      detail: outputsComplete
+        ? "Worker outputs can be published into a shared room."
+        : jobStatus === "ready"
+          ? "Job says ready, but one or more output artifacts are missing."
+          : "Waiting for generated source-monitor proxy, manifest, Sync Map, and report.",
+    },
+    {
+      id: "room_published",
+      label: "Room Published",
+      status: jobFailed
+        ? "blocked"
+        : isPublished
+          ? "done"
+          : outputsComplete
+            ? "active"
+            : "waiting",
+      detail: isPublished
+        ? "Shared room metadata points at generated worker outputs."
+        : outputsComplete
+          ? "Publish worker outputs to create the room link for Mako."
+          : "Waiting for package readiness.",
+    },
+  ];
+}
+
+function getSyncJobTimelineNextAction(stages: readonly SyncJobTimelineStage[]) {
+  const activeStage =
+    stages.find((stage) => stage.status === "blocked") ??
+    stages.find((stage) => stage.status === "active") ??
+    stages.find((stage) => stage.status === "waiting") ??
+    stages[stages.length - 1];
+
+  return {
+    label: formatTimelineStageStatus(activeStage.status),
+    detail: activeStage.detail,
+  };
+}
+
+function formatTimelineStageStatus(status: SyncJobTimelineStageStatus) {
+  if (status === "done") {
+    return "Done";
+  }
+
+  if (status === "active") {
+    return "Active";
+  }
+
+  if (status === "blocked") {
+    return "Blocked";
+  }
+
+  return "Waiting";
+}
+
+function getSyncRoleHealthStatus({
+  selectedCount,
+  uploadedCount,
+  uploadState,
+  required,
+}: {
+  selectedCount: number;
+  uploadedCount: number;
+  uploadState: CloudSyncRoleUploadState;
+  required: boolean;
+}) {
+  if (uploadState.status === "error") {
+    return "blocked";
+  }
+
+  if (uploadedCount > 0 || uploadState.status === "uploaded") {
+    return "done";
+  }
+
+  if (uploadState.status === "uploading") {
+    return "active";
+  }
+
+  if (selectedCount > 0 || !required) {
+    return "waiting";
+  }
+
+  return "blocked";
 }
 
 function isCloudSyncJobOutputComplete(

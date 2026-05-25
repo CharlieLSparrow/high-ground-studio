@@ -498,6 +498,14 @@ behavior at the segment end when needed. The transcript is only included in
 `Export Agent Context` when the operator imports it; media bytes, local paths,
 and object URLs are still excluded.
 
+The `Transcript Cleanup Suggestions` panel turns those transcript review tasks
+into a visible suggestion lane with affected time, excerpt, confidence, reason,
+and operation count. Operators can select suggestions and send them directly to
+the `Agent Suggestions Inbox` for review before applying. This gives Descript-
+style cleanup affordances while preserving Studio Cut's semantic edit layer:
+every accepted cleanup is still a reversible decision operation, not a
+destructive transcript/media edit.
+
 `Export Suggested Ops` in that panel writes a reviewable agent operation JSON
 draft from transcript tasks that have safe semantic suggestions. Clip and
 speaker-focus tasks become point decisions; transcript gaps and filler clusters
@@ -514,6 +522,23 @@ summary, source-time in/out, status, target render profiles, score, reasons, and
 provenance. They are browser-local semantic ranges, not rendered clips. Use
 `Export Clips` or `Export Agent Context` to hand those ranges to an agent or
 future render profile pass.
+
+The `Episode Output Board` is the first full-episode publishing cockpit. It
+summarizes decision count, active runtime, cut runtime, approved clips,
+transcript status, Sync Map status, proxy status, and render readiness. It also
+drafts platform-neutral output metadata: title candidates, a description draft,
+chapter candidates, caption status, clip list, render command seeds, and a final
+review checklist. `Export Output JSON` and `Export Output Markdown` are dry-run
+publishing packages only; they contain semantic planning data, not media bytes,
+browser object URLs, or original local paths.
+
+The `Caption & Social Profiles` panel makes render variants explicit data. The
+checked-in profile catalog currently covers YouTube 16:9, Shorts/Reels/TikTok
+9:16, square 1:1, vertical 4:5, and audio teaser outputs, plus caption style
+presets such as clean lower-third and bold stacked vertical captions. Approved
+clip candidates now plan variants across that catalog. `Export Render Profile
+Plan` writes a JSON scaffold for agents/renderers to inspect before any direct
+platform publishing is built.
 
 Use `Export Agent Context` when an agent needs the live browser room state. The
 export includes the manifest, current source time, proxy loaded status,
@@ -1048,6 +1073,14 @@ can select required raw assets:
 Clip/screen video is optional. The upload is explicit; the app does not
 auto-upload selected files. Local dev mode keeps this disabled because Firebase
 config is absent.
+
+The adjacent `Sync Job Timeline` makes this flow visible as operator state:
+`draft -> uploading -> uploaded -> inspected -> syncing -> package_ready ->
+room_published`. It also shows per-role health for Homer video, Charlie video,
+clean audio, multi-piece phone/reference audio, and optional clip video, plus
+the next action needed to unblock the shared room. This is a lightweight
+Riverside-style confidence layer for Rescue Sync; it does not upload or process
+anything by itself.
 
 Episode 4 needs Rescue Sync because the phone/reference recording can arrive in
 multiple pieces. The intake model now supports multiple `phoneReferenceAudio`

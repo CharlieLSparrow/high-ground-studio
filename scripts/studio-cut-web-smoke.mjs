@@ -543,11 +543,13 @@ async function runBrowserSmoke() {
     const rescuePackageSection = page.getByLabel("Publish Rescue Sync Package");
     const collaborationSection = page.getByLabel("Collaboration mode");
     const cloudSyncSection = page.getByLabel("Cloud Sync Intake");
+    const syncTimelineSection = page.getByLabel("Sync Job Timeline");
 
     await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Episode Room" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Publish Rescue Sync Package" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Cloud Sync Intake" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sync Job Timeline" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Room Diagnostics" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sync Review" })).toBeVisible();
     await expect(cloudSyncSection).toContainText("Homer video");
@@ -567,6 +569,11 @@ async function runBrowserSmoke() {
     await expect(
       cloudSyncSection.getByRole("button", { name: "Publish Worker Outputs" }),
     ).toBeDisabled();
+    await expect(syncTimelineSection).toContainText("Draft");
+    await expect(syncTimelineSection).toContainText("Uploading");
+    await expect(syncTimelineSection).toContainText("Package Ready");
+    await expect(syncTimelineSection).toContainText("Room Published");
+    await expect(syncTimelineSection).toContainText("Next action");
     await expect(sharedRoomSection.getByText(/shared rooms are disabled in local-only mode/i)).toBeVisible();
     await expect(rescuePackageSection).toContainText("Manifest");
     await expect(rescuePackageSection).toContainText("Source-monitor proxy");
@@ -680,9 +687,19 @@ async function runBrowserSmoke() {
     await expect(page.getByLabel("Transcript review")).toContainText("Clip refs");
     await expect(page.getByLabel("Transcript review")).toContainText("transcript_clip_reference");
     const transcriptLane = page.getByLabel("Transcript edit lane");
+    const transcriptCleanup = page.getByLabel("Transcript cleanup suggestions");
     await expect(page.getByRole("heading", { name: "Transcript Edit Lane" })).toBeVisible();
     await expect(transcriptLane).toContainText("transcript-001");
     await expect(transcriptLane).toContainText("Charlie");
+    await expect(page.getByRole("heading", { name: "Transcript Cleanup Suggestions" })).toBeVisible();
+    await expect(transcriptCleanup).toContainText("Clip Reference");
+    await transcriptCleanup
+      .getByRole("button", { name: "Review Selected In Agent Inbox" })
+      .click();
+    await expect(page.getByLabel("Agent decision operation preview")).toContainText(
+      "Agent Suggestions Inbox",
+    );
+    await page.getByLabel("Agent decision operation preview").getByRole("button", { name: "Dismiss" }).click();
     const clipLane = page.getByLabel("Clip candidate lane");
     await expect(page.getByRole("heading", { name: "Clip Candidate Lane" })).toBeVisible();
     const transcriptOpsDownload = page.waitForEvent("download");
@@ -763,6 +780,55 @@ async function runBrowserSmoke() {
     assert.match(
       clipCandidates.suggestedFilename(),
       /web-smoke-episode-clip-candidates-/,
+    );
+    const outputBoard = page.getByLabel("Episode output board");
+    await expect(page.getByRole("heading", { name: "Episode Output Board" })).toBeVisible();
+    await expect(outputBoard).toContainText("Approved Clips");
+    await expect(outputBoard).toContainText("1/1");
+    await expect(outputBoard).toContainText("Transcript");
+    const outputPackageDownload = page.waitForEvent("download");
+    await outputBoard.getByRole("button", { name: "Export Output JSON" }).click();
+    const outputPackage = await outputPackageDownload;
+    assert.match(
+      outputPackage.suggestedFilename(),
+      /web-smoke-episode-output-package-/,
+    );
+    const outputPackagePath = await outputPackage.path();
+    assert(outputPackagePath, "episode output package download path should be available");
+    const outputPackageJson = JSON.parse(
+      await readFile(outputPackagePath, "utf8"),
+    );
+    assert.equal(outputPackageJson.schemaVersion, 1);
+    assert.equal(outputPackageJson.episode.id, "web-smoke-episode");
+    assert.equal(outputPackageJson.readiness.transcriptLoaded, true);
+    assert.equal(outputPackageJson.metrics.approvedClipCount, 1);
+    assert(
+      !JSON.stringify(outputPackageJson).includes("blob:"),
+      "episode output package must not include browser object URLs",
+    );
+    const captionProfilePanel = page.getByLabel("Caption and social profiles");
+    await expect(page.getByRole("heading", { name: "Caption & Social Profiles" })).toBeVisible();
+    await expect(captionProfilePanel).toContainText("Shorts/Reels/TikTok 9:16");
+    await expect(captionProfilePanel).toContainText("Clean lower third");
+    const renderProfileDownload = page.waitForEvent("download");
+    await captionProfilePanel
+      .getByRole("button", { name: "Export Render Profile Plan" })
+      .click();
+    const renderProfilePlan = await renderProfileDownload;
+    assert.match(
+      renderProfilePlan.suggestedFilename(),
+      /web-smoke-episode-render-profile-plan-/,
+    );
+    const renderProfilePath = await renderProfilePlan.path();
+    assert(renderProfilePath, "render profile plan download path should be available");
+    const renderProfileJson = JSON.parse(await readFile(renderProfilePath, "utf8"));
+    assert.equal(renderProfileJson.schemaVersion, 1);
+    assert.equal(renderProfileJson.clipOutputs.length, 5);
+    assert(
+      renderProfileJson.captionPresets.some(
+        (preset) => preset.id === "shorts_bold_stack",
+      ),
+      "render profile plan should include social caption presets",
     );
 
     await secondsInput.fill("5");
