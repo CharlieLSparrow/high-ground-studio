@@ -53,6 +53,11 @@ Related durable docs:
   to local files, inspects media with `ffprobe`, extracts mono 48 kHz WAV files
   with `ffmpeg`, assembles `reference-rail.wav`, and estimates offsets with
   anchor-based waveform correlation v0.
+- Cloud Media Vault foundation for Google Cloud Storage originals/proxies:
+  `docs/studio-cut-cloud-media-vault.md`, `tools/studio-cut-media-vault`, and
+  the web `Cloud Media Vault` panel. This creates local manifests and reviewable
+  upload plans for Insta360 video/photo/audio folders without storing
+  third-party passwords or committing media.
 - One-command verifier: `pnpm studio-cut:verify`, including Firebase emulator
   rules tests.
 - Agentic decision editing commands:
@@ -158,6 +163,24 @@ ready:
    Outputs` to create the shared room from the generated Storage outputs. The
    worker is still local-first for real use today, so publish the generated
    package from local files after reviewing it.
+
+Cloud media vault path for Insta360/travel assets:
+
+```bash
+pnpm studio-cut:media-vault:doctor
+pnpm studio-cut:media-vault -- create-manifest \
+  --source-dir ~/Movies/StudioCut/episode-004/inbox \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out /tmp/episode-004-media-vault.json
+pnpm studio-cut:media-vault -- plan-upload \
+  --manifest /tmp/episode-004-media-vault.json \
+  --source-dir ~/Movies/StudioCut/episode-004/inbox \
+  --out /tmp/episode-004-media-vault-upload.sh
+```
+
+Review the upload plan before running it. Generated real manifests/upload plans
+are local operator artifacts and should not be committed.
 
 Local worker metadata-only run:
 

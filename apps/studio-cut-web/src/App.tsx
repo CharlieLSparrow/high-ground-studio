@@ -11,6 +11,7 @@ import {
   CLOUD_SYNC_INPUT_ROLES,
   CLOUD_SYNC_REQUIRED_INPUT_ROLES,
   CAPTION_STYLE_PRESETS,
+  CLOUD_MEDIA_CAPTURE_SOURCE_LABELS,
   CLIP_CANDIDATE_STATUSES,
   CLIP_RENDER_PROFILES,
   deriveSegments,
@@ -134,6 +135,8 @@ const MAX_TIMELINE_MARKERS = 120;
 const MAX_CLIP_CANDIDATES = 200;
 const PRESENCE_UPDATE_INTERVAL_MS = 5000;
 const STALE_PRESENCE_MS = 30000;
+const CLOUD_MEDIA_VAULT_BUCKET = "high-ground-odyssey-media";
+const CLOUD_MEDIA_VAULT_PREFIX = "media-vault/raw";
 
 const STATE_KEYBOARD_SHORTCUTS: Record<string, ProgramState> = {
   "1": "charlie",
@@ -3906,6 +3909,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       </section>
 
       <aside className="edit-panel" aria-label="Decision controls">
+        <CloudMediaVaultPanel roomSelection={roomSelection} />
         <CloudSyncIntakePanel
           status={status}
           roomSelection={roomSelection}
@@ -4533,6 +4537,59 @@ function KeyboardShortcutLegend() {
         </span>
       ))}
     </div>
+  );
+}
+
+function CloudMediaVaultPanel({
+  roomSelection,
+}: {
+  roomSelection: StudioCutRoomSelection;
+}) {
+  const collectionId = sanitizeFileNamePart(roomSelection.projectId);
+  const originalPrefix = `${CLOUD_MEDIA_VAULT_PREFIX}/${collectionId}/homer-insta360/originals/`;
+  const proxyPrefix = `media-vault/derived/${collectionId}/homer-insta360/proxies/`;
+  const manifestCommand = `pnpm studio-cut:media-vault -- create-manifest --source-dir ~/Movies/StudioCut/${collectionId}/inbox --project-id ${collectionId} --collection-id homer-insta360 --out /tmp/${collectionId}-media-vault.json`;
+  const uploadPlanCommand = `pnpm studio-cut:media-vault -- plan-upload --manifest /tmp/${collectionId}-media-vault.json --source-dir ~/Movies/StudioCut/${collectionId}/inbox --out /tmp/${collectionId}-media-vault-upload.sh`;
+
+  return (
+    <section className="cloud-media-vault-panel" aria-label="Cloud Media Vault">
+      <div className="panel-heading">
+        <div>
+          <h2>Cloud Media Vault</h2>
+          <p>Google Cloud home for originals, photos, generated proxies, and Sync Maps.</p>
+        </div>
+        <strong>GCS planned</strong>
+      </div>
+
+      <div className="cloud-media-vault-grid">
+        <ReadinessMetric label="Bucket" value={CLOUD_MEDIA_VAULT_BUCKET} />
+        <ReadinessMetric label="Collection" value={`${collectionId}/homer-insta360`} />
+        <ReadinessMetric label="Originals prefix" value={originalPrefix} />
+        <ReadinessMetric label="Proxy prefix" value={proxyPrefix} />
+      </div>
+
+      <div className="cloud-media-source-row">
+        {Object.entries(CLOUD_MEDIA_CAPTURE_SOURCE_LABELS).map(([source, label]) => (
+          <span key={source}>{label}</span>
+        ))}
+      </div>
+
+      <div className="cloud-media-vault-command">
+        <span>Manifest command</span>
+        <code>{manifestCommand}</code>
+      </div>
+      <div className="cloud-media-vault-command">
+        <span>Upload plan command</span>
+        <code>{uploadPlanCommand}</code>
+      </div>
+
+      <p className="cloud-media-vault-note">
+        Put exported Insta360 video/photo files in the local intake folder, create
+        a manifest, review the generated upload plan, then run it under your
+        Google Cloud CLI session. Do not put third-party passwords or local media
+        files in the repo.
+      </p>
+    </section>
   );
 }
 

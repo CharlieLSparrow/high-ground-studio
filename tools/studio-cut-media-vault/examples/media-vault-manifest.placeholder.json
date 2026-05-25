@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-05-25T00:00:00+00:00",
+  "projectId": "episode-004",
+  "collectionId": "homer-insta360",
+  "bucket": "high-ground-odyssey-media",
+  "storagePrefix": "media-vault/raw",
+  "sourceDirectoryName": "inbox",
+  "assetCount": 2,
+  "totalSizeBytes": 123456,
+  "assets": [
+    {
+      "assetId": "homer-insta360-video-placeholder-000000000000",
+      "fileName": "REPLACE_WITH_INSTA360_VIDEO.insv",
+      "relativePath": "insta360/REPLACE_WITH_INSTA360_VIDEO.insv",
+      "sizeBytes": 100000,
+      "contentType": "video/mp4",
+      "mediaKind": "video",
+      "captureSource": "insta360",
+      "cloudObjectPath": "media-vault/raw/episode-004/homer-insta360/originals/video/insta360/000000000000-replace-with-insta360-video.insv",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "assetId": "homer-insta360-photo-placeholder-111111111111",
+      "fileName": "REPLACE_WITH_INSTA360_PHOTO.insp",
+      "relativePath": "photos/REPLACE_WITH_INSTA360_PHOTO.insp",
+      "sizeBytes": 23456,
+      "contentType": "image/jpeg",
+      "mediaKind": "photo",
+      "captureSource": "insta360",
+      "cloudObjectPath": "media-vault/raw/episode-004/homer-insta360/originals/photo/insta360/111111111111-replace-with-insta360-photo.insp",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "notes": "Placeholder only. Do not commit real media manifests with local episode data."
+}

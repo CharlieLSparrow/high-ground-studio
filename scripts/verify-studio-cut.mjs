@@ -143,6 +143,16 @@ const verificationSteps = [
     ],
   },
   {
+    label: "Media vault helper compile",
+    command: pythonCommand,
+    args: ["-m", "py_compile", "tools/studio-cut-media-vault/media_vault.py"],
+  },
+  {
+    label: "Media vault synthetic smoke",
+    command: "pnpm",
+    args: ["studio-cut:media-vault:smoke"],
+  },
+  {
     label: "Cloud sync worker synthetic smoke",
     command: "pnpm",
     args: ["studio-cut:cloud-sync-smoke"],

@@ -1061,6 +1061,14 @@ The next primary direction starts before a prepared manifest/proxy exists:
 Charlie uploads disparate assets -> cloud sync worker writes generated outputs -> Studio Cut publishes shared room -> Mako opens room link
 ```
 
+The broader cloud media storage plan is documented in
+[`docs/studio-cut-cloud-media-vault.md`](studio-cut-cloud-media-vault.md). The
+vault is the Google Cloud Storage home for Insta360 originals, photos, audio,
+generated proxies, Sync Maps, and future travel-video artifacts. Studio Cut now
+shows a `Cloud Media Vault` panel with the intended bucket/prefix layout and the
+local manifest/upload-plan commands. This panel is guidance only; it does not
+upload media or store passwords.
+
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:
 

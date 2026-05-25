@@ -1,5 +1,42 @@
 export type SourceRole = "homer" | "charlie" | "clip" | "program";
 
+export type CloudMediaAssetKind = "video" | "photo" | "audio" | "sidecar" | "other";
+
+export type CloudMediaCaptureSource =
+  | "insta360"
+  | "canon"
+  | "dji"
+  | "shure"
+  | "iphone"
+  | "gopro"
+  | "unknown";
+
+export type CloudMediaVaultAsset = {
+  assetId: string;
+  fileName: string;
+  relativePath: string;
+  sizeBytes: number;
+  contentType: string;
+  mediaKind: CloudMediaAssetKind;
+  captureSource: CloudMediaCaptureSource;
+  cloudObjectPath: string;
+  sha256: string;
+};
+
+export type CloudMediaVaultManifest = {
+  schemaVersion: 1;
+  createdAt: string;
+  projectId: string;
+  collectionId: string;
+  bucket: string;
+  storagePrefix: string;
+  sourceDirectoryName: string;
+  assetCount: number;
+  totalSizeBytes: number;
+  assets: CloudMediaVaultAsset[];
+  notes?: string;
+};
+
 export type ProgramState =
   | "charlie"
   | "homer"
@@ -330,6 +367,37 @@ export const SOURCE_ROLES: readonly SourceRole[] = [
   "clip",
   "program",
 ] as const;
+
+export const CLOUD_MEDIA_ASSET_KINDS: readonly CloudMediaAssetKind[] = [
+  "video",
+  "photo",
+  "audio",
+  "sidecar",
+  "other",
+] as const;
+
+export const CLOUD_MEDIA_CAPTURE_SOURCES: readonly CloudMediaCaptureSource[] = [
+  "insta360",
+  "canon",
+  "dji",
+  "shure",
+  "iphone",
+  "gopro",
+  "unknown",
+] as const;
+
+export const CLOUD_MEDIA_CAPTURE_SOURCE_LABELS: Record<
+  CloudMediaCaptureSource,
+  string
+> = {
+  insta360: "Insta360",
+  canon: "Canon",
+  dji: "DJI",
+  shure: "Shure",
+  iphone: "iPhone",
+  gopro: "GoPro",
+  unknown: "Unknown",
+};
 
 export const CLOUD_SYNC_INPUT_ROLES: readonly CloudSyncInputRole[] = [
   "homerVideo",

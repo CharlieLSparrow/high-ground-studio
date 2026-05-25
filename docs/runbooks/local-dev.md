@@ -160,6 +160,17 @@ pnpm studio-cut:build
 
 Read `docs/studio-cut.md` before deploying or adding cloud persistence.
 
+Studio Cut media vault helper:
+
+```bash
+pnpm studio-cut:media-vault:doctor
+pnpm studio-cut:media-vault:smoke
+```
+
+Use this helper to create local manifests and reviewable Google Cloud Storage
+upload plans for video/photo/audio folders. Real manifests and upload scripts
+for private media stay outside git.
+
 ## Build Verification
 
 Default production build:

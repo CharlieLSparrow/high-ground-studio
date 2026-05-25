@@ -542,10 +542,12 @@ async function runBrowserSmoke() {
     const sharedRoomSection = page.getByLabel("Shared episode room");
     const rescuePackageSection = page.getByLabel("Publish Rescue Sync Package");
     const collaborationSection = page.getByLabel("Collaboration mode");
+    const cloudMediaVaultSection = page.getByLabel("Cloud Media Vault");
     const cloudSyncSection = page.getByLabel("Cloud Sync Intake");
     const syncTimelineSection = page.getByLabel("Sync Job Timeline");
 
     await expect(page.getByRole("heading", { name: "Collaboration Mode" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cloud Media Vault" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shared Episode Room" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Publish Rescue Sync Package" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Cloud Sync Intake" })).toBeVisible();
@@ -560,6 +562,10 @@ async function runBrowserSmoke() {
     await expect(cloudSyncSection).toContainText("Clip/screen video");
     await expect(cloudSyncSection).toContainText(/Multiple pieces are allowed/i);
     await expect(cloudSyncSection).toContainText(/raw asset intake is disabled|local only/i);
+    await expect(cloudMediaVaultSection).toContainText("high-ground-odyssey-media");
+    await expect(cloudMediaVaultSection).toContainText("Insta360");
+    await expect(cloudMediaVaultSection).toContainText("create-manifest");
+    await expect(cloudMediaVaultSection).toContainText("plan-upload");
     await expect(
       cloudSyncSection.getByRole("button", {
         name: "Create Sync Job / Upload Raw Assets",

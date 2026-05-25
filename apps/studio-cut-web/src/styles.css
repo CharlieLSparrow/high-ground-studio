@@ -572,6 +572,7 @@ h2 {
 .render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
+.cloud-media-vault-panel,
 .cloud-sync-panel,
 .sync-job-timeline-panel,
 .shared-room-panel,
@@ -599,6 +600,7 @@ h2 {
 .render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
+.cloud-media-vault-panel,
 .cloud-sync-panel,
 .sync-job-timeline-panel,
 .shared-room-panel,
@@ -783,6 +785,79 @@ h2 {
   background:
     linear-gradient(135deg, rgba(114, 214, 255, 0.08), transparent 58%),
     rgba(255, 255, 255, 0.04);
+}
+
+.cloud-media-vault-panel {
+  border-color: rgba(240, 201, 106, 0.24);
+  background:
+    linear-gradient(135deg, rgba(240, 201, 106, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.cloud-media-vault-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-media-vault-grid div,
+.cloud-media-vault-command {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.cloud-media-vault-grid span,
+.cloud-media-vault-command span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.cloud-media-vault-grid strong {
+  overflow-wrap: anywhere;
+  color: #eef2ee;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.cloud-media-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cloud-media-source-row span {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aeb9b4;
+  padding: 4px 7px;
+  font-size: 0.66rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.cloud-media-vault-command code {
+  overflow-wrap: anywhere;
+  color: #ffe6bd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.cloud-media-vault-note {
+  border: 1px dashed rgba(240, 201, 106, 0.22);
+  border-radius: 7px;
+  background: rgba(240, 201, 106, 0.06);
+  color: #d7e0dc;
+  margin: 0;
+  padding: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .shared-room-panel {
@@ -3339,6 +3414,7 @@ td {
   .cloud-sync-controls,
   .cloud-sync-role-row,
   .cloud-sync-selected-file,
+  .cloud-media-vault-grid,
   .decision-refinement-grid,
   .decision-refinement-form,
   .rescue-package-grid,
