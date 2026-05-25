@@ -1395,3 +1395,8 @@ checks, blockers, and next handoff.
   `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
   sandbox after the known Turbopack port-binding failure, and
   `git diff --check`.
+- Merged PR #29 as `533151c` and deployed Studio revision `studio-00053-rfn`
+  from Cloud Build `2a62f5bd-2a9a-4cc5-8c28-8c1a85033bb0`. Live smokes passed
+  for `/manuscript/live` (`HTTP 200`) and unauthenticated
+  `/api/manuscript/live-rooms` (`401`). Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00051-zl8=100`.
