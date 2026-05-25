@@ -166,6 +166,45 @@ test("Content Studio durable projects are wired through authenticated API", () =
   assert.match(client, /Open Project/);
 });
 
+test("Manuscript live rooms are wired through authenticated API", () => {
+  const route = readFileSync(
+    "apps/studio/src/app/api/manuscript/live-rooms/route.ts",
+    "utf8",
+  );
+  const updateRoute = readFileSync(
+    "apps/studio/src/app/api/manuscript/live-rooms/[roomId]/updates/route.ts",
+    "utf8",
+  );
+  const presenceRoute = readFileSync(
+    "apps/studio/src/app/api/manuscript/live-rooms/[roomId]/presence/route.ts",
+    "utf8",
+  );
+  const serverModel = readFileSync(
+    "apps/studio/src/lib/server/studio-manuscript-live-rooms.ts",
+    "utf8",
+  );
+  const schema = readFileSync("prisma/schema.prisma", "utf8");
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/live/studio-manuscript-live-room-client.tsx",
+    "utf8",
+  );
+
+  assert.match(route, /getStudioApiActor/);
+  assert.match(route, /getStudioDatabaseUrl/);
+  assert.match(route, /createStudioManuscriptLiveRoom/);
+  assert.match(updateRoute, /appendStudioManuscriptLiveRoomUpdate/);
+  assert.match(updateRoute, /listStudioManuscriptLiveRoomUpdates/);
+  assert.match(presenceRoute, /heartbeatStudioManuscriptLivePresence/);
+  assert.match(serverModel, /studioManuscriptLiveRoom/);
+  assert.match(serverModel, /studioManuscriptLiveRoomUpdate/);
+  assert.match(serverModel, /studioManuscriptLivePresence/);
+  assert.match(schema, /model StudioManuscriptLiveRoom/);
+  assert.match(schema, /model StudioManuscriptLiveRoomUpdate/);
+  assert.match(schema, /model StudioManuscriptLivePresence/);
+  assert.match(client, /Copy room link/);
+  assert.match(client, /Save manual snapshot/);
+});
+
 test("Prisma db-push job image is available for Cloud SQL schema sync", () => {
   const dockerfile = readFileSync("ops/prisma-db-push.Dockerfile", "utf8");
   const cloudbuild = readFileSync("cloudbuild.prisma-db-push.yaml", "utf8");

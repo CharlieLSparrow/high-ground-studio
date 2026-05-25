@@ -32,6 +32,11 @@ Read in this order:
   supports JSON handoff packets and manual Prisma-backed server checkpoints
   once the `StudioContentWorkspaceSnapshot` schema change has been applied. It
   does not call providers or publish content.
+- Studio `/manuscript/live` is the first private shared manuscript editing
+  surface. It uses authenticated Cloud SQL-backed Yjs text rooms with polling,
+  presence heartbeats, shareable room URLs, and manual snapshot checkpointing.
+  It does not replace the full rich Manuscript Desk editor or publish public
+  content.
 - Both current production build paths pass.
 - The content tree is much larger than the current published surface.
 - Codex has approval to commit, push, and deploy independently when a coherent

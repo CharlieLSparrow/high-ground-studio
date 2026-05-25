@@ -886,6 +886,7 @@ model StudioManuscript {
   archivedAt     DateTime?
 
   snapshots      StudioManuscriptSnapshot[]
+  liveRooms      StudioManuscriptLiveRoom[]
 
   @@index([ownerEmail, updatedAt])
   @@index([ownerEmail, kind, updatedAt])
@@ -918,6 +919,64 @@ model StudioManuscriptSnapshot {
   @@index([ownerEmail, createdAt])
   @@index([ownerEmail, manuscriptId, updatedAt])
   @@index([manuscriptId, updatedAt])
+}
+
+model StudioManuscriptLiveRoom {
+  id             String   @id @default(cuid())
+  manuscriptId   String?
+  ownerEmail     String
+  title          String
+  schemaVersion  Int      @default(1)
+  ydocUpdate     Bytes
+  plainText      String   @default("")
+  clock          Int      @default(0)
+  wordCount      Int      @default(0)
+  characterCount Int      @default(0)
+  updatedByEmail String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  archivedAt     DateTime?
+
+  manuscript     StudioManuscript?              @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  updates        StudioManuscriptLiveRoomUpdate[]
+  presences      StudioManuscriptLivePresence[]
+
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, manuscriptId, updatedAt])
+  @@index([manuscriptId, updatedAt])
+}
+
+model StudioManuscriptLiveRoomUpdate {
+  id         String   @id @default(cuid())
+  roomId     String
+  actorEmail String
+  clientId   String?
+  clock      Int
+  update     Bytes
+  createdAt  DateTime @default(now())
+
+  room       StudioManuscriptLiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, clock])
+  @@index([roomId, clock])
+  @@index([actorEmail, createdAt])
+}
+
+model StudioManuscriptLivePresence {
+  id          String   @id @default(cuid())
+  roomId      String
+  actorEmail  String
+  displayName String?
+  clientId    String?
+  mode        String?
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  room        StudioManuscriptLiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, actorEmail])
+  @@index([roomId, lastSeenAt])
 }
 
 model StudioContentWorkspaceSnapshot {

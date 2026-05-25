@@ -39,8 +39,8 @@ const primaryLinks = [
     label: "Manuscript Desk",
   },
   {
-    href: "/content-studio",
-    label: "Content Studio",
+    href: "/manuscript/live",
+    label: "Live Room",
   },
 ];
 

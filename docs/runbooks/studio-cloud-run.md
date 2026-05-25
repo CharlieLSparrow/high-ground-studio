@@ -32,6 +32,7 @@ Studio routes remain private:
 - `/structure` - Structure Mode
 - `/content-studio` - browser-local Content Management Studio command board
 - `/manuscript` - Manuscript Desk
+- `/manuscript/live` - first database-backed shared manuscript text room
 
 The health route is intentionally public and non-sensitive:
 
@@ -73,6 +74,12 @@ checkpoints when Cloud Run is configured with the Studio Cloud SQL
 no autosave, no simultaneous editing, no Yjs collaboration, and no canonical
 manuscript/content writes. The existing local-only persistence guard should
 keep other development seed writes disabled in Cloud Run.
+
+`/manuscript/live` is the exception to the older no-simultaneous-editing
+boundary. It is an authenticated text-room collaboration surface backed by
+Cloud SQL-stored Yjs updates and presence heartbeats. It can save the current
+room text as a manual Manuscript Desk snapshot, but it does not replace the
+full rich Manuscript Desk editor or publish public content.
 
 ## Checked-In Deployment Files
 
