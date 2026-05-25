@@ -35,6 +35,7 @@ import {
   type ProgramState,
   type SourceRole,
   type SyncMap,
+  type TranscriptSegment,
 } from "@high-ground/studio-cut-schema";
 import {
   buildCloudSyncUploadStoragePath,
@@ -402,6 +403,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [markerNoteDraft, setMarkerNoteDraft] = useState("");
   const [rangeSelection, setRangeSelection] = useState<RangeSelection>({});
   const [rangeState, setRangeState] = useState<ProgramState>("both");
+  const [transcriptLaneState, setTranscriptLaneState] =
+    useState<ProgramState>("cut");
+  const [selectedTranscriptSegmentId, setSelectedTranscriptSegmentId] =
+    useState<string | undefined>(undefined);
   const [note, setNote] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [agentOpsPreview, setAgentOpsPreview] =
@@ -519,6 +524,21 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       }),
     [derivedSegments, episodeManifest, episodeTranscript, sourceDurationMs],
   );
+  const sortedTranscriptSegments = useMemo(
+    () => sortTranscriptSegments(episodeTranscript?.segments ?? []),
+    [episodeTranscript],
+  );
+  const currentTranscriptSegment = useMemo(
+    () =>
+      getTranscriptSegmentAtSourceTime(sortedTranscriptSegments, sourceTimeMs),
+    [sortedTranscriptSegments, sourceTimeMs],
+  );
+  const selectedTranscriptSegment =
+    sortedTranscriptSegments.find(
+      (segment) => segment.id === selectedTranscriptSegmentId,
+    ) ??
+    currentTranscriptSegment ??
+    null;
 
   useEffect(() => {
     saveStoredEpisodeManifest(episodeManifest);
@@ -1480,6 +1500,77 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         rangeEvents.length === 1 ? "" : "s"
       }.`,
     );
+  }
+
+  function jumpToTranscriptSegment(segment: TranscriptSegment) {
+    const nextTimeMs = clampSourceTime(
+      segment.startSourceTimeMs,
+      sourceDurationMs,
+    );
+
+    stopProgramPlayback();
+    setSelectedTranscriptSegmentId(segment.id);
+    scrubToSourceTime(nextTimeMs);
+    setImportMessage(
+      `Jumped to transcript segment ${segment.id} at ${formatSourceTime(
+        nextTimeMs,
+      )}.`,
+    );
+  }
+
+  function setRangeFromTranscriptSegment(segment: TranscriptSegment) {
+    const startSourceTimeMs = clampSourceTime(
+      segment.startSourceTimeMs,
+      sourceDurationMs,
+    );
+    const endSourceTimeMs = clampSourceTime(
+      segment.endSourceTimeMs,
+      sourceDurationMs,
+    );
+
+    if (endSourceTimeMs <= startSourceTimeMs) {
+      setImportMessage("Transcript segment range is not valid.");
+      return;
+    }
+
+    setSelectedTranscriptSegmentId(segment.id);
+    setRangeSelection({ startSourceTimeMs, endSourceTimeMs });
+    scrubToSourceTime(startSourceTimeMs);
+    setImportMessage(
+      `Set range from transcript segment ${segment.id}: ${formatSourceTime(
+        startSourceTimeMs,
+      )} to ${formatSourceTime(endSourceTimeMs)}.`,
+    );
+  }
+
+  function applyTranscriptSegmentState(segment: TranscriptSegment | null) {
+    if (!segment) {
+      setImportMessage("Select a transcript segment before applying a state.");
+      return;
+    }
+
+    const startSourceTimeMs = clampSourceTime(
+      segment.startSourceTimeMs,
+      sourceDurationMs,
+    );
+    const endSourceTimeMs = clampSourceTime(
+      segment.endSourceTimeMs,
+      sourceDurationMs,
+    );
+
+    if (endSourceTimeMs <= startSourceTimeMs) {
+      setImportMessage("Transcript segment range is not valid.");
+      return;
+    }
+
+    setSelectedTranscriptSegmentId(segment.id);
+    setRangeSelection({ startSourceTimeMs, endSourceTimeMs });
+    applyStateAcrossRange({
+      startSourceTimeMs,
+      endSourceTimeMs,
+      state: transcriptLaneState,
+      label: `Set ${PROGRAM_STATE_LABELS[transcriptLaneState]} across transcript segment ${segment.id}`,
+    });
   }
 
   function createSyntheticDecisionEvent({
@@ -3196,6 +3287,17 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             setEpisodeTranscript(null);
             setImportMessage("Cleared browser-local transcript review data.");
           }}
+        />
+        <TranscriptEditLanePanel
+          transcript={episodeTranscript}
+          segments={sortedTranscriptSegments}
+          currentSegment={currentTranscriptSegment}
+          selectedSegment={selectedTranscriptSegment}
+          selectedState={transcriptLaneState}
+          onStateChange={setTranscriptLaneState}
+          onJump={jumpToTranscriptSegment}
+          onSetRange={setRangeFromTranscriptSegment}
+          onApplyState={applyTranscriptSegmentState}
         />
         <input
           ref={manifestInputRef}
@@ -4975,6 +5077,148 @@ function TranscriptReviewPanel({
   );
 }
 
+function TranscriptEditLanePanel({
+  transcript,
+  segments,
+  currentSegment,
+  selectedSegment,
+  selectedState,
+  onStateChange,
+  onJump,
+  onSetRange,
+  onApplyState,
+}: {
+  transcript: EpisodeTranscript | null;
+  segments: readonly TranscriptSegment[];
+  currentSegment: TranscriptSegment | null;
+  selectedSegment: TranscriptSegment | null;
+  selectedState: ProgramState;
+  onStateChange: (state: ProgramState) => void;
+  onJump: (segment: TranscriptSegment) => void;
+  onSetRange: (segment: TranscriptSegment) => void;
+  onApplyState: (segment: TranscriptSegment | null) => void;
+}) {
+  const visibleSegments = segments.slice(0, 80);
+
+  return (
+    <section className="transcript-edit-lane" aria-label="Transcript edit lane">
+      <div className="panel-heading">
+        <div>
+          <h2>Transcript Edit Lane</h2>
+          <p>Click transcript time to scrub; apply semantic states to a segment.</p>
+        </div>
+        <strong>{transcript ? `${segments.length} segments` : "No transcript"}</strong>
+      </div>
+
+      <div className="transcript-lane-controls">
+        <label>
+          Segment state
+          <select
+            value={selectedState}
+            onChange={(event) => onStateChange(event.target.value as ProgramState)}
+            aria-label="Transcript segment state"
+          >
+            {PROGRAM_STATES.map((state) => (
+              <option key={state} value={state}>
+                {PROGRAM_STATE_LABELS[state]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => onApplyState(selectedSegment)}
+          disabled={!selectedSegment}
+        >
+          Apply To Selected Segment
+        </button>
+      </div>
+
+      {selectedSegment ? (
+        <div className="transcript-selected-segment">
+          <span>Selected</span>
+          <strong>
+            {formatSourceTime(selectedSegment.startSourceTimeMs)}-
+            {formatSourceTime(selectedSegment.endSourceTimeMs)}
+          </strong>
+          <p>
+            {selectedSegment.speaker}: {selectedSegment.text}
+          </p>
+        </div>
+      ) : null}
+
+      {transcript && visibleSegments.length > 0 ? (
+        <div className="transcript-segment-list">
+          {visibleSegments.map((segment) => {
+            const isCurrent = currentSegment?.id === segment.id;
+            const isSelected = selectedSegment?.id === segment.id;
+
+            return (
+              <article
+                className={`transcript-segment-card${
+                  isCurrent ? " is-current" : ""
+                }${isSelected ? " is-selected" : ""}`}
+                key={segment.id}
+              >
+                <button
+                  type="button"
+                  className="transcript-time-button"
+                  onClick={() => onJump(segment)}
+                  aria-label={`Jump transcript segment ${segment.id} at ${formatSourceTime(
+                    segment.startSourceTimeMs,
+                  )}`}
+                >
+                  <span>{formatSourceTime(segment.startSourceTimeMs)}</span>
+                  <small>{formatSourceTime(segment.endSourceTimeMs)}</small>
+                </button>
+                <div className="transcript-segment-body">
+                  <div>
+                    <strong>{segment.speaker}</strong>
+                    <span>{segment.id}</span>
+                    {segment.speakerRole ? <span>{segment.speakerRole}</span> : null}
+                    {isCurrent ? <em>Current</em> : null}
+                    {isSelected ? <em>Selected</em> : null}
+                  </div>
+                  <p>{segment.text}</p>
+                </div>
+                <div className="transcript-segment-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onSetRange(segment)}
+                  >
+                    Set Range
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onApplyState(segment)}
+                  >
+                    Apply State
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="panel-empty">
+          Import a timed transcript to use transcript text as an edit lane. The
+          transcript remains browser-local unless explicitly exported.
+        </p>
+      )}
+
+      {segments.length > visibleSegments.length ? (
+        <p className="transcript-more">
+          Showing first {visibleSegments.length} transcript segments. Use Agent
+          Context export for the full transcript payload.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ProxyPaneCalibrationPanel({
   manifest,
   importedManifestBaseline,
@@ -6748,6 +6992,28 @@ function getSegmentAtSourceTime(
       sourceTimeMs < endSourceTimeMs
     );
   });
+}
+
+function sortTranscriptSegments(segments: readonly TranscriptSegment[]) {
+  return [...segments].sort(
+    (left, right) =>
+      left.startSourceTimeMs - right.startSourceTimeMs ||
+      left.endSourceTimeMs - right.endSourceTimeMs ||
+      left.id.localeCompare(right.id),
+  );
+}
+
+function getTranscriptSegmentAtSourceTime(
+  segments: readonly TranscriptSegment[],
+  sourceTimeMs: number,
+) {
+  return (
+    segments.find(
+      (segment) =>
+        segment.startSourceTimeMs <= sourceTimeMs &&
+        sourceTimeMs < segment.endSourceTimeMs,
+    ) ?? null
+  );
 }
 
 function clampSourceTime(sourceTimeMs: number, sourceDurationMs: number) {

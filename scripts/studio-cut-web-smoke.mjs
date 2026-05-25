@@ -679,6 +679,10 @@ async function runBrowserSmoke() {
     await expect(page.getByLabel("Transcript review")).toContainText("Loaded");
     await expect(page.getByLabel("Transcript review")).toContainText("Clip refs");
     await expect(page.getByLabel("Transcript review")).toContainText("transcript_clip_reference");
+    const transcriptLane = page.getByLabel("Transcript edit lane");
+    await expect(page.getByRole("heading", { name: "Transcript Edit Lane" })).toBeVisible();
+    await expect(transcriptLane).toContainText("transcript-001");
+    await expect(transcriptLane).toContainText("Charlie");
     const transcriptOpsDownload = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export Suggested Ops" }).click();
     const transcriptOps = await transcriptOpsDownload;
@@ -721,9 +725,6 @@ async function runBrowserSmoke() {
       name: "Seconds",
       exact: true,
     });
-    await secondsInput.fill("5");
-    await secondsInput.evaluate((element) => element.blur());
-    await page.keyboard.press("3");
 
     const decisionSection = page
       .locator(".list-section")
@@ -735,6 +736,22 @@ async function runBrowserSmoke() {
       .locator(".current-segment-panel")
       .filter({ has: page.getByRole("heading", { name: "Current Segment" }) });
 
+    await transcriptLane
+      .getByRole("button", { name: /Jump transcript segment transcript-001/ })
+      .click();
+    await expect(page.getByText(/Jumped to transcript segment transcript-001/i)).toBeVisible();
+    await transcriptLane.getByLabel("Transcript segment state").selectOption("cut");
+    await transcriptLane.getByRole("button", { name: "Apply To Selected Segment" }).click();
+    await expectSectionText(decisionSection, "1 event");
+    await expectSectionText(decisionSection, "Cut");
+    await expect(decisionSection.locator("tbody")).toContainText("transcript segment transcript-001");
+    await decisionSection.getByRole("button", { name: "Undo" }).click();
+    await expectSectionText(decisionSection, "0 events");
+    await expectSectionText(decisionSection, "No local or imported decisions yet");
+
+    await secondsInput.fill("5");
+    await secondsInput.evaluate((element) => element.blur());
+    await page.keyboard.press("3");
     await expectSectionText(decisionSection, "1 event");
     await expectSectionText(decisionSection, "Both");
     await expectSectionText(decisionSection, "0:05");

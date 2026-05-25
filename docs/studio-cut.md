@@ -17,6 +17,8 @@ Canonical direction docs:
   split work, verify changes, and hand off Studio Cut context
 - `docs/analysis/studio-cut-riverside-descript-research.md`: Riverside and
   Descript feature research, UI/UX notes, and Studio Cut parity plan
+- `docs/agents/studio-cut-riverside-descript-prompt-queue.md`: executable
+  autoprompt queue for turning that research into Studio Cut features
 
 Current slice:
 
@@ -485,9 +487,13 @@ The browser cockpit can also import a timed transcript JSON from the episode
 manifest area. The `Transcript Review` panel stays browser-local, summarizes
 coverage/word/clip-reference/filler counts, and surfaces agent-review tasks for
 speaker/state mismatches, likely clip-reference moments, transcript gaps, and
-filler clusters. The transcript is only included in `Export Agent Context` when
-the operator imports it; media bytes, local paths, and object URLs are still
-excluded.
+filler clusters. The adjacent `Transcript Edit Lane` turns timed transcript
+segments into a practical editing surface: clicking a segment scrubs to source
+time, `Set Range` moves the range handles to that transcript span, and `Apply
+State` creates semantic decision events across that segment with restore
+behavior at the segment end when needed. The transcript is only included in
+`Export Agent Context` when the operator imports it; media bytes, local paths,
+and object URLs are still excluded.
 
 `Export Suggested Ops` in that panel writes a reviewable agent operation JSON
 draft from transcript tasks that have safe semantic suggestions. Clip and

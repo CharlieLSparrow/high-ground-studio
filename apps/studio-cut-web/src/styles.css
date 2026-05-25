@@ -564,6 +564,7 @@ h2 {
 .command-center-panel,
 .readiness-panel,
 .transcript-review-panel,
+.transcript-edit-lane,
 .render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
@@ -585,6 +586,7 @@ h2 {
 .command-center-panel,
 .readiness-panel,
 .transcript-review-panel,
+.transcript-edit-lane,
 .render-handoff-panel,
 .pane-calibration-panel,
 .collaboration-panel,
@@ -1524,6 +1526,13 @@ h2 {
     rgba(255, 255, 255, 0.04);
 }
 
+.transcript-edit-lane {
+  border-color: rgba(145, 219, 183, 0.2);
+  background:
+    linear-gradient(135deg, rgba(145, 219, 183, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.04);
+}
+
 .render-handoff-panel {
   border-color: rgba(125, 178, 255, 0.22);
   background:
@@ -1898,6 +1907,33 @@ h2 {
   gap: 8px;
 }
 
+.transcript-lane-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.transcript-lane-controls label {
+  display: grid;
+  gap: 5px;
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.transcript-lane-controls select {
+  min-width: 0;
+  border: 1px solid rgba(238, 242, 238, 0.16);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #eef2ee;
+  padding: 8px 9px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
 .transcript-meta {
   display: grid;
   gap: 4px;
@@ -1945,6 +1981,136 @@ h2 {
   color: #c8d2ce;
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.transcript-selected-segment {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(145, 219, 183, 0.22);
+  border-radius: 7px;
+  background: rgba(145, 219, 183, 0.08);
+  padding: 9px;
+}
+
+.transcript-selected-segment span {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.transcript-selected-segment strong {
+  color: #eef2ee;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.transcript-selected-segment p {
+  margin: 0;
+  color: #d7e0dc;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.transcript-segment-list {
+  display: grid;
+  max-height: 420px;
+  overflow: auto;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.transcript-segment-card {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.16);
+  padding: 8px;
+}
+
+.transcript-segment-card.is-current {
+  border-color: rgba(125, 178, 255, 0.38);
+  background: rgba(125, 178, 255, 0.1);
+}
+
+.transcript-segment-card.is-selected {
+  border-color: rgba(145, 219, 183, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(145, 219, 183, 0.14);
+}
+
+.transcript-time-button {
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  min-height: 50px;
+  border: 1px solid rgba(238, 242, 238, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #eef2ee;
+  cursor: pointer;
+  padding: 6px;
+  text-align: left;
+}
+
+.transcript-time-button span,
+.transcript-time-button small {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.transcript-time-button span {
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.transcript-time-button small {
+  color: #aeb9b4;
+  font-size: 0.68rem;
+}
+
+.transcript-segment-body {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.transcript-segment-body div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.transcript-segment-body strong,
+.transcript-segment-body span,
+.transcript-segment-body em {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c8d2ce;
+  padding: 3px 6px;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.transcript-segment-body em {
+  color: #91dbb7;
+}
+
+.transcript-segment-body p {
+  margin: 0;
+  color: #eef2ee;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.transcript-segment-actions {
+  display: flex;
+  grid-column: 2;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .readiness-ok,

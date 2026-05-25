@@ -657,6 +657,11 @@ This is the highest leverage bridge between current Studio Cut and the best
 parts of both Riverside and Descript: it accelerates real editing, gives agents
 an inspectable surface, and keeps all media decisions semantic and reversible.
 
+The executable prompt queue for continuing this work lives in
+`docs/agents/studio-cut-riverside-descript-prompt-queue.md`. Agents should use
+that queue when they would otherwise stop and ask for the next Studio Cut
+feature prompt.
+
 ## Design Guardrails
 
 - Do not clone Riverside or Descript visual design.
@@ -667,4 +672,3 @@ an inspectable surface, and keeps all media decisions semantic and reversible.
 - Keep media privacy boundaries obvious.
 - Let direct publishing wait until render packages are trustworthy.
 - Build for Charlie's actual episode flow first, then generalize.
-
