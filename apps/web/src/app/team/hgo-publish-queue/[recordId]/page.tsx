@@ -22,6 +22,8 @@ import { resolveTeamAccess } from "@/lib/content-access";
 import {
   createHgoEpisodePublishCandidateFileName,
   createHgoEpisodePublishCandidatePacket,
+  createHgoEpisodePublishOperatorHandoff,
+  createHgoEpisodePublishOperatorHandoffFileName,
   createHgoEpisodePublishReviewBrief,
   createHgoEpisodePublishReviewBriefFileName,
 } from "@/lib/hgo/publish-candidate-packet";
@@ -39,6 +41,7 @@ import { getHgoEpisodePublishCandidateForOwner } from "@/lib/server/hgo-episode-
 import { getHgoStagedArtifactForOwner } from "@/lib/server/hgo-staged-artifacts";
 import ArtifactHandoffPanel from "../../hgo-staged-artifacts/ArtifactHandoffPanel";
 import { saveHgoEpisodePublishCandidateAction } from "./actions";
+import OperatorHandoffPanel from "./OperatorHandoffPanel";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
   return (
@@ -166,6 +169,11 @@ export default async function TeamHgoPublishQueueDetailPage({
     candidate: packet,
     createdAt: record.updatedAt,
   });
+  const operatorHandoff = createHgoEpisodePublishOperatorHandoff({
+    candidate: packet,
+    reviewBrief,
+    createdAt: record.updatedAt,
+  });
   const publishDraft = createHgoEpisodePublishDraftPacket({
     artifact: parsedArtifact.artifact,
     candidate: packet,
@@ -181,6 +189,9 @@ export default async function TeamHgoPublishQueueDetailPage({
   const publishReviewBriefJson = JSON.stringify(reviewBrief, null, 2);
   const publishReviewBriefFileName =
     createHgoEpisodePublishReviewBriefFileName(reviewBrief);
+  const operatorHandoffJson = JSON.stringify(operatorHandoff, null, 2);
+  const operatorHandoffFileName =
+    createHgoEpisodePublishOperatorHandoffFileName(operatorHandoff);
   const publishDraftJson = JSON.stringify(publishDraft, null, 2);
   const publishDraftFileName = createHgoEpisodePublishDraftFileName(publishDraft);
   const publishDraftMdxFileName =
@@ -307,6 +318,17 @@ export default async function TeamHgoPublishQueueDetailPage({
               <li>Record the final deploy revision and rollback revision when a future public publish happens.</li>
             </ul>
           </SectionBlock>
+
+          <OperatorHandoffPanel
+            approvalStop={operatorHandoff.readiness.approvalStop}
+            fileName={operatorHandoffFileName}
+            handoffJson={operatorHandoffJson}
+            preflightCommands={[
+              ...operatorHandoff.preflight.routeCollisionChecks,
+              ...operatorHandoff.preflight.validationCommands,
+            ]}
+            route={operatorHandoff.episodePage.proposedRoute}
+          />
 
           <SectionBlock
             title="Proposed Files"

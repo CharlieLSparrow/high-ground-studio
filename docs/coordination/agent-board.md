@@ -48,16 +48,19 @@ Verified at the start of the Content Studio persistence fanout on 2026-05-25.
 - coordination branch: `codex/content-studio-persistence-supervisor-001`
 - goal: move three mission-critical slices in parallel without turning the
   supervisor into a bottleneck
-- active workers:
+- workers:
   - Epicurus (`019e606f-35fd-72f2-831b-0c635974e12d`): Content Studio
     project-native persistence for podcast, book, and episode-page work
+    completed; pending database rollout/deploy
   - Erdos (`019e6070-bbd8-7b10-9dcd-b8f5385820e7`): first real coaching tool
-    data loop for Homer/client use
+    data loop for Homer/client use completed; pending database rollout/deploy
   - Plato (`019e6070-f3fe-74c3-9f80-cfc13365abcb`): private HGO episode
-    publish workflow improvements
+    publish workflow improvements completed; no database rollout needed
 - shared-file warning:
-  - `prisma/schema.prisma` is active shared territory during this fanout.
-    Workers must inspect current diffs and preserve each other's model changes.
+  - `prisma/schema.prisma` contains coordinated Content Studio
+    `StudioContentProject` and coaching `WeeklyCommitment` changes. Apply the
+    schema through a reviewed database rollout before deploying web/studio code
+    that queries the new tables.
 - no-touch boundaries during this fanout:
   - no public publishing without explicit approval
   - no provider calls

@@ -43,6 +43,9 @@ Current capabilities:
   templates
 - track source, shape, produce, publish, and follow-through checklists
 - edit project title, notes, status, priority, and active stage
+- manually save, list, and open individual Content Studio project records
+  through private Prisma-backed `StudioContentProject` rows when the Studio
+  database schema has been applied
 - add custom checkpoints to the active stage
 - show a next-action handoff packet for the selected project
 - export a browser JSON handoff packet with explicit safety flags and derived
@@ -67,6 +70,14 @@ branch lives in `packages/content-studio-domain`. The active board still uses
 browser-local state as the immediate working copy, while manual server
 checkpoints provide recovery and cross-device handoff.
 
+The individual durable project slice is narrower than workspace snapshots.
+Each row is owned by the signed-in Studio email and stores the project title,
+workflow kind, status, active stage, notes, client update time, the full
+project JSON, a derived handoff summary, and the selected production packet
+shape used by podcast/book/episode-page handoffs. Saving a project is manual
+and idempotent by owner plus local project id. It is durable creative operating
+state, not public publishing state.
+
 ## Current Boundaries
 
 This slice does not:
@@ -74,6 +85,7 @@ This slice does not:
 - autosave Prisma data
 - call provider APIs
 - publish public content
+- promote durable project records into public HGO episodes
 - promote HGO staged projection drafts to live/public pages
 - deploy anything
 - use real manuscript or HGO source content

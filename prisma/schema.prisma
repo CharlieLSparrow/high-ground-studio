@@ -118,6 +118,12 @@ enum CoachingRequestStatus {
   DECLINED
 }
 
+enum WeeklyCommitmentStatus {
+  ACTIVE
+  REVIEWED
+  ARCHIVED
+}
+
 enum StoryDraftStatus {
   ROUGH
   NEEDS_HOMER_REVIEW
@@ -215,6 +221,7 @@ model User {
   clientProfile       ClientProfile?
   memberships         Membership[]  @relation("MembershipUser")
   coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
+  weeklyCommitments   WeeklyCommitment[] @relation("WeeklyCommitmentClient")
 
   clientAppointments  Appointment[] @relation("AppointmentClient")
   coachAppointments   Appointment[] @relation("AppointmentCoach")
@@ -229,6 +236,7 @@ model User {
 
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
+  weeklyCommitmentsReviewed WeeklyCommitment[] @relation("WeeklyCommitmentReviewedBy")
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -376,6 +384,31 @@ model CoachingFeatureGrant {
   @@index([featureId, status])
   @@index([userId, status])
   @@index([source, status])
+}
+
+model WeeklyCommitment {
+  id               String                 @id @default(cuid())
+  clientUserId     String
+  weekStartsAt     DateTime
+  commitmentOne    String
+  commitmentTwo    String?
+  commitmentThree  String?
+  supportNeeded    String?
+  progressNotes    String?
+  status           WeeklyCommitmentStatus @default(ACTIVE)
+  coachNotes       String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  clientUser       User                   @relation("WeeklyCommitmentClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  reviewedByUser   User?                  @relation("WeeklyCommitmentReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([clientUserId, weekStartsAt])
+  @@index([clientUserId, status, weekStartsAt])
+  @@index([status, updatedAt])
+  @@index([reviewedByUserId])
 }
 
 // Appointment is the scheduling ledger tying client, coach, and creator roles
@@ -905,6 +938,30 @@ model StudioContentWorkspaceSnapshot {
 
   @@index([ownerEmail, updatedAt])
   @@index([ownerEmail, createdAt])
+}
+
+model StudioContentProject {
+  id                   String   @id @default(cuid())
+  ownerEmail           String
+  localProjectId       String
+  title                String
+  kind                 String
+  status               String
+  stage                String
+  description          String?
+  notes                String?
+  schemaVersion        Int
+  projectJson          Json
+  handoffJson          Json
+  productionPacketJson Json?
+  clientUpdatedAt      DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([ownerEmail, localProjectId])
+  @@index([ownerEmail, updatedAt])
+  @@index([ownerEmail, kind, updatedAt])
+  @@index([ownerEmail, status, updatedAt])
 }
 
 model HgoStagedProjectionArtifact {

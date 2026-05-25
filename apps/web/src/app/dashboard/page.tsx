@@ -3,11 +3,16 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { submitCoachingRequestAction } from "@/app/coaching/actions";
+import { saveWeeklyCommitmentAction } from "@/app/dashboard/coaching-tools/actions";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import { buildGoogleCalendarEventUrl } from "@/lib/calendar-links";
 import { isClientVisibleCoachingFeatureGrant } from "@/lib/coaching/features";
+import {
+  formatDateInputValue as formatWeeklyDateInputValue,
+  WEEKLY_COMMITMENTS_FEATURE_KEY,
+} from "@/lib/coaching/weekly-commitments";
 import { buildSignInHref } from "@/lib/content-access";
 import { prisma } from "@/lib/prisma";
 import { redirectToWelcomeIfNeeded } from "@/lib/server/welcome";
@@ -16,6 +21,8 @@ type SearchParams = Promise<{
   intent?: string;
   coaching?: string;
   error?: string;
+  success?: string;
+  tool?: string;
 }>;
 
 const FALLBACK_COACHING_GOALS =
@@ -181,7 +188,7 @@ export default async function DashboardPage({
     redirect(buildSignInHref("/dashboard"));
   }
 
-  const { intent, coaching, error } = await searchParams;
+  const { intent, coaching, error, success, tool } = await searchParams;
 
   redirectToWelcomeIfNeeded(session, "/dashboard");
 
@@ -221,6 +228,10 @@ export default async function DashboardPage({
           },
         },
       },
+      weeklyCommitments: {
+        orderBy: [{ weekStartsAt: "desc" }],
+        take: 6,
+      },
     },
   });
 
@@ -255,9 +266,19 @@ export default async function DashboardPage({
     coaching === "requested"
       ? "Your coaching request is in. Scott will follow up personally about fit, scheduling, and next steps."
       : undefined;
+  const toolSuccess =
+    tool === WEEKLY_COMMITMENTS_FEATURE_KEY ? success : undefined;
   const coachingRequests = user.coachingRequests;
   const latestCoachingRequest = coachingRequests[0] ?? null;
   const olderCoachingRequests = coachingRequests.slice(1);
+  const weeklyCommitmentsGrant = enabledCoachingFeatures.find(
+    (grant) => grant.feature.featureKey === WEEKLY_COMMITMENTS_FEATURE_KEY,
+  );
+  const weeklyCommitments = user.weeklyCommitments;
+  const latestWeeklyCommitment = weeklyCommitments[0] ?? null;
+  const nextWeeklyCommitmentDate = formatWeeklyDateInputValue(
+    latestWeeklyCommitment?.weekStartsAt ?? new Date(),
+  );
   const coachingDonationUrl =
     process.env.HGO_COACHING_DONATION_URL?.trim() || null;
   const featuredDonationAppointment =
@@ -326,7 +347,7 @@ export default async function DashboardPage({
           </GlassPanel>
 
           <div className="space-y-4">
-            <StatusMessage success={coachingSuccess} error={error} />
+            <StatusMessage success={coachingSuccess ?? toolSuccess} error={error} />
 
             <GlassPanel className="p-6 text-[var(--text-light)]">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -541,6 +562,196 @@ export default async function DashboardPage({
                 {enabledCoachingFeatures.length} enabled
               </span>
             </div>
+
+            {weeklyCommitmentsGrant ? (
+              <div className="mt-6 rounded-[24px] border border-emerald-300/18 bg-emerald-300/8 p-5 md:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <PageEyebrow>Weekly Commitments</PageEyebrow>
+                    <h3 className="m-0 mt-3 text-[1.35rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                      Set the next useful actions
+                    </h3>
+                    <p className="mb-0 mt-3 max-w-[760px] text-sm leading-7 text-[rgba(245,239,230,0.86)]">
+                      Name one to three commitments for the week, add what
+                      support would help, and update your progress before Homer
+                      reviews the entry.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full border border-emerald-200/20 bg-emerald-200/10 px-4 py-2 text-sm font-semibold text-emerald-50">
+                    {weeklyCommitments.length} saved
+                  </span>
+                </div>
+
+                <form
+                  action={saveWeeklyCommitmentAction}
+                  className="mt-5 space-y-4"
+                >
+                  <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                    <div>
+                      <label
+                        htmlFor="weekStartsAt"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Week of
+                      </label>
+                      <input
+                        id="weekStartsAt"
+                        name="weekStartsAt"
+                        type="date"
+                        defaultValue={nextWeeklyCommitmentDate}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="commitmentOne"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Commitment 1
+                      </label>
+                      <input
+                        id="commitmentOne"
+                        name="commitmentOne"
+                        required
+                        defaultValue={latestWeeklyCommitment?.commitmentOne ?? ""}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="The one action that would make the week clearer"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="commitmentTwo"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Commitment 2
+                      </label>
+                      <input
+                        id="commitmentTwo"
+                        name="commitmentTwo"
+                        defaultValue={latestWeeklyCommitment?.commitmentTwo ?? ""}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="commitmentThree"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Commitment 3
+                      </label>
+                      <input
+                        id="commitmentThree"
+                        name="commitmentThree"
+                        defaultValue={latestWeeklyCommitment?.commitmentThree ?? ""}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="Optional"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="supportNeeded"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Support needed
+                      </label>
+                      <textarea
+                        id="supportNeeded"
+                        name="supportNeeded"
+                        rows={4}
+                        defaultValue={latestWeeklyCommitment?.supportNeeded ?? ""}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="Where would coaching support, accountability, or a resource help?"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="progressNotes"
+                        className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                      >
+                        Progress notes
+                      </label>
+                      <textarea
+                        id="progressNotes"
+                        name="progressNotes"
+                        rows={4}
+                        defaultValue={latestWeeklyCommitment?.progressNotes ?? ""}
+                        className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                        placeholder="Add updates before the next session."
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="rounded-full border border-emerald-200/25 bg-emerald-200/12 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-emerald-50 transition hover:bg-emerald-200/20"
+                  >
+                    Save weekly commitments
+                  </button>
+                </form>
+
+                {weeklyCommitments.length > 0 ? (
+                  <div className="mt-6 space-y-3">
+                    <div className="text-[12px] font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.68)]">
+                      Recent weekly entries
+                    </div>
+
+                    {weeklyCommitments.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="rounded-2xl border border-white/10 bg-white/6 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-[rgba(245,239,230,0.94)]">
+                              Week of {formatDashboardDateOnly(entry.weekStartsAt)}
+                            </div>
+                            <div className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.62)]">
+                              {formatFeatureLabel(entry.status)}
+                            </div>
+                          </div>
+
+                          {entry.reviewedAt ? (
+                            <span className="rounded-full border border-emerald-200/20 bg-emerald-200/10 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-emerald-50">
+                              Reviewed
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          {[entry.commitmentOne, entry.commitmentTwo, entry.commitmentThree]
+                            .filter(Boolean)
+                            .map((commitment, index) => (
+                              <div
+                                key={`${entry.id}-${index}`}
+                                className="rounded-2xl border border-white/10 bg-black/10 p-3 text-sm leading-6 text-[rgba(245,239,230,0.86)]"
+                              >
+                                {commitment}
+                              </div>
+                            ))}
+                        </div>
+
+                        {entry.coachNotes ? (
+                          <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm leading-6 text-[rgba(245,239,230,0.84)]">
+                            <strong>Coach note:</strong> {entry.coachNotes}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {enabledCoachingFeatures.length === 0 ? (
               <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/4 px-5 py-8 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">

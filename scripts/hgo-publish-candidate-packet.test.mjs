@@ -9,10 +9,13 @@ import { createHgoStagedProjectionArtifact } from "../apps/web/src/lib/hgo/stage
 import {
   createHgoEpisodePublishCandidateFileName,
   createHgoEpisodePublishCandidatePacket,
+  createHgoEpisodePublishOperatorHandoff,
+  createHgoEpisodePublishOperatorHandoffFileName,
   createHgoEpisodePublishQueue,
   createHgoEpisodePublishReviewBrief,
   createHgoEpisodePublishReviewBriefFileName,
   HGO_EPISODE_PUBLISH_CANDIDATE_PACKET_KIND,
+  HGO_EPISODE_PUBLISH_OPERATOR_HANDOFF_KIND,
   HGO_EPISODE_PUBLISH_REVIEW_BRIEF_KIND,
 } from "../apps/web/src/lib/hgo/publish-candidate-packet.ts";
 import { buildHgoEpisodePublishCandidateStoreRecordInput } from "../apps/web/src/lib/hgo/publish-candidate-store-record.ts";
@@ -269,6 +272,54 @@ test("creates a private publish-draft packet without public side effects", () =>
   assert.equal(
     createHgoEpisodePublishDraftFrontmatterFileName(packet),
     "synthetic-candidate-projection.frontmatter.json",
+  );
+});
+
+test("creates an operator handoff packet with an explicit public publish stop", () => {
+  const candidate = createHgoEpisodePublishCandidatePacket({
+    record: createStoredRecord(),
+    createdAt: "2026-05-24T12:20:00.000Z",
+  });
+  const reviewBrief = createHgoEpisodePublishReviewBrief({
+    candidate,
+    createdAt: "2026-05-24T12:25:00.000Z",
+  });
+  const handoff = createHgoEpisodePublishOperatorHandoff({
+    candidate,
+    reviewBrief,
+    createdAt: "2026-05-24T12:35:00.000Z",
+  });
+
+  assert.equal(handoff.packetKind, HGO_EPISODE_PUBLISH_OPERATOR_HANDOFF_KIND);
+  assert.equal(handoff.createdAt, "2026-05-24T12:35:00.000Z");
+  assert.equal(handoff.episodePage.proposedRoute, "/episodes/synthetic-candidate-projection");
+  assert.equal(handoff.readiness.publicPublishApproval, "required-not-granted");
+  assert.match(handoff.readiness.approvalStop, /explicitly approves/);
+  assert.match(
+    handoff.preflight.routeCollisionChecks.join("\n"),
+    /apps\/web\/content\/publish\/synthetic-candidate-projection\.mdx/,
+  );
+  assert.ok(handoff.preflight.validationCommands.includes("git diff --check"));
+  assert.match(
+    handoff.preflight.requiredReviewEvidence.join("\n"),
+    /Public-safety review is complete/,
+  );
+  assert.equal(
+    handoff.proposedPromotion.deferredPublicTarget,
+    "apps/web/content/publish/synthetic-candidate-projection.mdx",
+  );
+  assert.equal(handoff.safety.createsPublicRoute, false);
+  assert.equal(handoff.safety.writesContentFiles, false);
+  assert.equal(handoff.safety.mutatesDatabase, false);
+  assert.equal(handoff.safety.publishesLivePage, false);
+  assert.equal(handoff.safety.requiresExplicitPublicPublishApproval, true);
+  assert.match(
+    handoff.rollback.afterPublicPublish.join("\n"),
+    /synthetic-candidate-projection\.mdx/,
+  );
+  assert.equal(
+    createHgoEpisodePublishOperatorHandoffFileName(handoff),
+    "synthetic-candidate-projection.hgo-episode-publish-operator-handoff.json",
   );
 });
 
