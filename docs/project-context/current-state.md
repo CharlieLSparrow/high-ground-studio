@@ -69,6 +69,13 @@ High Ground Studio is a monorepo with:
   manuscript as `WORKING` or `SYNTHETIC`, and load the latest snapshot for that
   selected manuscript. Existing snapshots without a manuscript id remain
   loadable as legacy/orphan snapshots.
+- The private Studio `/manuscript/live` route is a first live collaboration
+  surface for Charlie and Homer. It creates authenticated, database-backed Yjs
+  text rooms, exposes a shareable room URL, polls Cloud SQL-backed update events
+  for near-real-time convergence, tracks active presence heartbeats, and can
+  save the current room text as a manual Manuscript Desk snapshot. It is a
+  live writing surface, not canonical manuscript truth and not a public publish
+  action.
 - The private Studio `/manuscript` desk now includes a Publish / handoff mode
   that derives browser-only readiness reports and Markdown exports from the
   existing browser-local draft, structure regions, author marks, cited
@@ -364,9 +371,10 @@ High Ground Studio is a monorepo with:
 - Story Draft promotion into real `ManuscriptBlock` truth is not active.
 - Story Draft revision history is not active.
 - Studio Manuscript autosave is not active.
-- Studio Manuscript production simultaneous editing is not active. A local-only
-  Yjs collaboration lab exists, but it is synthetic-only and not wired into the
-  real Manuscript Desk save/load path.
+- Studio Manuscript rich-document simultaneous editing inside the full
+  Manuscript Desk is not active. `/manuscript/live` is the first production
+  shared editing surface, but it is text-room based and checkpoints into manual
+  snapshots instead of replacing the full Manuscript Desk editor.
 - Studio collaboration checkpoints are local lab checkpoints only. They are not
   production manual snapshots, autosave, server persistence, or a replacement
   for rollback anchors.

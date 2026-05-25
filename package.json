@@ -33,6 +33,7 @@
     "progress:story:add": "node scripts/progress-story-add-entry.mjs",
     "progress:story:test": "node --test scripts/progress-story-add-entry.test.mjs",
     "studio:manuscript:test": "node --experimental-strip-types --test scripts/studio-manuscript-editor.test.mjs",
+    "studio:manuscript:live-room:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-manuscript-live-room.test.mjs",
     "studio:hgo:agentic-smoke": "node --experimental-strip-types scripts/agentic-studio-hgo-smoke.test.mjs",
     "studio:hgo:browser-smoke": "node scripts/agentic-studio-hgo-browser-smoke.mjs",
     "studio:hgo:capture-auth-state": "node scripts/capture-studio-auth-state.mjs",

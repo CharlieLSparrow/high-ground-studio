@@ -1366,3 +1366,9 @@ checks, blockers, and next handoff.
     `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00073-lnw=100`
 - Added public progress story entry `content-studio-persistence-fanout-live`
   for `/updates`.
+- Started urgent Manuscript Live Room slice on
+  `codex/manuscript-live-room-001` from clean `origin/main` because Charlie and
+  Homer need a shared editing surface for a working session tonight. Added
+  `/manuscript/live`, authenticated live-room APIs, additive Prisma live-room
+  models, Yjs update polling, presence heartbeat, manual snapshot checkpointing,
+  and `docs/runbooks/studio-manuscript-live-room.md`.
