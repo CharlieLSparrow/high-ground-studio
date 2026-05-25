@@ -1347,3 +1347,22 @@ checks, blockers, and next handoff.
   `web-cloudsql-db-push-6b12434`, execution
   `web-cloudsql-db-push-6b12434-49qpc`. Logs reported:
   `Your database is now in sync with your Prisma schema.`
+- Merged PR #23 to `main` as `928d68f`.
+- Deployed Studio from the clean merged worktree:
+  - Cloud Build `f4f25dc4-58aa-48d4-980b-8ae702a92132`
+  - image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:928d68f`
+  - revision `studio-00047-zm2`, serving 100%
+  - smokes passed: `/api/health`, `/content-studio`
+  - rollback:
+    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00045-8k4=100`
+- Deployed Web from the clean merged worktree:
+  - Cloud Build `43420d27-7a3b-4a59-99a8-3024033cbdaa`
+  - image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:928d68f`
+  - revision `web-00074-n9v`, serving 100%
+  - smokes passed: `/api/health`, `/`, `/projection-stage/import`,
+    `/team/progress` unauthenticated sign-in redirect, and
+    `/team/hgo-publish-queue` unauthenticated sign-in redirect
+  - rollback:
+    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00073-lnw=100`
+- Added public progress story entry `content-studio-persistence-fanout-live`
+  for `/updates`.
