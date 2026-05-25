@@ -1372,3 +1372,12 @@ checks, blockers, and next handoff.
   `/manuscript/live`, authenticated live-room APIs, additive Prisma live-room
   models, Yjs update polling, presence heartbeat, manual snapshot checkpointing,
   and `docs/runbooks/studio-manuscript-live-room.md`.
+- Merged PR #25 as `330f466`, built db-push image
+  `prisma-db-push:330f466` with Cloud Build
+  `c5b00e97-0bda-498c-9f6a-55af9dd4bb71`, synced the live Studio database with
+  Cloud Run Job `studio-db-push-330f466` execution
+  `studio-db-push-330f466-4lntn`, and deployed Studio revision
+  `studio-00049-lt2` from Cloud Build
+  `e7d0f864-6207-49ff-9d84-50f67f5ee964`. Direct Cloud Run smoke passed for
+  `/manuscript/live`; `studio.highgroundodyssey.com` does not currently
+  resolve.
