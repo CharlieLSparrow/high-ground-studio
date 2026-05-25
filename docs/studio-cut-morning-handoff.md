@@ -41,8 +41,8 @@ Related durable docs:
   cut-skipping Program Playback.
 - Undo/redo for local decision edits and timestamped checkpoint exports.
 - Browser-local checkpoint library with restore, export, and delete actions.
-- Episode Readiness, Decision Timeline, marker lane, and Timeline Power Tools
-  for handoff confidence and faster range tagging.
+- Episode Readiness, Decision Timeline, marker/comment lane, boundary handles,
+  and Timeline Power Tools for handoff confidence and faster range tagging.
 - Decision JSON import/export with manifest-aware filenames.
 - Collaboration Mode can switch project/branch rooms; selected room is stored
   locally in the browser.
@@ -305,10 +305,12 @@ In the browser:
    account, and edits without importing JSON or loading local media.
 8. Calibrate panes if crops are off, then export an adjusted manifest.
 9. Tag decisions live.
-10. Drop markers for beats and use Timeline Power Tools to bulk-tag ranges or
-    set a state from the playhead to the next marker.
-11. Export checkpoints during risky passes.
-12. Export final decisions to the bootstrap directory before rendering.
+10. Drop marker comments for beats and use Timeline Power Tools to bulk-tag
+    ranges or set a state from the playhead to the next marker.
+11. Click timeline boundary handles and use Decision Refinement when a segment
+    starts slightly early or late.
+12. Export checkpoints during risky passes.
+13. Export final decisions to the bootstrap directory before rendering.
 
 Validate render readiness after exporting decisions:
 

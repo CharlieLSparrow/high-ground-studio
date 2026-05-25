@@ -397,6 +397,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     loadStoredTimelineMarkers,
   );
   const [markerDraft, setMarkerDraft] = useState("");
+  const [markerNoteDraft, setMarkerNoteDraft] = useState("");
   const [rangeSelection, setRangeSelection] = useState<RangeSelection>({});
   const [rangeState, setRangeState] = useState<ProgramState>("both");
   const [note, setNote] = useState("");
@@ -1293,6 +1294,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
 
   function addTimelineMarkerAtPlayhead() {
     const label = markerDraft.trim() || `Marker ${formatSourceTime(sourceTimeMs)}`;
+    const note = markerNoteDraft.trim();
     const marker: TimelineMarker = {
       id: createTimelineMarkerId(),
       projectId: roomSelection.projectId,
@@ -1300,6 +1302,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       ...(episodeManifest?.id ? { episodeId: episodeManifest.id } : {}),
       sourceTimeMs: clampSourceTime(sourceTimeMs, sourceDurationMs),
       label,
+      ...(note ? { note } : {}),
       createdBy: createdBy ?? config.createdBy,
       createdAt: new Date().toISOString(),
     };
@@ -1308,6 +1311,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       sortTimelineMarkers([marker, ...currentMarkers]).slice(0, MAX_TIMELINE_MARKERS),
     );
     setMarkerDraft("");
+    setMarkerNoteDraft("");
     setDecisionHistory((currentHistory) => ({
       ...currentHistory,
       lastAction: `Added marker ${label} at ${formatSourceTime(marker.sourceTimeMs)}`,
@@ -1349,6 +1353,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
     }));
   }
 
+  function setRangeHandleAtSourceTime(
+    handle: "start" | "end",
+    nextSourceTimeMs: number,
+  ) {
+    setRangeSelection((currentRange) => {
+      const key = handle === "start" ? "startSourceTimeMs" : "endSourceTimeMs";
+
+      return {
+        ...currentRange,
+        [key]: clampSourceTime(nextSourceTimeMs, sourceDurationMs),
+      };
+    });
+  }
+
   function nudgeRangeHandle(handle: "start" | "end", deltaMs: number) {
     setRangeSelection((currentRange) => {
       const key = handle === "start" ? "startSourceTimeMs" : "endSourceTimeMs";
@@ -1362,14 +1380,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   }
 
   function dragRangeHandle(handle: "start" | "end", nextSourceTimeMs: number) {
-    setRangeSelection((currentRange) => {
-      const key = handle === "start" ? "startSourceTimeMs" : "endSourceTimeMs";
-
-      return {
-        ...currentRange,
-        [key]: clampSourceTime(nextSourceTimeMs, sourceDurationMs),
-      };
-    });
+    setRangeHandleAtSourceTime(handle, nextSourceTimeMs);
   }
 
   function clearRangeSelection() {
@@ -3299,6 +3310,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
 
         <TimelinePowerToolsPanel
           markerDraft={markerDraft}
+          markerNoteDraft={markerNoteDraft}
           markers={currentRoomMarkers}
           rangeSelection={rangeSelection}
           normalizedRange={normalizedRange}
@@ -3307,6 +3319,7 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           sourceDurationMs={sourceDurationMs}
           nextMarker={nextMarkerAfterPlayhead}
           onMarkerDraftChange={setMarkerDraft}
+          onMarkerNoteDraftChange={setMarkerNoteDraft}
           onAddMarker={addTimelineMarkerAtPlayhead}
           onSetRangeStart={setRangeStartAtPlayhead}
           onSetRangeEnd={setRangeEndAtPlayhead}
@@ -3474,12 +3487,20 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
             normalizedRange={normalizedRange}
             sourceDurationMs={sourceDurationMs}
             currentSegmentSourceEventId={currentSegment?.sourceEventId}
+            selectedBoundaryEventId={selectedDecisionId}
             onJump={scrubToSourceTime}
+            onSelectBoundary={selectDecisionForRefinement}
           />
           <MarkerLane
             markers={currentRoomMarkers}
             sourceDurationMs={sourceDurationMs}
             onJump={jumpToTimelineMarker}
+            onSetRangeStart={(marker) =>
+              setRangeHandleAtSourceTime("start", marker.sourceTimeMs)
+            }
+            onSetRangeEnd={(marker) =>
+              setRangeHandleAtSourceTime("end", marker.sourceTimeMs)
+            }
             onRemove={removeTimelineMarker}
           />
           <SegmentList
@@ -5883,6 +5904,26 @@ function DecisionRefinementPanel({
               />
             </label>
           </div>
+          <div className="decision-boundary-slider">
+            <label>
+              Drag segment boundary
+              <input
+                aria-label="Selected decision boundary time"
+                type="range"
+                min={0}
+                max={sourceDurationMs}
+                step={100}
+                value={draft.sourceTimeMs}
+                onChange={(event) =>
+                  onDraftChange({ sourceTimeMs: Number(event.target.value) })
+                }
+              />
+            </label>
+            <p>
+              This moves the selected decision boundary in canonical source time.
+              The source media stays whole.
+            </p>
+          </div>
           <div className="decision-refinement-actions">
             <button type="button" onClick={() => onNudge(-1000)}>
               -1s
@@ -6135,6 +6176,7 @@ function SegmentList({
 
 function TimelinePowerToolsPanel({
   markerDraft,
+  markerNoteDraft,
   markers,
   rangeSelection,
   normalizedRange,
@@ -6143,6 +6185,7 @@ function TimelinePowerToolsPanel({
   sourceDurationMs,
   nextMarker,
   onMarkerDraftChange,
+  onMarkerNoteDraftChange,
   onAddMarker,
   onSetRangeStart,
   onSetRangeEnd,
@@ -6154,6 +6197,7 @@ function TimelinePowerToolsPanel({
   onApplyToNextMarker,
 }: {
   markerDraft: string;
+  markerNoteDraft: string;
   markers: TimelineMarker[];
   rangeSelection: RangeSelection;
   normalizedRange: NormalizedRangeSelection | null;
@@ -6162,6 +6206,7 @@ function TimelinePowerToolsPanel({
   sourceDurationMs: number;
   nextMarker?: TimelineMarker;
   onMarkerDraftChange: (value: string) => void;
+  onMarkerNoteDraftChange: (value: string) => void;
   onAddMarker: () => void;
   onSetRangeStart: () => void;
   onSetRangeEnd: () => void;
@@ -6197,6 +6242,16 @@ function TimelinePowerToolsPanel({
             value={markerDraft}
             onChange={(event) => onMarkerDraftChange(event.target.value)}
             placeholder={`Marker ${formatSourceTime(sourceTimeMs)}`}
+          />
+        </label>
+        <label>
+          Marker comment
+          <input
+            aria-label="Marker comment"
+            type="text"
+            value={markerNoteDraft}
+            onChange={(event) => onMarkerNoteDraftChange(event.target.value)}
+            placeholder="Optional note for this beat"
           />
         </label>
         <button type="button" onClick={onAddMarker}>
@@ -6330,14 +6385,18 @@ function DecisionTimeline({
   normalizedRange,
   sourceDurationMs,
   currentSegmentSourceEventId,
+  selectedBoundaryEventId,
   onJump,
+  onSelectBoundary,
 }: {
   segments: DerivedSegment[];
   markers: TimelineMarker[];
   normalizedRange: NormalizedRangeSelection | null;
   sourceDurationMs: number;
   currentSegmentSourceEventId?: string;
+  selectedBoundaryEventId?: string;
   onJump: (sourceTimeMs: number) => void;
+  onSelectBoundary: (eventId: string) => void;
 }) {
   if (segments.length === 0) {
     return <EmptyState text="Decision Timeline appears after the first decision." />;
@@ -6397,6 +6456,36 @@ function DecisionTimeline({
           </button>
         ))}
         {segments.map((segment) => {
+          const isSelected = segment.sourceEventId === selectedBoundaryEventId;
+
+          return (
+            <button
+              key={`boundary-${segment.sourceEventId}`}
+              className={`timeline-boundary-handle${
+                isSelected ? " is-selected" : ""
+              }`}
+              style={
+                {
+                  "--boundary-left": `${getTimelinePercent(
+                    segment.startSourceTimeMs,
+                    sourceDurationMs,
+                  )}%`,
+                } as CSSProperties
+              }
+              type="button"
+              onClick={() => onSelectBoundary(segment.sourceEventId)}
+              title={`Edit ${PROGRAM_STATE_LABELS[
+                segment.state
+              ]} boundary at ${formatSourceTime(segment.startSourceTimeMs)}`}
+              aria-label={`Edit boundary for ${PROGRAM_STATE_LABELS[
+                segment.state
+              ]} at ${formatSourceTime(segment.startSourceTimeMs)}`}
+            >
+              <span>{formatSourceTime(segment.startSourceTimeMs)}</span>
+            </button>
+          );
+        })}
+        {segments.map((segment) => {
           const endSourceTimeMs = segment.endSourceTimeMs ?? sourceDurationMs;
           const durationMs = Math.max(
             0,
@@ -6445,11 +6534,15 @@ function MarkerLane({
   markers,
   sourceDurationMs,
   onJump,
+  onSetRangeStart,
+  onSetRangeEnd,
   onRemove,
 }: {
   markers: TimelineMarker[];
   sourceDurationMs: number;
   onJump: (marker: TimelineMarker) => void;
+  onSetRangeStart: (marker: TimelineMarker) => void;
+  onSetRangeEnd: (marker: TimelineMarker) => void;
   onRemove: (markerId: string) => void;
 }) {
   return (
@@ -6476,6 +6569,23 @@ function MarkerLane({
                   {formatSourceTime(marker.sourceTimeMs)} /{" "}
                   {formatSourceTime(sourceDurationMs)}
                 </small>
+                {marker.note ? <em>{marker.note}</em> : null}
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onSetRangeStart(marker)}
+                aria-label={`Set range in to marker ${marker.label}`}
+              >
+                Set In
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onSetRangeEnd(marker)}
+                aria-label={`Set range out to marker ${marker.label}`}
+              >
+                Set Out
               </button>
               <button
                 className="secondary-button"

@@ -1574,6 +1574,10 @@ h2 {
   align-items: end;
 }
 
+.marker-control-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
 .range-apply-row {
   grid-template-columns: minmax(150px, 0.8fr) repeat(3, auto);
 }
@@ -1715,6 +1719,36 @@ h2 {
 .decision-refinement-form textarea {
   min-height: 40px;
   resize: vertical;
+}
+
+.decision-boundary-slider {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(238, 242, 238, 0.1);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 9px;
+}
+
+.decision-boundary-slider label {
+  display: grid;
+  gap: 7px;
+  color: #aeb9b4;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.decision-boundary-slider input[type="range"] {
+  width: 100%;
+  accent-color: #91dbb7;
+}
+
+.decision-boundary-slider p {
+  margin: 0;
+  color: #c8d2ce;
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
 
 .decision-refinement-actions {
@@ -2411,6 +2445,44 @@ td {
   white-space: nowrap;
 }
 
+.timeline-boundary-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--boundary-left);
+  z-index: 5;
+  width: 12px;
+  margin-left: -6px;
+  border: 0;
+  border-inline: 2px solid rgba(238, 242, 238, 0.92);
+  border-radius: 999px;
+  background: rgba(3, 5, 5, 0.28);
+  color: #eef2ee;
+  padding: 0;
+}
+
+.timeline-boundary-handle.is-selected {
+  border-color: #91dbb7;
+  background: rgba(145, 219, 183, 0.22);
+  box-shadow: 0 0 0 2px rgba(145, 219, 183, 0.24);
+}
+
+.timeline-boundary-handle span {
+  position: absolute;
+  bottom: 3px;
+  left: 8px;
+  max-width: 82px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(3, 5, 5, 0.86);
+  color: #eef2ee;
+  padding: 2px 5px;
+  font-size: 0.56rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .marker-lane {
   display: grid;
   gap: 9px;
@@ -2428,7 +2500,7 @@ td {
 
 .marker-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -2451,6 +2523,16 @@ td {
   color: #aeb9b4;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.66rem;
+}
+
+.marker-row em {
+  overflow: hidden;
+  color: #c8d2ce;
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .local-checkpoints {

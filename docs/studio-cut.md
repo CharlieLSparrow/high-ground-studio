@@ -160,7 +160,8 @@ The Timeline Power Tools panel adds browser-local markers and range handles for
 fast tagging passes:
 
 - `Add Marker` drops a labeled beat at the current source time. Use markers for
-  topic changes, clip boundaries, ad reads, or cleanup points.
+  topic changes, clip boundaries, ad reads, cleanup points, or comments that
+  need a later pass.
 - `Set In` and `Set Out` define a source-time range. The range overlay appears
   on the Decision Timeline and can be dragged with range sliders or nudged by 1
   second at either edge.
@@ -169,9 +170,16 @@ fast tagging passes:
 - `Set From Here To Next Marker` applies the selected state from the current
   playhead to the next marker, or to episode end if no later marker exists.
 
-Markers and range handles are editing aids stored in this browser. They are not
-media, they do not upload source/proxy files, and they do not change the core
-rule that decisions are semantic state events over canonical source time.
+The Decision Timeline also shows thin boundary handles at each decision event.
+Clicking a boundary selects that event in Decision Refinement, where the
+boundary can be dragged with a slider, nudged by tenths/seconds, or moved to the
+current playhead. This retimes the semantic event in place; it does not cut or
+mutate source media.
+
+Markers, comments, and range handles are editing aids stored in this browser.
+They are not media, they do not upload source/proxy files, and they do not
+change the core rule that decisions are semantic state events over canonical
+source time.
 
 ## Episode Manifest
 

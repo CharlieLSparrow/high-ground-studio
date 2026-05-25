@@ -728,6 +728,16 @@ async function runBrowserSmoke() {
     await expectSectionText(decisionSection, "Newest");
     await expect(page.locator(".decision-timeline")).toContainText("Decision Timeline");
     await expect(page.locator(".decision-timeline")).toContainText("Both");
+    await expect(page.locator(".timeline-boundary-handle")).toHaveCount(1);
+    await page.locator(".timeline-boundary-handle").first().click();
+    const boundaryPanel = page.getByLabel("Decision refinement");
+    await expect(boundaryPanel).toContainText("Decision Refinement");
+    await expect(boundaryPanel.getByLabel("Selected decision boundary time")).toBeVisible();
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
     await expect(page.getByLabel("Marker Lane")).toContainText(
       "Add markers at review beats",
     );
@@ -826,8 +836,17 @@ async function runBrowserSmoke() {
 
     await secondsInput.fill("8");
     await page.getByLabel("Marker label").fill("Review stop");
+    await page.getByLabel("Marker comment").fill("Stop before clip transition");
     await page.getByRole("button", { name: "Add Marker" }).click();
     await expect(page.getByLabel("Marker Lane")).toContainText("Review stop");
+    await expect(page.getByLabel("Marker Lane")).toContainText(
+      "Stop before clip transition",
+    );
+    await expect(
+      page.getByLabel("Marker Lane").getByRole("button", {
+        name: "Set range out to marker Review stop",
+      }),
+    ).toBeVisible();
     await secondsInput.fill("6");
     await page.getByLabel("Range state").selectOption("homer");
     await page
