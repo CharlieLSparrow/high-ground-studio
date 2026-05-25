@@ -1381,3 +1381,9 @@ checks, blockers, and next handoff.
   `e7d0f864-6207-49ff-9d84-50f67f5ee964`. Direct Cloud Run smoke passed for
   `/manuscript/live`; `studio.highgroundodyssey.com` does not currently
   resolve.
+- Merged PR #27 as `9e46ce6` to let any authenticated Studio-access user with
+  a room URL join/edit the live room, while keeping recent-room listing
+  creator-scoped. Deployed Studio revision `studio-00051-zl8` from Cloud Build
+  `010fcd7a-a46a-4352-901f-a96f9f9be94b`; final smokes passed for
+  `/api/health`, `/content-studio`, `/manuscript/live`, and unauthenticated
+  `401` on `/api/manuscript/live-rooms`.
