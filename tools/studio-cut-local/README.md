@@ -263,6 +263,7 @@ python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
   --decisions path/to/studio-cut-decisions.json \
   --media-map path/to/sync-map-local-media.json \
   --out /tmp/studio-cut-sync-map-youtube-16x9.mp4 \
+  --out-qa /tmp/studio-cut-sync-map-render-qa.json \
   --dry-run
 ```
 
@@ -297,6 +298,14 @@ clean audio exists, it writes silent audio. Rough outputs are normalized to
 1920x1080, 30 fps, stereo 48 kHz AAC. Clean-audio fallback uses a normalized
 mix plus limiter so the first local render is less likely to clip while still
 remaining a transparent v0.
+
+Use `--out-qa` to write a render QA JSON alongside a dry-run or real render.
+The QA report is intentionally path-safe: it records Sync Map ids, active
+segments, source roles, asset input ids/file names, black video padding, silence
+padding, and whether the renderer used program audio, clean Sync Map audio, or
+silent audio. For the one-folder Rescue Sync wrapper,
+`render-rescue-sync-session` writes this by default to
+`renders/<episode-id>-render-qa.json`.
 
 Run the agentic end-to-end smoke test:
 
@@ -416,6 +425,8 @@ from the original or higher-quality local assets. The command is still v0:
 program audio must already be canonical-timeline aligned if supplied. The rough
 output now enforces 30 fps video and stereo 48 kHz audio; final full-res
 quality/crop polish remains future work.
+Use `--out-qa` to produce a machine-readable render QA report before trusting a
+rough output; the agent smoke test now asserts this report for Sync Map renders.
 
 ## Agent Smoke Test
 

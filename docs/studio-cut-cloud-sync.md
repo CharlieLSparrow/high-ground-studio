@@ -295,7 +295,8 @@ python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
   --sync-map path/to/sync-map.json \
   --decisions path/to/studio-cut-decisions.json \
   --media-map path/to/sync-map-local-media.json \
-  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4 \
+  --out-qa /tmp/studio-cut-sync-map-render-qa.json
 ```
 
 The `--media-map` file remains local and points Sync Map `inputId` values at
@@ -306,6 +307,9 @@ the renderer mixes mapped `homerAudio` and `charlieAudio` clean-audio assets
 from the Sync Map when those input ids exist in the local media map. The rough
 renderer now normalizes video to 30 fps and audio to stereo 48 kHz AAC with a
 simple limiter on program/clean fallback audio.
+The optional `--out-qa` report records render coverage without local paths:
+active segments, asset input ids/file names, black padding, silence padding,
+and whether audio comes from program audio, clean Sync Map audio, or silence.
 
 The worker can also draft an Episode Manifest from Sync Map metadata. That
 bridge is active in the local worker: it sets duration from

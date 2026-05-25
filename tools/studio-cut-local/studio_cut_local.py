@@ -376,6 +376,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Keep temporary segment files after a real render.",
     )
+    sync_map_render_parser.add_argument(
+        "--out-qa",
+        type=Path,
+        help=(
+            "Optional JSON path for a render QA report with Sync Map asset "
+            "coverage, black padding, and audio source diagnostics."
+        ),
+    )
     sync_map_render_parser.set_defaults(handler=run_render_from_sync_map)
 
     smoke_parser = subparsers.add_parser(
@@ -567,6 +575,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-temp",
         action="store_true",
         help="Keep temporary segment files after a real render.",
+    )
+    rescue_render_parser.add_argument(
+        "--out-qa",
+        type=Path,
+        help=(
+            "Optional render QA JSON path. Default: "
+            "<episode-dir>/renders/<episode-id>-render-qa.json."
+        ),
     )
     rescue_render_parser.set_defaults(handler=run_render_rescue_sync_session)
 
@@ -831,6 +847,10 @@ def execute_agent_smoke_test(
     render_plan_path = output_dir / "render-plan.youtube-16x9.json"
     output_path = output_dir / "studio-cut-agent-smoke-output.mp4"
     sync_map_output_path = output_dir / "studio-cut-agent-smoke-sync-map-output.mp4"
+    sync_map_render_qa_path = output_dir / "sync-map-render-qa.json"
+    rescue_session_render_qa_path = (
+        rescue_session_dir / "renders" / "studio-cut-agent-smoke-render-qa.json"
+    )
 
     report: dict[str, Any] = {
         "status": "fail",
@@ -1016,16 +1036,23 @@ def execute_agent_smoke_test(
                     str(sync_map_media_map_path),
                     "--out",
                     str(sync_map_output_path),
+                    "--out-qa",
+                    str(sync_map_render_qa_path),
                 ],
                 "agent smoke render-from-sync-map",
                 commands_run,
             )
             generated_files["syncMapOutput"] = str(sync_map_output_path)
+            generated_files["syncMapRenderQa"] = str(sync_map_render_qa_path)
             validate_agent_smoke_output(
                 output_path=sync_map_output_path,
                 ffprobe_path=ffprobe_path,
                 source_duration_ms=source_duration_ms,
                 expected_output_duration_ms=expected_output_duration_ms,
+                report=report,
+            )
+            validate_agent_smoke_sync_map_render_qa(
+                qa_path=sync_map_render_qa_path,
                 report=report,
             )
             write_agent_smoke_rescue_sync_session(
@@ -1046,6 +1073,11 @@ def execute_agent_smoke_test(
                 ],
                 "agent smoke render-rescue-sync-session dry run",
                 commands_run,
+            )
+            generated_files["rescueSessionRenderQa"] = str(rescue_session_render_qa_path)
+            validate_agent_smoke_sync_map_render_qa(
+                qa_path=rescue_session_render_qa_path,
+                report=report,
             )
         else:
             warnings.append("--skip-render set; output MP4 validation was skipped.")
@@ -3094,6 +3126,71 @@ def validate_agent_smoke_output(
         )
 
 
+def validate_agent_smoke_sync_map_render_qa(
+    *, qa_path: Path, report: dict[str, Any]
+) -> None:
+    errors = report["errors"]
+
+    if not qa_path.is_file():
+        errors.append(f"Sync Map render QA JSON was not written: {qa_path}")
+        return
+
+    try:
+        qa = json.loads(qa_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        errors.append(f"Sync Map render QA JSON is not readable: {error}")
+        return
+
+    summary = qa.get("summary") if isinstance(qa, dict) else None
+    segments = qa.get("segments") if isinstance(qa, dict) else None
+
+    if qa.get("kind") != "studio-cut-sync-map-render-qa":
+        errors.append("Sync Map render QA kind is incorrect")
+
+    if not isinstance(summary, dict):
+        errors.append("Sync Map render QA summary is missing")
+        return
+
+    if not isinstance(segments, list):
+        errors.append("Sync Map render QA segments are missing")
+        return
+
+    report["syncMapRenderQa"] = {
+        "audioMode": summary.get("audioMode"),
+        "segmentCount": summary.get("segmentCount"),
+        "totalBlackPaddingMs": summary.get("totalBlackPaddingMs"),
+        "silencePaddingMs": summary.get("silencePaddingMs"),
+        "warningCount": summary.get("warningCount"),
+    }
+
+    if summary.get("audioMode") != "clean_mix":
+        errors.append(
+            f"expected Sync Map render QA audioMode clean_mix, got {summary.get('audioMode')}"
+        )
+
+    expected_segment_count = len(AGENT_SMOKE_EXPECTED_ACTIVE_STATES)
+    if summary.get("segmentCount") != expected_segment_count:
+        errors.append(
+            "expected Sync Map render QA active segment count "
+            f"{expected_segment_count}, got {summary.get('segmentCount')}"
+        )
+
+    if int(summary.get("totalBlackPaddingMs") or 0) <= 0:
+        errors.append("expected Sync Map render QA to report black padding")
+
+    states = [segment.get("programState") for segment in segments]
+    if states != AGENT_SMOKE_EXPECTED_ACTIVE_STATES:
+        errors.append(f"unexpected Sync Map render QA state order: {states}")
+
+    if any(segment.get("programState") == "cut" for segment in segments):
+        errors.append("Sync Map render QA should not include Cut active segments")
+
+    local_path_markers = ("/private/", "/tmp/", str(Path.home()))
+    qa_text = json.dumps(qa)
+    if any(marker and marker in qa_text for marker in local_path_markers):
+        errors.append("Sync Map render QA leaked a local filesystem path")
+
+
 def print_agent_smoke_report(report: dict[str, Any], *, json_mode: bool) -> None:
     if json_mode:
         print(json.dumps(report, indent=2))
@@ -3128,6 +3225,14 @@ def print_agent_smoke_report(report: dict[str, Any], *, json_mode: bool) -> None
         print(
             "Actual output audio: "
             f"{audio['sampleRate']}Hz / {audio['channels']} channel(s)"
+        )
+
+    if report.get("syncMapRenderQa"):
+        qa = report["syncMapRenderQa"]
+        print(
+            "Sync Map render QA: "
+            f"{qa['audioMode']}, {qa['segmentCount']} segments, "
+            f"{format_time_ms(qa['totalBlackPaddingMs'])} black padding"
         )
 
     print("\nGenerated files:")
@@ -3287,6 +3392,22 @@ def run_render_from_sync_map(args: argparse.Namespace) -> int:
         media_map_path=args.media_map,
         resolved_media=resolved_media,
     )
+    qa_report = build_sync_map_render_qa_report(
+        sync_map=sync_map,
+        plan=plan,
+        media_map=media_map,
+        media_map_path=args.media_map,
+        resolved_media=resolved_media,
+        out_path=args.out,
+        dry_run=bool(args.dry_run),
+    )
+    print_sync_map_render_qa_summary(
+        qa_report,
+        out_path=args.out_qa if getattr(args, "out_qa", None) else None,
+    )
+
+    if getattr(args, "out_qa", None):
+        write_json(args.out_qa, qa_report)
 
     if not media_map["audio"].get("program") and not resolved_media.get("__audio_assets__"):
         print(
@@ -3671,6 +3792,11 @@ def run_render_rescue_sync_session(args: argparse.Namespace) -> int:
         if args.out
         else session["rendersDir"] / f"{episode_id}-youtube-16x9.mp4"
     )
+    qa_out_path = (
+        args.out_qa.expanduser().resolve()
+        if args.out_qa
+        else session["rendersDir"] / f"{episode_id}-render-qa.json"
+    )
 
     print("Studio Cut Rescue Sync Session Render")
     print("=====================================")
@@ -3680,12 +3806,14 @@ def run_render_rescue_sync_session(args: argparse.Namespace) -> int:
     print(f"Decisions: {decision_report['path']}")
     print(f"Local media map: {session['localMediaMapPath']}")
     print(f"Output: {out_path}")
+    print(f"Render QA: {qa_out_path}")
 
     render_args = argparse.Namespace(
         sync_map=session["syncMapPath"],
         decisions=Path(decision_report["path"]),
         media_map=session["localMediaMapPath"],
         out=out_path,
+        out_qa=qa_out_path,
         dry_run=bool(args.dry_run),
         keep_temp=bool(args.keep_temp),
     )
@@ -6873,6 +7001,307 @@ def print_sync_map_render_summary(
             )
     else:
         print("Audio program: none; renderer will use silent audio")
+
+
+def build_sync_map_render_qa_report(
+    *,
+    sync_map: dict[str, Any],
+    plan: dict[str, Any],
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    resolved_media: dict[str, Any],
+    out_path: Path,
+    dry_run: bool,
+) -> dict[str, Any]:
+    segments = plan["activeSegments"]
+    audio_mode = get_sync_map_render_audio_mode(media_map, resolved_media)
+    report_segments = []
+    warnings: list[str] = []
+    total_black_padding_ms = 0
+    partial_video_segment_count = 0
+    fully_missing_video_role_count = 0
+    silence_padding_ms = 0
+
+    for segment in segments:
+        segment_warnings: list[str] = []
+        video_entries = []
+        segment_has_partial_video = False
+
+        for role in get_youtube_16x9_video_roles(segment["programState"]):
+            entry = resolved_media.get(role)
+            if not entry:
+                fully_missing_video_role_count += 1
+                segment_has_partial_video = True
+                segment_warnings.append(f"{role} video asset is missing")
+                video_entries.append(
+                    {
+                        "role": role,
+                        "inputId": None,
+                        "fileName": None,
+                        "coverageMs": 0,
+                        "coveragePercent": 0,
+                        "leadingBlackMs": segment["durationMs"],
+                        "trailingBlackMs": 0,
+                        "fullyMissing": True,
+                    }
+                )
+                total_black_padding_ms += int(segment["durationMs"])
+                continue
+
+            coverage = compute_sync_map_asset_segment_coverage(
+                segment=segment,
+                asset=entry["asset"],
+            )
+            asset = entry["asset"]
+            leading_black_ms = coverage["leadingGapMs"]
+            trailing_black_ms = coverage["trailingGapMs"]
+            total_black_padding_ms += leading_black_ms + trailing_black_ms
+
+            if coverage["coverageMs"] <= 0:
+                fully_missing_video_role_count += 1
+                segment_has_partial_video = True
+                segment_warnings.append(
+                    f"{role} has no video coverage for this segment; black slate will be used"
+                )
+            elif leading_black_ms or trailing_black_ms:
+                segment_has_partial_video = True
+                segment_warnings.append(
+                    f"{role} has partial video coverage; black padding will fill the gap"
+                )
+
+            video_entries.append(
+                {
+                    "role": role,
+                    "inputId": asset.get("inputId"),
+                    "fileName": asset.get("fileName"),
+                    "timelineStartMs": int(round(float(asset.get("timelineStartMs") or 0))),
+                    "assetStartMs": int(round(float(asset.get("assetStartMs") or 0))),
+                    "durationMs": int(round(float(asset.get("durationMs") or 0))),
+                    "coverageMs": coverage["coverageMs"],
+                    "coveragePercent": coverage["coveragePercent"],
+                    "leadingBlackMs": leading_black_ms,
+                    "trailingBlackMs": trailing_black_ms,
+                    "assetReadStartMs": coverage["assetReadStartMs"],
+                    "fullyMissing": coverage["coverageMs"] <= 0,
+                }
+            )
+
+        if segment_has_partial_video:
+            partial_video_segment_count += 1
+
+        audio_report = build_sync_map_render_audio_qa(
+            segment=segment,
+            media_map=media_map,
+            media_map_path=media_map_path,
+            resolved_media=resolved_media,
+        )
+        silence_padding_ms += audio_report["silencePaddingMs"]
+        segment_warnings.extend(audio_report["warnings"])
+
+        report_segments.append(
+            {
+                "index": segment["index"],
+                "programState": segment["programState"],
+                "layoutBehavior": segment["layoutBehavior"],
+                "sourceTime": segment["sourceTime"],
+                "video": video_entries,
+                "audio": audio_report,
+                "warnings": segment_warnings,
+            }
+        )
+
+    if total_black_padding_ms:
+        warnings.append(
+            "Some video roles do not cover every active segment; black padding will be inserted."
+        )
+
+    if silence_padding_ms:
+        warnings.append(
+            "Some audio sources do not cover every active segment; silence padding will be inserted."
+        )
+
+    if audio_mode == "silent":
+        warnings.append("No program or clean Sync Map audio was mapped; render audio will be silent.")
+
+    return {
+        "schemaVersion": 1,
+        "kind": "studio-cut-sync-map-render-qa",
+        "generatedAt": utc_now_iso(),
+        "renderMode": "dry-run" if dry_run else "render",
+        "projectId": sync_map["projectId"],
+        "branchId": sync_map["branchId"],
+        "syncMapId": sync_map["syncMapId"],
+        "outputFileName": out_path.name,
+        "summary": {
+            "segmentCount": len(segments),
+            "activeDurationMs": plan["summary"]["activeDurationMs"],
+            "cutDurationMs": plan["summary"]["cutDurationMs"],
+            "canonicalDurationMs": sync_map["canonicalTimeline"]["durationMs"],
+            "audioMode": audio_mode,
+            "videoPartialCoverageSegmentCount": partial_video_segment_count,
+            "videoFullyMissingRoleCount": fully_missing_video_role_count,
+            "totalBlackPaddingMs": total_black_padding_ms,
+            "silencePaddingMs": silence_padding_ms,
+            "warningCount": len(warnings),
+        },
+        "segments": report_segments,
+        "warnings": warnings,
+    }
+
+
+def get_sync_map_render_audio_mode(
+    media_map: dict[str, Any], resolved_media: dict[str, Any]
+) -> str:
+    if media_map["audio"].get("program"):
+        return "program"
+
+    if resolved_media.get("__audio_assets__"):
+        return "clean_mix"
+
+    return "silent"
+
+
+def compute_sync_map_asset_segment_coverage(
+    *, segment: dict[str, Any], asset: dict[str, Any]
+) -> dict[str, Any]:
+    segment_start_ms = int(round(float(segment["startSourceTimeMs"])))
+    segment_end_ms = int(round(float(segment["endSourceTimeMs"])))
+    segment_duration_ms = max(0, segment_end_ms - segment_start_ms)
+    timeline_start_ms = int(round(float(asset.get("timelineStartMs") or 0)))
+    asset_start_ms = int(round(float(asset.get("assetStartMs") or 0)))
+    asset_duration_ms = int(round(float(asset.get("durationMs") or 0)))
+    asset_timeline_end_ms = timeline_start_ms + max(0, asset_duration_ms)
+    covered_start_ms = max(segment_start_ms, timeline_start_ms)
+    covered_end_ms = min(segment_end_ms, asset_timeline_end_ms)
+    coverage_ms = max(0, covered_end_ms - covered_start_ms)
+
+    if segment_duration_ms <= 0:
+        leading_gap_ms = 0
+        trailing_gap_ms = 0
+        coverage_percent = 0
+    elif coverage_ms <= 0:
+        leading_gap_ms = segment_duration_ms
+        trailing_gap_ms = 0
+        coverage_percent = 0
+    else:
+        leading_gap_ms = max(0, covered_start_ms - segment_start_ms)
+        trailing_gap_ms = max(0, segment_end_ms - covered_end_ms)
+        coverage_percent = round(coverage_ms / segment_duration_ms, 4)
+
+    asset_read_start_ms = (
+        asset_start_ms + max(0, covered_start_ms - timeline_start_ms)
+        if coverage_ms > 0
+        else None
+    )
+
+    return {
+        "coverageMs": coverage_ms,
+        "coveragePercent": coverage_percent,
+        "leadingGapMs": leading_gap_ms,
+        "trailingGapMs": trailing_gap_ms,
+        "assetReadStartMs": asset_read_start_ms,
+    }
+
+
+def build_sync_map_render_audio_qa(
+    *,
+    segment: dict[str, Any],
+    media_map: dict[str, Any],
+    media_map_path: Path,
+    resolved_media: dict[str, Any],
+) -> dict[str, Any]:
+    warnings: list[str] = []
+    mode = get_sync_map_render_audio_mode(media_map, resolved_media)
+
+    if mode == "program":
+        return {
+            "mode": mode,
+            "sources": [
+                {
+                    "role": "program",
+                    "fileName": Path(str(media_map["audio"]["program"])).name,
+                    "coverageMs": segment["durationMs"],
+                    "coveragePercent": 1,
+                    "leadingSilenceMs": 0,
+                    "trailingSilenceMs": 0,
+                }
+            ],
+            "silencePaddingMs": 0,
+            "warnings": warnings,
+        }
+
+    if mode == "silent":
+        warnings.append("segment will render with silent audio")
+        return {
+            "mode": mode,
+            "sources": [],
+            "silencePaddingMs": segment["durationMs"],
+            "warnings": warnings,
+        }
+
+    sources = []
+    silence_padding_ms = 0
+
+    for audio_entry in resolved_media.get("__audio_assets__", []):
+        asset = audio_entry["asset"]
+        coverage = compute_sync_map_asset_segment_coverage(
+            segment=segment,
+            asset=asset,
+        )
+        leading_silence_ms = coverage["leadingGapMs"]
+        trailing_silence_ms = coverage["trailingGapMs"]
+        silence_padding_ms += leading_silence_ms + trailing_silence_ms
+
+        if coverage["coverageMs"] <= 0:
+            warnings.append(
+                f"{audio_entry['role']} has no coverage for this segment"
+            )
+        elif leading_silence_ms or trailing_silence_ms:
+            warnings.append(
+                f"{audio_entry['role']} has partial coverage for this segment"
+            )
+
+        sources.append(
+            {
+                "role": audio_entry["role"],
+                "inputId": asset.get("inputId"),
+                "fileName": asset.get("fileName"),
+                "coverageMs": coverage["coverageMs"],
+                "coveragePercent": coverage["coveragePercent"],
+                "leadingSilenceMs": leading_silence_ms,
+                "trailingSilenceMs": trailing_silence_ms,
+                "assetReadStartMs": coverage["assetReadStartMs"],
+            }
+        )
+
+    return {
+        "mode": mode,
+        "sources": sources,
+        "silencePaddingMs": silence_padding_ms,
+        "warnings": warnings,
+    }
+
+
+def print_sync_map_render_qa_summary(
+    report: dict[str, Any], *, out_path: Path | None
+) -> None:
+    summary = report["summary"]
+    print("\nSync Map render QA")
+    print("==================")
+    print(f"Audio mode: {summary['audioMode']}")
+    print(f"Active segments: {summary['segmentCount']}")
+    print(f"Black video padding: {format_time_ms(summary['totalBlackPaddingMs'])}")
+    print(f"Silence audio padding: {format_time_ms(summary['silencePaddingMs'])}")
+
+    if out_path:
+        print(f"QA JSON: {out_path}")
+
+    if report["warnings"]:
+        print("QA warnings:")
+        for warning in report["warnings"][:5]:
+            print(f"  - {warning}")
+        if len(report["warnings"]) > 5:
+            print(f"  - ...and {len(report['warnings']) - 5} more")
 
 
 def render_sync_map_youtube_16x9_segments(

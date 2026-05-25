@@ -157,7 +157,8 @@ python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
   --sync-map /tmp/studio-cut-sync-map.json \
   --decisions /path/to/studio-cut-decisions.json \
   --media-map /path/to/sync-map-local-media.json \
-  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4 \
+  --out-qa /tmp/studio-cut-sync-map-render-qa.json
 ```
 
 The local media map points at original or higher-quality local files by Sync Map
@@ -169,6 +170,10 @@ provided, it can now mix mapped `homerAudio` and `charlieAudio` Sync Map assets
 from the same local media map. Rough local renders normalize to 1920x1080,
 30 fps, stereo 48 kHz AAC and apply a simple limiter. Final quality,
 drift-aware rendering, and profile polish remain future work.
+Use `--out-qa` to write a path-safe render QA JSON with active segments, Sync
+Map input ids/file names, black video padding, silence padding, and audio source
+mode. The one-folder wrapper writes `renders/<episode-id>-render-qa.json` by
+default.
 
 For a standard one-folder session, prefer the wrapper after decisions are
 exported into `edit/<episode-id>-decisions.json`:

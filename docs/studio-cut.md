@@ -410,7 +410,9 @@ The CLI supports:
   layout plan, skips `Cut` spans, and writes a rough 16:9 MP4.
 - `render-from-sync-map`: uses a Rescue Sync `Sync Map` plus local original or
   proxy asset paths to translate canonical episode timeline spans into
-  asset-local time, then applies the rough `youtube_16x9` layouts.
+  asset-local time, then applies the rough `youtube_16x9` layouts. Add
+  `--out-qa` to write a path-safe render QA JSON with video/audio coverage
+  diagnostics.
 - `render-rescue-sync-session`: wraps `render-from-sync-map` for the standard
   one-folder Rescue Sync workspace, using `generated/`, `edit/`, and `renders/`
   paths so operators do not have to retype Sync Map file locations.
@@ -533,6 +535,12 @@ mapped clean audio exists, it writes silent audio and warns. Rough local renders
 now normalize output to 1920x1080, 30 fps, stereo 48 kHz AAC; clean-audio
 fallback uses a normalized mix plus limiter to avoid easy clipping in the first
 review pass.
+
+Use `--out-qa` with `render-from-sync-map` to write a machine-readable render QA
+report. It records the active segments, Sync Map input ids/file names, black
+video padding, silence padding, and whether audio came from `audio.program`,
+clean Sync Map audio, or silence. The one-folder `render-rescue-sync-session`
+wrapper writes `renders/<episode-id>-render-qa.json` by default.
 
 This renderer intentionally does not parse Premiere XML/EDL yet. Premiere owns
 timeline alignment for now by exporting local media files that share sequence
@@ -1079,7 +1087,8 @@ python tools/studio-cut-local/studio_cut_local.py render-from-sync-map \
   --sync-map path/to/sync-map.json \
   --decisions path/to/studio-cut-decisions.json \
   --media-map path/to/sync-map-local-media.json \
-  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4
+  --out /tmp/studio-cut-sync-map-youtube-16x9.mp4 \
+  --out-qa /tmp/studio-cut-sync-map-render-qa.json
 ```
 
 The media map stays local and may point at original local exports or higher

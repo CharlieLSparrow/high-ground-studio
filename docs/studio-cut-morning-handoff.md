@@ -376,6 +376,10 @@ mapped `homerAudio` and `charlieAudio` clean-audio assets when the Sync Map
 contains those input roles. Rough renders now normalize to 1920x1080, 30 fps,
 stereo 48 kHz AAC with a simple limiter. Otherwise it renders silent audio and
 prints a warning.
+The wrapper also writes `renders/<episode-id>-render-qa.json` by default. That
+QA report is path-safe and tells Charlie or an agent which Sync Map assets were
+used, where black video padding or silence padding was inserted, and which audio
+mode the rough render used.
 
 ## Known Limitations
 
