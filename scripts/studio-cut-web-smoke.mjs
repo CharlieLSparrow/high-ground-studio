@@ -688,8 +688,20 @@ async function runBrowserSmoke() {
     assert(transcriptOpsPath, "transcript suggested ops download path should be available");
     const transcriptOpsJson = JSON.parse(await readFile(transcriptOpsPath, "utf8"));
     assert.equal(transcriptOpsJson.schemaVersion, 1);
-    assert.equal(transcriptOpsJson.operations.length, 1);
-    assert.equal(transcriptOpsJson.operations[0].state, "charlie_clip");
+    assert(
+      transcriptOpsJson.operations.some(
+        (operation) =>
+          operation.op === "addDecision" && operation.state === "charlie_clip",
+      ),
+      "transcript suggestions should include Charlie/Clip add decision",
+    );
+    assert(
+      transcriptOpsJson.operations.every((operation) =>
+        operation.approvalRequired === undefined ||
+        operation.approvalRequired === true,
+      ),
+      "agent transcript suggestions should keep approval metadata when present",
+    );
     await expect(page.getByText(/No decisions yet/i)).toBeVisible();
     await page.getByLabel("Homer source pane width").fill("0.49");
     await expect(page.getByRole("button", { name: "Reset Panes" })).toBeEnabled();

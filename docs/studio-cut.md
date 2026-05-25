@@ -410,10 +410,12 @@ The CLI supports:
   duration, warnings, and suggested review tasks. It can also accept
   `--transcript` with timed transcript segments to flag speaker/state
   mismatches, likely clip-reference moments, transcript gaps, and filler
-  clusters.
+  clusters. Add `--out-ops path/to/agent-ops.json` to write a reviewable draft
+  operation file from safe suggestions.
 - `apply-decision-ops`: applies a transparent operation JSON file to a decision
-  export and writes a new decision file. It supports adding decisions and
-  tombstoning decisions; it never mutates the input decision file.
+  export and writes a new decision file. It supports adding point decisions,
+  setting bounded ranges to a semantic state with an optional restore state,
+  and tombstoning decisions; it never mutates the input decision file.
 - `agent-smoke-test`: generates synthetic media and structured files, runs the
   planning/render path, and validates the output without private media or
   browser interaction.
@@ -431,9 +433,10 @@ then apply it to a new decision export that humans can inspect, import, render,
 or roll back.
 
 The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
-It previews the operation JSON before applying it, shows add/remove counts and
-blocking validation errors, and then applies accepted operations through the
-same localStorage/Firestore decision persistence path as normal edits.
+It previews the operation JSON before applying it, shows add/range/remove
+counts, approval-required counts, blocking validation errors, and then applies
+accepted operations through the same localStorage/Firestore decision persistence
+path as normal edits.
 
 The browser cockpit can also import a timed transcript JSON from the episode
 manifest area. The `Transcript Review` panel stays browser-local, summarizes
@@ -444,9 +447,13 @@ the operator imports it; media bytes, local paths, and object URLs are still
 excluded.
 
 `Export Suggested Ops` in that panel writes a reviewable agent operation JSON
-draft from transcript tasks that have safe semantic suggestions. It is a draft
-only: use `Import Agent Ops` to preview and apply it through the normal
-decision persistence path.
+draft from transcript tasks that have safe semantic suggestions. Clip and
+speaker-focus tasks become point decisions; transcript gaps and filler clusters
+can become bounded `setRangeState` drafts, usually `Cut` with a restore state at
+the range end. These range drafts include `confidence`, `approvalRequired`, and
+`reason` metadata so humans know they need review. It is a draft only: use
+`Import Agent Ops` to preview and apply it through the normal decision
+persistence path.
 
 Use `Export Agent Context` when an agent needs the live browser room state. The
 export includes the manifest, current source time, proxy loaded status,

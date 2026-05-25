@@ -131,6 +131,7 @@ test("agent edit review and decision ops are deterministic and transparent", asy
     const decisionsPath = path.join(workdir, "decisions.json");
     const transcriptPath = path.join(workdir, "transcript.json");
     const reviewPath = path.join(workdir, "agent-review.json");
+    const suggestedOpsPath = path.join(workdir, "agent-review.suggested-ops.json");
     const opsPath = path.join(workdir, "agent-ops.json");
     const editedPath = path.join(workdir, "decisions.edited.json");
     const dryRunPath = path.join(workdir, "decisions.dry-run.json");
@@ -153,6 +154,19 @@ test("agent edit review and decision ops are deterministic and transparent", asy
           state: "charlie_clip",
           note: "Agent adds Charlie plus Clip for final synthetic segment.",
         },
+        {
+          op: "setRangeState",
+          id: "decision-range-start",
+          restoreId: "decision-range-restore",
+          startSourceTimeMs: 8000,
+          endSourceTimeMs: 9500,
+          state: "cut",
+          restoreState: "homer",
+          note: "Agent proposes tightening synthetic filler cluster.",
+          confidence: 0.35,
+          approvalRequired: true,
+          reason: "Synthetic filler cluster.",
+        },
       ],
     });
 
@@ -166,9 +180,12 @@ test("agent edit review and decision ops are deterministic and transparent", asy
       transcriptPath,
       "--out",
       reviewPath,
+      "--out-ops",
+      suggestedOpsPath,
       "--json",
     ]);
     const review = JSON.parse(await readFile(reviewPath, "utf8"));
+    const suggestedOps = JSON.parse(await readFile(suggestedOpsPath, "utf8"));
 
     assert.equal(review.kind, "studio-cut-agent-edit-review");
     assert.equal(review.summary.activeDecisionEventCount, 3);
@@ -176,10 +193,19 @@ test("agent edit review and decision ops are deterministic and transparent", asy
     assert.equal(review.transcriptReview.segmentCount, 2);
     assert.equal(review.transcriptReview.clipReferenceCount, 1);
     assert.equal(review.agentEditingContract.supportedOps.includes("addDecision"), true);
+    assert.equal(review.agentEditingContract.supportedOps.includes("setRangeState"), true);
     assert(
       review.tasks.some((task) => task.kind === "transcript_speaker_state_mismatch"),
     );
     assert(review.tasks.some((task) => task.kind === "transcript_clip_reference"));
+    assert(
+      suggestedOps.operations.some(
+        (operation) =>
+          operation.op === "setRangeState" &&
+          operation.state === "cut" &&
+          operation.approvalRequired === true,
+      ),
+    );
 
     runCli([
       "apply-decision-ops",
@@ -211,18 +237,28 @@ test("agent edit review and decision ops are deterministic and transparent", asy
     ]);
     const edited = JSON.parse(await readFile(editedPath, "utf8"));
 
-    assert.equal(edited.agentEdit.operationCount, 2);
-    assert.equal(edited.agentEdit.appliedOperationCount, 2);
-    assert.equal(edited.decisionEvents.length, 4);
+    assert.equal(edited.agentEdit.operationCount, 3);
+    assert.equal(edited.agentEdit.appliedOperationCount, 3);
+    assert.equal(edited.decisionEvents.length, 6);
 
     const removed = edited.decisionEvents.find((event) => event.id === "decision-002");
     const added = edited.decisionEvents.find((event) => event.id === "decision-004");
+    const rangeStart = edited.decisionEvents.find(
+      (event) => event.id === "decision-range-start",
+    );
+    const rangeRestore = edited.decisionEvents.find(
+      (event) => event.id === "decision-range-restore",
+    );
 
     assert.equal(removed.operation, "remove");
     assert.equal(removed.removedBy, "codex@test");
     assert.match(removed.note, /Agent remove/);
     assert.equal(added.state, "charlie_clip");
     assert.equal(added.clientId, "studio-cut-local-agent");
+    assert.equal(rangeStart.state, "cut");
+    assert.match(rangeStart.note, /Agent range reason/);
+    assert.equal(rangeRestore.state, "homer");
+    assert.equal(rangeRestore.sourceTimeMs, 9500);
   } finally {
     await rm(workdir, { recursive: true, force: true });
   }

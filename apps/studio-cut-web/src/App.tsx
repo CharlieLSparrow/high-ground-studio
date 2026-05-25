@@ -1782,7 +1782,9 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         fileName: file.name,
         operationCount: 0,
         addCount: 0,
+        rangeCount: 0,
         removeCount: 0,
+        approvalRequiredCount: 0,
         activeDecisionCountAfterApply: decisionEvents.length,
         tombstonedDecisionCountAfterApply: 0,
         decisionEvents,
@@ -5724,7 +5726,12 @@ function AgentDecisionOpsPanel({
         <ReadinessMetric label="File" value={preview.fileName} />
         <ReadinessMetric label="Operations" value={String(preview.operationCount)} />
         <ReadinessMetric label="Adds" value={String(preview.addCount)} />
+        <ReadinessMetric label="Ranges" value={String(preview.rangeCount)} />
         <ReadinessMetric label="Removes" value={String(preview.removeCount)} />
+        <ReadinessMetric
+          label="Approval required"
+          value={String(preview.approvalRequiredCount)}
+        />
         <ReadinessMetric
           label="Active after"
           value={String(preview.activeDecisionCountAfterApply)}

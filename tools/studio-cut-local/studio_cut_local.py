@@ -607,6 +607,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to write the machine-readable review report JSON.",
     )
     agent_review_parser.add_argument(
+        "--out-ops",
+        type=Path,
+        help="Optional path to write suggested agent decision operations JSON.",
+    )
+    agent_review_parser.add_argument(
         "--json",
         action="store_true",
         help="Print only the machine-readable review report JSON.",
@@ -3321,12 +3326,22 @@ def run_agent_review_edit(args: argparse.Namespace) -> int:
     if args.out:
         write_json(args.out, report)
 
+    if args.out_ops:
+        suggested_ops = build_agent_suggested_ops_payload(
+            report=report,
+            manifest=manifest,
+            decision_events=decision_events,
+        )
+        write_json(args.out_ops, suggested_ops)
+
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         print_agent_edit_review_report(report)
         if args.out:
             print(f"\nWrote agent edit review JSON: {args.out}")
+        if args.out_ops:
+            print(f"Wrote suggested agent ops JSON: {args.out_ops}")
 
     return 0 if not report["errors"] else 1
 
@@ -3542,6 +3557,10 @@ def build_agent_transcript_review(
         )
 
         if gap_before_ms >= 5000:
+            restore_segment = find_segment_at_time(derived_segments, start_ms, duration_ms)
+            restore_state = (
+                str(restore_segment["state"]) if restore_segment else None
+            )
             tasks.append(
                 {
                     "priority": "medium",
@@ -3553,6 +3572,23 @@ def build_agent_transcript_review(
                     "startSourceTimeMs": gap_start_ms,
                     "endSourceTimeMs": start_ms,
                     "gapBeforeMs": gap_before_ms,
+                    "suggestedOperations": [
+                        {
+                            "op": "setRangeState",
+                            "startSourceTimeMs": gap_start_ms,
+                            "endSourceTimeMs": start_ms,
+                            "state": "cut",
+                            **(
+                                {"restoreState": restore_state}
+                                if restore_state in PROGRAM_STATES
+                                else {}
+                            ),
+                            "note": "Transcript gap; review before cutting inactive/silent span.",
+                            "confidence": 0.45,
+                            "approvalRequired": True,
+                            "reason": "Transcript gap may indicate silence, missing transcript, or sync drift.",
+                        }
+                    ],
                 }
             )
 
@@ -3584,6 +3620,9 @@ def build_agent_transcript_review(
                                     else "both_clip"
                                 ),
                                 "note": "Transcript appears to reference visual clip context; verify before applying.",
+                                "confidence": 0.65,
+                                "approvalRequired": True,
+                                "reason": "Transcript references on-screen visual context.",
                             }
                         }
                         if has_clip_pane
@@ -3595,6 +3634,10 @@ def build_agent_transcript_review(
         filler_hits = count_transcript_filler_hits(lower_text)
         filler_count += filler_hits
         if filler_hits >= 3:
+            restore_segment = find_segment_at_time(derived_segments, end_ms, duration_ms)
+            restore_state = (
+                str(restore_segment["state"]) if restore_segment else None
+            )
             tasks.append(
                 {
                     "priority": "low",
@@ -3606,6 +3649,23 @@ def build_agent_transcript_review(
                     "segmentId": segment["id"],
                     "startSourceTimeMs": start_ms,
                     "endSourceTimeMs": end_ms,
+                    "suggestedOperations": [
+                        {
+                            "op": "setRangeState",
+                            "startSourceTimeMs": start_ms,
+                            "endSourceTimeMs": end_ms,
+                            "state": "cut",
+                            **(
+                                {"restoreState": restore_state}
+                                if restore_state in PROGRAM_STATES
+                                else {}
+                            ),
+                            "note": "Filler cluster; verify before tightening.",
+                            "confidence": 0.35,
+                            "approvalRequired": True,
+                            "reason": "Transcript contains repeated filler markers.",
+                        }
+                    ],
                 }
             )
 
@@ -3643,6 +3703,9 @@ def build_agent_transcript_review(
                             "sourceTimeMs": start_ms,
                             "state": expected_state,
                             "note": "Transcript speaker focus mismatch; verify before applying.",
+                            "confidence": 0.7,
+                            "approvalRequired": True,
+                            "reason": "Transcript speaker focus differs from the current program state.",
                         },
                     }
                 )
@@ -3867,6 +3930,148 @@ def build_agent_edit_review_report(
     return report
 
 
+def build_agent_suggested_ops_payload(
+    *,
+    report: dict[str, Any],
+    manifest: dict[str, Any],
+    decision_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    project_id = str(
+        (decision_events[0].get("projectId") if decision_events else None)
+        or manifest["id"]
+    )
+    branch_id = str(
+        (decision_events[0].get("branchId") if decision_events else None)
+        or "main"
+    )
+    operations: list[dict[str, Any]] = []
+    seen_operations: set[str] = set()
+
+    for task in report.get("tasks", []):
+        if not isinstance(task, dict):
+            continue
+
+        task_operations: list[dict[str, Any]] = []
+        suggested_operation = task.get("suggestedOperation")
+        if isinstance(suggested_operation, dict):
+            task_operations.append(suggested_operation)
+        suggested_operations = task.get("suggestedOperations")
+        if isinstance(suggested_operations, list):
+            task_operations.extend(
+                operation
+                for operation in suggested_operations
+                if isinstance(operation, dict)
+            )
+
+        for operation in task_operations:
+            normalized_operation = normalize_agent_suggested_operation(
+                operation=operation,
+                task=task,
+            )
+            if not normalized_operation:
+                continue
+
+            operation_key = get_agent_suggested_operation_key(normalized_operation)
+            if operation_key in seen_operations:
+                continue
+
+            seen_operations.add(operation_key)
+            operations.append(normalized_operation)
+
+    return {
+        "schemaVersion": 1,
+        "projectId": project_id,
+        "branchId": branch_id,
+        "operations": operations,
+    }
+
+
+def normalize_agent_suggested_operation(
+    *, operation: dict[str, Any], task: dict[str, Any]
+) -> dict[str, Any] | None:
+    op = operation.get("op")
+    task_note = " | ".join(
+        part
+        for part in [
+            str(operation.get("note", "")).strip(),
+            f"Transcript task: {task.get('kind')}" if task.get("kind") else "",
+            f"segment {task.get('segmentId')}" if task.get("segmentId") else "",
+        ]
+        if part
+    )
+
+    if op == "addDecision":
+        state = operation.get("state")
+        if state not in PROGRAM_STATES:
+            return None
+        return {
+            "op": "addDecision",
+            "sourceTimeMs": int(round(float(operation.get("sourceTimeMs", 0)))),
+            "state": state,
+            **({"note": task_note} if task_note else {}),
+            **copy_optional_agent_operation_metadata(operation),
+        }
+
+    if op == "setRangeState":
+        state = operation.get("state")
+        restore_state = operation.get("restoreState")
+        if state not in PROGRAM_STATES:
+            return None
+        return {
+            "op": "setRangeState",
+            "startSourceTimeMs": int(
+                round(float(operation.get("startSourceTimeMs", 0)))
+            ),
+            "endSourceTimeMs": int(round(float(operation.get("endSourceTimeMs", 0)))),
+            "state": state,
+            **({"restoreState": restore_state} if restore_state in PROGRAM_STATES else {}),
+            **({"note": task_note} if task_note else {}),
+            **copy_optional_agent_operation_metadata(operation),
+        }
+
+    if op == "removeDecision":
+        target_id = operation.get("id")
+        if not isinstance(target_id, str) or not target_id.strip():
+            return None
+        return {
+            "op": "removeDecision",
+            "id": target_id.strip(),
+            **copy_optional_agent_operation_metadata(operation),
+        }
+
+    return None
+
+
+def copy_optional_agent_operation_metadata(operation: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    confidence = operation.get("confidence")
+    if isinstance(confidence, (int, float)) and 0 <= float(confidence) <= 1:
+        metadata["confidence"] = float(confidence)
+    approval_required = operation.get("approvalRequired")
+    if isinstance(approval_required, bool):
+        metadata["approvalRequired"] = approval_required
+    reason = operation.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        metadata["reason"] = reason.strip()
+    return metadata
+
+
+def get_agent_suggested_operation_key(operation: dict[str, Any]) -> str:
+    op = operation.get("op")
+    if op == "addDecision":
+        return f"addDecision:{operation.get('sourceTimeMs')}:{operation.get('state')}"
+    if op == "setRangeState":
+        return (
+            "setRangeState:"
+            f"{operation.get('startSourceTimeMs')}:"
+            f"{operation.get('endSourceTimeMs')}:"
+            f"{operation.get('state')}"
+        )
+    if op == "removeDecision":
+        return f"removeDecision:{operation.get('id')}"
+    return json.dumps(operation, sort_keys=True)
+
+
 def print_agent_edit_review_report(report: dict[str, Any]) -> None:
     manifest = report["manifest"]
     summary = report["summary"]
@@ -3920,7 +4125,12 @@ def print_agent_edit_review_report(report: dict[str, Any]) -> None:
             print(f"  - {error}")
 
     print("\nDecision operation shape:")
-    print("  {\"schemaVersion\":1,\"operations\":[{\"op\":\"addDecision\",\"sourceTimeMs\":0,\"state\":\"both\",\"note\":\"...\"}]}")
+    print(
+        "  {\"schemaVersion\":1,\"operations\":["
+        "{\"op\":\"addDecision\",\"sourceTimeMs\":0,\"state\":\"both\",\"note\":\"...\"},"
+        "{\"op\":\"setRangeState\",\"startSourceTimeMs\":10000,\"endSourceTimeMs\":15000,\"state\":\"cut\",\"restoreState\":\"both\"}"
+        "]}"
+    )
     print("  Apply with: studio-cut-local apply-decision-ops --manifest ... --decisions ... --ops ... --out ...")
 
 
@@ -3938,7 +4148,20 @@ def build_agent_editing_contract() -> dict[str, Any]:
                     "sourceTimeMs": 0,
                     "state": "both",
                     "note": "Human-readable reason.",
+                    "confidence": 0.75,
+                    "approvalRequired": True,
                     "id": "optional-stable-id",
+                },
+                {
+                    "op": "setRangeState",
+                    "startSourceTimeMs": 10000,
+                    "endSourceTimeMs": 15000,
+                    "state": "cut",
+                    "restoreState": "both",
+                    "note": "Proposed silence/filler trim; human reviews first.",
+                    "confidence": 0.5,
+                    "approvalRequired": True,
+                    "reason": "Transcript gap or repeated filler markers.",
                 },
                 {
                     "op": "removeDecision",
@@ -3947,7 +4170,7 @@ def build_agent_editing_contract() -> dict[str, Any]:
                 },
             ],
         },
-        "supportedOps": ["addDecision", "removeDecision"],
+        "supportedOps": ["addDecision", "setRangeState", "removeDecision"],
         "rollback": (
             "Keep the previous decision JSON or exported checkpoint. apply-decision-ops "
             "writes a new file and never mutates the input file."
@@ -4024,6 +4247,56 @@ def apply_agent_decision_ops(
             )
             continue
 
+        if op == "setRangeState":
+            range_events, op_errors, op_warnings = build_agent_range_decision_events(
+                operation=operation,
+                label=label,
+                existing_events=next_events,
+                project_id=project_id,
+                branch_id=branch_id,
+                created_by=created_by,
+                created_at=applied_at,
+                duration_ms=duration_ms,
+            )
+            warnings.extend(op_warnings)
+            if op_errors:
+                errors.extend(op_errors)
+                continue
+
+            if len({event["id"] for event in range_events}) != len(range_events):
+                errors.append(f"{label}.id and restoreId must be unique")
+                continue
+
+            range_event_ids = {event["id"] for event in range_events}
+            existing_ids = {event["id"] for event in next_events}
+            collisions = sorted(range_event_ids.intersection(existing_ids))
+            if collisions:
+                errors.append(
+                    f"{label}.id collides with existing decision file: {', '.join(collisions)}"
+                )
+                continue
+
+            next_events.extend(range_events)
+            end_source_time_ms = clamp_ms(
+                float(operation.get("endSourceTimeMs", range_events[0]["sourceTimeMs"])),
+                duration_ms,
+            )
+            applied_operations.append(
+                {
+                    "op": "setRangeState",
+                    "ids": [event["id"] for event in range_events],
+                    "startSourceTimeMs": range_events[0]["sourceTimeMs"],
+                    "endSourceTimeMs": end_source_time_ms,
+                    "state": range_events[0]["state"],
+                    **(
+                        {"restoreState": range_events[1]["state"]}
+                        if len(range_events) > 1
+                        else {}
+                    ),
+                }
+            )
+            continue
+
         if op == "removeDecision":
             target_id = operation.get("id")
             if not isinstance(target_id, str) or not target_id.strip():
@@ -4059,7 +4332,7 @@ def apply_agent_decision_ops(
             continue
 
         errors.append(
-            f"{label}.op must be one of addDecision, removeDecision; got {op!r}"
+            f"{label}.op must be one of addDecision, setRangeState, removeDecision; got {op!r}"
         )
 
     next_events = merge_decision_events(next_events)
@@ -4138,6 +4411,127 @@ def build_agent_add_decision_event(
     return event, []
 
 
+def build_agent_range_decision_events(
+    *,
+    operation: dict[str, Any],
+    label: str,
+    existing_events: list[dict[str, Any]],
+    project_id: str,
+    branch_id: str,
+    created_by: str,
+    created_at: str,
+    duration_ms: int,
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    raw_start_ms = operation.get("startSourceTimeMs")
+    raw_end_ms = operation.get("endSourceTimeMs")
+    state = operation.get("state")
+    restore_state = operation.get("restoreState")
+
+    if not isinstance(raw_start_ms, (int, float)):
+        errors.append(f"{label}.startSourceTimeMs must be a number")
+    if not isinstance(raw_end_ms, (int, float)):
+        errors.append(f"{label}.endSourceTimeMs must be a number")
+    if state not in PROGRAM_STATES:
+        errors.append(
+            f"{label}.state must be one of: {', '.join(PROGRAM_STATE_ORDER)}"
+        )
+    if restore_state is not None and restore_state not in PROGRAM_STATES:
+        errors.append(
+            f"{label}.restoreState must be one of: {', '.join(PROGRAM_STATE_ORDER)}"
+        )
+
+    if errors:
+        return [], errors, warnings
+
+    start_ms = clamp_ms(float(raw_start_ms), duration_ms)
+    end_ms = clamp_ms(float(raw_end_ms), duration_ms)
+    if end_ms <= start_ms:
+        return [], [f"{label}.endSourceTimeMs must be after startSourceTimeMs"], warnings
+
+    active_events = get_active_decision_events(existing_events)
+    if restore_state is None:
+        restore_segment = find_segment_at_time(
+            derive_segments(active_events, duration_ms),
+            end_ms,
+            duration_ms,
+        )
+        restore_state = (
+            str(restore_segment["state"]) if restore_segment else None
+        )
+
+    start_id = operation.get("id")
+    if not isinstance(start_id, str) or not start_id.strip():
+        start_id = create_agent_decision_id(
+            project_id,
+            branch_id,
+            start_ms,
+            f"{state}-range-start",
+        )
+    else:
+        start_id = start_id.strip()
+
+    range_note = operation.get("note")
+    reason = operation.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        range_note = append_decision_note(
+            range_note,
+            f"Agent range reason: {reason.strip()}",
+        )
+
+    range_events: list[dict[str, Any]] = [
+        {
+            "id": start_id,
+            "projectId": project_id,
+            "branchId": branch_id,
+            "sourceTimeMs": start_ms,
+            "state": str(state),
+            "createdBy": created_by,
+            "createdAt": created_at,
+            "clientId": "studio-cut-local-agent",
+            "operation": "upsert",
+            **(
+                {"note": range_note.strip()}
+                if isinstance(range_note, str) and range_note.strip()
+                else {}
+            ),
+        }
+    ]
+
+    if end_ms < duration_ms and restore_state and restore_state != state:
+        restore_id = operation.get("restoreId")
+        if not isinstance(restore_id, str) or not restore_id.strip():
+            restore_id = create_agent_decision_id(
+                project_id,
+                branch_id,
+                end_ms,
+                f"{restore_state}-range-restore",
+            )
+        else:
+            restore_id = restore_id.strip()
+        range_events.append(
+            {
+                "id": restore_id,
+                "projectId": project_id,
+                "branchId": branch_id,
+                "sourceTimeMs": end_ms,
+                "state": str(restore_state),
+                "createdBy": created_by,
+                "createdAt": created_at,
+                "clientId": "studio-cut-local-agent",
+                "operation": "upsert",
+                "note": f"Agent range restore after {PROGRAM_STATE_LABELS[str(state)]}",
+            }
+        )
+    elif end_ms < duration_ms and not restore_state:
+        warnings.append(
+            f"{label}: no restoreState was provided and no prior state could be inferred at range end"
+        )
+
+    return range_events, [], warnings
+
+
 def print_agent_decision_ops_result(
     result: dict[str, Any], *, dry_run: bool, out_path: Path
 ) -> None:
@@ -4157,6 +4551,13 @@ def print_agent_decision_ops_result(
                     "  - add "
                     f"{operation['state']} at {format_time_ms(operation['sourceTimeMs'])} "
                     f"({operation['id']})"
+                )
+            elif operation["op"] == "setRangeState":
+                print(
+                    "  - range "
+                    f"{operation['state']} from {format_time_ms(operation['startSourceTimeMs'])} "
+                    f"to {format_time_ms(operation['endSourceTimeMs'])} "
+                    f"({', '.join(operation['ids'])})"
                 )
             else:
                 print(f"  - remove {operation['id']}")

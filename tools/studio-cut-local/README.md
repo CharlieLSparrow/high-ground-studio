@@ -473,14 +473,18 @@ Review an edit:
 python tools/studio-cut-local/studio_cut_local.py agent-review-edit \
   --manifest path/to/episode-manifest.json \
   --decisions path/to/studio-cut-decisions.json \
-  --out path/to/agent-edit-review.json
+  --out path/to/agent-edit-review.json \
+  --out-ops path/to/agent-suggested-ops.json
 ```
 
 Add `--transcript path/to/episode-transcript.json` when a timed transcript is
 available. Transcript segments use canonical episode/source time and include
 `speaker`, optional `speakerRole` (`charlie`, `homer`, or `unknown`), and
 `text`. The review then reports transcript coverage, speaker durations, clip
-references, filler clusters, and speaker/state mismatch tasks. See
+references, filler clusters, speaker/state mismatch tasks, and can write
+reviewable suggested operations with `--out-ops`. Transcript gaps and repeated
+filler clusters are drafted as bounded `setRangeState` operations with
+confidence and explicit approval metadata. See
 `tools/studio-cut-local/examples/transcript.placeholder.json` for a safe
 placeholder shape.
 
@@ -497,8 +501,10 @@ python tools/studio-cut-local/studio_cut_local.py apply-decision-ops \
 ```
 
 Remove `--dry-run` to write the new decision file. The command never mutates the
-input decision export. Remove operations create tombstones with `removedAt` and
-`removedBy` so the edit remains auditable.
+input decision export. `setRangeState` creates a start decision and, when a
+restore state is known, a restore decision at the end of the range. Remove
+operations create tombstones with `removedAt` and `removedBy` so the edit
+remains auditable.
 
 See `docs/studio-cut-agentic-editing.md` for the operation file shape and the
 recommended human-transparent agent workflow.

@@ -82,13 +82,24 @@ export type AgentWorkspaceBrief = {
   warnings: string[];
   agentOperationContract: {
     schemaVersion: 1;
-    supportedOperations: Array<"addDecision" | "removeDecision">;
+    supportedOperations: Array<"addDecision" | "setRangeState" | "removeDecision">;
     validStates: ProgramState[];
     addDecisionExample: {
       op: "addDecision";
       sourceTimeMs: number;
       state: ProgramState;
       note: string;
+    };
+    setRangeStateExample: {
+      op: "setRangeState";
+      startSourceTimeMs: number;
+      endSourceTimeMs: number;
+      state: ProgramState;
+      restoreState: ProgramState;
+      note: string;
+      confidence: number;
+      approvalRequired: boolean;
+      reason: string;
     };
     removeDecisionExample: {
       op: "removeDecision";
@@ -248,13 +259,24 @@ export function buildAgentWorkspaceBrief({
     warnings: [...warnings],
     agentOperationContract: {
       schemaVersion: 1,
-      supportedOperations: ["addDecision", "removeDecision"],
+      supportedOperations: ["addDecision", "setRangeState", "removeDecision"],
       validStates: [...PROGRAM_STATES],
       addDecisionExample: {
         op: "addDecision",
         sourceTimeMs: 0,
         state: "both",
         note: "Initial state after agent review.",
+      },
+      setRangeStateExample: {
+        op: "setRangeState",
+        startSourceTimeMs: currentSourceTimeMs,
+        endSourceTimeMs: Math.min(sourceDurationMs, currentSourceTimeMs + 5000),
+        state: "cut",
+        restoreState: currentState ?? "both",
+        note: "Proposed inactive range; verify before applying.",
+        confidence: 0.5,
+        approvalRequired: true,
+        reason: "Transcript gap or repeated filler cluster.",
       },
       removeDecisionExample: {
         op: "removeDecision",

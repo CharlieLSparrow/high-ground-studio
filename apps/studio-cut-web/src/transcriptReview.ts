@@ -5,7 +5,10 @@ import {
   type ProgramState,
   type TranscriptSegment,
 } from "@high-ground/studio-cut-schema";
-import type { AgentDecisionOpsPayload } from "./agentDecisionOps";
+import type {
+  AgentDecisionOperation,
+  AgentDecisionOpsPayload,
+} from "./agentDecisionOps";
 
 export type TranscriptReviewTask = {
   priority: "high" | "medium" | "low";
@@ -21,12 +24,8 @@ export type TranscriptReviewTask = {
   currentState?: ProgramState;
   startSourceTimeMs?: number;
   endSourceTimeMs?: number;
-  suggestedOperation?: {
-    op: "addDecision";
-    sourceTimeMs: number;
-    state: ProgramState;
-    note: string;
-  };
+  suggestedOperation?: Extract<AgentDecisionOperation, { op: "addDecision" }>;
+  suggestedOperations?: AgentDecisionOperation[];
 };
 
 export type TranscriptReview = {
@@ -115,12 +114,27 @@ export function buildTranscriptReview({
       (summary.speakerSegmentCounts[speakerRole] ?? 0) + 1;
 
     if (gapBeforeMs >= 5000) {
+      const gapStartMs = startMs - gapBeforeMs;
+      const restoreState = getStateAtSourceTime(derivedSegments, startMs);
       tasks.push({
         priority: "medium",
         kind: "transcript_gap",
         message: `Transcript gap before ${formatSourceTime(startMs)} lasts ${formatSourceTime(gapBeforeMs)}.`,
-        startSourceTimeMs: startMs - gapBeforeMs,
+        startSourceTimeMs: gapStartMs,
         endSourceTimeMs: startMs,
+        suggestedOperations: [
+          {
+            op: "setRangeState",
+            startSourceTimeMs: gapStartMs,
+            endSourceTimeMs: startMs,
+            state: "cut",
+            ...(restoreState ? { restoreState } : {}),
+            note: "Transcript gap; review before cutting inactive/silent span.",
+            confidence: 0.45,
+            approvalRequired: true,
+            reason: "Transcript gap may indicate silence, missing transcript, or sync drift.",
+          },
+        ],
       });
     }
 
@@ -142,6 +156,9 @@ export function buildTranscriptReview({
                 sourceTimeMs: startMs,
                 state: getClipStateForSpeaker(speakerRole),
                 note: "Transcript appears to reference visual clip context; verify before applying.",
+                confidence: 0.65,
+                approvalRequired: true,
+                reason: "Transcript references on-screen visual context.",
               },
             }
           : {}),
@@ -151,6 +168,7 @@ export function buildTranscriptReview({
     const fillerHits = countFillerHits(text);
     summary.fillerMarkerCount += fillerHits;
     if (fillerHits >= 3) {
+      const restoreState = getStateAtSourceTime(derivedSegments, endMs);
       tasks.push({
         priority: "low",
         kind: "transcript_filler_cluster",
@@ -158,6 +176,19 @@ export function buildTranscriptReview({
         segmentId: segment.id,
         startSourceTimeMs: startMs,
         endSourceTimeMs: endMs,
+        suggestedOperations: [
+          {
+            op: "setRangeState",
+            startSourceTimeMs: startMs,
+            endSourceTimeMs: endMs,
+            state: "cut",
+            ...(restoreState ? { restoreState } : {}),
+            note: "Filler cluster; verify before tightening.",
+            confidence: 0.35,
+            approvalRequired: true,
+            reason: "Transcript contains repeated filler markers.",
+          },
+        ],
       });
     }
 
@@ -181,6 +212,9 @@ export function buildTranscriptReview({
             sourceTimeMs: startMs,
             state: speakerRole,
             note: "Transcript speaker focus mismatch; verify before applying.",
+            confidence: 0.7,
+            approvalRequired: true,
+            reason: "Transcript speaker focus differs from the current program state.",
           },
         });
       }
@@ -226,35 +260,29 @@ export function buildTranscriptSuggestedDecisionOps({
 }): AgentDecisionOpsPayload {
   const seenOperations = new Set<string>();
   const operations = review.tasks.flatMap((task) => {
-    const suggestedOperation = task.suggestedOperation;
-
-    if (!suggestedOperation) {
-      return [];
-    }
-
-    const sourceTimeMs = Math.max(0, Math.round(suggestedOperation.sourceTimeMs));
-    const operationKey = `${sourceTimeMs}:${suggestedOperation.state}`;
-
-    if (seenOperations.has(operationKey)) {
-      return [];
-    }
-
-    seenOperations.add(operationKey);
-
-    return [
-      {
-        op: "addDecision" as const,
-        sourceTimeMs,
-        state: suggestedOperation.state,
-        note: [
-          suggestedOperation.note,
-          `Transcript task: ${task.kind}`,
-          task.segmentId ? `segment ${task.segmentId}` : "",
-        ]
-          .filter(Boolean)
-          .join(" | "),
-      },
+    const suggestedOperations = [
+      ...(task.suggestedOperation ? [task.suggestedOperation] : []),
+      ...(task.suggestedOperations ?? []),
     ];
+
+    if (suggestedOperations.length === 0) {
+      return [];
+    }
+
+    return suggestedOperations.flatMap((suggestedOperation) => {
+      const operation = normalizeTranscriptSuggestedOperation(
+        suggestedOperation,
+        task,
+      );
+      const operationKey = getSuggestedOperationKey(operation);
+
+      if (seenOperations.has(operationKey)) {
+        return [];
+      }
+
+      seenOperations.add(operationKey);
+      return [operation];
+    });
   });
 
   return {
@@ -263,6 +291,52 @@ export function buildTranscriptSuggestedDecisionOps({
     branchId,
     operations,
   };
+}
+
+function normalizeTranscriptSuggestedOperation(
+  operation: AgentDecisionOperation,
+  task: TranscriptReviewTask,
+): AgentDecisionOperation {
+  const taskNote = [
+    operation.op === "addDecision" || operation.op === "setRangeState"
+      ? operation.note
+      : "",
+    `Transcript task: ${task.kind}`,
+    task.segmentId ? `segment ${task.segmentId}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  if (operation.op === "addDecision") {
+    return {
+      ...operation,
+      sourceTimeMs: Math.max(0, Math.round(operation.sourceTimeMs)),
+      note: taskNote,
+    };
+  }
+
+  if (operation.op === "setRangeState") {
+    return {
+      ...operation,
+      startSourceTimeMs: Math.max(0, Math.round(operation.startSourceTimeMs)),
+      endSourceTimeMs: Math.max(0, Math.round(operation.endSourceTimeMs)),
+      note: taskNote,
+    };
+  }
+
+  return operation;
+}
+
+function getSuggestedOperationKey(operation: AgentDecisionOperation) {
+  if (operation.op === "addDecision") {
+    return `${operation.op}:${operation.sourceTimeMs}:${operation.state}`;
+  }
+
+  if (operation.op === "setRangeState") {
+    return `${operation.op}:${operation.startSourceTimeMs}:${operation.endSourceTimeMs}:${operation.state}`;
+  }
+
+  return `${operation.op}:${operation.id}`;
 }
 
 function createEmptyTranscriptSummary(episodeId?: string): TranscriptReview["summary"] {

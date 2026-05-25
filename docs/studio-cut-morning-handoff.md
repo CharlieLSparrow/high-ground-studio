@@ -57,13 +57,14 @@ Related durable docs:
   rules tests.
 - Agentic decision editing commands:
   `agent-review-edit` for machine-readable edit diagnostics and
-  `apply-decision-ops` for transparent add/tombstone operations that write a new
-  decision file without mutating the input export. `agent-review-edit` now
-  accepts optional timed transcript JSON so agents can flag speaker/state
-  mismatches, clip-reference moments, transcript gaps, and filler clusters.
+  `apply-decision-ops` for transparent add/range/tombstone operations that
+  write a new decision file without mutating the input export.
+  `agent-review-edit` now accepts optional timed transcript JSON so agents can
+  flag speaker/state mismatches, clip-reference moments, transcript gaps, and
+  filler clusters. Add `--out-ops` to write safe suggested operation JSON.
 - The web cockpit can import agent operation JSON with `Import Agent Ops`,
-  preview add/tombstone changes, and apply accepted operations into the current
-  local or shared room.
+  preview add/range/tombstone changes with confidence and approval metadata, and
+  apply accepted operations into the current local or shared room.
 - `Export Agent Context` writes a media-safe room snapshot for Codex: manifest,
   current source time, proxy status, persistence/shared-room status, decisions,
   derived segments, warnings, transcript review when loaded, and the operation
@@ -395,9 +396,9 @@ warning.
   Java before running the verifier.
 - Multiplayer undo is not global. Undo/redo remains browser-local; exported
   checkpoints remain the durable rollback path.
-- Agentic editing is file-first for now. Agents can review/apply decision
-  operation JSON locally, but the web cockpit does not yet preview operation
-  files before import.
+- Agentic editing is file-first but round-trips through the web cockpit. Agents
+  can review/apply decision operation JSON locally, and the web cockpit previews
+  operation files before applying them to localStorage or Firestore.
 
 ## Rollback Pattern
 
@@ -425,7 +426,7 @@ Improve Sync Map render quality:
 
 Improve agentic editing:
 
-- let agents propose silence/filler/awkward-hold cuts with confidence and
-  explicit human approval points
 - add a local episode workspace index so agents can discover generated session
   files without private absolute paths
+- add richer awkward-hold and bad-take detectors on top of the confidence and
+  approval operation shape

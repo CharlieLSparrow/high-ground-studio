@@ -41,7 +41,8 @@ python tools/studio-cut-local/studio_cut_local.py agent-review-edit \
   --manifest path/to/episode-manifest.json \
   --decisions path/to/studio-cut-decisions.json \
   --transcript path/to/episode-transcript.json \
-  --out path/to/agent-edit-review.json
+  --out path/to/agent-edit-review.json \
+  --out-ops path/to/agent-suggested-ops.json
 ```
 
 The report includes:
@@ -79,8 +80,12 @@ Transcript JSON uses canonical episode/source time:
 ```
 
 With a transcript, `agent-review-edit` can flag speaker/state mismatches, likely
-clip-reference moments, transcript gaps, and filler clusters. It still only
-suggests semantic operations; a human or agent must review before applying.
+clip-reference moments, transcript gaps, and filler clusters. When `--out-ops`
+is provided, safe suggestions are also written as operation JSON. Clip and
+speaker-focus suggestions are point decisions. Transcript gaps and filler
+clusters can become bounded `setRangeState` suggestions with confidence,
+`approvalRequired`, and a plain-language reason. They still only suggest
+semantic operations; a human or agent must review before applying.
 
 ## Apply Agent Decision Operations
 
@@ -94,7 +99,21 @@ Create an operation file:
       "op": "addDecision",
       "sourceTimeMs": 0,
       "state": "both",
-      "note": "Initial state after review."
+      "note": "Initial state after review.",
+      "confidence": 0.8,
+      "approvalRequired": true,
+      "reason": "Opening state is missing."
+    },
+    {
+      "op": "setRangeState",
+      "startSourceTimeMs": 120000,
+      "endSourceTimeMs": 126000,
+      "state": "cut",
+      "restoreState": "both",
+      "note": "Transcript gap; verify before cutting inactive/silent span.",
+      "confidence": 0.45,
+      "approvalRequired": true,
+      "reason": "Transcript gap may indicate silence, missing transcript, or sync drift."
     },
     {
       "op": "removeDecision",
@@ -128,9 +147,10 @@ python tools/studio-cut-local/studio_cut_local.py apply-decision-ops \
   --created-by codex-agent
 ```
 
-The input decision file is never mutated. Remove operations tombstone decisions
-with `removedAt`, `removedBy`, and `operation=remove`, so the edit remains
-auditable and reversible.
+The input decision file is never mutated. `setRangeState` creates a decision at
+the range start and, when possible, a restore decision at the range end. Remove
+operations tombstone decisions with `removedAt`, `removedBy`, and
+`operation=remove`, so the edit remains auditable and reversible.
 
 ## Preview And Apply In The Web Cockpit
 
@@ -141,7 +161,8 @@ The browser does not apply the operations immediately. It opens an `Agent
 Operation Preview` panel that shows:
 
 - operation count
-- add/remove count
+- add/range/remove count
+- approval-required count
 - active decision count after apply
 - tombstone count after apply
 - human-readable operation summaries
@@ -216,8 +237,8 @@ plain JSON and every result verifiable by command.
 ## Current Limits
 
 - Agents still need human judgment for content taste, rhythm, and clip choice.
-- Operation support is intentionally small: add decisions and tombstone
-  decisions.
+- Operation support is intentionally small: add point decisions, set bounded
+  ranges to a state with optional restore, and tombstone decisions.
 - Transcript-aware review is heuristic. It can flag speaker/state mismatches,
   clip references, gaps, and filler clusters, but it does not yet understand
   story quality or comedic timing.

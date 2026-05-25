@@ -88,10 +88,19 @@ test("transcript review flags clip references and speaker state mismatches", () 
   assert.equal(ops.schemaVersion, 1);
   assert.equal(ops.projectId, "episode-004");
   assert.equal(ops.branchId, "main");
-  assert.equal(ops.operations.length, 2);
+  assert.equal(ops.operations.length, 3);
   assert.deepEqual(
     ops.operations.map((operation) => operation.state),
-    ["charlie_clip", "charlie"],
+    ["charlie_clip", "charlie", "cut"],
   );
   assert.match(ops.operations[0].note, /Transcript task/);
+  assert.equal(
+    ops.operations.some(
+      (operation) =>
+        operation.op === "setRangeState" &&
+        operation.approvalRequired === true &&
+        operation.confidence === 0.35,
+    ),
+    true,
+  );
 });

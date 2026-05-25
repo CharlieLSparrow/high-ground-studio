@@ -298,7 +298,9 @@ Operator checks while editing:
    flag speaker/state mismatches, likely clip-reference moments, transcript
    gaps, and filler clusters for human or agent review. Use `Export Suggested
    Ops` only as a draft, then re-import it with `Import Agent Ops` to preview
-   and approve the proposed semantic decisions.
+   and approve the proposed semantic decisions. Gap/filler drafts can set a
+   bounded range to `Cut` and restore the previous state at the end; treat
+   those as approval-required suggestions, not automatic edits.
 5. If the preview crops are wrong, open `Proxy Pane Calibration`, adjust
    normalized pane rectangles, then use `Export Adjusted Manifest` and keep that
    adjusted manifest with the local Episode 4 bootstrap files.

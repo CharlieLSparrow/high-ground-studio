@@ -105,8 +105,14 @@ test("agent workspace brief summarizes room context without local object URLs", 
   assert.equal(brief.media.sourceMonitorProxy.source, "local");
   assert.deepEqual(brief.agentOperationContract.supportedOperations, [
     "addDecision",
+    "setRangeState",
     "removeDecision",
   ]);
+  assert.equal(brief.agentOperationContract.setRangeStateExample.state, "cut");
+  assert.equal(
+    brief.agentOperationContract.setRangeStateExample.approvalRequired,
+    true,
+  );
   assert(brief.agentOperationContract.validStates.includes("both"));
 
   const serialized = JSON.stringify(brief);
