@@ -1,7 +1,26 @@
 {
-  "updatedAt": "2026-05-24T19:29:31.056-06:00",
+  "updatedAt": "2026-05-25T02:14:37.143Z",
   "intro": "A readable mission log for the High Ground Odyssey team and friends. Entries are written for humans first, with commit and deploy details preserved so the work stays traceable.",
   "entries": [
+    {
+      "id": "2026-05-25-monetization-research-library-begins",
+      "date": "2026-05-25",
+      "title": "Monetization research library begins",
+      "kicker": "Progress update",
+      "mood": "Shipped and traceable",
+      "summary": "Added a private Growth research library for memberships, owned checkout, podcast subscriptions, video monetization, ads, book affiliates, direct sponsors, merch, SEO loops, and disclosure rules.",
+      "body": [
+        "Added a private Growth research library for memberships, owned checkout, podcast subscriptions, video monetization, ads, book affiliates, direct sponsors, merch, SEO loops, and disclosure rules."
+      ],
+      "commits": [
+        {
+          "sha": "810e8ae",
+          "label": "feat(web): add monetization research library"
+        }
+      ],
+      "links": [],
+      "tags": ["Progress"]
+    },
     {
       "id": "2026-05-24-growth-desk-opens",
       "date": "2026-05-24",
