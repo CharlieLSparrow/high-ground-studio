@@ -27,7 +27,7 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `main` | HGO draft packet lab `3f97c92` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, production packets, checkpoint history, copy/open handoff actions, copy selected production packet plus open HGO import, clipboard-load staged import, the HGO production-packet import bridge, deploy smoke, private HGO staged artifact store, review/archive controls, copy/download/open saved artifact handoffs, publish-candidate packets, private episode publish queue, per-artifact publish review details/briefs, private publish-draft packets, private render previews, private MDX/frontmatter draft exports, portable draft-packet validation, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
+| `main` | WorldHub Growth desk `e4b8543` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, HGO staging/publish-intent rails, WorldHub provider rails, Google Calendar sync jobs, the Growth desk, SEO briefs, analytics snapshots, ad/affiliate/sponsor placement planning, gated GA/AdSense runtime hooks, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
 | `codex/hgo-content-studio-packet-import-001` | `55a3f93` | none active | HGO / Content Studio bridge | Merged by PR #19 as `e5062ac`; branch can be left closed. |
@@ -147,8 +147,8 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - `pnpm web:db:target:report` confirms live `web` mounts
     `DATABASE_URL` from `web-cloudsql-database-url`
 - current live revision:
-  - latest web deploy is `web-00065-89q` from `main` commit `cbd4f60`
-  - immediate rollback to previous Cloud SQL-backed revision `web-00062-bcw`
+  - latest web deploy is `web-00066-xgr` from `main` commit `e4b8543`
+  - immediate rollback to previous Cloud SQL-backed revision `web-00065-89q`
   - deeper rollback to Neon-backed `web-00031-4r2` while the legacy Neon source
     remains valid
 
@@ -160,10 +160,12 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
 - owns:
   - `packages/worldhub-domain`
   - `apps/web/src/app/team/worldhub/*`
+  - `apps/web/src/app/team/growth/*`
   - `docs/architecture/worldhub-*`
   - `docs/plans/worldhub-now-next-later.md`
   - `docs/runbooks/web-cloud-run.md`
-  - future offers, entitlements, merch, Patreon, coaching-package follow-through
+  - future offers, entitlements, merch, Patreon, coaching-package follow-through,
+    SEO, analytics, ads, affiliates, and sponsors
 - current status:
   - provider-neutral foundation and current workflow map are merged to `main`
   - `/team/worldhub` is now a database-backed integration command center for
@@ -179,12 +181,23 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
   - Cloud Run deploy tooling now mounts optional provider secrets automatically
     when matching Secret Manager secrets exist and have enabled versions;
     current live check found `0` optional provider secrets mounted
+  - `/team/growth` is now live as a database-backed Growth desk for SEO briefs,
+    manual analytics snapshots, AdSense/ad slot planning, affiliate/book
+    recommendation placements, and direct sponsor slots
+  - live schema sync for the Growth models ran through Cloud Run Job
+    `web-cloudsql-db-push-e4b8543`, execution
+    `web-cloudsql-db-push-e4b8543-t9454`
+  - Google Analytics and AdSense runtime scripts are gated by env; no GA,
+    Search Console, AdSense, affiliate, or sponsor optional secrets are mounted
+    yet
   - no Stripe Checkout, payment reconciliation, Patreon entitlement mutation,
-    merch provider call, or fulfillment call is active yet
+    merch provider call, fulfillment call, analytics import, Search Console
+    import, public ad placement, or public affiliate link is active yet
 - next likely slice:
-  - mount provider secrets, then add automatic Google Calendar sync enqueue,
-    then Stripe hosted checkout/order reconciliation, then Patreon
-    member/tier reconciliation, then merch catalog and fulfillment handoff
+  - seed `/team/growth`, mount the first analytics/search/AdSense secrets,
+    add automatic Google Calendar sync enqueue, then Stripe hosted checkout/order
+    reconciliation, Patreon member/tier reconciliation, analytics/search import,
+    and merch catalog/fulfillment handoff
 
 ### Manuscript Collaboration
 
@@ -225,6 +238,9 @@ Verified after the HGO draft packet lab deploy on 2026-05-24.
 | `apps/studio/src/app/manuscript/*` | Manuscript lane | Do not mix collaboration lab changes into Content Studio slices. |
 | `apps/studio/src/app/studio-nav.tsx` | Shared Studio navigation | Declare before editing. |
 | `apps/web/src/app/team/worldhub/*` | WorldHub lane | Keep provider-neutral until business model is stable. |
+| `apps/web/src/app/team/growth/*` | WorldHub / Growth lane | Private SEO, analytics, ads, affiliate, and sponsor planning. |
+| `apps/web/src/components/analytics/*` | WorldHub / Growth lane | Runtime scripts must stay env-gated and off by default. |
+| `apps/web/src/app/ads.txt/*` | WorldHub / Growth lane | Should return 404 until AdSense env is configured. |
 | `apps/web/src/app/api/worldhub/webhooks/*` | WorldHub lane | Provider webhooks must verify signatures and write replayable provider events before mutating app state. |
 | `apps/web/src/lib/server/google-calendar-sync.ts` | WorldHub lane | Calendar writes must stay behind dedicated `GOOGLE_CALENDAR_*` credentials and app-owned sync jobs. |
 | `apps/web/src/app/team/progress/*` | Integration / team visibility lane | Team-only readable build journal. |

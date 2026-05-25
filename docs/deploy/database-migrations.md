@@ -498,6 +498,59 @@ Expected result:
 
 - one row for each listed table
 
+## WorldHub Growth Desk Change
+
+The first Growth desk slice added:
+
+- `WorldHubSeoBrief`
+- `WorldHubAnalyticsSnapshot`
+- `WorldHubMonetizationPlacement`
+
+This is an additive growth/monetization schema change. It creates app-owned
+records for SEO briefs, manual analytics snapshots, ad placements, affiliate
+links, book recommendations, and direct sponsor slots.
+
+The tables do not call Google Analytics, Search Console, AdSense, affiliate
+networks, sponsor systems, or public publishing workflows. Public ads and
+affiliate links remain gated by env, provider readiness, disclosure review, and
+future public page work.
+
+Apply the schema to a target database only through the approved operator path
+for that environment:
+
+```bash
+pnpm db:generate
+pnpm db:push
+```
+
+For the live web Cloud Run database, prefer running `pnpm db:push` from a
+Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
+same Cloud SQL attachment as the `web` service.
+
+Live operator note from 2026-05-24: this schema was applied to the live web
+Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-e4b8543`, execution
+`web-cloudsql-db-push-e4b8543-t9454`, using image
+`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:e4b8543`.
+Logs reported that the database is now in sync with the Prisma schema.
+
+SQL verification:
+
+```sql
+select table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in (
+    'WorldHubSeoBrief',
+    'WorldHubAnalyticsSnapshot',
+    'WorldHubMonetizationPlacement'
+  )
+order by table_name;
+```
+
+Expected result:
+
+- one row for each listed table
+
 ## Exact Command For This CoachingRequest Rollout
 If production has not yet received the schema change, the next manual operator command should be:
 

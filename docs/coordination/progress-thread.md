@@ -6,6 +6,64 @@ checks, blockers, and next handoff.
 
 ## 2026-05-24
 
+### Codex / `main` WorldHub Growth desk
+
+- Added `/team/growth` as a private Growth desk for SEO briefs, manual
+  analytics snapshots, AdSense/ad slot planning, affiliate/book recommendation
+  placements, and direct sponsor slots.
+- Added additive Prisma models:
+  - `WorldHubSeoBrief`
+  - `WorldHubAnalyticsSnapshot`
+  - `WorldHubMonetizationPlacement`
+- Added gated public/runtime support:
+  - `MarketingScripts` loads the Google Analytics tag when
+    `HGO_GA_MEASUREMENT_ID` is mounted.
+  - `MarketingScripts` loads AdSense Auto ads only when
+    `GOOGLE_ADSENSE_CLIENT` and `HGO_ADSENSE_AUTO_ADS_ENABLED=1` are mounted.
+  - `/ads.txt` is generated from AdSense env when configured and returns 404
+    while AdSense is not configured.
+- Expanded WorldHub provider readiness to include Google Analytics, Google
+  Search Console, Google AdSense, affiliate links, and direct sponsors.
+- Updated Cloud Run deploy/secret tooling so optional growth provider values are
+  mounted automatically only when matching Secret Manager secrets exist with
+  enabled versions.
+- Validation passed: `pnpm db:generate`, `pnpm worldhub:integrations:test`,
+  `pnpm worldhub:domain:typecheck`, `pnpm progress:story:test`,
+  `pnpm web:cloudrun:test`, `pnpm --filter web exec next build --webpack`,
+  and `git diff --check`.
+- The default Turbopack build was started and then killed after stalling at the
+  known historical `Creating an optimized production build ...` point; the
+  documented webpack deploy path passed locally and in Cloud Build.
+- Functional commit: `e4b8543`
+  `feat(web): add WorldHub growth desk`.
+- Live schema sync:
+  - Cloud Build `896aca5f-ea23-46d0-8c33-3d36714e3af5`
+  - Image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:e4b8543`
+  - Cloud Run Job `web-cloudsql-db-push-e4b8543`, execution
+    `web-cloudsql-db-push-e4b8543-t9454`, completed successfully.
+  - Logs reported `Your database is now in sync with your Prisma schema`.
+- Deployed web through `pnpm web:cloudrun:deploy`:
+  - Cloud Build `20ba19bc-ae03-44d4-a87e-708f529a08f9`
+  - Web image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:e4b8543`
+  - Web revision `web-00066-xgr`, serving 100%
+  - optional provider/growth secrets mounted: `0`
+  - live `AUTH_URL` and `HGO_SITE_URL` remain
+    `https://app.highgroundodyssey.com`
+- Live smoke passed:
+  - `https://app.highgroundodyssey.com/api/health` returned 200.
+  - `https://app.highgroundodyssey.com/team/growth` returned the expected
+    unauthenticated sign-in redirect.
+  - `https://app.highgroundodyssey.com/ads.txt` returned 404 because AdSense is
+    not configured yet.
+  - `https://app.highgroundodyssey.com/updates` returned 200 and includes the
+    new Growth desk story entry.
+  - `https://app.highgroundodyssey.com/api/auth/signin` returned 200 and set
+    its callback cookie to `https://app.highgroundodyssey.com`.
+- Rollback:
+  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00065-89q=100`
+
 ### Codex / `main` WorldHub provider adapter rails
 
 - Added verified provider event intake routes:
