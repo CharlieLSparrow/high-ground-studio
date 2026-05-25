@@ -196,3 +196,37 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00051-zl8=100
 ```
+
+## Manuscript Desk Launch Deployment
+
+Merged through PR #32:
+
+```text
+main commit: bbb095f
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:bbb095f
+Cloud Build: d3c9f219-4457-4581-8993-e888a9babaeb
+revision: studio-00055-bgv
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice added a `Start live room` control in the Manuscript Desk server
+snapshot panel. It creates a live room from the current browser-local draft,
+preserves the selected named manuscript id when present, and opens the shared
+live-room URL.
+
+Deploy validation passed:
+
+- `pnpm --filter studio typecheck`
+- `pnpm studio:cloudrun:test`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00053-rfn=100
+```
