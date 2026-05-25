@@ -49,6 +49,7 @@ export type AgentDecisionOpsPayload = {
 
 export type AgentDecisionOpsPreview = {
   fileName: string;
+  operations: AgentDecisionOperation[];
   operationCount: number;
   addCount: number;
   rangeCount: number;
@@ -534,6 +535,7 @@ function createAgentDecisionOpsPreview({
 
   return {
     fileName,
+    operations: operations.map((operation) => ({ ...operation })),
     operationCount: operations.length,
     addCount: operations.filter((operation) => operation.op === "addDecision").length,
     rangeCount: operations.filter((operation) => operation.op === "setRangeState").length,

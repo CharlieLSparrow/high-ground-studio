@@ -841,7 +841,18 @@ async function runBrowserSmoke() {
     const agentOpsPreview = page.getByLabel("Agent decision operation preview");
     await expect(agentOpsPreview).toContainText("Ready");
     await expect(agentOpsPreview).toContainText("Add Charlie/Clip at 0:11");
-    await page.getByRole("button", { name: "Apply Agent Ops" }).click();
+    await expect(agentOpsPreview).toContainText("Agent Suggestions Inbox");
+    await expect(agentOpsPreview).toContainText("Selected");
+    await agentOpsPreview.getByRole("button", { name: "Reject Selected" }).click();
+    await expect(agentOpsPreview).toContainText("Rejected");
+    await agentOpsPreview.getByRole("button", { name: "Restore Rejected" }).click();
+    await agentOpsPreview
+      .getByRole("checkbox", { name: "Select agent suggestion 1" })
+      .uncheck();
+    await agentOpsPreview
+      .getByRole("checkbox", { name: "Select agent suggestion 1" })
+      .check();
+    await page.getByRole("button", { name: "Apply Selected" }).click();
     await expectSectionText(decisionSection, "2 events");
     await expectSectionText(decisionSection, "Charlie/Clip");
 

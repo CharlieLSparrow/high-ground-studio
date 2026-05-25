@@ -50,6 +50,7 @@ import {
 } from "./cloudSync";
 import {
   buildAgentDecisionOpsPreview,
+  type AgentDecisionOperation,
   type AgentDecisionOpsPreview,
 } from "./agentDecisionOps";
 import { buildAgentWorkspaceBrief } from "./agentWorkspaceBrief";
@@ -411,6 +412,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
   const [importMessage, setImportMessage] = useState("");
   const [agentOpsPreview, setAgentOpsPreview] =
     useState<AgentDecisionOpsPreview | null>(null);
+  const [selectedAgentOperationIndexes, setSelectedAgentOperationIndexes] =
+    useState<Set<number>>(() => new Set());
+  const [rejectedAgentOperationIndexes, setRejectedAgentOperationIndexes] =
+    useState<Set<number>>(() => new Set());
   const importInputRef = useRef<HTMLInputElement>(null);
   const agentOpsInputRef = useRef<HTMLInputElement>(null);
   const manifestInputRef = useRef<HTMLInputElement>(null);
@@ -1862,6 +1867,10 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       });
 
       setAgentOpsPreview(preview);
+      setSelectedAgentOperationIndexes(
+        new Set(preview.operations.map((_, index) => index)),
+      );
+      setRejectedAgentOperationIndexes(new Set());
       setImportMessage(
         preview.errors.length > 0
           ? `Agent ops preview blocked: ${preview.errors.length} issue${
@@ -1880,19 +1889,22 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
         approvalRequiredCount: 0,
         activeDecisionCountAfterApply: decisionEvents.length,
         tombstonedDecisionCountAfterApply: 0,
+        operations: [],
         decisionEvents,
         activeDecisionEvents: decisionEvents,
         summaries: [],
         warnings: [],
         errors: [`Agent ops import failed: ${message}`],
       });
+      setSelectedAgentOperationIndexes(new Set());
+      setRejectedAgentOperationIndexes(new Set());
       setImportMessage(`Agent ops import failed: ${message}`);
     } finally {
       event.target.value = "";
     }
   }
 
-  function handleApplyAgentDecisionOps() {
+  function handleApplyAllAgentDecisionOps() {
     if (!agentOpsPreview || agentOpsPreview.errors.length > 0) {
       return;
     }
@@ -1920,6 +1932,147 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
       }.`,
     );
     setAgentOpsPreview(null);
+    setSelectedAgentOperationIndexes(new Set());
+    setRejectedAgentOperationIndexes(new Set());
+  }
+
+  function handleToggleAgentOperation(index: number) {
+    if (rejectedAgentOperationIndexes.has(index)) {
+      return;
+    }
+
+    setSelectedAgentOperationIndexes((currentIndexes) => {
+      const nextIndexes = new Set(currentIndexes);
+
+      if (nextIndexes.has(index)) {
+        nextIndexes.delete(index);
+      } else {
+        nextIndexes.add(index);
+      }
+
+      return nextIndexes;
+    });
+  }
+
+  function handleSelectAllAgentOperations() {
+    if (!agentOpsPreview) {
+      return;
+    }
+
+    setSelectedAgentOperationIndexes(
+      new Set(
+        agentOpsPreview.operations
+          .map((_, index) => index)
+          .filter((index) => !rejectedAgentOperationIndexes.has(index)),
+      ),
+    );
+  }
+
+  function handleRejectSelectedAgentOperations() {
+    if (!agentOpsPreview || selectedAgentOperationIndexes.size === 0) {
+      return;
+    }
+
+    setRejectedAgentOperationIndexes((currentIndexes) => {
+      const nextIndexes = new Set(currentIndexes);
+      selectedAgentOperationIndexes.forEach((index) => nextIndexes.add(index));
+      return nextIndexes;
+    });
+    setSelectedAgentOperationIndexes(new Set());
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: `Rejected ${selectedAgentOperationIndexes.size} agent suggestion${
+        selectedAgentOperationIndexes.size === 1 ? "" : "s"
+      }`,
+    }));
+  }
+
+  function handleRestoreRejectedAgentOperations() {
+    if (!agentOpsPreview) {
+      return;
+    }
+
+    setRejectedAgentOperationIndexes(new Set());
+    setSelectedAgentOperationIndexes(
+      new Set(agentOpsPreview.operations.map((_, index) => index)),
+    );
+    setDecisionHistory((currentHistory) => ({
+      ...currentHistory,
+      lastAction: "Restored rejected agent suggestions",
+    }));
+  }
+
+  function handleApplySelectedAgentDecisionOps() {
+    if (!agentOpsPreview || agentOpsPreview.errors.length > 0) {
+      return;
+    }
+
+    const selectedOperations = agentOpsPreview.operations.filter(
+      (_, index) =>
+        selectedAgentOperationIndexes.has(index) &&
+        !rejectedAgentOperationIndexes.has(index),
+    );
+
+    if (selectedOperations.length === 0) {
+      setImportMessage("Select at least one agent suggestion before applying.");
+      return;
+    }
+
+    const selectedPreview = buildAgentDecisionOpsPreview({
+      payload: {
+        schemaVersion: 1,
+        projectId: roomSelection.projectId,
+        branchId: roomSelection.branchId,
+        operations: selectedOperations,
+      },
+      fileName: `${agentOpsPreview.fileName} selected suggestions`,
+      currentEvents: decisionEvents,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      createdBy: createdBy ?? config.createdBy,
+      sourceDurationMs,
+      clientId: sessionId,
+    });
+
+    if (selectedPreview.errors.length > 0) {
+      setAgentOpsPreview(selectedPreview);
+      setSelectedAgentOperationIndexes(
+        new Set(selectedPreview.operations.map((_, index) => index)),
+      );
+      setRejectedAgentOperationIndexes(new Set());
+      setImportMessage(
+        `Selected agent suggestions blocked: ${selectedPreview.errors.length} issue${
+          selectedPreview.errors.length === 1 ? "" : "s"
+        } found.`,
+      );
+      return;
+    }
+
+    stopProgramPlayback();
+    recordDecisionMutation(
+      `Applied ${selectedOperations.length} selected agent suggestion${
+        selectedOperations.length === 1 ? "" : "s"
+      } from ${agentOpsPreview.fileName}`,
+      decisionEvents,
+      selectedPreview.activeDecisionEvents,
+    );
+    const result = importDecisionEvents({
+      schemaVersion: 1,
+      projectId: roomSelection.projectId,
+      branchId: roomSelection.branchId,
+      decisionEvents: selectedPreview.decisionEvents,
+    });
+
+    setImportMessage(
+      `Applied ${selectedOperations.length} selected agent suggestion${
+        selectedOperations.length === 1 ? "" : "s"
+      }. Imported/upserted ${result.importedCount} event${
+        result.importedCount === 1 ? "" : "s"
+      }.`,
+    );
+    setAgentOpsPreview(null);
+    setSelectedAgentOperationIndexes(new Set());
+    setRejectedAgentOperationIndexes(new Set());
   }
 
   async function handleImportManifestJson(event: ChangeEvent<HTMLInputElement>) {
@@ -3595,8 +3748,19 @@ function EditorWorkspace({ createdBy }: { createdBy?: string }) {
           {importMessage ? <p className="import-message">{importMessage}</p> : null}
           <AgentDecisionOpsPanel
             preview={agentOpsPreview}
-            onApply={handleApplyAgentDecisionOps}
-            onDismiss={() => setAgentOpsPreview(null)}
+            selectedOperationIndexes={selectedAgentOperationIndexes}
+            rejectedOperationIndexes={rejectedAgentOperationIndexes}
+            onToggleOperation={handleToggleAgentOperation}
+            onSelectAll={handleSelectAllAgentOperations}
+            onRejectSelected={handleRejectSelectedAgentOperations}
+            onRestoreRejected={handleRestoreRejectedAgentOperations}
+            onApplySelected={handleApplySelectedAgentDecisionOps}
+            onApplyAll={handleApplyAllAgentDecisionOps}
+            onDismiss={() => {
+              setAgentOpsPreview(null);
+              setSelectedAgentOperationIndexes(new Set());
+              setRejectedAgentOperationIndexes(new Set());
+            }}
           />
           <DecisionRefinementPanel
             selectedEvent={selectedDecision}
@@ -6038,11 +6202,25 @@ function ProxyCropPane({
 
 function AgentDecisionOpsPanel({
   preview,
-  onApply,
+  selectedOperationIndexes,
+  rejectedOperationIndexes,
+  onToggleOperation,
+  onSelectAll,
+  onRejectSelected,
+  onRestoreRejected,
+  onApplySelected,
+  onApplyAll,
   onDismiss,
 }: {
   preview: AgentDecisionOpsPreview | null;
-  onApply: () => void;
+  selectedOperationIndexes: ReadonlySet<number>;
+  rejectedOperationIndexes: ReadonlySet<number>;
+  onToggleOperation: (index: number) => void;
+  onSelectAll: () => void;
+  onRejectSelected: () => void;
+  onRestoreRejected: () => void;
+  onApplySelected: () => void;
+  onApplyAll: () => void;
   onDismiss: () => void;
 }) {
   if (!preview) {
@@ -6050,6 +6228,14 @@ function AgentDecisionOpsPanel({
   }
 
   const canApply = preview.errors.length === 0 && preview.operationCount > 0;
+  const selectedCount = preview.operations.filter(
+    (_, index) =>
+      selectedOperationIndexes.has(index) &&
+      !rejectedOperationIndexes.has(index),
+  ).length;
+  const rejectedCount = preview.operations.filter((_, index) =>
+    rejectedOperationIndexes.has(index),
+  ).length;
 
   return (
     <section
@@ -6058,9 +6244,9 @@ function AgentDecisionOpsPanel({
     >
       <div className="panel-heading">
         <div>
-          <h3>Agent Operation Preview</h3>
+          <h3>Agent Suggestions Inbox</h3>
           <p>
-            Review generated decision-layer operations before applying them to
+            Review generated decision-layer suggestions before applying them to
             this room.
           </p>
         </div>
@@ -6085,14 +6271,50 @@ function AgentDecisionOpsPanel({
           label="Tombstones after"
           value={String(preview.tombstonedDecisionCountAfterApply)}
         />
+        <ReadinessMetric label="Selected" value={String(selectedCount)} />
+        <ReadinessMetric label="Rejected" value={String(rejectedCount)} />
       </div>
 
-      {preview.summaries.length > 0 ? (
-        <ul className="agent-ops-list">
-          {preview.summaries.map((summary) => (
-            <li key={summary}>{summary}</li>
-          ))}
-        </ul>
+      {preview.operations.length > 0 ? (
+        <div className="agent-suggestion-list">
+          {preview.operations.map((operation, index) => {
+            const isRejected = rejectedOperationIndexes.has(index);
+            const isSelected =
+              selectedOperationIndexes.has(index) && !isRejected;
+
+            return (
+              <article
+                className={`agent-suggestion-card${
+                  isSelected ? " is-selected" : ""
+                }${isRejected ? " is-rejected" : ""}`}
+                key={`${operation.op}-${index}`}
+              >
+                <label className="agent-suggestion-select">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    disabled={isRejected || !canApply}
+                    onChange={() => onToggleOperation(index)}
+                    aria-label={`Select agent suggestion ${index + 1}`}
+                  />
+                  <span>{isRejected ? "Rejected" : isSelected ? "Selected" : "Review"}</span>
+                </label>
+                <div className="agent-suggestion-body">
+                  <strong>{formatAgentOperationTitle(operation)}</strong>
+                  <p>{preview.summaries[index] ?? formatAgentOperationSummary(operation)}</p>
+                  <div className="agent-suggestion-meta">
+                    <span>{operation.op}</span>
+                    {typeof operation.confidence === "number" ? (
+                      <span>{Math.round(operation.confidence * 100)}% confidence</span>
+                    ) : null}
+                    {operation.approvalRequired ? <span>Approval required</span> : null}
+                    {operation.reason ? <span>{operation.reason}</span> : null}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       ) : null}
 
       {preview.warnings.length > 0 ? (
@@ -6115,10 +6337,42 @@ function AgentDecisionOpsPanel({
         <button
           className="secondary-button"
           type="button"
-          onClick={onApply}
+          onClick={onApplySelected}
+          disabled={!canApply || selectedCount === 0}
+        >
+          Apply Selected
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onApplyAll}
           disabled={!canApply}
         >
-          Apply Agent Ops
+          Apply All
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onSelectAll}
+          disabled={!canApply || selectedCount + rejectedCount === preview.operationCount}
+        >
+          Select All
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onRejectSelected}
+          disabled={!canApply || selectedCount === 0}
+        >
+          Reject Selected
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={onRestoreRejected}
+          disabled={rejectedCount === 0}
+        >
+          Restore Rejected
         </button>
         <button className="secondary-button" type="button" onClick={onDismiss}>
           Dismiss
@@ -6126,6 +6380,38 @@ function AgentDecisionOpsPanel({
       </div>
     </section>
   );
+}
+
+function formatAgentOperationTitle(operation: AgentDecisionOperation) {
+  if (operation.op === "addDecision") {
+    return `Add ${PROGRAM_STATE_LABELS[operation.state]} at ${formatSourceTime(
+      operation.sourceTimeMs,
+    )}`;
+  }
+
+  if (operation.op === "setRangeState") {
+    return `Set ${PROGRAM_STATE_LABELS[operation.state]} from ${formatSourceTime(
+      operation.startSourceTimeMs,
+    )} to ${formatSourceTime(operation.endSourceTimeMs)}`;
+  }
+
+  return `Remove decision ${shortId(operation.id)}`;
+}
+
+function formatAgentOperationSummary(operation: AgentDecisionOperation) {
+  if (operation.op === "addDecision") {
+    return operation.note || operation.reason || "Add a point decision.";
+  }
+
+  if (operation.op === "setRangeState") {
+    return (
+      operation.note ||
+      operation.reason ||
+      `Apply ${PROGRAM_STATE_LABELS[operation.state]} across the selected range.`
+    );
+  }
+
+  return operation.reason || "Tombstone an existing decision event.";
 }
 
 function DecisionRefinementPanel({

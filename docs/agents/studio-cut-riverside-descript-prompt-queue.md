@@ -60,7 +60,7 @@ Cut's source-preserving semantic model.
 
 ## Prompt 02: Agent Suggestions Inbox
 
-Status: next
+Status: complete in this pass
 
 Mission:
 Make agent operation JSON feel like a first-class review queue instead of a
@@ -82,7 +82,7 @@ make agent edits inspectable, selective, and reversible.
 
 ## Prompt 03: Clip Candidate Lane
 
-Status: queued
+Status: next
 
 Mission:
 Create the first Magic Clips-style internal lane without rendering clips yet.

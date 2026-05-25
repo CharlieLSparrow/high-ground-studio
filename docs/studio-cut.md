@@ -478,10 +478,13 @@ generated source-monitor proxy is present, the session also writes a local
 sample frames from the checklist without touching original media.
 
 The web cockpit now also has `Import Agent Ops` in the Decision Events toolbar.
-It previews the operation JSON before applying it, shows add/range/remove
-counts, approval-required counts, blocking validation errors, and then applies
-accepted operations through the same localStorage/Firestore decision persistence
-path as normal edits.
+It opens an `Agent Suggestions Inbox` before applying anything, shows
+add/range/remove counts, approval-required counts, blocking validation errors,
+and per-operation suggestion cards with time/range, confidence, rationale, and
+selection state. Operators can apply all suggestions, apply only selected
+suggestions, or reject selected suggestions for the current pass. Accepted
+operations still flow through the same localStorage/Firestore decision
+persistence path as normal edits.
 
 The browser cockpit can also import a timed transcript JSON from the episode
 manifest area. The `Transcript Review` panel stays browser-local, summarizes

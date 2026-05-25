@@ -158,20 +158,24 @@ The Studio Cut web editor can import the same operation JSON through
 `Import Agent Ops` in the Decision Events toolbar.
 
 The browser does not apply the operations immediately. It opens an `Agent
-Operation Preview` panel that shows:
+Suggestions Inbox` panel that shows:
 
 - operation count
 - add/range/remove count
 - approval-required count
 - active decision count after apply
 - tombstone count after apply
-- human-readable operation summaries
+- selectable suggestion cards with human-readable operation summaries
+- operation type, affected time/range, confidence, approval requirement, and
+  rationale when present
 - validation warnings and blocking errors
 
-Use `Apply Agent Ops` only after the preview is sane. In cloud shared-room mode,
-the applied operations upsert/tombstone decision events through the same
-Firestore persistence path as normal edits. In local-only mode they stay in
-localStorage. Either way, the source media and proxy files are untouched.
+Use `Apply Selected` for a curated subset, `Apply All` for the original
+all-or-nothing path, or `Reject Selected` to hide suggestions that should not be
+used in this pass. In cloud shared-room mode, applied operations
+upsert/tombstone decision events through the same Firestore persistence path as
+normal edits. In local-only mode they stay in localStorage. Either way, the
+source media and proxy files are untouched.
 
 ## Export Agent Context
 
