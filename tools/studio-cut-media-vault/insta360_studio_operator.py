@@ -190,6 +190,27 @@ def build_vault_receipt_command(*, ledger_path: Path) -> str:
     return " ".join(shell_quote(part) for part in parts)
 
 
+def build_migration_report_command(
+    *,
+    download_dir: Path,
+    project_id: str,
+    collection_id: str,
+) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:media-vault",
+        "--",
+        "migration-report",
+        "--source-dir",
+        str(download_dir),
+        "--project-id",
+        project_id,
+        "--collection-id",
+        collection_id,
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
 def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -250,6 +271,11 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
     vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
+    migration_report_command_text = build_migration_report_command(
+        download_dir=download_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+    )
 
     run_preflight_path = operator_dir / "run-preflight.sh"
     run_preflight_path.write_text(
@@ -295,6 +321,21 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     run_ledger_summary_path.chmod(0o755)
+
+    run_migration_report_path = operator_dir / "run-migration-report.sh"
+    run_migration_report_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                migration_report_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_migration_report_path.chmod(0o755)
 
     run_verify_cloud_path = operator_dir / "run-verify-ledger-cloud.sh"
     run_verify_cloud_path.write_text(
@@ -357,6 +398,12 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 drain_command,
                 "```",
                 "",
+                "## Round Progress Report",
+                "",
+                "```bash",
+                migration_report_command_text,
+                "```",
+                "",
                 "## Audit Before Manual Remote Cleanup",
                 "",
                 "```bash",
@@ -389,6 +436,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "runPreflightScript": str(run_preflight_path),
         "runDrainScript": str(run_drain_path),
         "runLedgerSummaryScript": str(run_ledger_summary_path),
+        "runMigrationReportScript": str(run_migration_report_path),
         "runVerifyLedgerCloudScript": str(run_verify_cloud_path),
         "runVaultReceiptScript": str(run_vault_receipt_path),
         "readme": str(readme_path),
@@ -396,6 +444,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "dryRunCommand": dry_run_command,
         "drainCommand": drain_command,
         "ledgerSummaryCommand": ledger_summary_command_text,
+        "migrationReportCommand": migration_report_command_text,
         "verifyLedgerCloudCommand": verify_ledger_cloud_command_text,
         "vaultReceiptCommand": vault_receipt_command_text,
     }
@@ -664,12 +713,18 @@ def self_test_command(_: argparse.Namespace) -> int:
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
     vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
+    migration_report_command_text = build_migration_report_command(
+        download_dir=download_dir,
+        project_id="episode-004",
+        collection_id="homer-insta360",
+    )
     assertions = [
         "drain-folder" in drain_command,
         "--execute" in drain_command,
         "--delete-local-after-upload" in drain_command,
         "storage-preflight" in preflight_command,
         "ledger-summary" in ledger_summary_command_text,
+        "migration-report" in migration_report_command_text,
         "verify-ledger-cloud" in verify_ledger_cloud_command_text,
         "vault-receipt" in vault_receipt_command_text,
         "Insta360 Studio" in ui_snapshot_applescript(APP_NAME, 2),
@@ -682,6 +737,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "samplePreflightCommand": preflight_command,
         "sampleDrainCommand": drain_command,
         "sampleLedgerSummaryCommand": ledger_summary_command_text,
+        "sampleMigrationReportCommand": migration_report_command_text,
         "sampleVerifyLedgerCloudCommand": verify_ledger_cloud_command_text,
         "sampleVaultReceiptCommand": vault_receipt_command_text,
     }

@@ -180,6 +180,10 @@ pnpm studio-cut:media-vault -- drain-folder \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
   --collection-id homer-insta360
+pnpm studio-cut:media-vault -- migration-report \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360
 pnpm studio-cut:media-vault -- ledger-summary \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 pnpm studio-cut:media-vault:smoke
@@ -189,14 +193,16 @@ Use this helper to create local manifests and reviewable Google Cloud Storage
 upload plans for video/photo/audio folders. `upload-manifest --execute` uploads
 through the local Google Cloud CLI session. `drain-folder --watch --execute
 --delete-local-after-upload` is the low-storage path for upload-and-clear loops.
-`ledger-summary` and `verify-ledger-cloud` provide the audit trail before any
-manual remote cleanup in Insta360 Cloud.
+`migration-report` is the per-round progress readout; `ledger-summary` and
+`verify-ledger-cloud` provide the audit trail before any manual remote cleanup
+in Insta360 Cloud.
 `studio-cut:insta360-operator` can open Insta360 Studio, prepare the local
 download buffer, capture UI snapshots, and try visible download controls when
 macOS Accessibility permission is enabled.
 `prepare-session` writes local `run-preflight.sh`, `run-drain.sh`,
-`run-ledger-summary.sh`, and `run-verify-ledger-cloud.sh` scripts so operators
-do not have to remember the ledger path.
+`run-migration-report.sh`, `run-ledger-summary.sh`, and
+`run-verify-ledger-cloud.sh` scripts so operators do not have to remember the
+ledger path.
 Keep the download buffer outside iCloud Drive; iCloud-managed folders are
 blocked by default unless `--allow-icloud` is explicitly passed.
 Real manifests and upload scripts for private media stay outside git.

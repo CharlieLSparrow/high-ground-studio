@@ -90,6 +90,19 @@ Only local files are deleted, and only after `gcloud storage cp` succeeds and
 the GCS object size matches the local file size. Remote Insta360 Cloud deletion
 is still a manual app step unless a supported API becomes available.
 
+Emit a round progress report while the watcher runs:
+
+```bash
+pnpm studio-cut:media-vault -- migration-report \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+```
+
+The report shows the local buffer count, settled/waiting files, free disk
+space, the target GCS prefix, ledger counts, verified bytes, and the manual
+remote deletion queue.
+
 Review the local chain-of-custody ledger at any point:
 
 ```bash
@@ -143,6 +156,7 @@ scripts:
 
 - `run-preflight.sh`
 - `run-drain.sh`
+- `run-migration-report.sh`
 - `run-ledger-summary.sh`
 - `run-verify-ledger-cloud.sh`
 - `run-vault-receipt.sh`

@@ -219,6 +219,20 @@ pnpm studio-cut:media-vault -- verify-ledger-cloud \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 ```
 
+Emit a round progress report while the watcher runs:
+
+```bash
+pnpm studio-cut:media-vault -- migration-report \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+```
+
+`migration-report` is the standard per-round operator readout. It reports the
+local buffer, settled/waiting file counts, free disk space, cloud destination,
+ledger totals, verified bytes, and manual remote cleanup queue without exposing
+source file paths from completed ledger entries.
+
 Emit a vault receipt artifact for handoff/audit:
 
 ```bash
@@ -256,9 +270,10 @@ pnpm studio-cut:insta360-operator prepare-session \
 ```
 
 This creates the predictable download folder plus local helper scripts for the
-whole loop: `run-preflight.sh`, `run-drain.sh`, `run-ledger-summary.sh`, and
-`run-verify-ledger-cloud.sh`, and `run-vault-receipt.sh`. The operator can run
-those scripts without remembering the ledger path.
+whole loop: `run-preflight.sh`, `run-drain.sh`, `run-migration-report.sh`,
+`run-ledger-summary.sh`, `run-verify-ledger-cloud.sh`, and
+`run-vault-receipt.sh`. The operator can run those scripts without remembering
+the ledger path.
 
 Open Insta360 Studio:
 

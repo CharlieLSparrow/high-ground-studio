@@ -292,6 +292,10 @@ def file_summary(path: Path) -> dict[str, Any]:
     }
 
 
+def file_modified_at_iso(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).replace(microsecond=0).isoformat()
+
+
 def stage_files(
     *,
     files: list[Path],
@@ -570,6 +574,181 @@ def summarize_ledger_entries(
         "warnings": warnings,
         "errors": errors,
     }
+
+
+def empty_ledger_summary(*, ledger_path: Path) -> dict[str, Any]:
+    return {
+        "status": "ready",
+        "ledgerPath": str(ledger_path),
+        "entryCount": 0,
+        "destinationCount": 0,
+        "uploadedVerifiedOrDeletedCount": 0,
+        "localDeletedCount": 0,
+        "manualRemoteDeletionPendingCount": 0,
+        "safeCloudBytes": 0,
+        "safeCloudGb": 0.0,
+        "latestEntries": [],
+        "manualRemoteDeletionPending": [],
+        "warnings": ["Ledger has not been created yet; no uploads have completed through this watcher."],
+        "errors": [],
+    }
+
+
+def summarize_local_buffer(
+    *,
+    source_dir: Path,
+    settle_seconds: int,
+    max_files: int,
+) -> dict[str, Any]:
+    if not source_dir.exists():
+        return {
+            "status": "blocked",
+            "sourceDir": str(source_dir),
+            "fileCount": 0,
+            "totalBytes": 0,
+            "totalGb": 0.0,
+            "settledCount": 0,
+            "waitingCount": 0,
+            "files": [],
+            "errors": [f"Source directory not found: {source_dir}"],
+        }
+
+    files = iter_media_files(source_dir)
+    limited_files = files[: max(0, max_files)]
+    summarized_files = []
+    settled_count = 0
+
+    for file_path in limited_files:
+        settled = is_file_settled(file_path, settle_seconds)
+        if settled:
+            settled_count += 1
+        summarized_files.append(
+            {
+                "relativePath": file_path.relative_to(source_dir).as_posix(),
+                "fileName": file_path.name,
+                "sizeBytes": file_path.stat().st_size,
+                "mediaKind": classify_media_kind(file_path),
+                "captureSource": infer_capture_source(file_path),
+                "contentType": guess_content_type(file_path),
+                "settled": settled,
+                "modifiedAt": file_modified_at_iso(file_path),
+            }
+        )
+
+    total_bytes = sum(path.stat().st_size for path in files)
+    return {
+        "status": "ready",
+        "sourceDir": str(source_dir),
+        "fileCount": len(files),
+        "reportedFileCount": len(summarized_files),
+        "totalBytes": total_bytes,
+        "totalGb": byte_count_to_gb(total_bytes),
+        "settledCount": settled_count,
+        "waitingCount": len(limited_files) - settled_count,
+        "files": summarized_files,
+        "errors": [],
+    }
+
+
+def build_migration_report_payload(
+    *,
+    source_dir: Path,
+    project_id: str,
+    collection_id: str,
+    bucket: str,
+    storage_prefix: str,
+    ledger_path: Path,
+    settle_seconds: int,
+    min_free_gb: float,
+    allow_icloud: bool,
+    max_files: int,
+) -> dict[str, Any]:
+    source_dir = source_dir.expanduser().resolve()
+    cloud_prefix = f"gs://{bucket}/{storage_prefix.rstrip('/')}/{project_id}/{collection_id}/"
+    preflight = storage_preflight(
+        source_dir,
+        min_free_gb=min_free_gb,
+        allow_icloud=allow_icloud,
+    )
+    local_buffer = summarize_local_buffer(
+        source_dir=source_dir,
+        settle_seconds=settle_seconds,
+        max_files=max_files,
+    )
+
+    if ledger_path.exists():
+        entries, parse_errors = load_ledger_entries(ledger_path)
+        ledger_summary = summarize_ledger_entries(
+            ledger_path=ledger_path,
+            entries=entries,
+            parse_errors=parse_errors,
+            include_local_paths=False,
+        )
+    else:
+        ledger_summary = empty_ledger_summary(ledger_path=ledger_path)
+
+    errors = preflight["errors"] + local_buffer["errors"] + ledger_summary["errors"]
+    uploaded_count = ledger_summary["uploadedVerifiedOrDeletedCount"]
+    local_file_count = local_buffer["fileCount"]
+    if errors:
+        state = "blocked"
+    elif local_file_count > 0:
+        state = "pending-local-files"
+    elif uploaded_count > 0:
+        state = "drained"
+    else:
+        state = "watching-empty-buffer"
+
+    return {
+        "command": "migration-report",
+        "status": "blocked" if errors else "ready",
+        "state": state,
+        "createdAt": utc_now_iso(),
+        "projectId": project_id,
+        "collectionId": collection_id,
+        "sourceDir": str(source_dir),
+        "ledgerPath": str(ledger_path),
+        "cloudPrefix": cloud_prefix,
+        "storagePreflight": preflight,
+        "localBuffer": local_buffer,
+        "ledgerSummary": ledger_summary,
+        "progress": {
+            "localFileCount": local_file_count,
+            "localSettledFileCount": local_buffer["settledCount"],
+            "localWaitingFileCount": local_buffer["waitingCount"],
+            "uploadedVerifiedOrDeletedCount": uploaded_count,
+            "localDeletedCount": ledger_summary["localDeletedCount"],
+            "manualRemoteDeletionPendingCount": ledger_summary["manualRemoteDeletionPendingCount"],
+            "safeCloudBytes": ledger_summary["safeCloudBytes"],
+            "safeCloudGb": ledger_summary["safeCloudGb"],
+            "freeGb": preflight["freeGb"],
+        },
+        "warnings": preflight["warnings"] + ledger_summary["warnings"],
+        "errors": errors,
+    }
+
+
+def migration_report_command(args: argparse.Namespace) -> int:
+    source_dir = Path(args.source_dir).expanduser()
+    ledger_path = Path(args.ledger).expanduser() if args.ledger else source_dir / ".studio-cut-media-vault-ledger.jsonl"
+    payload = build_migration_report_payload(
+        source_dir=source_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+        bucket=args.bucket,
+        storage_prefix=args.storage_prefix,
+        ledger_path=ledger_path,
+        settle_seconds=args.settle_seconds,
+        min_free_gb=args.min_free_gb,
+        allow_icloud=args.allow_icloud,
+        max_files=args.max_files,
+    )
+    if args.out:
+        write_json(Path(args.out).expanduser(), payload)
+        print(f"Wrote migration report: {args.out}")
+    else:
+        print(json.dumps(payload, indent=2))
+    return 1 if payload["errors"] else 0
 
 
 def verify_uploaded_destinations_payload(
@@ -1537,6 +1716,18 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             poll_seconds=60,
         )
         drain_result = drain_folder_once(drain_args)
+        migration_report = build_migration_report_payload(
+            source_dir=source_dir,
+            project_id="episode-004",
+            collection_id="homer-insta360-smoke",
+            bucket=DEFAULT_BUCKET,
+            storage_prefix="media-vault/raw",
+            ledger_path=Path(drain_args.ledger),
+            settle_seconds=0,
+            min_free_gb=0,
+            allow_icloud=False,
+            max_files=10,
+        )
         preflight_result = storage_preflight(source_dir, min_free_gb=0, allow_icloud=False)
         ledger_path = output_dir / "drain-ledger.synthetic.jsonl"
         append_jsonl(
@@ -1593,6 +1784,10 @@ def smoke_test_command(_: argparse.Namespace) -> int:
                 receipt.get("status") == "ready",
                 receipt.get("command") == "vault-receipt",
                 receipt["ledgerSummary"]["destinationCount"] == ledger_summary["destinationCount"],
+                migration_report["command"] == "migration-report",
+                migration_report["status"] == "ready",
+                migration_report["progress"]["localFileCount"] == 3,
+                migration_report["cloudPrefix"].endswith("/episode-004/homer-insta360-smoke/"),
                 "/private/tmp/should-not-print-by-default" not in json.dumps(ledger_summary),
             ]
         )
@@ -1685,6 +1880,23 @@ def build_parser() -> argparse.ArgumentParser:
     drain_folder.add_argument("--watch", action="store_true")
     drain_folder.add_argument("--poll-seconds", type=int, default=60)
     drain_folder.set_defaults(func=drain_folder_command)
+
+    migration_report = subparsers.add_parser(
+        "migration-report",
+        help="Report local buffer, ledger, and cloud-prefix progress for a live migration",
+    )
+    migration_report.add_argument("--source-dir", required=True)
+    migration_report.add_argument("--project-id", required=True)
+    migration_report.add_argument("--collection-id", required=True)
+    migration_report.add_argument("--bucket", default=DEFAULT_BUCKET)
+    migration_report.add_argument("--storage-prefix", default="media-vault/raw")
+    migration_report.add_argument("--ledger")
+    migration_report.add_argument("--settle-seconds", type=int, default=30)
+    migration_report.add_argument("--min-free-gb", type=float, default=DEFAULT_MIN_FREE_GB)
+    migration_report.add_argument("--allow-icloud", action="store_true")
+    migration_report.add_argument("--max-files", type=int, default=20)
+    migration_report.add_argument("--out")
+    migration_report.set_defaults(func=migration_report_command)
 
     ledger_summary = subparsers.add_parser(
         "ledger-summary",

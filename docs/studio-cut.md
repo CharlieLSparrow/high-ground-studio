@@ -1074,18 +1074,21 @@ the upload, and execute the upload with the local Google Cloud CLI session when
 `upload-manifest --execute` is used. For low local storage, `drain-folder
 --watch --execute --delete-local-after-upload` can watch a small local download
 buffer, upload settled files one at a time, verify GCS object size, record a
-ledger, and delete only the local copy after verification. `ledger-summary`
-summarizes uploaded/verified bytes, local deletions, and manual remote deletion
-pending items; `verify-ledger-cloud` re-checks ledger destinations against live
-GCS metadata. Remote Insta360 cloud deletion remains manual until a supported
-API or auditable automation path is available. `studio-cut:insta360-operator`
+ledger, and delete only the local copy after verification. `migration-report`
+is the standard per-round operator readout for local buffer count, settled
+files, free space, cloud destination, ledger totals, and manual remote cleanup
+queue. `ledger-summary` summarizes uploaded/verified bytes, local deletions,
+and manual remote deletion pending items; `verify-ledger-cloud` re-checks
+ledger destinations against live GCS metadata. Remote Insta360 cloud deletion
+remains manual until a supported API or auditable automation path is available.
+`studio-cut:insta360-operator`
 adds a local macOS assistive layer: it can open Insta360 Studio, prepare the
 download buffer, capture the visible UI tree for agent debugging, and try
 visible `Download` / `Start Export` controls for selected cloud media when
 Accessibility permission is enabled. `prepare-session` writes local helper
-scripts for preflight, drain, ledger summary, cloud re-verification, and
-vault-receipt export so the operator does not have to remember paths. The drain
-also performs a storage
+scripts for preflight, drain, migration report, ledger summary, cloud
+re-verification, and vault-receipt export so the operator does not have to
+remember paths. The drain also performs a storage
 preflight and blocks obvious iCloud-managed paths by default; use a local buffer
 under `~/Movies/StudioCut/...` rather than iCloud Drive or mirrored Documents.
 
