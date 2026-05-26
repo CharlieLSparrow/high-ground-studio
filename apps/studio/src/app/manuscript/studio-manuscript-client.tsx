@@ -2322,19 +2322,35 @@ export function StudioManuscriptClient({
   }
 
   function applySemanticHighlight() {
-    const definition = getSemanticHighlightDefinition(semanticType);
-
-    if (
-      !applySemanticHighlightToSelection({
-        tagType: definition.id,
-        note: semanticNote,
-        message: `Applied ${definition.label} semantic highlight.`,
-      })
-    ) {
+    if (!applySemanticHighlightForType(semanticType)) {
       return;
     }
 
     setSemanticNote("");
+  }
+
+  function applySemanticHighlightForType(
+    tagType: SemanticHighlightType,
+    options?: {
+      note?: string;
+      range?: ManuscriptTextSelectionRange;
+    },
+  ) {
+    const definition = getSemanticHighlightDefinition(tagType);
+    const appliedHighlightId = applySemanticHighlightToSelection({
+      tagType: definition.id,
+      note: (options?.note ?? semanticNote).trim(),
+      range: options?.range,
+      message: `Applied ${definition.label} semantic highlight.`,
+    });
+
+    if (!appliedHighlightId) {
+      return null;
+    }
+
+    setSemanticType(definition.id);
+    setSemanticNote("");
+    return appliedHighlightId;
   }
 
   function markCitedQuotation(range?: ManuscriptTextSelectionRange) {
@@ -2388,19 +2404,14 @@ export function StudioManuscriptClient({
       return;
     }
 
-    const definition = getSemanticHighlightDefinition(tagType);
-    const appliedHighlightId = applySemanticHighlightToSelection({
-      tagType: definition.id,
-      note: semanticNote,
+    const appliedHighlightId = applySemanticHighlightForType(tagType, {
       range: tagContextMenu,
-      message: `Applied ${definition.label} semantic highlight.`,
     });
 
     if (!appliedHighlightId) {
       return;
     }
 
-    setSemanticType(definition.id);
     setSemanticNote("");
   }
 
@@ -4334,21 +4345,43 @@ export function StudioManuscriptClient({
                       onChange={(event) => setSemanticNote(event.target.value)}
                     />
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={applySemanticHighlight}
-                    >
-                      Apply semantic
-                    </button>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={() => clearSemanticHighlight()}
-                    >
-                      Clear semantic
-                    </button>
+                  <div className="grid gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={applySemanticHighlight}
+                      >
+                        Apply semantic
+                      </button>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={() => clearSemanticHighlight()}
+                      >
+                        Clear semantic
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={() =>
+                          applySemanticHighlightForType("clip")
+                        }
+                      >
+                        Clip
+                      </button>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={() =>
+                          applySemanticHighlightForType("show-notes")
+                        }
+                      >
+                        Show notes
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-3">
@@ -7331,6 +7364,22 @@ export function StudioManuscriptClient({
                     <button
                       className={smallButtonClassName}
                       type="button"
+                      onClick={() => applySemanticHighlightForType("clip")}
+                    >
+                      Clip
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() =>
+                        applySemanticHighlightForType("show-notes")
+                      }
+                    >
+                      Show notes
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
                       onClick={() => applySemanticFocus(semanticType)}
                     >
                       Focus selected tag
@@ -7731,6 +7780,29 @@ export function StudioManuscriptClient({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  className={commandButtonClassName}
+                  role="menuitem"
+                  type="button"
+                  onClick={() =>
+                    applySemanticHighlightFromContextMenu("clip")
+                  }
+                >
+                  Clip
+                </button>
+                <button
+                  className={commandButtonClassName}
+                  role="menuitem"
+                  type="button"
+                  onClick={() =>
+                    applySemanticHighlightFromContextMenu("show-notes")
+                  }
+                >
+                  Show notes
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
