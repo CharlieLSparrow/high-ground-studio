@@ -24,6 +24,11 @@ export type StudioManuscriptLiveNotebookBlock = {
   characterCount: number;
 };
 
+export type StudioManuscriptLiveNotebookStarterKind =
+  | "working-session"
+  | "writing-pass"
+  | "coaching-session";
+
 function normalizeLiveRoomText(text: string) {
   return String(text ?? "").replace(/\r\n?/g, "\n");
 }
@@ -177,6 +182,12 @@ function splitLiveRoomTextIntoNotebookBlocks(text: string) {
     .filter(Boolean);
 }
 
+function joinLiveRoomNotebookBlocks(blocks: string[]) {
+  return normalizeLiveRoomText(
+    blocks.map((block) => block.trim()).filter(Boolean).join("\n\n"),
+  );
+}
+
 function createNotebookBlockLabel(text: string, index: number) {
   const firstLine = text
     .split("\n")
@@ -219,9 +230,7 @@ export function updateLiveRoomNotebookBlockText(input: {
 
   blocks[blockIndex] = normalizeLiveRoomText(input.blockText).trim();
 
-  return normalizeLiveRoomText(
-    blocks.map((block) => block.trim()).filter(Boolean).join("\n\n"),
-  );
+  return joinLiveRoomNotebookBlocks(blocks);
 }
 
 export function appendLiveRoomNotebookBlock(
@@ -232,9 +241,98 @@ export function appendLiveRoomNotebookBlock(
 
   blocks.push(normalizeLiveRoomText(blockText).trim());
 
-  return normalizeLiveRoomText(
-    blocks.map((block) => block.trim()).filter(Boolean).join("\n\n"),
+  return joinLiveRoomNotebookBlocks(blocks);
+}
+
+export function insertLiveRoomNotebookBlockAfter(input: {
+  text: string;
+  blockIndex: number;
+  blockText?: string;
+}) {
+  const blocks = splitLiveRoomTextIntoNotebookBlocks(input.text);
+  const insertIndex = Math.min(
+    blocks.length,
+    Math.max(0, Math.floor(input.blockIndex) + 1),
   );
+
+  blocks.splice(
+    insertIndex,
+    0,
+    normalizeLiveRoomText(input.blockText ?? "New working note").trim(),
+  );
+
+  return joinLiveRoomNotebookBlocks(blocks);
+}
+
+export function removeLiveRoomNotebookBlock(input: {
+  text: string;
+  blockIndex: number;
+}) {
+  const blocks = splitLiveRoomTextIntoNotebookBlocks(input.text);
+  const blockIndex = Math.max(0, Math.floor(input.blockIndex));
+
+  if (blocks.length <= 1) {
+    return "";
+  }
+
+  blocks.splice(blockIndex, 1);
+
+  return joinLiveRoomNotebookBlocks(blocks);
+}
+
+export function moveLiveRoomNotebookBlock(input: {
+  text: string;
+  blockIndex: number;
+  direction: -1 | 1;
+}) {
+  const blocks = splitLiveRoomTextIntoNotebookBlocks(input.text);
+  const blockIndex = Math.max(0, Math.floor(input.blockIndex));
+  const nextIndex = blockIndex + input.direction;
+
+  if (
+    blockIndex < 0 ||
+    blockIndex >= blocks.length ||
+    nextIndex < 0 ||
+    nextIndex >= blocks.length
+  ) {
+    return joinLiveRoomNotebookBlocks(blocks);
+  }
+
+  const [block] = blocks.splice(blockIndex, 1);
+
+  blocks.splice(nextIndex, 0, block ?? "");
+
+  return joinLiveRoomNotebookBlocks(blocks);
+}
+
+export function createLiveRoomNotebookStarterText(
+  kind: StudioManuscriptLiveNotebookStarterKind,
+) {
+  if (kind === "writing-pass") {
+    return joinLiveRoomNotebookBlocks([
+      "Focus\nWhat are we trying to improve in this writing pass?",
+      "Draft\nPaste or write the section we are working on here.",
+      "Open Questions\nWhat needs a decision, source check, or follow-up?",
+      "Action Items\n- Next concrete edit\n- Next source check\n- Next publishing step",
+    ]);
+  }
+
+  if (kind === "coaching-session") {
+    return joinLiveRoomNotebookBlocks([
+      "Session Goal\nWhat should be clearer or easier by the end?",
+      "Current Reality\nWhat is happening right now?",
+      "Options\nWhat paths are available?",
+      "Commitments\n- This week\n- Before next session\n- Support needed",
+    ]);
+  }
+
+  return joinLiveRoomNotebookBlocks([
+    "Agenda\nWhat needs attention today?",
+    "Live Notes\nCapture the conversation here.",
+    "Decisions\nWhat did we decide?",
+    "Action Items\n- Owner / task / next check-in",
+    "Parking Lot\nGood ideas that should not derail this session.",
+  ]);
 }
 
 export function createLiveRoomTextFromManuscriptDraft(draft: ManuscriptDraft) {

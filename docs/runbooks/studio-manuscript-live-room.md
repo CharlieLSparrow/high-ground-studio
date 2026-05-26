@@ -28,6 +28,10 @@ The route is protected by the normal private Studio access gate.
   share URL
 - opens in notebook mode by default, with editable sections and a raw-text
   fallback
+- can seed a room with session, writing-pass, or coaching-session starter
+  sections
+- can add, move, and remove notebook sections while preserving the underlying
+  shared text document
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
 - records active presence heartbeats
@@ -76,7 +80,8 @@ presence state and should not be treated as manuscript content.
    - paste the current manuscript section into the starting text field.
 4. Create or open the live room.
 5. Copy the room link and send it to Homer.
-6. Work in the shared text area.
+6. Work in notebook mode by default. Use starter sections for a fresh room, then
+   add, move, or remove sections as the session changes.
 7. Use `Save manual snapshot` when a meaningful checkpoint is reached.
 8. Continue in the live room or move the checkpoint into Manuscript Desk review.
 
