@@ -105,6 +105,17 @@ pnpm studio-cut:media-vault -- verify-ledger-cloud \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 ```
 
+Export a signed operator handoff receipt:
+
+```bash
+pnpm studio-cut:media-vault -- vault-receipt \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl \
+  --out /tmp/studio-cut-episode-004-vault-receipt.json
+```
+
+Use `--verify` on the receipt path if you want each checked destination to be
+validated against live `gcloud` object metadata before sharing.
+
 `ledger-summary` redacts local source paths by default. Use
 `--include-local-paths` only for private local debugging output that will not be
 committed.
@@ -134,6 +145,7 @@ scripts:
 - `run-drain.sh`
 - `run-ledger-summary.sh`
 - `run-verify-ledger-cloud.sh`
+- `run-vault-receipt.sh`
 
 Open Studio:
 

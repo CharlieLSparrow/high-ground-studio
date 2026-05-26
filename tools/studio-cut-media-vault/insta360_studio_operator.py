@@ -178,6 +178,18 @@ def build_verify_ledger_cloud_command(*, ledger_path: Path) -> str:
     return " ".join(shell_quote(part) for part in parts)
 
 
+def build_vault_receipt_command(*, ledger_path: Path) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:media-vault",
+        "--",
+        "vault-receipt",
+        "--ledger",
+        str(ledger_path),
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
 def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -237,6 +249,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     preflight_command = build_storage_preflight_command(download_dir=download_dir)
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
+    vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
 
     run_preflight_path = operator_dir / "run-preflight.sh"
     run_preflight_path.write_text(
@@ -296,6 +309,20 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         ),
         encoding="utf-8",
     )
+    run_vault_receipt_path = operator_dir / "run-vault-receipt.sh"
+    run_vault_receipt_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                vault_receipt_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_vault_receipt_path.chmod(0o755)
     run_verify_cloud_path.chmod(0o755)
 
     readme_path = operator_dir / "README.md"
@@ -337,6 +364,14 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 verify_ledger_cloud_command_text,
                 "```",
                 "",
+                "",
+                "## Emit Vault Receipt",
+                "",
+                "```bash",
+                vault_receipt_command_text,
+                "```",
+                "",
+                "Keep this JSON receipt as a handoff artifact and do not commit it.",
                 "`ledger-summary` redacts local source paths by default. Remote Insta360 Cloud deletion remains manual after ledger verification.",
                 "",
             ]
@@ -355,12 +390,14 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "runDrainScript": str(run_drain_path),
         "runLedgerSummaryScript": str(run_ledger_summary_path),
         "runVerifyLedgerCloudScript": str(run_verify_cloud_path),
+        "runVaultReceiptScript": str(run_vault_receipt_path),
         "readme": str(readme_path),
         "preflightCommand": preflight_command,
         "dryRunCommand": dry_run_command,
         "drainCommand": drain_command,
         "ledgerSummaryCommand": ledger_summary_command_text,
         "verifyLedgerCloudCommand": verify_ledger_cloud_command_text,
+        "vaultReceiptCommand": vault_receipt_command_text,
     }
     print(json.dumps(result, indent=2))
     return 0
@@ -626,6 +663,7 @@ def self_test_command(_: argparse.Namespace) -> int:
     preflight_command = build_storage_preflight_command(download_dir=download_dir)
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
+    vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
     assertions = [
         "drain-folder" in drain_command,
         "--execute" in drain_command,
@@ -633,6 +671,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "storage-preflight" in preflight_command,
         "ledger-summary" in ledger_summary_command_text,
         "verify-ledger-cloud" in verify_ledger_cloud_command_text,
+        "vault-receipt" in vault_receipt_command_text,
         "Insta360 Studio" in ui_snapshot_applescript(APP_NAME, 2),
         "Download" in click_control_applescript(APP_NAME, "Download", 2, False),
     ]
@@ -644,6 +683,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "sampleDrainCommand": drain_command,
         "sampleLedgerSummaryCommand": ledger_summary_command_text,
         "sampleVerifyLedgerCloudCommand": verify_ledger_cloud_command_text,
+        "sampleVaultReceiptCommand": vault_receipt_command_text,
     }
     print(json.dumps(result, indent=2))
     return 0 if all(assertions) else 1

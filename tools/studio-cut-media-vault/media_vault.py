@@ -456,6 +456,24 @@ def load_ledger_entries(ledger_path: Path) -> tuple[list[dict[str, Any]], list[s
     return entries, errors
 
 
+def parse_project_collection_from_destination(destination: str) -> tuple[str | None, str | None]:
+    if not destination.startswith("gs://"):
+        return None, None
+    parts = destination.replace("gs://", "").split("/")
+    if len(parts) < 4:
+        return None, None
+    if "media-vault" not in parts:
+        return None, None
+    media_vault_index = parts.index("media-vault")
+    if media_vault_index + 2 >= len(parts):
+        return None, None
+    if parts[media_vault_index + 1] != "raw":
+        return None, None
+    project_id = parts[media_vault_index + 2]
+    collection_id = parts[media_vault_index + 3] if media_vault_index + 3 < len(parts) else None
+    return project_id or None, collection_id or None
+
+
 def load_uploaded_destinations(ledger_path: Path) -> set[str]:
     uploaded: set[str] = set()
     entries, _ = load_ledger_entries(ledger_path)
@@ -552,6 +570,185 @@ def summarize_ledger_entries(
         "warnings": warnings,
         "errors": errors,
     }
+
+
+def verify_uploaded_destinations_payload(
+    *,
+    ledger_path: Path,
+    entries: list[dict[str, Any]],
+    parse_errors: list[str],
+    include_local_paths: bool,
+    max_objects: int,
+) -> dict[str, Any]:
+    summary = summarize_ledger_entries(
+        ledger_path=ledger_path,
+        entries=entries,
+        parse_errors=parse_errors,
+        include_local_paths=include_local_paths,
+    )
+    if parse_errors:
+        return {
+            "status": "blocked",
+            "ledgerPath": str(ledger_path),
+            "checkedCount": 0,
+            "matchedCount": 0,
+            "maxObjects": max_objects,
+            "ledgerSummary": {
+                "entryCount": summary["entryCount"],
+                "destinationCount": summary["destinationCount"],
+                "uploadedVerifiedOrDeletedCount": summary["uploadedVerifiedOrDeletedCount"],
+                "localDeletedCount": summary["localDeletedCount"],
+                "manualRemoteDeletionPendingCount": summary["manualRemoteDeletionPendingCount"],
+                "safeCloudBytes": summary["safeCloudBytes"],
+                "safeCloudGb": summary["safeCloudGb"],
+            },
+            "checked": [],
+            "warnings": summary["warnings"],
+            "errors": summary["errors"],
+        }
+
+    gcloud_path = shutil.which("gcloud")
+    if not gcloud_path:
+        return {
+            "status": "blocked",
+            "ledgerPath": str(ledger_path),
+            "checkedCount": 0,
+            "matchedCount": 0,
+            "maxObjects": max_objects,
+            "ledgerSummary": {
+                "entryCount": summary["entryCount"],
+                "destinationCount": summary["destinationCount"],
+                "uploadedVerifiedOrDeletedCount": summary["uploadedVerifiedOrDeletedCount"],
+                "localDeletedCount": summary["localDeletedCount"],
+                "manualRemoteDeletionPendingCount": summary["manualRemoteDeletionPendingCount"],
+                "safeCloudBytes": summary["safeCloudBytes"],
+                "safeCloudGb": summary["safeCloudGb"],
+            },
+            "checked": [],
+            "warnings": summary["warnings"] + ["gcloud is not on PATH; run verify from an environment with Cloud CLI installed."],
+            "errors": summary["errors"],
+        }
+
+    latest_by_destination = latest_ledger_entries_by_destination(entries)
+    candidates = [
+        entry
+        for entry in latest_by_destination.values()
+        if entry.get("status") in {"uploaded_verified", "local_deleted"}
+    ]
+    candidates = candidates[: max(0, max_objects)]
+    checked: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    for entry in candidates:
+        destination = str(entry["destination"])
+        expected_size = int(entry.get("sizeBytes", -1) or -1)
+        describe = describe_gcs_object(gcloud_path, destination)
+        actual_size = describe.get("sizeBytes")
+        size_matches = describe.get("status") == "ready" and actual_size == expected_size
+        check = {
+            "destination": destination,
+            "assetId": entry.get("assetId"),
+            "relativePath": entry.get("relativePath"),
+            "expectedSizeBytes": expected_size,
+            "actualSizeBytes": actual_size,
+            "gcsGeneration": describe.get("generation"),
+            "gcsCrc32c": describe.get("crc32c"),
+            "gcsMd5Hash": describe.get("md5Hash"),
+            "status": "matched" if size_matches else "mismatch",
+        }
+        if describe.get("status") != "ready":
+            check["error"] = describe.get("error")
+        if not size_matches:
+            errors.append(f"GCS size mismatch or missing object: {destination}")
+        checked.append(check)
+
+    payload = {
+        "status": "blocked" if errors or summary["errors"] else "ready",
+        "ledgerPath": str(ledger_path),
+        "checkedCount": len(checked),
+        "matchedCount": sum(1 for item in checked if item["status"] == "matched"),
+        "maxObjects": max_objects,
+        "ledgerSummary": {
+            "entryCount": summary["entryCount"],
+            "destinationCount": summary["destinationCount"],
+            "uploadedVerifiedOrDeletedCount": summary["uploadedVerifiedOrDeletedCount"],
+            "localDeletedCount": summary["localDeletedCount"],
+            "manualRemoteDeletionPendingCount": summary["manualRemoteDeletionPendingCount"],
+            "safeCloudBytes": summary["safeCloudBytes"],
+            "safeCloudGb": summary["safeCloudGb"],
+        },
+        "checked": checked,
+        "warnings": summary["warnings"],
+        "errors": summary["errors"] + errors,
+    }
+    return payload
+
+
+def vault_receipt_command(args: argparse.Namespace) -> int:
+    ledger_path = Path(args.ledger).expanduser()
+    entries, parse_errors = load_ledger_entries(ledger_path)
+    summary = summarize_ledger_entries(
+        ledger_path=ledger_path,
+        entries=entries,
+        parse_errors=parse_errors,
+        include_local_paths=args.include_local_paths,
+    )
+
+    verify_payload: dict[str, Any] | None = None
+    if args.verify:
+        verify_payload = verify_uploaded_destinations_payload(
+            ledger_path=ledger_path,
+            entries=entries,
+            parse_errors=parse_errors,
+            include_local_paths=args.include_local_paths,
+            max_objects=args.max_objects,
+        )
+        summary_status = "blocked" if verify_payload["status"] != "ready" else summary["status"]
+    else:
+        summary_status = summary["status"]
+
+    latest_by_destination = latest_ledger_entries_by_destination(entries)
+    project_id: str | None = None
+    collection_id: str | None = None
+    for entry in latest_by_destination.values():
+        value = entry.get("destination")
+        if not isinstance(value, str):
+            continue
+        candidate_project_id, candidate_collection_id = parse_project_collection_from_destination(value)
+        if candidate_project_id:
+            project_id = candidate_project_id
+            collection_id = candidate_collection_id
+            break
+
+    payload = {
+        "command": "vault-receipt",
+        "status": "blocked" if summary_status != "ready" else "ready",
+        "createdAt": utc_now_iso(),
+        "receiptSchemaVersion": SCHEMA_VERSION,
+        "projectId": project_id,
+        "collectionId": collection_id,
+        "ledgerPath": str(ledger_path),
+        "ledgerSummary": summary,
+        "verify": verify_payload,
+        "summaryCounts": {
+            "destinationCount": summary["destinationCount"],
+            "uploadedVerifiedOrDeletedCount": summary["uploadedVerifiedOrDeletedCount"],
+            "manualRemoteDeletionPendingCount": summary["manualRemoteDeletionPendingCount"],
+        },
+    }
+
+    if args.out:
+        out_path = Path(args.out).expanduser()
+        write_json(out_path, payload)
+        print(f"Wrote vault receipt: {out_path}")
+    else:
+        print(json.dumps(payload, indent=2))
+
+    if payload["status"] != "ready":
+        return 1
+    if verify_payload is not None and verify_payload.get("status") != "ready":
+        return 1
+    return 0
 
 
 def is_file_settled(path: Path, settle_seconds: int) -> bool:
@@ -1082,72 +1279,13 @@ def ledger_summary_command(args: argparse.Namespace) -> int:
 def verify_ledger_cloud_command(args: argparse.Namespace) -> int:
     ledger_path = Path(args.ledger).expanduser()
     entries, parse_errors = load_ledger_entries(ledger_path)
-    summary = summarize_ledger_entries(
+    payload = verify_uploaded_destinations_payload(
         ledger_path=ledger_path,
         entries=entries,
         parse_errors=parse_errors,
         include_local_paths=False,
+        max_objects=args.max_objects,
     )
-    if parse_errors:
-        print(json.dumps(summary, indent=2))
-        return 1
-
-    gcloud_path = shutil.which("gcloud")
-    if not gcloud_path:
-        print("gcloud is not on PATH; install Google Cloud CLI before verifying cloud objects.", file=sys.stderr)
-        return 2
-
-    latest_by_destination = latest_ledger_entries_by_destination(entries)
-    candidates = [
-        entry
-        for entry in latest_by_destination.values()
-        if entry.get("status") in {"uploaded_verified", "local_deleted"}
-    ]
-    candidates = candidates[: max(0, args.max_objects)]
-    checked: list[dict[str, Any]] = []
-    errors: list[str] = []
-    for entry in candidates:
-        destination = str(entry["destination"])
-        expected_size = int(entry.get("sizeBytes", -1) or -1)
-        describe = describe_gcs_object(gcloud_path, destination)
-        actual_size = describe.get("sizeBytes")
-        size_matches = describe.get("status") == "ready" and actual_size == expected_size
-        check = {
-            "destination": destination,
-            "assetId": entry.get("assetId"),
-            "relativePath": entry.get("relativePath"),
-            "expectedSizeBytes": expected_size,
-            "actualSizeBytes": actual_size,
-            "gcsGeneration": describe.get("generation"),
-            "gcsCrc32c": describe.get("crc32c"),
-            "gcsMd5Hash": describe.get("md5Hash"),
-            "status": "matched" if size_matches else "mismatch",
-        }
-        if describe.get("status") != "ready":
-            check["error"] = describe.get("error")
-        if not size_matches:
-            errors.append(f"GCS size mismatch or missing object: {destination}")
-        checked.append(check)
-
-    payload = {
-        "status": "blocked" if errors or summary["errors"] else "ready",
-        "ledgerPath": str(ledger_path),
-        "checkedCount": len(checked),
-        "matchedCount": sum(1 for item in checked if item["status"] == "matched"),
-        "maxObjects": args.max_objects,
-        "ledgerSummary": {
-            "entryCount": summary["entryCount"],
-            "destinationCount": summary["destinationCount"],
-            "uploadedVerifiedOrDeletedCount": summary["uploadedVerifiedOrDeletedCount"],
-            "localDeletedCount": summary["localDeletedCount"],
-            "manualRemoteDeletionPendingCount": summary["manualRemoteDeletionPendingCount"],
-            "safeCloudBytes": summary["safeCloudBytes"],
-            "safeCloudGb": summary["safeCloudGb"],
-        },
-        "checked": checked,
-        "warnings": summary["warnings"],
-        "errors": summary["errors"] + errors,
-    }
     print(json.dumps(payload, indent=2))
     return 1 if payload["errors"] else 0
 
@@ -1431,6 +1569,16 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             parse_errors=ledger_errors,
             include_local_paths=False,
         )
+        receipt_path = output_dir / "drain-receipt.synthetic.json"
+        receipt_args = argparse.Namespace(
+            ledger=str(ledger_path),
+            out=str(receipt_path),
+            verify=False,
+            include_local_paths=False,
+            max_objects=20,
+        )
+        vault_receipt_command(receipt_args)
+        receipt = load_json(receipt_path)
         assertions.extend(
             [
                 drain_result["status"] == "ready",
@@ -1442,6 +1590,9 @@ def smoke_test_command(_: argparse.Namespace) -> int:
                 ledger_summary["uploadedVerifiedOrDeletedCount"] == 2,
                 ledger_summary["localDeletedCount"] == 1,
                 ledger_summary["manualRemoteDeletionPendingCount"] == 1,
+                receipt.get("status") == "ready",
+                receipt.get("command") == "vault-receipt",
+                receipt["ledgerSummary"]["destinationCount"] == ledger_summary["destinationCount"],
                 "/private/tmp/should-not-print-by-default" not in json.dumps(ledger_summary),
             ]
         )
@@ -1450,6 +1601,7 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             "manifestPath": str(manifest_path),
             "uploadPlanPath": str(plan_path),
             "insta360PackagePath": str(insta360_package_dir),
+            "vaultReceiptPath": str(receipt_path),
             "assetCount": manifest["assetCount"],
             "assertionsPassed": sum(1 for assertion in assertions if assertion),
             "assertionCount": len(assertions),
@@ -1553,6 +1705,21 @@ def build_parser() -> argparse.ArgumentParser:
     verify_ledger_cloud.add_argument("--ledger", required=True)
     verify_ledger_cloud.add_argument("--max-objects", type=int, default=200)
     verify_ledger_cloud.set_defaults(func=verify_ledger_cloud_command)
+
+    vault_receipt = subparsers.add_parser(
+        "vault-receipt",
+        help="Create a signed exportable summary from a vault ledger",
+    )
+    vault_receipt.add_argument("--ledger", required=True)
+    vault_receipt.add_argument("--out")
+    vault_receipt.add_argument("--verify", action="store_true")
+    vault_receipt.add_argument("--max-objects", type=int, default=200)
+    vault_receipt.add_argument(
+        "--include-local-paths",
+        action="store_true",
+        help="Include local source paths in the JSON output; keep this out of committed files",
+    )
+    vault_receipt.set_defaults(func=vault_receipt_command)
 
     discover_insta360 = subparsers.add_parser(
         "discover-insta360",

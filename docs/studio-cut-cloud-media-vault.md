@@ -219,6 +219,17 @@ pnpm studio-cut:media-vault -- verify-ledger-cloud \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 ```
 
+Emit a vault receipt artifact for handoff/audit:
+
+```bash
+pnpm studio-cut:media-vault -- vault-receipt \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl \
+  --out /tmp/studio-cut-episode-004-vault-receipt.json
+```
+
+`vault-receipt` is a stable, exportable summary that can include a limited
+`verify` check against live GCS size metadata (optional in `--verify` mode).
+
 `ledger-summary` reports verified bytes, local deletions, failed/unverified
 uploads, and the manual remote deletion queue. It redacts local source paths by
 default because ledger files can contain private machine paths.
@@ -246,8 +257,8 @@ pnpm studio-cut:insta360-operator prepare-session \
 
 This creates the predictable download folder plus local helper scripts for the
 whole loop: `run-preflight.sh`, `run-drain.sh`, `run-ledger-summary.sh`, and
-`run-verify-ledger-cloud.sh`. The operator can run those scripts without
-remembering the ledger path.
+`run-verify-ledger-cloud.sh`, and `run-vault-receipt.sh`. The operator can run
+those scripts without remembering the ledger path.
 
 Open Insta360 Studio:
 

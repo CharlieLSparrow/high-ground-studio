@@ -219,6 +219,9 @@ pnpm studio-cut:media-vault -- ledger-summary \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 pnpm studio-cut:media-vault -- verify-ledger-cloud \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+pnpm studio-cut:media-vault -- vault-receipt \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl \
+  --out /tmp/studio-cut-episode-004-vault-receipt.json
 ```
 
 Do not use an iCloud Drive or mirrored Documents folder as the download buffer.
