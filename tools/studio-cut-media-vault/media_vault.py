@@ -426,6 +426,40 @@ def write_json(path: Path, payload: Any) -> None:
         file.write("\n")
 
 
+def append_jsonl(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(payload, sort_keys=True))
+        file.write("\n")
+
+
+def load_uploaded_destinations(ledger_path: Path) -> set[str]:
+    uploaded: set[str] = set()
+    if not ledger_path.exists():
+        return uploaded
+    with ledger_path.open("r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("status") in {"uploaded_verified", "local_deleted"}:
+                destination = entry.get("destination")
+                if isinstance(destination, str) and destination:
+                    uploaded.add(destination)
+    return uploaded
+
+
+def is_file_settled(path: Path, settle_seconds: int) -> bool:
+    if settle_seconds <= 0:
+        return True
+    age_seconds = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
+    return age_seconds >= settle_seconds
+
+
 def validate_manifest_payload(payload: Any) -> list[str]:
     errors: list[str] = []
 
@@ -632,6 +666,182 @@ def upload_manifest_command(args: argparse.Namespace) -> int:
 
     print("Upload complete.")
     return 0
+
+
+def describe_gcs_object(gcloud_path: str, destination: str) -> dict[str, Any]:
+    result = subprocess.run(
+        [gcloud_path, "storage", "objects", "describe", destination, "--format=json"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return {
+            "status": "blocked",
+            "error": result.stderr.strip() or result.stdout.strip(),
+        }
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {
+            "status": "blocked",
+            "error": "gcloud returned non-JSON object metadata.",
+            "raw": result.stdout.strip(),
+        }
+    return {
+        "status": "ready",
+        "metadata": payload,
+        "sizeBytes": int(payload.get("size", -1)) if str(payload.get("size", "")).isdigit() else None,
+        "generation": payload.get("generation"),
+        "crc32c": payload.get("crc32c"),
+        "md5Hash": payload.get("md5Hash"),
+    }
+
+
+def drain_folder_once(args: argparse.Namespace) -> dict[str, Any]:
+    source_dir = Path(args.source_dir).expanduser().resolve()
+    ledger_path = Path(args.ledger).expanduser() if args.ledger else source_dir / ".studio-cut-media-vault-ledger.jsonl"
+    if not source_dir.is_dir():
+        return {
+            "status": "blocked",
+            "errors": [f"Source directory not found: {source_dir}"],
+        }
+
+    files = iter_media_files(source_dir)
+    uploaded_destinations = load_uploaded_destinations(ledger_path)
+    gcloud_path = shutil.which("gcloud")
+    if args.execute and not gcloud_path:
+        return {
+            "status": "blocked",
+            "errors": ["gcloud is not on PATH; install Google Cloud CLI before uploading."],
+        }
+
+    processed: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    for file_path in files[: args.max_files]:
+        if not is_file_settled(file_path, args.settle_seconds):
+            skipped.append(
+                {
+                    "fileName": file_path.name,
+                    "reason": f"waiting for file to settle for {args.settle_seconds}s",
+                }
+            )
+            continue
+
+        asset = build_asset(
+            source_dir=source_dir,
+            file_path=file_path,
+            project_id=args.project_id,
+            collection_id=args.collection_id,
+            storage_prefix=args.storage_prefix,
+        )
+        destination = f"gs://{args.bucket}/{asset.cloud_object_path}"
+        local_entry = {
+            "createdAt": utc_now_iso(),
+            "sourcePath": str(file_path),
+            "relativePath": asset.relative_path,
+            "destination": destination,
+            "assetId": asset.asset_id,
+            "sha256": asset.sha256,
+            "sizeBytes": asset.size_bytes,
+            "mediaKind": asset.media_kind,
+            "captureSource": asset.capture_source,
+        }
+
+        if destination in uploaded_destinations:
+            skipped.append({"fileName": file_path.name, "reason": "destination already verified in ledger"})
+            continue
+
+        if not args.execute:
+            processed.append({**local_entry, "status": "dry_run"})
+            continue
+
+        assert gcloud_path is not None
+        print(f"Uploading {file_path.name} -> {destination}")
+        upload_result = subprocess.run(
+            [gcloud_path, "storage", "cp", str(file_path), destination],
+            check=False,
+        )
+        if upload_result.returncode != 0:
+            entry = {**local_entry, "status": "upload_failed"}
+            append_jsonl(ledger_path, entry)
+            errors.append(f"Upload failed: {file_path}")
+            if not args.continue_on_error:
+                break
+            continue
+
+        describe = describe_gcs_object(gcloud_path, destination)
+        verified = describe.get("status") == "ready" and describe.get("sizeBytes") == asset.size_bytes
+        verified_entry = {
+            **local_entry,
+            "status": "uploaded_verified" if verified else "uploaded_unverified",
+            "gcsGeneration": describe.get("generation"),
+            "gcsCrc32c": describe.get("crc32c"),
+            "gcsMd5Hash": describe.get("md5Hash"),
+            "verifiedSizeBytes": describe.get("sizeBytes"),
+        }
+        append_jsonl(ledger_path, verified_entry)
+        processed.append(verified_entry)
+
+        if not verified:
+            errors.append(f"Uploaded object could not be size-verified: {destination}")
+            if not args.continue_on_error:
+                break
+            continue
+
+        if args.delete_local_after_upload:
+            file_path.unlink()
+            delete_entry = {
+                **local_entry,
+                "status": "local_deleted",
+                "deletedAt": utc_now_iso(),
+                "remoteDeletionStatus": "manual_pending",
+            }
+            append_jsonl(ledger_path, delete_entry)
+            processed.append(delete_entry)
+
+    status = "blocked" if errors else "ready"
+    return {
+        "status": status,
+        "mode": "execute" if args.execute else "dry-run",
+        "sourceDir": str(source_dir),
+        "ledgerPath": str(ledger_path),
+        "processedCount": len(processed),
+        "skippedCount": len(skipped),
+        "processed": processed,
+        "skipped": skipped,
+        "errors": errors,
+        "nextStep": (
+            "Delete remote files manually in the Insta360 app only after ledger entries show uploaded_verified/local_deleted."
+            if args.delete_local_after_upload
+            else "Run with --execute after reviewing the dry run. Add --delete-local-after-upload only when GCS verification is trusted."
+        ),
+    }
+
+
+def drain_folder_command(args: argparse.Namespace) -> int:
+    if args.watch and not args.execute:
+        print("Watch mode is dry-run until --execute is set; no uploads will occur.")
+
+    result = drain_folder_once(args)
+    print(json.dumps(result, indent=2))
+    if result["status"] != "ready" or not args.watch:
+        return 0 if result["status"] == "ready" else 1
+
+    try:
+        while True:
+            time_seconds = max(5, args.poll_seconds)
+            print(f"Waiting {time_seconds}s before next drain pass...")
+            import time
+
+            time.sleep(time_seconds)
+            result = drain_folder_once(args)
+            print(json.dumps(result, indent=2))
+    except KeyboardInterrupt:
+        print("Stopped folder drain watcher.")
+        return 0
 
 
 def discover_insta360_command(args: argparse.Namespace) -> int:
@@ -863,6 +1073,29 @@ def smoke_test_command(_: argparse.Namespace) -> int:
                 (insta360_package_dir / "README.md").exists(),
             ]
         )
+        drain_args = argparse.Namespace(
+            source_dir=str(source_dir),
+            project_id="episode-004",
+            collection_id="homer-insta360-smoke",
+            bucket=DEFAULT_BUCKET,
+            storage_prefix="media-vault/raw",
+            ledger=str(output_dir / "drain-ledger.synthetic.jsonl"),
+            execute=False,
+            delete_local_after_upload=False,
+            continue_on_error=False,
+            max_files=10,
+            settle_seconds=0,
+            watch=False,
+            poll_seconds=60,
+        )
+        drain_result = drain_folder_once(drain_args)
+        assertions.extend(
+            [
+                drain_result["status"] == "ready",
+                drain_result["processedCount"] == 3,
+                all(entry["status"] == "dry_run" for entry in drain_result["processed"]),
+            ]
+        )
         result = {
             "status": "pass" if all(assertions) else "fail",
             "manifestPath": str(manifest_path),
@@ -921,6 +1154,25 @@ def build_parser() -> argparse.ArgumentParser:
     upload_manifest.add_argument("--execute", action="store_true")
     upload_manifest.add_argument("--continue-on-error", action="store_true")
     upload_manifest.set_defaults(func=upload_manifest_command)
+
+    drain_folder = subparsers.add_parser(
+        "drain-folder",
+        help="Upload settled local media one file at a time, verify GCS metadata, and optionally delete local copies",
+    )
+    drain_folder.add_argument("--source-dir", required=True)
+    drain_folder.add_argument("--project-id", required=True)
+    drain_folder.add_argument("--collection-id", required=True)
+    drain_folder.add_argument("--bucket", default=DEFAULT_BUCKET)
+    drain_folder.add_argument("--storage-prefix", default="media-vault/raw")
+    drain_folder.add_argument("--ledger")
+    drain_folder.add_argument("--execute", action="store_true")
+    drain_folder.add_argument("--delete-local-after-upload", action="store_true")
+    drain_folder.add_argument("--continue-on-error", action="store_true")
+    drain_folder.add_argument("--max-files", type=int, default=20)
+    drain_folder.add_argument("--settle-seconds", type=int, default=30)
+    drain_folder.add_argument("--watch", action="store_true")
+    drain_folder.add_argument("--poll-seconds", type=int, default=60)
+    drain_folder.set_defaults(func=drain_folder_command)
 
     discover_insta360 = subparsers.add_parser(
         "discover-insta360",

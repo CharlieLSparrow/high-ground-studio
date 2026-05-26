@@ -57,6 +57,37 @@ pnpm studio-cut:media-vault -- upload-manifest \
   --execute
 ```
 
+## Low-Storage Drain Mode
+
+Use this when the Insta360 app can only download a few files locally at a time.
+Point the app/export process at a local download folder, then run:
+
+```bash
+pnpm studio-cut:media-vault -- drain-folder \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+```
+
+That dry-runs the upload plan for settled files. To continuously upload,
+verify, and clear local copies:
+
+```bash
+pnpm studio-cut:media-vault -- drain-folder \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --watch \
+  --execute \
+  --delete-local-after-upload
+```
+
+The command writes a local ledger at
+`~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl`.
+Only local files are deleted, and only after `gcloud storage cp` succeeds and
+the GCS object size matches the local file size. Remote Insta360 Cloud deletion
+is still a manual app step unless a supported API becomes available.
+
 Create a manifest:
 
 ```bash

@@ -172,13 +172,18 @@ pnpm studio-cut:media-vault -- create-insta360-package \
 pnpm studio-cut:media-vault -- upload-manifest \
   --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
   --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox
+pnpm studio-cut:media-vault -- drain-folder \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360
 pnpm studio-cut:media-vault:smoke
 ```
 
 Use this helper to create local manifests and reviewable Google Cloud Storage
 upload plans for video/photo/audio folders. `upload-manifest --execute` uploads
-through the local Google Cloud CLI session. Real manifests and upload scripts
-for private media stay outside git.
+through the local Google Cloud CLI session. `drain-folder --watch --execute
+--delete-local-after-upload` is the low-storage path for upload-and-clear loops.
+Real manifests and upload scripts for private media stay outside git.
 
 ## Build Verification
 

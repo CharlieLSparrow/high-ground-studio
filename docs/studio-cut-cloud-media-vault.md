@@ -148,6 +148,60 @@ pnpm studio-cut:media-vault -- create-insta360-package \
 This still does not log in to Insta360 Cloud and does not store any third-party
 credentials. It only works with local files that already exist on the machine.
 
+### Low-Storage Migration Loop
+
+When local disk space is tight, do not download a whole Insta360 cloud library
+before uploading. Use a small local download folder as a buffer:
+
+```text
+Insta360 app/Studio/browser download -> local buffer folder -> GCS verified object -> local file deleted -> manual remote delete queue
+```
+
+Dry-run the buffer folder:
+
+```bash
+pnpm studio-cut:media-vault -- drain-folder \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+```
+
+Run the continuous drain:
+
+```bash
+pnpm studio-cut:media-vault -- drain-folder \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --watch \
+  --execute \
+  --delete-local-after-upload
+```
+
+`drain-folder` only processes files that have settled, so partially downloading
+files are skipped until their modification time is older than the configured
+settle window. For each processed file it records:
+
+- local relative path
+- destination `gs://...` object
+- file size
+- SHA-256
+- media kind
+- capture source
+- GCS generation/checksum metadata when available
+
+The ledger is written beside the buffer folder by default:
+
+```text
+~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+```
+
+Only local files are deleted, and only after upload plus GCS size verification.
+Remote Insta360 Cloud deletion should remain manual until we have an official
+API or a fully auditable automation path. The official Insta360 deletion path is
+inside the app cloud album, and deleted Insta360+ Cloud Storage files are
+recoverable from Recently Deleted for a limited time.
+
 ### Generic Folder Intake
 
 Create a manifest:

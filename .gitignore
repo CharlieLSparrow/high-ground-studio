@@ -61,5 +61,6 @@ tools/studio-cut-media-vault/output/
 **/*_local-media.json
 **/*.media-vault.local.json
 **/*-media-vault-upload.sh
+**/.studio-cut-media-vault-ledger.jsonl
 .firebase/
 .aider*

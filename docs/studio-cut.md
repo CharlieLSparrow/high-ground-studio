@@ -1071,7 +1071,12 @@ upload media or store passwords. The local helper can scan common Insta360
 Studio/export folders, stage matching files into
 `~/Movies/StudioCut/{projectId}/media-vault-package`, create a manifest, dry-run
 the upload, and execute the upload with the local Google Cloud CLI session when
-`upload-manifest --execute` is used.
+`upload-manifest --execute` is used. For low local storage, `drain-folder
+--watch --execute --delete-local-after-upload` can watch a small local download
+buffer, upload settled files one at a time, verify GCS object size, record a
+ledger, and delete only the local copy after verification. Remote Insta360 cloud
+deletion remains manual until a supported API or auditable automation path is
+available.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

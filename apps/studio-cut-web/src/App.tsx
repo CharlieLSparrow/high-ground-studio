@@ -4549,8 +4549,10 @@ function CloudMediaVaultPanel({
   const originalPrefix = `${CLOUD_MEDIA_VAULT_PREFIX}/${collectionId}/homer-insta360/originals/`;
   const proxyPrefix = `media-vault/derived/${collectionId}/homer-insta360/proxies/`;
   const packageDir = `~/Movies/StudioCut/${collectionId}/media-vault-package`;
+  const drainSourceDir = `~/Movies/StudioCut/${collectionId}/insta360-downloads`;
   const packageCommand = `pnpm studio-cut:media-vault -- create-insta360-package --project-id ${collectionId} --collection-id homer-insta360 --out-dir ${packageDir}`;
   const uploadCommand = `pnpm studio-cut:media-vault -- upload-manifest --manifest ${packageDir}/media-vault-manifest.json --source-dir ${packageDir}/inbox --execute`;
+  const drainCommand = `pnpm studio-cut:media-vault -- drain-folder --source-dir ${drainSourceDir} --project-id ${collectionId} --collection-id homer-insta360 --watch --execute --delete-local-after-upload`;
 
   return (
     <section className="cloud-media-vault-panel" aria-label="Cloud Media Vault">
@@ -4583,12 +4585,16 @@ function CloudMediaVaultPanel({
         <span>Upload command</span>
         <code>{uploadCommand}</code>
       </div>
+      <div className="cloud-media-vault-command">
+        <span>Low-storage drain command</span>
+        <code>{drainCommand}</code>
+      </div>
 
       <p className="cloud-media-vault-note">
         Put exported Insta360 video/photo files in the local intake folder, create
-        a manifest, review the generated upload plan, then run it under your
-        Google Cloud CLI session. Do not put third-party passwords or local media
-        files in the repo.
+        a manifest, or run the drain command against a download folder that the
+        app fills over time. Uploads use your Google Cloud CLI session. Do not
+        put third-party passwords or local media files in the repo.
       </p>
     </section>
   );

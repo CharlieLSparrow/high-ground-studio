@@ -566,6 +566,7 @@ async function runBrowserSmoke() {
     await expect(cloudMediaVaultSection).toContainText("Insta360");
     await expect(cloudMediaVaultSection).toContainText("create-insta360-package");
     await expect(cloudMediaVaultSection).toContainText("upload-manifest");
+    await expect(cloudMediaVaultSection).toContainText("drain-folder");
     await expect(
       cloudSyncSection.getByRole("button", {
         name: "Create Sync Job / Upload Raw Assets",
