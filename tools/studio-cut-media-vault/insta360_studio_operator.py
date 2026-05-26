@@ -226,6 +226,29 @@ def build_vault_receipt_command(*, ledger_path: Path) -> str:
     return " ".join(shell_quote(part) for part in parts)
 
 
+def build_cloud_prefix_inventory_command(
+    *,
+    operator_dir: Path,
+    project_id: str,
+    collection_id: str,
+) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:media-vault",
+        "--",
+        "cloud-prefix-inventory",
+        "--project-id",
+        project_id,
+        "--collection-id",
+        collection_id,
+        "--out",
+        str(operator_dir / "cloud-prefix-inventory.json"),
+        "--csv-out",
+        str(operator_dir / "cloud-prefix-inventory.csv"),
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
 def build_migration_report_command(
     *,
     download_dir: Path,
@@ -775,6 +798,11 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
     vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
+    cloud_prefix_inventory_command_text = build_cloud_prefix_inventory_command(
+        operator_dir=operator_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+    )
     migration_report_command_text = build_migration_report_command(
         download_dir=download_dir,
         project_id=args.project_id,
@@ -927,6 +955,21 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     run_vault_receipt_path.chmod(0o755)
     run_verify_cloud_path.chmod(0o755)
 
+    run_cloud_prefix_inventory_path = operator_dir / "run-cloud-prefix-inventory.sh"
+    run_cloud_prefix_inventory_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                cloud_prefix_inventory_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cloud_prefix_inventory_path.chmod(0o755)
+
     readme_path = operator_dir / "README.md"
     readme_path.write_text(
         "\n".join(
@@ -1002,6 +1045,14 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 "```",
                 "",
                 "Keep this JSON receipt as a handoff artifact and do not commit it.",
+                "",
+                "## Export Cloud Prefix Inventory",
+                "",
+                "```bash",
+                cloud_prefix_inventory_command_text,
+                "```",
+                "",
+                "Keep generated inventory JSON/CSV out of git if object names reveal private episode details.",
                 "`ledger-summary` redacts local source paths by default. Remote Insta360 Cloud deletion remains manual after ledger verification.",
                 "",
             ]
@@ -1025,6 +1076,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "runOperatorDashboardScript": str(run_operator_dashboard_path),
         "runVerifyLedgerCloudScript": str(run_verify_cloud_path),
         "runVaultReceiptScript": str(run_vault_receipt_path),
+        "runCloudPrefixInventoryScript": str(run_cloud_prefix_inventory_path),
         "readme": str(readme_path),
         "accessibilitySettingsCommand": accessibility_command_text,
         "preflightCommand": preflight_command,
@@ -1036,6 +1088,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "operatorDashboardCommand": operator_dashboard_command_text,
         "verifyLedgerCloudCommand": verify_ledger_cloud_command_text,
         "vaultReceiptCommand": vault_receipt_command_text,
+        "cloudPrefixInventoryCommand": cloud_prefix_inventory_command_text,
     }
     print(json.dumps(result, indent=2))
     return 0
@@ -1357,6 +1410,11 @@ def self_test_command(_: argparse.Namespace) -> int:
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
     vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
+    cloud_prefix_inventory_command_text = build_cloud_prefix_inventory_command(
+        operator_dir=Path("/tmp/studio-cut-insta360-operator-test/operator"),
+        project_id="episode-004",
+        collection_id="homer-insta360",
+    )
     migration_report_command_text = build_migration_report_command(
         download_dir=download_dir,
         project_id="episode-004",
@@ -1388,6 +1446,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "--allow-blocked" in operator_dashboard_command_text,
         "verify-ledger-cloud" in verify_ledger_cloud_command_text,
         "vault-receipt" in vault_receipt_command_text,
+        "cloud-prefix-inventory" in cloud_prefix_inventory_command_text,
         "Insta360 Studio" in ui_snapshot_applescript(APP_NAME, 2),
         "Download" in click_control_applescript(APP_NAME, "Download", 2, False),
         ACCESSIBILITY_SETTINGS_URL.startswith("x-apple.systempreferences:"),
@@ -1405,6 +1464,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "sampleOperatorDashboardCommand": operator_dashboard_command_text,
         "sampleVerifyLedgerCloudCommand": verify_ledger_cloud_command_text,
         "sampleVaultReceiptCommand": vault_receipt_command_text,
+        "sampleCloudPrefixInventoryCommand": cloud_prefix_inventory_command_text,
     }
     print(json.dumps(result, indent=2))
     return 0 if all(assertions) else 1

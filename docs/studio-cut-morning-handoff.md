@@ -242,6 +242,11 @@ pnpm studio-cut:media-vault -- verify-ledger-cloud \
 pnpm studio-cut:media-vault -- vault-receipt \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl \
   --out /tmp/studio-cut-episode-004-vault-receipt.json
+pnpm studio-cut:media-vault -- cloud-prefix-inventory \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out /tmp/episode-004-homer-insta360-cloud-inventory.json \
+  --csv-out /tmp/episode-004-homer-insta360-cloud-inventory.csv
 ```
 
 Do not use an iCloud Drive or mirrored Documents folder as the download buffer.
@@ -251,6 +256,9 @@ to override.
 The operator dashboard is the best single monitor while a migration is running:
 it combines the local buffer, GCS prefix, ledger status, Accessibility blocker,
 and next commands. It is safe to leave open while waiting for downloads.
+Use `cloud-prefix-inventory` before manual remote cleanup if you need a durable
+bucket-side object list with sizes, generations, checksums when available, and
+timestamps.
 
 If the Studio UI is visible and cloud media is selected, try:
 

@@ -1085,6 +1085,10 @@ prefix summary, next actions, and the exact helper commands while staying
 local-only. `ledger-summary` summarizes uploaded/verified bytes, local deletions,
 and manual remote deletion pending items;
 `verify-ledger-cloud` re-checks ledger destinations against live GCS metadata.
+`cloud-prefix-inventory` writes JSON/CSV object inventories from the target GCS
+prefix, including sizes, generations, timestamps, content types, checksums when
+returned by GCS, and custom metadata, so bucket-side state can be audited before
+manual remote cleanup.
 Remote Insta360 cloud deletion remains manual until a supported API or
 auditable automation path is available.
 `studio-cut:insta360-operator`
@@ -1095,10 +1099,10 @@ Accessibility permission is enabled; `open-accessibility-settings` opens the
 macOS pane when that permission is missing. `prepare-session` writes local
 helper scripts for Accessibility setup, preflight, drain, migration report,
 status page, operator dashboard, ledger summary, cloud re-verification, and
-vault-receipt export so the operator does not have to remember paths. The drain
-also performs a storage preflight and blocks obvious iCloud-managed paths by
-default; use a local buffer under `~/Movies/StudioCut/...` rather than iCloud
-Drive or mirrored Documents.
+vault-receipt/cloud-inventory export so the operator does not have to remember
+paths. The drain also performs a storage preflight and blocks obvious
+iCloud-managed paths by default; use a local buffer under
+`~/Movies/StudioCut/...` rather than iCloud Drive or mirrored Documents.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

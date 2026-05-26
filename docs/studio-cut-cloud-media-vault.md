@@ -251,6 +251,21 @@ The page reads `migration-status.json` from a local status folder and refreshes
 in the browser. It is an operator view only; do not commit generated reports or
 status-page folders if they contain private local paths.
 
+Write an auditable cloud inventory for the target prefix:
+
+```bash
+pnpm studio-cut:media-vault -- cloud-prefix-inventory \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out /tmp/episode-004-homer-insta360-cloud-inventory.json \
+  --csv-out /tmp/episode-004-homer-insta360-cloud-inventory.csv
+```
+
+Use this before manual remote cleanup when you need a durable object list beyond
+the ledger. It records object names, size, generation, content type, timestamps,
+checksums when returned by GCS, and custom metadata. Generated inventories can
+reveal private filenames, so keep them outside git.
+
 Emit a vault receipt artifact for handoff/audit:
 
 ```bash
@@ -294,8 +309,9 @@ This creates the predictable download folder plus local helper scripts for the
 whole loop: `run-open-accessibility-settings.sh`, `run-preflight.sh`,
 `run-drain.sh`, `run-migration-report.sh`, `run-status-page.sh`,
 `run-operator-dashboard.sh`, `run-ledger-summary.sh`,
-`run-verify-ledger-cloud.sh`, and `run-vault-receipt.sh`. The operator can run
-those scripts without remembering the ledger path.
+`run-verify-ledger-cloud.sh`, `run-vault-receipt.sh`, and
+`run-cloud-prefix-inventory.sh`. The operator can run those scripts without
+remembering the ledger path.
 
 Open the combined operator dashboard:
 

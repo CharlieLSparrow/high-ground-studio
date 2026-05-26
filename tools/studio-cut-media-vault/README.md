@@ -119,6 +119,21 @@ pnpm studio-cut:media-vault -- migration-status-page \
 This writes `index.html` and `migration-status.json` under a local status
 folder. It does not upload private paths or media.
 
+Write a GCS prefix inventory before manual remote cleanup:
+
+```bash
+pnpm studio-cut:media-vault -- cloud-prefix-inventory \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out /tmp/episode-004-homer-insta360-cloud-inventory.json \
+  --csv-out /tmp/episode-004-homer-insta360-cloud-inventory.csv
+```
+
+The inventory records object names, sizes, generations, checksums when GCS
+returns them, content types, timestamps, and custom metadata. Keep generated
+inventories out of git when filenames or object names reveal private episode
+details.
+
 Review the local chain-of-custody ledger at any point:
 
 ```bash
@@ -179,6 +194,7 @@ scripts:
 - `run-ledger-summary.sh`
 - `run-verify-ledger-cloud.sh`
 - `run-vault-receipt.sh`
+- `run-cloud-prefix-inventory.sh`
 
 If `doctor` reports Accessibility disabled, run:
 

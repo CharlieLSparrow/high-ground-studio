@@ -202,6 +202,11 @@ pnpm studio-cut:insta360-operator operator-dashboard \
   --allow-blocked
 pnpm studio-cut:media-vault -- ledger-summary \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+pnpm studio-cut:media-vault -- cloud-prefix-inventory \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --out /tmp/episode-004-homer-insta360-cloud-inventory.json \
+  --csv-out /tmp/episode-004-homer-insta360-cloud-inventory.csv
 pnpm studio-cut:media-vault:smoke
 ```
 
@@ -214,6 +219,8 @@ also list the current GCS prefix through the local `gcloud` session.
 `migration-status-page` opens the same status as a local browser dashboard.
 `operator-dashboard` is the best combined monitor for the Insta360 loop because
 it also reports macOS Accessibility readiness and exact next actions.
+`cloud-prefix-inventory` exports a local JSON/CSV list of uploaded GCS objects
+with object metadata for audit before manual remote cleanup.
 `ledger-summary` and `verify-ledger-cloud` provide the audit trail before any
 manual remote cleanup in Insta360 Cloud.
 `studio-cut:insta360-operator` can open Insta360 Studio, prepare the local
@@ -224,8 +231,9 @@ Run `pnpm studio-cut:insta360-operator open-accessibility-settings` if
 `prepare-session` writes local `run-open-accessibility-settings.sh`,
 `run-preflight.sh`, `run-drain.sh`, `run-migration-report.sh`,
 `run-status-page.sh`, `run-operator-dashboard.sh`, `run-ledger-summary.sh`, and
-`run-verify-ledger-cloud.sh` scripts so operators do not have to remember the
-ledger path.
+`run-verify-ledger-cloud.sh`, `run-vault-receipt.sh`, and
+`run-cloud-prefix-inventory.sh` scripts so operators do not have to remember
+the ledger path.
 Keep the download buffer outside iCloud Drive; iCloud-managed folders are
 blocked by default unless `--allow-icloud` is explicitly passed.
 Real manifests and upload scripts for private media stay outside git.

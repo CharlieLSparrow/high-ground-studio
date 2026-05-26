@@ -8,6 +8,7 @@ It intentionally does not authenticate to Google Cloud or upload by default.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import mimetypes
@@ -595,22 +596,10 @@ def empty_ledger_summary(*, ledger_path: Path) -> dict[str, Any]:
     }
 
 
-def summarize_cloud_prefix(*, bucket: str, object_prefix: str, max_objects: int) -> dict[str, Any]:
+def run_gcloud_storage_list(*, bucket: str, object_prefix: str) -> tuple[int, Any, str]:
     gcloud_path = shutil.which("gcloud")
     if not gcloud_path:
-        return {
-            "status": "blocked",
-            "bucket": bucket,
-            "objectPrefix": object_prefix,
-            "objectCount": 0,
-            "reportedObjectCount": 0,
-            "totalBytes": 0,
-            "totalGb": 0.0,
-            "objects": [],
-            "warnings": ["gcloud is not on PATH; cloud prefix summary was skipped."],
-            "errors": [],
-        }
-
+        return 127, None, "gcloud is not on PATH; cloud prefix listing was skipped."
     destination = f"gs://{bucket}/{object_prefix}"
     result = subprocess.run(
         [gcloud_path, "storage", "objects", "list", destination, "--format=json"],
@@ -619,22 +608,51 @@ def summarize_cloud_prefix(*, bucket: str, object_prefix: str, max_objects: int)
         text=True,
     )
     if result.returncode != 0:
-        return {
-            "status": "blocked",
-            "bucket": bucket,
-            "objectPrefix": object_prefix,
-            "objectCount": 0,
-            "reportedObjectCount": 0,
-            "totalBytes": 0,
-            "totalGb": 0.0,
-            "objects": [],
-            "warnings": [],
-            "errors": [result.stderr.strip() or result.stdout.strip() or f"Could not list {destination}"],
-        }
-
+        return result.returncode, None, result.stderr.strip() or result.stdout.strip() or f"Could not list {destination}"
     try:
-        payload = json.loads(result.stdout or "[]")
+        return 0, json.loads(result.stdout or "[]"), ""
     except json.JSONDecodeError:
+        return 1, None, "gcloud returned non-JSON cloud prefix data."
+
+
+def normalize_cloud_inventory_item(item: dict[str, Any]) -> dict[str, Any]:
+    size_raw = item.get("size")
+    size_bytes = int(size_raw) if str(size_raw or "").isdigit() else 0
+    return {
+        "name": item.get("name") or item.get("storageUrl") or item.get("url"),
+        "bucket": item.get("bucket"),
+        "sizeBytes": size_bytes,
+        "contentType": item.get("contentType"),
+        "storageClass": item.get("storageClass"),
+        "timeCreated": item.get("timeCreated"),
+        "updated": item.get("updated"),
+        "generation": item.get("generation"),
+        "metageneration": item.get("metageneration"),
+        "etag": item.get("etag"),
+        "md5Hash": item.get("md5Hash"),
+        "crc32c": item.get("crc32c"),
+        "kmsKeyName": item.get("kmsKeyName"),
+        "customTime": item.get("customTime"),
+        "metadata": item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+    }
+
+
+def summarize_cloud_prefix(*, bucket: str, object_prefix: str, max_objects: int) -> dict[str, Any]:
+    status, payload, error = run_gcloud_storage_list(bucket=bucket, object_prefix=object_prefix)
+    if status == 127:
+        return {
+            "status": "blocked",
+            "bucket": bucket,
+            "objectPrefix": object_prefix,
+            "objectCount": 0,
+            "reportedObjectCount": 0,
+            "totalBytes": 0,
+            "totalGb": 0.0,
+            "objects": [],
+            "warnings": [error],
+            "errors": [],
+        }
+    if status != 0:
         return {
             "status": "blocked",
             "bucket": bucket,
@@ -645,7 +663,7 @@ def summarize_cloud_prefix(*, bucket: str, object_prefix: str, max_objects: int)
             "totalGb": 0.0,
             "objects": [],
             "warnings": [],
-            "errors": ["gcloud returned non-JSON cloud prefix data."],
+            "errors": [error],
         }
 
     objects = payload if isinstance(payload, list) else []
@@ -654,19 +672,10 @@ def summarize_cloud_prefix(*, bucket: str, object_prefix: str, max_objects: int)
     for item in objects:
         if not isinstance(item, dict):
             continue
-        size_raw = item.get("size")
-        size_bytes = int(size_raw) if str(size_raw or "").isdigit() else 0
-        total_bytes += size_bytes
+        normalized = normalize_cloud_inventory_item(item)
+        total_bytes += normalized["sizeBytes"]
         if len(summarized_objects) < max(0, max_objects):
-            summarized_objects.append(
-                {
-                    "name": item.get("name") or item.get("storageUrl") or item.get("url"),
-                    "sizeBytes": size_bytes,
-                    "updated": item.get("updated"),
-                    "generation": item.get("generation"),
-                    "contentType": item.get("contentType"),
-                }
-            )
+            summarized_objects.append(normalized)
 
     warnings = []
     if len(objects) > len(summarized_objects):
@@ -860,6 +869,95 @@ def migration_report_command(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(payload, indent=2))
     return 1 if payload["errors"] else 0
+
+
+def build_cloud_prefix_inventory_payload(
+    *,
+    project_id: str,
+    collection_id: str,
+    bucket: str,
+    storage_prefix: str,
+    max_objects: int,
+) -> dict[str, Any]:
+    cloud_object_prefix = f"{storage_prefix.rstrip('/')}/{project_id}/{collection_id}/"
+    cloud_prefix = f"gs://{bucket}/{cloud_object_prefix}"
+    status, payload, error = run_gcloud_storage_list(bucket=bucket, object_prefix=cloud_object_prefix)
+    warnings: list[str] = []
+    errors: list[str] = []
+    objects: list[dict[str, Any]] = []
+    if status == 127:
+        warnings.append(error)
+    elif status != 0:
+        errors.append(error)
+    else:
+        raw_objects = payload if isinstance(payload, list) else []
+        for item in raw_objects:
+            if isinstance(item, dict):
+                objects.append(normalize_cloud_inventory_item(item))
+        if len(objects) > max_objects:
+            warnings.append(f"Inventory truncated at {max_objects} of {len(objects)} objects.")
+            objects = objects[:max_objects]
+
+    total_bytes = sum(item["sizeBytes"] for item in objects)
+    return {
+        "command": "cloud-prefix-inventory",
+        "status": "blocked" if errors else "ready",
+        "createdAt": utc_now_iso(),
+        "projectId": project_id,
+        "collectionId": collection_id,
+        "bucket": bucket,
+        "objectPrefix": cloud_object_prefix,
+        "cloudPrefix": cloud_prefix,
+        "objectCount": len(objects),
+        "totalBytes": total_bytes,
+        "totalGb": byte_count_to_gb(total_bytes),
+        "objects": objects,
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+def write_cloud_inventory_csv(path: Path, inventory: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [
+        "name",
+        "bucket",
+        "sizeBytes",
+        "contentType",
+        "storageClass",
+        "timeCreated",
+        "updated",
+        "generation",
+        "metageneration",
+        "etag",
+        "md5Hash",
+        "crc32c",
+        "customTime",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for item in inventory["objects"]:
+            writer.writerow({field: item.get(field) for field in fields})
+
+
+def cloud_prefix_inventory_command(args: argparse.Namespace) -> int:
+    inventory = build_cloud_prefix_inventory_payload(
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+        bucket=args.bucket,
+        storage_prefix=args.storage_prefix,
+        max_objects=args.max_objects,
+    )
+    if args.out:
+        write_json(Path(args.out).expanduser(), inventory)
+        print(f"Wrote cloud prefix inventory: {args.out}")
+    if args.csv_out:
+        write_cloud_inventory_csv(Path(args.csv_out).expanduser(), inventory)
+        print(f"Wrote cloud prefix inventory CSV: {args.csv_out}")
+    if not args.out and not args.csv_out:
+        print(json.dumps(inventory, indent=2))
+    return 1 if inventory["errors"] else 0
 
 
 def migration_status_page_html(*, report_file_name: str, refresh_seconds: int) -> str:
@@ -2211,6 +2309,16 @@ def smoke_test_command(_: argparse.Namespace) -> int:
         )
         vault_receipt_command(receipt_args)
         receipt = load_json(receipt_path)
+        inventory_item = normalize_cloud_inventory_item(
+            {
+                "name": "media-vault/raw/episode-004/homer-insta360-smoke/originals/video/insta360/homer-travel.insv",
+                "bucket": DEFAULT_BUCKET,
+                "size": "42",
+                "contentType": "video/mp4",
+                "generation": "123",
+                "metadata": {"source": "smoke"},
+            }
+        )
         assertions.extend(
             [
                 drain_result["status"] == "ready",
@@ -2232,6 +2340,8 @@ def smoke_test_command(_: argparse.Namespace) -> int:
                 status_page_result["status"] == "ready",
                 (status_page_dir / "index.html").exists(),
                 (status_page_dir / "migration-status.json").exists(),
+                inventory_item["sizeBytes"] == 42,
+                inventory_item["metadata"]["source"] == "smoke",
                 "/private/tmp/should-not-print-by-default" not in json.dumps(ledger_summary),
             ]
         )
@@ -2344,6 +2454,19 @@ def build_parser() -> argparse.ArgumentParser:
     migration_report.add_argument("--cloud-max-objects", type=int, default=50)
     migration_report.add_argument("--out")
     migration_report.set_defaults(func=migration_report_command)
+
+    cloud_inventory = subparsers.add_parser(
+        "cloud-prefix-inventory",
+        help="Write an auditable JSON/CSV inventory for a media-vault GCS prefix",
+    )
+    cloud_inventory.add_argument("--project-id", required=True)
+    cloud_inventory.add_argument("--collection-id", required=True)
+    cloud_inventory.add_argument("--bucket", default=DEFAULT_BUCKET)
+    cloud_inventory.add_argument("--storage-prefix", default="media-vault/raw")
+    cloud_inventory.add_argument("--max-objects", type=int, default=5000)
+    cloud_inventory.add_argument("--out")
+    cloud_inventory.add_argument("--csv-out")
+    cloud_inventory.set_defaults(func=cloud_prefix_inventory_command)
 
     migration_status_page = subparsers.add_parser(
         "migration-status-page",
