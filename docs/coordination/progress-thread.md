@@ -6,11 +6,30 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-section-presence-001`
+### Codex / `main` Studio live-room section presence
 
-- Continuing the OneNote-style live-room push after `studio-00059-btd`.
-- Targeting section-aware presence so collaborators can see which notebook
-  section each focused editor is working in, without schema or provider changes.
+- Continued the OneNote-style live-room push after `studio-00059-btd`.
+- Added section-aware presence so focused editors publish `editing section N`
+  through the existing presence `mode` string.
+- The notebook outline and section headers now show active collaborators on the
+  section they are editing.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `6fb0cb4`
+  `feat(studio): show live room section presence`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `a042bb40-8854-4523-b955-62ae888d6f59`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:6fb0cb4`
+  - Studio revision `studio-00061-h7l`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00059-btd=100`
 
 ### Codex / `main` Studio live-room notebook section controls
 
