@@ -6,11 +6,30 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-quick-sections-001`
+### Codex / `main` Studio live-room quick sections
 
-- Continuing the OneNote-style live-room push after `studio-00061-h7l`.
-- Targeting quick-insert notebook sections for notes, decisions, actions,
+- Continued the OneNote-style live-room push after `studio-00061-h7l`.
+- Added quick-insert notebook sections for notes, decisions, action items,
   questions, and source notes while keeping the same shared Yjs text document.
+- Added section-kind inference and chips in the notebook outline and section
+  headers.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `20afe3d`
+  `feat(studio): add live room quick sections`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `4e9826fb-479d-4877-96c7-a267414ff09e`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:20afe3d`
+  - Studio revision `studio-00063-982`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00061-h7l=100`
 
 ### Codex / `main` Studio live-room section presence
 

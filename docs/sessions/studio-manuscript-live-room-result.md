@@ -339,3 +339,40 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00059-btd=100
 ```
+
+## Quick Sections Deployment
+
+Merged through PR #40:
+
+```text
+main commit: 20afe3d
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:20afe3d
+Cloud Build: 4e9826fb-479d-4877-96c7-a267414ff09e
+revision: studio-00063-982
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice added quick-insert notebook sections for notes, decisions, action
+items, questions, and source notes. The notebook model now infers section kind
+from the first line and displays that kind in the outline and section header.
+
+The live-room data shape remains the same: one shared Yjs text document with
+blank-line-delimited notebook sections and raw-text fallback.
+
+Deploy validation passed:
+
+- `pnpm studio:manuscript:live-room:test`
+- `pnpm studio:cloudrun:test`
+- `pnpm --filter studio typecheck`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00061-h7l=100
+```
