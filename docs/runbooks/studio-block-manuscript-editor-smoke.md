@@ -95,39 +95,33 @@ Use this path when the desktop browser has the draft that should be available
 on another device:
 
 1. Open `/manuscript` on desktop and sign in with an authorized Studio account.
-2. Switch to `Backup`.
+2. Confirm the Save and Share panel is visible without turning on Dev Mode.
 3. Confirm `Server connected` reads connected.
-4. In `Manuscript library`, create or select the named manuscript that should
-   own the checkpoint.
-5. Confirm synthetic smoke drafts are labeled `Synthetic` and real working
-   drafts are not mixed into the synthetic record.
-6. Confirm the visible browser-local draft is the draft you intend to
+4. Confirm the visible browser-local draft is the draft you intend to
    checkpoint.
-7. Add a short snapshot note, for example `synthetic phone load smoke`.
-8. Click `Save to manuscript`.
-9. Confirm `Last saved snapshot id` updates.
-10. Confirm `Latest snapshot time` updates.
-11. Confirm `Local changes since last server save` reads `No`.
-12. Export a browser-local full draft JSON backup before moving to real
-    manuscript material.
+5. Click `Save manuscript`.
+6. Confirm the Save and Share status reports the latest saved time.
+7. Confirm `Local changes since last server save` reads `No`.
+8. Use `Copy phone link` when another device needs the saved checkpoint.
+9. Turn on Dev Mode only for named manuscript selection, raw export/import,
+   synthetic smoke testing, or publish/handoff packet generation.
 
 ### Phone Load
 
 Use this path when a phone or second browser profile needs the saved checkpoint:
 
-1. Open `/manuscript` on the phone or second browser profile.
-2. Sign in with the same authorized Studio account.
-3. Switch to `Backup`, or use the mobile tools `Load latest snapshot` action.
-4. Click `Refresh library` and select the intended named manuscript.
-5. Click `Refresh` if the snapshot list is stale.
-6. Use `Load latest manuscript` for the newest checkpoint under the selected
-   manuscript, or choose a snapshot and click
-   `Load selected snapshot`.
-7. Accept the replacement prompt only if the current browser-local draft on
+1. Open `/manuscript/live/latest` on the phone or second browser profile to
+   load the newest saved server snapshot directly, or open `/manuscript` for
+   manual selection.
+2. Sign in with an authorized Studio account.
+3. If using `/manuscript`, use the Save and Share `Load latest` action.
+4. Turn on Dev Mode only if you need the older named-manuscript selector,
+   selected snapshot picker, or raw export/import controls.
+5. Accept the replacement prompt only if the current browser-local draft on
    that device can be replaced.
-8. Confirm text, block IDs, structure regions, cited quotations, and quote
+6. Confirm text, block IDs, structure regions, cited quotations, and quote
    review metadata are present.
-9. Confirm no server snapshot is saved until `Save to manuscript` is clicked.
+7. Confirm no server snapshot is saved until `Save manuscript` is clicked.
 
 ### Real Manuscript First-Save Checklist
 

@@ -122,6 +122,7 @@ type StudioManuscriptClientProps = {
   actor: {
     primaryEmail: string;
   };
+  initialLiveSnapshotSlug?: string | null;
 };
 
 type ManuscriptServerSnapshotSummary = {
@@ -184,6 +185,14 @@ type ManuscriptSnapshotLatestResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
 
+type ManuscriptLiveSnapshotResponse =
+  | {
+      ok: true;
+      slug: string;
+      snapshot: ManuscriptServerSnapshotDetail | null;
+    }
+  | { ok: false; message: string };
+
 type ManuscriptSnapshotDetailResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
@@ -210,13 +219,21 @@ type ManuscriptTagContextMenuState = ManuscriptTextSelectionRange & {
   y: number;
 };
 
-const manuscriptSidePanelModes = [
+const everydayManuscriptSidePanelModes = [
   { id: "mark", label: "Mark" },
   { id: "structure", label: "Structure" },
   { id: "find", label: "Find" },
   { id: "quotes", label: "Quotes" },
+] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
+
+const devManuscriptSidePanelModes = [
   { id: "backup", label: "Backup" },
   { id: "publish", label: "Publish" },
+] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
+
+const manuscriptSidePanelModes = [
+  ...everydayManuscriptSidePanelModes,
+  ...devManuscriptSidePanelModes,
 ] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
 const fieldLabelClassName =
@@ -244,6 +261,8 @@ const dangerButtonClassName =
   "min-h-10 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 py-2 text-[0.8rem] font-extrabold text-studio-danger sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
+
+const MANUSCRIPT_LIVE_LATEST_PATH = "/manuscript/live/latest";
 
 function HelpHeading({
   children,
@@ -534,8 +553,11 @@ function downloadTextFile(input: {
 
 export function StudioManuscriptClient({
   actor,
+  initialLiveSnapshotSlug = null,
 }: StudioManuscriptClientProps) {
   const skipNextPersistRef = useRef(false);
+  const liveSnapshotLoadStartedRef = useRef(false);
+  const initialServerRefreshStartedRef = useRef(false);
   const manuscriptSurfaceRef = useRef<HTMLElement | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [title, setTitle] = useState("Untitled manuscript");
@@ -548,6 +570,7 @@ export function StudioManuscriptClient({
   const [showSemanticColors, setShowSemanticColors] = useState(true);
   const [sidePanelMode, setSidePanelMode] =
     useState<ManuscriptSidePanelMode>("mark");
+  const [isDevMode, setIsDevMode] = useState(false);
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [recordingOutlineKind, setRecordingOutlineKind] =
@@ -1105,6 +1128,14 @@ export function StudioManuscriptClient({
       : hasLocalChangesSinceServerSave
         ? "Yes"
         : "No";
+  const visibleSidePanelModes = isDevMode
+    ? manuscriptSidePanelModes
+    : everydayManuscriptSidePanelModes;
+  const latestShareSnapshot =
+    lastSavedServerSnapshot ??
+    latestServerSnapshot ??
+    selectedServerManuscript?.latestSnapshot ??
+    null;
   const publishingSnapshotState = useMemo(
     () => ({
       serverConnectionState,
@@ -1192,10 +1223,31 @@ export function StudioManuscriptClient({
   }, [editor, isRecordingMode]);
 
   useEffect(() => {
-    if (isRecordingMode && sidePanelMode === "backup") {
+    if (
+      isRecordingMode &&
+      (sidePanelMode === "backup" || sidePanelMode === "publish")
+    ) {
       setSidePanelMode("structure");
     }
   }, [isRecordingMode, sidePanelMode]);
+
+  useEffect(() => {
+    if (isDevMode || (sidePanelMode !== "backup" && sidePanelMode !== "publish")) {
+      return;
+    }
+
+    setSidePanelMode("mark");
+  }, [isDevMode, sidePanelMode]);
+
+  useEffect(() => {
+    if (!isHydrated || isRecordingMode || initialServerRefreshStartedRef.current) {
+      return;
+    }
+
+    initialServerRefreshStartedRef.current = true;
+    void refreshManuscriptLibrary({ silent: true });
+    void refreshServerSnapshots({ silent: true });
+  }, [isHydrated, isRecordingMode]);
 
   useEffect(() => {
     if (!isHydrated || isRecordingMode || sidePanelMode !== "backup") {
@@ -1213,6 +1265,20 @@ export function StudioManuscriptClient({
 
     void refreshServerSnapshots({ silent: true });
   }, [isHydrated, isRecordingMode, selectedServerManuscriptId, sidePanelMode]);
+
+  useEffect(() => {
+    if (
+      !editor ||
+      !isHydrated ||
+      !initialLiveSnapshotSlug ||
+      liveSnapshotLoadStartedRef.current
+    ) {
+      return;
+    }
+
+    liveSnapshotLoadStartedRef.current = true;
+    void loadLiveSnapshotBySlug(initialLiveSnapshotSlug);
+  }, [editor, initialLiveSnapshotSlug, isHydrated]);
 
   useEffect(() => {
     if (isSyntheticSmokeDraftLoaded) {
@@ -2777,6 +2843,31 @@ export function StudioManuscriptClient({
     )}`;
   }
 
+  function createLiveSnapshotUrl(slug: string) {
+    return `/api/manuscript/live/${encodeURIComponent(slug)}`;
+  }
+
+  function createLiveLatestBrowserUrl() {
+    return new URL(MANUSCRIPT_LIVE_LATEST_PATH, window.location.origin).href;
+  }
+
+  async function copyLiveLatestSnapshotLink() {
+    const url = createLiveLatestBrowserUrl();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        setMessage(`Phone link: ${url}`);
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      setMessage("Copied latest manuscript phone link.");
+    } catch (error) {
+      console.error("Latest manuscript phone link copy failed.", error);
+      setMessage(`Phone link: ${url}`);
+    }
+  }
+
   async function refreshManuscriptLibrary(input?: { silent?: boolean }) {
     setIsServerManuscriptBusy(true);
 
@@ -2962,7 +3053,7 @@ export function StudioManuscriptClient({
     setServerSnapshotStatus(
       manuscriptTitle
         ? `Saving snapshot under ${manuscriptTitle}...`
-        : "Saving legacy server snapshot...",
+        : "Saving manuscript backup...",
     );
 
     try {
@@ -3006,7 +3097,7 @@ export function StudioManuscriptClient({
           ? `Saved ${manuscriptTitle} snapshot ${formatDateTime(
               payload.snapshot.updatedAt,
             )}.`
-          : `Saved legacy server snapshot ${formatDateTime(
+          : `Saved manuscript backup ${formatDateTime(
               payload.snapshot.updatedAt,
             )}.`,
       );
@@ -3019,7 +3110,7 @@ export function StudioManuscriptClient({
       setMessage(
         manuscriptTitle
           ? "Named manuscript snapshot saved."
-          : "Legacy server manuscript snapshot saved.",
+          : "Manuscript saved for phone handoff.",
       );
     } catch (error) {
       console.error("Server snapshot save failed.", error);
@@ -3122,6 +3213,84 @@ export function StudioManuscriptClient({
       setServerConnectionState("unavailable");
       setServerSnapshotStatus("Latest server snapshot load failed.");
       setMessage("Latest server snapshot load failed.");
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function loadLiveSnapshotBySlug(slug: string) {
+    if (!editor) {
+      return;
+    }
+
+    const liveLabel = slug === "latest" ? "latest live" : slug;
+
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus(`Loading ${liveLabel} manuscript backup...`);
+
+    try {
+      const response = await fetch(createLiveSnapshotUrl(slug), {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ManuscriptLiveSnapshotResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Live manuscript backup could not be loaded.";
+        markServerSnapshotResponseState(response);
+        setServerSnapshotStatus(message);
+        setMessage(message);
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+
+      if (!payload.snapshot) {
+        setServerSnapshotStatus("No live manuscript backup saved yet.");
+        setMessage("No live manuscript backup saved yet.");
+        return;
+      }
+
+      const loadedSnapshot = payload.snapshot;
+      const draft = safeManuscriptDraft(loadedSnapshot.draft);
+
+      if (!draft) {
+        setServerSnapshotStatus("Live manuscript backup failed draft validation.");
+        setMessage("Live manuscript backup failed draft validation.");
+        return;
+      }
+
+      applyDraftToEditor(
+        draft,
+        `Loaded latest live manuscript backup from ${formatDateTime(
+          loadedSnapshot.updatedAt,
+        )}.`,
+      );
+      setSelectedServerSnapshotId(loadedSnapshot.id);
+      setLastSavedServerSnapshot(loadedSnapshot);
+      setServerCheckpointKey(createManuscriptDraftCheckpointKey(draft));
+      setServerSnapshots((current) => [
+        loadedSnapshot,
+        ...current.filter((snapshot) => snapshot.id !== loadedSnapshot.id),
+      ]);
+      setServerSnapshotStatus(
+        `Loaded latest live manuscript backup from ${formatDateTime(
+          loadedSnapshot.updatedAt,
+        )}.`,
+      );
+
+      if (isSyntheticManuscriptSmokeDraft(draft)) {
+        setHasConfirmedSyntheticPhoneLoad(true);
+      }
+    } catch (error) {
+      console.error("Live manuscript backup load failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerSnapshotStatus("Live manuscript backup load failed.");
+      setMessage("Live manuscript backup load failed.");
     } finally {
       setIsServerSnapshotBusy(false);
     }
@@ -3625,6 +3794,25 @@ export function StudioManuscriptClient({
 
           <div className="flex shrink-0 items-center justify-end gap-1.5">
             <button
+              className={cn(commandButtonClassName, "text-studio-tag")}
+              data-testid="manuscript-command-save"
+              disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+              type="button"
+              title="Save this manuscript for phone handoff"
+              onClick={() => void saveServerSnapshot()}
+            >
+              Save manuscript
+            </button>
+            <button
+              className={commandButtonClassName}
+              data-testid="manuscript-command-copy-phone-link"
+              type="button"
+              title="Copy the phone link for the latest saved manuscript"
+              onClick={() => void copyLiveLatestSnapshotLink()}
+            >
+              Copy phone link
+            </button>
+            <button
               className={cn(
                 commandButtonClassName,
                 isRecordingMode ? activeButtonClassName : "",
@@ -3654,11 +3842,16 @@ export function StudioManuscriptClient({
               </div>
             ) : null}
             <button
-              className={commandButtonClassName}
+              className={cn(
+                commandButtonClassName,
+                isDevMode ? activeButtonClassName : "",
+              )}
+              data-testid="manuscript-dev-mode-toggle"
               type="button"
-              onClick={downloadFullDraftJson}
+              title="Show advanced backup, export, smoke, and publish tools"
+              onClick={() => setIsDevMode((current) => !current)}
             >
-              Backup
+              Dev Mode
             </button>
           </div>
           <p
@@ -3728,9 +3921,7 @@ export function StudioManuscriptClient({
             </div>
 
             <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
-              Paragraphs, headings, and list items carry `blockId` attributes in
-              the editor JSON. Structure regions are block ranges. Author marks
-              and semantic highlights are separate inline marks and can overlap.
+              {message}
             </p>
           </section>
 
@@ -3743,17 +3934,105 @@ export function StudioManuscriptClient({
           >
             <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Tools</p>
-              <StudioChip tone="node">
-                {getSidePanelModeLabel(sidePanelMode)}
+              <StudioChip tone={isDevMode ? "review" : "node"}>
+                {isDevMode ? "Dev Mode" : getSidePanelModeLabel(sidePanelMode)}
               </StudioChip>
             </div>
 
+            <section
+              className={cn(
+                cardClassName,
+                "grid gap-3 border-studio-tag/45 bg-studio-tag/10 p-3.5",
+              )}
+              data-testid="manuscript-primary-save-panel"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
+                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                    Current manuscript
+                  </h2>
+                </div>
+                <StudioChip tone={serverConnectionState === "connected" ? "source" : "review"}>
+                  {serverConnectionLabel}
+                </StudioChip>
+              </div>
+              <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                Save here first, then open the latest phone link on another
+                device.
+              </p>
+              <div className="grid gap-2">
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+                  )}
+                  data-testid="manuscript-primary-save"
+                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                  type="button"
+                  onClick={() => void saveServerSnapshot()}
+                >
+                  Save manuscript
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    data-testid="manuscript-primary-copy-phone-link"
+                    type="button"
+                    onClick={() => void copyLiveLatestSnapshotLink()}
+                  >
+                    Copy phone link
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                    type="button"
+                    onClick={() => void loadLiveSnapshotBySlug("latest")}
+                  >
+                    Load latest
+                  </button>
+                </div>
+              </div>
+              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+                <p className={labelClassName}>Latest phone link</p>
+                <p className="m-0 break-all font-mono text-[0.72rem] leading-relaxed text-studio-muted">
+                  {MANUSCRIPT_LIVE_LATEST_PATH}
+                </p>
+                <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
+                  {latestShareSnapshot
+                    ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
+                    : "No server save visible in this browser yet."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <StudioChip
+                  tone={
+                    hasLocalChangesSinceServerSave === true
+                      ? "review"
+                      : hasLocalChangesSinceServerSave === false
+                        ? "source"
+                        : "default"
+                  }
+                >
+                  Local changes: {localChangesSinceServerSaveLabel}
+                </StudioChip>
+                {selectedServerManuscript ? (
+                  <StudioChip className="normal-case" tone="source">
+                    {selectedServerManuscript.title}
+                  </StudioChip>
+                ) : null}
+              </div>
+              <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                {serverSnapshotStatus}
+              </p>
+            </section>
+
             <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
               <HelpHeading noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
-                Sidebar modes
+                Work modes
               </HelpHeading>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {manuscriptSidePanelModes
+                {visibleSidePanelModes
                   .filter(
                     (mode) =>
                       !isRecordingMode ||
@@ -3783,6 +4062,17 @@ export function StudioManuscriptClient({
                     </div>
                   ))}
               </div>
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  "mt-1",
+                  isDevMode ? activeButtonClassName : "",
+                )}
+                type="button"
+                onClick={() => setIsDevMode((current) => !current)}
+              >
+                {isDevMode ? "Hide Dev Mode" : "Dev Mode"}
+              </button>
             </section>
 
             {sidePanelMode === "mark" ? (
@@ -4463,6 +4753,8 @@ export function StudioManuscriptClient({
               </div>
             </section>
 
+            {isDevMode ? (
+              <>
             <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
@@ -4616,6 +4908,8 @@ export function StudioManuscriptClient({
                 )}
               </div>
             </section>
+              </>
+            ) : null}
               </>
             ) : null}
 
@@ -5361,7 +5655,7 @@ export function StudioManuscriptClient({
               </section>
             ) : null}
 
-            {sidePanelMode === "backup" && !isRecordingMode ? (
+            {isDevMode && sidePanelMode === "backup" && !isRecordingMode ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <HelpHeading noteId="backup-mode">Export / backup</HelpHeading>
               <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
@@ -5689,7 +5983,7 @@ export function StudioManuscriptClient({
                     placeholder="Optional note, for example: ready for Homer phone recording."
                   />
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <button
                     className={smallButtonClassName}
                     data-testid="manuscript-snapshot-save"
@@ -5699,7 +5993,7 @@ export function StudioManuscriptClient({
                   >
                     {selectedServerManuscript
                       ? "Save to manuscript"
-                      : "Save legacy snapshot"}
+                      : "Save manuscript"}
                   </button>
                   <button
                     className={smallButtonClassName}
@@ -5720,6 +6014,20 @@ export function StudioManuscriptClient({
                   >
                     Refresh
                   </button>
+                  <button
+                    className={smallButtonClassName}
+                    data-testid="manuscript-snapshot-copy-live-latest-link"
+                    type="button"
+                    onClick={() => void copyLiveLatestSnapshotLink()}
+                  >
+                    Copy phone link
+                  </button>
+                </div>
+                <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                  <p className={labelClassName}>Latest phone link</p>
+                  <p className="m-0 mt-1 break-all font-mono text-[0.72rem] text-studio-muted">
+                    {MANUSCRIPT_LIVE_LATEST_PATH}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <ManuscriptHelpTip
@@ -5986,7 +6294,7 @@ export function StudioManuscriptClient({
             </section>
             ) : null}
 
-            {sidePanelMode === "publish" ? (
+            {isDevMode && sidePanelMode === "publish" ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <HelpHeading noteId="publish-mode">
@@ -6559,6 +6867,52 @@ export function StudioManuscriptClient({
                 </button>
               </div>
 
+              <div className="grid gap-2 rounded-lg border border-studio-tag/45 bg-studio-tag/10 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
+                  <StudioChip
+                    tone={
+                      serverConnectionState === "connected"
+                        ? "source"
+                        : "review"
+                    }
+                  >
+                    {serverConnectionLabel}
+                  </StudioChip>
+                </div>
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+                  )}
+                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                  type="button"
+                  onClick={() => void saveServerSnapshot()}
+                >
+                  Save manuscript
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={() => void copyLiveLatestSnapshotLink()}
+                  >
+                    Copy phone link
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                    type="button"
+                    onClick={() => void loadLiveSnapshotBySlug("latest")}
+                  >
+                    Load latest
+                  </button>
+                </div>
+                <p className="m-0 break-all font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+                  {MANUSCRIPT_LIVE_LATEST_PATH}
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex items-center gap-1.5">
                   <button
@@ -6655,6 +7009,16 @@ export function StudioManuscriptClient({
                   {showSemanticColors
                     ? "Hide semantic colors"
                     : "Show semantic colors"}
+                </button>
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    isDevMode ? activeButtonClassName : "",
+                  )}
+                  type="button"
+                  onClick={() => setIsDevMode((current) => !current)}
+                >
+                  {isDevMode ? "Hide Dev Mode" : "Dev Mode"}
                 </button>
               </div>
               <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
@@ -6784,6 +7148,7 @@ export function StudioManuscriptClient({
                 </div>
               ) : null}
 
+              {isDevMode ? (
               <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <HelpLabel noteId="publish-mode">
@@ -6874,6 +7239,7 @@ export function StudioManuscriptClient({
                   </button>
                 </div>
               </div>
+              ) : null}
 
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
