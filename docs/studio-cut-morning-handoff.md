@@ -259,6 +259,8 @@ and next commands. It is safe to leave open while waiting for downloads.
 Use `cloud-prefix-inventory` before manual remote cleanup if you need a durable
 bucket-side object list with sizes, generations, checksums when available, and
 timestamps.
+The latest live migration handoff is in
+[`docs/sessions/studio-cut-insta360-migration-current-status.md`](./sessions/studio-cut-insta360-migration-current-status.md).
 
 If the Studio UI is visible and cloud media is selected, try:
 
