@@ -265,3 +265,40 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00055-bgv=100
 ```
+
+## Notebook Section Controls Deployment
+
+Merged through PR #36:
+
+```text
+main commit: 982150d
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:982150d
+Cloud Build: a759698c-7b55-47a6-912c-e441beaa052f
+revision: studio-00059-btd
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice added room-start starter templates for session notes, writing
+passes, and coaching sessions. It also added notebook section controls for
+adding a section below, moving sections up or down, and removing sections.
+
+The live-room data shape remains the same: one shared Yjs text document with
+blank-line-delimited notebook sections and raw-text fallback.
+
+Deploy validation passed:
+
+- `pnpm studio:manuscript:live-room:test`
+- `pnpm studio:cloudrun:test`
+- `pnpm --filter studio typecheck`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00057-87h=100
+```

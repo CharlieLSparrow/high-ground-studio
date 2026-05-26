@@ -6,11 +6,30 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-notebook-workspace-001`
+### Codex / `main` Studio live-room notebook section controls
 
-- Continuing the OneNote-style live-room push after `studio-00057-87h`.
-- Targeting notebook starter templates plus section-level add, move, and remove
-  controls while keeping the same Yjs room API and additive database state.
+- Continued the OneNote-style live-room push after `studio-00057-87h`.
+- Added notebook starter templates for session notes, writing passes, and
+  coaching sessions.
+- Added section-level controls to add below, move up, move down, and remove
+  notebook sections while keeping the same Yjs room API and database state.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `982150d`
+  `feat(studio): add live room notebook section controls`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `a759698c-7b55-47a6-912c-e441beaa052f`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:982150d`
+  - Studio revision `studio-00059-btd`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00057-87h=100`
 
 ### Codex / `main` Studio live-room notebook mode
 
