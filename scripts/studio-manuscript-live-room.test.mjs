@@ -5,6 +5,7 @@ import {
   appendLiveRoomNotebookBlock,
   applyLiveRoomUpdateToDoc,
   applyTextAreaValueToYText,
+  createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
@@ -14,7 +15,10 @@ import {
   encodeLiveRoomDocStateUpdate,
   encodeLiveRoomUpdateBase64,
   getLiveRoomTextFromUpdate,
+  insertLiveRoomNotebookBlockAfter,
   mergeLiveRoomUpdates,
+  moveLiveRoomNotebookBlock,
+  removeLiveRoomNotebookBlock,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
   updateLiveRoomNotebookBlockText,
 } from "../apps/studio/src/app/manuscript/live/studio-manuscript-live-room-model.ts";
@@ -152,4 +156,44 @@ test("live room text can be edited as notebook blocks", () => {
     appended,
     "First note.\n\nSecond note with Homer context.\n\nThird working note.",
   );
+});
+
+test("live room notebook blocks can be inserted, moved, and removed", () => {
+  const base = "Agenda\n\nDraft\n\nActions";
+
+  const inserted = insertLiveRoomNotebookBlockAfter({
+    text: base,
+    blockIndex: 0,
+    blockText: "Decision log",
+  });
+
+  assert.equal(inserted, "Agenda\n\nDecision log\n\nDraft\n\nActions");
+
+  const moved = moveLiveRoomNotebookBlock({
+    text: inserted,
+    blockIndex: 3,
+    direction: -1,
+  });
+
+  assert.equal(moved, "Agenda\n\nDecision log\n\nActions\n\nDraft");
+
+  const removed = removeLiveRoomNotebookBlock({
+    text: moved,
+    blockIndex: 1,
+  });
+
+  assert.equal(removed, "Agenda\n\nActions\n\nDraft");
+});
+
+test("live room notebook starters create useful section scaffolds", () => {
+  const session = createLiveRoomNotebookStarterText("working-session");
+  const writing = createLiveRoomNotebookStarterText("writing-pass");
+  const coaching = createLiveRoomNotebookStarterText("coaching-session");
+
+  assert.match(session, /Agenda/);
+  assert.match(session, /Parking Lot/);
+  assert.match(writing, /Draft/);
+  assert.match(writing, /Open Questions/);
+  assert.match(coaching, /Current Reality/);
+  assert.match(coaching, /Commitments/);
 });

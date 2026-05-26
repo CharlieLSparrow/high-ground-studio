@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-notebook-workspace-001`
+
+- Continuing the OneNote-style live-room push after `studio-00057-87h`.
+- Targeting notebook starter templates plus section-level add, move, and remove
+  controls while keeping the same Yjs room API and additive database state.
+
 ### Codex / `main` Studio live-room notebook mode
 
 - Made `/manuscript/live` open in notebook mode by default while preserving the

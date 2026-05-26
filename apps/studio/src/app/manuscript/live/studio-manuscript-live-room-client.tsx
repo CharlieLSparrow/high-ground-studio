@@ -20,11 +20,15 @@ import {
   applyTextAreaValueToYText,
   appendLiveRoomNotebookBlock,
   countLiveRoomTextStats,
+  createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createManuscriptDraftFromLiveRoomText,
   createLiveRoomTextFromManuscriptDraft,
   decodeLiveRoomUpdateBase64,
   encodeLiveRoomUpdateBase64,
+  insertLiveRoomNotebookBlockAfter,
+  moveLiveRoomNotebookBlock,
+  removeLiveRoomNotebookBlock,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
   updateLiveRoomNotebookBlockText,
 } from "./studio-manuscript-live-room-model";
@@ -100,6 +104,17 @@ type ManuscriptLibrarySummary = {
 type ApiResponse<T> = T | { ok: false; message: string };
 
 type LiveEditorMode = "notebook" | "raw";
+
+type NotebookStarterOption = {
+  kind: "working-session" | "writing-pass" | "coaching-session";
+  label: string;
+};
+
+const notebookStarterOptions: NotebookStarterOption[] = [
+  { kind: "working-session", label: "Session notes" },
+  { kind: "writing-pass", label: "Writing pass" },
+  { kind: "coaching-session", label: "Coaching session" },
+];
 
 const buttonClassName =
   "min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.8rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10 disabled:text-studio-dim";
@@ -527,6 +542,58 @@ export function StudioManuscriptLiveRoomClient({
     updateMessage("Added notebook section.");
   }, [focusNotebookBlock, notebookBlocks.length, text, updateMessage, updateText]);
 
+  const addNotebookBlockAfter = useCallback(
+    (blockIndex: number) => {
+      const nextIndex = blockIndex + 1;
+
+      updateText(
+        insertLiveRoomNotebookBlockAfter({
+          text,
+          blockIndex,
+        }),
+      );
+      focusNotebookBlock(nextIndex);
+      updateMessage("Added notebook section.");
+    },
+    [focusNotebookBlock, text, updateMessage, updateText],
+  );
+
+  const moveNotebookBlock = useCallback(
+    (blockIndex: number, direction: -1 | 1) => {
+      const nextIndex = Math.max(
+        0,
+        Math.min(notebookBlocks.length - 1, blockIndex + direction),
+      );
+
+      updateText(
+        moveLiveRoomNotebookBlock({
+          text,
+          blockIndex,
+          direction,
+        }),
+      );
+      focusNotebookBlock(nextIndex);
+      updateMessage("Moved notebook section.");
+    },
+    [focusNotebookBlock, notebookBlocks.length, text, updateMessage, updateText],
+  );
+
+  const removeNotebookBlock = useCallback(
+    (blockIndex: number) => {
+      const nextIndex = Math.max(0, blockIndex - 1);
+
+      updateText(
+        removeLiveRoomNotebookBlock({
+          text,
+          blockIndex,
+        }),
+      );
+      focusNotebookBlock(nextIndex);
+      updateMessage("Removed notebook section.");
+    },
+    [focusNotebookBlock, text, updateMessage, updateText],
+  );
+
   const copyShareUrl = useCallback(async () => {
     if (!shareUrl) {
       return;
@@ -785,6 +852,21 @@ export function StudioManuscriptLiveRoomClient({
                 </div>
                 <label className="grid gap-1.5">
                   <span className={labelClassName}>Starting text</span>
+                  <div className="flex flex-wrap gap-2">
+                    {notebookStarterOptions.map((option) => (
+                      <button
+                        className={buttonClassName}
+                        key={option.kind}
+                        onClick={() => {
+                          setInitialText(createLiveRoomNotebookStarterText(option.kind));
+                          updateMessage(`${option.label} starter loaded.`);
+                        }}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                   <textarea
                     className={cn(textareaClassName, "min-h-[150px] text-[0.9rem]")}
                     onChange={(event) => setInitialText(event.target.value)}
@@ -941,6 +1023,46 @@ export function StudioManuscriptLiveRoomClient({
                               {block.characterCount} chars
                             </StudioChip>
                           </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className={buttonClassName}
+                            disabled={!activeRoom || isLoadingRoom}
+                            onClick={() => addNotebookBlockAfter(block.index)}
+                            type="button"
+                          >
+                            Add below
+                          </button>
+                          <button
+                            className={buttonClassName}
+                            disabled={!activeRoom || isLoadingRoom || block.index === 0}
+                            onClick={() => moveNotebookBlock(block.index, -1)}
+                            type="button"
+                          >
+                            Move up
+                          </button>
+                          <button
+                            className={buttonClassName}
+                            disabled={
+                              !activeRoom ||
+                              isLoadingRoom ||
+                              block.index >= notebookBlocks.length - 1
+                            }
+                            onClick={() => moveNotebookBlock(block.index, 1)}
+                            type="button"
+                          >
+                            Move down
+                          </button>
+                          <button
+                            className={buttonClassName}
+                            disabled={
+                              !activeRoom || isLoadingRoom || notebookBlocks.length <= 1
+                            }
+                            onClick={() => removeNotebookBlock(block.index)}
+                            type="button"
+                          >
+                            Remove
+                          </button>
                         </div>
                         <textarea
                           className={cn(
