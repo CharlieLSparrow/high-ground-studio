@@ -199,15 +199,25 @@ test("Manuscript latest live link is authenticated and snapshot-backed", () => {
   assert.match(client, /loadLiveSnapshotBySlug/);
 });
 
-test("Manuscript everyday UI keeps save controls outside Dev Mode", () => {
+test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   const client = readFileSync(
     "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
     "utf8",
   );
 
+  assert.match(client, /isSaveShareDialogOpen/);
+  assert.match(client, /data-testid="manuscript-save-share-footer"/);
+  assert.match(client, /data-testid="manuscript-save-share-dialog"/);
+  assert.match(client, /data-testid="manuscript-mobile-save-share"/);
+  assert.match(client, /data-testid="manuscript-mobile-footer-status"/);
+  assert.match(client, /data-testid="manuscript-mobile-tools-menu"/);
   assert.match(client, /data-testid="manuscript-primary-save-panel"/);
   assert.match(client, /data-testid="manuscript-primary-save"/);
   assert.match(client, /data-testid="manuscript-primary-copy-phone-link"/);
+  assert.match(client, /data-testid="manuscript-mode-select"/);
+  assert.doesNotMatch(client, /data-testid="manuscript-command-save"/);
+  assert.doesNotMatch(client, /data-testid="manuscript-command-copy-phone-link"/);
+  assert.doesNotMatch(client, /<h2 className=\{panelTitleClassName\}>Manuscript surface<\/h2>/);
   assert.match(client, /everydayManuscriptSidePanelModes/);
   assert.match(client, /devManuscriptSidePanelModes/);
   assert.match(client, /isDevMode && sidePanelMode === "backup"/);
@@ -225,6 +235,23 @@ test("Manuscript tagging controls live in sidebar Mark mode", () => {
   assert.match(client, /sidePanelMode === "mark"/);
   assert.match(client, /Mark selected text/);
   assert.match(client, /Selection ready/);
+});
+
+test("Manuscript author marks render as block washes under semantic marks", () => {
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
+    "utf8",
+  );
+  const globalsCss = readFileSync("apps/studio/src/app/globals.css", "utf8");
+
+  assert.match(client, /manuscript-author-block-charlie/);
+  assert.match(client, /manuscript-author-block-homer/);
+  assert.match(client, /node\.descendants\(\(childNode\)/);
+  assert.match(globalsCss, /--manuscript-author-wash/);
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-charlie/);
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-homer/);
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-charlie \{\n\s*background: transparent;/);
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-semantic-cited-quotation/);
 });
 
 test("Prisma db-push job image is available for Cloud SQL schema sync", () => {

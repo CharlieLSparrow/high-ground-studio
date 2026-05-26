@@ -20,7 +20,6 @@ import {
   labelClassName,
   panelClassName,
   panelCopyClassName,
-  panelTitleClassName,
   StudioChip,
   StudioGlyph,
 } from "../studio-ui";
@@ -573,6 +572,7 @@ export function StudioManuscriptClient({
   const [isDevMode, setIsDevMode] = useState(false);
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+  const [isSaveShareDialogOpen, setIsSaveShareDialogOpen] = useState(false);
   const [recordingOutlineKind, setRecordingOutlineKind] =
     useState<RecordingOutlineKind>("all");
   const [semanticType, setSemanticType] =
@@ -1131,6 +1131,10 @@ export function StudioManuscriptClient({
   const visibleSidePanelModes = isDevMode
     ? manuscriptSidePanelModes
     : everydayManuscriptSidePanelModes;
+  const visibleWorkModeOptions = visibleSidePanelModes.filter(
+    (mode) =>
+      !isRecordingMode || (mode.id !== "mark" && mode.id !== "backup"),
+  );
   const latestShareSnapshot =
     lastSavedServerSnapshot ??
     latestServerSnapshot ??
@@ -1345,6 +1349,11 @@ export function StudioManuscriptClient({
     }
 
     const classNames = [
+      "manuscript-author-block",
+      "manuscript-author-block-charlie",
+      "manuscript-author-block-homer",
+      "manuscript-author-block-mixed",
+      "manuscript-author-block-unassigned",
       "manuscript-structure-block",
       "manuscript-structure-chapter",
       "manuscript-structure-episode",
@@ -1404,6 +1413,45 @@ export function StudioManuscriptClient({
 
       if (!(domNode instanceof HTMLElement)) {
         return true;
+      }
+
+      const blockAuthorIds = new Set<ManuscriptAuthorId>();
+
+      node.descendants((childNode) => {
+        for (const mark of childNode.marks) {
+          if (mark.type.name !== "authorMark") {
+            continue;
+          }
+
+          const authorId = mark.attrs.authorId;
+
+          if (
+            authorId === "charlie" ||
+            authorId === "homer" ||
+            authorId === "unassigned"
+          ) {
+            blockAuthorIds.add(authorId);
+          }
+        }
+
+        return true;
+      });
+
+      const hasCharlieAuthor = blockAuthorIds.has("charlie");
+      const hasHomerAuthor = blockAuthorIds.has("homer");
+
+      if (hasCharlieAuthor || hasHomerAuthor || blockAuthorIds.has("unassigned")) {
+        domNode.classList.add("manuscript-author-block");
+
+        if (hasCharlieAuthor && hasHomerAuthor) {
+          domNode.classList.add("manuscript-author-block-mixed");
+        } else if (hasCharlieAuthor) {
+          domNode.classList.add("manuscript-author-block-charlie");
+        } else if (hasHomerAuthor) {
+          domNode.classList.add("manuscript-author-block-homer");
+        } else {
+          domNode.classList.add("manuscript-author-block-unassigned");
+        }
       }
 
       if (regions?.length) {
@@ -3587,6 +3635,64 @@ export function StudioManuscriptClient({
           message.includes("Loaded")
         ? "tag"
         : "default";
+  const saveSharePanel = (
+    <section
+      className={cn(
+        cardClassName,
+        "grid gap-3 border-studio-tag/45 bg-[#0a2a22]/95 p-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)]",
+      )}
+      data-testid="manuscript-primary-save-panel"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
+        <StudioChip tone={serverConnectionState === "connected" ? "source" : "review"}>
+          {serverConnectionLabel}
+        </StudioChip>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <button
+          className={cn(
+            smallButtonClassName,
+            "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+          )}
+          data-testid="manuscript-primary-save"
+          disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+          type="button"
+          onClick={() => void saveServerSnapshot()}
+        >
+          Save manuscript
+        </button>
+        <button
+          className={smallButtonClassName}
+          data-testid="manuscript-primary-copy-phone-link"
+          type="button"
+          onClick={() => void copyLiveLatestSnapshotLink()}
+        >
+          Copy phone link
+        </button>
+        <button
+          className={smallButtonClassName}
+          disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+          type="button"
+          onClick={() => void loadLiveSnapshotBySlug("latest")}
+        >
+          Load latest
+        </button>
+      </div>
+      <p
+        className="m-0 truncate font-mono text-[0.7rem] leading-relaxed text-studio-muted"
+        title={MANUSCRIPT_LIVE_LATEST_PATH}
+      >
+        {MANUSCRIPT_LIVE_LATEST_PATH}
+      </p>
+      <p className="m-0 text-[0.72rem] leading-relaxed text-studio-muted">
+        {latestShareSnapshot
+          ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
+          : "No server save visible yet."}{" "}
+        Local changes: {localChangesSinceServerSaveLabel}.
+      </p>
+    </section>
+  );
   return (
     <main className="min-h-screen overflow-x-clip px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
@@ -3640,25 +3746,6 @@ export function StudioManuscriptClient({
           </div>
 
           <div className="flex shrink-0 items-center justify-end gap-1.5">
-            <button
-              className={cn(commandButtonClassName, "text-studio-tag")}
-              data-testid="manuscript-command-save"
-              disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-              type="button"
-              title="Save this manuscript for phone handoff"
-              onClick={() => void saveServerSnapshot()}
-            >
-              Save manuscript
-            </button>
-            <button
-              className={commandButtonClassName}
-              data-testid="manuscript-command-copy-phone-link"
-              type="button"
-              title="Copy the phone link for the latest saved manuscript"
-              onClick={() => void copyLiveLatestSnapshotLink()}
-            >
-              Copy phone link
-            </button>
             <button
               className={cn(
                 commandButtonClassName,
@@ -3731,30 +3818,6 @@ export function StudioManuscriptClient({
             )}
             aria-label={isRecordingMode ? "Read-only manuscript" : "Editable manuscript"}
           >
-            <div className="grid gap-3 rounded-lg border border-studio-line bg-black/20 p-3 md:hidden">
-              <div>
-                <p className={labelClassName}>Editor</p>
-                <h2 className={panelTitleClassName}>Manuscript surface</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <StudioChip tone="tag">
-                  {textStats.words.toLocaleString()} words
-                </StudioChip>
-                <StudioChip tone="source">
-                  {blockSummaries.length.toLocaleString()} blocks
-                </StudioChip>
-                <StudioChip tone="node">
-                  {structureRegions.length.toLocaleString()} structure
-                </StudioChip>
-                {blockFilterSummary.hasActiveFilters ? (
-                  <StudioChip tone="review">
-                    {filteredBlockDetails.length.toLocaleString()} filter
-                    matches
-                  </StudioChip>
-                ) : null}
-              </div>
-            </div>
-
             {isRecordingMode ? (
               <div className="rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted md:hidden">
                 Recording mode is view-only. Exit recording mode to edit.
@@ -3784,112 +3847,7 @@ export function StudioManuscriptClient({
               </StudioChip>
             </div>
 
-            <section
-              className={cn(
-                cardClassName,
-                "grid gap-2 border-studio-tag/45 bg-[#0a2a22]/95 p-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)]",
-              )}
-              data-testid="manuscript-primary-save-panel"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
-                <StudioChip tone={serverConnectionState === "connected" ? "source" : "review"}>
-                  {serverConnectionLabel}
-                </StudioChip>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <button
-                  className={cn(
-                    smallButtonClassName,
-                    "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
-                  )}
-                  data-testid="manuscript-primary-save"
-                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                  type="button"
-                  onClick={() => void saveServerSnapshot()}
-                >
-                  Save manuscript
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  data-testid="manuscript-primary-copy-phone-link"
-                  type="button"
-                  onClick={() => void copyLiveLatestSnapshotLink()}
-                >
-                  Copy link
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                  type="button"
-                  onClick={() => void loadLiveSnapshotBySlug("latest")}
-                >
-                  Load latest
-                </button>
-              </div>
-              <p
-                className="m-0 truncate font-mono text-[0.7rem] leading-relaxed text-studio-muted"
-                title={MANUSCRIPT_LIVE_LATEST_PATH}
-              >
-                {MANUSCRIPT_LIVE_LATEST_PATH}
-              </p>
-              <p className="m-0 text-[0.72rem] leading-relaxed text-studio-muted">
-                {latestShareSnapshot
-                  ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
-                  : "No server save visible yet."}{" "}
-                Local changes: {localChangesSinceServerSaveLabel}.
-              </p>
-            </section>
-
-            <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
-              <HelpHeading noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
-                Work modes
-              </HelpHeading>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {visibleSidePanelModes
-                  .filter(
-                    (mode) =>
-                      !isRecordingMode ||
-                      (mode.id !== "mark" && mode.id !== "backup"),
-                  )
-                  .map((mode) => (
-                    <div className="flex items-center gap-1.5" key={mode.id}>
-                      <button
-                        className={cn(
-                          smallButtonClassName,
-                          "flex-1",
-                          sidePanelMode === mode.id
-                            ? activeButtonClassName
-                            : "",
-                        )}
-                        data-testid={`manuscript-mode-${mode.id}`}
-                        type="button"
-                        onClick={() => setSidePanelMode(mode.id)}
-                      >
-                        {mode.label}
-                      </button>
-                      <ManuscriptHelpTip
-                        note={getManuscriptHelpNote(
-                          getSidePanelModeHelpNoteId(mode.id),
-                        )}
-                      />
-                    </div>
-                  ))}
-              </div>
-              <button
-                className={cn(
-                  smallButtonClassName,
-                  "mt-1",
-                  isDevMode ? activeButtonClassName : "",
-                )}
-                type="button"
-                onClick={() => setIsDevMode((current) => !current)}
-              >
-                {isDevMode ? "Hide Dev Mode" : "Dev Mode"}
-              </button>
-            </section>
-
-            <div className="mt-3.5 grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
+            <div className="grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
             {sidePanelMode === "mark" ? (
               <>
                 <section className={cn(cardClassName, "grid gap-3 p-3.5")}>
@@ -6663,8 +6621,98 @@ export function StudioManuscriptClient({
               </section>
             ) : null}
             </div>
+
+            <footer
+              className="mt-3 grid shrink-0 gap-2 border-t border-studio-line pt-3"
+              aria-label="Manuscript sidebar footer"
+            >
+              <label className="grid gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <HelpLabel noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
+                    Work mode
+                  </HelpLabel>
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote(
+                      getSidePanelModeHelpNoteId(sidePanelMode),
+                    )}
+                  />
+                </div>
+                <select
+                  className={fieldClassName}
+                  data-testid="manuscript-mode-select"
+                  value={sidePanelMode}
+                  onChange={(event) =>
+                    setSidePanelMode(event.target.value as ManuscriptSidePanelMode)
+                  }
+                >
+                  {visibleWorkModeOptions.map((mode) => (
+                    <option key={mode.id} value={mode.id}>
+                      {mode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+                  )}
+                  data-testid="manuscript-save-share-footer"
+                  type="button"
+                  onClick={() => setIsSaveShareDialogOpen(true)}
+                >
+                  Save/share
+                </button>
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    isDevMode ? activeButtonClassName : "",
+                  )}
+                  type="button"
+                  onClick={() => setIsDevMode((current) => !current)}
+                >
+                  {isDevMode ? "Hide Dev" : "Dev Mode"}
+                </button>
+              </div>
+            </footer>
           </aside>
         </section>
+
+        {isSaveShareDialogOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            role="presentation"
+            onMouseDown={() => setIsSaveShareDialogOpen(false)}
+          >
+            <section
+              className="grid max-h-[min(90dvh,720px)] w-full max-w-[560px] gap-3 overflow-auto rounded-lg border border-studio-line-strong bg-studio-panel p-4 shadow-[0_24px_80px_rgba(0,0,0,0.54)]"
+              aria-label="Save and share manuscript"
+              aria-modal="true"
+              data-testid="manuscript-save-share-dialog"
+              role="dialog"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={labelClassName}>Manuscript</p>
+                  <h2 className="m-0 text-[1.05rem] leading-snug text-studio-ink">
+                    Save and share
+                  </h2>
+                </div>
+                <button
+                  className={commandButtonClassName}
+                  type="button"
+                  onClick={() => setIsSaveShareDialogOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              {saveSharePanel}
+            </section>
+          </div>
+        ) : null}
 
         <section
           className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur md:hidden"
@@ -6674,9 +6722,9 @@ export function StudioManuscriptClient({
             <div className="mb-2 grid max-h-[70vh] gap-3 overflow-auto rounded-t-2xl border border-studio-line-strong bg-[#041f1e] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className={labelClassName}>Mobile tools</p>
+                  <p className={labelClassName}>Mobile menu</p>
                   <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                    Manuscript support controls
+                    Marking tools
                   </h2>
                 </div>
                 <button
@@ -6686,52 +6734,6 @@ export function StudioManuscriptClient({
                 >
                   Back to manuscript
                 </button>
-              </div>
-
-              <div className="sticky top-0 z-20 grid gap-2 rounded-lg border border-studio-tag/45 bg-[#0a2a22]/95 p-2 shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
-                  <StudioChip
-                    tone={
-                      serverConnectionState === "connected"
-                        ? "source"
-                        : "review"
-                    }
-                  >
-                    {serverConnectionLabel}
-                  </StudioChip>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    className={cn(
-                      smallButtonClassName,
-                      "border-studio-tag/60 bg-studio-tag/15 px-2 text-[0.74rem] text-studio-tag",
-                    )}
-                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                    type="button"
-                    onClick={() => void saveServerSnapshot()}
-                  >
-                    Save
-                  </button>
-                  <button
-                    className={cn(smallButtonClassName, "px-2 text-[0.74rem]")}
-                    type="button"
-                    onClick={() => void copyLiveLatestSnapshotLink()}
-                  >
-                    Copy link
-                  </button>
-                  <button
-                    className={cn(smallButtonClassName, "px-2 text-[0.74rem]")}
-                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                    type="button"
-                    onClick={() => void loadLiveSnapshotBySlug("latest")}
-                  >
-                    Load latest
-                  </button>
-                </div>
-                <p className="m-0 truncate font-mono text-[0.68rem] leading-relaxed text-studio-muted">
-                  {MANUSCRIPT_LIVE_LATEST_PATH}
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -7190,19 +7192,33 @@ export function StudioManuscriptClient({
           ) : null}
 
           <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="m-0 truncate text-[0.82rem] font-extrabold leading-tight text-studio-ink">
-                {title || "Untitled manuscript"}
+            <div
+              className="min-w-0"
+              data-testid="manuscript-mobile-footer-status"
+            >
+              <p className={cn(labelClassName, "truncate")}>
+                Editor / Manuscript surface
               </p>
               <p className="m-0 truncate text-[0.72rem] leading-tight text-studio-muted">
                 {isRecordingMode
                   ? "Recording view-only"
                   : blockFilterSummary.hasActiveFilters
                     ? `${filteredBlockDetails.length.toLocaleString()} matches visible`
-                    : `${blockSummaries.length.toLocaleString()} manuscript blocks`}
+                    : `${textStats.words.toLocaleString()} words / ${blockSummaries.length.toLocaleString()} blocks / ${structureRegions.length.toLocaleString()} structure`}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+                )}
+                data-testid="manuscript-mobile-save-share"
+                type="button"
+                onClick={() => setIsSaveShareDialogOpen(true)}
+              >
+                Save
+              </button>
               <button
                 className={cn(
                   smallButtonClassName,
@@ -7216,13 +7232,29 @@ export function StudioManuscriptClient({
               <button
                 className={cn(
                   smallButtonClassName,
+                  "grid size-10 place-items-center px-0",
                   isMobileToolsOpen ? activeButtonClassName : "",
                 )}
+                data-testid="manuscript-mobile-tools-menu"
                 type="button"
                 aria-expanded={isMobileToolsOpen}
+                aria-label={
+                  isMobileToolsOpen
+                    ? "Close marking tools"
+                    : "Open marking tools"
+                }
+                title={
+                  isMobileToolsOpen
+                    ? "Close marking tools"
+                    : "Open marking tools"
+                }
                 onClick={() => setIsMobileToolsOpen((current) => !current)}
               >
-                {isMobileToolsOpen ? "Close tools" : "Tools"}
+                <span className="grid gap-1" aria-hidden="true">
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                </span>
               </button>
             </div>
             </div>
