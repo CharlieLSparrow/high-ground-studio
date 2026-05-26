@@ -37,6 +37,7 @@ import {
   createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
   createDefaultManuscriptQuoteReview,
+  deriveManuscriptChaptersFromTitleBlocks,
   createAuthorContributionMarkdown,
   createHgoEpisodeProjectionFromManuscript,
   createPublishingPacketMarkdown,
@@ -89,7 +90,9 @@ import {
   validateEditorJsonShape,
   type ManuscriptAuthorId,
   type ManuscriptBlockFilterCriteria,
+  type ManuscriptChapterTitleBlock,
   type ManuscriptCitedQuotationSummary,
+  type ManuscriptDerivedChapter,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptFilterVisualMode,
@@ -281,6 +284,10 @@ function createStructureRegionId() {
   return `structure-${createId("region")}`;
 }
 
+function createChapterTitleBlockId() {
+  return `chapter-title-${createId("block")}`;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return "Not saved yet";
@@ -369,6 +376,7 @@ function createDraftFromState(input: {
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
   structureRegions: ManuscriptStructureRegion[];
+  chapterTitleBlocks: ManuscriptChapterTitleBlock[];
   quoteReviews: Record<string, ManuscriptQuoteReview>;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
@@ -382,6 +390,7 @@ function createDraftFromState(input: {
     sourceFileName: input.sourceFileName,
     importSummary: input.importSummary,
     structureRegions: input.structureRegions,
+    chapterTitleBlocks: input.chapterTitleBlocks,
     quoteReviews: input.quoteReviews,
     editorJson: input.editorJson,
     activeAuthorId: input.activeAuthorId,
@@ -498,6 +507,9 @@ export function StudioManuscriptClient({
   const [structureNotes, setStructureNotes] = useState("");
   const [structureRegions, setStructureRegions] = useState<
     ManuscriptStructureRegion[]
+  >([]);
+  const [chapterTitleBlocks, setChapterTitleBlocks] = useState<
+    ManuscriptChapterTitleBlock[]
   >([]);
   const [quoteReviews, setQuoteReviews] = useState<
     Record<string, ManuscriptQuoteReview>
@@ -679,6 +691,7 @@ export function StudioManuscriptClient({
           setSourceFileName(parsed.sourceFileName);
           setImportSummary(parsed.importSummary);
           setStructureRegions(parsed.structureRegions);
+          setChapterTitleBlocks(parsed.chapterTitleBlocks);
           setQuoteReviews(parsed.quoteReviews);
           setActiveAuthorId(parsed.activeAuthorId);
           setShowAuthorColors(parsed.showAuthorColors);
@@ -713,6 +726,7 @@ export function StudioManuscriptClient({
       sourceFileName,
       importSummary,
       structureRegions,
+      chapterTitleBlocks,
       quoteReviews,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
@@ -736,6 +750,7 @@ export function StudioManuscriptClient({
     editor,
     editorJson,
     importSummary,
+    chapterTitleBlocks,
     isHydrated,
     quoteReviews,
     showAuthorColors,
@@ -757,6 +772,25 @@ export function StudioManuscriptClient({
     () => collectBlockSummaries(currentEditorJson),
     [currentEditorJson],
   );
+  const derivedChapters = useMemo(
+    () =>
+      deriveManuscriptChaptersFromTitleBlocks({
+        blocks: blockSummaries,
+        chapterTitleBlocks,
+      }),
+    [blockSummaries, chapterTitleBlocks],
+  );
+  const chapterTitleBlockIds = useMemo(
+    () => new Set(chapterTitleBlocks.map((titleBlock) => titleBlock.blockId)),
+    [chapterTitleBlocks],
+  );
+  const leadingChapterlessBlockCount = useMemo(() => {
+    if (!blockSummaries.length || !derivedChapters.length) {
+      return blockSummaries.length;
+    }
+
+    return Math.max(0, derivedChapters[0].startIndex);
+  }, [blockSummaries.length, derivedChapters]);
   const pendingStructureRange = useMemo(
     () =>
       createBlockRangeSummary({
@@ -939,10 +973,12 @@ export function StudioManuscriptClient({
         sourceFileName,
         importSummary,
         structureRegions,
+        chapterTitleBlocks,
         quoteReviews,
         editorJson: currentEditorJson,
       }),
     [
+      chapterTitleBlocks,
       currentEditorJson,
       importSummary,
       quoteReviews,
@@ -958,6 +994,7 @@ export function StudioManuscriptClient({
         sourceFileName,
         importSummary,
         structureRegions,
+        chapterTitleBlocks,
         quoteReviews,
         editorJson: currentEditorJson,
         activeAuthorId,
@@ -967,6 +1004,7 @@ export function StudioManuscriptClient({
       }),
     [
       activeAuthorId,
+      chapterTitleBlocks,
       currentEditorJson,
       importSummary,
       lastUpdatedAt,
@@ -1158,6 +1196,7 @@ export function StudioManuscriptClient({
       "manuscript-structure-chapter",
       "manuscript-structure-episode",
       "manuscript-structure-section",
+      "manuscript-chapter-title-block",
       "manuscript-filter-match",
       "manuscript-filter-dim",
       "manuscript-filter-hide",
@@ -1192,6 +1231,9 @@ export function StudioManuscriptClient({
     const matchingFilterBlockIds = new Set(focusVisibleBlockIds.matchingBlockIds);
     const contextFilterBlockIds = new Set(focusVisibleBlockIds.contextBlockIds);
     const visibleFilterBlockIds = new Set(focusVisibleBlockIds.visibleBlockIds);
+    const markedChapterTitleBlockIds = new Set(
+      chapterTitleBlocks.map((titleBlock) => titleBlock.blockId),
+    );
 
     editor.state.doc.descendants((node, pos) => {
       if (!blockNodeTypes.includes(node.type.name)) {
@@ -1224,6 +1266,10 @@ export function StudioManuscriptClient({
         );
       }
 
+      if (markedChapterTitleBlockIds.has(blockId)) {
+        domNode.classList.add("manuscript-chapter-title-block");
+      }
+
       if (blockFilterSummary.hasActiveFilters) {
         if (matchingFilterBlockIds.has(blockId)) {
           domNode.classList.add("manuscript-filter-match");
@@ -1242,6 +1288,7 @@ export function StudioManuscriptClient({
     });
   }, [
     blockFilterSummary.hasActiveFilters,
+    chapterTitleBlocks,
     editor,
     editorJson,
     filterVisualMode,
@@ -1285,6 +1332,71 @@ export function StudioManuscriptClient({
       blockSummaries.find((block) => block.blockId === blockId)?.preview ||
       "Empty block"
     );
+  }
+
+  function getChapterForTitleBlock(blockId: string | null) {
+    if (!blockId) {
+      return null;
+    }
+
+    return (
+      derivedChapters.find((chapter) => chapter.titleBlockId === blockId) ??
+      null
+    );
+  }
+
+  function toggleChapterTitleBlock(blockId: string | null) {
+    if (!blockId) {
+      setMessage("Cannot mark a chapter title without a block ID.");
+      return;
+    }
+
+    const existingTitleBlock = chapterTitleBlocks.find(
+      (titleBlock) => titleBlock.blockId === blockId,
+    );
+
+    if (existingTitleBlock) {
+      setChapterTitleBlocks((current) =>
+        current.filter((titleBlock) => titleBlock.blockId !== blockId),
+      );
+      setMessage("Chapter title marker removed.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    setChapterTitleBlocks((current) => [
+      ...current,
+      {
+        id: createChapterTitleBlockId(),
+        blockId,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    setMessage(`Marked "${getBlockPreview(blockId)}" as a chapter title.`);
+  }
+
+  function toggleSelectedBlockAsChapterTitle() {
+    if (!editor) {
+      return;
+    }
+
+    const range = selectedStructureRange ?? getEditorSelectionBlockRange(editor);
+
+    if (!range?.startBlockId) {
+      setMessage("Place the cursor in a title block before marking it.");
+      return;
+    }
+
+    toggleChapterTitleBlock(range.startBlockId);
+  }
+
+  function focusDerivedChapter(
+    chapter: ManuscriptDerivedChapter,
+    boundary: "title" | "end",
+  ) {
+    focusBlock(boundary === "end" ? chapter.endBlockId : chapter.titleBlockId);
   }
 
   function setPendingStructureStart(blockId: string | null) {
@@ -1984,6 +2096,7 @@ export function StudioManuscriptClient({
       setSourceFileName(file.name);
       setImportSummary(summary);
       setStructureRegions([]);
+      setChapterTitleBlocks([]);
       setQuoteReviews({});
       setEditingQuoteReviewHighlightId(null);
       setSelectedStructureRange(null);
@@ -2043,6 +2156,7 @@ export function StudioManuscriptClient({
       sourceFileName,
       importSummary,
       structureRegions,
+      chapterTitleBlocks,
       quoteReviews,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
@@ -2437,6 +2551,7 @@ export function StudioManuscriptClient({
     setSourceFileName(draft.sourceFileName);
     setImportSummary(draft.importSummary);
     setStructureRegions(draft.structureRegions);
+    setChapterTitleBlocks(draft.chapterTitleBlocks);
     setQuoteReviews(draft.quoteReviews);
     setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
@@ -2998,6 +3113,7 @@ export function StudioManuscriptClient({
         setSourceFileName(parsedDraft.sourceFileName);
         setImportSummary(parsedDraft.importSummary);
         setStructureRegions(parsedDraft.structureRegions);
+        setChapterTitleBlocks(parsedDraft.chapterTitleBlocks);
         setQuoteReviews(parsedDraft.quoteReviews);
         setEditingQuoteReviewHighlightId(null);
         setSelectedStructureRange(null);
@@ -3028,6 +3144,7 @@ export function StudioManuscriptClient({
       setSourceFileName(null);
       setImportSummary(null);
       setStructureRegions([]);
+      setChapterTitleBlocks([]);
       setQuoteReviews({});
       setEditingQuoteReviewHighlightId(null);
       setSelectedStructureRange(null);
@@ -3075,6 +3192,7 @@ export function StudioManuscriptClient({
     setSourceFileName(null);
     setImportSummary(null);
     setStructureRegions([]);
+    setChapterTitleBlocks([]);
     setQuoteReviews({});
     setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
@@ -3778,10 +3896,109 @@ export function StudioManuscriptClient({
                   <button
                     className={smallButtonClassName}
                     type="button"
+                    onClick={toggleSelectedBlockAsChapterTitle}
+                  >
+                    {selectedStructureRange?.startBlockId &&
+                    chapterTitleBlockIds.has(selectedStructureRange.startBlockId)
+                      ? "Unmark chapter title"
+                      : "Mark chapter title"}
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
                     onClick={suggestBookRegionsFromHeadings}
                   >
                     Suggest book regions from headings
                   </button>
+                </section>
+
+                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                      Chapter title map
+                    </h2>
+                    <div className="flex flex-wrap gap-1.5">
+                      <StudioChip tone="node">
+                        {derivedChapters.length.toLocaleString()} chapters
+                      </StudioChip>
+                      <StudioChip tone="source">
+                        {chapterTitleBlocks.length.toLocaleString()} titles
+                      </StudioChip>
+                    </div>
+                  </div>
+                  {leadingChapterlessBlockCount ? (
+                    <p className="m-0 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2 text-[0.76rem] leading-relaxed text-studio-muted">
+                      {leadingChapterlessBlockCount.toLocaleString()} block
+                      {leadingChapterlessBlockCount === 1 ? "" : "s"} before the
+                      first chapter title.
+                    </p>
+                  ) : null}
+                  <div className="grid max-h-[260px] gap-2 overflow-auto pr-1">
+                    {derivedChapters.length ? (
+                      derivedChapters.map((chapter, index) => (
+                        <article
+                          className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                          key={chapter.id}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap gap-1.5">
+                                <StudioChip tone="node">
+                                  Chapter {index + 1}
+                                </StudioChip>
+                                <StudioChip tone="source">
+                                  {chapter.blockCount.toLocaleString()} blocks
+                                </StudioChip>
+                              </div>
+                              <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
+                                {chapter.title}
+                              </h3>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={() =>
+                                  focusDerivedChapter(chapter, "title")
+                                }
+                              >
+                                Jump title
+                              </button>
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={() => focusDerivedChapter(chapter, "end")}
+                              >
+                                Jump end
+                              </button>
+                              {!isRecordingMode ? (
+                                <button
+                                  className={dangerButtonClassName}
+                                  type="button"
+                                  onClick={() =>
+                                    toggleChapterTitleBlock(chapter.titleBlockId)
+                                  }
+                                >
+                                  Remove title
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                          <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+                            {chapter.bodyBlockCount.toLocaleString()} body block
+                            {chapter.bodyBlockCount === 1 ? "" : "s"}
+                          </p>
+                          <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                            End: {chapter.endPreview}
+                          </p>
+                        </article>
+                      ))
+                    ) : (
+                      <p className={panelCopyClassName}>
+                        No chapter titles marked yet.
+                      </p>
+                    )}
+                  </div>
                 </section>
 
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
@@ -4034,6 +4251,7 @@ export function StudioManuscriptClient({
                     const blockRegions = getStructureRegionsForBlock(
                       block.blockId,
                     );
+                    const blockChapter = getChapterForTitleBlock(block.blockId);
 
                     return (
                       <article
@@ -4056,6 +4274,9 @@ export function StudioManuscriptClient({
                             {block.blockId &&
                             block.blockId === pendingStructureEndBlockId ? (
                               <StudioChip tone="review">End</StudioChip>
+                            ) : null}
+                            {blockChapter ? (
+                              <StudioChip tone="node">Chapter title</StudioChip>
                             ) : null}
                           </div>
                           <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
@@ -4084,6 +4305,16 @@ export function StudioManuscriptClient({
                                 }}
                               >
                                 Set end
+                              </button>
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleChapterTitleBlock(block.blockId);
+                                }}
+                              >
+                                {blockChapter ? "Unmark title" : "Mark title"}
                               </button>
                             </>
                           ) : null}
@@ -6138,6 +6369,13 @@ export function StudioManuscriptClient({
                 <button
                   className={smallButtonClassName}
                   type="button"
+                  onClick={toggleSelectedBlockAsChapterTitle}
+                >
+                  Mark chapter title
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
                   onClick={() => {
                     applyQuoteFocus();
                     returnToManuscript();
@@ -6416,7 +6654,11 @@ export function StudioManuscriptClient({
                             .label}
                     </StudioChip>
                     <StudioChip tone="source">
-                      {recordingOutlineRegions.length.toLocaleString()} items
+                      {(recordingOutlineKind === "chapter" &&
+                      derivedChapters.length
+                        ? derivedChapters.length
+                        : recordingOutlineRegions.length
+                      ).toLocaleString()} items
                     </StudioChip>
                   </div>
                 </div>
@@ -6448,7 +6690,49 @@ export function StudioManuscriptClient({
                 </div>
 
                 <div className="grid max-h-[32vh] gap-2 overflow-auto pr-1">
-                  {recordingOutlineRegions.length ? (
+                  {recordingOutlineKind === "chapter" &&
+                  derivedChapters.length ? (
+                    derivedChapters.map((chapter, index) => (
+                      <article
+                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={chapter.id}
+                      >
+                        <div className="flex flex-wrap gap-1.5">
+                          <StudioChip tone="node">
+                            Chapter {index + 1}
+                          </StudioChip>
+                          <StudioChip tone="source">
+                            {chapter.blockCount.toLocaleString()} blocks
+                          </StudioChip>
+                        </div>
+                        <h4 className="m-0 text-[0.9rem] leading-snug text-studio-ink">
+                          {chapter.title}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() => {
+                              focusDerivedChapter(chapter, "title");
+                              returnToManuscript();
+                            }}
+                          >
+                            Jump title
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() => {
+                              focusDerivedChapter(chapter, "end");
+                              returnToManuscript();
+                            }}
+                          >
+                            Jump end
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  ) : recordingOutlineRegions.length ? (
                     recordingOutlineRegions.map((region) => (
                       <article
                         className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"

@@ -133,6 +133,7 @@ export type ManuscriptDraft = {
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
   structureRegions: ManuscriptStructureRegion[];
+  chapterTitleBlocks: ManuscriptChapterTitleBlock[];
   quoteReviews: Record<string, ManuscriptQuoteReview>;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
@@ -192,6 +193,29 @@ export type ManuscriptBlockSummary = {
   blockId: string | null;
   type: string;
   preview: string;
+};
+
+export type ManuscriptChapterTitleBlock = {
+  id: string;
+  blockId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ManuscriptDerivedChapter = {
+  id: string;
+  title: string;
+  titleBlockId: string;
+  startBlockId: string;
+  endBlockId: string;
+  startIndex: number;
+  endIndex: number;
+  blockCount: number;
+  bodyBlockCount: number;
+  startPreview: string;
+  endPreview: string;
+  blockIds: string[];
+  isRangeComplete: boolean;
 };
 
 export type ManuscriptBlockStructureReference = {
@@ -729,6 +753,7 @@ export function createDefaultManuscriptDraft(
     sourceFileName: null,
     importSummary: null,
     structureRegions: [],
+    chapterTitleBlocks: [],
     quoteReviews: {},
     editorJson: createEmptyManuscriptDoc(),
     activeAuthorId: "homer",
@@ -1025,6 +1050,14 @@ export function createSyntheticManuscriptSmokeDraft(
     title: SYNTHETIC_MANUSCRIPT_SMOKE_TITLE,
     sourceFileName: SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME,
     importSummary,
+    chapterTitleBlocks: [
+      {
+        id: "synthetic-smoke-chapter-title",
+        blockId: "synthetic-smoke-heading",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
     structureRegions: [
       {
         id: "synthetic-smoke-chapter",
@@ -1647,6 +1680,76 @@ export function createBlockRangeSummary(input: {
     ),
     isRangeComplete,
   };
+}
+
+export function deriveManuscriptChaptersFromTitleBlocks(input: {
+  blocks: ManuscriptBlockSummary[];
+  chapterTitleBlocks: ManuscriptChapterTitleBlock[];
+}): ManuscriptDerivedChapter[] {
+  const blockIndexById = new Map<string, number>();
+
+  input.blocks.forEach((block, index) => {
+    if (block.blockId) {
+      blockIndexById.set(block.blockId, index);
+    }
+  });
+
+  const seenBlockIds = new Set<string>();
+  const titleBlocks = input.chapterTitleBlocks
+    .filter((titleBlock) => {
+      if (
+        seenBlockIds.has(titleBlock.blockId) ||
+        !blockIndexById.has(titleBlock.blockId)
+      ) {
+        return false;
+      }
+
+      seenBlockIds.add(titleBlock.blockId);
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        (blockIndexById.get(left.blockId) ?? 0) -
+        (blockIndexById.get(right.blockId) ?? 0),
+    );
+
+  return titleBlocks.map((titleBlock, index) => {
+    const startIndex = blockIndexById.get(titleBlock.blockId) ?? -1;
+    const nextTitleBlock = titleBlocks[index + 1];
+    const nextTitleIndex = nextTitleBlock
+      ? blockIndexById.get(nextTitleBlock.blockId)
+      : undefined;
+    const endIndex =
+      nextTitleIndex === undefined
+        ? input.blocks.length - 1
+        : Math.max(startIndex, nextTitleIndex - 1);
+    const chapterBlocks =
+      startIndex >= 0 && endIndex >= startIndex
+        ? input.blocks.slice(startIndex, endIndex + 1)
+        : [];
+    const blockIds = chapterBlocks.flatMap((block) =>
+      block.blockId ? [block.blockId] : [],
+    );
+    const startPreview =
+      input.blocks[startIndex]?.preview || `Chapter ${index + 1}`;
+    const endPreview = input.blocks[endIndex]?.preview || startPreview;
+
+    return {
+      id: titleBlock.id,
+      title: startPreview,
+      titleBlockId: titleBlock.blockId,
+      startBlockId: titleBlock.blockId,
+      endBlockId: blockIds[blockIds.length - 1] ?? titleBlock.blockId,
+      startIndex,
+      endIndex,
+      blockCount: chapterBlocks.length,
+      bodyBlockCount: Math.max(0, chapterBlocks.length - 1),
+      startPreview,
+      endPreview,
+      blockIds,
+      isRangeComplete: chapterBlocks.length > 0,
+    };
+  });
 }
 
 export function collectStructureRegionSummaries(input: {
@@ -3689,6 +3792,54 @@ export function safeManuscriptStructureRegions(
   return regions.sort((left, right) => left.order - right.order);
 }
 
+export function safeManuscriptChapterTitleBlocks(
+  value: unknown,
+): ManuscriptChapterTitleBlock[] | null {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const titleBlocks: ManuscriptChapterTitleBlock[] = [];
+  const seenBlockIds = new Set<string>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+
+    const titleBlock = item as Partial<ManuscriptChapterTitleBlock>;
+
+    if (
+      typeof titleBlock.id !== "string" ||
+      !titleBlock.id.trim() ||
+      typeof titleBlock.blockId !== "string" ||
+      !titleBlock.blockId.trim() ||
+      typeof titleBlock.createdAt !== "string" ||
+      typeof titleBlock.updatedAt !== "string"
+    ) {
+      return null;
+    }
+
+    if (seenBlockIds.has(titleBlock.blockId)) {
+      continue;
+    }
+
+    seenBlockIds.add(titleBlock.blockId);
+    titleBlocks.push({
+      id: titleBlock.id,
+      blockId: titleBlock.blockId,
+      createdAt: titleBlock.createdAt,
+      updatedAt: titleBlock.updatedAt,
+    });
+  }
+
+  return titleBlocks;
+}
+
 export function safeManuscriptQuoteReviews(
   value: unknown,
 ): Record<string, ManuscriptQuoteReview> | null {
@@ -3778,6 +3929,7 @@ export function hasMeaningfulManuscriptDraft(input: {
   editorJson: ManuscriptEditorJson;
   importSummary?: ManuscriptImportSummary | null;
   structureRegions?: ManuscriptStructureRegion[];
+  chapterTitleBlocks?: ManuscriptChapterTitleBlock[];
   quoteReviews?: Record<string, ManuscriptQuoteReview>;
 }) {
   return (
@@ -3785,6 +3937,7 @@ export function hasMeaningfulManuscriptDraft(input: {
     Boolean(input.sourceFileName) ||
     Boolean(input.importSummary) ||
     Boolean(input.structureRegions?.length) ||
+    Boolean(input.chapterTitleBlocks?.length) ||
     Boolean(Object.keys(input.quoteReviews ?? {}).length) ||
     countWordsAndCharacters(input.editorJson).words > 0
   );
@@ -3940,6 +4093,9 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
   const structureRegions = safeManuscriptStructureRegions(
     draft.structureRegions,
   );
+  const chapterTitleBlocks = safeManuscriptChapterTitleBlocks(
+    draft.chapterTitleBlocks,
+  );
   const quoteReviews = safeManuscriptQuoteReviews(draft.quoteReviews);
 
   if (
@@ -3947,6 +4103,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     typeof draft.title !== "string" ||
     !validateEditorJsonShape(draft.editorJson) ||
     !structureRegions ||
+    !chapterTitleBlocks ||
     !quoteReviews ||
     !isManuscriptAuthorId(activeAuthorId) ||
     typeof draft.showAuthorColors !== "boolean" ||
@@ -3974,6 +4131,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     sourceFileName: draft.sourceFileName,
     importSummary,
     structureRegions,
+    chapterTitleBlocks,
     quoteReviews,
     editorJson: draft.editorJson,
     activeAuthorId,

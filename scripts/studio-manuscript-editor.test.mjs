@@ -17,6 +17,7 @@ import {
   createBlockRangeSummary,
   createCitedQuotationMarkdown,
   createDefaultManuscriptQuoteReview,
+  deriveManuscriptChaptersFromTitleBlocks,
   createHgoEpisodeProjectionFromManuscript,
   ensureManuscriptBlockIds,
   createManuscriptDraftCheckpointKey,
@@ -52,6 +53,7 @@ import {
   moveManuscriptStructureRegionWithinKind,
   removeManuscriptQuoteReview,
   safeManuscriptDraft,
+  safeManuscriptChapterTitleBlocks,
   safeManuscriptQuoteReviews,
   safeManuscriptStructureRegions,
   semanticHighlightDefinitions,
@@ -263,6 +265,14 @@ test("safeManuscriptDraft accepts a valid draft", () => {
         updatedAt: "2026-05-19T12:00:00.000Z",
       },
     ],
+    chapterTitleBlocks: [
+      {
+        id: "chapter-title-1",
+        blockId: "block-1",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+      },
+    ],
     quoteReviews: {
       "semantic-1": {
         highlightId: "semantic-1",
@@ -303,6 +313,14 @@ test("createManuscriptSnapshotMetadata summarizes a synthetic draft", () => {
         order: 1,
         colorKey: "chapter",
         notes: "",
+        createdAt: "2026-05-20T12:00:00.000Z",
+        updatedAt: "2026-05-20T12:00:00.000Z",
+      },
+    ],
+    chapterTitleBlocks: [
+      {
+        id: "chapter-title-snapshot",
+        blockId: "block-1",
         createdAt: "2026-05-20T12:00:00.000Z",
         updatedAt: "2026-05-20T12:00:00.000Z",
       },
@@ -388,9 +406,11 @@ test("Studio manuscript library input keeps only named manuscript metadata", () 
   assert.equal("editorJson" in input, false);
   assert.equal("quoteReviews" in input, false);
   assert.equal("structureRegions" in input, false);
+  assert.equal("chapterTitleBlocks" in input, false);
   assert.equal(serialized.includes("editorJson"), false);
   assert.equal(serialized.includes("quoteReviews"), false);
   assert.equal(serialized.includes("structureRegions"), false);
+  assert.equal(serialized.includes("chapterTitleBlocks"), false);
   assert.equal(serialized.includes("marks"), false);
 });
 
@@ -419,6 +439,7 @@ test("createManuscriptDraftCheckpointKey ignores local save timestamp churn", ()
     sourceFileName: null,
     importSummary: null,
     structureRegions: [],
+    chapterTitleBlocks: [],
     quoteReviews: {},
     editorJson,
     activeAuthorId: "homer",
@@ -443,7 +464,7 @@ test("createManuscriptDraftCheckpointKey ignores local save timestamp churn", ()
   );
 });
 
-test("safeManuscriptDraft defaults older drafts to no structure regions", () => {
+test("safeManuscriptDraft defaults older drafts to no structure regions or chapter titles", () => {
   const parsed = safeManuscriptDraft({
     schemaVersion: MANUSCRIPT_SCHEMA_VERSION,
     title: "Older draft",
@@ -457,6 +478,7 @@ test("safeManuscriptDraft defaults older drafts to no structure regions", () => 
   });
 
   assert.deepEqual(parsed?.structureRegions, []);
+  assert.deepEqual(parsed?.chapterTitleBlocks, []);
   assert.deepEqual(parsed?.quoteReviews, {});
 });
 
@@ -609,6 +631,23 @@ test("hasMeaningfulManuscriptDraft detects drafts worth protecting", () => {
     }),
     true,
   );
+  assert.equal(
+    hasMeaningfulManuscriptDraft({
+      title: "Untitled manuscript",
+      sourceFileName: null,
+      importSummary: null,
+      chapterTitleBlocks: [
+        {
+          id: "chapter-title-empty",
+          blockId: "block-1",
+          createdAt: "2026-05-19T12:00:00.000Z",
+          updatedAt: "2026-05-19T12:00:00.000Z",
+        },
+      ],
+      editorJson: { type: "doc", content: [{ type: "paragraph" }] },
+    }),
+    true,
+  );
 });
 
 test("summarizeAuthorMarkedSpans separates Charlie and Homer spans", () => {
@@ -732,6 +771,116 @@ test("structure regions summarize block ranges without inline marks", () => {
     "block-c",
   ]);
   assert.equal(collectSemanticHighlights(threeBlockDoc).length, 0);
+});
+
+test("chapter title blocks derive contiguous chapter ranges", () => {
+  const chapterDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-preface-note" },
+        content: [{ type: "text", text: "Loose opening note" }],
+      },
+      {
+        type: "heading",
+        attrs: { blockId: "block-chapter-one" },
+        content: [{ type: "text", text: "Chapter One" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-one-body" },
+        content: [{ type: "text", text: "Chapter one body" }],
+      },
+      {
+        type: "heading",
+        attrs: { blockId: "block-chapter-two" },
+        content: [{ type: "text", text: "Chapter Two" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-two-body" },
+        content: [{ type: "text", text: "Chapter two body" }],
+      },
+    ],
+  };
+  const blocks = collectBlockSummaries(chapterDoc);
+  const chapterTitleBlocks = [
+    {
+      id: "chapter-title-two",
+      blockId: "block-chapter-two",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:00:00.000Z",
+    },
+    {
+      id: "chapter-title-missing",
+      blockId: "block-missing",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:00:00.000Z",
+    },
+    {
+      id: "chapter-title-one",
+      blockId: "block-chapter-one",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:00:00.000Z",
+    },
+  ];
+
+  const chapters = deriveManuscriptChaptersFromTitleBlocks({
+    blocks,
+    chapterTitleBlocks,
+  });
+
+  assert.equal(chapters.length, 2);
+  assert.equal(chapters[0].title, "Chapter One");
+  assert.equal(chapters[0].startBlockId, "block-chapter-one");
+  assert.equal(chapters[0].endBlockId, "block-one-body");
+  assert.equal(chapters[0].blockCount, 2);
+  assert.equal(chapters[0].bodyBlockCount, 1);
+  assert.deepEqual(chapters[0].blockIds, [
+    "block-chapter-one",
+    "block-one-body",
+  ]);
+  assert.equal(chapters[1].title, "Chapter Two");
+  assert.equal(chapters[1].startBlockId, "block-chapter-two");
+  assert.equal(chapters[1].endBlockId, "block-two-body");
+  assert.deepEqual(chapters[1].blockIds, [
+    "block-chapter-two",
+    "block-two-body",
+  ]);
+});
+
+test("safeManuscriptChapterTitleBlocks validates marker shape", () => {
+  const titleBlocks = [
+    {
+      id: "chapter-title-one",
+      blockId: "block-chapter-one",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:00:00.000Z",
+    },
+    {
+      id: "chapter-title-one-duplicate",
+      blockId: "block-chapter-one",
+      createdAt: "2026-05-26T12:01:00.000Z",
+      updatedAt: "2026-05-26T12:01:00.000Z",
+    },
+  ];
+
+  assert.deepEqual(safeManuscriptChapterTitleBlocks(undefined), []);
+  assert.deepEqual(safeManuscriptChapterTitleBlocks(titleBlocks), [
+    titleBlocks[0],
+  ]);
+  assert.equal(
+    safeManuscriptChapterTitleBlocks([
+      {
+        id: "",
+        blockId: "block-chapter-one",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ]),
+    null,
+  );
 });
 
 test("structure region presets create book-specific default titles", () => {

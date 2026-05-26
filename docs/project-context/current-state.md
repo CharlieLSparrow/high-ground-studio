@@ -84,6 +84,10 @@ High Ground Studio is a monorepo with:
   choose and apply semantic tags, mark cited quotations, enter semantic Focus
   View, and return to the manuscript surface without relying on the desktop
   sidebar.
+- The private Studio `/manuscript` desk can mark chapter title blocks and
+  derive chapter ranges from current manuscript order. The saved draft keeps a
+  `chapterTitleBlocks` marker list, while the chapter map treats each title as
+  the start of a chapter that continues until the next marked title.
 - The current Manuscript Desk improvement roadmap is recorded in
   `docs/plans/studio-manuscript-desk-improvement-roadmap.md`, with competitive
   research in

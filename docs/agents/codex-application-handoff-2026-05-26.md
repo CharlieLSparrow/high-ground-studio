@@ -140,13 +140,37 @@ needs to recover one. Do not merge or delete them blindly.
 
 ## Recommended Next Product Slice
 
+### Codex app follow-up: chapter title boundaries
+
+Branch `codex/manuscript-chapter-boundary-001` implements a focused
+Manuscript Desk follow-up: chapter title block markers now persist inside the
+draft envelope as `chapterTitleBlocks`, and Studio derives each chapter range
+from the marked title through the block before the next marked title.
+
+Added/updated:
+
+- `apps/studio/src/app/manuscript/manuscript-editor-model.ts`
+- `apps/studio/src/app/manuscript/studio-manuscript-client.tsx`
+- `apps/studio/src/app/globals.css`
+- `scripts/studio-manuscript-editor.test.mjs`
+- `docs/sessions/studio-manuscript-chapter-title-boundaries-result.md`
+
+Data boundary:
+
+- no Prisma/schema changes
+- no server route changes
+- no canonical manuscript file writes
+- no public publish path changes
+- older full-draft JSON and snapshots without `chapterTitleBlocks` load with
+  an empty marker list
+
 The local Studio build environment is healthy at handoff. Take one of these
 narrow roadmap items next:
 
 1. Mobile session strip: local saved time, selected lens, session words, and
    snapshot freshness.
-2. Read-only Manuscript Map: binder/outliner rows generated from existing
-   structure regions and block summaries.
+2. Read-only Manuscript Map: binder/outliner rows generated from chapter title
+   markers, existing structure regions, and block summaries.
 3. Semantic review queue: derived `needs-review` and `quote` queues with jump
    back to manuscript.
 

@@ -74,8 +74,8 @@ Build toward:
 
 First next slice:
 
-- add a read-only Manuscript Map panel generated from existing structure
-  regions and block summaries
+- extend the new chapter-title map toward a fuller read-only Manuscript Map
+  generated from title markers, existing structure regions, and block summaries
 - no drag reorder until range integrity and rollback behavior are specified
 
 ### 3. Semantic Lens And Review Engine
@@ -208,8 +208,10 @@ First next slice:
 ### Now
 
 - Keep and validate the new mobile writing and semantic marking controls.
+- Validate the new chapter title marker flow and derived chapter map.
 - Add session strip/status for mobile writing.
-- Add read-only Manuscript Map generated from existing structure regions.
+- Add the next read-only Manuscript Map layer from title markers, existing
+  structure regions, and block summaries.
 - Add saved semantic lens presets and a `needs-review` / `quote` review queue.
 - Add snapshot metadata naming and current-vs-snapshot stats.
 - Record validation blockers clearly before handing the repo to another Codex

@@ -187,6 +187,13 @@ button:disabled {
   border-left-color: rgba(201, 179, 255, 0.76);
 }
 
+.manuscript-prosemirror .manuscript-chapter-title-block {
+  border-radius: 0.35rem;
+  outline: 2px solid rgba(240, 183, 101, 0.72);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(240, 183, 101, 0.1);
+}
+
 .manuscript-prosemirror .manuscript-filter-match {
   border-radius: 0.35rem;
   outline: 2px solid rgba(159, 209, 139, 0.82);
