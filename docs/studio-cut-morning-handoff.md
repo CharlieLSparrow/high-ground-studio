@@ -218,11 +218,13 @@ Audit the ledger before remote cleanup:
 pnpm studio-cut:media-vault -- migration-report \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
-  --collection-id homer-insta360
+  --collection-id homer-insta360 \
+  --include-cloud
 pnpm studio-cut:media-vault -- migration-status-page \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
   --collection-id homer-insta360 \
+  --include-cloud \
   --watch \
   --open
 pnpm studio-cut:media-vault -- ledger-summary \

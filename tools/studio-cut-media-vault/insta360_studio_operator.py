@@ -217,6 +217,7 @@ def build_migration_report_command(
         project_id,
         "--collection-id",
         collection_id,
+        "--include-cloud",
     ]
     return " ".join(shell_quote(part) for part in parts)
 
@@ -241,6 +242,7 @@ def build_status_page_command(
         collection_id,
         "--out-dir",
         str(operator_dir / "status-page"),
+        "--include-cloud",
         "--watch",
         "--open",
     ]

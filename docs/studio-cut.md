@@ -1077,12 +1077,13 @@ buffer, upload settled files one at a time, verify GCS object size, record a
 ledger, and delete only the local copy after verification. `migration-report`
 is the standard per-round operator readout for local buffer count, settled
 files, free space, cloud destination, ledger totals, and manual remote cleanup
-queue. `migration-status-page` turns that report into a local auto-refreshing
-browser dashboard for the operator. `ledger-summary` summarizes
-uploaded/verified bytes, local deletions, and manual remote deletion pending
-items; `verify-ledger-cloud` re-checks ledger destinations against live GCS
-metadata. Remote Insta360 cloud deletion remains manual until a supported API
-or auditable automation path is available.
+queue, with optional live GCS prefix listing via `--include-cloud`.
+`migration-status-page` turns that report into a local auto-refreshing browser
+dashboard for the operator. `ledger-summary` summarizes uploaded/verified
+bytes, local deletions, and manual remote deletion pending items;
+`verify-ledger-cloud` re-checks ledger destinations against live GCS metadata.
+Remote Insta360 cloud deletion remains manual until a supported API or
+auditable automation path is available.
 `studio-cut:insta360-operator`
 adds a local macOS assistive layer: it can open Insta360 Studio, prepare the
 download buffer, capture the visible UI tree for agent debugging, and try

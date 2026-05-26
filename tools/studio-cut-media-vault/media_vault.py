@@ -595,6 +595,97 @@ def empty_ledger_summary(*, ledger_path: Path) -> dict[str, Any]:
     }
 
 
+def summarize_cloud_prefix(*, bucket: str, object_prefix: str, max_objects: int) -> dict[str, Any]:
+    gcloud_path = shutil.which("gcloud")
+    if not gcloud_path:
+        return {
+            "status": "blocked",
+            "bucket": bucket,
+            "objectPrefix": object_prefix,
+            "objectCount": 0,
+            "reportedObjectCount": 0,
+            "totalBytes": 0,
+            "totalGb": 0.0,
+            "objects": [],
+            "warnings": ["gcloud is not on PATH; cloud prefix summary was skipped."],
+            "errors": [],
+        }
+
+    destination = f"gs://{bucket}/{object_prefix}"
+    result = subprocess.run(
+        [gcloud_path, "storage", "objects", "list", destination, "--format=json"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return {
+            "status": "blocked",
+            "bucket": bucket,
+            "objectPrefix": object_prefix,
+            "objectCount": 0,
+            "reportedObjectCount": 0,
+            "totalBytes": 0,
+            "totalGb": 0.0,
+            "objects": [],
+            "warnings": [],
+            "errors": [result.stderr.strip() or result.stdout.strip() or f"Could not list {destination}"],
+        }
+
+    try:
+        payload = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return {
+            "status": "blocked",
+            "bucket": bucket,
+            "objectPrefix": object_prefix,
+            "objectCount": 0,
+            "reportedObjectCount": 0,
+            "totalBytes": 0,
+            "totalGb": 0.0,
+            "objects": [],
+            "warnings": [],
+            "errors": ["gcloud returned non-JSON cloud prefix data."],
+        }
+
+    objects = payload if isinstance(payload, list) else []
+    summarized_objects = []
+    total_bytes = 0
+    for item in objects:
+        if not isinstance(item, dict):
+            continue
+        size_raw = item.get("size")
+        size_bytes = int(size_raw) if str(size_raw or "").isdigit() else 0
+        total_bytes += size_bytes
+        if len(summarized_objects) < max(0, max_objects):
+            summarized_objects.append(
+                {
+                    "name": item.get("name") or item.get("storageUrl") or item.get("url"),
+                    "sizeBytes": size_bytes,
+                    "updated": item.get("updated"),
+                    "generation": item.get("generation"),
+                    "contentType": item.get("contentType"),
+                }
+            )
+
+    warnings = []
+    if len(objects) > len(summarized_objects):
+        warnings.append(f"Cloud prefix summary truncated at {len(summarized_objects)} of {len(objects)} objects.")
+
+    return {
+        "status": "ready",
+        "bucket": bucket,
+        "objectPrefix": object_prefix,
+        "objectCount": len(objects),
+        "reportedObjectCount": len(summarized_objects),
+        "totalBytes": total_bytes,
+        "totalGb": byte_count_to_gb(total_bytes),
+        "objects": summarized_objects,
+        "warnings": warnings,
+        "errors": [],
+    }
+
+
 def summarize_local_buffer(
     *,
     source_dir: Path,
@@ -663,9 +754,12 @@ def build_migration_report_payload(
     min_free_gb: float,
     allow_icloud: bool,
     max_files: int,
+    include_cloud: bool = False,
+    cloud_max_objects: int = 50,
 ) -> dict[str, Any]:
     source_dir = source_dir.expanduser().resolve()
-    cloud_prefix = f"gs://{bucket}/{storage_prefix.rstrip('/')}/{project_id}/{collection_id}/"
+    cloud_object_prefix = f"{storage_prefix.rstrip('/')}/{project_id}/{collection_id}/"
+    cloud_prefix = f"gs://{bucket}/{cloud_object_prefix}"
     preflight = storage_preflight(
         source_dir,
         min_free_gb=min_free_gb,
@@ -688,7 +782,17 @@ def build_migration_report_payload(
     else:
         ledger_summary = empty_ledger_summary(ledger_path=ledger_path)
 
+    cloud_summary = None
+    if include_cloud:
+        cloud_summary = summarize_cloud_prefix(
+            bucket=bucket,
+            object_prefix=cloud_object_prefix,
+            max_objects=cloud_max_objects,
+        )
+
     errors = preflight["errors"] + local_buffer["errors"] + ledger_summary["errors"]
+    if cloud_summary:
+        errors += cloud_summary["errors"]
     uploaded_count = ledger_summary["uploadedVerifiedOrDeletedCount"]
     local_file_count = local_buffer["fileCount"]
     if errors:
@@ -713,6 +817,7 @@ def build_migration_report_payload(
         "storagePreflight": preflight,
         "localBuffer": local_buffer,
         "ledgerSummary": ledger_summary,
+        "cloudSummary": cloud_summary,
         "progress": {
             "localFileCount": local_file_count,
             "localSettledFileCount": local_buffer["settledCount"],
@@ -722,9 +827,12 @@ def build_migration_report_payload(
             "manualRemoteDeletionPendingCount": ledger_summary["manualRemoteDeletionPendingCount"],
             "safeCloudBytes": ledger_summary["safeCloudBytes"],
             "safeCloudGb": ledger_summary["safeCloudGb"],
+            "cloudObjectCount": cloud_summary["objectCount"] if cloud_summary else None,
+            "cloudTotalBytes": cloud_summary["totalBytes"] if cloud_summary else None,
+            "cloudTotalGb": cloud_summary["totalGb"] if cloud_summary else None,
             "freeGb": preflight["freeGb"],
         },
-        "warnings": preflight["warnings"] + ledger_summary["warnings"],
+        "warnings": preflight["warnings"] + ledger_summary["warnings"] + (cloud_summary["warnings"] if cloud_summary else []),
         "errors": errors,
     }
 
@@ -743,6 +851,8 @@ def migration_report_command(args: argparse.Namespace) -> int:
         min_free_gb=args.min_free_gb,
         allow_icloud=args.allow_icloud,
         max_files=args.max_files,
+        include_cloud=args.include_cloud,
+        cloud_max_objects=args.cloud_max_objects,
     )
     if args.out:
         write_json(Path(args.out).expanduser(), payload)
@@ -911,6 +1021,7 @@ def migration_status_page_html(*, report_file_name: str, refresh_seconds: int) -
       <article class="panel wide">
         <div class="label">Cloud Prefix</div>
         <pre id="cloudPrefix"></pre>
+        <div class="subtle" id="cloudSummary"></div>
       </article>
       <article class="panel full">
         <div class="label">Warnings</div>
@@ -975,6 +1086,11 @@ def migration_status_page_html(*, report_file_name: str, refresh_seconds: int) -
         text("freeGb", `${{progress.freeGb}} GB`);
         text("sourceDir", report.sourceDir);
         text("cloudPrefix", report.cloudPrefix);
+        if (report.cloudSummary) {{
+          text("cloudSummary", `${{report.cloudSummary.objectCount}} objects / ${{bytes(report.cloudSummary.totalBytes)}} listed from bucket`);
+        }} else {{
+          text("cloudSummary", "Cloud bucket listing not enabled for this report.");
+        }}
         renderWarnings(report.warnings || []);
         renderFiles((report.localBuffer || {{}}).files || []);
       }} catch (error) {{
@@ -1010,6 +1126,8 @@ def write_migration_status_page(args: argparse.Namespace) -> dict[str, Any]:
         min_free_gb=args.min_free_gb,
         allow_icloud=args.allow_icloud,
         max_files=args.max_files,
+        include_cloud=args.include_cloud,
+        cloud_max_objects=args.cloud_max_objects,
     )
     write_json(report_path, payload)
     html_path.write_text(
@@ -2041,6 +2159,8 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             min_free_gb=0,
             allow_icloud=False,
             max_files=10,
+            include_cloud=False,
+            cloud_max_objects=50,
             out_dir=str(status_page_dir),
             refresh_seconds=5,
             watch=False,
@@ -2220,6 +2340,8 @@ def build_parser() -> argparse.ArgumentParser:
     migration_report.add_argument("--min-free-gb", type=float, default=DEFAULT_MIN_FREE_GB)
     migration_report.add_argument("--allow-icloud", action="store_true")
     migration_report.add_argument("--max-files", type=int, default=20)
+    migration_report.add_argument("--include-cloud", action="store_true")
+    migration_report.add_argument("--cloud-max-objects", type=int, default=50)
     migration_report.add_argument("--out")
     migration_report.set_defaults(func=migration_report_command)
 
@@ -2237,6 +2359,8 @@ def build_parser() -> argparse.ArgumentParser:
     migration_status_page.add_argument("--min-free-gb", type=float, default=DEFAULT_MIN_FREE_GB)
     migration_status_page.add_argument("--allow-icloud", action="store_true")
     migration_status_page.add_argument("--max-files", type=int, default=20)
+    migration_status_page.add_argument("--include-cloud", action="store_true")
+    migration_status_page.add_argument("--cloud-max-objects", type=int, default=50)
     migration_status_page.add_argument("--out-dir")
     migration_status_page.add_argument("--refresh-seconds", type=int, default=5)
     migration_status_page.add_argument("--watch", action="store_true")

@@ -96,7 +96,8 @@ Emit a round progress report while the watcher runs:
 pnpm studio-cut:media-vault -- migration-report \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
-  --collection-id homer-insta360
+  --collection-id homer-insta360 \
+  --include-cloud
 ```
 
 The report shows the local buffer count, settled/waiting files, free disk
@@ -110,6 +111,7 @@ pnpm studio-cut:media-vault -- migration-status-page \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
   --collection-id homer-insta360 \
+  --include-cloud \
   --watch \
   --open
 ```

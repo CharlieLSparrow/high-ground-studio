@@ -225,13 +225,15 @@ Emit a round progress report while the watcher runs:
 pnpm studio-cut:media-vault -- migration-report \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
-  --collection-id homer-insta360
+  --collection-id homer-insta360 \
+  --include-cloud
 ```
 
 `migration-report` is the standard per-round operator readout. It reports the
 local buffer, settled/waiting file counts, free disk space, cloud destination,
 ledger totals, verified bytes, and manual remote cleanup queue without exposing
-source file paths from completed ledger entries.
+source file paths from completed ledger entries. `--include-cloud` also lists
+the current GCS prefix through the local `gcloud` session.
 
 Open a local auto-refreshing status page while the watcher runs:
 
@@ -240,6 +242,7 @@ pnpm studio-cut:media-vault -- migration-status-page \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
   --collection-id homer-insta360 \
+  --include-cloud \
   --watch \
   --open
 ```
