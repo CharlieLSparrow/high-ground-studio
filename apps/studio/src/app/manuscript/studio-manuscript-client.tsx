@@ -3362,11 +3362,17 @@ export function StudioManuscriptClient({
           message.includes("Loaded")
         ? "tag"
         : "default";
-  const taggingDock = !isRecordingMode ? (
-    <section
-      className="sticky top-2 z-30 grid max-h-[calc(100dvh-1rem)] gap-3 overflow-auto rounded-lg border border-studio-tag/45 bg-[#032927]/95 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.34)] backdrop-blur-md md:top-[68px] md:max-h-[calc(100dvh-82px)]"
-      aria-label="Sticky tagging menu"
-    >
+  function renderTaggingDock(variant: "rail" | "mobile") {
+    if (isRecordingMode) {
+      return null;
+    }
+
+    return (
+      <section
+        className="manuscript-tagging-dock"
+        data-testid={`manuscript-tagging-dock-${variant}`}
+        aria-label="Sticky tagging menu"
+      >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <HelpLabel noteId="mark-mode">Tagging menu</HelpLabel>
@@ -3415,7 +3421,7 @@ export function StudioManuscriptClient({
         </div>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.2fr)_minmax(210px,0.7fr)]">
+      <div className="grid gap-3">
         <div className="grid gap-2">
           <HelpLabel noteId="author-marks">Author</HelpLabel>
           <div className="grid grid-cols-3 gap-2 xl:grid-cols-1">
@@ -3458,7 +3464,40 @@ export function StudioManuscriptClient({
               </button>
             ))}
           </div>
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className={smallButtonClassName}
+              disabled={!hasTextSelection}
+              type="button"
+              onClick={applySemanticHighlight}
+            >
+              Apply semantic
+            </button>
+            <button
+              className={smallButtonClassName}
+              disabled={!hasTextSelection}
+              type="button"
+              onClick={() => markCitedQuotation()}
+            >
+              Mark cited quote
+            </button>
+            <button
+              className={smallButtonClassName}
+              disabled={!hasTextSelection}
+              type="button"
+              onClick={() => clearSemanticHighlight()}
+            >
+              Clear semantic
+            </button>
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={() => applySemanticFocus(semanticType)}
+            >
+              Focus tag
+            </button>
+          </div>
+          <div className="grid gap-2">
             <label className="grid gap-1.5">
               <span className={fieldLabelClassName}>Semantic note</span>
               <textarea
@@ -3477,47 +3516,14 @@ export function StudioManuscriptClient({
             </label>
           </div>
         </div>
-
-        <div className="grid content-start gap-2">
-          <button
-            className={smallButtonClassName}
-            disabled={!hasTextSelection}
-            type="button"
-            onClick={applySemanticHighlight}
-          >
-            Apply semantic
-          </button>
-          <button
-            className={smallButtonClassName}
-            disabled={!hasTextSelection}
-            type="button"
-            onClick={() => markCitedQuotation()}
-          >
-            Mark cited quote
-          </button>
-          <button
-            className={smallButtonClassName}
-            disabled={!hasTextSelection}
-            type="button"
-            onClick={() => clearSemanticHighlight()}
-          >
-            Clear semantic
-          </button>
-          <button
-            className={smallButtonClassName}
-            type="button"
-            onClick={() => applySemanticFocus(semanticType)}
-          >
-            Focus tag
-          </button>
-        </div>
       </div>
-    </section>
-  ) : null;
+      </section>
+    );
+  }
 
   return (
-    <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-24 md:p-6">
-      <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
+    <main className="manuscript-page-shell">
+      <div className="manuscript-page-stack">
         <header
           className={cn(
             "sticky top-2 z-40 hidden overflow-visible rounded-lg border border-studio-line bg-studio-panel/68 px-2.5 py-1.5 shadow-[0_12px_34px_rgba(0,0,0,0.22)] backdrop-blur-md",
@@ -3619,9 +3625,7 @@ export function StudioManuscriptClient({
         </header>
 
         <section
-          className={cn(
-            "grid gap-[18px] overflow-visible md:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] md:items-start xl:grid-cols-[minmax(0,1fr)_400px]",
-          )}
+          className="manuscript-workspace-grid"
           aria-label="Manuscript Desk workspace"
         >
           <section
@@ -3664,7 +3668,7 @@ export function StudioManuscriptClient({
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
             ) : (
-              taggingDock
+              <div className="md:hidden">{renderTaggingDock("mobile")}</div>
             )}
 
             <div onContextMenu={handleManuscriptContextMenu}>
@@ -3679,13 +3683,12 @@ export function StudioManuscriptClient({
           </section>
 
           <aside
-            className={cn(
-              "order-2 hidden min-w-0 rounded-lg border border-studio-line bg-studio-panel/78 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.2)] backdrop-blur-md",
-              "md:sticky md:top-[68px] md:z-20 md:block md:max-h-[calc(100vh-80px)] md:self-start md:overflow-y-auto xl:top-[64px] xl:max-h-[calc(100vh-76px)]",
-            )}
-            aria-label="Manuscript tools sidebar"
+            className="manuscript-control-rail order-2"
+            aria-label="Manuscript tagging and tools sidebar"
           >
-            <div className="mb-3.5 flex items-start justify-between gap-3">
+            {renderTaggingDock("rail")}
+            <div className="manuscript-tools-scroll" aria-label="Manuscript tools">
+              <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Tools</p>
               <StudioChip tone="node">
                 {getSidePanelModeLabel(sidePanelMode)}
@@ -6374,6 +6377,7 @@ export function StudioManuscriptClient({
                 )}
               </section>
             ) : null}
+            </div>
           </aside>
         </section>
 
