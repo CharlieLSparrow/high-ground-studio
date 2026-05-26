@@ -36,6 +36,8 @@ The route is protected by the normal private Studio access gate.
   source notes at the current notebook position
 - can mark an existing notebook section as a note, decision, action, question,
   or source note without losing the section body
+- can focus the selected notebook section as the main writing surface while
+  keeping the outline available for navigation
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
 - records active presence heartbeats, including which notebook section a focused
