@@ -8,6 +8,7 @@ import {
   createLiveRoomNotebookSectionText,
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
+  createLiveRoomSessionRecap,
   createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
   createLiveRoomStateUpdateFromText,
@@ -217,6 +218,38 @@ test("live room quick section templates create recognizable block kinds", () => 
     }),
     createLiveRoomNotebookSectionText("question"),
   );
+});
+
+test("live room session recap extracts structured working-session outcomes", () => {
+  const text = [
+    "Decision\nDecision: Keep the live room as notebook-first.\nReason: Homer can scan sections faster.",
+    "Action Items\n- Charlie / revise chapter opening / tomorrow\n- Homer / review decision notes / tonight",
+    "Open Question\nQuestion: Should the recap become a manuscript snapshot note?\nContext: We need session handoff history.",
+    "Source Note\nSource: Plato outline\nUseful quote or claim: Courage needs practice.\nHow it should be used: Possible chapter anchor.",
+  ].join("\n\n");
+  const recap = createLiveRoomSessionRecap(text);
+
+  assert.deepEqual(recap.decisions, [
+    "Keep the live room as notebook-first.",
+    "Homer can scan sections faster.",
+  ]);
+  assert.deepEqual(recap.actionItems, [
+    "Charlie / revise chapter opening / tomorrow",
+    "Homer / review decision notes / tonight",
+  ]);
+  assert.deepEqual(recap.questions, [
+    "Should the recap become a manuscript snapshot note?",
+    "We need session handoff history.",
+  ]);
+  assert.deepEqual(recap.sourceNotes, [
+    "Plato outline",
+    "Courage needs practice.",
+    "Possible chapter anchor.",
+  ]);
+  assert.match(recap.summaryText, /Decisions/);
+  assert.match(recap.summaryText, /Action Items/);
+  assert.match(recap.summaryText, /Open Questions/);
+  assert.match(recap.summaryText, /Source Notes/);
 });
 
 test("live room notebook starters create useful section scaffolds", () => {

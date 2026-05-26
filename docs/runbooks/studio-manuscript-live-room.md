@@ -40,6 +40,8 @@ The route is protected by the normal private Studio access gate.
   editor is working in
 - exposes a shareable room URL
 - can copy the current text
+- can copy a session recap extracted from decision, action, question, and source
+  sections
 - can save the current live text as a manual Manuscript Desk snapshot
 
 ## What It Does Not Do
@@ -90,8 +92,10 @@ section without a schema change.
 6. Work in notebook mode by default. Use starter sections for a fresh room, then
    add, move, remove, or quick-insert decision/action/question/source sections
    as the session changes.
-7. Use `Save manual snapshot` when a meaningful checkpoint is reached.
-8. Continue in the live room or move the checkpoint into Manuscript Desk review.
+7. Use `Copy recap` for a clean handoff of decisions, actions, questions, and
+   source notes.
+8. Use `Save manual snapshot` when a meaningful checkpoint is reached.
+9. Continue in the live room or move the checkpoint into Manuscript Desk review.
 
 ## Validation
 

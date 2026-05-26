@@ -37,6 +37,14 @@ export type StudioManuscriptLiveNotebookStarterKind =
   | "writing-pass"
   | "coaching-session";
 
+export type StudioManuscriptLiveRoomSessionRecap = {
+  decisions: string[];
+  actionItems: string[];
+  questions: string[];
+  sourceNotes: string[];
+  summaryText: string;
+};
+
 function normalizeLiveRoomText(text: string) {
   return String(text ?? "").replace(/\r\n?/g, "\n");
 }
@@ -375,6 +383,80 @@ export function moveLiveRoomNotebookBlock(input: {
   blocks.splice(nextIndex, 0, block ?? "");
 
   return joinLiveRoomNotebookBlocks(blocks);
+}
+
+function cleanNotebookRecapLine(line: string) {
+  return line
+    .trim()
+    .replace(/^[-*]\s+/, "")
+    .replace(/^(Decision|Reason|Owner|Follow-up|Question|Context|Source):\s*/i, "")
+    .replace(/^What would answer it\??:?\s*/i, "")
+    .replace(/^Useful quote or claim:\s*/i, "")
+    .replace(/^How it should be used:\s*/i, "")
+    .trim();
+}
+
+function createNotebookRecapItems(blockText: string) {
+  const [, ...bodyLines] = normalizeLiveRoomText(blockText).split("\n");
+
+  return bodyLines.map(cleanNotebookRecapLine).filter(Boolean);
+}
+
+function formatNotebookRecapGroup(title: string, items: string[]) {
+  if (!items.length) {
+    return [`${title}\n- None captured yet.`];
+  }
+
+  return [`${title}`, ...items.map((item) => `- ${item}`)];
+}
+
+export function createLiveRoomSessionRecap(
+  text: string,
+): StudioManuscriptLiveRoomSessionRecap {
+  const recap = createLiveRoomNotebookBlocks(text).reduce<
+    Omit<StudioManuscriptLiveRoomSessionRecap, "summaryText">
+  >(
+    (currentRecap, block) => {
+      const items = createNotebookRecapItems(block.text);
+
+      if (block.kind === "decision") {
+        currentRecap.decisions.push(...items);
+      }
+
+      if (block.kind === "action-items") {
+        currentRecap.actionItems.push(...items);
+      }
+
+      if (block.kind === "question") {
+        currentRecap.questions.push(...items);
+      }
+
+      if (block.kind === "source-note") {
+        currentRecap.sourceNotes.push(...items);
+      }
+
+      return currentRecap;
+    },
+    {
+      decisions: [],
+      actionItems: [],
+      questions: [],
+      sourceNotes: [],
+    },
+  );
+
+  return {
+    ...recap,
+    summaryText: [
+      ...formatNotebookRecapGroup("Decisions", recap.decisions),
+      "",
+      ...formatNotebookRecapGroup("Action Items", recap.actionItems),
+      "",
+      ...formatNotebookRecapGroup("Open Questions", recap.questions),
+      "",
+      ...formatNotebookRecapGroup("Source Notes", recap.sourceNotes),
+    ].join("\n"),
+  };
 }
 
 export function createLiveRoomNotebookStarterText(

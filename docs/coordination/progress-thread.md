@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-session-recap-001`
+
+- Continuing the OneNote-style live-room push after `studio-00063-982`.
+- Targeting a computed session recap that extracts decisions, action items,
+  open questions, and source notes from notebook sections for a copyable handoff.
+
 ### Codex / `main` Studio live-room quick sections
 
 - Continued the OneNote-style live-room push after `studio-00061-h7l`.

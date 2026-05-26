@@ -217,6 +217,7 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(client, /createLiveRoomNotebookBlocks/);
   assert.match(client, /createLiveRoomNotebookSectionText/);
   assert.match(client, /createLiveRoomNotebookStarterText/);
+  assert.match(client, /createLiveRoomSessionRecap/);
   assert.match(client, /updateLiveRoomNotebookBlockText/);
   assert.match(client, /moveLiveRoomNotebookBlock/);
   assert.match(client, /removeLiveRoomNotebookBlock/);
@@ -226,7 +227,10 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(client, /live-room-notebook-editor/);
   assert.match(client, /live-room-notebook-add-section/);
   assert.match(client, /live-room-notebook-quick-sections/);
+  assert.match(client, /live-room-session-recap/);
+  assert.match(client, /live-room-copy-session-recap/);
   assert.match(client, /Session notes/);
+  assert.match(client, /Copy recap/);
   assert.match(client, /Add below/);
   assert.match(client, /Decision/);
   assert.match(client, /Actions/);

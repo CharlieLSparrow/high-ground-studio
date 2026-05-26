@@ -23,6 +23,7 @@ import {
   createLiveRoomNotebookSectionText,
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
+  createLiveRoomSessionRecap,
   createManuscriptDraftFromLiveRoomText,
   createLiveRoomTextFromManuscriptDraft,
   decodeLiveRoomUpdateBase64,
@@ -337,6 +338,7 @@ export function StudioManuscriptLiveRoomClient({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const stats = useMemo(() => countLiveRoomTextStats(text), [text]);
+  const sessionRecap = useMemo(() => createLiveRoomSessionRecap(text), [text]);
   const shareUrl = useMemo(() => createShareUrl(activeRoom?.id ?? null), [activeRoom?.id]);
   const notebookBlocks = useMemo(
     () => createLiveRoomNotebookBlocks(text),
@@ -771,6 +773,11 @@ export function StudioManuscriptLiveRoomClient({
     await navigator.clipboard.writeText(text);
     updateMessage("Manuscript text copied.");
   }, [text, updateMessage]);
+
+  const copySessionRecap = useCallback(async () => {
+    await navigator.clipboard.writeText(sessionRecap.summaryText);
+    updateMessage("Session recap copied.");
+  }, [sessionRecap.summaryText, updateMessage]);
 
   const saveSnapshot = useCallback(async () => {
     if (!activeRoom) {
@@ -1345,6 +1352,15 @@ export function StudioManuscriptLiveRoomClient({
                   </button>
                   <button
                     className={buttonClassName}
+                    data-testid="live-room-copy-session-recap"
+                    disabled={!activeRoom}
+                    onClick={() => void copySessionRecap()}
+                    type="button"
+                  >
+                    Copy recap
+                  </button>
+                  <button
+                    className={buttonClassName}
                     disabled={!activeRoom || isSavingSnapshot}
                     onClick={() => void saveSnapshot()}
                     type="button"
@@ -1366,7 +1382,7 @@ export function StudioManuscriptLiveRoomClient({
               ) : null}
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
               <div className="rounded-xl border border-studio-line bg-studio-ink/5 p-4">
                 <p className={labelClassName}>Presence</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -1396,6 +1412,31 @@ export function StudioManuscriptLiveRoomClient({
                     </span>
                   )}
                 </div>
+              </div>
+              <div
+                className="rounded-xl border border-studio-line bg-studio-ink/5 p-4"
+                data-testid="live-room-session-recap"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className={labelClassName}>Session recap</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <StudioChip tone="tag">
+                      {sessionRecap.decisions.length} decisions
+                    </StudioChip>
+                    <StudioChip tone="review">
+                      {sessionRecap.actionItems.length} actions
+                    </StudioChip>
+                    <StudioChip tone="node">
+                      {sessionRecap.questions.length} questions
+                    </StudioChip>
+                    <StudioChip tone="source">
+                      {sessionRecap.sourceNotes.length} sources
+                    </StudioChip>
+                  </div>
+                </div>
+                <pre className="mt-3 max-h-[260px] overflow-auto whitespace-pre-wrap rounded-lg border border-studio-line bg-black/15 p-3 text-[0.78rem] leading-5 text-studio-muted">
+                  {sessionRecap.summaryText}
+                </pre>
               </div>
               <div className="rounded-xl border border-studio-line bg-studio-ink/5 p-4">
                 <p className={labelClassName}>Checkpoint</p>
