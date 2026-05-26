@@ -214,6 +214,12 @@ test("Manuscript live rooms are wired through authenticated API", () => {
   assert.match(schema, /model StudioManuscriptLivePresence/);
   assert.match(client, /\/api\/manuscript\/library/);
   assert.match(client, /\/api\/manuscript\/snapshots\/latest\?manuscriptId=/);
+  assert.match(client, /createLiveRoomNotebookBlocks/);
+  assert.match(client, /updateLiveRoomNotebookBlockText/);
+  assert.match(client, /live-room-notebook-editor/);
+  assert.match(client, /live-room-notebook-add-section/);
+  assert.match(client, /Notebook/);
+  assert.match(client, /Raw text/);
   assert.match(client, /createLiveRoomTextFromManuscriptDraft/);
   assert.match(client, /manuscriptId: selectedManuscriptId \|\| null/);
   assert.match(client, /manuscriptId: activeRoom\.manuscriptId/);

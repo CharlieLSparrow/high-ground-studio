@@ -15,6 +15,15 @@ export type StudioManuscriptLiveRoomTextStats = {
   characters: number;
 };
 
+export type StudioManuscriptLiveNotebookBlock = {
+  id: string;
+  index: number;
+  label: string;
+  text: string;
+  wordCount: number;
+  characterCount: number;
+};
+
 function normalizeLiveRoomText(text: string) {
   return String(text ?? "").replace(/\r\n?/g, "\n");
 }
@@ -153,6 +162,79 @@ export function applyTextAreaValueToYText(yText: Y.Text, nextValue: string) {
   }
 
   return true;
+}
+
+function splitLiveRoomTextIntoNotebookBlocks(text: string) {
+  const normalized = normalizeLiveRoomText(text).trim();
+
+  if (!normalized) {
+    return [""];
+  }
+
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+}
+
+function createNotebookBlockLabel(text: string, index: number) {
+  const firstLine = text
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  const fallback = `Section ${index + 1}`;
+  const label = firstLine || fallback;
+
+  return label.length > 62 ? `${label.slice(0, 61).trim()}...` : label;
+}
+
+export function createLiveRoomNotebookBlocks(
+  text: string,
+): StudioManuscriptLiveNotebookBlock[] {
+  return splitLiveRoomTextIntoNotebookBlocks(text).map((blockText, index) => {
+    const stats = countLiveRoomTextStats(blockText);
+
+    return {
+      id: `live-notebook-block-${index}`,
+      index,
+      label: createNotebookBlockLabel(blockText, index),
+      text: blockText,
+      wordCount: stats.words,
+      characterCount: stats.characters,
+    };
+  });
+}
+
+export function updateLiveRoomNotebookBlockText(input: {
+  text: string;
+  blockIndex: number;
+  blockText: string;
+}) {
+  const blocks = splitLiveRoomTextIntoNotebookBlocks(input.text);
+  const blockIndex = Math.max(0, Math.floor(input.blockIndex));
+
+  while (blocks.length <= blockIndex) {
+    blocks.push("");
+  }
+
+  blocks[blockIndex] = normalizeLiveRoomText(input.blockText).trim();
+
+  return normalizeLiveRoomText(
+    blocks.map((block) => block.trim()).filter(Boolean).join("\n\n"),
+  );
+}
+
+export function appendLiveRoomNotebookBlock(
+  text: string,
+  blockText = "New working note",
+) {
+  const blocks = splitLiveRoomTextIntoNotebookBlocks(text);
+
+  blocks.push(normalizeLiveRoomText(blockText).trim());
+
+  return normalizeLiveRoomText(
+    blocks.map((block) => block.trim()).filter(Boolean).join("\n\n"),
+  );
 }
 
 export function createLiveRoomTextFromManuscriptDraft(draft: ManuscriptDraft) {

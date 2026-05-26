@@ -1422,3 +1422,12 @@ checks, blockers, and next handoff.
   passed for `/manuscript` (`HTTP 200`), `/manuscript/live` (`HTTP 200`), and
   unauthenticated `/api/manuscript/live-rooms` (`401`). Rollback:
   `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00053-rfn=100`.
+- Started `codex/live-room-notebook-mode-001` to make `/manuscript/live`
+  default to a notebook-style editing surface. This keeps the existing Yjs text
+  protocol but splits the shared text into editable sections with an outline
+  and a raw-text fallback.
+- Validation passed on the notebook-mode branch:
+  `pnpm studio:manuscript:live-room:test`, `pnpm studio:cloudrun:test`,
+  `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
+  sandbox after the known Turbopack port-binding failure, and
+  `git diff --check`.

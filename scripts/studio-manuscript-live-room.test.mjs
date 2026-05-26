@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  appendLiveRoomNotebookBlock,
   applyLiveRoomUpdateToDoc,
   applyTextAreaValueToYText,
+  createLiveRoomNotebookBlocks,
   createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
   createLiveRoomStateUpdateFromText,
@@ -14,6 +16,7 @@ import {
   getLiveRoomTextFromUpdate,
   mergeLiveRoomUpdates,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
+  updateLiveRoomNotebookBlockText,
 } from "../apps/studio/src/app/manuscript/live/studio-manuscript-live-room-model.ts";
 
 test("live room yjs updates preserve concurrent edits", () => {
@@ -126,4 +129,27 @@ test("manual snapshot draft can seed live room plain text", () => {
   });
 
   assert.equal(text, "Chapter One\n\nAlpha Beta.\n\nNested note.");
+});
+
+test("live room text can be edited as notebook blocks", () => {
+  const blocks = createLiveRoomNotebookBlocks("First note.\n\nSecond note.");
+
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].label, "First note.");
+  assert.equal(blocks[1].wordCount, 2);
+
+  const updated = updateLiveRoomNotebookBlockText({
+    text: "First note.\n\nSecond note.",
+    blockIndex: 1,
+    blockText: "Second note with Homer context.",
+  });
+
+  assert.equal(updated, "First note.\n\nSecond note with Homer context.");
+
+  const appended = appendLiveRoomNotebookBlock(updated, "Third working note.");
+
+  assert.equal(
+    appended,
+    "First note.\n\nSecond note with Homer context.\n\nThird working note.",
+  );
 });
