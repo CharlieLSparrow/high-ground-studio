@@ -115,6 +115,7 @@ type StudioManuscriptClientProps = {
   actor: {
     primaryEmail: string;
   };
+  initialLiveSnapshotSlug?: string | null;
 };
 
 type ManuscriptServerSnapshotSummary = {
@@ -177,6 +178,14 @@ type ManuscriptSnapshotLatestResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
 
+type ManuscriptLiveSnapshotResponse =
+  | {
+      ok: true;
+      slug: string;
+      snapshot: ManuscriptServerSnapshotDetail | null;
+    }
+  | { ok: false; message: string };
+
 type ManuscriptSnapshotDetailResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
@@ -225,6 +234,8 @@ const dangerButtonClassName =
   "min-h-10 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 py-2 text-[0.8rem] font-extrabold text-studio-danger sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
+
+const MANUSCRIPT_LIVE_LATEST_PATH = "/manuscript/live/latest";
 
 function HelpHeading({
   children,
@@ -477,8 +488,10 @@ function downloadTextFile(input: {
 
 export function StudioManuscriptClient({
   actor,
+  initialLiveSnapshotSlug = null,
 }: StudioManuscriptClientProps) {
   const skipNextPersistRef = useRef(false);
+  const liveSnapshotLoadStartedRef = useRef(false);
   const manuscriptSurfaceRef = useRef<HTMLElement | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [title, setTitle] = useState("Untitled manuscript");
@@ -1153,6 +1166,20 @@ export function StudioManuscriptClient({
 
     void refreshServerSnapshots({ silent: true });
   }, [isHydrated, isRecordingMode, selectedServerManuscriptId, sidePanelMode]);
+
+  useEffect(() => {
+    if (
+      !editor ||
+      !isHydrated ||
+      !initialLiveSnapshotSlug ||
+      liveSnapshotLoadStartedRef.current
+    ) {
+      return;
+    }
+
+    liveSnapshotLoadStartedRef.current = true;
+    void loadLiveSnapshotBySlug(initialLiveSnapshotSlug);
+  }, [editor, initialLiveSnapshotSlug, isHydrated]);
 
   useEffect(() => {
     if (isSyntheticSmokeDraftLoaded) {
@@ -2593,6 +2620,31 @@ export function StudioManuscriptClient({
     )}`;
   }
 
+  function createLiveSnapshotUrl(slug: string) {
+    return `/api/manuscript/live/${encodeURIComponent(slug)}`;
+  }
+
+  function createLiveLatestBrowserUrl() {
+    return new URL(MANUSCRIPT_LIVE_LATEST_PATH, window.location.origin).href;
+  }
+
+  async function copyLiveLatestSnapshotLink() {
+    const url = createLiveLatestBrowserUrl();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        setMessage(`Phone link: ${url}`);
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      setMessage("Copied latest manuscript phone link.");
+    } catch (error) {
+      console.error("Latest manuscript phone link copy failed.", error);
+      setMessage(`Phone link: ${url}`);
+    }
+  }
+
   async function refreshManuscriptLibrary(input?: { silent?: boolean }) {
     setIsServerManuscriptBusy(true);
 
@@ -2938,6 +2990,84 @@ export function StudioManuscriptClient({
       setServerConnectionState("unavailable");
       setServerSnapshotStatus("Latest server snapshot load failed.");
       setMessage("Latest server snapshot load failed.");
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function loadLiveSnapshotBySlug(slug: string) {
+    if (!editor) {
+      return;
+    }
+
+    const liveLabel = slug === "latest" ? "latest live" : slug;
+
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus(`Loading ${liveLabel} manuscript backup...`);
+
+    try {
+      const response = await fetch(createLiveSnapshotUrl(slug), {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ManuscriptLiveSnapshotResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Live manuscript backup could not be loaded.";
+        markServerSnapshotResponseState(response);
+        setServerSnapshotStatus(message);
+        setMessage(message);
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+
+      if (!payload.snapshot) {
+        setServerSnapshotStatus("No live manuscript backup saved yet.");
+        setMessage("No live manuscript backup saved yet.");
+        return;
+      }
+
+      const loadedSnapshot = payload.snapshot;
+      const draft = safeManuscriptDraft(loadedSnapshot.draft);
+
+      if (!draft) {
+        setServerSnapshotStatus("Live manuscript backup failed draft validation.");
+        setMessage("Live manuscript backup failed draft validation.");
+        return;
+      }
+
+      applyDraftToEditor(
+        draft,
+        `Loaded latest live manuscript backup from ${formatDateTime(
+          loadedSnapshot.updatedAt,
+        )}.`,
+      );
+      setSelectedServerSnapshotId(loadedSnapshot.id);
+      setLastSavedServerSnapshot(loadedSnapshot);
+      setServerCheckpointKey(createManuscriptDraftCheckpointKey(draft));
+      setServerSnapshots((current) => [
+        loadedSnapshot,
+        ...current.filter((snapshot) => snapshot.id !== loadedSnapshot.id),
+      ]);
+      setServerSnapshotStatus(
+        `Loaded latest live manuscript backup from ${formatDateTime(
+          loadedSnapshot.updatedAt,
+        )}.`,
+      );
+
+      if (isSyntheticManuscriptSmokeDraft(draft)) {
+        setHasConfirmedSyntheticPhoneLoad(true);
+      }
+    } catch (error) {
+      console.error("Live manuscript backup load failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerSnapshotStatus("Live manuscript backup load failed.");
+      setMessage("Live manuscript backup load failed.");
     } finally {
       setIsServerSnapshotBusy(false);
     }
@@ -5455,7 +5585,7 @@ export function StudioManuscriptClient({
                     placeholder="Optional note, for example: ready for Homer phone recording."
                   />
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <button
                     className={smallButtonClassName}
                     data-testid="manuscript-snapshot-save"
@@ -5486,6 +5616,20 @@ export function StudioManuscriptClient({
                   >
                     Refresh
                   </button>
+                  <button
+                    className={smallButtonClassName}
+                    data-testid="manuscript-snapshot-copy-live-latest-link"
+                    type="button"
+                    onClick={() => void copyLiveLatestSnapshotLink()}
+                  >
+                    Copy phone link
+                  </button>
+                </div>
+                <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                  <p className={labelClassName}>Latest phone link</p>
+                  <p className="m-0 mt-1 break-all font-mono text-[0.72rem] text-studio-muted">
+                    {MANUSCRIPT_LIVE_LATEST_PATH}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <ManuscriptHelpTip

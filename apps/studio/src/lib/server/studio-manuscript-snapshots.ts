@@ -84,6 +84,18 @@ function normalizeManuscriptId(manuscriptId: string | null | undefined) {
   return normalized || null;
 }
 
+export function normalizeStudioManuscriptLiveSlug(
+  slug: string | null | undefined,
+) {
+  const normalized = String(slug ?? "").trim().toLowerCase();
+
+  return normalized === "latest" ? "latest" : null;
+}
+
+export function isStudioManuscriptLiveSlug(slug: string | null | undefined) {
+  return normalizeStudioManuscriptLiveSlug(slug) !== null;
+}
+
 function normalizeManuscriptTitle(title: string | null | undefined) {
   const normalized = String(title ?? "").trim();
 
@@ -366,6 +378,36 @@ export async function getLatestStudioManuscriptSnapshot(input: {
       ownerEmail,
       ...(manuscriptId ? { manuscriptId } : {}),
     },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (!snapshot) {
+    return null;
+  }
+
+  const draft = safeManuscriptDraft(snapshot.draftJson);
+
+  if (!draft) {
+    throw new Error("Stored manuscript snapshot failed draft validation.");
+  }
+
+  return {
+    ...mapSnapshotSummary(snapshot),
+    draft,
+  };
+}
+
+export async function getLatestStudioManuscriptSnapshotForLiveSlug(input: {
+  slug: string;
+}): Promise<StudioManuscriptSnapshotDetail | null> {
+  const slug = normalizeStudioManuscriptLiveSlug(input.slug);
+
+  if (!slug) {
+    return null;
+  }
+
+  const prisma = getPrismaClient();
+  const snapshot = await prisma.studioManuscriptSnapshot.findFirst({
     orderBy: { updatedAt: "desc" },
   });
 

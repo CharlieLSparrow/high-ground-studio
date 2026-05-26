@@ -115,10 +115,14 @@ on another device:
 
 Use this path when a phone or second browser profile needs the saved checkpoint:
 
-1. Open `/manuscript` on the phone or second browser profile.
-2. Sign in with the same authorized Studio account.
-3. Switch to `Backup`, or use the mobile tools `Load latest snapshot` action.
-4. Click `Refresh library` and select the intended named manuscript.
+1. Open `/manuscript/live/latest` on the phone or second browser profile to
+   load the newest saved server snapshot directly, or open `/manuscript` for
+   manual selection.
+2. Sign in with an authorized Studio account.
+3. If using `/manuscript`, switch to `Backup`, or use the mobile tools `Load
+   latest snapshot` action.
+4. Click `Refresh library` and select the intended named manuscript when using
+   the manual `/manuscript` path.
 5. Click `Refresh` if the snapshot list is stale.
 6. Use `Load latest manuscript` for the newest checkpoint under the selected
    manuscript, or choose a snapshot and click

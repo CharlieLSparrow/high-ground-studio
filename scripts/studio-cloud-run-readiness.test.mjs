@@ -166,6 +166,39 @@ test("Content Studio durable projects are wired through authenticated API", () =
   assert.match(client, /Open Project/);
 });
 
+test("Manuscript latest live link is authenticated and snapshot-backed", () => {
+  const route = readFileSync(
+    "apps/studio/src/app/api/manuscript/live/[slug]/route.ts",
+    "utf8",
+  );
+  const page = readFileSync(
+    "apps/studio/src/app/manuscript/live/[slug]/page.tsx",
+    "utf8",
+  );
+  const serverModel = readFileSync(
+    "apps/studio/src/lib/server/studio-manuscript-snapshots.ts",
+    "utf8",
+  );
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
+    "utf8",
+  );
+
+  assert.match(route, /getStudioAccessState/);
+  assert.match(route, /getStudioDatabaseUrl/);
+  assert.match(route, /isStudioManuscriptLiveSlug/);
+  assert.match(route, /getLatestStudioManuscriptSnapshotForLiveSlug/);
+  assert.match(page, /StudioAccessShell/);
+  assert.match(page, /initialLiveSnapshotSlug/);
+  assert.match(serverModel, /normalizeStudioManuscriptLiveSlug/);
+  assert.match(serverModel, /studioManuscriptSnapshot\.findFirst/);
+  assert.match(serverModel, /orderBy: \{ updatedAt: "desc" \}/);
+  assert.match(client, /MANUSCRIPT_LIVE_LATEST_PATH/);
+  assert.match(client, /\/manuscript\/live\/latest/);
+  assert.match(client, /Copy phone link/);
+  assert.match(client, /loadLiveSnapshotBySlug/);
+});
+
 test("Prisma db-push job image is available for Cloud SQL schema sync", () => {
   const dockerfile = readFileSync("ops/prisma-db-push.Dockerfile", "utf8");
   const cloudbuild = readFileSync("cloudbuild.prisma-db-push.yaml", "utf8");
