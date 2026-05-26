@@ -233,6 +233,21 @@ local buffer, settled/waiting file counts, free disk space, cloud destination,
 ledger totals, verified bytes, and manual remote cleanup queue without exposing
 source file paths from completed ledger entries.
 
+Open a local auto-refreshing status page while the watcher runs:
+
+```bash
+pnpm studio-cut:media-vault -- migration-status-page \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --watch \
+  --open
+```
+
+The page reads `migration-status.json` from a local status folder and refreshes
+in the browser. It is an operator view only; do not commit generated reports or
+status-page folders if they contain private local paths.
+
 Emit a vault receipt artifact for handoff/audit:
 
 ```bash
@@ -271,9 +286,9 @@ pnpm studio-cut:insta360-operator prepare-session \
 
 This creates the predictable download folder plus local helper scripts for the
 whole loop: `run-preflight.sh`, `run-drain.sh`, `run-migration-report.sh`,
-`run-ledger-summary.sh`, `run-verify-ledger-cloud.sh`, and
-`run-vault-receipt.sh`. The operator can run those scripts without remembering
-the ledger path.
+`run-status-page.sh`, `run-ledger-summary.sh`, `run-verify-ledger-cloud.sh`,
+and `run-vault-receipt.sh`. The operator can run those scripts without
+remembering the ledger path.
 
 Open Insta360 Studio:
 

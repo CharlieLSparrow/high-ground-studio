@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -749,6 +750,306 @@ def migration_report_command(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(payload, indent=2))
     return 1 if payload["errors"] else 0
+
+
+def migration_status_page_html(*, report_file_name: str, refresh_seconds: int) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Studio Cut Media Vault Migration</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --ink: #1f2a2e;
+      --muted: #667277;
+      --line: #cfc7b8;
+      --accent: #0f766e;
+      --warn: #a16207;
+      --bad: #b91c1c;
+      --good: #047857;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: radial-gradient(circle at top left, #e9f3ef 0, transparent 34rem), var(--bg);
+      color: var(--ink);
+      font: 15px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }}
+    main {{
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 36px;
+    }}
+    header {{
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 18px;
+      margin-bottom: 18px;
+    }}
+    h1 {{
+      margin: 0 0 4px;
+      font: 700 30px/1.1 Georgia, "Times New Roman", serif;
+      letter-spacing: 0;
+    }}
+    .subtle {{ color: var(--muted); }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }}
+    .panel {{
+      background: color-mix(in srgb, var(--panel) 94%, white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 12px 28px rgba(31, 42, 46, 0.08);
+    }}
+    .wide {{ grid-column: span 2; }}
+    .full {{ grid-column: 1 / -1; }}
+    .metric {{
+      font-size: clamp(22px, 4vw, 34px);
+      font-weight: 800;
+      letter-spacing: 0;
+      line-height: 1.05;
+      margin-top: 8px;
+    }}
+    .label {{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #ffffffa8;
+      color: var(--muted);
+      white-space: nowrap;
+    }}
+    .pill.ready {{ border-color: #85b9a6; color: var(--good); }}
+    .pill.blocked {{ border-color: #ef9a9a; color: var(--bad); }}
+    code, pre {{
+      word-break: break-word;
+      white-space: pre-wrap;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }}
+    th, td {{
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 8px 6px;
+      vertical-align: top;
+    }}
+    th {{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }}
+    .empty {{
+      min-height: 92px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      margin-top: 10px;
+    }}
+    .warn {{ color: var(--warn); }}
+    .bad {{ color: var(--bad); }}
+    @media (max-width: 850px) {{
+      header {{ align-items: start; flex-direction: column; }}
+      .grid {{ grid-template-columns: 1fr; }}
+      .wide {{ grid-column: auto; }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Studio Cut Media Vault Migration</h1>
+        <div class="subtle" id="subtitle">Loading report...</div>
+      </div>
+      <div class="pill" id="statusPill">Loading</div>
+    </header>
+    <section class="grid">
+      <article class="panel">
+        <div class="label">Local Buffer Files</div>
+        <div class="metric" id="localFileCount">0</div>
+      </article>
+      <article class="panel">
+        <div class="label">Settled</div>
+        <div class="metric" id="settledFileCount">0</div>
+      </article>
+      <article class="panel">
+        <div class="label">Uploaded Verified</div>
+        <div class="metric" id="uploadedCount">0</div>
+      </article>
+      <article class="panel">
+        <div class="label">Free Space</div>
+        <div class="metric" id="freeGb">0 GB</div>
+      </article>
+      <article class="panel wide">
+        <div class="label">Local Buffer</div>
+        <pre id="sourceDir"></pre>
+      </article>
+      <article class="panel wide">
+        <div class="label">Cloud Prefix</div>
+        <pre id="cloudPrefix"></pre>
+      </article>
+      <article class="panel full">
+        <div class="label">Warnings</div>
+        <div id="warnings" class="empty">No warnings.</div>
+      </article>
+      <article class="panel full">
+        <div class="label">Current Local Files</div>
+        <div id="files"></div>
+      </article>
+    </section>
+  </main>
+  <script>
+    const reportFile = {json.dumps(report_file_name)};
+    const refreshMs = {max(1, refresh_seconds)} * 1000;
+    const text = (id, value) => document.getElementById(id).textContent = value ?? "";
+    const bytes = (value) => {{
+      if (!value) return "0 B";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let n = Number(value);
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) {{ n /= 1024; i += 1; }}
+      return `${{n.toFixed(i === 0 ? 0 : 2)}} ${{units[i]}}`;
+    }};
+    function renderWarnings(items) {{
+      const box = document.getElementById("warnings");
+      if (!items || items.length === 0) {{
+        box.className = "empty";
+        box.textContent = "No warnings.";
+        return;
+      }}
+      box.className = "";
+      box.innerHTML = `<ul>${{items.map((item) => `<li class="warn">${{item}}</li>`).join("")}}</ul>`;
+    }}
+    function renderFiles(items) {{
+      const box = document.getElementById("files");
+      if (!items || items.length === 0) {{
+        box.innerHTML = `<div class="empty">Watching empty buffer. Start downloads in Insta360 Studio.</div>`;
+        return;
+      }}
+      box.innerHTML = `<table>
+        <thead><tr><th>File</th><th>Size</th><th>Kind</th><th>State</th><th>Modified</th></tr></thead>
+        <tbody>${{items.map((item) => `<tr>
+          <td>${{item.relativePath}}</td>
+          <td>${{bytes(item.sizeBytes)}}</td>
+          <td>${{item.mediaKind}}</td>
+          <td>${{item.settled ? "settled" : "waiting"}}</td>
+          <td>${{item.modifiedAt}}</td>
+        </tr>`).join("")}}</tbody>
+      </table>`;
+    }}
+    async function load() {{
+      try {{
+        const response = await fetch(`${{reportFile}}?t=${{Date.now()}}`);
+        const report = await response.json();
+        const progress = report.progress || {{}};
+        document.getElementById("statusPill").className = `pill ${{report.status === "ready" ? "ready" : "blocked"}}`;
+        text("statusPill", `${{report.status}} / ${{report.state}}`);
+        text("subtitle", `${{report.projectId}} / ${{report.collectionId}} updated ${{report.createdAt}}`);
+        text("localFileCount", progress.localFileCount);
+        text("settledFileCount", progress.localSettledFileCount);
+        text("uploadedCount", progress.uploadedVerifiedOrDeletedCount);
+        text("freeGb", `${{progress.freeGb}} GB`);
+        text("sourceDir", report.sourceDir);
+        text("cloudPrefix", report.cloudPrefix);
+        renderWarnings(report.warnings || []);
+        renderFiles((report.localBuffer || {{}}).files || []);
+      }} catch (error) {{
+        document.getElementById("statusPill").className = "pill blocked";
+        text("statusPill", "blocked / report unreadable");
+        renderWarnings([String(error)]);
+      }}
+    }}
+    load();
+    setInterval(load, refreshMs);
+  </script>
+</body>
+</html>
+"""
+
+
+def write_migration_status_page(args: argparse.Namespace) -> dict[str, Any]:
+    source_dir = Path(args.source_dir).expanduser()
+    ledger_path = Path(args.ledger).expanduser() if args.ledger else source_dir / ".studio-cut-media-vault-ledger.jsonl"
+    out_dir = Path(args.out_dir).expanduser() if args.out_dir else source_dir / ".studio-cut-media-vault-status"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    report_path = out_dir / "migration-status.json"
+    html_path = out_dir / "index.html"
+    payload = build_migration_report_payload(
+        source_dir=source_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+        bucket=args.bucket,
+        storage_prefix=args.storage_prefix,
+        ledger_path=ledger_path,
+        settle_seconds=args.settle_seconds,
+        min_free_gb=args.min_free_gb,
+        allow_icloud=args.allow_icloud,
+        max_files=args.max_files,
+    )
+    write_json(report_path, payload)
+    html_path.write_text(
+        migration_status_page_html(
+            report_file_name=report_path.name,
+            refresh_seconds=args.refresh_seconds,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "status": payload["status"],
+        "state": payload["state"],
+        "htmlPath": str(html_path),
+        "reportPath": str(report_path),
+        "progress": payload["progress"],
+        "warnings": payload["warnings"],
+        "errors": payload["errors"],
+    }
+
+
+def migration_status_page_command(args: argparse.Namespace) -> int:
+    result = write_migration_status_page(args)
+    if args.open:
+        webbrowser.open(Path(result["htmlPath"]).resolve().as_uri())
+    print(json.dumps(result, indent=2))
+    if result["errors"] or not args.watch:
+        return 1 if result["errors"] else 0
+
+    try:
+        while True:
+            import time
+
+            time.sleep(max(5, args.poll_seconds))
+            result = write_migration_status_page(args)
+            print(json.dumps(result, indent=2))
+            if result["errors"] and not args.continue_on_error:
+                return 1
+    except KeyboardInterrupt:
+        print("Stopped migration status page watcher.")
+        return 0
 
 
 def verify_uploaded_destinations_payload(
@@ -1728,6 +2029,26 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             allow_icloud=False,
             max_files=10,
         )
+        status_page_dir = output_dir / "migration-status-page"
+        status_page_args = argparse.Namespace(
+            source_dir=str(source_dir),
+            project_id="episode-004",
+            collection_id="homer-insta360-smoke",
+            bucket=DEFAULT_BUCKET,
+            storage_prefix="media-vault/raw",
+            ledger=str(drain_args.ledger),
+            settle_seconds=0,
+            min_free_gb=0,
+            allow_icloud=False,
+            max_files=10,
+            out_dir=str(status_page_dir),
+            refresh_seconds=5,
+            watch=False,
+            poll_seconds=10,
+            open=False,
+            continue_on_error=False,
+        )
+        status_page_result = write_migration_status_page(status_page_args)
         preflight_result = storage_preflight(source_dir, min_free_gb=0, allow_icloud=False)
         ledger_path = output_dir / "drain-ledger.synthetic.jsonl"
         append_jsonl(
@@ -1788,6 +2109,9 @@ def smoke_test_command(_: argparse.Namespace) -> int:
                 migration_report["status"] == "ready",
                 migration_report["progress"]["localFileCount"] == 3,
                 migration_report["cloudPrefix"].endswith("/episode-004/homer-insta360-smoke/"),
+                status_page_result["status"] == "ready",
+                (status_page_dir / "index.html").exists(),
+                (status_page_dir / "migration-status.json").exists(),
                 "/private/tmp/should-not-print-by-default" not in json.dumps(ledger_summary),
             ]
         )
@@ -1797,6 +2121,7 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             "uploadPlanPath": str(plan_path),
             "insta360PackagePath": str(insta360_package_dir),
             "vaultReceiptPath": str(receipt_path),
+            "migrationStatusPagePath": str(status_page_dir / "index.html"),
             "assetCount": manifest["assetCount"],
             "assertionsPassed": sum(1 for assertion in assertions if assertion),
             "assertionCount": len(assertions),
@@ -1897,6 +2222,28 @@ def build_parser() -> argparse.ArgumentParser:
     migration_report.add_argument("--max-files", type=int, default=20)
     migration_report.add_argument("--out")
     migration_report.set_defaults(func=migration_report_command)
+
+    migration_status_page = subparsers.add_parser(
+        "migration-status-page",
+        help="Write an auto-refreshing local HTML page backed by migration-report JSON",
+    )
+    migration_status_page.add_argument("--source-dir", required=True)
+    migration_status_page.add_argument("--project-id", required=True)
+    migration_status_page.add_argument("--collection-id", required=True)
+    migration_status_page.add_argument("--bucket", default=DEFAULT_BUCKET)
+    migration_status_page.add_argument("--storage-prefix", default="media-vault/raw")
+    migration_status_page.add_argument("--ledger")
+    migration_status_page.add_argument("--settle-seconds", type=int, default=30)
+    migration_status_page.add_argument("--min-free-gb", type=float, default=DEFAULT_MIN_FREE_GB)
+    migration_status_page.add_argument("--allow-icloud", action="store_true")
+    migration_status_page.add_argument("--max-files", type=int, default=20)
+    migration_status_page.add_argument("--out-dir")
+    migration_status_page.add_argument("--refresh-seconds", type=int, default=5)
+    migration_status_page.add_argument("--watch", action="store_true")
+    migration_status_page.add_argument("--poll-seconds", type=int, default=10)
+    migration_status_page.add_argument("--open", action="store_true")
+    migration_status_page.add_argument("--continue-on-error", action="store_true")
+    migration_status_page.set_defaults(func=migration_status_page_command)
 
     ledger_summary = subparsers.add_parser(
         "ledger-summary",

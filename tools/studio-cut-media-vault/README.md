@@ -103,6 +103,20 @@ The report shows the local buffer count, settled/waiting files, free disk
 space, the target GCS prefix, ledger counts, verified bytes, and the manual
 remote deletion queue.
 
+Open a local auto-refreshing status page backed by the same report:
+
+```bash
+pnpm studio-cut:media-vault -- migration-status-page \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --watch \
+  --open
+```
+
+This writes `index.html` and `migration-status.json` under a local status
+folder. It does not upload private paths or media.
+
 Review the local chain-of-custody ledger at any point:
 
 ```bash
@@ -157,6 +171,7 @@ scripts:
 - `run-preflight.sh`
 - `run-drain.sh`
 - `run-migration-report.sh`
+- `run-status-page.sh`
 - `run-ledger-summary.sh`
 - `run-verify-ledger-cloud.sh`
 - `run-vault-receipt.sh`

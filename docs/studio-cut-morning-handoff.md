@@ -219,6 +219,12 @@ pnpm studio-cut:media-vault -- migration-report \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
   --collection-id homer-insta360
+pnpm studio-cut:media-vault -- migration-status-page \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --watch \
+  --open
 pnpm studio-cut:media-vault -- ledger-summary \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 pnpm studio-cut:media-vault -- verify-ledger-cloud \
