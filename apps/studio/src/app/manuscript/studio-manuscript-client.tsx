@@ -3950,7 +3950,7 @@ export function StudioManuscriptClient({
           {serverConnectionLabel}
         </StudioChip>
       </div>
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <button
           className={cn(
             smallButtonClassName,
@@ -3963,6 +3963,15 @@ export function StudioManuscriptClient({
         >
           Save manuscript
         </button>
+        <a
+          className={cn(
+            smallButtonClassName,
+            "border-studio-source/55 bg-studio-source/10 text-studio-source text-center",
+          )}
+          href="/manuscript/collab/latest"
+        >
+          Live edit
+        </a>
         <button
           className={smallButtonClassName}
           data-testid="manuscript-primary-copy-phone-link"
@@ -4113,6 +4122,15 @@ export function StudioManuscriptClient({
               className="-ml-1"
               note={getManuscriptHelpNote("recording-reading-mode")}
             />
+            <a
+              className={cn(
+                commandButtonClassName,
+                "border-studio-source/45 bg-studio-source/10 text-studio-source",
+              )}
+              href="/manuscript/collab/latest"
+            >
+              Live Edit
+            </a>
             {blockFilterSummary.hasActiveFilters ? (
               <div className="flex items-center gap-1.5">
                 <button
@@ -6285,7 +6303,7 @@ export function StudioManuscriptClient({
                   </div>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <div className="flex items-center gap-1.5">
                   <button
                     className={cn(smallButtonClassName, "flex-1")}
@@ -7040,6 +7058,15 @@ export function StudioManuscriptClient({
                 >
                   Save/share
                 </button>
+                <a
+                  className={cn(
+                    smallButtonClassName,
+                    "border-studio-source/55 bg-studio-source/10 text-center text-studio-source",
+                  )}
+                  href="/manuscript/collab/latest"
+                >
+                  Live edit
+                </a>
                 <button
                   className={cn(
                     smallButtonClassName,

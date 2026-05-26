@@ -920,6 +920,23 @@ model StudioManuscriptSnapshot {
   @@index([manuscriptId, updatedAt])
 }
 
+model StudioManuscriptCollaborationRoom {
+  id                       String   @id @default(cuid())
+  roomName                 String   @unique
+  title                    String
+  seedSnapshotId           String?
+  seededAt                 DateTime?
+  seededByEmail            String?
+  lastCheckpointSnapshotId String?
+  ydocState                Bytes?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@index([seedSnapshotId])
+  @@index([lastCheckpointSnapshotId])
+}
+
 model StudioContentWorkspaceSnapshot {
   id              String   @id @default(cuid())
   ownerEmail      String

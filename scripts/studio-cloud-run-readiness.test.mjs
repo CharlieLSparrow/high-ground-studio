@@ -208,6 +208,59 @@ test("Manuscript latest live link is public read-only and snapshot-backed", () =
   assert.match(client, /loadLiveSnapshotBySlug/);
 });
 
+test("Manuscript live edit room is private token-gated collaboration", () => {
+  const route = readFileSync(
+    "apps/studio/src/app/api/manuscript/collab/latest/route.ts",
+    "utf8",
+  );
+  const checkpointRoute = readFileSync(
+    "apps/studio/src/app/api/manuscript/collab/latest/checkpoint/route.ts",
+    "utf8",
+  );
+  const page = readFileSync(
+    "apps/studio/src/app/manuscript/collab/latest/page.tsx",
+    "utf8",
+  );
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/collab/latest/studio-manuscript-collab-client.tsx",
+    "utf8",
+  );
+  const collabServer = readFileSync("apps/studio-collab/server.mjs", "utf8");
+  const collabDockerfile = readFileSync(
+    "apps/studio-collab/Dockerfile",
+    "utf8",
+  );
+  const collabCloudBuild = readFileSync(
+    "cloudbuild.studio-collab.yaml",
+    "utf8",
+  );
+  const schema = readFileSync("prisma/schema.prisma", "utf8");
+
+  assert.match(route, /getStudioAccessState/);
+  assert.match(route, /signStudioCollabToken/);
+  assert.match(route, /getLatestStudioManuscriptSnapshotForLiveSlug/);
+  assert.match(route, /claimStudioManuscriptLiveRoomSeed/);
+  assert.match(checkpointRoute, /createStudioManuscriptSnapshot/);
+  assert.match(checkpointRoute, /markStudioManuscriptLiveRoomCheckpoint/);
+  assert.match(page, /StudioAccessShell/);
+  assert.match(page, /StudioManuscriptCollabClient/);
+  assert.match(client, /HocuspocusProvider/);
+  assert.match(client, /Collaboration\.configure/);
+  assert.match(client, /CollaborationCaret\.configure/);
+  assert.match(client, /Save checkpoint/);
+  assert.match(client, /\/api\/manuscript\/collab\/latest\/checkpoint/);
+  assert.match(collabServer, /onAuthenticate/);
+  assert.match(collabServer, /onLoadDocument/);
+  assert.match(collabServer, /onStoreDocument/);
+  assert.match(collabServer, /Y\.encodeStateAsUpdate/);
+  assert.match(collabServer, /\/healthz/);
+  assert.match(collabDockerfile, /studio-collab/);
+  assert.match(collabCloudBuild, /apps\/studio-collab\/Dockerfile/);
+  assert.match(collabCloudBuild, /studio-collab/);
+  assert.match(schema, /model StudioManuscriptCollaborationRoom/);
+  assert.match(schema, /ydocState\s+Bytes\?/);
+});
+
 test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   const client = readFileSync(
     "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",

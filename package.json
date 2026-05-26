@@ -10,6 +10,7 @@
     "postinstall": "prisma generate",
     "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
     "studio": "pnpm --filter studio dev",
+    "studio:collab": "PORT=8789 pnpm --filter studio-collab start",
     "studio:build": "pnpm --filter studio build",
     "studio:db:up": "docker compose -f compose.studio.yml up -d --wait studio-postgres",
     "studio:db:down": "docker compose -f compose.studio.yml down",

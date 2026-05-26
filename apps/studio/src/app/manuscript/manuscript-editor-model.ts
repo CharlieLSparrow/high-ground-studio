@@ -33,6 +33,8 @@ export const semanticHighlightDefinitions = [
     label: "Quote candidate",
     colorKey: "quote-candidate",
   },
+  { id: "clip", label: "Clip", colorKey: "clip" },
+  { id: "show-notes", label: "Show notes", colorKey: "show-notes" },
   { id: "story", label: "Story", colorKey: "story" },
   { id: "insight", label: "Insight", colorKey: "insight" },
   { id: "research", label: "Research", colorKey: "research" },

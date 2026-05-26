@@ -186,6 +186,8 @@ test("author and semantic definitions contain the MVP options", () => {
       "quote",
       "cited-quotation",
       "quote-candidate",
+      "clip",
+      "show-notes",
       "story",
       "insight",
       "research",
