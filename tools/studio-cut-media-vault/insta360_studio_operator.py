@@ -138,6 +138,46 @@ def build_drain_command(
     return " ".join(shell_quote(part) for part in parts)
 
 
+def default_ledger_path(download_dir: Path) -> Path:
+    return download_dir / ".studio-cut-media-vault-ledger.jsonl"
+
+
+def build_storage_preflight_command(*, download_dir: Path) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:media-vault",
+        "--",
+        "storage-preflight",
+        "--source-dir",
+        str(download_dir),
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
+def build_ledger_summary_command(*, ledger_path: Path) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:media-vault",
+        "--",
+        "ledger-summary",
+        "--ledger",
+        str(ledger_path),
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
+def build_verify_ledger_cloud_command(*, ledger_path: Path) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:media-vault",
+        "--",
+        "verify-ledger-cloud",
+        "--ledger",
+        str(ledger_path),
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
 def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
@@ -178,6 +218,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     operator_dir = Path(args.operator_dir).expanduser() if args.operator_dir else default_operator_dir(args.project_id)
     operator_dir.mkdir(parents=True, exist_ok=True)
     download_dir.mkdir(parents=True, exist_ok=True)
+    ledger_path = default_ledger_path(download_dir)
 
     drain_command = build_drain_command(
         download_dir=download_dir,
@@ -193,6 +234,24 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         execute=False,
         delete_local_after_upload=False,
     )
+    preflight_command = build_storage_preflight_command(download_dir=download_dir)
+    ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
+    verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
+
+    run_preflight_path = operator_dir / "run-preflight.sh"
+    run_preflight_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                preflight_command,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_preflight_path.chmod(0o755)
 
     run_drain_path = operator_dir / "run-drain.sh"
     run_drain_path.write_text(
@@ -209,6 +268,36 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     )
     run_drain_path.chmod(0o755)
 
+    run_ledger_summary_path = operator_dir / "run-ledger-summary.sh"
+    run_ledger_summary_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                ledger_summary_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_ledger_summary_path.chmod(0o755)
+
+    run_verify_cloud_path = operator_dir / "run-verify-ledger-cloud.sh"
+    run_verify_cloud_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                verify_ledger_cloud_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_verify_cloud_path.chmod(0o755)
+
     readme_path = operator_dir / "README.md"
     readme_path.write_text(
         "\n".join(
@@ -223,6 +312,12 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 "",
                 "Configure Insta360 Studio cloud downloads to save originals here when possible.",
                 "",
+                "## Preflight",
+                "",
+                "```bash",
+                preflight_command,
+                "```",
+                "",
                 "## Dry Run Drain",
                 "",
                 "```bash",
@@ -235,7 +330,14 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 drain_command,
                 "```",
                 "",
-                "Remote Insta360 Cloud deletion remains manual after ledger verification.",
+                "## Audit Before Manual Remote Cleanup",
+                "",
+                "```bash",
+                ledger_summary_command_text,
+                verify_ledger_cloud_command_text,
+                "```",
+                "",
+                "`ledger-summary` redacts local source paths by default. Remote Insta360 Cloud deletion remains manual after ledger verification.",
                 "",
             ]
         ),
@@ -248,10 +350,17 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "collectionId": args.collection_id,
         "downloadDir": str(download_dir),
         "operatorDir": str(operator_dir),
+        "ledgerPath": str(ledger_path),
+        "runPreflightScript": str(run_preflight_path),
         "runDrainScript": str(run_drain_path),
+        "runLedgerSummaryScript": str(run_ledger_summary_path),
+        "runVerifyLedgerCloudScript": str(run_verify_cloud_path),
         "readme": str(readme_path),
+        "preflightCommand": preflight_command,
         "dryRunCommand": dry_run_command,
         "drainCommand": drain_command,
+        "ledgerSummaryCommand": ledger_summary_command_text,
+        "verifyLedgerCloudCommand": verify_ledger_cloud_command_text,
     }
     print(json.dumps(result, indent=2))
     return 0
@@ -506,6 +615,7 @@ def download_selected_command(args: argparse.Namespace) -> int:
 
 def self_test_command(_: argparse.Namespace) -> int:
     download_dir = Path("/tmp/studio-cut-insta360-operator-test/downloads")
+    ledger_path = default_ledger_path(download_dir)
     drain_command = build_drain_command(
         download_dir=download_dir,
         project_id="episode-004",
@@ -513,10 +623,16 @@ def self_test_command(_: argparse.Namespace) -> int:
         execute=True,
         delete_local_after_upload=True,
     )
+    preflight_command = build_storage_preflight_command(download_dir=download_dir)
+    ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
+    verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
     assertions = [
         "drain-folder" in drain_command,
         "--execute" in drain_command,
         "--delete-local-after-upload" in drain_command,
+        "storage-preflight" in preflight_command,
+        "ledger-summary" in ledger_summary_command_text,
+        "verify-ledger-cloud" in verify_ledger_cloud_command_text,
         "Insta360 Studio" in ui_snapshot_applescript(APP_NAME, 2),
         "Download" in click_control_applescript(APP_NAME, "Download", 2, False),
     ]
@@ -524,7 +640,10 @@ def self_test_command(_: argparse.Namespace) -> int:
         "status": "pass" if all(assertions) else "fail",
         "assertionsPassed": sum(1 for assertion in assertions if assertion),
         "assertionCount": len(assertions),
+        "samplePreflightCommand": preflight_command,
         "sampleDrainCommand": drain_command,
+        "sampleLedgerSummaryCommand": ledger_summary_command_text,
+        "sampleVerifyLedgerCloudCommand": verify_ledger_cloud_command_text,
     }
     print(json.dumps(result, indent=2))
     return 0 if all(assertions) else 1

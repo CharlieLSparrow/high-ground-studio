@@ -209,6 +209,8 @@ This uploads settled files one at a time, verifies the GCS object size, records
 a local JSONL ledger, and deletes the local copy only after verification. Remote
 Insta360 cloud deletion remains a manual app step until a supported delete API
 or auditable automation path exists.
+`prepare-session` also writes local scripts for the same commands so Charlie can
+run the loop from the generated operator folder without remembering paths.
 
 Audit the ledger before remote cleanup:
 

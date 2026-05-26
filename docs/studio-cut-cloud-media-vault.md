@@ -244,6 +244,11 @@ pnpm studio-cut:insta360-operator prepare-session \
   --collection-id homer-insta360
 ```
 
+This creates the predictable download folder plus local helper scripts for the
+whole loop: `run-preflight.sh`, `run-drain.sh`, `run-ledger-summary.sh`, and
+`run-verify-ledger-cloud.sh`. The operator can run those scripts without
+remembering the ledger path.
+
 Open Insta360 Studio:
 
 ```bash

@@ -127,6 +127,14 @@ pnpm studio-cut:insta360-operator prepare-session \
   --collection-id homer-insta360
 ```
 
+`prepare-session` creates the predictable local download buffer plus helper
+scripts:
+
+- `run-preflight.sh`
+- `run-drain.sh`
+- `run-ledger-summary.sh`
+- `run-verify-ledger-cloud.sh`
+
 Open Studio:
 
 ```bash
