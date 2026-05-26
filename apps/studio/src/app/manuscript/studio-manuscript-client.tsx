@@ -217,6 +217,36 @@ type ManuscriptTagContextMenuState = ManuscriptTextSelectionRange & {
   y: number;
 };
 
+type ManuscriptStructureRailKind = Extract<
+  ManuscriptStructureKind,
+  "chapter" | "episode"
+>;
+
+type ManuscriptStructureRailRegion = {
+  id: string;
+  kind: ManuscriptStructureRailKind;
+  label: string;
+  title: string;
+  startIndex: number;
+  endIndex: number;
+  startBlockId: string;
+  endBlockId: string;
+};
+
+type ManuscriptStructureRailState = {
+  chapter: ManuscriptStructureRailRegion | null;
+  episode: ManuscriptStructureRailRegion | null;
+  nextChapter: ManuscriptStructureRailRegion | null;
+  nextEpisode: ManuscriptStructureRailRegion | null;
+};
+
+const emptyStructureRailState: ManuscriptStructureRailState = {
+  chapter: null,
+  episode: null,
+  nextChapter: null,
+  nextEpisode: null,
+};
+
 const everydayManuscriptSidePanelModes = [
   { id: "mark", label: "Mark" },
   { id: "structure", label: "Structure" },
@@ -322,6 +352,58 @@ function createStructureRegionId() {
 
 function createChapterTitleBlockId() {
   return `chapter-title-${createId("block")}`;
+}
+
+function areStructureRailRegionsEqual(
+  left: ManuscriptStructureRailRegion | null,
+  right: ManuscriptStructureRailRegion | null,
+) {
+  return (
+    left?.id === right?.id &&
+    left?.label === right?.label &&
+    left?.title === right?.title
+  );
+}
+
+function areStructureRailStatesEqual(
+  left: ManuscriptStructureRailState,
+  right: ManuscriptStructureRailState,
+) {
+  return (
+    areStructureRailRegionsEqual(left.chapter, right.chapter) &&
+    areStructureRailRegionsEqual(left.episode, right.episode) &&
+    areStructureRailRegionsEqual(left.nextChapter, right.nextChapter) &&
+    areStructureRailRegionsEqual(left.nextEpisode, right.nextEpisode)
+  );
+}
+
+function getCurrentStructureRailRegion(
+  regions: ManuscriptStructureRailRegion[],
+  blockIndex: number,
+) {
+  return (
+    regions.find(
+      (region) =>
+        region.startIndex <= blockIndex && region.endIndex >= blockIndex,
+    ) ?? null
+  );
+}
+
+function getNextStructureRailRegion(
+  regions: ManuscriptStructureRailRegion[],
+  blockIndex: number,
+  currentRegion: ManuscriptStructureRailRegion | null,
+) {
+  return (
+    regions.find(
+      (region) =>
+        region.startIndex > blockIndex && region.id !== currentRegion?.id,
+    ) ?? null
+  );
+}
+
+function getStructureRailTitle(title: string, fallback: string) {
+  return title.trim() || fallback;
 }
 
 function formatDateTime(value: string | null) {
@@ -607,6 +689,8 @@ export function StudioManuscriptClient({
     endBlockId: string;
     blockCount: number;
   } | null>(null);
+  const [structureRailState, setStructureRailState] =
+    useState<ManuscriptStructureRailState>(emptyStructureRailState);
   const [hasTextSelection, setHasTextSelection] = useState(false);
   const [tagContextMenu, setTagContextMenu] =
     useState<ManuscriptTagContextMenuState | null>(null);
@@ -890,6 +974,63 @@ export function StudioManuscriptClient({
       }),
     [currentEditorJson, structureRegions],
   );
+  const structureRailRegions = useMemo(() => {
+    const explicitChapterRegions = structureRegionSummaries
+      .filter(
+        (region) =>
+          region.kind === "chapter" &&
+          region.isRangeComplete &&
+          region.startIndex >= 0,
+      )
+      .sort((left, right) => left.startIndex - right.startIndex)
+      .map<ManuscriptStructureRailRegion>((region, index) => ({
+        id: `structure-chapter:${region.id}`,
+        kind: "chapter",
+        label: `Chapter ${index + 1}`,
+        title: getStructureRailTitle(region.title, `Chapter ${index + 1}`),
+        startIndex: region.startIndex,
+        endIndex: region.endIndex,
+        startBlockId: region.startBlockId,
+        endBlockId: region.endBlockId,
+      }));
+    const chapterRegions = derivedChapters.length
+      ? derivedChapters.map<ManuscriptStructureRailRegion>(
+          (chapter, index) => ({
+            id: `chapter-title:${chapter.id}`,
+            kind: "chapter",
+            label: `Chapter ${index + 1}`,
+            title: getStructureRailTitle(chapter.title, `Chapter ${index + 1}`),
+            startIndex: chapter.startIndex,
+            endIndex: chapter.endIndex,
+            startBlockId: chapter.startBlockId,
+            endBlockId: chapter.endBlockId,
+          }),
+        )
+      : explicitChapterRegions;
+    const episodeRegions = structureRegionSummaries
+      .filter(
+        (region) =>
+          region.kind === "episode" &&
+          region.isRangeComplete &&
+          region.startIndex >= 0,
+      )
+      .sort((left, right) => left.startIndex - right.startIndex)
+      .map<ManuscriptStructureRailRegion>((region, index) => ({
+        id: `structure-episode:${region.id}`,
+        kind: "episode",
+        label: `Episode ${index + 1}`,
+        title: getStructureRailTitle(region.title, `Episode ${index + 1}`),
+        startIndex: region.startIndex,
+        endIndex: region.endIndex,
+        startBlockId: region.startBlockId,
+        endBlockId: region.endBlockId,
+      }));
+
+    return {
+      chapters: chapterRegions,
+      episodes: episodeRegions,
+    };
+  }, [derivedChapters, structureRegionSummaries]);
   const hgoEpisodeRegionOptions = useMemo(
     () => structureRegionSummaries.filter((region) => region.kind === "episode"),
     [structureRegionSummaries],
@@ -1495,6 +1636,150 @@ export function StudioManuscriptClient({
     focusVisibleBlockIds,
     structureRegionSummaries,
   ]);
+
+  useEffect(() => {
+    if (
+      !editor ||
+      !blockSummaries.length ||
+      (!structureRailRegions.chapters.length &&
+        !structureRailRegions.episodes.length)
+    ) {
+      setStructureRailState((previous) =>
+        areStructureRailStatesEqual(previous, emptyStructureRailState)
+          ? previous
+          : emptyStructureRailState,
+      );
+      return;
+    }
+
+    const blockIndexById = new Map<string, number>();
+
+    blockSummaries.forEach((block, index) => {
+      if (block.blockId) {
+        blockIndexById.set(block.blockId, index);
+      }
+    });
+
+    const blockElements: Array<{
+      index: number;
+      element: HTMLElement;
+    }> = [];
+
+    editor.state.doc.descendants((node, pos) => {
+      if (!blockNodeTypes.includes(node.type.name)) {
+        return true;
+      }
+
+      const blockId = node.attrs.blockId;
+
+      if (typeof blockId !== "string") {
+        return true;
+      }
+
+      const index = blockIndexById.get(blockId);
+      const domNode = editor.view.nodeDOM(pos);
+
+      if (typeof index === "number" && domNode instanceof HTMLElement) {
+        blockElements.push({ index, element: domNode });
+      }
+
+      return true;
+    });
+
+    if (!blockElements.length) {
+      setStructureRailState((previous) =>
+        areStructureRailStatesEqual(previous, emptyStructureRailState)
+          ? previous
+          : emptyStructureRailState,
+      );
+      return;
+    }
+
+    let animationFrame = 0;
+
+    const readCurrentBlockIndex = () => {
+      const anchorY = Math.min(Math.max(window.innerHeight * 0.22, 96), 180);
+      let currentIndex = blockElements[0]?.index ?? 0;
+
+      for (const block of blockElements) {
+        const rect = block.element.getBoundingClientRect();
+
+        if (rect.height <= 0) {
+          continue;
+        }
+
+        if (rect.bottom < anchorY) {
+          currentIndex = block.index;
+          continue;
+        }
+
+        if (rect.top <= anchorY) {
+          currentIndex = block.index;
+        } else if (currentIndex < 0) {
+          currentIndex = block.index;
+        }
+
+        break;
+      }
+
+      return currentIndex;
+    };
+
+    const updateStructureRail = () => {
+      animationFrame = 0;
+
+      const currentBlockIndex = readCurrentBlockIndex();
+      const chapter = getCurrentStructureRailRegion(
+        structureRailRegions.chapters,
+        currentBlockIndex,
+      );
+      const episode = getCurrentStructureRailRegion(
+        structureRailRegions.episodes,
+        currentBlockIndex,
+      );
+      const nextState: ManuscriptStructureRailState = {
+        chapter,
+        episode,
+        nextChapter: getNextStructureRailRegion(
+          structureRailRegions.chapters,
+          currentBlockIndex,
+          chapter,
+        ),
+        nextEpisode: getNextStructureRailRegion(
+          structureRailRegions.episodes,
+          currentBlockIndex,
+          episode,
+        ),
+      };
+
+      setStructureRailState((previous) =>
+        areStructureRailStatesEqual(previous, nextState) ? previous : nextState,
+      );
+    };
+
+    const scheduleStructureRailUpdate = () => {
+      if (animationFrame) {
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(updateStructureRail);
+    };
+
+    scheduleStructureRailUpdate();
+    window.addEventListener("scroll", scheduleStructureRailUpdate, {
+      passive: true,
+    });
+    window.addEventListener("resize", scheduleStructureRailUpdate);
+
+    return () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      window.removeEventListener("scroll", scheduleStructureRailUpdate);
+      window.removeEventListener("resize", scheduleStructureRailUpdate);
+    };
+  }, [blockSummaries, editor, structureRailRegions]);
 
   function confirmDraftReplacement(action: string) {
     if (!hasReplaceableDraft) {
@@ -3692,6 +3977,46 @@ export function StudioManuscriptClient({
       </p>
     </section>
   );
+
+  const hasStructureRailContent = Boolean(
+    structureRailState.chapter ||
+      structureRailState.episode ||
+      structureRailState.nextChapter ||
+      structureRailState.nextEpisode,
+  );
+
+  function renderStructureRailCard(
+    kind: ManuscriptStructureRailKind,
+    currentRegion: ManuscriptStructureRailRegion | null,
+    nextRegion: ManuscriptStructureRailRegion | null,
+  ) {
+    if (!currentRegion && !nextRegion) {
+      return null;
+    }
+
+    return (
+      <article
+        className={cn(
+          "manuscript-structure-rail-card",
+          `manuscript-structure-rail-card-${kind}`,
+        )}
+        key={kind}
+      >
+        <span className="manuscript-structure-rail-label">
+          {currentRegion?.label ?? "Before"}
+        </span>
+        <strong className="manuscript-structure-rail-title">
+          {currentRegion?.title ?? nextRegion?.label}
+        </strong>
+        {nextRegion ? (
+          <span className="manuscript-structure-rail-next">
+            Next {nextRegion.label}
+          </span>
+        ) : null}
+      </article>
+    );
+  }
+
   return (
     <main className="min-h-screen overflow-x-clip px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
@@ -3822,8 +4147,34 @@ export function StudioManuscriptClient({
               </div>
             ) : null}
 
-            <div onContextMenu={handleManuscriptContextMenu}>
-              <EditorContent editor={editor} />
+            <div
+              className={cn(
+                "manuscript-editor-shell",
+                hasStructureRailContent && "manuscript-editor-shell-with-rail",
+              )}
+              onContextMenu={handleManuscriptContextMenu}
+            >
+              {hasStructureRailContent ? (
+                <div
+                  aria-label="Current chapter and episode"
+                  className="manuscript-structure-rail"
+                  data-testid="manuscript-structure-rail"
+                >
+                  {renderStructureRailCard(
+                    "chapter",
+                    structureRailState.chapter,
+                    structureRailState.nextChapter,
+                  )}
+                  {renderStructureRailCard(
+                    "episode",
+                    structureRailState.episode,
+                    structureRailState.nextEpisode,
+                  )}
+                </div>
+              ) : null}
+              <div className="manuscript-editor-body">
+                <EditorContent editor={editor} />
+              </div>
             </div>
 
             <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">

@@ -246,6 +246,26 @@ test("Manuscript tagging controls live in sidebar Mark mode", () => {
   assert.match(client, /Selection ready/);
 });
 
+test("Manuscript structure rail follows chapter and episode position", () => {
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
+    "utf8",
+  );
+  const globalsCss = readFileSync("apps/studio/src/app/globals.css", "utf8");
+
+  assert.match(client, /type ManuscriptStructureRailRegion/);
+  assert.match(client, /structureRailRegions/);
+  assert.match(client, /derivedChapters\.length/);
+  assert.match(client, /getCurrentStructureRailRegion/);
+  assert.match(client, /window\.addEventListener\("scroll", scheduleStructureRailUpdate/);
+  assert.match(client, /data-testid="manuscript-structure-rail"/);
+  assert.match(globalsCss, /\.manuscript-editor-shell-with-rail/);
+  assert.match(globalsCss, /\.manuscript-structure-rail \{/);
+  assert.match(globalsCss, /position: sticky;\n\s*top: 5\.25rem;/);
+  assert.match(globalsCss, /\.manuscript-structure-rail-card-chapter/);
+  assert.match(globalsCss, /\.manuscript-structure-rail-card-episode/);
+});
+
 test("Manuscript author marks render as block washes under semantic marks", () => {
   const client = readFileSync(
     "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",

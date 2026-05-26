@@ -53,6 +53,92 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.manuscript-editor-shell {
+  min-width: 0;
+  position: relative;
+}
+
+.manuscript-editor-body {
+  min-width: 0;
+}
+
+.manuscript-structure-rail {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .manuscript-editor-shell-with-rail {
+    align-items: start;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(3.4rem, 4.1rem) minmax(0, 1fr);
+  }
+
+  .manuscript-editor-shell-with-rail .manuscript-editor-body {
+    grid-column: 2;
+  }
+
+  .manuscript-editor-shell-with-rail .manuscript-structure-rail {
+    align-self: start;
+    display: grid;
+    gap: 0.5rem;
+    grid-column: 1;
+    pointer-events: none;
+    position: sticky;
+    top: 5.25rem;
+    z-index: 8;
+  }
+}
+
+.manuscript-structure-rail-card {
+  background: rgba(4, 31, 30, 0.72);
+  border-left: 2px solid rgba(244, 240, 232, 0.35);
+  border-radius: 0.45rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  display: grid;
+  gap: 0.24rem;
+  min-width: 0;
+  padding: 0.5rem 0.42rem;
+}
+
+.manuscript-structure-rail-card-chapter {
+  border-left-color: rgba(240, 183, 101, 0.82);
+}
+
+.manuscript-structure-rail-card-episode {
+  border-left-color: rgba(130, 198, 216, 0.82);
+}
+
+.manuscript-structure-rail-label {
+  color: rgb(244, 240, 232);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.manuscript-structure-rail-title {
+  color: rgb(167, 225, 232);
+  display: -webkit-box;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.manuscript-structure-rail-card-chapter .manuscript-structure-rail-title {
+  color: rgb(240, 183, 101);
+}
+
+.manuscript-structure-rail-next {
+  color: rgba(244, 240, 232, 0.62);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
 .manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
   margin: 0 0 1rem;
   scroll-margin-top: 5.5rem;
