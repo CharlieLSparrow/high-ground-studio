@@ -166,13 +166,17 @@ test("Content Studio durable projects are wired through authenticated API", () =
   assert.match(client, /Open Project/);
 });
 
-test("Manuscript latest live link is authenticated and snapshot-backed", () => {
+test("Manuscript latest live link is public read-only and snapshot-backed", () => {
   const route = readFileSync(
     "apps/studio/src/app/api/manuscript/live/[slug]/route.ts",
     "utf8",
   );
   const page = readFileSync(
     "apps/studio/src/app/manuscript/live/[slug]/page.tsx",
+    "utf8",
+  );
+  const reader = readFileSync(
+    "apps/studio/src/app/manuscript/live/[slug]/studio-manuscript-live-reader.tsx",
     "utf8",
   );
   const serverModel = readFileSync(
@@ -188,8 +192,13 @@ test("Manuscript latest live link is authenticated and snapshot-backed", () => {
   assert.match(route, /getStudioDatabaseUrl/);
   assert.match(route, /isStudioManuscriptLiveSlug/);
   assert.match(route, /getLatestStudioManuscriptSnapshotForLiveSlug/);
-  assert.match(page, /StudioAccessShell/);
-  assert.match(page, /initialLiveSnapshotSlug/);
+  assert.match(page, /StudioManuscriptLiveReader/);
+  assert.match(page, /getLatestStudioManuscriptSnapshotForLiveSlug/);
+  assert.doesNotMatch(page, /StudioAccessShell/);
+  assert.doesNotMatch(page, /getStudioAccessState/);
+  assert.doesNotMatch(page, /initialLiveSnapshotSlug/);
+  assert.match(reader, /Read-only shared copy/);
+  assert.match(reader, /manuscript-live-reader manuscript-prosemirror/);
   assert.match(serverModel, /normalizeStudioManuscriptLiveSlug/);
   assert.match(serverModel, /studioManuscriptSnapshot\.findFirst/);
   assert.match(serverModel, /orderBy: \{ updatedAt: "desc" \}/);
