@@ -34,6 +34,7 @@ import {
   removeLiveRoomNotebookBlock,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
   type StudioManuscriptLiveNotebookSectionKind,
+  updateLiveRoomNotebookBlockKind,
   updateLiveRoomNotebookBlockText,
 } from "./studio-manuscript-live-room-model";
 import type { ManuscriptDraft } from "../manuscript-editor-model";
@@ -132,6 +133,8 @@ const quickSectionOptions: QuickSectionOption[] = [
   { kind: "question", label: "Question" },
   { kind: "source-note", label: "Source" },
 ];
+
+const notebookSectionKindOptions = quickSectionOptions;
 
 const buttonClassName =
   "min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.8rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10 disabled:text-studio-dim";
@@ -667,6 +670,25 @@ export function StudioManuscriptLiveRoomClient({
       );
     },
     [text, updateText],
+  );
+
+  const setNotebookBlockKind = useCallback(
+    (blockIndex: number, kind: StudioManuscriptLiveNotebookSectionKind) => {
+      updateText(
+        updateLiveRoomNotebookBlockKind({
+          text,
+          blockIndex,
+          kind,
+        }),
+      );
+      focusNotebookBlock(blockIndex);
+      updateMessage(
+        `Marked section ${blockIndex + 1} as ${formatNotebookSectionKind(
+          kind,
+        ).toLowerCase()}.`,
+      );
+    },
+    [focusNotebookBlock, text, updateMessage, updateText],
   );
 
   const addNotebookBlock = useCallback(() => {
@@ -1259,6 +1281,30 @@ export function StudioManuscriptLiveRoomClient({
                               ),
                             )}
                           </div>
+                        </div>
+                        <div
+                          className="flex flex-wrap items-center gap-1.5"
+                          data-testid="live-room-notebook-section-kind-controls"
+                        >
+                          {notebookSectionKindOptions.map((option) => (
+                            <button
+                              aria-pressed={block.kind === option.kind}
+                              className={cn(
+                                "rounded-lg border px-2.5 py-1.5 text-[0.72rem] font-extrabold transition",
+                                block.kind === option.kind
+                                  ? "border-studio-tag/60 bg-studio-tag/15 text-studio-ink"
+                                  : "border-studio-line bg-black/10 text-studio-muted hover:border-studio-source/50 hover:text-studio-ink",
+                              )}
+                              disabled={!activeRoom || isLoadingRoom}
+                              key={option.kind}
+                              onClick={() =>
+                                setNotebookBlockKind(block.index, option.kind)
+                              }
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
