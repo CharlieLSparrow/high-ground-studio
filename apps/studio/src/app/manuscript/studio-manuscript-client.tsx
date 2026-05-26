@@ -3996,7 +3996,6 @@ export function StudioManuscriptClient({
               </p>
             </section>
 
-            <div className="mt-3.5 grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
             <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
               <HelpHeading noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
                 Work modes
@@ -4045,6 +4044,7 @@ export function StudioManuscriptClient({
               </button>
             </section>
 
+            <div className="mt-3.5 grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
             {sidePanelMode === "mark" ? (
               <>
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
