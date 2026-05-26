@@ -18,7 +18,6 @@ import {
   cardClassName,
   cn,
   labelClassName,
-  panelClassName,
   panelCopyClassName,
   StudioChip,
   StudioGlyph,
@@ -750,7 +749,7 @@ export function StudioManuscriptClient({
     editorProps: {
       attributes: {
         class:
-          "manuscript-prosemirror min-h-[560px] rounded-lg border border-studio-line-strong bg-[#031918] px-5 py-4 text-[1rem] leading-8 text-studio-ink outline-none",
+          "manuscript-prosemirror min-h-[560px] bg-transparent px-0 py-0 text-[1rem] leading-8 text-studio-ink outline-none",
       },
     },
     onUpdate: ({ editor: currentEditor }) => {
@@ -3810,8 +3809,7 @@ export function StudioManuscriptClient({
           <section
             ref={manuscriptSurfaceRef}
             className={cn(
-              panelClassName,
-              "order-1 grid gap-3 md:order-none",
+              "order-1 grid min-w-0 gap-3 md:order-none",
               isRecordingMode && "manuscript-recording-mode",
               !showAuthorColors && "manuscript-hide-author-colors",
               !showSemanticColors && "manuscript-hide-semantic-colors",

@@ -215,9 +215,18 @@ test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   assert.match(client, /data-testid="manuscript-primary-save"/);
   assert.match(client, /data-testid="manuscript-primary-copy-phone-link"/);
   assert.match(client, /data-testid="manuscript-mode-select"/);
+  assert.match(
+    client,
+    /manuscript-prosemirror min-h-\[560px\] bg-transparent px-0 py-0/,
+  );
+  assert.match(client, /"order-1 grid min-w-0 gap-3 md:order-none"/);
   assert.doesNotMatch(client, /data-testid="manuscript-command-save"/);
   assert.doesNotMatch(client, /data-testid="manuscript-command-copy-phone-link"/);
   assert.doesNotMatch(client, /<h2 className=\{panelTitleClassName\}>Manuscript surface<\/h2>/);
+  assert.doesNotMatch(
+    client,
+    /panelClassName,\n\s+"order-1 grid gap-3 md:order-none"/,
+  );
   assert.match(client, /everydayManuscriptSidePanelModes/);
   assert.match(client, /devManuscriptSidePanelModes/);
   assert.match(client, /isDevMode && sidePanelMode === "backup"/);
@@ -248,16 +257,30 @@ test("Manuscript author marks render as block washes under semantic marks", () =
   assert.match(client, /manuscript-author-block-homer/);
   assert.match(client, /node\.descendants\(\(childNode\)/);
   assert.match(globalsCss, /--manuscript-author-wash/);
-  assert.match(globalsCss, /--manuscript-author-outline/);
+  assert.doesNotMatch(globalsCss, /--manuscript-author-outline/);
+  assert.doesNotMatch(
+    globalsCss,
+    /inset 0 0 0 1px var\(--manuscript-author-outline\)/,
+  );
   assert.match(globalsCss, /margin-inline: -0\.42rem/);
-  assert.match(globalsCss, /padding: 0\.12rem 0\.42rem 0\.18rem/);
+  assert.match(globalsCss, /padding: 0\.16rem 0\.42rem 0\.22rem/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-charlie/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-homer/);
   assert.match(globalsCss, /@supports selector\(:has\(\*\)\)/);
   assert.match(globalsCss, /:has\(\.manuscript-author-charlie\)/);
   assert.match(globalsCss, /:has\(\.manuscript-author-homer\)/);
-  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-charlie \{\n\s*background: rgba\(82, 164, 220/);
-  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-homer \{\n\s*background: rgba\(126, 200, 134/);
+  assert.match(
+    globalsCss,
+    /\.manuscript-prosemirror \.manuscript-author-charlie,\n\.manuscript-prosemirror \.manuscript-author-homer,\n\.manuscript-prosemirror \.manuscript-author-unassigned \{\n\s*background: transparent;/,
+  );
+  assert.match(
+    globalsCss,
+    /\.manuscript-prosemirror \.manuscript-author-block-charlie \{\n\s*--manuscript-author-wash: rgba\(82, 164, 220, 0\.18\);/,
+  );
+  assert.match(
+    globalsCss,
+    /\.manuscript-prosemirror \.manuscript-author-block-homer \{\n\s*--manuscript-author-wash: rgba\(126, 200, 134, 0\.18\);/,
+  );
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-semantic-cited-quotation/);
 });
 
