@@ -128,6 +128,8 @@ const fieldClassName =
 const textareaClassName =
   "w-full resize-y rounded-xl border border-studio-line-strong bg-[#0f1512] px-4 py-3 text-[1rem] leading-7 text-studio-ink shadow-inner outline-none transition focus:border-studio-source/60";
 
+const notebookPresenceModePrefix = "editing section ";
+
 function createClientId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -175,6 +177,62 @@ function createShareUrl(roomId: string | null) {
   url.searchParams.set("room", roomId);
 
   return url.toString();
+}
+
+function createLivePresenceMode(input: {
+  editorMode: LiveEditorMode;
+  isEditorFocused: boolean;
+  selectedNotebookBlockIndex: number;
+}) {
+  if (!input.isEditorFocused) {
+    return "viewing";
+  }
+
+  if (input.editorMode === "notebook") {
+    return `${notebookPresenceModePrefix}${input.selectedNotebookBlockIndex + 1}`;
+  }
+
+  return "editing raw text";
+}
+
+function parseLivePresenceNotebookBlockIndex(mode: string | null) {
+  const match = String(mode ?? "").match(/^editing section (\d+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const sectionNumber = Number(match[1]);
+
+  if (!Number.isFinite(sectionNumber) || sectionNumber < 1) {
+    return null;
+  }
+
+  return sectionNumber - 1;
+}
+
+function formatLivePresenceName(
+  entry: LivePresence,
+  currentClientId: string,
+  currentActorEmail: string,
+) {
+  if (entry.clientId === currentClientId) {
+    return "You";
+  }
+
+  return (entry.displayName || entry.actorEmail || currentActorEmail).split("@")[0];
+}
+
+function formatLivePresenceMode(mode: string | null) {
+  if (!mode) {
+    return "viewing";
+  }
+
+  if (mode.startsWith(notebookPresenceModePrefix)) {
+    return `section ${mode.slice(notebookPresenceModePrefix.length)}`;
+  }
+
+  return mode;
 }
 
 function isErrorResponse<T>(
@@ -227,6 +285,23 @@ export function StudioManuscriptLiveRoomClient({
     () => createLiveRoomNotebookBlocks(text),
     [text],
   );
+  const notebookPresenceByBlock = useMemo(() => {
+    const nextPresence = new Map<number, LivePresence[]>();
+
+    presence.forEach((entry) => {
+      const blockIndex = parseLivePresenceNotebookBlockIndex(entry.mode);
+
+      if (blockIndex === null) {
+        return;
+      }
+
+      const entries = nextPresence.get(blockIndex) ?? [];
+      entries.push(entry);
+      nextPresence.set(blockIndex, entries);
+    });
+
+    return nextPresence;
+  }, [presence]);
   const selectedManuscript = useMemo(
     () =>
       manuscripts.find((manuscript) => manuscript.id === selectedManuscriptId) ??
@@ -734,7 +809,11 @@ export function StudioManuscriptLiveRoomClient({
           body: JSON.stringify({
             clientId,
             displayName: actor.primaryEmail,
-            mode: isEditorFocused ? "editing" : "viewing",
+            mode: createLivePresenceMode({
+              editorMode,
+              isEditorFocused,
+              selectedNotebookBlockIndex,
+            }),
           }),
         },
       );
@@ -751,7 +830,14 @@ export function StudioManuscriptLiveRoomClient({
     const interval = setInterval(sendPresence, 8000);
 
     return () => clearInterval(interval);
-  }, [activeRoom?.id, actor.primaryEmail, clientId, isEditorFocused]);
+  }, [
+    activeRoom?.id,
+    actor.primaryEmail,
+    clientId,
+    editorMode,
+    isEditorFocused,
+    selectedNotebookBlockIndex,
+  ]);
 
   useEffect(() => disposeCurrentRoom, [disposeCurrentRoom]);
 
@@ -997,6 +1083,11 @@ export function StudioManuscriptLiveRoomClient({
                         <span className="text-[0.68rem] font-bold text-studio-muted">
                           {block.wordCount} words
                         </span>
+                        {notebookPresenceByBlock.get(block.index)?.length ? (
+                          <span className="text-[0.68rem] font-extrabold text-studio-tag">
+                            {notebookPresenceByBlock.get(block.index)?.length} active
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -1022,6 +1113,26 @@ export function StudioManuscriptLiveRoomClient({
                             <StudioChip tone="node">
                               {block.characterCount} chars
                             </StudioChip>
+                            {(notebookPresenceByBlock.get(block.index) ?? []).map(
+                              (entry) => (
+                                <StudioChip
+                                  className="normal-case"
+                                  key={`${block.id}-${entry.actorEmail}-${
+                                    entry.clientId ?? "client"
+                                  }`}
+                                  tone={
+                                    entry.clientId === clientId ? "tag" : "source"
+                                  }
+                                >
+                                  {formatLivePresenceName(
+                                    entry,
+                                    clientId,
+                                    actor.primaryEmail,
+                                  )}{" "}
+                                  here
+                                </StudioChip>
+                              ),
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1156,8 +1267,13 @@ export function StudioManuscriptLiveRoomClient({
                             : "source"
                         }
                       >
-                        {(entry.displayName || entry.actorEmail).split("@")[0]} ·{" "}
-                        {entry.mode ?? "viewing"}
+                        {formatLivePresenceName(
+                          entry,
+                          clientId,
+                          actor.primaryEmail,
+                        )}{" "}
+                        ·{" "}
+                        {formatLivePresenceMode(entry.mode)}
                       </StudioChip>
                     ))
                   ) : (

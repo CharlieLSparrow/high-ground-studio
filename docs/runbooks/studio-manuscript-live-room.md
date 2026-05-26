@@ -34,7 +34,8 @@ The route is protected by the normal private Studio access gate.
   shared text document
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
-- records active presence heartbeats
+- records active presence heartbeats, including which notebook section a focused
+  editor is working in
 - exposes a shareable room URL
 - can copy the current text
 - can save the current live text as a manual Manuscript Desk snapshot
@@ -67,6 +68,10 @@ The Studio database stores:
 `StudioManuscriptLiveRoomUpdate` is the ordered update event stream used by
 other open browsers to catch up. `StudioManuscriptLivePresence` is ephemeral
 presence state and should not be treated as manuscript content.
+
+Presence `mode` remains a plain string. Notebook focus currently reports
+`editing section N`, which lets the UI show who is active inside each notebook
+section without a schema change.
 
 ## Tonight Workflow
 
