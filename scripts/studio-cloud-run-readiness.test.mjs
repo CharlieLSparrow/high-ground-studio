@@ -262,6 +262,10 @@ test("Manuscript author marks render as block washes under semantic marks", () =
     globalsCss,
     /inset 0 0 0 1px var\(--manuscript-author-outline\)/,
   );
+  assert.match(
+    globalsCss,
+    /background-image:\n\s*var\(--manuscript-structure-wash\),\n\s*var\(--manuscript-author-wash\);/,
+  );
   assert.match(globalsCss, /margin-inline: -0\.42rem/);
   assert.match(globalsCss, /padding: 0\.16rem 0\.42rem 0\.22rem/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-charlie/);
@@ -275,11 +279,11 @@ test("Manuscript author marks render as block washes under semantic marks", () =
   );
   assert.match(
     globalsCss,
-    /\.manuscript-prosemirror \.manuscript-author-block-charlie \{\n\s*--manuscript-author-wash: rgba\(82, 164, 220, 0\.18\);/,
+    /\.manuscript-prosemirror \.manuscript-author-block-charlie \{\n\s*--manuscript-author-wash: linear-gradient\(\n\s*rgba\(82, 164, 220, 0\.18\),\n\s*rgba\(82, 164, 220, 0\.18\)\n\s*\);/,
   );
   assert.match(
     globalsCss,
-    /\.manuscript-prosemirror \.manuscript-author-block-homer \{\n\s*--manuscript-author-wash: rgba\(126, 200, 134, 0\.18\);/,
+    /\.manuscript-prosemirror \.manuscript-author-block-homer \{\n\s*--manuscript-author-wash: linear-gradient\(\n\s*rgba\(126, 200, 134, 0\.18\),\n\s*rgba\(126, 200, 134, 0\.18\)\n\s*\);/,
   );
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-semantic-cited-quotation/);
 });

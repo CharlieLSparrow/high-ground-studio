@@ -68,9 +68,10 @@ button:disabled {
 }
 
 .manuscript-prosemirror :where(p, h1, h2, h3, li) {
-  --manuscript-author-wash: transparent;
-  --manuscript-structure-wash: transparent;
-  background:
+  --manuscript-author-wash: none;
+  --manuscript-structure-wash: none;
+  background-color: transparent;
+  background-image:
     var(--manuscript-structure-wash),
     var(--manuscript-author-wash);
   border-radius: 0.55rem;
@@ -99,11 +100,17 @@ button:disabled {
 }
 
 .manuscript-prosemirror .manuscript-author-block-charlie {
-  --manuscript-author-wash: rgba(82, 164, 220, 0.18);
+  --manuscript-author-wash: linear-gradient(
+    rgba(82, 164, 220, 0.18),
+    rgba(82, 164, 220, 0.18)
+  );
 }
 
 .manuscript-prosemirror .manuscript-author-block-homer {
-  --manuscript-author-wash: rgba(126, 200, 134, 0.18);
+  --manuscript-author-wash: linear-gradient(
+    rgba(126, 200, 134, 0.18),
+    rgba(126, 200, 134, 0.18)
+  );
 }
 
 .manuscript-prosemirror .manuscript-author-block-mixed {
@@ -115,18 +122,27 @@ button:disabled {
 }
 
 .manuscript-prosemirror .manuscript-author-block-unassigned {
-  --manuscript-author-wash: rgba(244, 240, 232, 0.045);
+  --manuscript-author-wash: linear-gradient(
+    rgba(244, 240, 232, 0.045),
+    rgba(244, 240, 232, 0.045)
+  );
 }
 
 @supports selector(:has(*)) {
   .manuscript-prosemirror
     :where(p, h1, h2, h3, li):has(.manuscript-author-charlie) {
-    --manuscript-author-wash: rgba(82, 164, 220, 0.18);
+    --manuscript-author-wash: linear-gradient(
+      rgba(82, 164, 220, 0.18),
+      rgba(82, 164, 220, 0.18)
+    );
   }
 
   .manuscript-prosemirror
     :where(p, h1, h2, h3, li):has(.manuscript-author-homer) {
-    --manuscript-author-wash: rgba(126, 200, 134, 0.18);
+    --manuscript-author-wash: linear-gradient(
+      rgba(126, 200, 134, 0.18),
+      rgba(126, 200, 134, 0.18)
+    );
   }
 
   .manuscript-prosemirror
@@ -295,13 +311,13 @@ button:disabled {
 }
 
 .manuscript-hide-author-colors .manuscript-prosemirror .manuscript-author-block {
-  --manuscript-author-wash: transparent !important;
+  --manuscript-author-wash: none !important;
 }
 
 .manuscript-hide-author-colors
   .manuscript-prosemirror
   :where(p, h1, h2, h3, li) {
-  --manuscript-author-wash: transparent !important;
+  --manuscript-author-wash: none !important;
 }
 
 .manuscript-hide-semantic-colors .manuscript-semantic-mark {
@@ -324,7 +340,10 @@ button:disabled {
 .manuscript-recording-mode
   .manuscript-prosemirror
   .manuscript-author-block-charlie {
-  --manuscript-author-wash: rgba(82, 164, 220, 0.22);
+  --manuscript-author-wash: linear-gradient(
+    rgba(82, 164, 220, 0.22),
+    rgba(82, 164, 220, 0.22)
+  );
 }
 
 .manuscript-recording-mode
