@@ -233,8 +233,13 @@ Capture the visible UI tree for agent debugging:
 
 ```bash
 pnpm studio-cut:insta360-operator ui-snapshot \
+  --max-depth 3 \
+  --timeout-seconds 10 \
   --out /tmp/insta360-studio-ui.json
 ```
+
+Keep snapshots shallow unless there is a reason to dig deeper. Insta360 Studio
+can expose a large accessibility tree, and deep crawls may time out.
 
 After selecting cloud media in Insta360 Studio, try the download control:
 
@@ -246,6 +251,7 @@ pnpm studio-cut:insta360-operator download-selected --execute
 If the label is different in the current Studio version:
 
 ```bash
+pnpm studio-cut:insta360-operator click-control --label "Cloud Files"
 pnpm studio-cut:insta360-operator click-control --label "Download" --execute
 pnpm studio-cut:insta360-operator click-control --label "Start Export" --execute
 ```

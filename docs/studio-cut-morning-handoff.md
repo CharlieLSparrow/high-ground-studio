@@ -270,8 +270,13 @@ If the button label has changed, capture the UI tree:
 
 ```bash
 pnpm studio-cut:insta360-operator ui-snapshot \
+  --max-depth 3 \
+  --timeout-seconds 10 \
   --out /tmp/insta360-studio-ui.json
 ```
+
+Keep UI snapshots shallow unless a deeper crawl is needed; deep Insta360 Studio
+accessibility snapshots can time out.
 
 Local worker metadata-only run:
 

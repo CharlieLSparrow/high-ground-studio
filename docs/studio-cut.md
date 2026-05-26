@@ -1103,6 +1103,8 @@ vault-receipt/cloud-inventory export so the operator does not have to remember
 paths. The drain also performs a storage preflight and blocks obvious
 iCloud-managed paths by default; use a local buffer under
 `~/Movies/StudioCut/...` rather than iCloud Drive or mirrored Documents.
+For Insta360 UI inspection, prefer shallow `ui-snapshot --max-depth 3
+--timeout-seconds 10`; deep accessibility crawls can time out.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

@@ -1208,7 +1208,7 @@ def ui_snapshot_command(args: argparse.Namespace) -> int:
         )
         return 1
     script = ui_snapshot_applescript(APP_NAME, args.max_depth)
-    status, stdout, stderr = run_osascript(script)
+    status, stdout, stderr = run_osascript(script, timeout_seconds=args.timeout_seconds)
     if status != 0:
         print(stderr or stdout, file=sys.stderr)
         return status
@@ -1219,6 +1219,8 @@ def ui_snapshot_command(args: argparse.Namespace) -> int:
         "appName": APP_NAME,
         "appPath": str(app_path),
         "elementCount": len(elements),
+        "maxDepth": args.max_depth,
+        "timeoutSeconds": args.timeout_seconds,
         "elements": elements,
         "warnings": [] if elements else ["No UI elements were exposed by Insta360 Studio. Confirm the app window is open and Accessibility permission is enabled."],
     }
@@ -1337,12 +1339,14 @@ def click_control_command(args: argparse.Namespace) -> int:
         )
         return 1
     script = click_control_applescript(APP_NAME, args.label, args.max_depth, args.execute)
-    status, stdout, stderr = run_osascript(script)
+    status, stdout, stderr = run_osascript(script, timeout_seconds=args.timeout_seconds)
     result = {
         "status": "ready" if status == 0 else "blocked",
         "appName": APP_NAME,
         "label": args.label,
         "executed": bool(args.execute),
+        "maxDepth": args.max_depth,
+        "timeoutSeconds": args.timeout_seconds,
         "matched": stdout,
         "error": stderr if status != 0 else None,
     }
@@ -1369,11 +1373,13 @@ def download_selected_command(args: argparse.Namespace) -> int:
     attempts: list[dict[str, Any]] = []
     for label in labels:
         script = click_control_applescript(APP_NAME, label, args.max_depth, args.execute)
-        status, stdout, stderr = run_osascript(script)
+        status, stdout, stderr = run_osascript(script, timeout_seconds=args.timeout_seconds)
         attempts.append(
             {
                 "label": label,
                 "status": "ready" if status == 0 else "blocked",
+                "maxDepth": args.max_depth,
+                "timeoutSeconds": args.timeout_seconds,
                 "matched": stdout,
                 "error": stderr if status != 0 else None,
             }
@@ -1385,13 +1391,26 @@ def download_selected_command(args: argparse.Namespace) -> int:
                         "status": "ready",
                         "executed": bool(args.execute),
                         "matchedLabel": label,
+                        "maxDepth": args.max_depth,
+                        "timeoutSeconds": args.timeout_seconds,
                         "attempts": attempts,
                     },
                     indent=2,
                 )
             )
             return 0
-    print(json.dumps({"status": "blocked", "executed": bool(args.execute), "attempts": attempts}, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": "blocked",
+                "executed": bool(args.execute),
+                "maxDepth": args.max_depth,
+                "timeoutSeconds": args.timeout_seconds,
+                "attempts": attempts,
+            },
+            indent=2,
+        )
+    )
     return 1
 
 
@@ -1521,13 +1540,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     snapshot = subparsers.add_parser("ui-snapshot", help="Capture visible Insta360 Studio UI elements")
     snapshot.add_argument("--out")
-    snapshot.add_argument("--max-depth", type=int, default=8)
+    snapshot.add_argument("--max-depth", type=int, default=3)
+    snapshot.add_argument("--timeout-seconds", type=int, default=10)
     snapshot.set_defaults(func=ui_snapshot_command)
 
     click = subparsers.add_parser("click-control", help="Find and optionally click a visible/menu control by label")
     click.add_argument("--label", required=True)
     click.add_argument("--execute", action="store_true")
-    click.add_argument("--max-depth", type=int, default=10)
+    click.add_argument("--max-depth", type=int, default=4)
+    click.add_argument("--timeout-seconds", type=int, default=10)
     click.set_defaults(func=click_control_command)
 
     download = subparsers.add_parser(
@@ -1536,7 +1557,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     download.add_argument("--label", action="append", default=[])
     download.add_argument("--execute", action="store_true")
-    download.add_argument("--max-depth", type=int, default=10)
+    download.add_argument("--max-depth", type=int, default=4)
+    download.add_argument("--timeout-seconds", type=int, default=10)
     download.set_defaults(func=download_selected_command)
 
     self_test = subparsers.add_parser("self-test", help="Run non-GUI command generation checks")

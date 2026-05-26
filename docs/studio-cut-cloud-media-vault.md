@@ -342,8 +342,14 @@ Capture the current UI when automation misses a button:
 
 ```bash
 pnpm studio-cut:insta360-operator ui-snapshot \
+  --max-depth 3 \
+  --timeout-seconds 10 \
   --out /tmp/insta360-studio-ui.json
 ```
+
+Use shallow snapshots by default. Deep accessibility crawls can time out in
+Insta360 Studio; increase `--max-depth` only when the shallow view does not show
+the needed controls.
 
 After the operator selects cloud media in Studio, try the visible download
 control:
