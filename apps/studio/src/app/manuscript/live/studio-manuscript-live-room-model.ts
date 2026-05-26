@@ -459,6 +459,44 @@ export function createLiveRoomSessionRecap(
   };
 }
 
+function createSnapshotDescriptionPart(
+  label: string,
+  items: string[],
+) {
+  if (!items.length) {
+    return "";
+  }
+
+  return `${label}(${items.length}): ${items[0]}`;
+}
+
+export function createLiveRoomSnapshotDescription(input: {
+  roomId: string;
+  recap: StudioManuscriptLiveRoomSessionRecap;
+  maxLength?: number;
+}) {
+  const maxLength = Math.max(80, Math.floor(input.maxLength ?? 500));
+  const baseDescription = `Manual checkpoint from live room ${input.roomId}.`;
+  const recapParts = [
+    createSnapshotDescriptionPart("D", input.recap.decisions),
+    createSnapshotDescriptionPart("A", input.recap.actionItems),
+    createSnapshotDescriptionPart("Q", input.recap.questions),
+    createSnapshotDescriptionPart("S", input.recap.sourceNotes),
+  ].filter(Boolean);
+
+  if (!recapParts.length) {
+    return baseDescription.slice(0, maxLength);
+  }
+
+  const description = `${baseDescription} Recap: ${recapParts.join("; ")}.`
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return description.length > maxLength
+    ? `${description.slice(0, maxLength - 3).trim()}...`
+    : description;
+}
+
 export function createLiveRoomNotebookStarterText(
   kind: StudioManuscriptLiveNotebookStarterKind,
 ) {

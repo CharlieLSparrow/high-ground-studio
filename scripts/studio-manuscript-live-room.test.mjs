@@ -9,6 +9,7 @@ import {
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createLiveRoomSessionRecap,
+  createLiveRoomSnapshotDescription,
   createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
   createLiveRoomStateUpdateFromText,
@@ -250,6 +251,27 @@ test("live room session recap extracts structured working-session outcomes", () 
   assert.match(recap.summaryText, /Action Items/);
   assert.match(recap.summaryText, /Open Questions/);
   assert.match(recap.summaryText, /Source Notes/);
+});
+
+test("live room snapshot description carries a compact recap", () => {
+  const recap = createLiveRoomSessionRecap(
+    [
+      "Decision\nDecision: Keep notebook-first editing for working sessions.",
+      "Action Items\n- Charlie / test the room with Homer / tonight",
+      "Open Question\nQuestion: Should recaps become standalone session records?",
+      "Source Note\nSource: Working session outline",
+    ].join("\n\n"),
+  );
+  const description = createLiveRoomSnapshotDescription({
+    roomId: "room-123",
+    recap,
+    maxLength: 180,
+  });
+
+  assert.ok(description.length <= 180);
+  assert.match(description, /Manual checkpoint from live room room-123/);
+  assert.match(description, /D\(1\): Keep notebook-first editing/);
+  assert.match(description, /A\(1\): Charlie \/ test the room/);
 });
 
 test("live room notebook starters create useful section scaffolds", () => {

@@ -24,6 +24,7 @@ import {
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createLiveRoomSessionRecap,
+  createLiveRoomSnapshotDescription,
   createManuscriptDraftFromLiveRoomText,
   createLiveRoomTextFromManuscriptDraft,
   decodeLiveRoomUpdateBase64,
@@ -797,7 +798,10 @@ export function StudioManuscriptLiveRoomClient({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         draft,
-        description: `Manual checkpoint from live room ${activeRoom.id}.`,
+        description: createLiveRoomSnapshotDescription({
+          roomId: activeRoom.id,
+          recap: sessionRecap,
+        }),
         manuscriptId: activeRoom.manuscriptId,
         snapshotType: "manual",
       }),
@@ -814,7 +818,7 @@ export function StudioManuscriptLiveRoomClient({
     }
 
     updateMessage(`Manual snapshot saved: ${body.snapshot.id}`);
-  }, [activeRoom, text, updateError, updateMessage]);
+  }, [activeRoom, sessionRecap, text, updateError, updateMessage]);
 
   useEffect(() => {
     void loadRooms();
