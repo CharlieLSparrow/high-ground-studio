@@ -32,6 +32,8 @@ The route is protected by the normal private Studio access gate.
   sections
 - can add, move, and remove notebook sections while preserving the underlying
   shared text document
+- can insert quick sections for notes, decisions, actions, questions, and
+  source notes at the current notebook position
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
 - records active presence heartbeats, including which notebook section a focused
@@ -86,7 +88,8 @@ section without a schema change.
 4. Create or open the live room.
 5. Copy the room link and send it to Homer.
 6. Work in notebook mode by default. Use starter sections for a fresh room, then
-   add, move, or remove sections as the session changes.
+   add, move, remove, or quick-insert decision/action/question/source sections
+   as the session changes.
 7. Use `Save manual snapshot` when a meaningful checkpoint is reached.
 8. Continue in the live room or move the checkpoint into Manuscript Desk review.
 

@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-quick-sections-001`
+
+- Continuing the OneNote-style live-room push after `studio-00061-h7l`.
+- Targeting quick-insert notebook sections for notes, decisions, actions,
+  questions, and source notes while keeping the same shared Yjs text document.
+
 ### Codex / `main` Studio live-room section presence
 
 - Continued the OneNote-style live-room push after `studio-00059-btd`.

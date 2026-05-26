@@ -18,11 +18,19 @@ export type StudioManuscriptLiveRoomTextStats = {
 export type StudioManuscriptLiveNotebookBlock = {
   id: string;
   index: number;
+  kind: StudioManuscriptLiveNotebookSectionKind;
   label: string;
   text: string;
   wordCount: number;
   characterCount: number;
 };
+
+export type StudioManuscriptLiveNotebookSectionKind =
+  | "note"
+  | "decision"
+  | "action-items"
+  | "question"
+  | "source-note";
 
 export type StudioManuscriptLiveNotebookStarterKind =
   | "working-session"
@@ -199,6 +207,45 @@ function createNotebookBlockLabel(text: string, index: number) {
   return label.length > 62 ? `${label.slice(0, 61).trim()}...` : label;
 }
 
+function inferNotebookBlockKind(
+  text: string,
+): StudioManuscriptLiveNotebookSectionKind {
+  const firstLine = text
+    .split("\n")
+    .map((line) => line.trim().toLowerCase())
+    .find(Boolean);
+
+  if (!firstLine) {
+    return "note";
+  }
+
+  if (firstLine.includes("decision")) {
+    return "decision";
+  }
+
+  if (
+    firstLine.includes("action") ||
+    firstLine.includes("commitment") ||
+    firstLine.includes("next step")
+  ) {
+    return "action-items";
+  }
+
+  if (firstLine.includes("question")) {
+    return "question";
+  }
+
+  if (
+    firstLine.includes("source") ||
+    firstLine.includes("quote") ||
+    firstLine.includes("citation")
+  ) {
+    return "source-note";
+  }
+
+  return "note";
+}
+
 export function createLiveRoomNotebookBlocks(
   text: string,
 ): StudioManuscriptLiveNotebookBlock[] {
@@ -208,6 +255,7 @@ export function createLiveRoomNotebookBlocks(
     return {
       id: `live-notebook-block-${index}`,
       index,
+      kind: inferNotebookBlockKind(blockText),
       label: createNotebookBlockLabel(blockText, index),
       text: blockText,
       wordCount: stats.words,
@@ -233,9 +281,31 @@ export function updateLiveRoomNotebookBlockText(input: {
   return joinLiveRoomNotebookBlocks(blocks);
 }
 
+export function createLiveRoomNotebookSectionText(
+  kind: StudioManuscriptLiveNotebookSectionKind = "note",
+) {
+  if (kind === "decision") {
+    return "Decision\nDecision:\nReason:\nOwner:\nFollow-up:";
+  }
+
+  if (kind === "action-items") {
+    return "Action Items\n- Owner / task / due next";
+  }
+
+  if (kind === "question") {
+    return "Open Question\nQuestion:\nContext:\nWhat would answer it?";
+  }
+
+  if (kind === "source-note") {
+    return "Source Note\nSource:\nUseful quote or claim:\nHow it should be used:";
+  }
+
+  return "New working note";
+}
+
 export function appendLiveRoomNotebookBlock(
   text: string,
-  blockText = "New working note",
+  blockText = createLiveRoomNotebookSectionText(),
 ) {
   const blocks = splitLiveRoomTextIntoNotebookBlocks(text);
 
@@ -258,7 +328,9 @@ export function insertLiveRoomNotebookBlockAfter(input: {
   blocks.splice(
     insertIndex,
     0,
-    normalizeLiveRoomText(input.blockText ?? "New working note").trim(),
+    normalizeLiveRoomText(
+      input.blockText ?? createLiveRoomNotebookSectionText(),
+    ).trim(),
   );
 
   return joinLiveRoomNotebookBlocks(blocks);

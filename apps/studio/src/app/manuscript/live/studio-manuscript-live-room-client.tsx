@@ -20,6 +20,7 @@ import {
   applyTextAreaValueToYText,
   appendLiveRoomNotebookBlock,
   countLiveRoomTextStats,
+  createLiveRoomNotebookSectionText,
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createManuscriptDraftFromLiveRoomText,
@@ -30,6 +31,7 @@ import {
   moveLiveRoomNotebookBlock,
   removeLiveRoomNotebookBlock,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
+  type StudioManuscriptLiveNotebookSectionKind,
   updateLiveRoomNotebookBlockText,
 } from "./studio-manuscript-live-room-model";
 import type { ManuscriptDraft } from "../manuscript-editor-model";
@@ -110,10 +112,23 @@ type NotebookStarterOption = {
   label: string;
 };
 
+type QuickSectionOption = {
+  kind: StudioManuscriptLiveNotebookSectionKind;
+  label: string;
+};
+
 const notebookStarterOptions: NotebookStarterOption[] = [
   { kind: "working-session", label: "Session notes" },
   { kind: "writing-pass", label: "Writing pass" },
   { kind: "coaching-session", label: "Coaching session" },
+];
+
+const quickSectionOptions: QuickSectionOption[] = [
+  { kind: "note", label: "Note" },
+  { kind: "decision", label: "Decision" },
+  { kind: "action-items", label: "Actions" },
+  { kind: "question", label: "Question" },
+  { kind: "source-note", label: "Source" },
 ];
 
 const buttonClassName =
@@ -233,6 +248,48 @@ function formatLivePresenceMode(mode: string | null) {
   }
 
   return mode;
+}
+
+function formatNotebookSectionKind(kind: StudioManuscriptLiveNotebookSectionKind) {
+  if (kind === "action-items") {
+    return "Actions";
+  }
+
+  if (kind === "source-note") {
+    return "Source";
+  }
+
+  if (kind === "decision") {
+    return "Decision";
+  }
+
+  if (kind === "question") {
+    return "Question";
+  }
+
+  return "Note";
+}
+
+function getNotebookSectionKindTone(
+  kind: StudioManuscriptLiveNotebookSectionKind,
+): "default" | "tag" | "node" | "source" | "review" | "danger" {
+  if (kind === "decision") {
+    return "tag";
+  }
+
+  if (kind === "action-items") {
+    return "review";
+  }
+
+  if (kind === "source-note") {
+    return "source";
+  }
+
+  if (kind === "question") {
+    return "node";
+  }
+
+  return "default";
 }
 
 function isErrorResponse<T>(
@@ -610,12 +667,44 @@ export function StudioManuscriptLiveRoomClient({
   );
 
   const addNotebookBlock = useCallback(() => {
-    const nextIndex = notebookBlocks.length;
+    const nextIndex = text.trim() ? notebookBlocks.length : 0;
 
-    updateText(appendLiveRoomNotebookBlock(text));
+    updateText(
+      appendLiveRoomNotebookBlock(text, createLiveRoomNotebookSectionText()),
+    );
     focusNotebookBlock(nextIndex);
     updateMessage("Added notebook section.");
   }, [focusNotebookBlock, notebookBlocks.length, text, updateMessage, updateText]);
+
+  const insertQuickNotebookSection = useCallback(
+    (kind: StudioManuscriptLiveNotebookSectionKind) => {
+      const nextIndex = text.trim() ? selectedNotebookBlockIndex + 1 : 0;
+
+      if (text.trim()) {
+        updateText(
+          insertLiveRoomNotebookBlockAfter({
+            text,
+            blockIndex: selectedNotebookBlockIndex,
+            blockText: createLiveRoomNotebookSectionText(kind),
+          }),
+        );
+      } else {
+        updateText(createLiveRoomNotebookSectionText(kind));
+      }
+
+      focusNotebookBlock(nextIndex);
+      updateMessage(
+        `Added ${formatNotebookSectionKind(kind).toLowerCase()} section.`,
+      );
+    },
+    [
+      focusNotebookBlock,
+      selectedNotebookBlockIndex,
+      text,
+      updateMessage,
+      updateText,
+    ],
+  );
 
   const addNotebookBlockAfter = useCallback(
     (blockIndex: number) => {
@@ -1060,6 +1149,25 @@ export function StudioManuscriptLiveRoomClient({
               </div>
               {editorMode === "notebook" ? (
                 <div
+                  className="flex flex-wrap items-center gap-2 rounded-xl border border-studio-line bg-black/10 p-2"
+                  data-testid="live-room-notebook-quick-sections"
+                >
+                  <span className={labelClassName}>Quick section</span>
+                  {quickSectionOptions.map((option) => (
+                    <button
+                      className={buttonClassName}
+                      disabled={!activeRoom}
+                      key={option.kind}
+                      onClick={() => insertQuickNotebookSection(option.kind)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {editorMode === "notebook" ? (
+                <div
                   className="grid min-h-[58vh] gap-3 lg:grid-cols-[minmax(180px,240px)_minmax(0,1fr)]"
                   data-testid="live-room-notebook-editor"
                 >
@@ -1082,6 +1190,9 @@ export function StudioManuscriptLiveRoomClient({
                         </span>
                         <span className="text-[0.68rem] font-bold text-studio-muted">
                           {block.wordCount} words
+                        </span>
+                        <span className="text-[0.68rem] font-extrabold text-studio-source">
+                          {formatNotebookSectionKind(block.kind)}
                         </span>
                         {notebookPresenceByBlock.get(block.index)?.length ? (
                           <span className="text-[0.68rem] font-extrabold text-studio-tag">
@@ -1107,6 +1218,9 @@ export function StudioManuscriptLiveRoomClient({
                             Section {block.index + 1}
                           </p>
                           <div className="flex flex-wrap gap-1.5">
+                            <StudioChip tone={getNotebookSectionKindTone(block.kind)}>
+                              {formatNotebookSectionKind(block.kind)}
+                            </StudioChip>
                             <StudioChip tone="source">
                               {block.wordCount} words
                             </StudioChip>
