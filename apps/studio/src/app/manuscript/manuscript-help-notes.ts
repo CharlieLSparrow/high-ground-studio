@@ -178,7 +178,7 @@ export const manuscriptHelpNotes = {
     id: "semantic-meaning-tags",
     label: "Meaning tags",
     title: "Labels for what the words are doing",
-    body: "Semantic tags mark why a span matters: clip, show notes, quote, story, insight, research, question, thesis, transition, or review need.",
+    body: "Semantic tags mark why a span matters: clip, production notes, quote, story, insight, research, question, thesis, transition, or review need.",
     whatItDoes:
       "It turns meaning into visible editorial metadata without moving the text.",
     whatItDoesNot:

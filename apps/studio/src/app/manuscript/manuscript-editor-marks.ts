@@ -37,10 +37,7 @@ function getSemanticAttrs(attrs: Record<string, unknown>) {
     typeof attrs.highlightId === "string" && attrs.highlightId.trim()
       ? attrs.highlightId
       : "highlight-unassigned";
-  const label =
-    typeof attrs.label === "string" && attrs.label.trim()
-      ? attrs.label
-      : definition.label;
+  const label = definition.label;
   const colorKey =
     typeof attrs.colorKey === "string" && attrs.colorKey.trim()
       ? attrs.colorKey

@@ -308,6 +308,29 @@ test("Manuscript tagging controls live in sidebar Mark mode", () => {
   assert.match(client, /Selection ready/);
 });
 
+test("Manuscript semantic controls expose clip and production-note colors", () => {
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
+    "utf8",
+  );
+  const model = readFileSync(
+    "apps/studio/src/app/manuscript/manuscript-editor-model.ts",
+    "utf8",
+  );
+  const globalsCss = readFileSync("apps/studio/src/app/globals.css", "utf8");
+
+  assert.match(model, /id: "show-notes", label: "Production notes"/);
+  assert.match(client, /quickSemanticHighlightTypes/);
+  assert.match(client, /SemanticTagLabel/);
+  assert.ok(client.includes('clip: "border-[#69e2c8]/60'));
+  assert.ok(client.includes('"show-notes": "border-[#f5ba78]/60'));
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-semantic-clip/);
+  assert.match(
+    globalsCss,
+    /\.manuscript-prosemirror \.manuscript-semantic-show-notes/,
+  );
+});
+
 test("Manuscript structure rail follows chapter and episode position", () => {
   const client = readFileSync(
     "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
@@ -319,7 +342,10 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /structureRailRegions/);
   assert.match(client, /derivedChapters\.length/);
   assert.match(client, /getCurrentStructureRailRegion/);
+  assert.match(client, /readBlockElements/);
   assert.match(client, /window\.addEventListener\("scroll", scheduleStructureRailUpdate/);
+  assert.match(client, /document\.addEventListener\(\n\s*"scroll",\n\s*scheduleStructureRailUpdate,\n\s*scrollListenerOptions/);
+  assert.match(client, /new ResizeObserver\(scheduleStructureRailUpdate\)/);
   assert.match(client, /data-testid="manuscript-structure-rail"/);
   assert.match(globalsCss, /\.manuscript-editor-shell-with-rail/);
   assert.match(globalsCss, /\.manuscript-structure-rail \{/);

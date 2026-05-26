@@ -158,10 +158,7 @@ function renderTextMarks(
         ? rawTagType
         : "insight";
       const definition = getSemanticHighlightDefinition(tagType);
-      const label =
-        typeof mark.attrs?.label === "string" && mark.attrs.label.trim()
-          ? mark.attrs.label
-          : definition.label;
+      const label = definition.label;
       const colorKey =
         typeof mark.attrs?.colorKey === "string" && mark.attrs.colorKey.trim()
           ? mark.attrs.colorKey

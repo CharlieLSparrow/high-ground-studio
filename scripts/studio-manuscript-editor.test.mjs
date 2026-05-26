@@ -197,6 +197,10 @@ test("author and semantic definitions contain the MVP options", () => {
       "transition",
     ],
   );
+  assert.equal(
+    semanticHighlightDefinitions.find((tag) => tag.id === "show-notes")?.label,
+    "Production notes",
+  );
   assert.deepEqual(
     manuscriptStructureDefinitions.map((definition) => definition.id),
     ["chapter", "episode", "section"],

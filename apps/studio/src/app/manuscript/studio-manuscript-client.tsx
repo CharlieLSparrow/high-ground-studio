@@ -290,6 +290,50 @@ const dangerButtonClassName =
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 
+type SemanticHighlightDefinition =
+  (typeof semanticHighlightDefinitions)[number];
+type SemanticHighlightColorKey = SemanticHighlightDefinition["colorKey"];
+
+const quickSemanticHighlightTypes = [
+  "clip",
+  "show-notes",
+] as const satisfies readonly SemanticHighlightType[];
+
+const semanticControlClassNames: Record<SemanticHighlightColorKey, string> = {
+  quote: "border-studio-node/55 bg-studio-node/10 text-studio-node",
+  "cited-quotation":
+    "border-studio-node/75 bg-studio-node/15 text-studio-node",
+  "quote-candidate":
+    "border-studio-source/55 bg-studio-source/10 text-studio-source",
+  clip: "border-[#69e2c8]/60 bg-[#69e2c8]/10 text-[#69e2c8]",
+  "show-notes": "border-[#f5ba78]/60 bg-[#f5ba78]/10 text-[#f5ba78]",
+  story: "border-studio-tag/55 bg-studio-tag/10 text-studio-tag",
+  insight: "border-studio-source/55 bg-studio-source/10 text-studio-source",
+  research: "border-studio-review/55 bg-studio-review/10 text-studio-review",
+  question: "border-studio-danger/55 bg-studio-danger/10 text-studio-danger",
+  "needs-review":
+    "border-studio-danger/55 bg-studio-danger/10 text-studio-danger",
+  thesis: "border-studio-ink/45 bg-studio-ink/10 text-studio-ink",
+  transition: "border-studio-node/55 bg-studio-node/10 text-studio-node",
+};
+
+const semanticSwatchClassNames: Record<SemanticHighlightColorKey, string> = {
+  quote: "bg-studio-node",
+  "cited-quotation": "bg-studio-node",
+  "quote-candidate": "bg-studio-source",
+  clip: "bg-[#69e2c8]",
+  "show-notes": "bg-[#f5ba78]",
+  story: "bg-studio-tag",
+  insight: "bg-studio-source",
+  research: "bg-studio-review",
+  question: "bg-studio-danger",
+  "needs-review": "bg-studio-danger",
+  thesis: "bg-studio-ink",
+  transition: "bg-studio-node",
+};
+
+const semanticActiveControlClassName = "ring-1 ring-inset ring-current";
+
 const MANUSCRIPT_LIVE_LATEST_PATH = "/manuscript/live/latest";
 
 function HelpHeading({
@@ -354,6 +398,38 @@ function createChapterTitleBlockId() {
   return `chapter-title-${createId("block")}`;
 }
 
+function getSemanticControlClassName(
+  definition: SemanticHighlightDefinition,
+  isActive: boolean,
+  baseClassName = smallButtonClassName,
+) {
+  return cn(
+    baseClassName,
+    "inline-flex min-w-0 items-center justify-center gap-1.5",
+    semanticControlClassNames[definition.colorKey],
+    isActive && semanticActiveControlClassName,
+  );
+}
+
+function SemanticTagLabel({
+  definition,
+}: {
+  definition: SemanticHighlightDefinition;
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center justify-center gap-1.5">
+      <span
+        className={cn(
+          "size-2.5 shrink-0 rounded-full shadow-[0_0_0_2px_rgba(244,240,232,0.14)]",
+          semanticSwatchClassNames[definition.colorKey],
+        )}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 truncate">{definition.label}</span>
+    </span>
+  );
+}
+
 function areStructureRailRegionsEqual(
   left: ManuscriptStructureRailRegion | null,
   right: ManuscriptStructureRailRegion | null,
@@ -361,7 +437,9 @@ function areStructureRailRegionsEqual(
   return (
     left?.id === right?.id &&
     left?.label === right?.label &&
-    left?.title === right?.title
+    left?.title === right?.title &&
+    left?.startIndex === right?.startIndex &&
+    left?.endIndex === right?.endIndex
   );
 }
 
@@ -381,12 +459,19 @@ function getCurrentStructureRailRegion(
   regions: ManuscriptStructureRailRegion[],
   blockIndex: number,
 ) {
-  return (
-    regions.find(
-      (region) =>
-        region.startIndex <= blockIndex && region.endIndex >= blockIndex,
-    ) ?? null
-  );
+  let currentRegion: ManuscriptStructureRailRegion | null = null;
+
+  for (const region of regions) {
+    if (region.startIndex > blockIndex) {
+      break;
+    }
+
+    if (region.endIndex >= blockIndex) {
+      currentRegion = region;
+    }
+  }
+
+  return currentRegion;
 }
 
 function getNextStructureRailRegion(
@@ -1677,44 +1762,45 @@ export function StudioManuscriptClient({
       }
     });
 
-    const blockElements: Array<{
-      index: number;
-      element: HTMLElement;
-    }> = [];
-
-    editor.state.doc.descendants((node, pos) => {
-      if (!blockNodeTypes.includes(node.type.name)) {
-        return true;
-      }
-
-      const blockId = node.attrs.blockId;
-
-      if (typeof blockId !== "string") {
-        return true;
-      }
-
-      const index = blockIndexById.get(blockId);
-      const domNode = editor.view.nodeDOM(pos);
-
-      if (typeof index === "number" && domNode instanceof HTMLElement) {
-        blockElements.push({ index, element: domNode });
-      }
-
-      return true;
-    });
-
-    if (!blockElements.length) {
-      setStructureRailState((previous) =>
-        areStructureRailStatesEqual(previous, emptyStructureRailState)
-          ? previous
-          : emptyStructureRailState,
-      );
-      return;
-    }
-
     let animationFrame = 0;
 
+    const readBlockElements = () => {
+      const blockElements: Array<{
+        index: number;
+        element: HTMLElement;
+      }> = [];
+
+      editor.state.doc.descendants((node, pos) => {
+        if (!blockNodeTypes.includes(node.type.name)) {
+          return true;
+        }
+
+        const blockId = node.attrs.blockId;
+
+        if (typeof blockId !== "string") {
+          return true;
+        }
+
+        const index = blockIndexById.get(blockId);
+        const domNode = editor.view.nodeDOM(pos);
+
+        if (typeof index === "number" && domNode instanceof HTMLElement) {
+          blockElements.push({ index, element: domNode });
+        }
+
+        return true;
+      });
+
+      return blockElements.sort((left, right) => left.index - right.index);
+    };
+
     const readCurrentBlockIndex = () => {
+      const blockElements = readBlockElements();
+
+      if (!blockElements.length) {
+        return null;
+      }
+
       const anchorY = Math.min(Math.max(window.innerHeight * 0.22, 96), 180);
       let currentIndex = blockElements[0]?.index ?? 0;
 
@@ -1746,6 +1832,16 @@ export function StudioManuscriptClient({
       animationFrame = 0;
 
       const currentBlockIndex = readCurrentBlockIndex();
+
+      if (currentBlockIndex === null) {
+        setStructureRailState((previous) =>
+          areStructureRailStatesEqual(previous, emptyStructureRailState)
+            ? previous
+            : emptyStructureRailState,
+        );
+        return;
+      }
+
       const chapter = getCurrentStructureRailRegion(
         structureRailRegions.chapters,
         currentBlockIndex,
@@ -1783,10 +1879,29 @@ export function StudioManuscriptClient({
     };
 
     scheduleStructureRailUpdate();
+    const scrollListenerOptions: AddEventListenerOptions = {
+      capture: true,
+      passive: true,
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleStructureRailUpdate);
+
     window.addEventListener("scroll", scheduleStructureRailUpdate, {
       passive: true,
     });
+    document.addEventListener(
+      "scroll",
+      scheduleStructureRailUpdate,
+      scrollListenerOptions,
+    );
     window.addEventListener("resize", scheduleStructureRailUpdate);
+    resizeObserver?.observe(editor.view.dom);
+
+    if (manuscriptSurfaceRef.current) {
+      resizeObserver?.observe(manuscriptSurfaceRef.current);
+    }
 
     return () => {
       if (animationFrame) {
@@ -1794,7 +1909,13 @@ export function StudioManuscriptClient({
       }
 
       window.removeEventListener("scroll", scheduleStructureRailUpdate);
+      document.removeEventListener(
+        "scroll",
+        scheduleStructureRailUpdate,
+        scrollListenerOptions,
+      );
       window.removeEventListener("resize", scheduleStructureRailUpdate);
+      resizeObserver?.disconnect();
     };
   }, [blockSummaries, editor, structureRailRegions]);
 
@@ -4363,24 +4484,25 @@ export function StudioManuscriptClient({
                       </button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        className={smallButtonClassName}
-                        type="button"
-                        onClick={() =>
-                          applySemanticHighlightForType("clip")
-                        }
-                      >
-                        Clip
-                      </button>
-                      <button
-                        className={smallButtonClassName}
-                        type="button"
-                        onClick={() =>
-                          applySemanticHighlightForType("show-notes")
-                        }
-                      >
-                        Show notes
-                      </button>
+                      {quickSemanticHighlightTypes.map((tagType) => {
+                        const definition = getSemanticHighlightDefinition(tagType);
+
+                        return (
+                          <button
+                            className={getSemanticControlClassName(
+                              definition,
+                              semanticType === definition.id,
+                            )}
+                            key={definition.id}
+                            type="button"
+                            onClick={() =>
+                              applySemanticHighlightForType(definition.id)
+                            }
+                          >
+                            <SemanticTagLabel definition={definition} />
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -7309,18 +7431,19 @@ export function StudioManuscriptClient({
                     <div className="flex snap-x gap-2 overflow-x-auto pb-1">
                       {semanticHighlightDefinitions.map((definition) => (
                         <button
-                          className={cn(
-                            smallButtonClassName,
-                            "min-w-fit shrink-0 snap-start px-3",
-                            semanticType === definition.id
-                              ? activeButtonClassName
-                              : "",
+                          className={getSemanticControlClassName(
+                            definition,
+                            semanticType === definition.id,
+                            cn(
+                              smallButtonClassName,
+                              "min-w-fit shrink-0 snap-start px-3",
+                            ),
                           )}
                           key={definition.id}
                           type="button"
                           onClick={() => setSemanticType(definition.id)}
                         >
-                          {definition.label}
+                          <SemanticTagLabel definition={definition} />
                         </button>
                       ))}
                     </div>
@@ -7361,22 +7484,25 @@ export function StudioManuscriptClient({
                     >
                       Mark cited quote
                     </button>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={() => applySemanticHighlightForType("clip")}
-                    >
-                      Clip
-                    </button>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={() =>
-                        applySemanticHighlightForType("show-notes")
-                      }
-                    >
-                      Show notes
-                    </button>
+                    {quickSemanticHighlightTypes.map((tagType) => {
+                      const definition = getSemanticHighlightDefinition(tagType);
+
+                      return (
+                        <button
+                          className={getSemanticControlClassName(
+                            definition,
+                            semanticType === definition.id,
+                          )}
+                          key={definition.id}
+                          type="button"
+                          onClick={() =>
+                            applySemanticHighlightForType(definition.id)
+                          }
+                        >
+                          <SemanticTagLabel definition={definition} />
+                        </button>
+                      );
+                    })}
                     <button
                       className={smallButtonClassName}
                       type="button"
@@ -7764,10 +7890,10 @@ export function StudioManuscriptClient({
                 <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">
                   {semanticHighlightDefinitions.map((definition) => (
                     <button
-                      className={cn(
-                        commandButtonClassName,
-                        "justify-start text-left",
-                        semanticType === definition.id ? activeButtonClassName : "",
+                      className={getSemanticControlClassName(
+                        definition,
+                        semanticType === definition.id,
+                        cn(commandButtonClassName, "justify-start text-left"),
                       )}
                       key={definition.id}
                       role="menuitem"
@@ -7776,33 +7902,34 @@ export function StudioManuscriptClient({
                         applySemanticHighlightFromContextMenu(definition.id)
                       }
                     >
-                      {definition.label}
+                      <SemanticTagLabel definition={definition} />
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  className={commandButtonClassName}
-                  role="menuitem"
-                  type="button"
-                  onClick={() =>
-                    applySemanticHighlightFromContextMenu("clip")
-                  }
-                >
-                  Clip
-                </button>
-                <button
-                  className={commandButtonClassName}
-                  role="menuitem"
-                  type="button"
-                  onClick={() =>
-                    applySemanticHighlightFromContextMenu("show-notes")
-                  }
-                >
-                  Show notes
-                </button>
+                {quickSemanticHighlightTypes.map((tagType) => {
+                  const definition = getSemanticHighlightDefinition(tagType);
+
+                  return (
+                    <button
+                      className={getSemanticControlClassName(
+                        definition,
+                        semanticType === definition.id,
+                        commandButtonClassName,
+                      )}
+                      key={definition.id}
+                      role="menuitem"
+                      type="button"
+                      onClick={() =>
+                        applySemanticHighlightFromContextMenu(definition.id)
+                      }
+                    >
+                      <SemanticTagLabel definition={definition} />
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
