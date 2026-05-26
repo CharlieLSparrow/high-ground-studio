@@ -10,6 +10,7 @@ Read in this order:
 - `docs/agents/codex-continuity.md`
 - `docs/agents/autonomous-codex-operating-mode.md`
 - `docs/agents/multi-agent-collaboration.md`
+- `docs/agents/codex-application-handoff-2026-05-26.md`
 - `docs/coordination/agent-board.md`
 - the most recent relevant file in `docs/sessions/`
 
@@ -23,7 +24,9 @@ Read in this order:
 - `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
 - Converting a coaching request creates an appointment, marks the request `SCHEDULED`, assigns the coach, links `convertedAppointmentId`, and revalidates dashboard/team routes.
 - Coaching donation support is an external pay-what-you-can link via `HGO_COACHING_DONATION_URL`.
-- Google Calendar support is generated link-only, not OAuth/API sync.
+- Google Calendar event-template links remain available. Server-side calendar
+  sync can be queued or run from `/team/worldhub` when dedicated
+  `GOOGLE_CALENDAR_*` credentials are configured.
 - Resend email notifications are wired for new coaching requests and are best-effort after the request transaction commits.
 - SMS/Twilio notification sending is not wired into the active coaching request flow.
 - The episodes route is stabilized with a guarded loader, not a final content architecture.
@@ -32,6 +35,11 @@ Read in this order:
   supports JSON handoff packets and manual Prisma-backed server checkpoints
   once the `StudioContentWorkspaceSnapshot` schema change has been applied. It
   does not call providers or publish content.
+- Studio `/manuscript` is the private block-aware book writing desk. It keeps
+  durable block IDs, separate author and semantic marks, structure regions,
+  quote review metadata, manual snapshots, mobile writing controls, and
+  browser-only publish/handoff exports. Current improvement planning lives in
+  `docs/plans/studio-manuscript-desk-improvement-roadmap.md`.
 - Both current production build paths pass.
 - The content tree is much larger than the current published surface.
 - Codex has approval to commit, push, and deploy independently when a coherent

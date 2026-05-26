@@ -1,6 +1,6 @@
 # Current State
 
-Date: 2026-05-25
+Date: 2026-05-26
 
 ## What The Repo Is Right Now
 
@@ -79,6 +79,18 @@ High Ground Studio is a monorepo with:
   to test marks, structure, quotes, quote reviews, manual snapshots,
   phone/second-browser loading, Recording / Reading mode, and Publish exports
   before real manuscript material enters Studio.
+- The private Studio `/manuscript` desk now has mobile writing and semantic
+  highlighting controls. Phone-width users can mark selected text by author,
+  choose and apply semantic tags, mark cited quotations, enter semantic Focus
+  View, and return to the manuscript surface without relying on the desktop
+  sidebar.
+- The current Manuscript Desk improvement roadmap is recorded in
+  `docs/plans/studio-manuscript-desk-improvement-roadmap.md`, with competitive
+  research in
+  `docs/analysis/studio-manuscript-writing-tool-competitive-research.md`. The
+  roadmap preserves the long manuscript as the home surface and treats maps,
+  semantic lenses, review queues, timelines, source bibles, and exports as
+  projections around the same block-aware draft state.
 - The private Studio `/manuscript` desk can generate a browser-only HGO episode
   projection JSON draft from synthetic/tagged manuscript metadata in Publish
   mode. The export is a projection draft/staged review draft, not raw

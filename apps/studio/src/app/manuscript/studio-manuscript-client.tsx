@@ -1354,6 +1354,32 @@ export function StudioManuscriptClient({
     );
   }
 
+  function applySemanticFocus(tagType: SemanticHighlightType | "" = "") {
+    const definition = tagType ? getSemanticHighlightDefinition(tagType) : null;
+
+    setSidePanelMode("find");
+    setFilterTextQuery("");
+    setFilterAuthorId("");
+    setFilterSemanticType(tagType);
+    setFilterStructureRegionId("");
+    setFilterStructureKind("");
+    setFilterBlockType("");
+    setFilterQuoteReviewStatus("");
+    setFilterOnlyUnstructured(false);
+    setFilterOnlyWithSemanticHighlights(!tagType);
+    setFilterOnlyWithoutAuthor(false);
+    setFilterVisualMode("hide-nonmatches");
+    setFilterContextBlockCount(1);
+    setCurrentQuoteIndex(0);
+    setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
+    setMessage(
+      definition
+        ? `${definition.label} semantic focus enabled.`
+        : "Semantic focus enabled.",
+    );
+  }
+
   function exitFocusView() {
     clearBlockFilters();
     setFilterVisualMode("highlight-matches");
@@ -3090,7 +3116,7 @@ export function StudioManuscriptClient({
         : "default";
 
   return (
-    <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-24 md:p-6">
+    <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
         <header
           className={cn(
@@ -3209,7 +3235,7 @@ export function StudioManuscriptClient({
             )}
             aria-label={isRecordingMode ? "Read-only manuscript" : "Editable manuscript"}
           >
-            <div className="hidden">
+            <div className="grid gap-3 rounded-lg border border-studio-line bg-black/20 p-3 md:hidden">
               <div>
                 <p className={labelClassName}>Editor</p>
                 <h2 className={panelTitleClassName}>Manuscript surface</h2>
@@ -3234,71 +3260,117 @@ export function StudioManuscriptClient({
             </div>
 
             {isRecordingMode ? (
-              <div className="hidden rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted">
+              <div className="rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted md:hidden">
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
             ) : (
-              <div className="hidden flex-col gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
-              <p className={labelClassName}>Selection actions</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => markSelectionAsAuthor("charlie")}
-                >
-                  Mark Charlie
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => markSelectionAsAuthor("homer")}
-                >
-                  Mark Homer / Scott
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={() => markSelectionAsAuthor("unassigned")}
-                >
-                  Clear author
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={applySemanticHighlight}
-                >
-                  Apply {getSemanticHighlightDefinition(semanticType).label}
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={markCitedQuotation}
-                >
-                  Mark cited quotation
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={clearSemanticHighlight}
-                >
-                  Clear cited quotation / semantic
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={captureStructureRange}
-                >
-                  Capture structure range
-                </button>
-                <button
-                  className={smallButtonClassName}
-                  type="button"
-                  onClick={createStructureRegion}
-                >
-                  Add {getManuscriptStructureDefinition(structureKind).label}
-                </button>
+              <div className="grid gap-3 rounded-lg border border-studio-line bg-black/20 p-2.5 md:hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className={labelClassName}>Writing marks</p>
+                  <StudioChip tone="source">
+                    {getManuscriptAuthorDefinition(activeAuthorId).label}
+                  </StudioChip>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {manuscriptAuthorDefinitions.map((author) => (
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        "px-2 text-[0.74rem]",
+                        activeAuthorId === author.id
+                          ? activeButtonClassName
+                          : "",
+                      )}
+                      key={author.id}
+                      type="button"
+                      onClick={() => markSelectionAsAuthor(author.id)}
+                    >
+                      {author.id === "homer"
+                        ? "Homer"
+                        : author.id === "charlie"
+                          ? "Charlie"
+                          : "Clear"}
+                    </button>
+                  ))}
+                </div>
+
+                <label className="grid gap-1.5">
+                  <HelpLabel noteId="semantic-meaning-tags">
+                    Semantic tag
+                  </HelpLabel>
+                  <select
+                    className={fieldClassName}
+                    value={semanticType}
+                    onChange={(event) =>
+                      setSemanticType(event.target.value as SemanticHighlightType)
+                    }
+                  >
+                    {semanticHighlightDefinitions.map((definition) => (
+                      <option key={definition.id} value={definition.id}>
+                        {definition.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-1.5">
+                  <span className={fieldLabelClassName}>Semantic note</span>
+                  <textarea
+                    className={cn(textareaClassName, "min-h-[64px]")}
+                    value={semanticNote}
+                    onChange={(event) => setSemanticNote(event.target.value)}
+                  />
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={applySemanticHighlight}
+                  >
+                    Apply semantic
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={clearSemanticHighlight}
+                  >
+                    Clear semantic
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={markCitedQuotation}
+                  >
+                    Mark cited quote
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={() => applySemanticFocus(semanticType)}
+                  >
+                    Focus tag
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={captureStructureRange}
+                  >
+                    Capture range
+                  </button>
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={createStructureRegion}
+                  >
+                    Add {getManuscriptStructureDefinition(structureKind).label}
+                  </button>
+                </div>
               </div>
-            </div>
             )}
 
             <EditorContent editor={editor} />
@@ -6001,7 +6073,7 @@ export function StudioManuscriptClient({
         </section>
 
         <section
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 py-2 shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur md:hidden"
           aria-label="Mobile manuscript tools"
         >
           {isMobileToolsOpen ? (
@@ -6116,6 +6188,129 @@ export function StudioManuscriptClient({
               <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
                 {serverSnapshotStatus}
               </p>
+
+              {!isRecordingMode ? (
+                <div className="grid gap-3 rounded-lg border border-studio-tag/35 bg-studio-tag/10 p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <HelpLabel noteId="mark-mode">Write and mark</HelpLabel>
+                    <StudioChip tone="source">
+                      {getManuscriptAuthorDefinition(activeAuthorId).label}
+                    </StudioChip>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {manuscriptAuthorDefinitions.map((author) => (
+                      <button
+                        className={cn(
+                          smallButtonClassName,
+                          "px-2 text-[0.74rem]",
+                          activeAuthorId === author.id
+                            ? activeButtonClassName
+                            : "",
+                        )}
+                        key={author.id}
+                        type="button"
+                        onClick={() => markSelectionAsAuthor(author.id)}
+                      >
+                        {author.id === "homer"
+                          ? "Homer"
+                          : author.id === "charlie"
+                            ? "Charlie"
+                            : "Clear"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HelpLabel noteId="semantic-meaning-tags">
+                      Semantic palette
+                    </HelpLabel>
+                    <div className="flex snap-x gap-2 overflow-x-auto pb-1">
+                      {semanticHighlightDefinitions.map((definition) => (
+                        <button
+                          className={cn(
+                            smallButtonClassName,
+                            "min-w-fit shrink-0 snap-start px-3",
+                            semanticType === definition.id
+                              ? activeButtonClassName
+                              : "",
+                          )}
+                          key={definition.id}
+                          type="button"
+                          onClick={() => setSemanticType(definition.id)}
+                        >
+                          {definition.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Semantic note</span>
+                    <textarea
+                      className={cn(textareaClassName, "min-h-[68px]")}
+                      value={semanticNote}
+                      onChange={(event) => setSemanticNote(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>
+                      Citation / source note
+                    </span>
+                    <textarea
+                      className={cn(textareaClassName, "min-h-[68px]")}
+                      value={citationNote}
+                      onChange={(event) => setCitationNote(event.target.value)}
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={applySemanticHighlight}
+                    >
+                      Apply semantic
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={markCitedQuotation}
+                    >
+                      Mark cited quote
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applySemanticFocus(semanticType)}
+                    >
+                      Focus selected tag
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applySemanticFocus()}
+                    >
+                      All semantic marks
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={clearSemanticHighlight}
+                    >
+                      Clear semantic
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={returnToManuscript}
+                    >
+                      Back to writing
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">

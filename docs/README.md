@@ -33,6 +33,10 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `architecture/quiplore-discovery-architecture.md`: QuipStream discovery, event, API, recommendation, and trust architecture inspired by short-form vertical feeds.
 - `plans/quipsly-quiplore-now-next-later.md`: staged Quipsly/QuipLore build sequence, stop conditions, and first useful demo scope.
 - `agents/quipsly-quiplore-codex-brief.md`: startup brief for future Quipsly/QuipLore implementation agents.
+- `agents/quipsly-quiplore-implementation-result.md`: current implementation result for the first QuipLore app, Quipsly API, and shared domain package pass.
+- `analysis/studio-manuscript-writing-tool-competitive-research.md`: competitive research across Scrivener, Ulysses, Reedsy, Dabble, Atticus, Plottr, iA Writer, and Docs/Word for the next Manuscript Desk planning cycle.
+- `plans/studio-manuscript-desk-improvement-roadmap.md`: big-swing roadmap for mobile writing, semantic lenses, manuscript map, revision timeline, compile profiles, source bible, review, and Codex handoff mode.
+- `agents/codex-application-handoff-2026-05-26.md`: current handoff packet for passing this branch into the Codex application, including validation status and branch/worktree audit.
 - `reference/quipsly-quiplore/visual-language-study.md`: visual notes from uploaded Quipsly/QuipLore reference assets.
 - `analysis/episode-view-everything-draft-implementation-plan.md`: implementation plan for the next read-only Episode View cockpit slice.
 - `analysis/episodes-01-06-onenote-intake-audit.md`: raw OneNote intake inventory and classification guidance for Episodes 1-6 before living-manuscript normalization.

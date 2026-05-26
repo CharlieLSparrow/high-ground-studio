@@ -1347,3 +1347,34 @@ checks, blockers, and next handoff.
   `web-cloudsql-db-push-6b12434`, execution
   `web-cloudsql-db-push-6b12434-49qpc`. Logs reported:
   `Your database is now in sync with your Prisma schema.`
+
+### Codex / Manuscript Desk mobile and roadmap handoff
+
+- 2026-05-26: Took over the interrupted local state on
+  `codex/content-studio-persistence-supervisor-001`.
+- Added a mobile writing and semantic marking pass for private Studio
+  `/manuscript`: phone-width users can mark selected text by author, apply or
+  clear semantic tags, mark cited quotations, enter semantic Focus View, and
+  return to the manuscript surface without the desktop sidebar.
+- Recorded competitive research for comparable writing tools in
+  `docs/analysis/studio-manuscript-writing-tool-competitive-research.md`.
+- Recorded the next Manuscript Desk roadmap in
+  `docs/plans/studio-manuscript-desk-improvement-roadmap.md`.
+- Recorded the Codex application handoff in
+  `docs/agents/codex-application-handoff-2026-05-26.md`.
+- Sibling worktrees checked clean:
+  `/private/tmp/hgs-deploy-928d68f`,
+  `/private/tmp/hgs-manuscript-live-001`,
+  `/Users/wall-e/Dev/hgs-worldhub-codex`,
+  `/Users/wall-e/Dev/hgs-worldhub-project`, and
+  `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001`.
+- Manuscript validation passed: `pnpm studio:manuscript:test`,
+  `pnpm --filter studio typecheck`, and `git diff --check`.
+- Repaired the local generated-client issue by pinning the new QuipLore apps
+  and the root `react-datepicker` peer graph to the repo's current
+  Next/React versions: `next@16.1.6`, `react@19.2.4`, and
+  `react-dom@19.2.4`. `pnpm why @prisma/client -r` now reports one
+  `@prisma/client` instance.
+- `pnpm --filter studio build` still fails inside the sandbox with the known
+  Turbopack/PostCSS helper port-bind restriction, but the outside-sandbox build
+  passed.

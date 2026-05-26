@@ -56,6 +56,7 @@ button:disabled {
 .manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
   margin: 0 0 1rem;
   scroll-margin-top: 5.5rem;
+  overflow-wrap: anywhere;
 }
 
 .manuscript-prosemirror :where(h1, h2, h3) {
@@ -82,12 +83,20 @@ button:disabled {
 }
 
 .manuscript-prosemirror .manuscript-semantic-quote {
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(240, 183, 101, 0.65);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-cited-quotation {
   background: rgba(240, 183, 101, 0.18);
+  border-radius: 0.22rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 2px solid rgba(240, 183, 101, 0.9);
+  outline-offset: 0.08em;
   box-shadow:
     inset 0 -0.2em rgba(240, 183, 101, 0.32),
     0 0 0 2px rgba(240, 183, 101, 0.12);
@@ -95,33 +104,67 @@ button:disabled {
 
 .manuscript-prosemirror .manuscript-semantic-quote-candidate {
   background: rgba(130, 198, 216, 0.12);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px dashed rgba(130, 198, 216, 0.82);
+  outline-offset: 0.08em;
   box-shadow: inset 0 -0.18em rgba(130, 198, 216, 0.2);
 }
 
 .manuscript-prosemirror .manuscript-semantic-story {
+  background: rgba(159, 209, 139, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(159, 209, 139, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-insight {
+  background: rgba(130, 198, 216, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(130, 198, 216, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-research {
+  background: rgba(201, 179, 255, 0.09);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(201, 179, 255, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-question,
 .manuscript-prosemirror .manuscript-semantic-needs-review {
+  background: rgba(242, 166, 166, 0.1);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(242, 166, 166, 0.78);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-thesis {
+  background: rgba(244, 240, 232, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(244, 240, 232, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-transition {
+  background: rgba(240, 183, 101, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px dashed rgba(240, 183, 101, 0.75);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-structure-block {
@@ -232,13 +275,39 @@ button:disabled {
 
 @media (max-width: 640px) {
   .manuscript-prosemirror {
-    font-size: 1.02rem;
-    line-height: 1.9;
-    padding: 1rem;
+    min-height: 58dvh;
+    padding: 1rem 0.95rem calc(6.75rem + env(safe-area-inset-bottom));
+    caret-color: var(--color-studio-tag);
+    font-size: 1.0625rem;
+    line-height: 1.95;
+    overflow-wrap: anywhere;
+    touch-action: manipulation;
   }
 
   .manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
-    margin-bottom: 1.15rem;
-    scroll-margin-top: 1.25rem;
+    margin-bottom: 1.25rem;
+    scroll-margin-top: 8.5rem;
+  }
+
+  .manuscript-prosemirror :where(h1, h2, h3) {
+    font-size: 1.08em;
+    line-height: 1.35;
+  }
+
+  .manuscript-prosemirror .manuscript-author-mark,
+  .manuscript-prosemirror .manuscript-semantic-mark {
+    padding: 0.04em 0.12em;
+  }
+
+  .manuscript-prosemirror .manuscript-filter-match {
+    outline-width: 3px;
+    outline-offset: 3px;
+  }
+
+  .manuscript-recording-mode .manuscript-prosemirror {
+    min-height: 60dvh;
+    padding: 1rem 0.95rem calc(7rem + env(safe-area-inset-bottom));
+    font-size: 1.08rem;
+    line-height: 2.05;
   }
 }
