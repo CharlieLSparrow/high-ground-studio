@@ -148,9 +148,19 @@ const verificationSteps = [
     args: ["-m", "py_compile", "tools/studio-cut-media-vault/media_vault.py"],
   },
   {
+    label: "Insta360 operator helper compile",
+    command: pythonCommand,
+    args: ["-m", "py_compile", "tools/studio-cut-media-vault/insta360_studio_operator.py"],
+  },
+  {
     label: "Media vault synthetic smoke",
     command: "pnpm",
     args: ["studio-cut:media-vault:smoke"],
+  },
+  {
+    label: "Insta360 operator self test",
+    command: "pnpm",
+    args: ["studio-cut:insta360-operator:self-test"],
   },
   {
     label: "Cloud sync worker synthetic smoke",

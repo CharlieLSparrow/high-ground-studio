@@ -190,6 +190,10 @@ committed.
 For low local storage, use a small download buffer and drain it continuously:
 
 ```bash
+pnpm studio-cut:insta360-operator prepare-session \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+pnpm studio-cut:insta360-operator open-studio
 pnpm studio-cut:media-vault -- drain-folder \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
@@ -203,6 +207,19 @@ This uploads settled files one at a time, verifies the GCS object size, records
 a local JSONL ledger, and deletes the local copy only after verification. Remote
 Insta360 cloud deletion remains a manual app step until a supported delete API
 or auditable automation path exists.
+
+If the Studio UI is visible and cloud media is selected, try:
+
+```bash
+pnpm studio-cut:insta360-operator download-selected --execute
+```
+
+If the button label has changed, capture the UI tree:
+
+```bash
+pnpm studio-cut:insta360-operator ui-snapshot \
+  --out /tmp/insta360-studio-ui.json
+```
 
 Local worker metadata-only run:
 

@@ -202,6 +202,46 @@ API or a fully auditable automation path. The official Insta360 deletion path is
 inside the app cloud album, and deleted Insta360+ Cloud Storage files are
 recoverable from Recently Deleted for a limited time.
 
+### Local Download Operator
+
+The local download operator wraps macOS/Insta360 Studio actions that are not
+available through a public API. It uses AppleScript/System Events, so macOS
+Accessibility permission is required for Terminal or the Codex host process.
+
+Prepare the local buffer and drain runner:
+
+```bash
+pnpm studio-cut:insta360-operator prepare-session \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+```
+
+Open Insta360 Studio:
+
+```bash
+pnpm studio-cut:insta360-operator open-studio
+```
+
+Capture the current UI when automation misses a button:
+
+```bash
+pnpm studio-cut:insta360-operator ui-snapshot \
+  --out /tmp/insta360-studio-ui.json
+```
+
+After the operator selects cloud media in Studio, try the visible download
+control:
+
+```bash
+pnpm studio-cut:insta360-operator download-selected
+pnpm studio-cut:insta360-operator download-selected --execute
+```
+
+This is deliberately an assistive local operator, not a credential scraper. It
+does not store the Insta360 login and it does not delete cloud files. If the
+Studio UI changes, use `ui-snapshot` and `click-control --label "..."` to teach
+the operator the current visible label.
+
 ### Generic Folder Intake
 
 Create a manifest:
@@ -238,12 +278,13 @@ be private.
 
 Short-term:
 
-1. Export/download Insta360 Cloud files using the official app or browser flow.
-2. Run `discover-insta360` or pass the export folder with `--scan-dir`.
-3. Run `create-insta360-package`.
-4. Dry-run `upload-manifest`.
-5. Upload to `gs://high-ground-odyssey-media` with `upload-manifest --execute`.
-6. Run the proxy/sync worker against the vault manifest.
+1. Run `prepare-session`.
+2. Start `drain-folder --watch --execute --delete-local-after-upload`.
+3. Use Insta360 Studio to select cloud files and trigger `Download`, optionally
+   with `download-selected --execute` if the visible control is scriptable.
+4. Confirm the ledger has `uploaded_verified` and `local_deleted` rows.
+5. Delete the matching files manually from Insta360 Cloud.
+6. Run the proxy/sync worker against the vault manifest or GCS object list.
 
 If discovery misses the app folder, put `.insv`, `.insp`, `.mp4`, `.mov`,
 photos, and sidecars in a local intake folder outside the repo, for example:

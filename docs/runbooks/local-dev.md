@@ -164,6 +164,8 @@ Studio Cut media vault helper:
 
 ```bash
 pnpm studio-cut:media-vault:doctor
+pnpm studio-cut:insta360-operator self-test
+pnpm studio-cut:insta360-operator doctor
 pnpm studio-cut:media-vault -- discover-insta360
 pnpm studio-cut:media-vault -- create-insta360-package \
   --project-id episode-004 \
@@ -183,6 +185,9 @@ Use this helper to create local manifests and reviewable Google Cloud Storage
 upload plans for video/photo/audio folders. `upload-manifest --execute` uploads
 through the local Google Cloud CLI session. `drain-folder --watch --execute
 --delete-local-after-upload` is the low-storage path for upload-and-clear loops.
+`studio-cut:insta360-operator` can open Insta360 Studio, prepare the local
+download buffer, capture UI snapshots, and try visible download controls when
+macOS Accessibility permission is enabled.
 Real manifests and upload scripts for private media stay outside git.
 
 ## Build Verification

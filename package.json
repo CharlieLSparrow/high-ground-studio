@@ -28,6 +28,8 @@
     "studio-cut:media-vault": "python tools/studio-cut-media-vault/media_vault.py",
     "studio-cut:media-vault:doctor": "python tools/studio-cut-media-vault/media_vault.py doctor",
     "studio-cut:media-vault:smoke": "python tools/studio-cut-media-vault/media_vault.py smoke-test",
+    "studio-cut:insta360-operator": "python tools/studio-cut-media-vault/insta360_studio_operator.py",
+    "studio-cut:insta360-operator:self-test": "python tools/studio-cut-media-vault/insta360_studio_operator.py self-test",
     "studio-cut:cloud-sync-smoke": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs",
     "studio-cut:demo-package": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs --only-scenario short --publish-package-scenario short --publish-package-dir tools/studio-cut-local/output/demo-shared-room-package",
     "studio-cut:rescue-sync-package": "node scripts/studio-cut-cloud-sync-worker-smoke.mjs --only-scenario short --publish-package-scenario short --publish-package-dir tools/studio-cut-local/output/rescue-sync-publish-package",

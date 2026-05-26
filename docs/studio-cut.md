@@ -1076,7 +1076,10 @@ the upload, and execute the upload with the local Google Cloud CLI session when
 buffer, upload settled files one at a time, verify GCS object size, record a
 ledger, and delete only the local copy after verification. Remote Insta360 cloud
 deletion remains manual until a supported API or auditable automation path is
-available.
+available. `studio-cut:insta360-operator` adds a local macOS assistive layer:
+it can open Insta360 Studio, prepare the download buffer, capture the visible UI
+tree for agent debugging, and try visible `Download` / `Start Export` controls
+for selected cloud media when Accessibility permission is enabled.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

@@ -88,6 +88,49 @@ Only local files are deleted, and only after `gcloud storage cp` succeeds and
 the GCS object size matches the local file size. Remote Insta360 Cloud deletion
 is still a manual app step unless a supported API becomes available.
 
+## Insta360 Studio Download Operator
+
+The operator helper assists the local desktop workflow. It does not log in,
+store passwords, or delete remote cloud files.
+
+```bash
+pnpm studio-cut:insta360-operator self-test
+pnpm studio-cut:insta360-operator doctor
+pnpm studio-cut:insta360-operator prepare-session \
+  --project-id episode-004 \
+  --collection-id homer-insta360
+```
+
+Open Studio:
+
+```bash
+pnpm studio-cut:insta360-operator open-studio
+```
+
+Capture the visible UI tree for agent debugging:
+
+```bash
+pnpm studio-cut:insta360-operator ui-snapshot \
+  --out /tmp/insta360-studio-ui.json
+```
+
+After selecting cloud media in Insta360 Studio, try the download control:
+
+```bash
+pnpm studio-cut:insta360-operator download-selected
+pnpm studio-cut:insta360-operator download-selected --execute
+```
+
+If the label is different in the current Studio version:
+
+```bash
+pnpm studio-cut:insta360-operator click-control --label "Download" --execute
+pnpm studio-cut:insta360-operator click-control --label "Start Export" --execute
+```
+
+If UI automation is blocked, enable Terminal/Codex under macOS System Settings
+> Privacy & Security > Accessibility, then rerun `doctor`.
+
 Create a manifest:
 
 ```bash
