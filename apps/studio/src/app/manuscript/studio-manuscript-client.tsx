@@ -406,6 +406,23 @@ function getStructureRailTitle(title: string, fallback: string) {
   return title.trim() || fallback;
 }
 
+function getStructureRailLabel(
+  kind: ManuscriptStructureRailKind,
+  index: number,
+  title: string,
+) {
+  const baseLabel = kind === "episode" ? "Episode" : "Chapter";
+  const titlePrefixPattern =
+    kind === "episode"
+      ? /^(?:episode|ep\.?)\s+([a-z0-9-]+)\b/i
+      : /^(?:chapter|ch\.?)\s+([a-z0-9-]+)\b/i;
+  const titlePrefixMatch = title.trim().match(titlePrefixPattern);
+
+  return titlePrefixMatch
+    ? `${baseLabel} ${titlePrefixMatch[1]}`
+    : `${baseLabel} ${index + 1}`;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return "Not saved yet";
@@ -986,7 +1003,7 @@ export function StudioManuscriptClient({
       .map<ManuscriptStructureRailRegion>((region, index) => ({
         id: `structure-chapter:${region.id}`,
         kind: "chapter",
-        label: `Chapter ${index + 1}`,
+        label: getStructureRailLabel("chapter", index, region.title),
         title: getStructureRailTitle(region.title, `Chapter ${index + 1}`),
         startIndex: region.startIndex,
         endIndex: region.endIndex,
@@ -998,7 +1015,7 @@ export function StudioManuscriptClient({
           (chapter, index) => ({
             id: `chapter-title:${chapter.id}`,
             kind: "chapter",
-            label: `Chapter ${index + 1}`,
+            label: getStructureRailLabel("chapter", index, chapter.title),
             title: getStructureRailTitle(chapter.title, `Chapter ${index + 1}`),
             startIndex: chapter.startIndex,
             endIndex: chapter.endIndex,
@@ -1018,7 +1035,7 @@ export function StudioManuscriptClient({
       .map<ManuscriptStructureRailRegion>((region, index) => ({
         id: `structure-episode:${region.id}`,
         kind: "episode",
-        label: `Episode ${index + 1}`,
+        label: getStructureRailLabel("episode", index, region.title),
         title: getStructureRailTitle(region.title, `Episode ${index + 1}`),
         startIndex: region.startIndex,
         endIndex: region.endIndex,
@@ -3994,6 +4011,15 @@ export function StudioManuscriptClient({
       return null;
     }
 
+    const railLabel =
+      currentRegion?.label ??
+      (nextRegion ? `Before ${nextRegion.label}` : "Before");
+    const railTitle = currentRegion?.title ?? nextRegion?.title ?? "";
+    const shouldShowTitle =
+      railTitle.trim().length > 0 &&
+      railTitle.trim().toLowerCase() !==
+        (currentRegion ?? nextRegion)?.label.toLowerCase();
+
     return (
       <article
         className={cn(
@@ -4002,13 +4028,12 @@ export function StudioManuscriptClient({
         )}
         key={kind}
       >
-        <span className="manuscript-structure-rail-label">
-          {currentRegion?.label ??
-            (nextRegion ? `Before ${nextRegion.label}` : "Before")}
-        </span>
-        <strong className="manuscript-structure-rail-title">
-          {currentRegion?.title ?? nextRegion?.title}
-        </strong>
+        <span className="manuscript-structure-rail-label">{railLabel}</span>
+        {shouldShowTitle ? (
+          <strong className="manuscript-structure-rail-title">
+            {railTitle}
+          </strong>
+        ) : null}
         {currentRegion && nextRegion ? (
           <span className="manuscript-structure-rail-next">
             Next {nextRegion.label}
