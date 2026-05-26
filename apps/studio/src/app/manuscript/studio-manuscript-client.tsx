@@ -4003,12 +4003,13 @@ export function StudioManuscriptClient({
         key={kind}
       >
         <span className="manuscript-structure-rail-label">
-          {currentRegion?.label ?? "Before"}
+          {currentRegion?.label ??
+            (nextRegion ? `Before ${nextRegion.label}` : "Before")}
         </span>
         <strong className="manuscript-structure-rail-title">
-          {currentRegion?.title ?? nextRegion?.label}
+          {currentRegion?.title ?? nextRegion?.title}
         </strong>
-        {nextRegion ? (
+        {currentRegion && nextRegion ? (
           <span className="manuscript-structure-rail-next">
             Next {nextRegion.label}
           </span>
