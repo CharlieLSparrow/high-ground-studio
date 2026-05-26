@@ -48,6 +48,8 @@ The route is protected by the normal private Studio access gate.
   sections
 - can copy a session packet with room metadata, section outline, recap, and the
   current text for handoff after a working session
+- can copy a focused section packet with room metadata and section text for
+  targeted follow-up
 - can save the current live text as a manual Manuscript Desk snapshot
   whose description includes a compact recap digest
 

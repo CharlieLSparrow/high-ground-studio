@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-section-packet-001`
+
+- Continuing the OneNote-style live-room push after `studio-00073-kxc`.
+- Targeting a copyable section packet so a focused notebook section can be
+  handed off without copying the whole room.
+
 ### Codex / `main` Studio live-room session packet
 
 - Continued the OneNote-style live-room push after `studio-00071-7ks`.
