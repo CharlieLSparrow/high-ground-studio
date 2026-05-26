@@ -5,6 +5,7 @@ import {
   appendLiveRoomNotebookBlock,
   applyLiveRoomUpdateToDoc,
   applyTextAreaValueToYText,
+  createLiveRoomNotebookSectionText,
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createLiveRoomTextFromManuscriptDraft,
@@ -140,6 +141,7 @@ test("live room text can be edited as notebook blocks", () => {
 
   assert.equal(blocks.length, 2);
   assert.equal(blocks[0].label, "First note.");
+  assert.equal(blocks[0].kind, "note");
   assert.equal(blocks[1].wordCount, 2);
 
   const updated = updateLiveRoomNotebookBlockText({
@@ -164,10 +166,14 @@ test("live room notebook blocks can be inserted, moved, and removed", () => {
   const inserted = insertLiveRoomNotebookBlockAfter({
     text: base,
     blockIndex: 0,
-    blockText: "Decision log",
+    blockText: createLiveRoomNotebookSectionText("decision"),
   });
 
-  assert.equal(inserted, "Agenda\n\nDecision log\n\nDraft\n\nActions");
+  assert.match(inserted, /Decision\nDecision:/);
+  assert.deepEqual(
+    createLiveRoomNotebookBlocks(inserted).map((block) => block.kind),
+    ["note", "decision", "note", "action-items"],
+  );
 
   const moved = moveLiveRoomNotebookBlock({
     text: inserted,
@@ -175,7 +181,10 @@ test("live room notebook blocks can be inserted, moved, and removed", () => {
     direction: -1,
   });
 
-  assert.equal(moved, "Agenda\n\nDecision log\n\nActions\n\nDraft");
+  assert.deepEqual(
+    createLiveRoomNotebookBlocks(moved).map((block) => block.kind),
+    ["note", "decision", "action-items", "note"],
+  );
 
   const removed = removeLiveRoomNotebookBlock({
     text: moved,
@@ -183,6 +192,31 @@ test("live room notebook blocks can be inserted, moved, and removed", () => {
   });
 
   assert.equal(removed, "Agenda\n\nActions\n\nDraft");
+});
+
+test("live room quick section templates create recognizable block kinds", () => {
+  const text = [
+    createLiveRoomNotebookSectionText("decision"),
+    createLiveRoomNotebookSectionText("action-items"),
+    createLiveRoomNotebookSectionText("question"),
+    createLiveRoomNotebookSectionText("source-note"),
+  ].join("\n\n");
+  const blocks = createLiveRoomNotebookBlocks(text);
+
+  assert.deepEqual(
+    blocks.map((block) => block.kind),
+    ["decision", "action-items", "question", "source-note"],
+  );
+  assert.match(blocks[0].text, /Reason:/);
+  assert.match(blocks[3].text, /Useful quote or claim:/);
+  assert.equal(
+    insertLiveRoomNotebookBlockAfter({
+      text: "",
+      blockIndex: 0,
+      blockText: createLiveRoomNotebookSectionText("question"),
+    }),
+    createLiveRoomNotebookSectionText("question"),
+  );
 });
 
 test("live room notebook starters create useful section scaffolds", () => {
