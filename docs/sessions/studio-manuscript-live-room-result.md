@@ -454,3 +454,43 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00065-sjh=100
 ```
+
+## Section Kind Controls Deployment
+
+Merged through PR #46:
+
+```text
+main commit: 36c4c2e
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:36c4c2e
+Cloud Build: 49bbd56a-7342-4b36-ba5d-bb3dab88c3d3
+revision: studio-00069-c9k
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice added per-section kind controls in notebook mode. Existing notebook
+sections can now be marked as notes, decisions, actions, questions, or source
+notes from the UI without deleting their body text. The live-room data shape
+remains the same shared Yjs text document.
+
+No schema, provider, public publishing, or episode-route changes were needed.
+
+Deploy validation passed:
+
+- `pnpm studio:manuscript:live-room:test`
+- `pnpm studio:cloudrun:test`
+- `pnpm --filter studio typecheck`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+The remote Docker build emitted the known Yjs duplicate-import warning during
+static generation, but the production build completed successfully.
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00067-h6z=100
+```

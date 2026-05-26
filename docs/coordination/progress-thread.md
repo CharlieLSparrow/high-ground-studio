@@ -6,11 +6,30 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-section-kind-controls-001`
+### Codex / `main` Studio live-room section kind controls
 
-- Continuing the OneNote-style live-room push after `studio-00067-h6z`.
-- Targeting per-section kind controls so notes can be marked as decisions,
-  actions, questions, or sources without remembering exact heading syntax.
+- Continued the OneNote-style live-room push after `studio-00067-h6z`.
+- Added per-section kind controls so notes can be marked as decisions, actions,
+  questions, or sources without remembering exact heading syntax.
+- The model preserves section body text by replacing known section headings or
+  prefixing a heading when a plain note is re-marked.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `36c4c2e`
+  `feat(studio): add live room section kind controls`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `49bbd56a-7342-4b36-ba5d-bb3dab88c3d3`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:36c4c2e`
+  - Studio revision `studio-00069-c9k`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00067-h6z=100`
 
 ### Codex / `main` Studio live-room recap snapshots
 
