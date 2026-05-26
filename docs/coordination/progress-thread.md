@@ -6,11 +6,29 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-recap-snapshot-description-001`
+### Codex / `main` Studio live-room recap snapshots
 
-- Continuing the session-recap slice after `studio-00065-sjh`.
-- Targeting manual snapshot descriptions that retain a compact recap digest
-  from decisions, actions, questions, and source notes.
+- Continued the session-recap slice after `studio-00065-sjh`.
+- Added compact recap digests to manual snapshot descriptions so saved
+  live-room checkpoints carry decisions, action items, open questions, and
+  source notes forward into Manuscript Desk recovery history.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `8e96a23`
+  `feat(studio): include live room recap in snapshots`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `fdb8bb65-d33e-430d-95b1-f1cf617055ce`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:8e96a23`
+  - Studio revision `studio-00067-h6z`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00065-sjh=100`
 
 ### Codex / `main` Studio live-room session recap
 

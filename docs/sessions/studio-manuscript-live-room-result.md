@@ -414,3 +414,43 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00063-982=100
 ```
+
+## Recap Snapshot Deployment
+
+Merged through PR #44:
+
+```text
+main commit: 8e96a23
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:8e96a23
+Cloud Build: fdb8bb65-d33e-430d-95b1-f1cf617055ce
+revision: studio-00067-h6z
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice carries the live-room session recap into manual Manuscript Desk
+snapshot descriptions. The description uses the existing snapshot metadata
+field and stores a compact digest of decisions, action items, open questions,
+and source notes so checkpoints remain useful after the live session ends.
+
+No schema, provider, public publishing, or episode-route changes were needed.
+
+Deploy validation passed:
+
+- `pnpm studio:manuscript:live-room:test`
+- `pnpm studio:cloudrun:test`
+- `pnpm --filter studio typecheck`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+The remote Docker build emitted the known Yjs duplicate-import warning during
+static generation, but the production build completed successfully.
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00065-sjh=100
+```
