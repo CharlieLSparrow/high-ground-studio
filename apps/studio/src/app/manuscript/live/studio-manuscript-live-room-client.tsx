@@ -25,6 +25,7 @@ import {
   createLiveRoomNotebookBlocks,
   createLiveRoomSessionRecap,
   createLiveRoomSessionPacket,
+  createLiveRoomSectionPacket,
   createLiveRoomSnapshotDescription,
   createManuscriptDraftFromLiveRoomText,
   createLiveRoomTextFromManuscriptDraft,
@@ -35,6 +36,7 @@ import {
   removeLiveRoomNotebookBlock,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
   type StudioManuscriptLiveNotebookSectionKind,
+  type StudioManuscriptLiveNotebookBlock,
   updateLiveRoomNotebookBlockKind,
   updateLiveRoomNotebookBlockText,
 } from "./studio-manuscript-live-room-model";
@@ -861,6 +863,25 @@ export function StudioManuscriptLiveRoomClient({
     updateMessage("Session packet copied.");
   }, [activeRoom, shareUrl, text, updateMessage]);
 
+  const copySectionPacket = useCallback(
+    async (block: StudioManuscriptLiveNotebookBlock) => {
+      if (!activeRoom) {
+        return;
+      }
+
+      await navigator.clipboard.writeText(
+        createLiveRoomSectionPacket({
+          roomId: activeRoom.id,
+          roomTitle: activeRoom.title,
+          shareUrl,
+          block,
+        }),
+      );
+      updateMessage(`Section ${block.index + 1} packet copied.`);
+    },
+    [activeRoom, shareUrl, updateMessage],
+  );
+
   const saveSnapshot = useCallback(async () => {
     if (!activeRoom) {
       return;
@@ -1389,6 +1410,14 @@ export function StudioManuscriptLiveRoomClient({
                           ))}
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          <button
+                            className={buttonClassName}
+                            disabled={!activeRoom || isLoadingRoom}
+                            onClick={() => void copySectionPacket(block)}
+                            type="button"
+                          >
+                            Copy section
+                          </button>
                           <button
                             className={buttonClassName}
                             disabled={!activeRoom || isLoadingRoom}

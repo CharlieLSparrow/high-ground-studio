@@ -645,6 +645,29 @@ export function createLiveRoomSessionPacket(input: {
   ].join("\n\n");
 }
 
+export function createLiveRoomSectionPacket(input: {
+  roomId: string;
+  roomTitle: string;
+  shareUrl?: string;
+  block: StudioManuscriptLiveNotebookBlock;
+  generatedAt?: string;
+}) {
+  const headerLines = [
+    `# ${input.roomTitle || "Live room"} section ${input.block.index + 1}`,
+    `Room ID: ${input.roomId}`,
+    input.shareUrl ? `Room link: ${input.shareUrl}` : "",
+    `Generated: ${input.generatedAt ?? new Date().toISOString()}`,
+    `Kind: ${formatNotebookBlockKindForPacket(input.block.kind)}`,
+    `Label: ${input.block.label}`,
+    `Stats: ${input.block.wordCount} words, ${input.block.characterCount} chars`,
+  ].filter(Boolean);
+
+  return [
+    headerLines.join("\n"),
+    ["## Section text", input.block.text.trim() || "(empty)"].join("\n"),
+  ].join("\n\n");
+}
+
 export function createLiveRoomNotebookStarterText(
   kind: StudioManuscriptLiveNotebookStarterKind,
 ) {

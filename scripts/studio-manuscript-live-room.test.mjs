@@ -10,6 +10,7 @@ import {
   createLiveRoomNotebookBlocks,
   createLiveRoomSessionRecap,
   createLiveRoomSessionPacket,
+  createLiveRoomSectionPacket,
   createLiveRoomSnapshotDescription,
   createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
@@ -329,6 +330,26 @@ test("live room session packet captures room handoff context", () => {
   assert.match(packet, /## Structured recap/);
   assert.match(packet, /Keep the section focused/);
   assert.match(packet, /## Current text/);
+});
+
+test("live room section packet captures focused section context", () => {
+  const [block] = createLiveRoomNotebookBlocks(
+    "Source Note\nSource: Field note\nUseful quote or claim: Practice wins.",
+  );
+  const packet = createLiveRoomSectionPacket({
+    roomId: "room-456",
+    roomTitle: "Focused section",
+    shareUrl: "https://studio.example/manuscript/live?room=room-456",
+    generatedAt: "2026-05-26T05:30:00.000Z",
+    block,
+  });
+
+  assert.match(packet, /# Focused section section 1/);
+  assert.match(packet, /Kind: Source/);
+  assert.match(packet, /Label: Source Note/);
+  assert.match(packet, /Stats: 11 words/);
+  assert.match(packet, /## Section text/);
+  assert.match(packet, /Practice wins/);
 });
 
 test("live room notebook starters create useful section scaffolds", () => {
