@@ -230,3 +230,38 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00053-rfn=100
 ```
+
+## Notebook Mode Deployment
+
+Merged through PR #34:
+
+```text
+main commit: 27af190
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:27af190
+Cloud Build: e3ed3f83-84ec-4da5-943e-cd54a5e7daf0
+revision: studio-00057-87h
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice makes `/manuscript/live` open in notebook mode by default. The live
+room still stores and syncs one shared Yjs text document, but the editor now
+splits that text into editable notebook sections, adds a section outline, and
+keeps raw text mode available as an escape hatch.
+
+Deploy validation passed:
+
+- `pnpm studio:manuscript:live-room:test`
+- `pnpm studio:cloudrun:test`
+- `pnpm --filter studio typecheck`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00055-bgv=100
+```

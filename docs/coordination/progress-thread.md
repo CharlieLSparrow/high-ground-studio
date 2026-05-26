@@ -6,6 +6,30 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `main` Studio live-room notebook mode
+
+- Made `/manuscript/live` open in notebook mode by default while preserving the
+  existing shared Yjs text protocol and raw-text fallback.
+- Added editable notebook sections, an outline rail, per-section stats, and an
+  `Add section` control for a more OneNote-style co-editing flow.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `27af190`
+  `feat(studio): add live room notebook mode`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `e3ed3f83-84ec-4da5-943e-cd54a5e7daf0`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:27af190`
+  - Studio revision `studio-00057-87h`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00055-bgv=100`
+
 ### Codex / `main` coaching feature controls
 
 - Added manual coaching feature access independent of subscription tiers:
