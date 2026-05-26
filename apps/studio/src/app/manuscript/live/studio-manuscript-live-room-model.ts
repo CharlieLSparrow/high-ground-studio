@@ -204,6 +204,55 @@ function joinLiveRoomNotebookBlocks(blocks: string[]) {
   );
 }
 
+const notebookSectionHeadings: Record<
+  StudioManuscriptLiveNotebookSectionKind,
+  string
+> = {
+  note: "Note",
+  decision: "Decision",
+  "action-items": "Action Items",
+  question: "Open Question",
+  "source-note": "Source Note",
+};
+
+function normalizeNotebookHeading(line: string) {
+  return line
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isNotebookSectionHeading(line: string) {
+  const normalized = normalizeNotebookHeading(line);
+
+  return [
+    "note",
+    "notes",
+    "decision",
+    "decisions",
+    "action",
+    "actions",
+    "action items",
+    "commitment",
+    "commitments",
+    "next step",
+    "next steps",
+    "question",
+    "questions",
+    "open question",
+    "open questions",
+    "source",
+    "sources",
+    "source note",
+    "source notes",
+    "quote",
+    "quotes",
+    "citation",
+    "citations",
+  ].includes(normalized);
+}
+
 function createNotebookBlockLabel(text: string, index: number) {
   const firstLine = text
     .split("\n")
@@ -285,6 +334,47 @@ export function updateLiveRoomNotebookBlockText(input: {
   }
 
   blocks[blockIndex] = normalizeLiveRoomText(input.blockText).trim();
+
+  return joinLiveRoomNotebookBlocks(blocks);
+}
+
+export function updateLiveRoomNotebookBlockKind(input: {
+  text: string;
+  blockIndex: number;
+  kind: StudioManuscriptLiveNotebookSectionKind;
+}) {
+  const blocks = splitLiveRoomTextIntoNotebookBlocks(input.text);
+  const blockIndex = Math.max(0, Math.floor(input.blockIndex));
+
+  while (blocks.length <= blockIndex) {
+    blocks.push("");
+  }
+
+  const heading = notebookSectionHeadings[input.kind];
+  const blockText = normalizeLiveRoomText(blocks[blockIndex] ?? "").trim();
+
+  if (!blockText) {
+    blocks[blockIndex] = createLiveRoomNotebookSectionText(input.kind);
+
+    return joinLiveRoomNotebookBlocks(blocks);
+  }
+
+  const lines = blockText.split("\n");
+  const firstContentLineIndex = lines.findIndex((line) => line.trim());
+
+  if (firstContentLineIndex === -1) {
+    blocks[blockIndex] = createLiveRoomNotebookSectionText(input.kind);
+
+    return joinLiveRoomNotebookBlocks(blocks);
+  }
+
+  if (isNotebookSectionHeading(lines[firstContentLineIndex] ?? "")) {
+    lines[firstContentLineIndex] = heading;
+  } else if (input.kind !== "note") {
+    lines.splice(firstContentLineIndex, 0, heading);
+  }
+
+  blocks[blockIndex] = lines.join("\n").trim();
 
   return joinLiveRoomNotebookBlocks(blocks);
 }

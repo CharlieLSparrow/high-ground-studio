@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-section-kind-controls-001`
+
+- Continuing the OneNote-style live-room push after `studio-00067-h6z`.
+- Targeting per-section kind controls so notes can be marked as decisions,
+  actions, questions, or sources without remembering exact heading syntax.
+
 ### Codex / `main` Studio live-room recap snapshots
 
 - Continued the session-recap slice after `studio-00065-sjh`.

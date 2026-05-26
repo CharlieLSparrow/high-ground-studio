@@ -23,6 +23,7 @@ import {
   moveLiveRoomNotebookBlock,
   removeLiveRoomNotebookBlock,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
+  updateLiveRoomNotebookBlockKind,
   updateLiveRoomNotebookBlockText,
 } from "../apps/studio/src/app/manuscript/live/studio-manuscript-live-room-model.ts";
 
@@ -218,6 +219,38 @@ test("live room quick section templates create recognizable block kinds", () => 
       blockText: createLiveRoomNotebookSectionText("question"),
     }),
     createLiveRoomNotebookSectionText("question"),
+  );
+});
+
+test("live room notebook block kind controls preserve section body", () => {
+  const markedDecision = updateLiveRoomNotebookBlockKind({
+    text: "Keep the opening practical.\n\nAction Items\n- Homer / review / tomorrow",
+    blockIndex: 0,
+    kind: "decision",
+  });
+
+  assert.equal(
+    markedDecision,
+    "Decision\nKeep the opening practical.\n\nAction Items\n- Homer / review / tomorrow",
+  );
+  assert.deepEqual(
+    createLiveRoomNotebookBlocks(markedDecision).map((block) => block.kind),
+    ["decision", "action-items"],
+  );
+
+  const changedKind = updateLiveRoomNotebookBlockKind({
+    text: markedDecision,
+    blockIndex: 1,
+    kind: "question",
+  });
+
+  assert.equal(
+    changedKind,
+    "Decision\nKeep the opening practical.\n\nOpen Question\n- Homer / review / tomorrow",
+  );
+  assert.deepEqual(
+    createLiveRoomNotebookBlocks(changedKind).map((block) => block.kind),
+    ["decision", "question"],
   );
 });
 

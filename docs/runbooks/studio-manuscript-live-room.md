@@ -34,6 +34,8 @@ The route is protected by the normal private Studio access gate.
   shared text document
 - can insert quick sections for notes, decisions, actions, questions, and
   source notes at the current notebook position
+- can mark an existing notebook section as a note, decision, action, question,
+  or source note without losing the section body
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
 - records active presence heartbeats, including which notebook section a focused
