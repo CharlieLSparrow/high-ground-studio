@@ -3741,7 +3741,7 @@ export function StudioManuscriptClient({
   ) : null;
 
   return (
-    <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
+    <main className="min-h-screen overflow-x-clip px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
         <header
           className={cn(
@@ -3942,7 +3942,7 @@ export function StudioManuscriptClient({
             <section
               className={cn(
                 cardClassName,
-                "grid gap-2 border-studio-tag/45 bg-studio-tag/10 p-2.5",
+                "sticky top-0 z-20 grid gap-2 border-studio-tag/45 bg-[#0a2a22]/95 p-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)] backdrop-blur-md",
               )}
               data-testid="manuscript-primary-save-panel"
             >
@@ -6836,7 +6836,7 @@ export function StudioManuscriptClient({
                 </button>
               </div>
 
-              <div className="grid gap-2 rounded-lg border border-studio-tag/45 bg-studio-tag/10 p-2">
+              <div className="sticky top-0 z-20 grid gap-2 rounded-lg border border-studio-tag/45 bg-[#0a2a22]/95 p-2 shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
                   <StudioChip
