@@ -6,11 +6,28 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-session-packet-001`
+### Codex / `main` Studio live-room session packet
 
-- Continuing the OneNote-style live-room push after `studio-00071-7ks`.
-- Targeting a copyable session packet with room metadata, section outline,
+- Continued the OneNote-style live-room push after `studio-00071-7ks`.
+- Added a copyable session packet with room metadata, section outline,
   structured recap, and current text for Homer-session handoff.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `56a0881`
+  `feat(studio): add live room session packet`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `eec677ce-1a38-46cc-a18f-bea005c20b93`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:56a0881`
+  - Studio revision `studio-00073-kxc`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00071-7ks=100`
 
 ### Codex / `main` Studio live-room section focus mode
 
