@@ -174,6 +174,8 @@ pnpm studio-cut:media-vault -- create-insta360-package \
 pnpm studio-cut:media-vault -- upload-manifest \
   --manifest ~/Movies/StudioCut/episode-004/media-vault-package/media-vault-manifest.json \
   --source-dir ~/Movies/StudioCut/episode-004/media-vault-package/inbox
+pnpm studio-cut:media-vault -- storage-preflight \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads
 pnpm studio-cut:media-vault -- drain-folder \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
@@ -188,6 +190,8 @@ through the local Google Cloud CLI session. `drain-folder --watch --execute
 `studio-cut:insta360-operator` can open Insta360 Studio, prepare the local
 download buffer, capture UI snapshots, and try visible download controls when
 macOS Accessibility permission is enabled.
+Keep the download buffer outside iCloud Drive; iCloud-managed folders are
+blocked by default unless `--allow-icloud` is explicitly passed.
 Real manifests and upload scripts for private media stay outside git.
 
 ## Build Verification

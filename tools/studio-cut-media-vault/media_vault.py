@@ -28,6 +28,7 @@ SCHEMA_VERSION = 1
 DEFAULT_INSTA360_COLLECTION_ID = "homer-insta360"
 DEFAULT_INSTA360_STAGING_ROOT = "~/Movies/StudioCut/media-vault-intake"
 DEFAULT_MAX_DISCOVERY_FILES = 1000
+DEFAULT_MIN_FREE_GB = 5.0
 
 VIDEO_EXTENSIONS = {
     ".insv",
@@ -460,6 +461,88 @@ def is_file_settled(path: Path, settle_seconds: int) -> bool:
     return age_seconds >= settle_seconds
 
 
+def byte_count_to_gb(byte_count: int) -> float:
+    return round(byte_count / (1024 * 1024 * 1024), 2)
+
+
+def disk_free_bytes(path: Path) -> int:
+    target = path if path.exists() else path.parent
+    return shutil.disk_usage(target).free
+
+
+def is_icloud_managed_path(path: Path) -> bool:
+    normalized_parts = [part.lower() for part in path.expanduser().parts]
+    normalized_path = path.expanduser().as_posix().lower()
+    return any(
+        marker in normalized_path
+        for marker in [
+            "/library/mobile documents/",
+            "com~apple~clouddocs",
+            "icloud drive",
+            "/icloud/",
+        ]
+    ) or any("icloud" in part for part in normalized_parts)
+
+
+def is_cloud_mirrored_looking_path(path: Path) -> bool:
+    normalized_parts = [part.lower() for part in path.expanduser().parts]
+    return any(part.startswith("documents - ") for part in normalized_parts)
+
+
+def file_has_icloud_placeholder_marker(path: Path) -> bool:
+    xattr_path = shutil.which("xattr")
+    if not xattr_path:
+        return False
+    try:
+        result = subprocess.run(
+            [xattr_path, str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if result.returncode != 0:
+        return False
+    attrs = result.stdout.lower()
+    return "com.apple.icloud" in attrs or "com.apple.ubd" in attrs
+
+
+def storage_preflight(source_dir: Path, *, min_free_gb: float, allow_icloud: bool) -> dict[str, Any]:
+    free_bytes = disk_free_bytes(source_dir)
+    free_gb = byte_count_to_gb(free_bytes)
+    errors: list[str] = []
+    warnings: list[str] = []
+    icloud_managed = is_icloud_managed_path(source_dir)
+    mirrored_looking = is_cloud_mirrored_looking_path(source_dir)
+
+    if icloud_managed and not allow_icloud:
+        errors.append(
+            "Source directory appears to be iCloud-managed. Use a local buffer outside iCloud or pass --allow-icloud."
+        )
+    if mirrored_looking:
+        warnings.append(
+            "Source directory looks like a cloud-mirrored Documents folder; prefer ~/Movies/StudioCut/... for the download buffer."
+        )
+    if free_gb < min_free_gb:
+        warnings.append(
+            f"Low free space on source volume: {free_gb}GB free, recommended minimum is {min_free_gb}GB."
+        )
+
+    return {
+        "sourceDir": str(source_dir),
+        "freeBytes": free_bytes,
+        "freeGb": free_gb,
+        "minFreeGb": min_free_gb,
+        "icloudManagedPath": icloud_managed,
+        "cloudMirroredLookingPath": mirrored_looking,
+        "allowIcloud": allow_icloud,
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
 def validate_manifest_payload(payload: Any) -> list[str]:
     errors: list[str] = []
 
@@ -707,6 +790,25 @@ def drain_folder_once(args: argparse.Namespace) -> dict[str, Any]:
             "errors": [f"Source directory not found: {source_dir}"],
         }
 
+    preflight = storage_preflight(
+        source_dir,
+        min_free_gb=args.min_free_gb,
+        allow_icloud=args.allow_icloud,
+    )
+    if preflight["errors"]:
+        return {
+            "status": "blocked",
+            "mode": "execute" if args.execute else "dry-run",
+            "sourceDir": str(source_dir),
+            "ledgerPath": str(ledger_path),
+            "storagePreflight": preflight,
+            "processedCount": 0,
+            "skippedCount": 0,
+            "processed": [],
+            "skipped": [],
+            "errors": preflight["errors"],
+        }
+
     files = iter_media_files(source_dir)
     uploaded_destinations = load_uploaded_destinations(ledger_path)
     gcloud_path = shutil.which("gcloud")
@@ -721,6 +823,14 @@ def drain_folder_once(args: argparse.Namespace) -> dict[str, Any]:
     errors: list[str] = []
 
     for file_path in files[: args.max_files]:
+        if not args.allow_icloud and file_has_icloud_placeholder_marker(file_path):
+            skipped.append(
+                {
+                    "fileName": file_path.name,
+                    "reason": "iCloud placeholder/managed file marker detected; pass --allow-icloud only after confirming the file is fully local",
+                }
+            )
+            continue
         if not is_file_settled(file_path, args.settle_seconds):
             skipped.append(
                 {
@@ -808,6 +918,7 @@ def drain_folder_once(args: argparse.Namespace) -> dict[str, Any]:
         "mode": "execute" if args.execute else "dry-run",
         "sourceDir": str(source_dir),
         "ledgerPath": str(ledger_path),
+        "storagePreflight": preflight,
         "processedCount": len(processed),
         "skippedCount": len(skipped),
         "processed": processed,
@@ -842,6 +953,17 @@ def drain_folder_command(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("Stopped folder drain watcher.")
         return 0
+
+
+def storage_preflight_command(args: argparse.Namespace) -> int:
+    source_dir = Path(args.source_dir).expanduser().resolve()
+    payload = storage_preflight(
+        source_dir,
+        min_free_gb=args.min_free_gb,
+        allow_icloud=args.allow_icloud,
+    )
+    print(json.dumps(payload, indent=2))
+    return 1 if payload["errors"] else 0
 
 
 def discover_insta360_command(args: argparse.Namespace) -> int:
@@ -1085,15 +1207,20 @@ def smoke_test_command(_: argparse.Namespace) -> int:
             continue_on_error=False,
             max_files=10,
             settle_seconds=0,
+            min_free_gb=0,
+            allow_icloud=False,
             watch=False,
             poll_seconds=60,
         )
         drain_result = drain_folder_once(drain_args)
+        preflight_result = storage_preflight(source_dir, min_free_gb=0, allow_icloud=False)
         assertions.extend(
             [
                 drain_result["status"] == "ready",
                 drain_result["processedCount"] == 3,
                 all(entry["status"] == "dry_run" for entry in drain_result["processed"]),
+                preflight_result["freeBytes"] > 0,
+                not preflight_result["icloudManagedPath"],
             ]
         )
         result = {
@@ -1155,6 +1282,15 @@ def build_parser() -> argparse.ArgumentParser:
     upload_manifest.add_argument("--continue-on-error", action="store_true")
     upload_manifest.set_defaults(func=upload_manifest_command)
 
+    storage_preflight_parser = subparsers.add_parser(
+        "storage-preflight",
+        help="Check disk space and iCloud risk before draining a local media folder",
+    )
+    storage_preflight_parser.add_argument("--source-dir", required=True)
+    storage_preflight_parser.add_argument("--min-free-gb", type=float, default=DEFAULT_MIN_FREE_GB)
+    storage_preflight_parser.add_argument("--allow-icloud", action="store_true")
+    storage_preflight_parser.set_defaults(func=storage_preflight_command)
+
     drain_folder = subparsers.add_parser(
         "drain-folder",
         help="Upload settled local media one file at a time, verify GCS metadata, and optionally delete local copies",
@@ -1170,6 +1306,8 @@ def build_parser() -> argparse.ArgumentParser:
     drain_folder.add_argument("--continue-on-error", action="store_true")
     drain_folder.add_argument("--max-files", type=int, default=20)
     drain_folder.add_argument("--settle-seconds", type=int, default=30)
+    drain_folder.add_argument("--min-free-gb", type=float, default=DEFAULT_MIN_FREE_GB)
+    drain_folder.add_argument("--allow-icloud", action="store_true")
     drain_folder.add_argument("--watch", action="store_true")
     drain_folder.add_argument("--poll-seconds", type=int, default=60)
     drain_folder.set_defaults(func=drain_folder_command)

@@ -1079,7 +1079,10 @@ deletion remains manual until a supported API or auditable automation path is
 available. `studio-cut:insta360-operator` adds a local macOS assistive layer:
 it can open Insta360 Studio, prepare the download buffer, capture the visible UI
 tree for agent debugging, and try visible `Download` / `Start Export` controls
-for selected cloud media when Accessibility permission is enabled.
+for selected cloud media when Accessibility permission is enabled. The drain
+also performs a storage preflight and blocks obvious iCloud-managed paths by
+default; use a local buffer under `~/Movies/StudioCut/...` rather than iCloud
+Drive or mirrored Documents.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

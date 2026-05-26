@@ -194,6 +194,8 @@ pnpm studio-cut:insta360-operator prepare-session \
   --project-id episode-004 \
   --collection-id homer-insta360
 pnpm studio-cut:insta360-operator open-studio
+pnpm studio-cut:media-vault -- storage-preflight \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads
 pnpm studio-cut:media-vault -- drain-folder \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
@@ -207,6 +209,10 @@ This uploads settled files one at a time, verifies the GCS object size, records
 a local JSONL ledger, and deletes the local copy only after verification. Remote
 Insta360 cloud deletion remains a manual app step until a supported delete API
 or auditable automation path exists.
+
+Do not use an iCloud Drive or mirrored Documents folder as the download buffer.
+The drain blocks obvious iCloud paths by default and requires `--allow-icloud`
+to override.
 
 If the Studio UI is visible and cloud media is selected, try:
 

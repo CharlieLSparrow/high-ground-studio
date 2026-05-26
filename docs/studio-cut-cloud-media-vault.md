@@ -160,6 +160,8 @@ Insta360 app/Studio/browser download -> local buffer folder -> GCS verified obje
 Dry-run the buffer folder:
 
 ```bash
+pnpm studio-cut:media-vault -- storage-preflight \
+  --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads
 pnpm studio-cut:media-vault -- drain-folder \
   --source-dir ~/Movies/StudioCut/episode-004/insta360-downloads \
   --project-id episode-004 \
@@ -201,6 +203,13 @@ Remote Insta360 Cloud deletion should remain manual until we have an official
 API or a fully auditable automation path. The official Insta360 deletion path is
 inside the app cloud album, and deleted Insta360+ Cloud Storage files are
 recoverable from Recently Deleted for a limited time.
+
+Avoid iCloud-managed folders for the buffer. The drain refuses paths that look
+like iCloud Drive or `Mobile Documents` unless `--allow-icloud` is explicitly
+set, and it skips files with iCloud placeholder markers. This is intentional:
+Apple may show files that are not fully local, offload them unexpectedly, or
+move data through mirrored `Documents` folders. Use `~/Movies/StudioCut/...` or
+an external drive as the migration buffer.
 
 ### Local Download Operator
 
