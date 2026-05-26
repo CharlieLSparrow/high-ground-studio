@@ -6,11 +6,29 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-focus-mode-001`
+### Codex / `main` Studio live-room section focus mode
 
-- Continuing the OneNote-style live-room push after `studio-00069-c9k`.
-- Targeting a section focus mode so the selected notebook section can become
-  the primary writing surface during Homer working sessions.
+- Continued the OneNote-style live-room push after `studio-00069-c9k`.
+- Added a section focus mode so the selected notebook section can become the
+  primary writing surface during Homer working sessions while the outline stays
+  available for navigation.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `fd18ded`
+  `feat(studio): add live room section focus mode`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `808c243d-a2d3-4b44-89aa-b51be4c2d2fe`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:fd18ded`
+  - Studio revision `studio-00071-7ks`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00069-c9k=100`
 
 ### Codex / `main` Studio live-room section kind controls
 
