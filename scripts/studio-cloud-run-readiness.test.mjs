@@ -248,6 +248,9 @@ test("Manuscript author marks render as block washes under semantic marks", () =
   assert.match(client, /manuscript-author-block-homer/);
   assert.match(client, /node\.descendants\(\(childNode\)/);
   assert.match(globalsCss, /--manuscript-author-wash/);
+  assert.match(globalsCss, /--manuscript-author-outline/);
+  assert.match(globalsCss, /margin-inline: -0\.42rem/);
+  assert.match(globalsCss, /padding: 0\.12rem 0\.42rem 0\.18rem/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-charlie/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-homer/);
   assert.match(globalsCss, /@supports selector\(:has\(\*\)\)/);
