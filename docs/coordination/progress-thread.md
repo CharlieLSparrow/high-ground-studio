@@ -6,11 +6,29 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-session-recap-001`
+### Codex / `main` Studio live-room session recap
 
-- Continuing the OneNote-style live-room push after `studio-00063-982`.
-- Targeting a computed session recap that extracts decisions, action items,
-  open questions, and source notes from notebook sections for a copyable handoff.
+- Continued the OneNote-style live-room push after `studio-00063-982`.
+- Added a computed session recap that extracts decisions, action items, open
+  questions, and source notes from notebook sections for a copyable handoff.
+- Added a `Session recap` panel and `Copy recap` action to `/manuscript/live`.
+- Validation passed: `pnpm studio:manuscript:live-room:test`,
+  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
+  `pnpm --filter studio build`, and `git diff --check`.
+- Functional commit: `d7e73b1`
+  `feat(studio): add live room session recap`.
+- Deployed Studio through `pnpm studio:cloudrun:deploy`:
+  - Cloud Build `1a368379-6da6-4ed8-9ef0-d6f02b5def07`
+  - Studio image
+    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:d7e73b1`
+  - Studio revision `studio-00065-sjh`, serving 100%
+- Live smoke passed:
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
+  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
+    returned the expected unauthenticated 401.
+- Rollback:
+  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00063-982=100`
 
 ### Codex / `main` Studio live-room quick sections
 
