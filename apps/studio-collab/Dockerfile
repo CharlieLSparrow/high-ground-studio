@@ -7,7 +7,7 @@ RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/studio-collab/package.json apps/studio-collab/package.json
-RUN pnpm install --frozen-lockfile --filter studio-collab --prod
+RUN pnpm install --frozen-lockfile --filter studio-collab --prod --ignore-scripts
 
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production
