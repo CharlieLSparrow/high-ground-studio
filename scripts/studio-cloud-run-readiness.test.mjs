@@ -214,6 +214,19 @@ test("Manuscript everyday UI keeps save controls outside Dev Mode", () => {
   assert.match(client, /isDevMode && sidePanelMode === "publish"/);
 });
 
+test("Manuscript tagging controls live in sidebar Mark mode", () => {
+  const client = readFileSync(
+    "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
+    "utf8",
+  );
+
+  assert.doesNotMatch(client, /taggingDock/);
+  assert.doesNotMatch(client, /Sticky tagging menu/);
+  assert.match(client, /sidePanelMode === "mark"/);
+  assert.match(client, /Mark selected text/);
+  assert.match(client, /Selection ready/);
+});
+
 test("Prisma db-push job image is available for Cloud SQL schema sync", () => {
   const dockerfile = readFileSync("ops/prisma-db-push.Dockerfile", "utf8");
   const cloudbuild = readFileSync("cloudbuild.prisma-db-push.yaml", "utf8");

@@ -3587,159 +3587,6 @@ export function StudioManuscriptClient({
           message.includes("Loaded")
         ? "tag"
         : "default";
-  const taggingDock = !isRecordingMode ? (
-    <section
-      className="sticky top-2 z-30 grid max-h-[calc(100dvh-1rem)] gap-3 overflow-auto rounded-lg border border-studio-tag/45 bg-[#032927]/95 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.34)] backdrop-blur-md md:top-[68px] md:max-h-[calc(100dvh-82px)]"
-      aria-label="Sticky tagging menu"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <HelpLabel noteId="mark-mode">Tagging menu</HelpLabel>
-          <StudioChip tone={hasTextSelection ? "tag" : "default"}>
-            {hasTextSelection ? "Selection ready" : "Select text"}
-          </StudioChip>
-          <StudioChip tone="source">
-            {getManuscriptAuthorDefinition(activeAuthorId).label}
-          </StudioChip>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            className={cn(
-              commandButtonClassName,
-              editor?.isActive("bold") ? activeButtonClassName : "",
-            )}
-            type="button"
-            onClick={() => editor?.chain().focus().toggleBold().run()}
-          >
-            Bold
-          </button>
-          <button
-            className={cn(
-              commandButtonClassName,
-              editor?.isActive("italic") ? activeButtonClassName : "",
-            )}
-            type="button"
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
-          >
-            Italic
-          </button>
-          <button
-            className={commandButtonClassName}
-            type="button"
-            onClick={() => editor?.chain().focus().undo().run()}
-          >
-            Undo
-          </button>
-          <button
-            className={commandButtonClassName}
-            type="button"
-            onClick={() => editor?.chain().focus().redo().run()}
-          >
-            Redo
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.2fr)_minmax(210px,0.7fr)]">
-        <div className="grid gap-2">
-          <HelpLabel noteId="author-marks">Author</HelpLabel>
-          <div className="grid grid-cols-3 gap-2 xl:grid-cols-1">
-            {manuscriptAuthorDefinitions.map((author) => (
-              <button
-                className={cn(
-                  smallButtonClassName,
-                  "px-2 text-[0.74rem]",
-                  activeAuthorId === author.id ? activeButtonClassName : "",
-                )}
-                key={author.id}
-                type="button"
-                onClick={() => markSelectionAsAuthor(author.id)}
-              >
-                {author.id === "homer"
-                  ? "Homer"
-                  : author.id === "charlie"
-                    ? "Charlie"
-                    : "Clear"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid min-w-0 gap-2">
-          <HelpLabel noteId="semantic-meaning-tags">Semantic palette</HelpLabel>
-          <div className="flex snap-x gap-2 overflow-x-auto pb-1">
-            {semanticHighlightDefinitions.map((definition) => (
-              <button
-                className={cn(
-                  smallButtonClassName,
-                  "min-w-fit shrink-0 snap-start px-3",
-                  semanticType === definition.id ? activeButtonClassName : "",
-                )}
-                key={definition.id}
-                type="button"
-                onClick={() => setSemanticType(definition.id)}
-              >
-                {definition.label}
-              </button>
-            ))}
-          </div>
-          <div className="grid gap-2 md:grid-cols-2">
-            <label className="grid gap-1.5">
-              <span className={fieldLabelClassName}>Semantic note</span>
-              <textarea
-                className={cn(textareaClassName, "min-h-[58px]")}
-                value={semanticNote}
-                onChange={(event) => setSemanticNote(event.target.value)}
-              />
-            </label>
-            <label className="grid gap-1.5">
-              <span className={fieldLabelClassName}>Citation / source note</span>
-              <textarea
-                className={cn(textareaClassName, "min-h-[58px]")}
-                value={citationNote}
-                onChange={(event) => setCitationNote(event.target.value)}
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="grid content-start gap-2">
-          <button
-            className={smallButtonClassName}
-            disabled={!hasTextSelection}
-            type="button"
-            onClick={applySemanticHighlight}
-          >
-            Apply semantic
-          </button>
-          <button
-            className={smallButtonClassName}
-            disabled={!hasTextSelection}
-            type="button"
-            onClick={() => markCitedQuotation()}
-          >
-            Mark cited quote
-          </button>
-          <button
-            className={smallButtonClassName}
-            disabled={!hasTextSelection}
-            type="button"
-            onClick={() => clearSemanticHighlight()}
-          >
-            Clear semantic
-          </button>
-          <button
-            className={smallButtonClassName}
-            type="button"
-            onClick={() => applySemanticFocus(semanticType)}
-          >
-            Focus tag
-          </button>
-        </div>
-      </div>
-    </section>
-  ) : null;
-
   return (
     <main className="min-h-screen overflow-x-clip px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
@@ -3912,9 +3759,7 @@ export function StudioManuscriptClient({
               <div className="rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted md:hidden">
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
-            ) : (
-              taggingDock
-            )}
+            ) : null}
 
             <div onContextMenu={handleManuscriptContextMenu}>
               <EditorContent editor={editor} />
@@ -4047,38 +3892,19 @@ export function StudioManuscriptClient({
             <div className="mt-3.5 grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
             {sidePanelMode === "mark" ? (
               <>
-                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-                  <HelpHeading noteId="author-marks">Author counts</HelpHeading>
-                  <div className="grid gap-2">
-                    {authorSummaries.map((summary) => (
-                      <div
-                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                        key={summary.authorId}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[0.82rem] font-extrabold text-studio-ink">
-                            {summary.label}
-                          </span>
-                          <span className="font-mono text-[0.72rem] text-studio-dim">
-                            {summary.spans} spans
-                          </span>
-                        </div>
-                        <span className="font-mono text-[0.72rem] text-studio-muted">
-                          {summary.words} words / {summary.characters} chars
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <section className={cn(cardClassName, "grid gap-3 p-3.5")}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <HelpHeading noteId="mark-mode">
                       Mark selected text
                     </HelpHeading>
-                    <StudioChip tone="source">
-                      {getManuscriptAuthorDefinition(activeAuthorId).label}
-                    </StudioChip>
+                    <div className="flex flex-wrap gap-1.5">
+                      <StudioChip tone={hasTextSelection ? "tag" : "default"}>
+                        {hasTextSelection ? "Selection ready" : "Select text"}
+                      </StudioChip>
+                      <StudioChip tone="source">
+                        {getManuscriptAuthorDefinition(activeAuthorId).label}
+                      </StudioChip>
+                    </div>
                   </div>
 
                   <div className="grid gap-2">
@@ -4246,6 +4072,30 @@ export function StudioManuscriptClient({
                     >
                       Redo
                     </button>
+                  </div>
+                </section>
+
+                <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
+                  <HelpHeading noteId="author-marks">Author counts</HelpHeading>
+                  <div className="grid gap-2">
+                    {authorSummaries.map((summary) => (
+                      <div
+                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={summary.authorId}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[0.82rem] font-extrabold text-studio-ink">
+                            {summary.label}
+                          </span>
+                          <span className="font-mono text-[0.72rem] text-studio-dim">
+                            {summary.spans} spans
+                          </span>
+                        </div>
+                        <span className="font-mono text-[0.72rem] text-studio-muted">
+                          {summary.words} words / {summary.characters} chars
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </section>
               </>
