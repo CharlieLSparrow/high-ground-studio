@@ -434,24 +434,124 @@ def append_jsonl(path: Path, payload: Any) -> None:
         file.write("\n")
 
 
-def load_uploaded_destinations(ledger_path: Path) -> set[str]:
-    uploaded: set[str] = set()
+def load_ledger_entries(ledger_path: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    entries: list[dict[str, Any]] = []
+    errors: list[str] = []
     if not ledger_path.exists():
-        return uploaded
+        return entries, [f"Ledger not found: {ledger_path}"]
     with ledger_path.open("r", encoding="utf-8") as file:
-        for line in file:
+        for line_number, line in enumerate(file, start=1):
             line = line.strip()
             if not line:
                 continue
             try:
                 entry = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as error:
+                errors.append(f"Line {line_number} is not valid JSON: {error}")
                 continue
-            if entry.get("status") in {"uploaded_verified", "local_deleted"}:
-                destination = entry.get("destination")
-                if isinstance(destination, str) and destination:
-                    uploaded.add(destination)
+            if not isinstance(entry, dict):
+                errors.append(f"Line {line_number} is not a JSON object.")
+                continue
+            entries.append(entry)
+    return entries, errors
+
+
+def load_uploaded_destinations(ledger_path: Path) -> set[str]:
+    uploaded: set[str] = set()
+    entries, _ = load_ledger_entries(ledger_path)
+    for entry in entries:
+        if entry.get("status") in {"uploaded_verified", "local_deleted"}:
+            destination = entry.get("destination")
+            if isinstance(destination, str) and destination:
+                uploaded.add(destination)
     return uploaded
+
+
+def latest_ledger_entries_by_destination(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        destination = entry.get("destination")
+        if isinstance(destination, str) and destination.startswith("gs://"):
+            latest[destination] = entry
+    return latest
+
+
+def redact_ledger_entry(entry: dict[str, Any], *, include_local_paths: bool) -> dict[str, Any]:
+    redacted = {
+        key: value
+        for key, value in entry.items()
+        if include_local_paths or key not in {"sourcePath"}
+    }
+    if not include_local_paths and isinstance(entry.get("sourcePath"), str):
+        redacted["sourcePathRedacted"] = True
+    return redacted
+
+
+def summarize_ledger_entries(
+    *,
+    ledger_path: Path,
+    entries: list[dict[str, Any]],
+    parse_errors: list[str],
+    include_local_paths: bool,
+) -> dict[str, Any]:
+    status_counts: dict[str, int] = {}
+    for entry in entries:
+        status = str(entry.get("status") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    latest_by_destination = latest_ledger_entries_by_destination(entries)
+    latest_entries = list(latest_by_destination.values())
+    verified_statuses = {"uploaded_verified", "local_deleted"}
+    verified_entries = [entry for entry in latest_entries if entry.get("status") in verified_statuses]
+    local_deleted_entries = [entry for entry in latest_entries if entry.get("status") == "local_deleted"]
+    failed_entries = [entry for entry in latest_entries if entry.get("status") == "upload_failed"]
+    unverified_entries = [entry for entry in latest_entries if entry.get("status") == "uploaded_unverified"]
+    dry_run_entries = [entry for entry in latest_entries if entry.get("status") == "dry_run"]
+    manual_remote_delete_entries = [
+        entry
+        for entry in local_deleted_entries
+        if entry.get("remoteDeletionStatus") in {None, "manual_pending"}
+    ]
+    safe_bytes = sum(int(entry.get("sizeBytes", 0) or 0) for entry in verified_entries)
+    errors = list(parse_errors)
+    warnings: list[str] = []
+
+    if failed_entries:
+        errors.append(f"{len(failed_entries)} destination(s) have latest status upload_failed.")
+    if unverified_entries:
+        errors.append(f"{len(unverified_entries)} destination(s) have latest status uploaded_unverified.")
+    if dry_run_entries:
+        warnings.append(f"{len(dry_run_entries)} destination(s) are only dry-run ledger entries.")
+    if manual_remote_delete_entries:
+        warnings.append(
+            f"{len(manual_remote_delete_entries)} locally deleted file(s) still need manual removal from Insta360 Cloud."
+        )
+
+    return {
+        "status": "blocked" if errors else "ready",
+        "ledgerPath": str(ledger_path),
+        "entryCount": len(entries),
+        "destinationCount": len(latest_by_destination),
+        "statusCounts": dict(sorted(status_counts.items())),
+        "uploadedVerifiedOrDeletedCount": len(verified_entries),
+        "localDeletedCount": len(local_deleted_entries),
+        "manualRemoteDeletionPendingCount": len(manual_remote_delete_entries),
+        "failedCount": len(failed_entries),
+        "unverifiedCount": len(unverified_entries),
+        "dryRunDestinationCount": len(dry_run_entries),
+        "safeCloudBytes": safe_bytes,
+        "safeCloudGb": byte_count_to_gb(safe_bytes),
+        "manualRemoteDeletionPending": [
+            redact_ledger_entry(entry, include_local_paths=include_local_paths)
+            for entry in manual_remote_delete_entries
+        ],
+        "failedOrUnverified": [
+            redact_ledger_entry(entry, include_local_paths=include_local_paths)
+            for entry in failed_entries + unverified_entries
+        ],
+        "warnings": warnings,
+        "errors": errors,
+    }
 
 
 def is_file_settled(path: Path, settle_seconds: int) -> bool:
@@ -966,6 +1066,92 @@ def storage_preflight_command(args: argparse.Namespace) -> int:
     return 1 if payload["errors"] else 0
 
 
+def ledger_summary_command(args: argparse.Namespace) -> int:
+    ledger_path = Path(args.ledger).expanduser()
+    entries, parse_errors = load_ledger_entries(ledger_path)
+    payload = summarize_ledger_entries(
+        ledger_path=ledger_path,
+        entries=entries,
+        parse_errors=parse_errors,
+        include_local_paths=args.include_local_paths,
+    )
+    print(json.dumps(payload, indent=2))
+    return 1 if payload["errors"] else 0
+
+
+def verify_ledger_cloud_command(args: argparse.Namespace) -> int:
+    ledger_path = Path(args.ledger).expanduser()
+    entries, parse_errors = load_ledger_entries(ledger_path)
+    summary = summarize_ledger_entries(
+        ledger_path=ledger_path,
+        entries=entries,
+        parse_errors=parse_errors,
+        include_local_paths=False,
+    )
+    if parse_errors:
+        print(json.dumps(summary, indent=2))
+        return 1
+
+    gcloud_path = shutil.which("gcloud")
+    if not gcloud_path:
+        print("gcloud is not on PATH; install Google Cloud CLI before verifying cloud objects.", file=sys.stderr)
+        return 2
+
+    latest_by_destination = latest_ledger_entries_by_destination(entries)
+    candidates = [
+        entry
+        for entry in latest_by_destination.values()
+        if entry.get("status") in {"uploaded_verified", "local_deleted"}
+    ]
+    candidates = candidates[: max(0, args.max_objects)]
+    checked: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for entry in candidates:
+        destination = str(entry["destination"])
+        expected_size = int(entry.get("sizeBytes", -1) or -1)
+        describe = describe_gcs_object(gcloud_path, destination)
+        actual_size = describe.get("sizeBytes")
+        size_matches = describe.get("status") == "ready" and actual_size == expected_size
+        check = {
+            "destination": destination,
+            "assetId": entry.get("assetId"),
+            "relativePath": entry.get("relativePath"),
+            "expectedSizeBytes": expected_size,
+            "actualSizeBytes": actual_size,
+            "gcsGeneration": describe.get("generation"),
+            "gcsCrc32c": describe.get("crc32c"),
+            "gcsMd5Hash": describe.get("md5Hash"),
+            "status": "matched" if size_matches else "mismatch",
+        }
+        if describe.get("status") != "ready":
+            check["error"] = describe.get("error")
+        if not size_matches:
+            errors.append(f"GCS size mismatch or missing object: {destination}")
+        checked.append(check)
+
+    payload = {
+        "status": "blocked" if errors or summary["errors"] else "ready",
+        "ledgerPath": str(ledger_path),
+        "checkedCount": len(checked),
+        "matchedCount": sum(1 for item in checked if item["status"] == "matched"),
+        "maxObjects": args.max_objects,
+        "ledgerSummary": {
+            "entryCount": summary["entryCount"],
+            "destinationCount": summary["destinationCount"],
+            "uploadedVerifiedOrDeletedCount": summary["uploadedVerifiedOrDeletedCount"],
+            "localDeletedCount": summary["localDeletedCount"],
+            "manualRemoteDeletionPendingCount": summary["manualRemoteDeletionPendingCount"],
+            "safeCloudBytes": summary["safeCloudBytes"],
+            "safeCloudGb": summary["safeCloudGb"],
+        },
+        "checked": checked,
+        "warnings": summary["warnings"],
+        "errors": summary["errors"] + errors,
+    }
+    print(json.dumps(payload, indent=2))
+    return 1 if payload["errors"] else 0
+
+
 def discover_insta360_command(args: argparse.Namespace) -> int:
     scan_dirs = (
         [Path(value) for value in args.scan_dir]
@@ -1214,6 +1400,37 @@ def smoke_test_command(_: argparse.Namespace) -> int:
         )
         drain_result = drain_folder_once(drain_args)
         preflight_result = storage_preflight(source_dir, min_free_gb=0, allow_icloud=False)
+        ledger_path = output_dir / "drain-ledger.synthetic.jsonl"
+        append_jsonl(
+            ledger_path,
+            {
+                "status": "uploaded_verified",
+                "destination": "gs://high-ground-odyssey-media/media-vault/raw/episode-004/homer-insta360-smoke/originals/video/insta360/homer-travel.insv",
+                "assetId": "homer-travel-smoke",
+                "relativePath": "insta360/homer-travel.insv",
+                "sourcePath": "/private/tmp/should-not-print-by-default/homer-travel.insv",
+                "sizeBytes": 19,
+            },
+        )
+        append_jsonl(
+            ledger_path,
+            {
+                "status": "local_deleted",
+                "destination": "gs://high-ground-odyssey-media/media-vault/raw/episode-004/homer-insta360-smoke/originals/photo/insta360/homer-photo.insp",
+                "assetId": "homer-photo-smoke",
+                "relativePath": "photos/homer-photo.insp",
+                "sourcePath": "/private/tmp/should-not-print-by-default/homer-photo.insp",
+                "sizeBytes": 19,
+                "remoteDeletionStatus": "manual_pending",
+            },
+        )
+        ledger_entries, ledger_errors = load_ledger_entries(ledger_path)
+        ledger_summary = summarize_ledger_entries(
+            ledger_path=ledger_path,
+            entries=ledger_entries,
+            parse_errors=ledger_errors,
+            include_local_paths=False,
+        )
         assertions.extend(
             [
                 drain_result["status"] == "ready",
@@ -1221,6 +1438,11 @@ def smoke_test_command(_: argparse.Namespace) -> int:
                 all(entry["status"] == "dry_run" for entry in drain_result["processed"]),
                 preflight_result["freeBytes"] > 0,
                 not preflight_result["icloudManagedPath"],
+                ledger_summary["status"] == "ready",
+                ledger_summary["uploadedVerifiedOrDeletedCount"] == 2,
+                ledger_summary["localDeletedCount"] == 1,
+                ledger_summary["manualRemoteDeletionPendingCount"] == 1,
+                "/private/tmp/should-not-print-by-default" not in json.dumps(ledger_summary),
             ]
         )
         result = {
@@ -1311,6 +1533,26 @@ def build_parser() -> argparse.ArgumentParser:
     drain_folder.add_argument("--watch", action="store_true")
     drain_folder.add_argument("--poll-seconds", type=int, default=60)
     drain_folder.set_defaults(func=drain_folder_command)
+
+    ledger_summary = subparsers.add_parser(
+        "ledger-summary",
+        help="Summarize a drain/upload ledger without exposing local paths by default",
+    )
+    ledger_summary.add_argument("--ledger", required=True)
+    ledger_summary.add_argument(
+        "--include-local-paths",
+        action="store_true",
+        help="Include local source paths in the JSON output; keep this out of committed files",
+    )
+    ledger_summary.set_defaults(func=ledger_summary_command)
+
+    verify_ledger_cloud = subparsers.add_parser(
+        "verify-ledger-cloud",
+        help="Re-check uploaded ledger destinations against current Google Cloud Storage metadata",
+    )
+    verify_ledger_cloud.add_argument("--ledger", required=True)
+    verify_ledger_cloud.add_argument("--max-objects", type=int, default=200)
+    verify_ledger_cloud.set_defaults(func=verify_ledger_cloud_command)
 
     discover_insta360 = subparsers.add_parser(
         "discover-insta360",

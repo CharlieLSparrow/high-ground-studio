@@ -210,6 +210,15 @@ a local JSONL ledger, and deletes the local copy only after verification. Remote
 Insta360 cloud deletion remains a manual app step until a supported delete API
 or auditable automation path exists.
 
+Audit the ledger before remote cleanup:
+
+```bash
+pnpm studio-cut:media-vault -- ledger-summary \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+pnpm studio-cut:media-vault -- verify-ledger-cloud \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+```
+
 Do not use an iCloud Drive or mirrored Documents folder as the download buffer.
 The drain blocks obvious iCloud paths by default and requires `--allow-icloud`
 to override.

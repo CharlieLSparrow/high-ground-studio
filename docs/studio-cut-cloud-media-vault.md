@@ -204,6 +204,25 @@ API or a fully auditable automation path. The official Insta360 deletion path is
 inside the app cloud album, and deleted Insta360+ Cloud Storage files are
 recoverable from Recently Deleted for a limited time.
 
+Audit the migration ledger before manually deleting anything from Insta360
+Cloud:
+
+```bash
+pnpm studio-cut:media-vault -- ledger-summary \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+```
+
+Re-verify the ledger against live GCS object metadata:
+
+```bash
+pnpm studio-cut:media-vault -- verify-ledger-cloud \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+```
+
+`ledger-summary` reports verified bytes, local deletions, failed/unverified
+uploads, and the manual remote deletion queue. It redacts local source paths by
+default because ledger files can contain private machine paths.
+
 Avoid iCloud-managed folders for the buffer. The drain refuses paths that look
 like iCloud Drive or `Mobile Documents` unless `--allow-icloud` is explicitly
 set, and it skips files with iCloud placeholder markers. This is intentional:

@@ -90,6 +90,25 @@ Only local files are deleted, and only after `gcloud storage cp` succeeds and
 the GCS object size matches the local file size. Remote Insta360 Cloud deletion
 is still a manual app step unless a supported API becomes available.
 
+Review the local chain-of-custody ledger at any point:
+
+```bash
+pnpm studio-cut:media-vault -- ledger-summary \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+```
+
+Re-check uploaded objects against current GCS metadata before manual remote
+cleanup:
+
+```bash
+pnpm studio-cut:media-vault -- verify-ledger-cloud \
+  --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
+```
+
+`ledger-summary` redacts local source paths by default. Use
+`--include-local-paths` only for private local debugging output that will not be
+committed.
+
 The drain refuses iCloud-managed folders by default because macOS may silently
 offload files or show placeholders. Prefer a local buffer under
 `~/Movies/StudioCut/...`. Use `--allow-icloud` only after confirming the files
