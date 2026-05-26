@@ -18,12 +18,15 @@ import {
 } from "../../studio-ui";
 import {
   applyTextAreaValueToYText,
+  appendLiveRoomNotebookBlock,
   countLiveRoomTextStats,
+  createLiveRoomNotebookBlocks,
   createManuscriptDraftFromLiveRoomText,
   createLiveRoomTextFromManuscriptDraft,
   decodeLiveRoomUpdateBase64,
   encodeLiveRoomUpdateBase64,
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
+  updateLiveRoomNotebookBlockText,
 } from "./studio-manuscript-live-room-model";
 import type { ManuscriptDraft } from "../manuscript-editor-model";
 
@@ -95,6 +98,8 @@ type ManuscriptLibrarySummary = {
 };
 
 type ApiResponse<T> = T | { ok: false; message: string };
+
+type LiveEditorMode = "notebook" | "raw";
 
 const buttonClassName =
   "min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.8rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10 disabled:text-studio-dim";
@@ -183,6 +188,8 @@ export function StudioManuscriptLiveRoomClient({
   const [draftTitle, setDraftTitle] = useState("Tonight manuscript room");
   const [initialText, setInitialText] = useState("");
   const [text, setText] = useState("");
+  const [editorMode, setEditorMode] = useState<LiveEditorMode>("notebook");
+  const [selectedNotebookBlockIndex, setSelectedNotebookBlockIndex] = useState(0);
   const [message, setMessage] = useState("Ready.");
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -201,6 +208,10 @@ export function StudioManuscriptLiveRoomClient({
 
   const stats = useMemo(() => countLiveRoomTextStats(text), [text]);
   const shareUrl = useMemo(() => createShareUrl(activeRoom?.id ?? null), [activeRoom?.id]);
+  const notebookBlocks = useMemo(
+    () => createLiveRoomNotebookBlocks(text),
+    [text],
+  );
   const selectedManuscript = useMemo(
     () =>
       manuscripts.find((manuscript) => manuscript.id === selectedManuscriptId) ??
@@ -487,6 +498,35 @@ export function StudioManuscriptLiveRoomClient({
     }, "local");
   }, []);
 
+  const focusNotebookBlock = useCallback((blockIndex: number) => {
+    setSelectedNotebookBlockIndex(blockIndex);
+
+    window.requestAnimationFrame(() => {
+      document.getElementById(`live-notebook-block-${blockIndex}`)?.focus();
+    });
+  }, []);
+
+  const updateNotebookBlock = useCallback(
+    (blockIndex: number, blockText: string) => {
+      updateText(
+        updateLiveRoomNotebookBlockText({
+          text,
+          blockIndex,
+          blockText,
+        }),
+      );
+    },
+    [text, updateText],
+  );
+
+  const addNotebookBlock = useCallback(() => {
+    const nextIndex = notebookBlocks.length;
+
+    updateText(appendLiveRoomNotebookBlock(text));
+    focusNotebookBlock(nextIndex);
+    updateMessage("Added notebook section.");
+  }, [focusNotebookBlock, notebookBlocks.length, text, updateMessage, updateText]);
+
   const copyShareUrl = useCallback(async () => {
     if (!shareUrl) {
       return;
@@ -647,6 +687,14 @@ export function StudioManuscriptLiveRoomClient({
   }, [activeRoom?.id, actor.primaryEmail, clientId, isEditorFocused]);
 
   useEffect(() => disposeCurrentRoom, [disposeCurrentRoom]);
+
+  useEffect(() => {
+    if (selectedNotebookBlockIndex <= notebookBlocks.length - 1) {
+      return;
+    }
+
+    setSelectedNotebookBlockIndex(Math.max(0, notebookBlocks.length - 1));
+  }, [notebookBlocks.length, selectedNotebookBlockIndex]);
 
   return (
     <main className="min-h-screen bg-studio-bg px-4 py-5 text-studio-ink sm:px-6 lg:px-8">
@@ -809,19 +857,127 @@ export function StudioManuscriptLiveRoomClient({
             </div>
 
             <div className="mt-4 grid gap-3">
-              <textarea
-                className={cn(
-                  textareaClassName,
-                  "min-h-[58vh] font-serif text-[1.05rem]",
-                )}
-                disabled={!activeRoom || isLoadingRoom}
-                onBlur={() => setIsEditorFocused(false)}
-                onChange={(event) => updateText(event.target.value)}
-                onFocus={() => setIsEditorFocused(true)}
-                placeholder="Create or open a live room to begin."
-                ref={textareaRef}
-                value={text}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex rounded-lg border border-studio-line bg-studio-ink/5 p-1">
+                  {(
+                    [
+                      ["notebook", "Notebook"],
+                      ["raw", "Raw text"],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <button
+                      className={cn(
+                        "min-h-8 rounded-md px-3 text-[0.75rem] font-extrabold transition",
+                        editorMode === mode
+                          ? "bg-studio-tag/20 text-studio-tag"
+                          : "text-studio-muted hover:text-studio-source",
+                      )}
+                      key={mode}
+                      onClick={() => setEditorMode(mode)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className={buttonClassName}
+                  data-testid="live-room-notebook-add-section"
+                  disabled={!activeRoom || editorMode !== "notebook"}
+                  onClick={addNotebookBlock}
+                  type="button"
+                >
+                  Add section
+                </button>
+              </div>
+              {editorMode === "notebook" ? (
+                <div
+                  className="grid min-h-[58vh] gap-3 lg:grid-cols-[minmax(180px,240px)_minmax(0,1fr)]"
+                  data-testid="live-room-notebook-editor"
+                >
+                  <div className="grid content-start gap-2 rounded-xl border border-studio-line bg-black/10 p-3">
+                    <p className={labelClassName}>Notebook outline</p>
+                    {notebookBlocks.map((block) => (
+                      <button
+                        className={cn(
+                          "grid gap-1 rounded-lg border p-2.5 text-left transition",
+                          selectedNotebookBlockIndex === block.index
+                            ? "border-studio-tag/55 bg-studio-tag/10"
+                            : "border-studio-line bg-studio-ink/5 hover:border-studio-source/45",
+                        )}
+                        key={block.id}
+                        onClick={() => focusNotebookBlock(block.index)}
+                        type="button"
+                      >
+                        <span className="text-[0.76rem] font-extrabold text-studio-ink">
+                          {block.label}
+                        </span>
+                        <span className="text-[0.68rem] font-bold text-studio-muted">
+                          {block.wordCount} words
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid content-start gap-3">
+                    {notebookBlocks.map((block) => (
+                      <section
+                        className={cn(
+                          "grid gap-2 rounded-xl border bg-[#0f1512] p-3 transition",
+                          selectedNotebookBlockIndex === block.index
+                            ? "border-studio-tag/55"
+                            : "border-studio-line-strong",
+                        )}
+                        key={block.id}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className={labelClassName}>
+                            Section {block.index + 1}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            <StudioChip tone="source">
+                              {block.wordCount} words
+                            </StudioChip>
+                            <StudioChip tone="node">
+                              {block.characterCount} chars
+                            </StudioChip>
+                          </div>
+                        </div>
+                        <textarea
+                          className={cn(
+                            textareaClassName,
+                            "min-h-[190px] border-studio-line bg-black/10 font-serif text-[1.02rem]",
+                          )}
+                          disabled={!activeRoom || isLoadingRoom}
+                          id={`live-notebook-block-${block.index}`}
+                          onBlur={() => setIsEditorFocused(false)}
+                          onChange={(event) =>
+                            updateNotebookBlock(block.index, event.target.value)
+                          }
+                          onFocus={() => {
+                            setIsEditorFocused(true);
+                            setSelectedNotebookBlockIndex(block.index);
+                          }}
+                          value={block.text}
+                        />
+                      </section>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <textarea
+                  className={cn(
+                    textareaClassName,
+                    "min-h-[58vh] font-serif text-[1.05rem]",
+                  )}
+                  disabled={!activeRoom || isLoadingRoom}
+                  onBlur={() => setIsEditorFocused(false)}
+                  onChange={(event) => updateText(event.target.value)}
+                  onFocus={() => setIsEditorFocused(true)}
+                  placeholder="Create or open a live room to begin."
+                  ref={textareaRef}
+                  value={text}
+                />
+              )}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
                   <button

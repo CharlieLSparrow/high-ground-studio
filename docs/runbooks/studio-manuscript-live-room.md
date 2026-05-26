@@ -26,6 +26,8 @@ The route is protected by the normal private Studio access gate.
 - accepts pasted or blank starting text
 - lets any authenticated Studio-access user join a room when they have the
   share URL
+- opens in notebook mode by default, with editable sections and a raw-text
+  fallback
 - syncs text through Yjs updates stored in Cloud SQL
 - polls room updates roughly once per second
 - records active presence heartbeats
@@ -42,9 +44,12 @@ The route is protected by the normal private Studio access gate.
   metadata inside the live editor
 - use a WebSocket provider
 
-The live room is a shared text surface. Manual snapshots convert the current
-text into paragraph blocks so the work can be checkpointed and moved into the
-existing Manuscript Desk recovery flow.
+The live room is still backed by one shared text document. Notebook mode splits
+that text into editable sections separated by blank lines, which keeps the
+collaboration protocol simple while making live sessions feel less like one
+giant scratch textarea. Manual snapshots convert the current text into
+paragraph blocks so the work can be checkpointed and moved into the existing
+Manuscript Desk recovery flow.
 
 ## Data Model
 
