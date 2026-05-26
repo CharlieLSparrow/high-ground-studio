@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-section-presence-001`
+
+- Continuing the OneNote-style live-room push after `studio-00059-btd`.
+- Targeting section-aware presence so collaborators can see which notebook
+  section each focused editor is working in, without schema or provider changes.
+
 ### Codex / `main` Studio live-room notebook section controls
 
 - Continued the OneNote-style live-room push after `studio-00057-87h`.
