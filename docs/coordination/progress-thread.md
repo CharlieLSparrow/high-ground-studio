@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-recap-snapshot-description-001`
+
+- Continuing the session-recap slice after `studio-00065-sjh`.
+- Targeting manual snapshot descriptions that retain a compact recap digest
+  from decisions, actions, questions, and source notes.
+
 ### Codex / `main` Studio live-room session recap
 
 - Continued the OneNote-style live-room push after `studio-00063-982`.

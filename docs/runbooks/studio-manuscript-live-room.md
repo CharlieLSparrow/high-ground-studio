@@ -43,6 +43,7 @@ The route is protected by the normal private Studio access gate.
 - can copy a session recap extracted from decision, action, question, and source
   sections
 - can save the current live text as a manual Manuscript Desk snapshot
+  whose description includes a compact recap digest
 
 ## What It Does Not Do
 
