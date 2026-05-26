@@ -22,6 +22,7 @@ from typing import Any
 APP_NAME = "Insta360 Studio"
 DEFAULT_PROJECT_ID = "episode-004"
 DEFAULT_COLLECTION_ID = "homer-insta360"
+ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 
 
 def utc_now_iso() -> str:
@@ -154,6 +155,15 @@ def build_storage_preflight_command(*, download_dir: Path) -> str:
     return " ".join(shell_quote(part) for part in parts)
 
 
+def build_open_accessibility_settings_command() -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:insta360-operator",
+        "open-accessibility-settings",
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
 def build_ledger_summary_command(*, ledger_path: Path) -> str:
     parts = [
         "pnpm",
@@ -251,17 +261,38 @@ def open_studio_command(args: argparse.Namespace) -> int:
     return status
 
 
+def open_accessibility_settings_command(_: argparse.Namespace) -> int:
+    open_path = shutil.which("open")
+    if not open_path:
+        print("open is not available on PATH.", file=sys.stderr)
+        return 1
+    status = subprocess.run([open_path, ACCESSIBILITY_SETTINGS_URL], check=False).returncode
+    print(
+        json.dumps(
+            {
+                "status": "ready" if status == 0 else "blocked",
+                "settingsUrl": ACCESSIBILITY_SETTINGS_URL,
+                "nextStep": "Enable Terminal/Codex under Privacy & Security > Accessibility, then rerun `pnpm studio-cut:insta360-operator doctor`.",
+            },
+            indent=2,
+        )
+    )
+    return status
+
+
 def doctor_command(_: argparse.Namespace) -> int:
     app_path = find_app()
+    access = accessibility_status()
     report = {
-        "status": "ready" if app_path and osascript_available() else "blocked",
+        "status": "ready" if app_path and osascript_available() and access["enabled"] else "blocked",
         "platform": platform.platform(),
         "appName": APP_NAME,
         "appPath": str(app_path) if app_path else None,
         "osascriptPath": shutil.which("osascript"),
         "openPath": shutil.which("open"),
         "gcloudPath": shutil.which("gcloud"),
-        "accessibility": accessibility_status(),
+        "accessibility": access,
+        "accessibilitySettingsUrl": ACCESSIBILITY_SETTINGS_URL,
         "warnings": [],
     }
     if not app_path:
@@ -293,6 +324,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         execute=False,
         delete_local_after_upload=False,
     )
+    accessibility_command_text = build_open_accessibility_settings_command()
     preflight_command = build_storage_preflight_command(download_dir=download_dir)
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
@@ -323,6 +355,21 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     run_preflight_path.chmod(0o755)
+
+    run_accessibility_path = operator_dir / "run-open-accessibility-settings.sh"
+    run_accessibility_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                accessibility_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_accessibility_path.chmod(0o755)
 
     run_drain_path = operator_dir / "run-drain.sh"
     run_drain_path.write_text(
@@ -427,6 +474,16 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 "",
                 "Configure Insta360 Studio cloud downloads to save originals here when possible.",
                 "",
+                "## UI Automation Setup",
+                "",
+                "If `doctor` reports Accessibility disabled, run:",
+                "",
+                "```bash",
+                accessibility_command_text,
+                "```",
+                "",
+                "Enable Terminal/Codex for Accessibility, then rerun `pnpm studio-cut:insta360-operator doctor`.",
+                "",
                 "## Preflight",
                 "",
                 "```bash",
@@ -486,6 +543,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "downloadDir": str(download_dir),
         "operatorDir": str(operator_dir),
         "ledgerPath": str(ledger_path),
+        "runAccessibilitySettingsScript": str(run_accessibility_path),
         "runPreflightScript": str(run_preflight_path),
         "runDrainScript": str(run_drain_path),
         "runLedgerSummaryScript": str(run_ledger_summary_path),
@@ -494,6 +552,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "runVerifyLedgerCloudScript": str(run_verify_cloud_path),
         "runVaultReceiptScript": str(run_vault_receipt_path),
         "readme": str(readme_path),
+        "accessibilitySettingsCommand": accessibility_command_text,
         "preflightCommand": preflight_command,
         "dryRunCommand": dry_run_command,
         "drainCommand": drain_command,
@@ -509,14 +568,15 @@ def prepare_session_command(args: argparse.Namespace) -> int:
 
 def ui_snapshot_applescript(app_name: str, max_depth: int) -> str:
     return f'''
-on replaceText(findText, replaceText, sourceText)
+using terms from application "System Events"
+on replaceTextValue(findText, replacementText, sourceText)
   set AppleScript's text item delimiters to findText
   set textItems to text items of sourceText
-  set AppleScript's text item delimiters to replaceText
+  set AppleScript's text item delimiters to replacementText
   set replacedText to textItems as text
   set AppleScript's text item delimiters to ""
   return replacedText
-end replaceText
+end replaceTextValue
 
 on cleanText(valueText)
   try
@@ -524,9 +584,9 @@ on cleanText(valueText)
   on error
     set outputText to ""
   end try
-  set outputText to my replaceText(linefeed, " ", outputText)
-  set outputText to my replaceText(return, " ", outputText)
-  set outputText to my replaceText(tab, " ", outputText)
+  set outputText to my replaceTextValue(linefeed, " ", outputText)
+  set outputText to my replaceTextValue(return, " ", outputText)
+  set outputText to my replaceTextValue(tab, " ", outputText)
   return outputText
 end cleanText
 
@@ -559,6 +619,7 @@ on walkElement(theElement, pathLabel, depthLevel, maxDepth)
   end try
   return outputText
 end walkElement
+end using terms from
 
 tell application {applescript_quote(app_name)} to activate
 delay 0.5
@@ -602,16 +663,36 @@ def ui_snapshot_command(args: argparse.Namespace) -> int:
     if not app_path:
         print("Insta360 Studio.app was not found.", file=sys.stderr)
         return 1
+    access = accessibility_status()
+    if not access["enabled"]:
+        print(
+            json.dumps(
+                {
+                    "status": "blocked",
+                    "appName": APP_NAME,
+                    "appPath": str(app_path),
+                    "accessibility": access,
+                    "settingsUrl": ACCESSIBILITY_SETTINGS_URL,
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 1
     script = ui_snapshot_applescript(APP_NAME, args.max_depth)
     status, stdout, stderr = run_osascript(script)
     if status != 0:
         print(stderr or stdout, file=sys.stderr)
         return status
+    elements = parse_snapshot_tsv(stdout)
     payload = {
+        "status": "ready" if elements else "blocked",
         "createdAt": utc_now_iso(),
         "appName": APP_NAME,
         "appPath": str(app_path),
-        "elements": parse_snapshot_tsv(stdout),
+        "elementCount": len(elements),
+        "elements": elements,
+        "warnings": [] if elements else ["No UI elements were exposed by Insta360 Studio. Confirm the app window is open and Accessibility permission is enabled."],
     }
     if args.out:
         out_path = Path(args.out).expanduser()
@@ -620,11 +701,12 @@ def ui_snapshot_command(args: argparse.Namespace) -> int:
         print(f"Wrote UI snapshot: {out_path}")
     else:
         print(json.dumps(payload, indent=2))
-    return 0
+    return 0 if elements else 1
 
 
 def click_control_applescript(app_name: str, label: str, max_depth: int, execute: bool) -> str:
     return f'''
+using terms from application "System Events"
 on normalizedText(valueText)
   try
     set outputText to valueText as text
@@ -682,6 +764,7 @@ on findAndMaybeClick(theElement, targetText, depthLevel, maxDepth, shouldClick)
   end try
   return ""
 end findAndMaybeClick
+end using terms from
 
 tell application {applescript_quote(app_name)} to activate
 delay 0.5
@@ -709,6 +792,22 @@ def click_control_command(args: argparse.Namespace) -> int:
     if not app_path:
         print("Insta360 Studio.app was not found.", file=sys.stderr)
         return 1
+    access = accessibility_status()
+    if not access["enabled"]:
+        print(
+            json.dumps(
+                {
+                    "status": "blocked",
+                    "appName": APP_NAME,
+                    "label": args.label,
+                    "executed": bool(args.execute),
+                    "accessibility": access,
+                    "settingsUrl": ACCESSIBILITY_SETTINGS_URL,
+                },
+                indent=2,
+            )
+        )
+        return 1
     script = click_control_applescript(APP_NAME, args.label, args.max_depth, args.execute)
     status, stdout, stderr = run_osascript(script)
     result = {
@@ -724,6 +823,20 @@ def click_control_command(args: argparse.Namespace) -> int:
 
 
 def download_selected_command(args: argparse.Namespace) -> int:
+    access = accessibility_status()
+    if not access["enabled"]:
+        print(
+            json.dumps(
+                {
+                    "status": "blocked",
+                    "executed": bool(args.execute),
+                    "accessibility": access,
+                    "settingsUrl": ACCESSIBILITY_SETTINGS_URL,
+                },
+                indent=2,
+            )
+        )
+        return 1
     labels = args.label or ["Download", "Start Export"]
     attempts: list[dict[str, Any]] = []
     for label in labels:
@@ -765,6 +878,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         delete_local_after_upload=True,
     )
     preflight_command = build_storage_preflight_command(download_dir=download_dir)
+    accessibility_command_text = build_open_accessibility_settings_command()
     ledger_summary_command_text = build_ledger_summary_command(ledger_path=ledger_path)
     verify_ledger_cloud_command_text = build_verify_ledger_cloud_command(ledger_path=ledger_path)
     vault_receipt_command_text = build_vault_receipt_command(ledger_path=ledger_path)
@@ -784,6 +898,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "--execute" in drain_command,
         "--delete-local-after-upload" in drain_command,
         "storage-preflight" in preflight_command,
+        "open-accessibility-settings" in accessibility_command_text,
         "ledger-summary" in ledger_summary_command_text,
         "migration-report" in migration_report_command_text,
         "migration-status-page" in status_page_command_text,
@@ -791,12 +906,14 @@ def self_test_command(_: argparse.Namespace) -> int:
         "vault-receipt" in vault_receipt_command_text,
         "Insta360 Studio" in ui_snapshot_applescript(APP_NAME, 2),
         "Download" in click_control_applescript(APP_NAME, "Download", 2, False),
+        ACCESSIBILITY_SETTINGS_URL.startswith("x-apple.systempreferences:"),
     ]
     result = {
         "status": "pass" if all(assertions) else "fail",
         "assertionsPassed": sum(1 for assertion in assertions if assertion),
         "assertionCount": len(assertions),
         "samplePreflightCommand": preflight_command,
+        "sampleAccessibilitySettingsCommand": accessibility_command_text,
         "sampleDrainCommand": drain_command,
         "sampleLedgerSummaryCommand": ledger_summary_command_text,
         "sampleMigrationReportCommand": migration_report_command_text,
@@ -817,6 +934,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     open_studio = subparsers.add_parser("open-studio", help="Open Insta360 Studio")
     open_studio.set_defaults(func=open_studio_command)
+
+    open_accessibility = subparsers.add_parser(
+        "open-accessibility-settings",
+        help="Open the macOS Accessibility settings pane for enabling UI automation",
+    )
+    open_accessibility.set_defaults(func=open_accessibility_settings_command)
 
     prepare = subparsers.add_parser("prepare-session", help="Create local download buffer and drain runner")
     prepare.add_argument("--project-id", default=DEFAULT_PROJECT_ID)

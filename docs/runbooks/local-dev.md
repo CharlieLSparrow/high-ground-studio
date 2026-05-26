@@ -206,10 +206,12 @@ in Insta360 Cloud.
 `studio-cut:insta360-operator` can open Insta360 Studio, prepare the local
 download buffer, capture UI snapshots, and try visible download controls when
 macOS Accessibility permission is enabled.
-`prepare-session` writes local `run-preflight.sh`, `run-drain.sh`,
-`run-migration-report.sh`, `run-status-page.sh`, `run-ledger-summary.sh`, and
-`run-verify-ledger-cloud.sh` scripts so operators do not have to remember the
-ledger path.
+Run `pnpm studio-cut:insta360-operator open-accessibility-settings` if
+`doctor` reports Accessibility disabled.
+`prepare-session` writes local `run-open-accessibility-settings.sh`,
+`run-preflight.sh`, `run-drain.sh`, `run-migration-report.sh`,
+`run-status-page.sh`, `run-ledger-summary.sh`, and `run-verify-ledger-cloud.sh`
+scripts so operators do not have to remember the ledger path.
 Keep the download buffer outside iCloud Drive; iCloud-managed folders are
 blocked by default unless `--allow-icloud` is explicitly passed.
 Real manifests and upload scripts for private media stay outside git.

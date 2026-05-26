@@ -275,6 +275,9 @@ an external drive as the migration buffer.
 The local download operator wraps macOS/Insta360 Studio actions that are not
 available through a public API. It uses AppleScript/System Events, so macOS
 Accessibility permission is required for Terminal or the Codex host process.
+If `doctor` reports Accessibility disabled, run
+`pnpm studio-cut:insta360-operator open-accessibility-settings`, enable the
+Codex/Terminal host, then rerun `doctor`.
 
 Prepare the local buffer and drain runner:
 
@@ -285,10 +288,11 @@ pnpm studio-cut:insta360-operator prepare-session \
 ```
 
 This creates the predictable download folder plus local helper scripts for the
-whole loop: `run-preflight.sh`, `run-drain.sh`, `run-migration-report.sh`,
-`run-status-page.sh`, `run-ledger-summary.sh`, `run-verify-ledger-cloud.sh`,
-and `run-vault-receipt.sh`. The operator can run those scripts without
-remembering the ledger path.
+whole loop: `run-open-accessibility-settings.sh`, `run-preflight.sh`,
+`run-drain.sh`, `run-migration-report.sh`, `run-status-page.sh`,
+`run-ledger-summary.sh`, `run-verify-ledger-cloud.sh`, and
+`run-vault-receipt.sh`. The operator can run those scripts without remembering
+the ledger path.
 
 Open Insta360 Studio:
 

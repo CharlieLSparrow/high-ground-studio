@@ -168,6 +168,7 @@ pnpm studio-cut:insta360-operator prepare-session \
 `prepare-session` creates the predictable local download buffer plus helper
 scripts:
 
+- `run-open-accessibility-settings.sh`
 - `run-preflight.sh`
 - `run-drain.sh`
 - `run-migration-report.sh`
@@ -175,6 +176,15 @@ scripts:
 - `run-ledger-summary.sh`
 - `run-verify-ledger-cloud.sh`
 - `run-vault-receipt.sh`
+
+If `doctor` reports Accessibility disabled, run:
+
+```bash
+pnpm studio-cut:insta360-operator open-accessibility-settings
+```
+
+Enable Terminal/Codex in macOS Accessibility settings before using
+`ui-snapshot`, `click-control`, or `download-selected`.
 
 Open Studio:
 

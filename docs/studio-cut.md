@@ -1087,10 +1087,11 @@ or auditable automation path is available.
 adds a local macOS assistive layer: it can open Insta360 Studio, prepare the
 download buffer, capture the visible UI tree for agent debugging, and try
 visible `Download` / `Start Export` controls for selected cloud media when
-Accessibility permission is enabled. `prepare-session` writes local helper
-scripts for preflight, drain, migration report, status page, ledger summary,
-cloud re-verification, and vault-receipt export so the operator does not have
-to remember paths. The drain also performs a storage
+Accessibility permission is enabled; `open-accessibility-settings` opens the
+macOS pane when that permission is missing. `prepare-session` writes local
+helper scripts for Accessibility setup, preflight, drain, migration report,
+status page, ledger summary, cloud re-verification, and vault-receipt export so
+the operator does not have to remember paths. The drain also performs a storage
 preflight and blocks obvious iCloud-managed paths by default; use a local buffer
 under `~/Movies/StudioCut/...` rather than iCloud Drive or mirrored Documents.
 
