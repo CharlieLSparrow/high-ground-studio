@@ -3942,26 +3942,17 @@ export function StudioManuscriptClient({
             <section
               className={cn(
                 cardClassName,
-                "grid gap-3 border-studio-tag/45 bg-studio-tag/10 p-3.5",
+                "grid gap-2 border-studio-tag/45 bg-studio-tag/10 p-2.5",
               )}
               data-testid="manuscript-primary-save-panel"
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
-                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                    Current manuscript
-                  </h2>
-                </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
                 <StudioChip tone={serverConnectionState === "connected" ? "source" : "review"}>
                   {serverConnectionLabel}
                 </StudioChip>
               </div>
-              <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
-                Save here first, then open the latest phone link on another
-                device.
-              </p>
-              <div className="grid gap-2">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
                 <button
                   className={cn(
                     smallButtonClassName,
@@ -3974,56 +3965,34 @@ export function StudioManuscriptClient({
                 >
                   Save manuscript
                 </button>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={smallButtonClassName}
-                    data-testid="manuscript-primary-copy-phone-link"
-                    type="button"
-                    onClick={() => void copyLiveLatestSnapshotLink()}
-                  >
-                    Copy phone link
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                    type="button"
-                    onClick={() => void loadLiveSnapshotBySlug("latest")}
-                  >
-                    Load latest
-                  </button>
-                </div>
-              </div>
-              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
-                <p className={labelClassName}>Latest phone link</p>
-                <p className="m-0 break-all font-mono text-[0.72rem] leading-relaxed text-studio-muted">
-                  {MANUSCRIPT_LIVE_LATEST_PATH}
-                </p>
-                <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
-                  {latestShareSnapshot
-                    ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
-                    : "No server save visible in this browser yet."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <StudioChip
-                  tone={
-                    hasLocalChangesSinceServerSave === true
-                      ? "review"
-                      : hasLocalChangesSinceServerSave === false
-                        ? "source"
-                        : "default"
-                  }
+                <button
+                  className={smallButtonClassName}
+                  data-testid="manuscript-primary-copy-phone-link"
+                  type="button"
+                  onClick={() => void copyLiveLatestSnapshotLink()}
                 >
-                  Local changes: {localChangesSinceServerSaveLabel}
-                </StudioChip>
-                {selectedServerManuscript ? (
-                  <StudioChip className="normal-case" tone="source">
-                    {selectedServerManuscript.title}
-                  </StudioChip>
-                ) : null}
+                  Copy link
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                  type="button"
+                  onClick={() => void loadLiveSnapshotBySlug("latest")}
+                >
+                  Load latest
+                </button>
               </div>
-              <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                {serverSnapshotStatus}
+              <p
+                className="m-0 truncate font-mono text-[0.7rem] leading-relaxed text-studio-muted"
+                title={MANUSCRIPT_LIVE_LATEST_PATH}
+              >
+                {MANUSCRIPT_LIVE_LATEST_PATH}
+              </p>
+              <p className="m-0 text-[0.72rem] leading-relaxed text-studio-muted">
+                {latestShareSnapshot
+                  ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
+                  : "No server save visible yet."}{" "}
+                Local changes: {localChangesSinceServerSaveLabel}.
               </p>
             </section>
 
@@ -6867,7 +6836,7 @@ export function StudioManuscriptClient({
                 </button>
               </div>
 
-              <div className="grid gap-2 rounded-lg border border-studio-tag/45 bg-studio-tag/10 p-2.5">
+              <div className="grid gap-2 rounded-lg border border-studio-tag/45 bg-studio-tag/10 p-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
                   <StudioChip
@@ -6880,27 +6849,27 @@ export function StudioManuscriptClient({
                     {serverConnectionLabel}
                   </StudioChip>
                 </div>
-                <button
-                  className={cn(
-                    smallButtonClassName,
-                    "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
-                  )}
-                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                  type="button"
-                  onClick={() => void saveServerSnapshot()}
-                >
-                  Save manuscript
-                </button>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
-                    className={smallButtonClassName}
+                    className={cn(
+                      smallButtonClassName,
+                      "border-studio-tag/60 bg-studio-tag/15 px-2 text-[0.74rem] text-studio-tag",
+                    )}
+                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                    type="button"
+                    onClick={() => void saveServerSnapshot()}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className={cn(smallButtonClassName, "px-2 text-[0.74rem]")}
                     type="button"
                     onClick={() => void copyLiveLatestSnapshotLink()}
                   >
-                    Copy phone link
+                    Copy link
                   </button>
                   <button
-                    className={smallButtonClassName}
+                    className={cn(smallButtonClassName, "px-2 text-[0.74rem]")}
                     disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
                     type="button"
                     onClick={() => void loadLiveSnapshotBySlug("latest")}
@@ -6908,7 +6877,7 @@ export function StudioManuscriptClient({
                     Load latest
                   </button>
                 </div>
-                <p className="m-0 break-all font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+                <p className="m-0 truncate font-mono text-[0.68rem] leading-relaxed text-studio-muted">
                   {MANUSCRIPT_LIVE_LATEST_PATH}
                 </p>
               </div>
@@ -6981,19 +6950,6 @@ export function StudioManuscriptClient({
                 >
                   Full manuscript
                 </button>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    className={cn(smallButtonClassName, "flex-1")}
-                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                    type="button"
-                    onClick={() => void loadLatestServerSnapshot()}
-                  >
-                    Load latest snapshot
-                  </button>
-                  <ManuscriptHelpTip
-                    note={getManuscriptHelpNote("load-latest-snapshot")}
-                  />
-                </div>
                 <button
                   className={smallButtonClassName}
                   type="button"
