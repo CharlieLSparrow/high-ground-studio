@@ -293,9 +293,28 @@ pnpm studio-cut:insta360-operator prepare-session \
 This creates the predictable download folder plus local helper scripts for the
 whole loop: `run-open-accessibility-settings.sh`, `run-preflight.sh`,
 `run-drain.sh`, `run-migration-report.sh`, `run-status-page.sh`,
-`run-ledger-summary.sh`, `run-verify-ledger-cloud.sh`, and
-`run-vault-receipt.sh`. The operator can run those scripts without remembering
-the ledger path.
+`run-operator-dashboard.sh`, `run-ledger-summary.sh`,
+`run-verify-ledger-cloud.sh`, and `run-vault-receipt.sh`. The operator can run
+those scripts without remembering the ledger path.
+
+Open the combined operator dashboard:
+
+```bash
+pnpm studio-cut:insta360-operator operator-dashboard \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --include-cloud \
+  --watch \
+  --open \
+  --continue-on-error \
+  --allow-blocked
+```
+
+The dashboard is local-only and safe to leave open during a migration. It shows
+Accessibility readiness, local buffer counts, ledger progress, the current GCS
+prefix, next actions, and exact commands. It does not log in, upload, delete, or
+store credentials. `--allow-blocked` keeps the dashboard visible while macOS
+Accessibility still needs manual approval.
 
 Open Insta360 Studio:
 

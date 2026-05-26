@@ -227,6 +227,14 @@ pnpm studio-cut:media-vault -- migration-status-page \
   --include-cloud \
   --watch \
   --open
+pnpm studio-cut:insta360-operator operator-dashboard \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --include-cloud \
+  --watch \
+  --open \
+  --continue-on-error \
+  --allow-blocked
 pnpm studio-cut:media-vault -- ledger-summary \
   --ledger ~/Movies/StudioCut/episode-004/insta360-downloads/.studio-cut-media-vault-ledger.jsonl
 pnpm studio-cut:media-vault -- verify-ledger-cloud \
@@ -239,6 +247,10 @@ pnpm studio-cut:media-vault -- vault-receipt \
 Do not use an iCloud Drive or mirrored Documents folder as the download buffer.
 The drain blocks obvious iCloud paths by default and requires `--allow-icloud`
 to override.
+
+The operator dashboard is the best single monitor while a migration is running:
+it combines the local buffer, GCS prefix, ledger status, Accessibility blocker,
+and next commands. It is safe to leave open while waiting for downloads.
 
 If the Studio UI is visible and cloud media is selected, try:
 

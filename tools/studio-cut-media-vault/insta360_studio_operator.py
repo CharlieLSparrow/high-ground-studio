@@ -14,9 +14,13 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
+import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import media_vault
 
 
 APP_NAME = "Insta360 Studio"
@@ -109,6 +113,28 @@ def accessibility_status() -> dict[str, Any]:
             else "Enable Terminal/Codex under System Settings > Privacy & Security > Accessibility, or approve the macOS prompt."
         ),
     }
+
+
+def build_doctor_report() -> dict[str, Any]:
+    app_path = find_app()
+    access = accessibility_status()
+    report = {
+        "status": "ready" if app_path and osascript_available() and access["enabled"] else "blocked",
+        "platform": platform.platform(),
+        "appName": APP_NAME,
+        "appPath": str(app_path) if app_path else None,
+        "osascriptPath": shutil.which("osascript"),
+        "openPath": shutil.which("open"),
+        "gcloudPath": shutil.which("gcloud"),
+        "accessibility": access,
+        "accessibilitySettingsUrl": ACCESSIBILITY_SETTINGS_URL,
+        "warnings": [],
+    }
+    if not app_path:
+        report["warnings"].append("Install Insta360 Studio or move it to /Applications.")
+    if not report["accessibility"]["enabled"]:
+        report["warnings"].append("UI automation commands need macOS Accessibility permission.")
+    return report
 
 
 def build_drain_command(
@@ -245,6 +271,35 @@ def build_status_page_command(
         "--include-cloud",
         "--watch",
         "--open",
+        "--continue-on-error",
+    ]
+    return " ".join(shell_quote(part) for part in parts)
+
+
+def build_operator_dashboard_command(
+    *,
+    download_dir: Path,
+    operator_dir: Path,
+    project_id: str,
+    collection_id: str,
+) -> str:
+    parts = [
+        "pnpm",
+        "studio-cut:insta360-operator",
+        "operator-dashboard",
+        "--project-id",
+        project_id,
+        "--collection-id",
+        collection_id,
+        "--download-dir",
+        str(download_dir),
+        "--operator-dir",
+        str(operator_dir),
+        "--include-cloud",
+        "--watch",
+        "--open",
+        "--continue-on-error",
+        "--allow-blocked",
     ]
     return " ".join(shell_quote(part) for part in parts)
 
@@ -283,26 +338,415 @@ def open_accessibility_settings_command(_: argparse.Namespace) -> int:
 
 
 def doctor_command(_: argparse.Namespace) -> int:
-    app_path = find_app()
-    access = accessibility_status()
-    report = {
-        "status": "ready" if app_path and osascript_available() and access["enabled"] else "blocked",
-        "platform": platform.platform(),
-        "appName": APP_NAME,
-        "appPath": str(app_path) if app_path else None,
-        "osascriptPath": shutil.which("osascript"),
-        "openPath": shutil.which("open"),
-        "gcloudPath": shutil.which("gcloud"),
-        "accessibility": access,
-        "accessibilitySettingsUrl": ACCESSIBILITY_SETTINGS_URL,
-        "warnings": [],
-    }
-    if not app_path:
-        report["warnings"].append("Install Insta360 Studio or move it to /Applications.")
-    if not report["accessibility"]["enabled"]:
-        report["warnings"].append("UI automation commands need macOS Accessibility permission.")
+    report = build_doctor_report()
     print(json.dumps(report, indent=2))
     return 0 if report["status"] == "ready" else 1
+
+
+def operator_dashboard_html(*, report_file_name: str, refresh_seconds: int) -> str:
+    return f"""<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>Studio Cut Insta360 Operator</title>
+  <style>
+    :root {{
+      color-scheme: light dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;
+      background: #f6f3ef;
+      color: #1e2528;
+    }}
+    body {{
+      margin: 0;
+      padding: 28px;
+      background: #f6f3ef;
+    }}
+    main {{
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }}
+    header {{
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      border-bottom: 1px solid #d9d1c7;
+      padding-bottom: 16px;
+    }}
+    h1 {{
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }}
+    .subtle {{
+      color: #626b70;
+      font-size: 13px;
+    }}
+    .grid {{
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }}
+    .panel {{
+      background: #fffdfa;
+      border: 1px solid #d9d1c7;
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 0;
+    }}
+    .wide {{
+      grid-column: 1 / -1;
+    }}
+    .label {{
+      color: #626b70;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }}
+    .value {{
+      font-size: 28px;
+      font-weight: 750;
+      line-height: 1;
+      margin-bottom: 6px;
+    }}
+    .status {{
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e9efe7;
+      color: #24552b;
+    }}
+    .status.blocked {{
+      background: #f8e4df;
+      color: #7e2e1f;
+    }}
+    .status.active {{
+      background: #e5edf7;
+      color: #274e7a;
+    }}
+    pre {{
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }}
+    ul {{
+      margin: 0;
+      padding-left: 18px;
+    }}
+    li + li {{
+      margin-top: 6px;
+    }}
+    code {{
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: #f1ede7;
+      border-radius: 4px;
+      padding: 1px 4px;
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root, body {{
+        background: #151819;
+        color: #f4eee7;
+      }}
+      header, .panel {{
+        border-color: #343b40;
+      }}
+      .panel {{
+        background: #1f2427;
+      }}
+      .subtle, .label {{
+        color: #aeb8bd;
+      }}
+      code {{
+        background: #2a3034;
+      }}
+    }}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Studio Cut Insta360 Operator</h1>
+      <div class=\"subtle\" id=\"createdAt\">Waiting for report...</div>
+    </div>
+    <div id=\"overallStatus\" class=\"status\">Loading</div>
+  </header>
+
+  <section class=\"grid\">
+    <article class=\"panel\">
+      <div class=\"label\">Migration State</div>
+      <div class=\"value\" id=\"migrationState\">...</div>
+      <div class=\"subtle\" id=\"migrationDetail\"></div>
+    </article>
+    <article class=\"panel\">
+      <div class=\"label\">Local Buffer</div>
+      <div class=\"value\" id=\"localFileCount\">...</div>
+      <div class=\"subtle\" id=\"localBytes\"></div>
+    </article>
+    <article class=\"panel\">
+      <div class=\"label\">Cloud Prefix</div>
+      <div class=\"value\" id=\"cloudObjectCount\">...</div>
+      <div class=\"subtle\" id=\"cloudBytes\"></div>
+    </article>
+    <article class=\"panel\">
+      <div class=\"label\">Free Disk</div>
+      <div class=\"value\" id=\"freeGb\">...</div>
+      <div class=\"subtle\">download buffer disk space</div>
+    </article>
+  </section>
+
+  <section class=\"grid\">
+    <article class=\"panel\">
+      <div class=\"label\">UI Automation</div>
+      <div id=\"accessibilityStatus\" class=\"status\">...</div>
+      <p class=\"subtle\" id=\"accessibilityMessage\"></p>
+    </article>
+    <article class=\"panel\">
+      <div class=\"label\">Next Actions</div>
+      <ul id=\"nextActions\"></ul>
+    </article>
+    <article class=\"panel wide\">
+      <div class=\"label\">Current Paths</div>
+      <pre id=\"paths\"></pre>
+    </article>
+    <article class=\"panel wide\">
+      <div class=\"label\">Useful Commands</div>
+      <pre id=\"commands\"></pre>
+    </article>
+    <article class=\"panel wide\">
+      <div class=\"label\">Warnings And Errors</div>
+      <ul id=\"warnings\"></ul>
+    </article>
+  </section>
+</main>
+<script>
+const reportUrl = {json.dumps(report_file_name)};
+const refreshSeconds = {int(refresh_seconds)};
+function bytes(value) {{
+  if (value === null || value === undefined) return "n/a";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = Number(value || 0);
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {{
+    size = size / 1024;
+    unit += 1;
+  }}
+  return `${{size.toFixed(unit === 0 ? 0 : 2)}} ${{units[unit]}}`;
+}}
+function setText(id, value) {{
+  document.getElementById(id).textContent = value;
+}}
+function renderList(id, values) {{
+  const node = document.getElementById(id);
+  node.innerHTML = "";
+  if (!values || values.length === 0) {{
+    const item = document.createElement("li");
+    item.textContent = "None";
+    node.appendChild(item);
+    return;
+  }}
+  for (const value of values) {{
+    const item = document.createElement("li");
+    item.textContent = value;
+    node.appendChild(item);
+  }}
+}}
+function statusClass(status, state) {{
+  if (status === "blocked") return "status blocked";
+  if (state === "pending-local-files") return "status active";
+  return "status";
+}}
+async function refresh() {{
+  try {{
+    const response = await fetch(reportUrl + "?t=" + Date.now());
+    const report = await response.json();
+    const migration = report.migrationReport || {{}};
+    const progress = migration.progress || {{}};
+    const doctor = report.doctor || {{}};
+    const accessibility = doctor.accessibility || {{}};
+    const cloud = migration.cloudSummary || null;
+    const localBuffer = migration.localBuffer || {{}};
+    const overall = document.getElementById("overallStatus");
+    overall.className = statusClass(report.status, report.state);
+    overall.textContent = report.status === "blocked" ? "Needs attention" : "Ready";
+    setText("createdAt", `Updated ${{report.createdAt || "unknown"}}`);
+    setText("migrationState", migration.state || report.state || "unknown");
+    setText("migrationDetail", `${{report.projectId || ""}} / ${{report.collectionId || ""}}`);
+    setText("localFileCount", `${{progress.localFileCount ?? "n/a"}} files`);
+    setText("localBytes", `${{bytes(localBuffer.totalBytes)}} local buffer`);
+    setText("cloudObjectCount", cloud ? `${{cloud.objectCount}} objects` : "not listed");
+    setText("cloudBytes", cloud ? `${{bytes(cloud.totalBytes)}} in bucket prefix` : "run with --include-cloud");
+    setText("freeGb", `${{progress.freeGb ?? "n/a"}} GB`);
+    const accessNode = document.getElementById("accessibilityStatus");
+    accessNode.className = accessibility.enabled ? "status" : "status blocked";
+    accessNode.textContent = accessibility.enabled ? "Enabled" : "Blocked";
+    setText("accessibilityMessage", accessibility.message || "");
+    renderList("nextActions", report.nextActions || []);
+    renderList("warnings", [...(report.warnings || []), ...(report.errors || [])]);
+    setText("paths", [
+      `Download buffer: ${{report.downloadDir || ""}}`,
+      `Operator dir: ${{report.operatorDir || ""}}`,
+      `Ledger: ${{report.ledgerPath || ""}}`,
+      `Cloud: ${{migration.cloudPrefix || ""}}`
+    ].join("\\n"));
+    setText("commands", Object.entries(report.commands || {{}})
+      .map(([name, command]) => `${{name}}:\\n${{command}}`)
+      .join("\\n\\n"));
+  }} catch (error) {{
+    const overall = document.getElementById("overallStatus");
+    overall.className = "status blocked";
+    overall.textContent = "Report unavailable";
+    renderList("warnings", [String(error)]);
+  }}
+}}
+refresh();
+setInterval(refresh, refreshSeconds * 1000);
+</script>
+</body>
+</html>
+"""
+
+
+def build_operator_dashboard_payload(args: argparse.Namespace) -> dict[str, Any]:
+    download_dir = Path(args.download_dir).expanduser() if args.download_dir else default_download_dir(args.project_id)
+    operator_dir = Path(args.operator_dir).expanduser() if args.operator_dir else default_operator_dir(args.project_id)
+    ledger_path = Path(args.ledger).expanduser() if args.ledger else default_ledger_path(download_dir)
+    doctor = build_doctor_report()
+    migration_report = media_vault.build_migration_report_payload(
+        source_dir=download_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+        bucket=args.bucket,
+        storage_prefix=args.storage_prefix,
+        ledger_path=ledger_path,
+        settle_seconds=args.settle_seconds,
+        min_free_gb=args.min_free_gb,
+        allow_icloud=args.allow_icloud,
+        max_files=args.max_files,
+        include_cloud=args.include_cloud,
+        cloud_max_objects=args.cloud_max_objects,
+    )
+    blockers: list[str] = []
+    warnings = list(doctor.get("warnings", [])) + list(migration_report.get("warnings", []))
+    errors = list(migration_report.get("errors", []))
+    if doctor["status"] != "ready":
+        blockers.append("Mac Accessibility is not enabled, so Codex cannot click Insta360 Studio controls yet.")
+    if migration_report["status"] != "ready":
+        blockers.append("Migration report is blocked; inspect errors before trusting the watcher.")
+
+    progress = migration_report["progress"]
+    state = migration_report["state"]
+    next_actions: list[str] = []
+    if blockers:
+        next_actions.extend(blockers)
+    if state == "watching-empty-buffer":
+        next_actions.append("In Insta360 Studio, select cloud files and start downloading originals into the watched buffer.")
+    elif state == "pending-local-files":
+        next_actions.append("Leave the watcher running until local files settle, upload, verify, and clear.")
+    elif state == "drained":
+        next_actions.append("Run the vault receipt and manually delete matching remote Insta360 files only after verification.")
+    if progress["manualRemoteDeletionPendingCount"] > 0:
+        next_actions.append("Review manual remote deletion queue before deleting anything from Insta360 Cloud.")
+
+    commands = {
+        "openAccessibilitySettings": build_open_accessibility_settings_command(),
+        "openInsta360Studio": "pnpm studio-cut:insta360-operator open-studio",
+        "migrationReport": build_migration_report_command(
+            download_dir=download_dir,
+            project_id=args.project_id,
+            collection_id=args.collection_id,
+        ),
+        "statusPage": build_status_page_command(
+            download_dir=download_dir,
+            operator_dir=operator_dir,
+            project_id=args.project_id,
+            collection_id=args.collection_id,
+        ),
+        "operatorDashboard": build_operator_dashboard_command(
+            download_dir=download_dir,
+            operator_dir=operator_dir,
+            project_id=args.project_id,
+            collection_id=args.collection_id,
+        ),
+        "drainWatcher": build_drain_command(
+            download_dir=download_dir,
+            project_id=args.project_id,
+            collection_id=args.collection_id,
+            execute=True,
+            delete_local_after_upload=True,
+        ),
+        "vaultReceipt": build_vault_receipt_command(ledger_path=ledger_path),
+    }
+    return {
+        "command": "operator-dashboard",
+        "status": "blocked" if blockers or errors else "ready",
+        "state": "blocked" if blockers or errors else state,
+        "createdAt": utc_now_iso(),
+        "projectId": args.project_id,
+        "collectionId": args.collection_id,
+        "downloadDir": str(download_dir),
+        "operatorDir": str(operator_dir),
+        "ledgerPath": str(ledger_path),
+        "doctor": doctor,
+        "migrationReport": migration_report,
+        "commands": commands,
+        "nextActions": next_actions,
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+def write_operator_dashboard(args: argparse.Namespace) -> dict[str, Any]:
+    operator_dir = Path(args.operator_dir).expanduser() if args.operator_dir else default_operator_dir(args.project_id)
+    out_dir = Path(args.out_dir).expanduser() if args.out_dir else operator_dir / "operator-dashboard"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_path = out_dir / "operator-status.json"
+    html_path = out_dir / "index.html"
+    payload = build_operator_dashboard_payload(args)
+    report_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    html_path.write_text(
+        operator_dashboard_html(
+            report_file_name=report_path.name,
+            refresh_seconds=args.refresh_seconds,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "status": payload["status"],
+        "state": payload["state"],
+        "htmlPath": str(html_path),
+        "reportPath": str(report_path),
+        "progress": payload["migrationReport"]["progress"],
+        "nextActions": payload["nextActions"],
+        "warnings": payload["warnings"],
+        "errors": payload["errors"],
+    }
+
+
+def operator_dashboard_command(args: argparse.Namespace) -> int:
+    result = write_operator_dashboard(args)
+    html_path = Path(result["htmlPath"])
+    if args.open:
+        webbrowser.open(html_path.resolve().as_uri())
+    print(json.dumps(result, indent=2))
+    if not args.watch:
+        return 0 if result["status"] == "ready" or args.allow_blocked else 1
+    while True:
+        time.sleep(max(1, args.poll_seconds))
+        result = write_operator_dashboard(args)
+        print(json.dumps(result, indent=2))
+        if result["status"] == "blocked" and not args.continue_on_error:
+            return 1
 
 
 def prepare_session_command(args: argparse.Namespace) -> int:
@@ -337,6 +781,12 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         collection_id=args.collection_id,
     )
     status_page_command_text = build_status_page_command(
+        download_dir=download_dir,
+        operator_dir=operator_dir,
+        project_id=args.project_id,
+        collection_id=args.collection_id,
+    )
+    operator_dashboard_command_text = build_operator_dashboard_command(
         download_dir=download_dir,
         operator_dir=operator_dir,
         project_id=args.project_id,
@@ -433,6 +883,21 @@ def prepare_session_command(args: argparse.Namespace) -> int:
     )
     run_status_page_path.chmod(0o755)
 
+    run_operator_dashboard_path = operator_dir / "run-operator-dashboard.sh"
+    run_operator_dashboard_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "cd " + shell_quote(str(Path.cwd())),
+                operator_dashboard_command_text,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_operator_dashboard_path.chmod(0o755)
+
     run_verify_cloud_path = operator_dir / "run-verify-ledger-cloud.sh"
     run_verify_cloud_path.write_text(
         "\n".join(
@@ -516,6 +981,12 @@ def prepare_session_command(args: argparse.Namespace) -> int:
                 status_page_command_text,
                 "```",
                 "",
+                "## Operator Dashboard",
+                "",
+                "```bash",
+                operator_dashboard_command_text,
+                "```",
+                "",
                 "## Audit Before Manual Remote Cleanup",
                 "",
                 "```bash",
@@ -551,6 +1022,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "runLedgerSummaryScript": str(run_ledger_summary_path),
         "runMigrationReportScript": str(run_migration_report_path),
         "runStatusPageScript": str(run_status_page_path),
+        "runOperatorDashboardScript": str(run_operator_dashboard_path),
         "runVerifyLedgerCloudScript": str(run_verify_cloud_path),
         "runVaultReceiptScript": str(run_vault_receipt_path),
         "readme": str(readme_path),
@@ -561,6 +1033,7 @@ def prepare_session_command(args: argparse.Namespace) -> int:
         "ledgerSummaryCommand": ledger_summary_command_text,
         "migrationReportCommand": migration_report_command_text,
         "statusPageCommand": status_page_command_text,
+        "operatorDashboardCommand": operator_dashboard_command_text,
         "verifyLedgerCloudCommand": verify_ledger_cloud_command_text,
         "vaultReceiptCommand": vault_receipt_command_text,
     }
@@ -895,6 +1368,12 @@ def self_test_command(_: argparse.Namespace) -> int:
         project_id="episode-004",
         collection_id="homer-insta360",
     )
+    operator_dashboard_command_text = build_operator_dashboard_command(
+        download_dir=download_dir,
+        operator_dir=Path("/tmp/studio-cut-insta360-operator-test/operator"),
+        project_id="episode-004",
+        collection_id="homer-insta360",
+    )
     assertions = [
         "drain-folder" in drain_command,
         "--execute" in drain_command,
@@ -904,6 +1383,9 @@ def self_test_command(_: argparse.Namespace) -> int:
         "ledger-summary" in ledger_summary_command_text,
         "migration-report" in migration_report_command_text,
         "migration-status-page" in status_page_command_text,
+        "operator-dashboard" in operator_dashboard_command_text,
+        "--include-cloud" in operator_dashboard_command_text,
+        "--allow-blocked" in operator_dashboard_command_text,
         "verify-ledger-cloud" in verify_ledger_cloud_command_text,
         "vault-receipt" in vault_receipt_command_text,
         "Insta360 Studio" in ui_snapshot_applescript(APP_NAME, 2),
@@ -920,6 +1402,7 @@ def self_test_command(_: argparse.Namespace) -> int:
         "sampleLedgerSummaryCommand": ledger_summary_command_text,
         "sampleMigrationReportCommand": migration_report_command_text,
         "sampleStatusPageCommand": status_page_command_text,
+        "sampleOperatorDashboardCommand": operator_dashboard_command_text,
         "sampleVerifyLedgerCloudCommand": verify_ledger_cloud_command_text,
         "sampleVaultReceiptCommand": vault_receipt_command_text,
     }
@@ -942,6 +1425,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Open the macOS Accessibility settings pane for enabling UI automation",
     )
     open_accessibility.set_defaults(func=open_accessibility_settings_command)
+
+    dashboard = subparsers.add_parser(
+        "operator-dashboard",
+        help="Write a local dashboard combining Insta360 automation and migration progress",
+    )
+    dashboard.add_argument("--project-id", default=DEFAULT_PROJECT_ID)
+    dashboard.add_argument("--collection-id", default=DEFAULT_COLLECTION_ID)
+    dashboard.add_argument("--download-dir")
+    dashboard.add_argument("--operator-dir")
+    dashboard.add_argument("--out-dir")
+    dashboard.add_argument("--bucket", default=media_vault.DEFAULT_BUCKET)
+    dashboard.add_argument("--storage-prefix", default="media-vault/raw")
+    dashboard.add_argument("--ledger")
+    dashboard.add_argument("--settle-seconds", type=int, default=30)
+    dashboard.add_argument("--min-free-gb", type=float, default=media_vault.DEFAULT_MIN_FREE_GB)
+    dashboard.add_argument("--allow-icloud", action="store_true")
+    dashboard.add_argument("--max-files", type=int, default=20)
+    dashboard.add_argument("--include-cloud", action="store_true")
+    dashboard.add_argument("--cloud-max-objects", type=int, default=50)
+    dashboard.add_argument("--refresh-seconds", type=int, default=5)
+    dashboard.add_argument("--watch", action="store_true")
+    dashboard.add_argument("--poll-seconds", type=int, default=10)
+    dashboard.add_argument("--open", action="store_true")
+    dashboard.add_argument("--continue-on-error", action="store_true")
+    dashboard.add_argument("--allow-blocked", action="store_true")
+    dashboard.set_defaults(func=operator_dashboard_command)
 
     prepare = subparsers.add_parser("prepare-session", help="Create local download buffer and drain runner")
     prepare.add_argument("--project-id", default=DEFAULT_PROJECT_ID)

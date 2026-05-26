@@ -1079,8 +1079,11 @@ is the standard per-round operator readout for local buffer count, settled
 files, free space, cloud destination, ledger totals, and manual remote cleanup
 queue, with optional live GCS prefix listing via `--include-cloud`.
 `migration-status-page` turns that report into a local auto-refreshing browser
-dashboard for the operator. `ledger-summary` summarizes uploaded/verified
-bytes, local deletions, and manual remote deletion pending items;
+dashboard for the operator. `operator-dashboard` is the combined local cockpit:
+it shows the doctor/Accessibility state, local buffer, ledger progress, live GCS
+prefix summary, next actions, and the exact helper commands while staying
+local-only. `ledger-summary` summarizes uploaded/verified bytes, local deletions,
+and manual remote deletion pending items;
 `verify-ledger-cloud` re-checks ledger destinations against live GCS metadata.
 Remote Insta360 cloud deletion remains manual until a supported API or
 auditable automation path is available.
@@ -1091,10 +1094,11 @@ visible `Download` / `Start Export` controls for selected cloud media when
 Accessibility permission is enabled; `open-accessibility-settings` opens the
 macOS pane when that permission is missing. `prepare-session` writes local
 helper scripts for Accessibility setup, preflight, drain, migration report,
-status page, ledger summary, cloud re-verification, and vault-receipt export so
-the operator does not have to remember paths. The drain also performs a storage
-preflight and blocks obvious iCloud-managed paths by default; use a local buffer
-under `~/Movies/StudioCut/...` rather than iCloud Drive or mirrored Documents.
+status page, operator dashboard, ledger summary, cloud re-verification, and
+vault-receipt export so the operator does not have to remember paths. The drain
+also performs a storage preflight and blocks obvious iCloud-managed paths by
+default; use a local buffer under `~/Movies/StudioCut/...` rather than iCloud
+Drive or mirrored Documents.
 
 The web editor now includes a `Cloud Sync Intake` panel. In cloud mode, Charlie
 can select required raw assets:

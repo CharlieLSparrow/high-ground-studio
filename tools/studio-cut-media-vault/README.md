@@ -175,6 +175,7 @@ scripts:
 - `run-drain.sh`
 - `run-migration-report.sh`
 - `run-status-page.sh`
+- `run-operator-dashboard.sh`
 - `run-ledger-summary.sh`
 - `run-verify-ledger-cloud.sh`
 - `run-vault-receipt.sh`
@@ -187,6 +188,24 @@ pnpm studio-cut:insta360-operator open-accessibility-settings
 
 Enable Terminal/Codex in macOS Accessibility settings before using
 `ui-snapshot`, `click-control`, or `download-selected`.
+
+Open the combined operator dashboard:
+
+```bash
+pnpm studio-cut:insta360-operator operator-dashboard \
+  --project-id episode-004 \
+  --collection-id homer-insta360 \
+  --include-cloud \
+  --watch \
+  --open \
+  --continue-on-error \
+  --allow-blocked
+```
+
+The dashboard is local-only. It combines the Accessibility/doctor state,
+download buffer, ledger, GCS prefix summary, next actions, and the exact helper
+commands. `--allow-blocked` keeps the page useful while Accessibility is still
+waiting for human approval.
 
 Open Studio:
 
