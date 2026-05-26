@@ -325,6 +325,7 @@ export function StudioManuscriptLiveRoomClient({
   const [text, setText] = useState("");
   const [editorMode, setEditorMode] = useState<LiveEditorMode>("notebook");
   const [selectedNotebookBlockIndex, setSelectedNotebookBlockIndex] = useState(0);
+  const [isNotebookFocusMode, setIsNotebookFocusMode] = useState(false);
   const [message, setMessage] = useState("Ready.");
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -348,6 +349,17 @@ export function StudioManuscriptLiveRoomClient({
     () => createLiveRoomNotebookBlocks(text),
     [text],
   );
+  const visibleNotebookBlocks = useMemo(() => {
+    if (!isNotebookFocusMode) {
+      return notebookBlocks;
+    }
+
+    const selectedBlock = notebookBlocks.find(
+      (block) => block.index === selectedNotebookBlockIndex,
+    );
+
+    return selectedBlock ? [selectedBlock] : notebookBlocks.slice(0, 1);
+  }, [isNotebookFocusMode, notebookBlocks, selectedNotebookBlockIndex]);
   const notebookPresenceByBlock = useMemo(() => {
     const nextPresence = new Map<number, LivePresence[]>();
 
@@ -691,6 +703,36 @@ export function StudioManuscriptLiveRoomClient({
     [focusNotebookBlock, text, updateMessage, updateText],
   );
 
+  const toggleNotebookFocusMode = useCallback(() => {
+    const nextFocusMode = !isNotebookFocusMode;
+
+    setIsNotebookFocusMode(nextFocusMode);
+
+    if (nextFocusMode) {
+      focusNotebookBlock(selectedNotebookBlockIndex);
+    }
+
+    updateMessage(
+      nextFocusMode
+        ? `Focused section ${selectedNotebookBlockIndex + 1}.`
+        : "Showing all notebook sections.",
+    );
+  }, [
+    focusNotebookBlock,
+    isNotebookFocusMode,
+    selectedNotebookBlockIndex,
+    updateMessage,
+  ]);
+
+  const focusNotebookSection = useCallback(
+    (blockIndex: number) => {
+      setIsNotebookFocusMode(true);
+      focusNotebookBlock(blockIndex);
+      updateMessage(`Focused section ${blockIndex + 1}.`);
+    },
+    [focusNotebookBlock, updateMessage],
+  );
+
   const addNotebookBlock = useCallback(() => {
     const nextIndex = text.trim() ? notebookBlocks.length : 0;
 
@@ -971,6 +1013,14 @@ export function StudioManuscriptLiveRoomClient({
     setSelectedNotebookBlockIndex(Math.max(0, notebookBlocks.length - 1));
   }, [notebookBlocks.length, selectedNotebookBlockIndex]);
 
+  useEffect(() => {
+    if (editorMode === "notebook" || !isNotebookFocusMode) {
+      return;
+    }
+
+    setIsNotebookFocusMode(false);
+  }, [editorMode, isNotebookFocusMode]);
+
   return (
     <main className="min-h-screen bg-studio-bg px-4 py-5 text-studio-ink sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-[1500px] gap-5">
@@ -1170,15 +1220,26 @@ export function StudioManuscriptLiveRoomClient({
                     </button>
                   ))}
                 </div>
-                <button
-                  className={buttonClassName}
-                  data-testid="live-room-notebook-add-section"
-                  disabled={!activeRoom || editorMode !== "notebook"}
-                  onClick={addNotebookBlock}
-                  type="button"
-                >
-                  Add section
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={buttonClassName}
+                    data-testid="live-room-notebook-focus-toggle"
+                    disabled={!activeRoom || editorMode !== "notebook"}
+                    onClick={toggleNotebookFocusMode}
+                    type="button"
+                  >
+                    {isNotebookFocusMode ? "Show all sections" : "Focus section"}
+                  </button>
+                  <button
+                    className={buttonClassName}
+                    data-testid="live-room-notebook-add-section"
+                    disabled={!activeRoom || editorMode !== "notebook"}
+                    onClick={addNotebookBlock}
+                    type="button"
+                  >
+                    Add section
+                  </button>
+                </div>
               </div>
               {editorMode === "notebook" ? (
                 <div
@@ -1202,7 +1263,11 @@ export function StudioManuscriptLiveRoomClient({
               {editorMode === "notebook" ? (
                 <div
                   className="grid min-h-[58vh] gap-3 lg:grid-cols-[minmax(180px,240px)_minmax(0,1fr)]"
-                  data-testid="live-room-notebook-editor"
+                  data-testid={
+                    isNotebookFocusMode
+                      ? "live-room-notebook-focus-mode"
+                      : "live-room-notebook-editor"
+                  }
                 >
                   <div className="grid content-start gap-2 rounded-xl border border-studio-line bg-black/10 p-3">
                     <p className={labelClassName}>Notebook outline</p>
@@ -1236,7 +1301,7 @@ export function StudioManuscriptLiveRoomClient({
                     ))}
                   </div>
                   <div className="grid content-start gap-3">
-                    {notebookBlocks.map((block) => (
+                    {visibleNotebookBlocks.map((block) => (
                       <section
                         className={cn(
                           "grid gap-2 rounded-xl border bg-[#0f1512] p-3 transition",
@@ -1310,6 +1375,14 @@ export function StudioManuscriptLiveRoomClient({
                           <button
                             className={buttonClassName}
                             disabled={!activeRoom || isLoadingRoom}
+                            onClick={() => focusNotebookSection(block.index)}
+                            type="button"
+                          >
+                            Focus
+                          </button>
+                          <button
+                            className={buttonClassName}
+                            disabled={!activeRoom || isLoadingRoom}
                             onClick={() => addNotebookBlockAfter(block.index)}
                             type="button"
                           >
@@ -1349,7 +1422,8 @@ export function StudioManuscriptLiveRoomClient({
                         <textarea
                           className={cn(
                             textareaClassName,
-                            "min-h-[190px] border-studio-line bg-black/10 font-serif text-[1.02rem]",
+                            "border-studio-line bg-black/10 font-serif text-[1.02rem]",
+                            isNotebookFocusMode ? "min-h-[58vh]" : "min-h-[190px]",
                           )}
                           disabled={!activeRoom || isLoadingRoom}
                           id={`live-notebook-block-${block.index}`}

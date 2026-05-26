@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-focus-mode-001`
+
+- Continuing the OneNote-style live-room push after `studio-00069-c9k`.
+- Targeting a section focus mode so the selected notebook section can become
+  the primary writing surface during Homer working sessions.
+
 ### Codex / `main` Studio live-room section kind controls
 
 - Continued the OneNote-style live-room push after `studio-00067-h6z`.
