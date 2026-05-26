@@ -302,3 +302,40 @@ Rollback from this deployed revision:
 ```bash
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00057-87h=100
 ```
+
+## Section Presence Deployment
+
+Merged through PR #38:
+
+```text
+main commit: 6fb0cb4
+image: us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:6fb0cb4
+Cloud Build: a042bb40-8854-4523-b955-62ae888d6f59
+revision: studio-00061-h7l
+url: https://studio-hm2odnvjga-uc.a.run.app
+```
+
+This slice made live-room presence section-aware in notebook mode. Focused
+editors now publish `editing section N` through the existing presence `mode`
+string, and the notebook UI surfaces active collaborators in the outline and
+matching section header.
+
+No schema or provider changes were needed.
+
+Deploy validation passed:
+
+- `pnpm studio:manuscript:live-room:test`
+- `pnpm studio:cloudrun:test`
+- `pnpm --filter studio typecheck`
+- Docker image build with `pnpm --filter studio build`
+- deploy-script smokes for `/api/health` and `/content-studio`
+- direct smoke: `/manuscript` returned `HTTP 200`
+- direct smoke: `/manuscript/live` returned `HTTP 200`
+- direct smoke: `/api/manuscript/live-rooms` returned the expected
+  unauthenticated `401`
+
+Rollback from this deployed revision:
+
+```bash
+gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00059-btd=100
+```
