@@ -1418,7 +1418,7 @@ export function StudioManuscriptClient({
       const blockAuthorIds = new Set<ManuscriptAuthorId>();
 
       node.descendants((childNode) => {
-        for (const mark of childNode.marks) {
+        for (const mark of childNode.marks ?? []) {
           if (mark.type.name !== "authorMark") {
             continue;
           }

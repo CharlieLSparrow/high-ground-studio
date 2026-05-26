@@ -250,7 +250,11 @@ test("Manuscript author marks render as block washes under semantic marks", () =
   assert.match(globalsCss, /--manuscript-author-wash/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-charlie/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-block-homer/);
-  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-charlie \{\n\s*background: transparent;/);
+  assert.match(globalsCss, /@supports selector\(:has\(\*\)\)/);
+  assert.match(globalsCss, /:has\(\.manuscript-author-charlie\)/);
+  assert.match(globalsCss, /:has\(\.manuscript-author-homer\)/);
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-charlie \{\n\s*background: rgba\(82, 164, 220/);
+  assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-author-homer \{\n\s*background: rgba\(126, 200, 134/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-semantic-cited-quotation/);
 });
 

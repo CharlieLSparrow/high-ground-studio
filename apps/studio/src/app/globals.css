@@ -77,21 +77,25 @@ button:disabled {
 
 .manuscript-prosemirror .manuscript-author-mark {
   background: transparent;
+  border-radius: 0.24rem;
   box-shadow: none;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0.03em 0.1em;
 }
 
 .manuscript-prosemirror .manuscript-author-charlie {
-  background: transparent;
+  background: rgba(82, 164, 220, 0.22);
   box-shadow: none;
 }
 
 .manuscript-prosemirror .manuscript-author-homer {
-  background: transparent;
+  background: rgba(126, 200, 134, 0.22);
   box-shadow: none;
 }
 
 .manuscript-prosemirror .manuscript-author-unassigned {
-  background: transparent;
+  background: rgba(244, 240, 232, 0.1);
   box-shadow: none;
 }
 
@@ -102,8 +106,8 @@ button:disabled {
 .manuscript-prosemirror .manuscript-author-block-charlie {
   --manuscript-author-wash: linear-gradient(
     90deg,
-    rgba(82, 164, 220, 0.24),
-    rgba(82, 164, 220, 0.12) 76%,
+    rgba(82, 164, 220, 0.28),
+    rgba(82, 164, 220, 0.14) 76%,
     transparent
   );
 }
@@ -111,8 +115,8 @@ button:disabled {
 .manuscript-prosemirror .manuscript-author-block-homer {
   --manuscript-author-wash: linear-gradient(
     90deg,
-    rgba(126, 200, 134, 0.23),
-    rgba(126, 200, 134, 0.11) 76%,
+    rgba(126, 200, 134, 0.28),
+    rgba(126, 200, 134, 0.14) 76%,
     transparent
   );
 }
@@ -133,6 +137,40 @@ button:disabled {
     rgba(244, 240, 232, 0.03) 72%,
     transparent
   );
+}
+
+@supports selector(:has(*)) {
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-author-charlie) {
+    --manuscript-author-wash: linear-gradient(
+      90deg,
+      rgba(82, 164, 220, 0.28),
+      rgba(82, 164, 220, 0.14) 76%,
+      transparent
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-author-homer) {
+    --manuscript-author-wash: linear-gradient(
+      90deg,
+      rgba(126, 200, 134, 0.28),
+      rgba(126, 200, 134, 0.14) 76%,
+      transparent
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-author-charlie):has(
+      .manuscript-author-homer
+    ) {
+    --manuscript-author-wash: linear-gradient(
+      90deg,
+      rgba(82, 164, 220, 0.2),
+      rgba(126, 200, 134, 0.18) 72%,
+      transparent
+    );
+  }
 }
 
 .manuscript-prosemirror .manuscript-semantic-quote {
@@ -284,12 +322,12 @@ button:disabled {
 }
 
 .manuscript-hide-author-colors .manuscript-author-mark {
-  background: transparent;
-  box-shadow: none;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .manuscript-hide-author-colors .manuscript-prosemirror .manuscript-author-block {
-  --manuscript-author-wash: transparent;
+  --manuscript-author-wash: transparent !important;
 }
 
 .manuscript-hide-semantic-colors .manuscript-semantic-mark {
