@@ -14,9 +14,15 @@ importers:
       '@prisma/config':
         specifier: ^7.7.0
         version: 7.7.0
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
       react-datepicker:
         specifier: ^9.1.0
         version: 9.1.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
     devDependencies:
       '@playwright/test':
         specifier: ^1.60.0
@@ -37,6 +43,59 @@ importers:
       vite:
         specifier: ^5.4.1
         version: 5.4.21(@types/node@25.3.3)(lightningcss@1.32.0)
+
+  apps/quiplore:
+    dependencies:
+      '@high-ground/quipsly-domain':
+        specifier: workspace:*
+        version: link:../../packages/quipsly-domain
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@19.2.4)
+      next:
+        specifier: 16.1.6
+        version: 16.1.6(@playwright/test@1.60.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      '@types/react':
+        specifier: 19.2.14
+        version: 19.2.14
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  apps/quipsly-api:
+    dependencies:
+      '@high-ground/quipsly-domain':
+        specifier: workspace:*
+        version: link:../../packages/quipsly-domain
+      next:
+        specifier: 16.1.6
+        version: 16.1.6(@playwright/test@1.60.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      '@types/react':
+        specifier: 19.2.14
+        version: 19.2.14
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
 
   apps/studio:
     dependencies:
@@ -181,6 +240,12 @@ importers:
       '@types/three':
         specifier: ^0.183.1
         version: 0.183.1
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  packages/quipsly-domain:
+    devDependencies:
       typescript:
         specifier: ^5.5.4
         version: 5.9.3

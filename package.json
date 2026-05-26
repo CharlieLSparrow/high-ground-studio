@@ -30,6 +30,14 @@
     "web:db:target:report": "node scripts/web-database-target-report.mjs",
     "web:domain:check": "node scripts/web-domain-readiness.mjs",
     "web:cloudrun:test": "node --test scripts/web-cloud-run-readiness.test.mjs",
+    "quiplore": "pnpm --filter quiplore dev",
+    "quiplore:build": "pnpm --filter quiplore build",
+    "quiplore:typecheck": "pnpm --filter quiplore typecheck",
+    "quipsly:api": "pnpm --filter quipsly-api dev",
+    "quipsly:api:build": "pnpm --filter quipsly-api build",
+    "quipsly:api:typecheck": "pnpm --filter quipsly-api typecheck",
+    "quipsly:domain:build": "pnpm --filter @high-ground/quipsly-domain build",
+    "quipsly:domain:typecheck": "pnpm --filter @high-ground/quipsly-domain typecheck",
     "progress:story:add": "node scripts/progress-story-add-entry.mjs",
     "progress:story:test": "node --test scripts/progress-story-add-entry.test.mjs",
     "studio:manuscript:test": "node --experimental-strip-types --test scripts/studio-manuscript-editor.test.mjs",
@@ -73,7 +81,9 @@
   "dependencies": {
     "@prisma/client": "^7.7.0",
     "@prisma/config": "^7.7.0",
-    "react-datepicker": "^9.1.0"
+    "react": "19.2.4",
+    "react-datepicker": "^9.1.0",
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
