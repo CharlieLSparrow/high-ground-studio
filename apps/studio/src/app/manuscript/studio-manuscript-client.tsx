@@ -3928,7 +3928,7 @@ export function StudioManuscriptClient({
           <aside
             className={cn(
               "order-2 hidden min-w-0 rounded-lg border border-studio-line bg-studio-panel/78 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.2)] backdrop-blur-md",
-              "md:sticky md:top-[68px] md:z-20 md:block md:max-h-[calc(100vh-80px)] md:self-start md:overflow-y-auto xl:top-[64px] xl:max-h-[calc(100vh-76px)]",
+              "md:sticky md:top-[68px] md:z-20 md:flex md:max-h-[calc(100vh-80px)] md:flex-col md:self-start md:overflow-hidden xl:top-[64px] xl:max-h-[calc(100vh-76px)]",
             )}
             aria-label="Manuscript tools sidebar"
           >
@@ -3942,7 +3942,7 @@ export function StudioManuscriptClient({
             <section
               className={cn(
                 cardClassName,
-                "sticky top-0 z-20 grid gap-2 border-studio-tag/45 bg-[#0a2a22]/95 p-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)] backdrop-blur-md",
+                "grid gap-2 border-studio-tag/45 bg-[#0a2a22]/95 p-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)]",
               )}
               data-testid="manuscript-primary-save-panel"
             >
@@ -3996,6 +3996,7 @@ export function StudioManuscriptClient({
               </p>
             </section>
 
+            <div className="mt-3.5 grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
             <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
               <HelpHeading noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
                 Work modes
@@ -6811,6 +6812,7 @@ export function StudioManuscriptClient({
                 )}
               </section>
             ) : null}
+            </div>
           </aside>
         </section>
 
