@@ -5,7 +5,14 @@ import UniqueID from "@tiptap/extension-unique-id";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import mammoth from "mammoth";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   cardClassName,
@@ -191,6 +198,18 @@ type ManuscriptSidePanelMode =
 
 type RecordingOutlineKind = ManuscriptStructureKind | "all";
 
+type ManuscriptTipTapEditor = NonNullable<ReturnType<typeof useEditor>>;
+
+type ManuscriptTextSelectionRange = {
+  from: number;
+  to: number;
+};
+
+type ManuscriptTagContextMenuState = ManuscriptTextSelectionRange & {
+  x: number;
+  y: number;
+};
+
 const manuscriptSidePanelModes = [
   { id: "mark", label: "Mark" },
   { id: "structure", label: "Structure" },
@@ -204,10 +223,10 @@ const fieldLabelClassName =
   "text-[0.78rem] font-extrabold uppercase text-studio-muted";
 
 const fieldClassName =
-  "min-h-10 w-full rounded-lg border border-studio-line-strong bg-[#0f1512] px-2.5 py-2 text-studio-ink disabled:text-studio-dim";
+  "min-h-10 w-full rounded-lg border border-studio-line-strong bg-[#041f1e] px-2.5 py-2 text-studio-ink disabled:text-studio-dim";
 
 const textareaClassName =
-  "w-full resize-y rounded-lg border border-studio-line-strong bg-[#0f1512] px-3 py-2.5 text-[0.9rem] leading-6 text-studio-ink disabled:text-studio-dim";
+  "w-full resize-y rounded-lg border border-studio-line-strong bg-[#041f1e] px-3 py-2.5 text-[0.9rem] leading-6 text-studio-ink disabled:text-studio-dim";
 
 const smallButtonClassName =
   "min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.8rem] font-extrabold text-studio-source disabled:text-studio-dim sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
@@ -405,7 +424,7 @@ function ensureBlockIds(json: ManuscriptEditorJson) {
 }
 
 function getEditorSelectionBlockRange(
-  editor: NonNullable<ReturnType<typeof useEditor>>,
+  editor: ManuscriptTipTapEditor,
 ) {
   const blockIds: string[] = [];
   const seen = new Set<string>();
@@ -450,6 +469,44 @@ function getEditorSelectionBlockRange(
     startBlockId: blockIds[0],
     endBlockId: blockIds[blockIds.length - 1],
     blockCount: blockIds.length,
+  };
+}
+
+function getEditorTextSelectionRange(
+  editor: ManuscriptTipTapEditor,
+): ManuscriptTextSelectionRange | null {
+  const { empty, from, to } = editor.state.selection;
+
+  if (empty || from === to) {
+    return null;
+  }
+
+  const selectedText = editor.state.doc.textBetween(from, to, " ").trim();
+
+  if (!selectedText) {
+    return null;
+  }
+
+  return { from, to };
+}
+
+function getTagContextMenuPosition(event: ReactMouseEvent<HTMLElement>) {
+  const margin = 12;
+  const menuWidth = 320;
+  const menuHeight = 420;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight =
+    window.innerHeight || document.documentElement.clientHeight;
+
+  return {
+    x: Math.max(
+      margin,
+      Math.min(event.clientX, viewportWidth - menuWidth - margin),
+    ),
+    y: Math.max(
+      margin,
+      Math.min(event.clientY, viewportHeight - menuHeight - margin),
+    ),
   };
 }
 
@@ -528,6 +585,9 @@ export function StudioManuscriptClient({
     endBlockId: string;
     blockCount: number;
   } | null>(null);
+  const [hasTextSelection, setHasTextSelection] = useState(false);
+  const [tagContextMenu, setTagContextMenu] =
+    useState<ManuscriptTagContextMenuState | null>(null);
   const [pendingStructureStartBlockId, setPendingStructureStartBlockId] =
     useState<string | null>(null);
   const [pendingStructureEndBlockId, setPendingStructureEndBlockId] =
@@ -667,7 +727,7 @@ export function StudioManuscriptClient({
     editorProps: {
       attributes: {
         class:
-          "manuscript-prosemirror min-h-[560px] rounded-lg border border-studio-line-strong bg-[#0f1512] px-5 py-4 text-[1rem] leading-8 text-studio-ink outline-none",
+          "manuscript-prosemirror min-h-[560px] rounded-lg border border-studio-line-strong bg-[#031918] px-5 py-4 text-[1rem] leading-8 text-studio-ink outline-none",
       },
     },
     onUpdate: ({ editor: currentEditor }) => {
@@ -1174,6 +1234,12 @@ export function StudioManuscriptClient({
 
     const updateSelectedRange = () => {
       setSelectedStructureRange(getEditorSelectionBlockRange(editor));
+      const textRange = getEditorTextSelectionRange(editor);
+      setHasTextSelection(Boolean(textRange));
+
+      if (!textRange) {
+        setTagContextMenu(null);
+      }
     };
 
     updateSelectedRange();
@@ -1185,6 +1251,27 @@ export function StudioManuscriptClient({
       editor.off("update", updateSelectedRange);
     };
   }, [editor]);
+
+  useEffect(() => {
+    if (!tagContextMenu) {
+      return;
+    }
+
+    const closeMenu = () => setTagContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeMenu);
+
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [tagContextMenu]);
 
   useEffect(() => {
     if (!editor) {
@@ -1552,6 +1639,7 @@ export function StudioManuscriptClient({
 
   function updateRecordingMode(enabled: boolean) {
     setIsRecordingMode(enabled);
+    setTagContextMenu(null);
 
     if (enabled) {
       setSidePanelMode("structure");
@@ -1726,20 +1814,31 @@ export function StudioManuscriptClient({
     editor.chain().focus().setMark("authorMark", getAuthorMarkAttrs(authorId)).run();
   }
 
-  function markSelectionAsAuthor(authorId: ManuscriptAuthorId) {
+  function markSelectionAsAuthor(
+    authorId: ManuscriptAuthorId,
+    range?: ManuscriptTextSelectionRange,
+  ) {
     if (!editor) {
       return;
     }
 
+    const chain = editor.chain().focus();
+
+    if (range) {
+      chain.setTextSelection({ from: range.from, to: range.to });
+    }
+
     if (authorId === "unassigned") {
-      editor.chain().focus().unsetMark("authorMark").run();
+      chain.unsetMark("authorMark").run();
       setActiveAuthorId("unassigned");
+      setTagContextMenu(null);
       setMessage("Author mark cleared from the current selection.");
       return;
     }
 
-    editor.chain().focus().setMark("authorMark", getAuthorMarkAttrs(authorId)).run();
+    chain.setMark("authorMark", getAuthorMarkAttrs(authorId)).run();
     setActiveAuthorId(authorId);
+    setTagContextMenu(null);
     setMessage(`Marked selection as ${getManuscriptAuthorDefinition(authorId).label}.`);
   }
 
@@ -1772,8 +1871,16 @@ export function StudioManuscriptClient({
     message: string;
     highlightId?: string;
     createdAt?: string;
+    range?: ManuscriptTextSelectionRange;
   }) {
     if (!editor) {
+      return null;
+    }
+
+    const range = input.range ?? getEditorTextSelectionRange(editor);
+
+    if (!range) {
+      setMessage("Select manuscript text before applying a semantic highlight.");
       return null;
     }
 
@@ -1784,6 +1891,7 @@ export function StudioManuscriptClient({
     editor
       .chain()
       .focus()
+      .setTextSelection({ from: range.from, to: range.to })
       .setMark("semanticHighlightMark", {
         highlightId,
         tagType: definition.id,
@@ -1793,6 +1901,7 @@ export function StudioManuscriptClient({
         createdAt,
       })
       .run();
+    setTagContextMenu(null);
     setMessage(input.message);
     return highlightId;
   }
@@ -1813,7 +1922,7 @@ export function StudioManuscriptClient({
     setSemanticNote("");
   }
 
-  function markCitedQuotation() {
+  function markCitedQuotation(range?: ManuscriptTextSelectionRange) {
     const highlightId = createHighlightId();
     const updatedAt = new Date().toISOString();
     const appliedHighlightId = applySemanticHighlightToSelection({
@@ -1821,6 +1930,7 @@ export function StudioManuscriptClient({
       note: citationNote,
       highlightId,
       createdAt: updatedAt,
+      range,
       message: "Marked selection as cited quotation.",
     });
 
@@ -1842,13 +1952,87 @@ export function StudioManuscriptClient({
     setSemanticType("cited-quotation");
   }
 
-  function clearSemanticHighlight() {
+  function clearSemanticHighlight(range?: ManuscriptTextSelectionRange) {
     if (!editor) {
       return;
     }
 
-    editor.chain().focus().unsetMark("semanticHighlightMark").run();
+    const chain = editor.chain().focus();
+
+    if (range) {
+      chain.setTextSelection({ from: range.from, to: range.to });
+    }
+
+    chain.unsetMark("semanticHighlightMark").run();
+    setTagContextMenu(null);
     setMessage("Semantic highlight cleared from the current selection.");
+  }
+
+  function applySemanticHighlightFromContextMenu(tagType: SemanticHighlightType) {
+    if (!tagContextMenu) {
+      return;
+    }
+
+    const definition = getSemanticHighlightDefinition(tagType);
+    const appliedHighlightId = applySemanticHighlightToSelection({
+      tagType: definition.id,
+      note: semanticNote,
+      range: tagContextMenu,
+      message: `Applied ${definition.label} semantic highlight.`,
+    });
+
+    if (!appliedHighlightId) {
+      return;
+    }
+
+    setSemanticType(definition.id);
+    setSemanticNote("");
+  }
+
+  function markCitedQuotationFromContextMenu() {
+    if (!tagContextMenu) {
+      return;
+    }
+
+    markCitedQuotation(tagContextMenu);
+  }
+
+  function clearSemanticHighlightFromContextMenu() {
+    if (!tagContextMenu) {
+      return;
+    }
+
+    clearSemanticHighlight(tagContextMenu);
+  }
+
+  function markAuthorFromContextMenu(authorId: ManuscriptAuthorId) {
+    if (!tagContextMenu) {
+      return;
+    }
+
+    markSelectionAsAuthor(authorId, tagContextMenu);
+  }
+
+  function handleManuscriptContextMenu(event: ReactMouseEvent<HTMLElement>) {
+    if (!editor || isRecordingMode) {
+      return;
+    }
+
+    const range = getEditorTextSelectionRange(editor);
+
+    if (!range) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const position = getTagContextMenuPosition(event);
+    setSidePanelMode("mark");
+    setTagContextMenu({
+      ...range,
+      ...position,
+    });
   }
 
   function captureStructureRange() {
@@ -3196,6 +3380,8 @@ export function StudioManuscriptClient({
     setQuoteReviews({});
     setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
+    setHasTextSelection(false);
+    setTagContextMenu(null);
     setPendingStructureStartBlockId(null);
     setPendingStructureEndBlockId(null);
     setActiveAuthorId(emptyDraft.activeAuthorId);
@@ -3232,6 +3418,158 @@ export function StudioManuscriptClient({
           message.includes("Loaded")
         ? "tag"
         : "default";
+  const taggingDock = !isRecordingMode ? (
+    <section
+      className="sticky top-2 z-30 grid max-h-[calc(100dvh-1rem)] gap-3 overflow-auto rounded-lg border border-studio-tag/45 bg-[#032927]/95 p-3 shadow-[0_18px_52px_rgba(0,0,0,0.34)] backdrop-blur-md md:top-[68px] md:max-h-[calc(100dvh-82px)]"
+      aria-label="Sticky tagging menu"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <HelpLabel noteId="mark-mode">Tagging menu</HelpLabel>
+          <StudioChip tone={hasTextSelection ? "tag" : "default"}>
+            {hasTextSelection ? "Selection ready" : "Select text"}
+          </StudioChip>
+          <StudioChip tone="source">
+            {getManuscriptAuthorDefinition(activeAuthorId).label}
+          </StudioChip>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            className={cn(
+              commandButtonClassName,
+              editor?.isActive("bold") ? activeButtonClassName : "",
+            )}
+            type="button"
+            onClick={() => editor?.chain().focus().toggleBold().run()}
+          >
+            Bold
+          </button>
+          <button
+            className={cn(
+              commandButtonClassName,
+              editor?.isActive("italic") ? activeButtonClassName : "",
+            )}
+            type="button"
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
+          >
+            Italic
+          </button>
+          <button
+            className={commandButtonClassName}
+            type="button"
+            onClick={() => editor?.chain().focus().undo().run()}
+          >
+            Undo
+          </button>
+          <button
+            className={commandButtonClassName}
+            type="button"
+            onClick={() => editor?.chain().focus().redo().run()}
+          >
+            Redo
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.2fr)_minmax(210px,0.7fr)]">
+        <div className="grid gap-2">
+          <HelpLabel noteId="author-marks">Author</HelpLabel>
+          <div className="grid grid-cols-3 gap-2 xl:grid-cols-1">
+            {manuscriptAuthorDefinitions.map((author) => (
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  "px-2 text-[0.74rem]",
+                  activeAuthorId === author.id ? activeButtonClassName : "",
+                )}
+                key={author.id}
+                type="button"
+                onClick={() => markSelectionAsAuthor(author.id)}
+              >
+                {author.id === "homer"
+                  ? "Homer"
+                  : author.id === "charlie"
+                    ? "Charlie"
+                    : "Clear"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid min-w-0 gap-2">
+          <HelpLabel noteId="semantic-meaning-tags">Semantic palette</HelpLabel>
+          <div className="flex snap-x gap-2 overflow-x-auto pb-1">
+            {semanticHighlightDefinitions.map((definition) => (
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  "min-w-fit shrink-0 snap-start px-3",
+                  semanticType === definition.id ? activeButtonClassName : "",
+                )}
+                key={definition.id}
+                type="button"
+                onClick={() => setSemanticType(definition.id)}
+              >
+                {definition.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className={fieldLabelClassName}>Semantic note</span>
+              <textarea
+                className={cn(textareaClassName, "min-h-[58px]")}
+                value={semanticNote}
+                onChange={(event) => setSemanticNote(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={fieldLabelClassName}>Citation / source note</span>
+              <textarea
+                className={cn(textareaClassName, "min-h-[58px]")}
+                value={citationNote}
+                onChange={(event) => setCitationNote(event.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="grid content-start gap-2">
+          <button
+            className={smallButtonClassName}
+            disabled={!hasTextSelection}
+            type="button"
+            onClick={applySemanticHighlight}
+          >
+            Apply semantic
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!hasTextSelection}
+            type="button"
+            onClick={() => markCitedQuotation()}
+          >
+            Mark cited quote
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!hasTextSelection}
+            type="button"
+            onClick={() => clearSemanticHighlight()}
+          >
+            Clear semantic
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={() => applySemanticFocus(semanticType)}
+          >
+            Focus tag
+          </button>
+        </div>
+      </div>
+    </section>
+  ) : null;
 
   return (
     <main className="min-h-screen overflow-x-hidden px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
@@ -3382,116 +3720,12 @@ export function StudioManuscriptClient({
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
             ) : (
-              <div className="grid gap-3 rounded-lg border border-studio-line bg-black/20 p-2.5 md:hidden">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className={labelClassName}>Writing marks</p>
-                  <StudioChip tone="source">
-                    {getManuscriptAuthorDefinition(activeAuthorId).label}
-                  </StudioChip>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {manuscriptAuthorDefinitions.map((author) => (
-                    <button
-                      className={cn(
-                        smallButtonClassName,
-                        "px-2 text-[0.74rem]",
-                        activeAuthorId === author.id
-                          ? activeButtonClassName
-                          : "",
-                      )}
-                      key={author.id}
-                      type="button"
-                      onClick={() => markSelectionAsAuthor(author.id)}
-                    >
-                      {author.id === "homer"
-                        ? "Homer"
-                        : author.id === "charlie"
-                          ? "Charlie"
-                          : "Clear"}
-                    </button>
-                  ))}
-                </div>
-
-                <label className="grid gap-1.5">
-                  <HelpLabel noteId="semantic-meaning-tags">
-                    Semantic tag
-                  </HelpLabel>
-                  <select
-                    className={fieldClassName}
-                    value={semanticType}
-                    onChange={(event) =>
-                      setSemanticType(event.target.value as SemanticHighlightType)
-                    }
-                  >
-                    {semanticHighlightDefinitions.map((definition) => (
-                      <option key={definition.id} value={definition.id}>
-                        {definition.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5">
-                  <span className={fieldLabelClassName}>Semantic note</span>
-                  <textarea
-                    className={cn(textareaClassName, "min-h-[64px]")}
-                    value={semanticNote}
-                    onChange={(event) => setSemanticNote(event.target.value)}
-                  />
-                </label>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={applySemanticHighlight}
-                  >
-                    Apply semantic
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={clearSemanticHighlight}
-                  >
-                    Clear semantic
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={markCitedQuotation}
-                  >
-                    Mark cited quote
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={() => applySemanticFocus(semanticType)}
-                  >
-                    Focus tag
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={captureStructureRange}
-                  >
-                    Capture range
-                  </button>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={createStructureRegion}
-                  >
-                    Add {getManuscriptStructureDefinition(structureKind).label}
-                  </button>
-                </div>
-              </div>
+              taggingDock
             )}
 
-            <EditorContent editor={editor} />
+            <div onContextMenu={handleManuscriptContextMenu}>
+              <EditorContent editor={editor} />
+            </div>
 
             <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
               Paragraphs, headings, and list items carry `blockId` attributes in
@@ -3674,7 +3908,7 @@ export function StudioManuscriptClient({
                     <button
                       className={smallButtonClassName}
                       type="button"
-                      onClick={clearSemanticHighlight}
+                      onClick={() => clearSemanticHighlight()}
                     >
                       Clear semantic
                     </button>
@@ -3703,7 +3937,7 @@ export function StudioManuscriptClient({
                       <button
                         className={smallButtonClassName}
                         type="button"
-                        onClick={markCitedQuotation}
+                        onClick={() => markCitedQuotation()}
                       >
                         Mark cited quote
                       </button>
@@ -6308,7 +6542,7 @@ export function StudioManuscriptClient({
           aria-label="Mobile manuscript tools"
         >
           {isMobileToolsOpen ? (
-            <div className="mb-2 grid max-h-[70vh] gap-3 overflow-auto rounded-t-2xl border border-studio-line-strong bg-[#0f1512] p-3">
+            <div className="mb-2 grid max-h-[70vh] gap-3 overflow-auto rounded-t-2xl border border-studio-line-strong bg-[#041f1e] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className={labelClassName}>Mobile tools</p>
@@ -6514,7 +6748,7 @@ export function StudioManuscriptClient({
                     <button
                       className={smallButtonClassName}
                       type="button"
-                      onClick={markCitedQuotation}
+                      onClick={() => markCitedQuotation()}
                     >
                       Mark cited quote
                     </button>
@@ -6535,7 +6769,7 @@ export function StudioManuscriptClient({
                     <button
                       className={smallButtonClassName}
                       type="button"
-                      onClick={clearSemanticHighlight}
+                      onClick={() => clearSemanticHighlight()}
                     >
                       Clear semantic
                     </button>
@@ -6817,9 +7051,101 @@ export function StudioManuscriptClient({
                 {isMobileToolsOpen ? "Close tools" : "Tools"}
               </button>
             </div>
-          </div>
-        </section>
-      </div>
-    </main>
+            </div>
+          </section>
+
+          {tagContextMenu ? (
+            <div
+              className="fixed z-50 grid w-[min(320px,calc(100vw-24px))] gap-2 rounded-lg border border-studio-tag/50 bg-[#032927]/98 p-2.5 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-md"
+              role="menu"
+              aria-label="Tag selected manuscript text"
+              style={{
+                left: `${tagContextMenu.x}px`,
+                top: `${tagContextMenu.y}px`,
+              }}
+              onContextMenu={(event) => event.preventDefault()}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className={labelClassName}>Tag selection</p>
+                <button
+                  className={commandButtonClassName}
+                  type="button"
+                  aria-label="Close tagging menu"
+                  onClick={() => setTagContextMenu(null)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid gap-1.5">
+                <span className={fieldLabelClassName}>Author</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {manuscriptAuthorDefinitions.map((author) => (
+                    <button
+                      className={cn(
+                        commandButtonClassName,
+                        activeAuthorId === author.id ? activeButtonClassName : "",
+                      )}
+                      key={author.id}
+                      role="menuitem"
+                      type="button"
+                      onClick={() => markAuthorFromContextMenu(author.id)}
+                    >
+                      {author.id === "homer"
+                        ? "Homer"
+                        : author.id === "charlie"
+                          ? "Charlie"
+                          : "Clear"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <span className={fieldLabelClassName}>Semantic</span>
+                <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">
+                  {semanticHighlightDefinitions.map((definition) => (
+                    <button
+                      className={cn(
+                        commandButtonClassName,
+                        "justify-start text-left",
+                        semanticType === definition.id ? activeButtonClassName : "",
+                      )}
+                      key={definition.id}
+                      role="menuitem"
+                      type="button"
+                      onClick={() =>
+                        applySemanticHighlightFromContextMenu(definition.id)
+                      }
+                    >
+                      {definition.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  className={commandButtonClassName}
+                  role="menuitem"
+                  type="button"
+                  onClick={markCitedQuotationFromContextMenu}
+                >
+                  Cited quote
+                </button>
+                <button
+                  className={commandButtonClassName}
+                  role="menuitem"
+                  type="button"
+                  onClick={clearSemanticHighlightFromContextMenu}
+                >
+                  Clear semantic
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </main>
   );
 }
