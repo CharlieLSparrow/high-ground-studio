@@ -2,13 +2,13 @@
 
 @theme {
   --color-studio-ink: #f4f0e8;
-  --color-studio-muted: #b8c0b7;
-  --color-studio-dim: #7f8b84;
-  --color-studio-bg: #0b100e;
-  --color-studio-panel: #131a17;
-  --color-studio-panel-soft: #19211d;
-  --color-studio-line: rgba(244, 240, 232, 0.14);
-  --color-studio-line-strong: rgba(244, 240, 232, 0.24);
+  --color-studio-muted: #afc5c0;
+  --color-studio-dim: #7fa09b;
+  --color-studio-bg: #001615;
+  --color-studio-panel: #032321;
+  --color-studio-panel-soft: #062d2a;
+  --color-studio-line: rgba(218, 246, 241, 0.14);
+  --color-studio-line-strong: rgba(218, 246, 241, 0.24);
   --color-studio-tag: #9fd18b;
   --color-studio-node: #f0b765;
   --color-studio-source: #82c6d8;
@@ -30,7 +30,7 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  background: linear-gradient(135deg, #0b100e 0%, #141b18 56%, #211f18 100%);
+  background: linear-gradient(135deg, #000f0f 0%, #001918 52%, #032724 100%);
   color: var(--color-studio-ink);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
