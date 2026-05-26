@@ -587,6 +587,64 @@ export function createLiveRoomSnapshotDescription(input: {
     : description;
 }
 
+function formatNotebookBlockKindForPacket(
+  kind: StudioManuscriptLiveNotebookSectionKind,
+) {
+  if (kind === "action-items") {
+    return "Actions";
+  }
+
+  if (kind === "source-note") {
+    return "Source";
+  }
+
+  if (kind === "decision") {
+    return "Decision";
+  }
+
+  if (kind === "question") {
+    return "Question";
+  }
+
+  return "Note";
+}
+
+export function createLiveRoomSessionPacket(input: {
+  roomId: string;
+  roomTitle: string;
+  shareUrl?: string;
+  text: string;
+  generatedAt?: string;
+}) {
+  const text = normalizeLiveRoomText(input.text).trim();
+  const blocks = createLiveRoomNotebookBlocks(text);
+  const recap = createLiveRoomSessionRecap(text);
+  const stats = countLiveRoomTextStats(text);
+  const headerLines = [
+    `# ${input.roomTitle || "Live room"} session packet`,
+    `Room ID: ${input.roomId}`,
+    input.shareUrl ? `Room link: ${input.shareUrl}` : "",
+    `Generated: ${input.generatedAt ?? new Date().toISOString()}`,
+    `Stats: ${stats.words} words, ${stats.characters} chars, ${blocks.length} sections`,
+  ].filter(Boolean);
+  const outlineLines = [
+    "## Section outline",
+    ...blocks.map(
+      (block) =>
+        `${block.index + 1}. [${formatNotebookBlockKindForPacket(
+          block.kind,
+        )}] ${block.label} (${block.wordCount} words)`,
+    ),
+  ];
+
+  return [
+    headerLines.join("\n"),
+    outlineLines.join("\n"),
+    ["## Structured recap", recap.summaryText].join("\n"),
+    ["## Current text", text || "(empty)"].join("\n"),
+  ].join("\n\n");
+}
+
 export function createLiveRoomNotebookStarterText(
   kind: StudioManuscriptLiveNotebookStarterKind,
 ) {

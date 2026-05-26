@@ -6,6 +6,12 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
+### Codex / `codex/live-room-session-packet-001`
+
+- Continuing the OneNote-style live-room push after `studio-00071-7ks`.
+- Targeting a copyable session packet with room metadata, section outline,
+  structured recap, and current text for Homer-session handoff.
+
 ### Codex / `main` Studio live-room section focus mode
 
 - Continued the OneNote-style live-room push after `studio-00069-c9k`.

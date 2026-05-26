@@ -24,6 +24,7 @@ import {
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createLiveRoomSessionRecap,
+  createLiveRoomSessionPacket,
   createLiveRoomSnapshotDescription,
   createManuscriptDraftFromLiveRoomText,
   createLiveRoomTextFromManuscriptDraft,
@@ -844,6 +845,22 @@ export function StudioManuscriptLiveRoomClient({
     updateMessage("Session recap copied.");
   }, [sessionRecap.summaryText, updateMessage]);
 
+  const copySessionPacket = useCallback(async () => {
+    if (!activeRoom) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(
+      createLiveRoomSessionPacket({
+        roomId: activeRoom.id,
+        roomTitle: activeRoom.title,
+        shareUrl,
+        text,
+      }),
+    );
+    updateMessage("Session packet copied.");
+  }, [activeRoom, shareUrl, text, updateMessage]);
+
   const saveSnapshot = useCallback(async () => {
     if (!activeRoom) {
       return;
@@ -1482,6 +1499,15 @@ export function StudioManuscriptLiveRoomClient({
                     type="button"
                   >
                     Copy recap
+                  </button>
+                  <button
+                    className={buttonClassName}
+                    data-testid="live-room-copy-session-packet"
+                    disabled={!activeRoom}
+                    onClick={() => void copySessionPacket()}
+                    type="button"
+                  >
+                    Copy session packet
                   </button>
                   <button
                     className={buttonClassName}

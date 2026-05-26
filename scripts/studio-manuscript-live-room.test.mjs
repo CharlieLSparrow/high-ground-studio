@@ -9,6 +9,7 @@ import {
   createLiveRoomNotebookStarterText,
   createLiveRoomNotebookBlocks,
   createLiveRoomSessionRecap,
+  createLiveRoomSessionPacket,
   createLiveRoomSnapshotDescription,
   createLiveRoomTextFromManuscriptDraft,
   createLiveRoomYDocFromText,
@@ -305,6 +306,29 @@ test("live room snapshot description carries a compact recap", () => {
   assert.match(description, /Manual checkpoint from live room room-123/);
   assert.match(description, /D\(1\): Keep notebook-first editing/);
   assert.match(description, /A\(1\): Charlie \/ test the room/);
+});
+
+test("live room session packet captures room handoff context", () => {
+  const packet = createLiveRoomSessionPacket({
+    roomId: "room-123",
+    roomTitle: "Tonight with Homer",
+    shareUrl: "https://studio.example/manuscript/live?room=room-123",
+    generatedAt: "2026-05-26T05:00:00.000Z",
+    text: [
+      "Decision\nDecision: Keep the section focused.",
+      "Action Items\n- Charlie / turn this into a chapter note / tomorrow",
+      "Source Note\nSource: Working session",
+    ].join("\n\n"),
+  });
+
+  assert.match(packet, /# Tonight with Homer session packet/);
+  assert.match(packet, /Room ID: room-123/);
+  assert.match(packet, /Room link: https:\/\/studio\.example/);
+  assert.match(packet, /1\. \[Decision\] Decision/);
+  assert.match(packet, /2\. \[Actions\] Action Items/);
+  assert.match(packet, /## Structured recap/);
+  assert.match(packet, /Keep the section focused/);
+  assert.match(packet, /## Current text/);
 });
 
 test("live room notebook starters create useful section scaffolds", () => {
