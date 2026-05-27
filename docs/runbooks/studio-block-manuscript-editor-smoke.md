@@ -763,15 +763,18 @@ material, not as the source of truth for the editing workflow.
 
 ## Known MVP Limitations
 
-- Drafts are browser-local only.
-- Drafts do not sync across browsers or devices.
+- Classic `/manuscript` desk drafts are browser-local until saved or handed off.
+- Classic `/manuscript` desk drafts do not sync across browsers or devices
+  without a manual save/load or live-room handoff.
 - Clearing browser storage can remove the draft.
 - `.docx` import favors clean text structure over exact Word layout.
 - `.docx` export is not implemented.
 - There is no database-backed revision history.
-- There is no production Yjs or real-time collaboration in the Manuscript Desk.
-  A separate local-only synthetic lab exists at `/manuscript/collaboration-lab`
-  for CRDT testing; it does not touch production manuscript save/load behavior.
+- The production-ish co-editing path is `/manuscript/collab/latest`: one
+  token-gated shared Yjs room backed by the `studio-collab` service. It is not
+  a general room list or full revision-history system yet.
+- The separate local-only synthetic lab still exists at
+  `/manuscript/collaboration-lab` for CRDT and annotation modeling.
 - Collaboration lab span semantics are synthetic text-offset spans only. They
   prove the future semantic-mark direction but are not production comments,
   real source spans, or Manuscript Desk save/load wiring.

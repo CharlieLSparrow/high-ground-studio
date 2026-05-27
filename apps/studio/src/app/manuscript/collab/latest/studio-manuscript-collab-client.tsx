@@ -162,8 +162,8 @@ const liveQuickSemanticHighlightTypes = [
   "clip",
   "show-notes",
 ] as const satisfies readonly SemanticHighlightType[];
-const AUTO_BACKUP_IDLE_MS = 15_000;
-const AUTO_BACKUP_MIN_INTERVAL_MS = 90_000;
+const AUTO_BACKUP_IDLE_MS = 4_000;
+const AUTO_BACKUP_MIN_INTERVAL_MS = 30_000;
 const AUTO_HANDOFF_DELAY_MS = 1_200;
 const emptyLiveStructureState: LiveStructureState = {
   chapter: null,
@@ -472,7 +472,7 @@ export default function StudioManuscriptCollabClient() {
   const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
   const [isAutoBackupEnabled, setIsAutoBackupEnabled] = useState(true);
   const [autoBackupStatus, setAutoBackupStatus] =
-    useState("Auto-backup is on.");
+    useState("Auto-save is on.");
   const [unsyncedChangeCount, setUnsyncedChangeCount] = useState(0);
   const [presenceParticipants, setPresenceParticipants] = useState<
     LivePresenceParticipant[]
@@ -1166,7 +1166,7 @@ export default function StudioManuscriptCollabClient() {
 
     if (options.mode === "auto" && hasOutsideBackup) {
       setAutoBackupStatus(
-        "Auto-backup paused because a newer backup exists outside this room.",
+        "Auto-save paused because a newer backup exists outside this room.",
       );
       return;
     }
@@ -1174,7 +1174,7 @@ export default function StudioManuscriptCollabClient() {
     setIsSaving(true);
     setMessage(
       options.mode === "auto"
-        ? "Auto-backing up the room to the latest manuscript."
+        ? "Auto-saving this room to the latest manuscript backup."
         : "Saving the room to the latest manuscript backup.",
     );
 
@@ -1196,7 +1196,7 @@ export default function StudioManuscriptCollabClient() {
             draft,
             description:
               options.mode === "auto"
-                ? "Live edit auto-backup"
+                ? "Live edit auto-save"
                 : "Live edit checkpoint",
           }),
         },
@@ -1214,12 +1214,12 @@ export default function StudioManuscriptCollabClient() {
       if (options.mode === "auto") {
         lastAutoBackupAtRef.current = Date.now();
         setAutoBackupStatus(
-          `Auto-backed up ${formatDateTime(payload.snapshot.updatedAt)}.`,
+          `Auto-saved ${formatDateTime(payload.snapshot.updatedAt)}.`,
         );
       }
       setMessage(
         options.mode === "auto"
-          ? "Auto-backed up to the latest manuscript."
+          ? "Auto-saved to the latest manuscript backup."
           : "Saved to the latest manuscript backup.",
       );
       void refreshLiveStatus();
@@ -1227,7 +1227,7 @@ export default function StudioManuscriptCollabClient() {
       console.error("Live edit checkpoint save failed.", error);
       const failedMessage =
         options.mode === "auto"
-          ? "Auto-backup could not save to the manuscript."
+          ? "Auto-save could not save to the manuscript."
           : "Could not save to the manuscript.";
       setAutoBackupStatus(failedMessage);
       setMessage(failedMessage);
@@ -1406,8 +1406,8 @@ export default function StudioManuscriptCollabClient() {
   async function copySharedEditLink() {
     const href =
       typeof window === "undefined"
-        ? "/manuscript/collab/latest"
-        : `${window.location.origin}/manuscript/collab/latest`;
+        ? "/manuscript/collab/latest?start=latest"
+        : `${window.location.origin}/manuscript/collab/latest?start=latest`;
 
     try {
       await navigator.clipboard.writeText(href);
@@ -1456,8 +1456,8 @@ export default function StudioManuscriptCollabClient() {
         ? "This room is waiting for its first manuscript backup baseline."
         : liveStatus?.message ?? "Latest backup status is unavailable.";
   const saveButtonLabel = hasOutsideBackup
-    ? "Save room over latest"
-    : "Save to manuscript";
+    ? "Save room as latest"
+    : "Save now";
   const activeParticipantCount = Math.max(
     presenceParticipants.length,
     setup?.ok ? 1 : 0,
@@ -1764,13 +1764,13 @@ export default function StudioManuscriptCollabClient() {
     }
 
     if (!isAutoBackupEnabled) {
-      setAutoBackupStatus("Auto-backup is off. Use Save to manuscript.");
+      setAutoBackupStatus("Auto-save is off. Use Save now.");
       return;
     }
 
     if (hasOutsideBackup) {
       setAutoBackupStatus(
-        "Auto-backup paused until the newer outside backup is reviewed.",
+        "Auto-save paused until the newer outside backup is reviewed.",
       );
       return;
     }
@@ -1793,7 +1793,7 @@ export default function StudioManuscriptCollabClient() {
     );
 
     setAutoBackupStatus(
-      `Auto-backup queued in ${Math.ceil(delay / 1000).toLocaleString()} seconds.`,
+      `Auto-save queued in ${Math.ceil(delay / 1000).toLocaleString()} seconds.`,
     );
     autoBackupTimerRef.current = window.setTimeout(() => {
       autoBackupTimerRef.current = null;
@@ -1853,7 +1853,7 @@ export default function StudioManuscriptCollabClient() {
               </StudioChip>
             ) : null}
             {hasCheckpointChanges ? (
-              <StudioChip tone="review">Needs save</StudioChip>
+              <StudioChip tone="review">Saving soon</StudioChip>
             ) : null}
             {hasOutsideBackup ? (
               <StudioChip tone="review">Backup changed</StudioChip>
@@ -1896,9 +1896,9 @@ export default function StudioManuscriptCollabClient() {
             <div>
               <p className={labelClassName}>Room</p>
               <p className="mt-1 mb-0 text-[0.92rem] leading-6 text-studio-muted">
-                This is the shared editing room. Changes appear for everyone in
-                the room; saving writes the room state back to the latest
-                manuscript backup.
+                This is the shared editing room. Changes appear for everyone and
+                save to the room automatically; the latest manuscript backup
+                updates quietly after a short pause.
               </p>
             </div>
 
@@ -1911,9 +1911,9 @@ export default function StudioManuscriptCollabClient() {
                 {message}
               </p>
               <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
-                Live edits are saved to this shared room automatically. Use
-                Save to manuscript when this room should become the latest
-                backup.
+                Live edits are saved to this shared room automatically. The
+                latest manuscript backup auto-saves after a short idle pause;
+                use Save now when you want it immediately.
               </p>
             </div>
 
@@ -2098,7 +2098,7 @@ export default function StudioManuscriptCollabClient() {
               )}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className={labelClassName}>Backup priority</span>
+                <span className={labelClassName}>Latest backup</span>
                 <StudioChip tone={backupPriorityTone}>{backupPriorityLabel}</StudioChip>
               </div>
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
@@ -2126,7 +2126,7 @@ export default function StudioManuscriptCollabClient() {
               )}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className={labelClassName}>Recovery</span>
+                <span className={labelClassName}>Start over from latest</span>
                 {hasOutsideBackup ? (
                   <StudioChip tone="review">Compare first</StudioChip>
                 ) : null}
@@ -2175,14 +2175,14 @@ export default function StudioManuscriptCollabClient() {
 
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className={labelClassName}>Manuscript backup</span>
+                <span className={labelClassName}>Auto-save</span>
                 <StudioChip tone={autoBackupTone}>{autoBackupLabel}</StudioChip>
               </div>
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
                 {lastCheckpoint
                   ? `${formatDateTime(lastCheckpoint.updatedAt)} - ${lastCheckpoint.wordCount.toLocaleString()} words`
                   : hasCheckpointChanges
-                    ? "The room has edits that are not the latest manuscript backup yet."
+                    ? "The room has edits queued for the next automatic backup."
                     : "No new room edits need saving from this browser."}
               </p>
               <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
@@ -2195,7 +2195,7 @@ export default function StudioManuscriptCollabClient() {
                   setIsAutoBackupEnabled((current) => !current);
                 }}
               >
-                {isAutoBackupEnabled ? "Turn off auto-backup" : "Turn on auto-backup"}
+                {isAutoBackupEnabled ? "Turn off auto-save" : "Turn on auto-save"}
               </button>
             </div>
 
@@ -2391,14 +2391,14 @@ export default function StudioManuscriptCollabClient() {
 
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={labelClassName}>Manuscript backup</span>
+                  <span className={labelClassName}>Auto-save</span>
                   <StudioChip tone={autoBackupTone}>{autoBackupLabel}</StudioChip>
                 </div>
                 <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
                   {lastCheckpoint
                     ? `${formatDateTime(lastCheckpoint.updatedAt)} - ${lastCheckpoint.wordCount.toLocaleString()} words`
                     : hasCheckpointChanges
-                      ? "The room has edits that are not the latest manuscript backup yet."
+                      ? "The room has edits queued for the next automatic backup."
                       : "No new room edits need saving from this browser."}
                 </p>
                 <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
@@ -2469,7 +2469,7 @@ export default function StudioManuscriptCollabClient() {
               <p className="m-0 truncate text-[0.72rem] leading-tight text-studio-muted">
                 {getManuscriptAuthorDefinition(activeAuthorId).label} /{" "}
                 {activeParticipantCount.toLocaleString()} active
-                {hasCheckpointChanges ? " / needs save" : ""}
+                {hasCheckpointChanges ? " / saving soon" : ""}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">

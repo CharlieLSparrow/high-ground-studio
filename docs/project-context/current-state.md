@@ -70,8 +70,13 @@ High Ground Studio is a monorepo with:
   machinery is behind Dev Mode. The stable private route
   `/manuscript/live/latest` opens the newest saved server snapshot for an
   authorized Studio user. The browser-local draft remains the active working
-  copy; server snapshots are cross-device checkpoints, not autosave,
-  collaboration, or canonical manuscript truth.
+  copy unless the user enters the live room; server snapshots are cross-device
+  checkpoints and latest-backup anchors, not canonical manuscript truth.
+- The private Studio live manuscript room at `/manuscript/collab/latest` is the
+  current production-ish co-editing path. It uses a private token-gated
+  Hocuspocus/Yjs room backed by Cloud SQL `ydocState`, presence, author and
+  semantic marks, structure markers, safe latest-backup handoff links, and
+  short-idle auto-save into the latest manuscript backup.
 - The private Studio `/manuscript` desk now has a Manuscript Library MVP in
   `Backup` mode. A named `StudioManuscript` can group manual snapshots, mark a
   manuscript as `WORKING` or `SYNTHETIC`, and load the latest snapshot for that
@@ -387,13 +392,16 @@ High Ground Studio is a monorepo with:
 - Email notification delivery has no retry queue or persisted delivery status.
 - Story Draft promotion into real `ManuscriptBlock` truth is not active.
 - Story Draft revision history is not active.
-- Studio Manuscript autosave is not active.
-- Studio Manuscript production simultaneous editing is not active. A local-only
-  Yjs collaboration lab exists, but it is synthetic-only and not wired into the
-  real Manuscript Desk save/load path.
-- Studio collaboration checkpoints are local lab checkpoints only. They are not
-  production manual snapshots, autosave, server persistence, or a replacement
-  for rollback anchors.
+- Studio Manuscript browser-local autosave in the classic `/manuscript` desk is
+  not active.
+- Studio Manuscript production simultaneous editing is active as an MVP in
+  `/manuscript/collab/latest`, backed by the separate `studio-collab` Cloud Run
+  service and a single warm instance. It is still intentionally simple: one
+  shared latest room, manual/latest-backup recovery controls, and no general
+  room list yet.
+- Studio collaboration checkpoint lab payloads remain synthetic-only, but the
+  live room now writes real latest manuscript backups through the authenticated
+  checkpoint API.
 - Studio collaboration Manuscript adapter payloads are synthetic bridge payloads
   only. They are not production imports, server snapshots, autosave state, or a
   collaboration-enabled replacement for `/manuscript`.
