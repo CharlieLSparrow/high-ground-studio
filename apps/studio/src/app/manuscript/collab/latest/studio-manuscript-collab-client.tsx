@@ -20,7 +20,9 @@ import {
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
   ensureManuscriptBlockIds,
+  getManuscriptAuthorDefinition,
   safeManuscriptDraft,
+  type ManuscriptAuthorId,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
 } from "../../manuscript-editor-model";
@@ -134,7 +136,10 @@ type LivePresenceParticipant = {
   isCurrent: boolean;
 };
 
+type LiveWritableAuthorId = Extract<ManuscriptAuthorId, "charlie" | "homer">;
+
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
+const liveWritableAuthorIds: LiveWritableAuthorId[] = ["charlie", "homer"];
 const AUTO_BACKUP_IDLE_MS = 15_000;
 const AUTO_BACKUP_MIN_INTERVAL_MS = 90_000;
 const AUTO_HANDOFF_DELAY_MS = 1_200;
@@ -189,10 +194,37 @@ function compareDateTime(
   return leftMs - rightMs;
 }
 
+function getAuthorMarkAttrs(authorId: LiveWritableAuthorId) {
+  const author = getManuscriptAuthorDefinition(authorId);
+
+  return {
+    authorId: author.id,
+    authorLabel: author.label,
+  };
+}
+
+function getLiveAuthorTone(authorId: LiveWritableAuthorId) {
+  return authorId === "homer" ? "tag" : "source";
+}
+
+function getLiveAuthorButtonClassName(
+  authorId: LiveWritableAuthorId,
+  isActive: boolean,
+) {
+  return cn(
+    "min-h-9 rounded-md border px-3 py-2 text-[0.78rem] font-extrabold transition disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim",
+    isActive
+      ? authorId === "homer"
+        ? "border-studio-tag/60 bg-studio-tag/15 text-studio-tag"
+        : "border-studio-source/60 bg-studio-source/10 text-studio-source"
+      : "border-studio-line bg-studio-ink/5 text-studio-source hover:border-studio-source/55 hover:bg-studio-source/10",
+  );
+}
+
 function buildCheckpointDraft(input: {
   baseDraft: ManuscriptDraft | null;
   editorJson: ManuscriptEditorJson;
-  actorId: "charlie" | "homer";
+  actorId: LiveWritableAuthorId;
 }) {
   const now = new Date().toISOString();
   const baseDraft = input.baseDraft ?? createDefaultManuscriptDraft(now);
@@ -291,6 +323,8 @@ export default function StudioManuscriptCollabClient() {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
   const [message, setMessage] = useState("Preparing live edit room.");
+  const [activeAuthorId, setActiveAuthorId] =
+    useState<LiveWritableAuthorId>("charlie");
   const [isDraftHandoffVisible, setIsDraftHandoffVisible] = useState(false);
   const [draftHandoffState, setDraftHandoffState] =
     useState<DraftHandoffState>("idle");
@@ -317,6 +351,7 @@ export default function StudioManuscriptCollabClient() {
     );
   const [checkpointBaseDraft, setCheckpointBaseDraft] =
     useState<ManuscriptDraft | null>(null);
+  const activeAuthorIdRef = useRef<LiveWritableAuthorId>("charlie");
   const hasSeededRef = useRef(false);
   const autoDraftHandoffAttemptedRef = useRef(false);
   const programmaticEditorUpdateRef = useRef(false);
@@ -473,6 +508,9 @@ export default function StudioManuscriptCollabClient() {
       return;
     }
 
+    setActiveAuthorId(setup.actor.actorId);
+    activeAuthorIdRef.current = setup.actor.actorId;
+
     let isMounted = true;
 
     async function loadLiveStatus() {
@@ -580,6 +618,27 @@ export default function StudioManuscriptCollabClient() {
 
         setHasCheckpointChanges(true);
       },
+      onSelectionUpdate: ({ editor: selectionEditor }) => {
+        if (
+          !selectionEditor.isEditable ||
+          !selectionEditor.state.selection.empty
+        ) {
+          return;
+        }
+
+        const authorId = activeAuthorIdRef.current;
+        const currentAuthorId =
+          selectionEditor.getAttributes("authorMark").authorId;
+
+        if (currentAuthorId === authorId) {
+          return;
+        }
+
+        selectionEditor.commands.setMark(
+          "authorMark",
+          getAuthorMarkAttrs(authorId),
+        );
+      },
       editorProps: {
         attributes: {
           class:
@@ -589,6 +648,65 @@ export default function StudioManuscriptCollabClient() {
     },
     [provider, setup],
   );
+
+  function applyLiveAuthorToCursor(
+    authorId: LiveWritableAuthorId,
+    options: { focus?: boolean } = {},
+  ) {
+    if (!editor || !editor.isEditable) {
+      return;
+    }
+
+    const chain = editor.chain();
+
+    if (options.focus) {
+      chain.focus();
+    }
+
+    chain.setMark("authorMark", getAuthorMarkAttrs(authorId)).run();
+  }
+
+  function updateLiveWritingAuthor(authorId: LiveWritableAuthorId) {
+    activeAuthorIdRef.current = authorId;
+    setActiveAuthorId(authorId);
+    applyLiveAuthorToCursor(authorId, { focus: true });
+    setMessage(
+      `New live edits will be marked as ${
+        getManuscriptAuthorDefinition(authorId).label
+      }.`,
+    );
+  }
+
+  function markSelectionAsLiveAuthor(authorId = activeAuthorId) {
+    if (!editor) {
+      return;
+    }
+
+    const author = getManuscriptAuthorDefinition(authorId);
+    const selection = editor.state.selection;
+
+    if (selection.empty) {
+      updateLiveWritingAuthor(authorId);
+      setMessage(`Cursor is ready to write as ${author.label}.`);
+      return;
+    }
+
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: selection.from, to: selection.to })
+      .setMark("authorMark", getAuthorMarkAttrs(authorId))
+      .run();
+    activeAuthorIdRef.current = authorId;
+    setActiveAuthorId(authorId);
+    setHasCheckpointChanges(true);
+    setMessage(`Marked selected text as ${author.label}.`);
+  }
+
+  useEffect(() => {
+    activeAuthorIdRef.current = activeAuthorId;
+    applyLiveAuthorToCursor(activeAuthorId);
+  }, [activeAuthorId, editor]);
 
   useEffect(() => {
     if (
@@ -659,7 +777,7 @@ export default function StudioManuscriptCollabClient() {
     const draft = buildCheckpointDraft({
       baseDraft: checkpointBaseDraft ?? initialDraft,
       editorJson: editor.getJSON() as ManuscriptEditorJson,
-      actorId: setup.actor.actorId,
+      actorId: activeAuthorIdRef.current,
     });
 
     try {
@@ -1184,6 +1302,52 @@ export default function StudioManuscriptCollabClient() {
               </div>
             ) : null}
 
+            <div
+              className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
+              data-testid="manuscript-live-author-controls"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className={labelClassName}>Writing as</span>
+                <StudioChip tone={getLiveAuthorTone(activeAuthorId)}>
+                  {getManuscriptAuthorDefinition(activeAuthorId).label}
+                </StudioChip>
+              </div>
+              <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                New typing uses this author color. Select text first when you
+                need to repair attribution in the shared room.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {liveWritableAuthorIds.map((authorId) => {
+                  const author = getManuscriptAuthorDefinition(authorId);
+
+                  return (
+                    <button
+                      className={getLiveAuthorButtonClassName(
+                        authorId,
+                        activeAuthorId === authorId,
+                      )}
+                      data-testid={`manuscript-live-author-${authorId}`}
+                      disabled={!editor || !setup?.ok}
+                      key={authorId}
+                      type="button"
+                      onClick={() => updateLiveWritingAuthor(authorId)}
+                    >
+                      {author.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                className="min-h-9 rounded-md border border-studio-source/55 bg-studio-source/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:bg-studio-source/15 disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+                data-testid="manuscript-live-author-mark-selection"
+                disabled={!editor || !setup?.ok}
+                type="button"
+                onClick={() => markSelectionAsLiveAuthor()}
+              >
+                Mark selected text
+              </button>
+            </div>
+
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className={labelClassName}>People in room</span>
@@ -1376,6 +1540,48 @@ export default function StudioManuscriptCollabClient() {
                 </p>
               </div>
 
+              <div
+                className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
+                data-testid="manuscript-live-mobile-author-controls"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>Writing as</span>
+                  <StudioChip tone={getLiveAuthorTone(activeAuthorId)}>
+                    {getManuscriptAuthorDefinition(activeAuthorId).label}
+                  </StudioChip>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {liveWritableAuthorIds.map((authorId) => {
+                    const author = getManuscriptAuthorDefinition(authorId);
+
+                    return (
+                      <button
+                        className={getLiveAuthorButtonClassName(
+                          authorId,
+                          activeAuthorId === authorId,
+                        )}
+                        data-testid={`manuscript-live-mobile-author-${authorId}`}
+                        disabled={!editor || !setup?.ok}
+                        key={authorId}
+                        type="button"
+                        onClick={() => updateLiveWritingAuthor(authorId)}
+                      >
+                        {author.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  className="min-h-9 rounded-md border border-studio-source/55 bg-studio-source/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+                  data-testid="manuscript-live-mobile-author-mark-selection"
+                  disabled={!editor || !setup?.ok}
+                  type="button"
+                  onClick={() => markSelectionAsLiveAuthor()}
+                >
+                  Mark selection
+                </button>
+              </div>
+
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className={labelClassName}>People</span>
@@ -1511,6 +1717,7 @@ export default function StudioManuscriptCollabClient() {
                 {roomSyncLabel}
               </p>
               <p className="m-0 truncate text-[0.72rem] leading-tight text-studio-muted">
+                {getManuscriptAuthorDefinition(activeAuthorId).label} /{" "}
                 {activeParticipantCount.toLocaleString()} active
                 {hasCheckpointChanges ? " / needs save" : ""}
               </p>

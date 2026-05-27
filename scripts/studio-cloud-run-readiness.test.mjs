@@ -291,6 +291,17 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /data-testid="manuscript-live-mobile-save"/);
   assert.match(client, /data-testid="manuscript-live-mobile-share"/);
   assert.match(client, /data-testid="manuscript-live-mobile-menu-toggle"/);
+  assert.match(client, /data-testid="manuscript-live-author-controls"/);
+  assert.match(client, /data-testid=\{`manuscript-live-author-\$\{authorId\}`\}/);
+  assert.match(client, /data-testid="manuscript-live-author-mark-selection"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-author-controls"/);
+  assert.match(
+    client,
+    /data-testid=\{`manuscript-live-mobile-author-\$\{authorId\}`\}/,
+  );
+  assert.match(client, /data-testid="manuscript-live-mobile-author-mark-selection"/);
+  assert.match(client, /onSelectionUpdate/);
+  assert.match(client, /getAuthorMarkAttrs/);
   assert.match(client, /hidden flex-wrap items-center justify-end gap-2 lg:flex/);
   assert.match(client, /lg:sticky lg:top-\[92px\] lg:grid/);
   assert.match(client, /hasCheckpointChanges/);
@@ -346,6 +357,7 @@ test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   assert.match(client, /data-testid="manuscript-primary-save-panel"/);
   assert.match(client, /data-testid="manuscript-primary-save"/);
   assert.match(client, /data-testid="manuscript-primary-save-live-edit"/);
+  assert.match(client, /data-testid="manuscript-live-edit-footer"/);
   assert.match(client, /Save \+ live edit/);
   assert.match(client, /start=latest/);
   assert.match(client, /Shared live room/);

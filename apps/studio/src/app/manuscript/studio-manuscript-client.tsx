@@ -7759,15 +7759,18 @@ export function StudioManuscriptClient({
                 >
                   Save/share
                 </button>
-                <a
+                <button
                   className={cn(
                     smallButtonClassName,
-                    "border-studio-source/55 bg-studio-source/10 text-center text-studio-source",
+                    "border-studio-source/55 bg-studio-source/10 text-studio-source disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim",
                   )}
-                  href="/manuscript/collab/latest"
+                  data-testid="manuscript-live-edit-footer"
+                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                  type="button"
+                  onClick={() => void saveAndOpenLiveEdit()}
                 >
                   Live edit
-                </a>
+                </button>
                 <button
                   className={cn(
                     smallButtonClassName,
