@@ -16,6 +16,7 @@ import {
   type ManuscriptAuthorId,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
+  type ManuscriptStructureBoundaryMarker,
   type ManuscriptStructureRegionSummary,
   type SemanticHighlightType,
 } from "../../manuscript-editor-model";
@@ -83,6 +84,7 @@ function hasUnassignedAuthorMark(node: ManuscriptEditorJson): boolean {
 function getLiveBlockClassName(
   node: ManuscriptEditorJson,
   regions: ManuscriptStructureRegionSummary[],
+  boundaryMarkers: ManuscriptStructureBoundaryMarker[],
 ) {
   const hasCharlie = hasAuthorMark(node, "charlie");
   const hasHomer = hasAuthorMark(node, "homer");
@@ -91,6 +93,15 @@ function getLiveBlockClassName(
   const matchingRegions = blockId
     ? regions.filter((region) => region.blockIds.includes(blockId))
     : [];
+  const matchingBoundaryMarkers = blockId
+    ? boundaryMarkers.filter((marker) => marker.blockId === blockId)
+    : [];
+  const hasChapterBoundary = matchingBoundaryMarkers.some(
+    (marker) => marker.kind === "chapter",
+  );
+  const hasEpisodeBoundary = matchingBoundaryMarkers.some(
+    (marker) => marker.kind === "episode",
+  );
 
   return cn(
     (hasCharlie || hasHomer || hasUnassigned) && "manuscript-author-block",
@@ -108,7 +119,38 @@ function getLiveBlockClassName(
       "manuscript-structure-episode",
     matchingRegions.some((region) => region.colorKey === "section") &&
       "manuscript-structure-section",
+    matchingBoundaryMarkers.length > 0 && "manuscript-boundary-marker-block",
+    hasChapterBoundary && "manuscript-boundary-marker-chapter",
+    hasChapterBoundary && "manuscript-chapter-title-block",
+    hasEpisodeBoundary && "manuscript-boundary-marker-episode",
   );
+}
+
+function getLiveBoundaryAttributes(
+  node: ManuscriptEditorJson,
+  boundaryMarkers: ManuscriptStructureBoundaryMarker[],
+) {
+  const blockId = typeof node.attrs?.blockId === "string" ? node.attrs.blockId : "";
+  const matchingBoundaryMarkers = blockId
+    ? boundaryMarkers.filter((marker) => marker.blockId === blockId)
+    : [];
+
+  if (!matchingBoundaryMarkers.length) {
+    return {};
+  }
+
+  const hasEpisodeBoundary = matchingBoundaryMarkers.some(
+    (marker) => marker.kind === "episode",
+  );
+
+  return {
+    "data-structure-boundaries": matchingBoundaryMarkers
+      .map((marker) => (marker.kind === "chapter" ? "Chapter" : "Episode"))
+      .join(", "),
+    "data-manuscript-boundary-heading": hasEpisodeBoundary
+      ? "episode"
+      : "chapter",
+  };
 }
 
 function renderTextMarks(
@@ -185,6 +227,7 @@ function renderLiveNode(
   node: ManuscriptEditorJson,
   key: string,
   regions: ManuscriptStructureRegionSummary[],
+  boundaryMarkers: ManuscriptStructureBoundaryMarker[],
 ): ReactNode {
   if (typeof node.text === "string") {
     return renderTextMarks(node, key);
@@ -192,7 +235,7 @@ function renderLiveNode(
 
   const children =
     node.content?.map((child, index) =>
-      renderLiveNode(child, `${key}-${index}`, regions),
+      renderLiveNode(child, `${key}-${index}`, regions, boundaryMarkers),
     ) ?? [];
 
   if (node.type === "hardBreak") {
@@ -200,8 +243,14 @@ function renderLiveNode(
   }
 
   if (node.type === "paragraph") {
+    const boundaryAttributes = getLiveBoundaryAttributes(node, boundaryMarkers);
+
     return (
-      <p className={getLiveBlockClassName(node, regions)} key={key}>
+      <p
+        className={getLiveBlockClassName(node, regions, boundaryMarkers)}
+        key={key}
+        {...boundaryAttributes}
+      >
         {children.length ? children : <br />}
       </p>
     );
@@ -209,11 +258,12 @@ function renderLiveNode(
 
   if (node.type === "heading") {
     const level = Number(node.attrs?.level ?? 2);
-    const className = getLiveBlockClassName(node, regions);
+    const className = getLiveBlockClassName(node, regions, boundaryMarkers);
+    const boundaryAttributes = getLiveBoundaryAttributes(node, boundaryMarkers);
 
     if (level <= 1) {
       return (
-        <h1 className={className} key={key}>
+        <h1 className={className} key={key} {...boundaryAttributes}>
           {children}
         </h1>
       );
@@ -221,14 +271,14 @@ function renderLiveNode(
 
     if (level === 3) {
       return (
-        <h3 className={className} key={key}>
+        <h3 className={className} key={key} {...boundaryAttributes}>
           {children}
         </h3>
       );
     }
 
     return (
-      <h2 className={className} key={key}>
+      <h2 className={className} key={key} {...boundaryAttributes}>
         {children}
       </h2>
     );
@@ -243,8 +293,14 @@ function renderLiveNode(
   }
 
   if (node.type === "listItem") {
+    const boundaryAttributes = getLiveBoundaryAttributes(node, boundaryMarkers);
+
     return (
-      <li className={getLiveBlockClassName(node, regions)} key={key}>
+      <li
+        className={getLiveBlockClassName(node, regions, boundaryMarkers)}
+        key={key}
+        {...boundaryAttributes}
+      >
         {children}
       </li>
     );
@@ -262,6 +318,7 @@ export function StudioManuscriptLiveReader({
     json: draft.editorJson,
     regions: draft.structureRegions,
   });
+  const boundaryMarkers = draft.structureBoundaryMarkers;
 
   return (
     <main className="min-h-screen px-3.5 py-4 md:px-6 md:py-6">
@@ -293,7 +350,7 @@ export function StudioManuscriptLiveReader({
           aria-label="Read-only manuscript"
           className="manuscript-live-reader manuscript-prosemirror min-w-0 text-[1rem] leading-8 text-studio-ink outline-none md:text-[1.05rem]"
         >
-          {renderLiveNode(draft.editorJson, "live-root", regions)}
+          {renderLiveNode(draft.editorJson, "live-root", regions, boundaryMarkers)}
         </section>
 
         <footer className="rounded-lg border border-studio-line bg-studio-panel/52 p-3.5">

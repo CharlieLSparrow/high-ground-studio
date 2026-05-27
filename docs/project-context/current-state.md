@@ -73,7 +73,9 @@ High Ground Studio is a monorepo with:
   snapshot for an authorized Studio user. The browser-local draft remains the
   active working copy unless the user enters the live room; server snapshots are
   cross-device checkpoints and latest-backup anchors, not canonical manuscript
-  truth.
+  truth. Chapter and episode boundary markers style their title lines in the
+  editor, live room, and read-only live links; chapter labels use the written
+  title such as Preface or Introduction instead of forcing `Chapter 1`.
 - The private Studio live manuscript room at `/manuscript/collab/latest` is the
   current production-ish co-editing path. It uses a private token-gated
   Hocuspocus/Yjs room backed by Cloud SQL `ydocState`, presence, author and

@@ -876,6 +876,79 @@ export default function StudioManuscriptCollabClient() {
     [provider, setup],
   );
 
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const classNames = [
+      "manuscript-boundary-marker-block",
+      "manuscript-boundary-marker-chapter",
+      "manuscript-boundary-marker-episode",
+      "manuscript-chapter-title-block",
+    ];
+    const boundaryMarkersByBlockId = new Map<
+      string,
+      ManuscriptStructureBoundaryMarker[]
+    >();
+
+    for (const marker of liveBoundaryMarkers) {
+      const markers = boundaryMarkersByBlockId.get(marker.blockId) ?? [];
+      markers.push(marker);
+      boundaryMarkersByBlockId.set(marker.blockId, markers);
+    }
+
+    editor.state.doc.descendants((node, pos) => {
+      if (!blockNodeTypes.includes(node.type.name)) {
+        return true;
+      }
+
+      const domNode = editor.view.nodeDOM(pos);
+
+      if (!(domNode instanceof HTMLElement)) {
+        return true;
+      }
+
+      domNode.classList.remove(...classNames);
+      domNode.removeAttribute("data-structure-boundaries");
+      domNode.removeAttribute("data-manuscript-boundary-heading");
+
+      const blockId = node.attrs.blockId;
+
+      if (typeof blockId !== "string") {
+        return true;
+      }
+
+      const boundaryMarkers = boundaryMarkersByBlockId.get(blockId);
+
+      if (!boundaryMarkers?.length) {
+        return true;
+      }
+
+      domNode.classList.add("manuscript-boundary-marker-block");
+
+      if (boundaryMarkers.some((marker) => marker.kind === "chapter")) {
+        domNode.classList.add("manuscript-boundary-marker-chapter");
+        domNode.classList.add("manuscript-chapter-title-block");
+        domNode.setAttribute("data-manuscript-boundary-heading", "chapter");
+      }
+
+      if (boundaryMarkers.some((marker) => marker.kind === "episode")) {
+        domNode.classList.add("manuscript-boundary-marker-episode");
+        domNode.setAttribute("data-manuscript-boundary-heading", "episode");
+      }
+
+      domNode.setAttribute(
+        "data-structure-boundaries",
+        boundaryMarkers
+          .map((marker) => (marker.kind === "chapter" ? "Chapter" : "Episode"))
+          .join(", "),
+      );
+
+      return true;
+    });
+  }, [currentEditorJson, editor, liveBoundaryMarkers]);
+
   function applyLiveAuthorToCursor(
     authorId: LiveWritableAuthorId,
     options: { focus?: boolean } = {},

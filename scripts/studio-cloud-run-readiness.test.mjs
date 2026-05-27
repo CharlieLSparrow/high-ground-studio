@@ -486,6 +486,14 @@ test("Manuscript structure rail follows chapter and episode position", () => {
     "apps/studio/src/app/manuscript/manuscript-editor-model.ts",
     "utf8",
   );
+  const liveReader = readFileSync(
+    "apps/studio/src/app/manuscript/live/[slug]/studio-manuscript-live-reader.tsx",
+    "utf8",
+  );
+  const collabClient = readFileSync(
+    "apps/studio/src/app/manuscript/collab/latest/studio-manuscript-collab-client.tsx",
+    "utf8",
+  );
   const globalsCss = readFileSync("apps/studio/src/app/globals.css", "utf8");
 
   assert.match(client, /type ManuscriptStructureBoundary/);
@@ -499,6 +507,7 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /Boundary map/);
   assert.match(client, /editingBoundaryMarkerId/);
   assert.match(client, /renderBoundaryOutlineCard/);
+  assert.match(client, /const kindLabel = boundary\.label;/);
   assert.match(client, /saveStructureBoundaryMarker/);
   assert.match(client, /moveStructureBoundaryMarkerToCurrentBlock/);
   assert.match(client, /Use cursor line/);
@@ -511,6 +520,12 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /document\.addEventListener\(\n\s*"scroll",\n\s*scheduleStructureRailUpdate,\n\s*scrollListenerOptions/);
   assert.match(client, /new ResizeObserver\(scheduleStructureRailUpdate\)/);
   assert.match(client, /data-testid="manuscript-structure-rail"/);
+  assert.match(client, /data-manuscript-boundary-heading/);
+  assert.match(client, /manuscript-boundary-marker-block/);
+  assert.match(liveReader, /manuscript-boundary-marker-block/);
+  assert.match(liveReader, /getLiveBoundaryAttributes/);
+  assert.match(collabClient, /manuscript-boundary-marker-block/);
+  assert.match(collabClient, /data-manuscript-boundary-heading/);
   assert.match(client, /"manuscript-mobile-current-chapter"/);
   assert.match(client, /"manuscript-mobile-current-episode"/);
   assert.match(client, /data-testid="manuscript-mobile-structure-navigation"/);

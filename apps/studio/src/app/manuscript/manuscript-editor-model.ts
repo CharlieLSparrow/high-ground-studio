@@ -1924,6 +1924,10 @@ function getManuscriptStructureBoundaryLabel(
   index: number,
   title: string,
 ) {
+  if (kind === "chapter") {
+    return getManuscriptStructureBoundaryTitle(title, `Untitled ${index + 1}`);
+  }
+
   const baseLabel = kind === "episode" ? "Episode" : "Chapter";
   const titlePrefixPattern =
     kind === "episode"
@@ -1968,7 +1972,9 @@ function createStructureBoundaryFromBlocks(input: {
     ),
     title: getManuscriptStructureBoundaryTitle(
       input.title,
-      `${input.kind === "episode" ? "Episode" : "Chapter"} ${input.index + 1}`,
+      input.kind === "episode"
+        ? `Episode ${input.index + 1}`
+        : `Untitled ${input.index + 1}`,
     ),
     publicationDate: input.publicationDate ?? null,
     startIndex: input.startIndex,

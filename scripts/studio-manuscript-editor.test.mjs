@@ -852,7 +852,7 @@ test("chapter title blocks derive contiguous chapter ranges", () => {
       {
         type: "heading",
         attrs: { blockId: "block-chapter-one" },
-        content: [{ type: "text", text: "Chapter One" }],
+        content: [{ type: "text", text: "Preface" }],
       },
       {
         type: "paragraph",
@@ -862,7 +862,7 @@ test("chapter title blocks derive contiguous chapter ranges", () => {
       {
         type: "heading",
         attrs: { blockId: "block-chapter-two" },
-        content: [{ type: "text", text: "Chapter Two" }],
+        content: [{ type: "text", text: "Introduction" }],
       },
       {
         type: "paragraph",
@@ -899,7 +899,7 @@ test("chapter title blocks derive contiguous chapter ranges", () => {
   });
 
   assert.equal(chapters.length, 2);
-  assert.equal(chapters[0].title, "Chapter One");
+  assert.equal(chapters[0].title, "Preface");
   assert.equal(chapters[0].startBlockId, "block-chapter-one");
   assert.equal(chapters[0].endBlockId, "block-one-body");
   assert.equal(chapters[0].blockCount, 2);
@@ -908,7 +908,7 @@ test("chapter title blocks derive contiguous chapter ranges", () => {
     "block-chapter-one",
     "block-one-body",
   ]);
-  assert.equal(chapters[1].title, "Chapter Two");
+  assert.equal(chapters[1].title, "Introduction");
   assert.equal(chapters[1].startBlockId, "block-chapter-two");
   assert.equal(chapters[1].endBlockId, "block-two-body");
   assert.deepEqual(chapters[1].blockIds, [
@@ -954,7 +954,7 @@ test("structure boundary index derives chapter and episode rails from markers", 
       id: "chapter-boundary-one",
       kind: "chapter",
       blockId: "block-chapter-one",
-      title: "Chapter One",
+      title: "Preface",
       notes: "",
       createdAt: "2026-05-26T12:00:00.000Z",
       updatedAt: "2026-05-26T12:00:00.000Z",
@@ -963,7 +963,7 @@ test("structure boundary index derives chapter and episode rails from markers", 
       id: "chapter-boundary-two",
       kind: "chapter",
       blockId: "block-chapter-two",
-      title: "Chapter Two",
+      title: "Introduction",
       notes: "",
       createdAt: "2026-05-26T12:00:00.000Z",
       updatedAt: "2026-05-26T12:00:00.000Z",
@@ -986,8 +986,11 @@ test("structure boundary index derives chapter and episode rails from markers", 
 
   assert.equal(boundaryIndex.chapters.length, 2);
   assert.equal(boundaryIndex.chapters[0].source, "boundary-marker");
-  assert.equal(boundaryIndex.chapters[0].label, "Chapter One");
+  assert.equal(boundaryIndex.chapters[0].label, "Preface");
+  assert.equal(boundaryIndex.chapters[0].title, "Preface");
   assert.equal(boundaryIndex.chapters[0].endBlockId, "block-one-body");
+  assert.equal(boundaryIndex.chapters[1].label, "Introduction");
+  assert.equal(boundaryIndex.chapters[1].title, "Introduction");
   assert.equal(boundaryIndex.episodes.length, 1);
   assert.equal(boundaryIndex.episodes[0].source, "boundary-marker");
   assert.equal(boundaryIndex.episodes[0].label, "Episode 12");
@@ -1004,8 +1007,8 @@ test("structure boundary index derives chapter and episode rails from markers", 
     currentChapter,
   );
 
-  assert.equal(currentChapter?.label, "Chapter One");
-  assert.equal(nextChapter?.label, "Chapter Two");
+  assert.equal(currentChapter?.label, "Preface");
+  assert.equal(nextChapter?.label, "Introduction");
 });
 
 test("structure boundary index makes episode marker ranges contiguous", () => {

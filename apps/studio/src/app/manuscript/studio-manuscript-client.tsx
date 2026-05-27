@@ -1609,6 +1609,9 @@ export function StudioManuscriptClient({
       "manuscript-structure-episode",
       "manuscript-structure-section",
       "manuscript-chapter-title-block",
+      "manuscript-boundary-marker-block",
+      "manuscript-boundary-marker-chapter",
+      "manuscript-boundary-marker-episode",
       "manuscript-filter-match",
       "manuscript-filter-dim",
       "manuscript-filter-hide",
@@ -1625,6 +1628,8 @@ export function StudioManuscriptClient({
       if (domNode instanceof HTMLElement) {
         domNode.classList.remove(...classNames);
         domNode.removeAttribute("data-structure-regions");
+        domNode.removeAttribute("data-structure-boundaries");
+        domNode.removeAttribute("data-manuscript-boundary-heading");
       }
 
       return true;
@@ -1763,10 +1768,12 @@ export function StudioManuscriptClient({
         if (boundaryMarkers.some((marker) => marker.kind === "chapter")) {
           domNode.classList.add("manuscript-boundary-marker-chapter");
           domNode.classList.add("manuscript-chapter-title-block");
+          domNode.setAttribute("data-manuscript-boundary-heading", "chapter");
         }
 
         if (boundaryMarkers.some((marker) => marker.kind === "episode")) {
           domNode.classList.add("manuscript-boundary-marker-episode");
+          domNode.setAttribute("data-manuscript-boundary-heading", "episode");
         }
 
         domNode.setAttribute(
@@ -4942,8 +4949,7 @@ export function StudioManuscriptClient({
     const marker = getStructureBoundaryMarker(boundary.sourceId);
     const isEditing = editingBoundaryMarkerId === boundary.sourceId;
     const tone = boundary.kind === "chapter" ? "node" : "source";
-    const kindLabel =
-      boundary.kind === "chapter" ? `Chapter ${index + 1}` : boundary.label;
+    const kindLabel = boundary.label;
     const removeLabel =
       boundary.kind === "chapter" ? "Remove chapter" : "Remove episode";
     const publicationDate = formatEpisodePublicationDate(
