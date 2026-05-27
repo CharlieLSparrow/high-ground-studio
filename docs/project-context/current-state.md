@@ -76,7 +76,9 @@ High Ground Studio is a monorepo with:
   current production-ish co-editing path. It uses a private token-gated
   Hocuspocus/Yjs room backed by Cloud SQL `ydocState`, presence, author and
   semantic marks, structure markers, safe latest-backup handoff links, and
-  short-idle auto-save into the latest manuscript backup.
+  short-idle auto-save into the latest manuscript backup. Episode structure
+  markers derive Wednesday publication dates from manuscript order, anchored on
+  Episode 4 publishing June 3, 2026.
 - The private Studio `/manuscript` desk now has a Manuscript Library MVP in
   `Backup` mode. A named `StudioManuscript` can group manual snapshots, mark a
   manuscript as `WORKING` or `SYNTHETIC`, and load the latest snapshot for that

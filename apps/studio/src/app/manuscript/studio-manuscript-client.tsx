@@ -62,8 +62,10 @@ import {
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
   ensureManuscriptBlockIds,
+  formatEpisodePublicationDate,
   getManuscriptAuthorDefinition,
   getCurrentManuscriptStructureBoundary,
+  getEpisodePublicationDateForIndex,
   getManuscriptQuoteReviewStatusFilterLabel,
   getManuscriptQuoteReviewStatusDefinition,
   getManuscriptQuoteSourceTypeDefinition,
@@ -2076,6 +2078,15 @@ export function StudioManuscriptClient({
 
     const now = new Date().toISOString();
     const title = getBlockPreview(blockId);
+    const publicationDate =
+      kind === "episode"
+        ? getEpisodePublicationDateForIndex(
+            structureBoundaryMarkers.filter(
+              (marker) => marker.kind === "episode",
+            ).length,
+          )
+        : null;
+    const publicationDateLabel = formatEpisodePublicationDate(publicationDate);
 
     setStructureBoundaryMarkers((current) => [
       ...current,
@@ -2085,11 +2096,16 @@ export function StudioManuscriptClient({
         blockId,
         title,
         notes: "",
+        ...(publicationDate ? { publicationDate } : {}),
         createdAt: now,
         updatedAt: now,
       },
     ]);
-    setMessage(`Marked "${title}" as a ${label} boundary.`);
+    setMessage(
+      publicationDateLabel
+        ? `Marked "${title}" as a ${label} boundary. Publishes ${publicationDateLabel}.`
+        : `Marked "${title}" as a ${label} boundary.`,
+    );
   }
 
   function toggleChapterTitleBlock(blockId: string | null) {
@@ -4494,6 +4510,11 @@ export function StudioManuscriptClient({
       currentRegion?.label ??
       (nextRegion ? `Before ${nextRegion.label}` : "Before");
     const railTitle = currentRegion?.title ?? nextRegion?.title ?? "";
+    const railPublicationDate = formatEpisodePublicationDate(
+      kind === "episode"
+        ? (currentRegion ?? nextRegion)?.publicationDate
+        : null,
+    );
     const shouldShowTitle =
       railTitle.trim().length > 0 &&
       railTitle.trim().toLowerCase() !==
@@ -4512,6 +4533,11 @@ export function StudioManuscriptClient({
           <strong className="manuscript-structure-rail-title">
             {railTitle}
           </strong>
+        ) : null}
+        {railPublicationDate ? (
+          <span className="manuscript-structure-rail-date">
+            Publishes {railPublicationDate}
+          </span>
         ) : null}
         {currentRegion && nextRegion ? (
           <span className="manuscript-structure-rail-next">
@@ -4533,6 +4559,9 @@ export function StudioManuscriptClient({
       currentRegion?.label ??
       (nextRegion ? `Before ${nextRegion.label}` : `No ${definition.label}`);
     const title = currentRegion?.title ?? nextRegion?.title ?? "Not marked yet";
+    const publicationDate = formatEpisodePublicationDate(
+      kind === "episode" ? targetRegion?.publicationDate : null,
+    );
     const testId =
       kind === "chapter"
         ? "manuscript-mobile-current-chapter"
@@ -4568,7 +4597,7 @@ export function StudioManuscriptClient({
           {statusLabel}
         </span>
         <span className="mt-0.5 block truncate text-[0.66rem] leading-tight text-studio-muted">
-          {title}
+          {publicationDate ? `Publishes ${publicationDate}` : title}
         </span>
       </button>
     );
@@ -4584,6 +4613,10 @@ export function StudioManuscriptClient({
     }
 
     const definition = getManuscriptStructureDefinition(kind);
+    const targetRegion = currentRegion ?? nextRegion;
+    const publicationDate = formatEpisodePublicationDate(
+      kind === "episode" ? targetRegion?.publicationDate : null,
+    );
     const testId =
       kind === "chapter"
         ? "manuscript-mobile-chapter-nav"
@@ -4617,11 +4650,23 @@ export function StudioManuscriptClient({
             <p className="m-0 truncate text-[0.72rem] leading-relaxed text-studio-muted">
               {currentRegion.title}
             </p>
+            {publicationDate ? (
+              <p className="m-0 truncate text-[0.68rem] font-bold leading-relaxed text-studio-source">
+                Publishes {publicationDate}
+              </p>
+            ) : null}
           </div>
         ) : (
-          <p className={panelCopyClassName}>
-            Before {nextRegion?.label ?? definition.label.toLowerCase()}.
-          </p>
+          <div className="min-w-0">
+            <p className={panelCopyClassName}>
+              Before {nextRegion?.label ?? definition.label.toLowerCase()}.
+            </p>
+            {publicationDate ? (
+              <p className="m-0 truncate text-[0.68rem] font-bold leading-relaxed text-studio-source">
+                Publishes {publicationDate}
+              </p>
+            ) : null}
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-2">
@@ -4673,6 +4718,9 @@ export function StudioManuscriptClient({
       boundary.kind === "chapter" ? `Chapter ${index + 1}` : boundary.label;
     const removeLabel =
       boundary.kind === "chapter" ? "Remove chapter" : "Remove episode";
+    const publicationDate = formatEpisodePublicationDate(
+      boundary.publicationDate,
+    );
 
     return (
       <article
@@ -4686,6 +4734,11 @@ export function StudioManuscriptClient({
               <StudioChip tone="node">
                 {boundary.blockCount.toLocaleString()} blocks
               </StudioChip>
+              {publicationDate ? (
+                <StudioChip tone="source">
+                  Publishes {publicationDate}
+                </StudioChip>
+              ) : null}
             </div>
             <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
               {boundary.title}

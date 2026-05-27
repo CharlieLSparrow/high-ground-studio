@@ -3,6 +3,12 @@ export const MANUSCRIPT_STORAGE_KEY =
 
 export const MANUSCRIPT_SCHEMA_VERSION = 1;
 
+export const EPISODE_PUBLICATION_ANCHOR_EPISODE = 4;
+export const EPISODE_PUBLICATION_ANCHOR_DATE = "2026-06-03";
+
+const EPISODE_PUBLICATION_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export const manuscriptAuthorDefinitions = [
   {
     id: "charlie",
@@ -211,6 +217,7 @@ export type ManuscriptStructureBoundaryMarker = {
   blockId: string;
   title: string;
   notes: string;
+  publicationDate?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -590,6 +597,7 @@ export type ManuscriptStructureBoundary = {
   sourceId: string;
   label: string;
   title: string;
+  publicationDate: string | null;
   startIndex: number;
   endIndex: number;
   startBlockId: string;
@@ -1860,6 +1868,57 @@ function getManuscriptStructureBoundaryTitle(title: string, fallback: string) {
   return title.trim() || fallback;
 }
 
+function normalizeEpisodePublicationDate(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (!ISO_DATE_PATTERN.test(normalized)) {
+    return null;
+  }
+
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString().slice(0, 10) === normalized ? normalized : null;
+}
+
+export function getEpisodePublicationDateForIndex(index: number) {
+  const normalizedIndex = Number.isFinite(index)
+    ? Math.max(0, Math.floor(index))
+    : 0;
+  const anchorMs = Date.parse(
+    `${EPISODE_PUBLICATION_ANCHOR_DATE}T00:00:00.000Z`,
+  );
+  const offsetWeeks =
+    normalizedIndex - (EPISODE_PUBLICATION_ANCHOR_EPISODE - 1);
+
+  return new Date(anchorMs + offsetWeeks * EPISODE_PUBLICATION_WEEK_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function formatEpisodePublicationDate(value: string | null | undefined) {
+  const normalized = normalizeEpisodePublicationDate(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${normalized}T00:00:00.000Z`));
+}
+
 function getManuscriptStructureBoundaryLabel(
   kind: ManuscriptStructureBoundaryKind,
   index: number,
@@ -1883,6 +1942,7 @@ function createStructureBoundaryFromBlocks(input: {
   source: ManuscriptStructureBoundarySource;
   sourceId: string;
   title: string;
+  publicationDate?: string | null;
   index: number;
   startIndex: number;
   endIndex: number;
@@ -1910,6 +1970,7 @@ function createStructureBoundaryFromBlocks(input: {
       input.title,
       `${input.kind === "episode" ? "Episode" : "Chapter"} ${input.index + 1}`,
     ),
+    publicationDate: input.publicationDate ?? null,
     startIndex: input.startIndex,
     endIndex: input.endIndex,
     startBlockId: blockIds[0] ?? "",
@@ -1971,6 +2032,8 @@ function createStructureMarkerBoundaries(
       source: "boundary-marker",
       sourceId: marker.id,
       title: marker.title.trim() || blockTitle,
+      publicationDate:
+        kind === "episode" ? getEpisodePublicationDateForIndex(index) : null,
       index,
       startIndex,
       endIndex,
@@ -4183,12 +4246,18 @@ export function safeManuscriptStructureBoundaryMarkers(
     }
 
     seenMarkerBlocks.add(markerBlockKey);
+    const publicationDate =
+      kind === "episode"
+        ? normalizeEpisodePublicationDate(marker.publicationDate)
+        : null;
+
     markers.push({
       id: marker.id,
       kind,
       blockId: marker.blockId,
       title: marker.title.trim(),
       notes: marker.notes.trim(),
+      ...(publicationDate ? { publicationDate } : {}),
       createdAt: marker.createdAt,
       updatedAt: marker.updatedAt,
     });

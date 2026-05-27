@@ -318,6 +318,10 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /data-testid=\{`\$\{testIdPrefix\}-mark-current-episode`\}/);
   assert.match(client, /toggleLiveStructureBoundaryMarker/);
   assert.match(client, /Marked during live edit/);
+  assert.match(client, /getEpisodePublicationDateForIndex/);
+  assert.match(client, /formatEpisodePublicationDate/);
+  assert.match(client, /publicationDate/);
+  assert.match(client, /Publishes/);
   assert.match(client, /data-testid="manuscript-live-structure-navigation"/);
   assert.match(client, /data-testid="manuscript-live-mobile-structure-navigation"/);
   assert.match(client, /data-testid="manuscript-live-mobile-structure-strip"/);
@@ -481,6 +485,9 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /type ManuscriptStructureBoundary/);
   assert.match(model, /type ManuscriptStructureBoundaryMarker/);
   assert.match(model, /createManuscriptStructureBoundaryIndex/);
+  assert.match(model, /EPISODE_PUBLICATION_ANCHOR_DATE = "2026-06-03"/);
+  assert.match(model, /getEpisodePublicationDateForIndex/);
+  assert.match(model, /publicationDate/);
   assert.match(client, /structureBoundaryMarkers/);
   assert.match(client, /toggleSelectedBlockAsEpisodeBoundary/);
   assert.match(client, /Boundary map/);
@@ -502,6 +509,8 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /"manuscript-mobile-current-episode"/);
   assert.match(client, /data-testid="manuscript-mobile-structure-navigation"/);
   assert.match(client, /focusMobileStructureBoundary/);
+  assert.match(client, /Publishes \{publicationDate\}/);
+  assert.match(globalsCss, /\.manuscript-structure-rail-date/);
   assert.match(client, /Jump \{definition\.label\.toLowerCase\(\)\}/);
   assert.match(client, /Next \{definition\.label\.toLowerCase\(\)\}/);
   assert.match(globalsCss, /\.manuscript-editor-shell-with-rail/);

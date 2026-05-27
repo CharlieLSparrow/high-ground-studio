@@ -19,6 +19,7 @@ import {
   createDefaultManuscriptQuoteReview,
   createManuscriptStructureBoundaryIndex,
   deriveManuscriptChaptersFromTitleBlocks,
+  getEpisodePublicationDateForIndex,
   getCurrentManuscriptStructureBoundary,
   createHgoEpisodeProjectionFromManuscript,
   getNextManuscriptStructureBoundary,
@@ -540,6 +541,14 @@ test("safeManuscriptDraft migrates legacy chapter titles to boundary markers", (
   ]);
 });
 
+test("episode publication dates publish weekly with Episode 4 on June 3 2026", () => {
+  assert.equal(getEpisodePublicationDateForIndex(0), "2026-05-13");
+  assert.equal(getEpisodePublicationDateForIndex(1), "2026-05-20");
+  assert.equal(getEpisodePublicationDateForIndex(2), "2026-05-27");
+  assert.equal(getEpisodePublicationDateForIndex(3), "2026-06-03");
+  assert.equal(getEpisodePublicationDateForIndex(4), "2026-06-10");
+});
+
 test("safeManuscriptDraft rejects invalid draft envelopes", () => {
   assert.equal(
     safeManuscriptDraft({
@@ -982,6 +991,7 @@ test("structure boundary index derives chapter and episode rails from markers", 
   assert.equal(boundaryIndex.episodes.length, 1);
   assert.equal(boundaryIndex.episodes[0].source, "boundary-marker");
   assert.equal(boundaryIndex.episodes[0].label, "Episode 12");
+  assert.equal(boundaryIndex.episodes[0].publicationDate, "2026-05-13");
   assert.deepEqual(boundaryIndex.warnings, []);
 
   const currentChapter = getCurrentManuscriptStructureBoundary(
@@ -1046,8 +1056,10 @@ test("structure boundary index makes episode marker ranges contiguous", () => {
   assert.equal(boundaryIndex.episodes.length, 2);
   assert.equal(boundaryIndex.episodes[0].startBlockId, "block-a");
   assert.equal(boundaryIndex.episodes[0].endBlockId, "block-a");
+  assert.equal(boundaryIndex.episodes[0].publicationDate, "2026-05-13");
   assert.equal(boundaryIndex.episodes[1].startBlockId, "block-b");
   assert.equal(boundaryIndex.episodes[1].endBlockId, "block-c");
+  assert.equal(boundaryIndex.episodes[1].publicationDate, "2026-05-20");
   assert.deepEqual(boundaryIndex.warnings, []);
 });
 
@@ -1077,6 +1089,7 @@ test("safeManuscriptStructureBoundaryMarkers validates boundary marker shape", (
       blockId: "block-chapter-one",
       title: "Episode One",
       notes: "",
+      publicationDate: "2026-05-13",
       createdAt: "2026-05-26T12:02:00.000Z",
       updatedAt: "2026-05-26T12:02:00.000Z",
     },

@@ -22,7 +22,9 @@ import {
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
   ensureManuscriptBlockIds,
+  formatEpisodePublicationDate,
   getCurrentManuscriptStructureBoundary,
+  getEpisodePublicationDateForIndex,
   getManuscriptAuthorDefinition,
   getManuscriptStructureDefinition,
   getNextManuscriptStructureBoundary,
@@ -1028,6 +1030,14 @@ export default function StudioManuscriptCollabClient() {
     const existingMarker = liveBoundaryMarkers.find(
       (marker) => marker.kind === kind && marker.blockId === blockId,
     );
+    const publicationDate =
+      !existingMarker && kind === "episode"
+        ? getEpisodePublicationDateForIndex(
+            liveBoundaryMarkers.filter((marker) => marker.kind === "episode")
+              .length,
+          )
+        : null;
+    const publicationDateLabel = formatEpisodePublicationDate(publicationDate);
 
     updateLiveStructureBoundaryMarkers((markers, updatedAt) => {
       const markerToRemove = markers.find(
@@ -1046,6 +1056,7 @@ export default function StudioManuscriptCollabClient() {
           blockId,
           title,
           notes: "Marked during live edit.",
+          ...(publicationDate ? { publicationDate } : {}),
           createdAt: updatedAt,
           updatedAt,
         },
@@ -1055,7 +1066,9 @@ export default function StudioManuscriptCollabClient() {
     setMessage(
       existingMarker
         ? `${definition.label} marker removed from the current block.`
-        : `Marked current block as ${definition.label}.`,
+        : publicationDateLabel
+          ? `Marked current block as ${definition.label}. Publishes ${publicationDateLabel}.`
+          : `Marked current block as ${definition.label}.`,
     );
   }
 
@@ -1645,6 +1658,9 @@ export default function StudioManuscriptCollabClient() {
       currentBoundary?.label ??
       (nextBoundary ? `Before ${nextBoundary.label}` : `No ${definition.label}`);
     const title = currentBoundary?.title ?? nextBoundary?.title ?? "Not marked yet";
+    const publicationDate = formatEpisodePublicationDate(
+      kind === "episode" ? targetBoundary?.publicationDate : null,
+    );
 
     return (
       <button
@@ -1677,7 +1693,7 @@ export default function StudioManuscriptCollabClient() {
           {statusLabel}
         </span>
         <span className="mt-0.5 block truncate text-[0.66rem] leading-tight text-studio-muted">
-          {title}
+          {publicationDate ? `Publishes ${publicationDate}` : title}
         </span>
       </button>
     );
@@ -1693,6 +1709,10 @@ export default function StudioManuscriptCollabClient() {
     }
 
     const definition = getManuscriptStructureDefinition(kind);
+    const targetBoundary = currentBoundary ?? nextBoundary;
+    const publicationDate = formatEpisodePublicationDate(
+      kind === "episode" ? targetBoundary?.publicationDate : null,
+    );
 
     return (
       <article
@@ -1713,11 +1733,16 @@ export default function StudioManuscriptCollabClient() {
         </div>
         <div className="min-w-0">
           <p className="m-0 truncate text-[0.82rem] font-bold text-studio-ink">
-            {(currentBoundary ?? nextBoundary)?.label}
+            {targetBoundary?.label}
           </p>
           <p className="m-0 truncate text-[0.72rem] leading-relaxed text-studio-muted">
-            {(currentBoundary ?? nextBoundary)?.title}
+            {targetBoundary?.title}
           </p>
+          {publicationDate ? (
+            <p className="m-0 truncate text-[0.68rem] font-bold leading-relaxed text-studio-source">
+              Publishes {publicationDate}
+            </p>
+          ) : null}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button
