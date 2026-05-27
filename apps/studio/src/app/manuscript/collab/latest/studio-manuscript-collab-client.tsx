@@ -162,14 +162,29 @@ const blockNodeTypes = ["paragraph", "heading", "listItem"];
 
 function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
   const nodesByBlockId = new Map<string, HTMLElement>();
+  const collectFrom = (parent: ParentNode) => {
+    parent.querySelectorAll<HTMLElement>("[data-blockid]").forEach((node) => {
+      const blockId = node.getAttribute("data-blockid");
 
-  root.querySelectorAll<HTMLElement>("[data-blockid]").forEach((node) => {
-    const blockId = node.getAttribute("data-blockid");
+      if (blockId) {
+        nodesByBlockId.set(blockId, node);
+      }
+    });
+  };
 
-    if (blockId) {
-      nodesByBlockId.set(blockId, node);
-    }
-  });
+  collectFrom(root);
+
+  if (!nodesByBlockId.size) {
+    document
+      .querySelectorAll<HTMLElement>(".manuscript-prosemirror [data-blockid]")
+      .forEach((node) => {
+        const blockId = node.getAttribute("data-blockid");
+
+        if (blockId) {
+          nodesByBlockId.set(blockId, node);
+        }
+      });
+  }
 
   return nodesByBlockId;
 }
