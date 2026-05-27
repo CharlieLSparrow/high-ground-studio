@@ -285,6 +285,14 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /CollaborationCaret\.configure/);
   assert.match(client, /Save to manuscript/);
   assert.match(client, /Copy edit link/);
+  assert.match(client, /isMobileRoomMenuOpen/);
+  assert.match(client, /data-testid="manuscript-live-mobile-footer"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-menu"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-save"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-share"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-menu-toggle"/);
+  assert.match(client, /hidden flex-wrap items-center justify-end gap-2 lg:flex/);
+  assert.match(client, /lg:sticky lg:top-\[92px\] lg:grid/);
   assert.match(client, /hasCheckpointChanges/);
   assert.match(client, /People in room/);
   assert.match(client, /collectPresenceParticipants/);

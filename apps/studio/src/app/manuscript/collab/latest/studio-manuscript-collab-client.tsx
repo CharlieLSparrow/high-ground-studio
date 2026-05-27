@@ -307,6 +307,7 @@ export default function StudioManuscriptCollabClient() {
   const [isCheckingLiveStatus, setIsCheckingLiveStatus] = useState(false);
   const [liveStatus, setLiveStatus] =
     useState<LiveEditStatusResponse | null>(null);
+  const [isMobileRoomMenuOpen, setIsMobileRoomMenuOpen] = useState(false);
   const [shareLinkState, setShareLinkState] = useState<
     "idle" | "copied" | "error"
   >("idle");
@@ -1023,7 +1024,7 @@ export default function StudioManuscriptCollabClient() {
   ]);
 
   return (
-    <main className="min-h-screen px-3.5 py-4 md:px-6 md:py-6">
+    <main className="min-h-screen px-3.5 pt-4 pb-32 md:px-6 md:pt-6 lg:py-6">
       <section className="mx-auto grid max-w-[1500px] gap-4">
         <header className="sticky top-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-studio-line-strong bg-studio-panel/95 p-3.5 shadow-[0_16px_44px_rgba(0,0,0,0.34)] backdrop-blur">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -1065,7 +1066,7 @@ export default function StudioManuscriptCollabClient() {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="hidden flex-wrap items-center justify-end gap-2 lg:flex">
             <button
               className="min-h-9 rounded-md border border-studio-source/45 bg-studio-source/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/60 hover:bg-studio-source/15"
               type="button"
@@ -1097,7 +1098,7 @@ export default function StudioManuscriptCollabClient() {
             <EditorContent editor={editor} />
           </section>
 
-          <aside className="grid h-fit gap-3 rounded-lg border border-studio-line-strong bg-studio-panel/82 p-4 lg:sticky lg:top-[92px]">
+          <aside className="hidden h-fit gap-3 rounded-lg border border-studio-line-strong bg-studio-panel/82 p-4 lg:sticky lg:top-[92px] lg:grid">
             <div>
               <p className={labelClassName}>Room</p>
               <p className="mt-1 mb-0 text-[0.92rem] leading-6 text-studio-muted">
@@ -1337,8 +1338,227 @@ export default function StudioManuscriptCollabClient() {
               Back to Manuscript Desk
             </a>
           </aside>
-        </div>
-      </section>
-    </main>
-  );
-}
+          </div>
+        </section>
+
+        <section
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur lg:hidden"
+          aria-label="Mobile live edit controls"
+        >
+          {isMobileRoomMenuOpen ? (
+            <div
+              className="mb-2 grid max-h-[68vh] gap-3 overflow-auto rounded-t-2xl border border-studio-line-strong bg-[#041f1e] p-3"
+              data-testid="manuscript-live-mobile-menu"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={labelClassName}>Live room</p>
+                  <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                    Room tools
+                  </h2>
+                </div>
+                <button
+                  className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source"
+                  type="button"
+                  onClick={() => setIsMobileRoomMenuOpen(false)}
+                >
+                  Back
+                </button>
+              </div>
+
+              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>Status</span>
+                  <StudioChip tone={statusTone}>{roomSyncLabel}</StudioChip>
+                </div>
+                <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                  {message}
+                </p>
+              </div>
+
+              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>People</span>
+                  <StudioChip tone="source">
+                    {activeParticipantCount.toLocaleString()} active
+                  </StudioChip>
+                </div>
+                <div className="grid gap-2">
+                  {presenceParticipants.length ? (
+                    presenceParticipants.map((participant) => (
+                      <div
+                        className="flex items-center justify-between gap-2 rounded-md border border-studio-line bg-studio-ink/5 px-2.5 py-2"
+                        key={participant.clientId}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: participant.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate text-[0.84rem] font-extrabold text-studio-ink">
+                            {participant.name}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[0.7rem] font-extrabold uppercase tracking-[0.08em] text-studio-dim">
+                          {participant.isCurrent ? "You" : participant.role}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                      Waiting for room presence.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  "grid gap-2 rounded-lg border bg-black/15 p-3",
+                  hasOutsideBackup
+                    ? "border-studio-review/45 bg-studio-review/10"
+                    : "border-studio-line",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>Latest backup</span>
+                  <StudioChip tone={backupPriorityTone}>{backupPriorityLabel}</StudioChip>
+                </div>
+                <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                  {backupPriorityCopy}
+                </p>
+                <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
+                  Latest: {latestBackupLabel}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim"
+                    disabled={isCheckingLiveStatus}
+                    type="button"
+                    onClick={() => void refreshLiveStatus()}
+                  >
+                    {isCheckingLiveStatus ? "Checking..." : "Check"}
+                  </button>
+                  <a
+                    className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-center text-[0.78rem] font-extrabold text-studio-source"
+                    href="/manuscript/live/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Compare
+                  </a>
+                </div>
+              </div>
+
+              <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>Manuscript backup</span>
+                  <StudioChip tone={autoBackupTone}>{autoBackupLabel}</StudioChip>
+                </div>
+                <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                  {lastCheckpoint
+                    ? `${formatDateTime(lastCheckpoint.updatedAt)} - ${lastCheckpoint.wordCount.toLocaleString()} words`
+                    : hasCheckpointChanges
+                      ? "The room has edits that are not the latest manuscript backup yet."
+                      : "No new room edits need saving from this browser."}
+                </p>
+                <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
+                  {autoBackupStatus}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source"
+                    type="button"
+                    onClick={() => {
+                      setIsAutoBackupEnabled((current) => !current);
+                    }}
+                  >
+                    {isAutoBackupEnabled ? "Manual" : "Auto"}
+                  </button>
+                  <button
+                    className="min-h-9 rounded-md border border-studio-review/55 bg-studio-review/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-review disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+                    disabled={
+                      !editor ||
+                      !setup?.ok ||
+                      isResettingFromLatest ||
+                      isSaving ||
+                      !(liveStatus?.ok && liveStatus.latestSnapshot)
+                    }
+                    type="button"
+                    onClick={() => void resetRoomFromLatestBackup()}
+                  >
+                    {isResettingFromLatest ? "Loading..." : "Load latest"}
+                  </button>
+                </div>
+              </div>
+
+              <a
+                className="min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-center text-[0.86rem] font-extrabold text-studio-source"
+                href="/manuscript"
+              >
+                Back to Manuscript Desk
+              </a>
+            </div>
+          ) : null}
+
+          <div
+            className="flex items-center justify-between gap-2"
+            data-testid="manuscript-live-mobile-footer"
+          >
+            <div className="min-w-0">
+              <p className="m-0 truncate text-[0.66rem] font-extrabold uppercase leading-tight text-studio-muted">
+                {roomSyncLabel}
+              </p>
+              <p className="m-0 truncate text-[0.72rem] leading-tight text-studio-muted">
+                {activeParticipantCount.toLocaleString()} active
+                {hasCheckpointChanges ? " / needs save" : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                className="min-h-10 rounded-lg border border-studio-tag/55 bg-studio-tag/15 px-3 py-2 text-[0.78rem] font-extrabold text-studio-tag disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+                data-testid="manuscript-live-mobile-save"
+                disabled={!editor || !setup?.ok || isSaving || isResettingFromLatest}
+                type="button"
+                onClick={() => void saveCheckpoint({ mode: "manual" })}
+              >
+                {isSaving ? "Saving" : "Save"}
+              </button>
+              <button
+                className="min-h-10 rounded-lg border border-studio-source/45 bg-studio-source/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source"
+                data-testid="manuscript-live-mobile-share"
+                type="button"
+                onClick={() => void copySharedEditLink()}
+              >
+                {shareLinkState === "copied" ? "Copied" : "Share"}
+              </button>
+              <button
+                className={cn(
+                  "grid size-10 place-items-center rounded-lg border border-studio-line bg-studio-ink/5 px-0 text-studio-source",
+                  isMobileRoomMenuOpen
+                    ? "border-studio-tag/55 bg-studio-tag/15 text-studio-tag"
+                    : "",
+                )}
+                data-testid="manuscript-live-mobile-menu-toggle"
+                type="button"
+                aria-expanded={isMobileRoomMenuOpen}
+                aria-label={
+                  isMobileRoomMenuOpen
+                    ? "Close live room tools"
+                    : "Open live room tools"
+                }
+                onClick={() => setIsMobileRoomMenuOpen((current) => !current)}
+              >
+                <span className="grid gap-1" aria-hidden="true">
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                </span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
