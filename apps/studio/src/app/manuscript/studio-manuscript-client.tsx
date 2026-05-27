@@ -314,6 +314,20 @@ const dangerButtonClassName =
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 
+function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
+  const nodesByBlockId = new Map<string, HTMLElement>();
+
+  root.querySelectorAll<HTMLElement>("[data-blockid]").forEach((node) => {
+    const blockId = node.getAttribute("data-blockid");
+
+    if (blockId) {
+      nodesByBlockId.set(blockId, node);
+    }
+  });
+
+  return nodesByBlockId;
+}
+
 type SemanticHighlightDefinition =
   (typeof semanticHighlightDefinitions)[number];
 type SemanticHighlightColorKey = SemanticHighlightDefinition["colorKey"];
@@ -1617,22 +1631,15 @@ export function StudioManuscriptClient({
       "manuscript-filter-hide",
       "manuscript-filter-context",
     ];
+    const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
+      editor.view.dom,
+    );
 
-    editor.state.doc.descendants((node, pos) => {
-      if (!blockNodeTypes.includes(node.type.name)) {
-        return true;
-      }
-
-      const domNode = editor.view.nodeDOM(pos);
-
-      if (domNode instanceof HTMLElement) {
-        domNode.classList.remove(...classNames);
-        domNode.removeAttribute("data-structure-regions");
-        domNode.removeAttribute("data-structure-boundaries");
-        domNode.removeAttribute("data-manuscript-boundary-heading");
-      }
-
-      return true;
+    renderedBlockNodesById.forEach((domNode) => {
+      domNode.classList.remove(...classNames);
+      domNode.removeAttribute("data-structure-regions");
+      domNode.removeAttribute("data-structure-boundaries");
+      domNode.removeAttribute("data-manuscript-boundary-heading");
     });
 
     const regionsByBlockId = new Map<string, ManuscriptStructureRegionSummary[]>();
@@ -1659,7 +1666,7 @@ export function StudioManuscriptClient({
       boundaryMarkersByBlockId.set(marker.blockId, markers);
     }
 
-    editor.state.doc.descendants((node, pos) => {
+    editor.state.doc.descendants((node) => {
       if (!blockNodeTypes.includes(node.type.name)) {
         return true;
       }
@@ -1671,9 +1678,9 @@ export function StudioManuscriptClient({
       }
 
       const regions = regionsByBlockId.get(blockId);
-      const domNode = editor.view.nodeDOM(pos);
+      const domNode = renderedBlockNodesById.get(blockId);
 
-      if (!(domNode instanceof HTMLElement)) {
+      if (!domNode) {
         return true;
       }
 

@@ -159,6 +159,21 @@ type LiveStructureState = {
 };
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
+
+function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
+  const nodesByBlockId = new Map<string, HTMLElement>();
+
+  root.querySelectorAll<HTMLElement>("[data-blockid]").forEach((node) => {
+    const blockId = node.getAttribute("data-blockid");
+
+    if (blockId) {
+      nodesByBlockId.set(blockId, node);
+    }
+  });
+
+  return nodesByBlockId;
+}
+
 const liveWritableAuthorIds: LiveWritableAuthorId[] = ["charlie", "homer"];
 const liveQuickSemanticHighlightTypes = [
   "clip",
@@ -887,6 +902,9 @@ export default function StudioManuscriptCollabClient() {
       "manuscript-boundary-marker-episode",
       "manuscript-chapter-title-block",
     ];
+    const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
+      editor.view.dom,
+    );
     const boundaryMarkersByBlockId = new Map<
       string,
       ManuscriptStructureBoundaryMarker[]
@@ -898,24 +916,26 @@ export default function StudioManuscriptCollabClient() {
       boundaryMarkersByBlockId.set(marker.blockId, markers);
     }
 
-    editor.state.doc.descendants((node, pos) => {
+    renderedBlockNodesById.forEach((domNode) => {
+      domNode.classList.remove(...classNames);
+      domNode.removeAttribute("data-structure-boundaries");
+      domNode.removeAttribute("data-manuscript-boundary-heading");
+    });
+
+    editor.state.doc.descendants((node) => {
       if (!blockNodeTypes.includes(node.type.name)) {
         return true;
       }
 
-      const domNode = editor.view.nodeDOM(pos);
-
-      if (!(domNode instanceof HTMLElement)) {
-        return true;
-      }
-
-      domNode.classList.remove(...classNames);
-      domNode.removeAttribute("data-structure-boundaries");
-      domNode.removeAttribute("data-manuscript-boundary-heading");
-
       const blockId = node.attrs.blockId;
 
       if (typeof blockId !== "string") {
+        return true;
+      }
+
+      const domNode = renderedBlockNodesById.get(blockId);
+
+      if (!domNode) {
         return true;
       }
 
