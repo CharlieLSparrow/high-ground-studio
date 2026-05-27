@@ -1435,6 +1435,72 @@ export function countMissingBlockIds(json: ManuscriptEditorJson) {
   return collectBlockSummaries(json).filter((block) => !block.blockId).length;
 }
 
+export function createManuscriptBlockIdRebindMap(input: {
+  sourceJson: ManuscriptEditorJson;
+  targetJson: ManuscriptEditorJson;
+}) {
+  const sourceBlocks = collectBlockSummaries(input.sourceJson);
+  const targetBlocks = collectBlockSummaries(input.targetJson);
+  const blockIdMap = new Map<string, string>();
+
+  sourceBlocks.forEach((sourceBlock, index) => {
+    const targetBlock = targetBlocks[index];
+
+    if (
+      !sourceBlock.blockId ||
+      !targetBlock?.blockId ||
+      sourceBlock.blockId === targetBlock.blockId ||
+      sourceBlock.type !== targetBlock.type ||
+      sourceBlock.preview !== targetBlock.preview
+    ) {
+      return;
+    }
+
+    blockIdMap.set(sourceBlock.blockId, targetBlock.blockId);
+  });
+
+  return blockIdMap;
+}
+
+export function rebindManuscriptStructureBlockIds(input: {
+  sourceJson: ManuscriptEditorJson;
+  targetJson: ManuscriptEditorJson;
+  structureRegions: ManuscriptStructureRegion[];
+  structureBoundaryMarkers: ManuscriptStructureBoundaryMarker[];
+  chapterTitleBlocks: ManuscriptChapterTitleBlock[];
+}) {
+  const blockIdMap = createManuscriptBlockIdRebindMap({
+    sourceJson: input.sourceJson,
+    targetJson: input.targetJson,
+  });
+
+  if (!blockIdMap.size) {
+    return {
+      structureRegions: input.structureRegions,
+      structureBoundaryMarkers: input.structureBoundaryMarkers,
+      chapterTitleBlocks: input.chapterTitleBlocks,
+    };
+  }
+
+  const rebindBlockId = (blockId: string) => blockIdMap.get(blockId) ?? blockId;
+
+  return {
+    structureRegions: input.structureRegions.map((region) => ({
+      ...region,
+      startBlockId: rebindBlockId(region.startBlockId),
+      endBlockId: rebindBlockId(region.endBlockId),
+    })),
+    structureBoundaryMarkers: input.structureBoundaryMarkers.map((marker) => ({
+      ...marker,
+      blockId: rebindBlockId(marker.blockId),
+    })),
+    chapterTitleBlocks: input.chapterTitleBlocks.map((titleBlock) => ({
+      ...titleBlock,
+      blockId: rebindBlockId(titleBlock.blockId),
+    })),
+  };
+}
+
 export function collectSemanticHighlights(
   json: ManuscriptEditorJson,
 ): SemanticHighlightSummary[] {

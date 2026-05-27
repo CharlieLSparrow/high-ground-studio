@@ -56,6 +56,7 @@ import {
   manuscriptStructureLabelPresets,
   moveManuscriptStructureRegionWithinKind,
   removeManuscriptQuoteReview,
+  rebindManuscriptStructureBlockIds,
   safeManuscriptDraft,
   safeManuscriptChapterTitleBlocks,
   safeManuscriptQuoteReviews,
@@ -746,6 +747,91 @@ test("ensureManuscriptBlockIds adds missing durable IDs", () => {
     collectBlockSummaries(withIds).map((block) => block.blockId),
     ["block-paragraph-1", "block-heading-2"],
   );
+});
+
+test("rebindManuscriptStructureBlockIds follows regenerated editor block IDs", () => {
+  const sourceJson = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { blockId: "old-preface" },
+        content: [{ type: "text", text: "Preface" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "old-episode" },
+        content: [{ type: "text", text: "The Wednesday Rule" }],
+      },
+    ],
+  };
+  const targetJson = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { blockId: "new-preface" },
+        content: [{ type: "text", text: "Preface" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "new-episode" },
+        content: [{ type: "text", text: "The Wednesday Rule" }],
+      },
+    ],
+  };
+  const rebound = rebindManuscriptStructureBlockIds({
+    sourceJson,
+    targetJson,
+    structureRegions: [
+      {
+        id: "region-one",
+        kind: "chapter",
+        title: "Preface",
+        startBlockId: "old-preface",
+        endBlockId: "old-episode",
+        order: 1,
+        colorKey: "chapter",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ],
+    structureBoundaryMarkers: [
+      {
+        id: "chapter-preface",
+        kind: "chapter",
+        blockId: "old-preface",
+        title: "Preface",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+      {
+        id: "episode-wednesday",
+        kind: "episode",
+        blockId: "old-episode",
+        title: "The Wednesday Rule",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ],
+    chapterTitleBlocks: [
+      {
+        id: "legacy-preface",
+        blockId: "old-preface",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(rebound.structureRegions[0].startBlockId, "new-preface");
+  assert.equal(rebound.structureRegions[0].endBlockId, "new-episode");
+  assert.equal(rebound.structureBoundaryMarkers[0].blockId, "new-preface");
+  assert.equal(rebound.structureBoundaryMarkers[1].blockId, "new-episode");
+  assert.equal(rebound.chapterTitleBlocks[0].blockId, "new-preface");
 });
 
 test("countMissingBlockIds reports block ID gaps", () => {

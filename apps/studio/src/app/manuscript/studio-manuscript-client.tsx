@@ -86,6 +86,7 @@ import {
   manuscriptStructureLabelPresets,
   moveManuscriptStructureRegionWithinKind,
   removeManuscriptQuoteReview,
+  rebindManuscriptStructureBlockIds,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
   filterCitedQuotationsByReviewStatus,
@@ -314,33 +315,36 @@ const dangerButtonClassName =
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 
-function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
-  const nodesByBlockId = new Map<string, HTMLElement>();
+function collectRenderedManuscriptBlockNodeList(root: HTMLElement) {
+  const nodes: HTMLElement[] = [];
+  const seenBlockIds = new Set<string>();
   const collectFrom = (parent: ParentNode) => {
     parent.querySelectorAll<HTMLElement>("[data-blockid]").forEach((node) => {
       const blockId = node.getAttribute("data-blockid");
 
-      if (blockId) {
-        nodesByBlockId.set(blockId, node);
+      if (blockId && !seenBlockIds.has(blockId)) {
+        seenBlockIds.add(blockId);
+        nodes.push(node);
       }
     });
   };
 
   collectFrom(root);
 
-  if (!nodesByBlockId.size) {
+  if (!nodes.length) {
     document
       .querySelectorAll<HTMLElement>(".manuscript-prosemirror [data-blockid]")
       .forEach((node) => {
         const blockId = node.getAttribute("data-blockid");
 
-        if (blockId) {
-          nodesByBlockId.set(blockId, node);
+        if (blockId && !seenBlockIds.has(blockId)) {
+          seenBlockIds.add(blockId);
+          nodes.push(node);
         }
       });
   }
 
-  return nodesByBlockId;
+  return nodes;
 }
 
 type SemanticHighlightDefinition =
@@ -985,19 +989,7 @@ export function StudioManuscriptClient({
         const parsed = safeManuscriptDraft(JSON.parse(rawDraft));
 
         if (parsed) {
-          setTitle(parsed.title);
-          setSourceFileName(parsed.sourceFileName);
-          setImportSummary(parsed.importSummary);
-          setStructureRegions(parsed.structureRegions);
-          setStructureBoundaryMarkers(parsed.structureBoundaryMarkers);
-          setQuoteReviews(parsed.quoteReviews);
-          setActiveAuthorId(parsed.activeAuthorId);
-          setShowAuthorColors(parsed.showAuthorColors);
-          setShowSemanticColors(parsed.showSemanticColors);
-          setLastUpdatedAt(parsed.lastUpdatedAt);
-          setEditorJson(parsed.editorJson);
-          editor.commands.setContent(parsed.editorJson as JSONContent);
-          setMessage("Loaded browser-local Manuscript Desk draft.");
+          applyDraftToEditor(parsed, "Loaded browser-local Manuscript Desk draft.");
         }
       }
     } catch (error) {
@@ -1636,161 +1628,198 @@ export function StudioManuscriptClient({
     let animationFrameId: number | null = null;
 
     const applyBlockDecorations = () => {
-    const classNames = [
-      "manuscript-author-block",
-      "manuscript-author-block-charlie",
-      "manuscript-author-block-homer",
-      "manuscript-author-block-mixed",
-      "manuscript-author-block-unassigned",
-      "manuscript-semantic-block",
-      "manuscript-semantic-block-clip",
-      "manuscript-semantic-block-show-notes",
-      "manuscript-semantic-block-mixed",
-      "manuscript-structure-block",
-      "manuscript-structure-chapter",
-      "manuscript-structure-episode",
-      "manuscript-structure-section",
-      "manuscript-chapter-title-block",
-      "manuscript-boundary-marker-block",
-      "manuscript-boundary-marker-chapter",
-      "manuscript-boundary-marker-episode",
-      "manuscript-filter-match",
-      "manuscript-filter-dim",
-      "manuscript-filter-hide",
-      "manuscript-filter-context",
-    ];
-    const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
-      editor.view.dom,
-    );
+      const classNames = [
+        "manuscript-author-block",
+        "manuscript-author-block-charlie",
+        "manuscript-author-block-homer",
+        "manuscript-author-block-mixed",
+        "manuscript-author-block-unassigned",
+        "manuscript-semantic-block",
+        "manuscript-semantic-block-clip",
+        "manuscript-semantic-block-show-notes",
+        "manuscript-semantic-block-mixed",
+        "manuscript-structure-block",
+        "manuscript-structure-chapter",
+        "manuscript-structure-episode",
+        "manuscript-structure-section",
+        "manuscript-chapter-title-block",
+        "manuscript-boundary-marker-block",
+        "manuscript-boundary-marker-chapter",
+        "manuscript-boundary-marker-episode",
+        "manuscript-filter-match",
+        "manuscript-filter-dim",
+        "manuscript-filter-hide",
+        "manuscript-filter-context",
+      ];
+      const renderedBlockNodes = collectRenderedManuscriptBlockNodeList(
+        editor.view.dom,
+      );
+      const renderedBlockNodesById = new Map(
+        renderedBlockNodes.flatMap((node) => {
+          const blockId = node.getAttribute("data-blockid");
 
-    renderedBlockNodesById.forEach((domNode) => {
-      domNode.classList.remove(...classNames);
-      domNode.removeAttribute("data-structure-regions");
-      domNode.removeAttribute("data-structure-boundaries");
-      domNode.removeAttribute("data-manuscript-boundary-heading");
-    });
+          return blockId ? [[blockId, node] as const] : [];
+        }),
+      );
 
-    const regionsByBlockId = new Map<string, ManuscriptStructureRegionSummary[]>();
+      renderedBlockNodesById.forEach((domNode) => {
+        domNode.classList.remove(...classNames);
+        domNode.removeAttribute("data-structure-regions");
+        domNode.removeAttribute("data-structure-boundaries");
+        domNode.removeAttribute("data-manuscript-boundary-heading");
+      });
 
-    for (const region of structureRegionSummaries) {
-      for (const blockId of region.blockIds) {
-        const regions = regionsByBlockId.get(blockId) ?? [];
-        regions.push(region);
-        regionsByBlockId.set(blockId, regions);
-      }
-    }
+      const regionsByBlockId = new Map<
+        string,
+        ManuscriptStructureRegionSummary[]
+      >();
 
-    const matchingFilterBlockIds = new Set(focusVisibleBlockIds.matchingBlockIds);
-    const contextFilterBlockIds = new Set(focusVisibleBlockIds.contextBlockIds);
-    const visibleFilterBlockIds = new Set(focusVisibleBlockIds.visibleBlockIds);
-    const boundaryMarkersByBlockId = new Map<
-      string,
-      ManuscriptStructureBoundaryMarker[]
-    >();
-
-    for (const marker of structureBoundaryMarkers) {
-      const markers = boundaryMarkersByBlockId.get(marker.blockId) ?? [];
-      markers.push(marker);
-      boundaryMarkersByBlockId.set(marker.blockId, markers);
-    }
-
-    const blockDetailsById = new Map(
-      blockDetails.flatMap((block) =>
-        block.blockId ? [[block.blockId, block] as const] : [],
-      ),
-    );
-
-    renderedBlockNodesById.forEach((domNode, blockId) => {
-      const regions = regionsByBlockId.get(blockId);
-      const blockDetail = blockDetailsById.get(blockId);
-      const blockAuthorIds = new Set(blockDetail?.authorIds ?? []);
-
-      const hasCharlieAuthor = blockAuthorIds.has("charlie");
-      const hasHomerAuthor = blockAuthorIds.has("homer");
-
-      if (hasCharlieAuthor || hasHomerAuthor || blockAuthorIds.has("unassigned")) {
-        domNode.classList.add("manuscript-author-block");
-
-        if (hasCharlieAuthor && hasHomerAuthor) {
-          domNode.classList.add("manuscript-author-block-mixed");
-        } else if (hasCharlieAuthor) {
-          domNode.classList.add("manuscript-author-block-charlie");
-        } else if (hasHomerAuthor) {
-          domNode.classList.add("manuscript-author-block-homer");
-        } else {
-          domNode.classList.add("manuscript-author-block-unassigned");
+      for (const region of structureRegionSummaries) {
+        for (const blockId of region.blockIds) {
+          const regions = regionsByBlockId.get(blockId) ?? [];
+          regions.push(region);
+          regionsByBlockId.set(blockId, regions);
         }
       }
 
-      const hasClipSemantic =
-        blockDetail?.semanticTagTypes.includes("clip") ?? false;
-      const hasShowNotesSemantic =
-        blockDetail?.semanticTagTypes.includes("show-notes") ?? false;
+      const matchingFilterBlockIds = new Set(
+        focusVisibleBlockIds.matchingBlockIds,
+      );
+      const contextFilterBlockIds = new Set(
+        focusVisibleBlockIds.contextBlockIds,
+      );
+      const visibleFilterBlockIds = new Set(focusVisibleBlockIds.visibleBlockIds);
+      const blockIndexById = new Map(
+        blockSummaries.flatMap((block, index) =>
+          block.blockId ? [[block.blockId, index] as const] : [],
+        ),
+      );
+      const boundaryMarkersByBlockId = new Map<
+        string,
+        ManuscriptStructureBoundaryMarker[]
+      >();
 
-      if (hasClipSemantic || hasShowNotesSemantic) {
-        domNode.classList.add("manuscript-semantic-block");
+      for (const marker of structureBoundaryMarkers) {
+        const sourceBlockIndex = blockIndexById.get(marker.blockId);
+        const fallbackBlockId =
+          sourceBlockIndex === undefined
+            ? null
+            : renderedBlockNodes[sourceBlockIndex]?.getAttribute("data-blockid");
+        const resolvedBlockId = renderedBlockNodesById.has(marker.blockId)
+          ? marker.blockId
+          : fallbackBlockId;
 
-        if (hasClipSemantic && hasShowNotesSemantic) {
-          domNode.classList.add("manuscript-semantic-block-mixed");
-        } else if (hasClipSemantic) {
-          domNode.classList.add("manuscript-semantic-block-clip");
-        } else {
-          domNode.classList.add("manuscript-semantic-block-show-notes");
+        if (!resolvedBlockId) {
+          continue;
         }
+
+        const markers = boundaryMarkersByBlockId.get(resolvedBlockId) ?? [];
+        markers.push(marker);
+        boundaryMarkersByBlockId.set(resolvedBlockId, markers);
       }
 
-      if (regions?.length) {
-        domNode.classList.add("manuscript-structure-block");
+      const blockDetailsById = new Map(
+        blockDetails.flatMap((block) =>
+          block.blockId ? [[block.blockId, block] as const] : [],
+        ),
+      );
 
-        for (const region of regions) {
-          domNode.classList.add(`manuscript-structure-${region.colorKey}`);
-        }
+      renderedBlockNodesById.forEach((domNode, blockId) => {
+        const regions = regionsByBlockId.get(blockId);
+        const blockDetail = blockDetailsById.get(blockId);
+        const blockAuthorIds = new Set(blockDetail?.authorIds ?? []);
 
-        domNode.setAttribute(
-          "data-structure-regions",
-          regions.map((region) => region.title).join(", "),
-        );
-      }
+        const hasCharlieAuthor = blockAuthorIds.has("charlie");
+        const hasHomerAuthor = blockAuthorIds.has("homer");
 
-      const boundaryMarkers = boundaryMarkersByBlockId.get(blockId);
+        if (
+          hasCharlieAuthor ||
+          hasHomerAuthor ||
+          blockAuthorIds.has("unassigned")
+        ) {
+          domNode.classList.add("manuscript-author-block");
 
-      if (boundaryMarkers?.length) {
-        domNode.classList.add("manuscript-boundary-marker-block");
-
-        if (boundaryMarkers.some((marker) => marker.kind === "chapter")) {
-          domNode.classList.add("manuscript-boundary-marker-chapter");
-          domNode.classList.add("manuscript-chapter-title-block");
-          domNode.setAttribute("data-manuscript-boundary-heading", "chapter");
-        }
-
-        if (boundaryMarkers.some((marker) => marker.kind === "episode")) {
-          domNode.classList.add("manuscript-boundary-marker-episode");
-          domNode.setAttribute("data-manuscript-boundary-heading", "episode");
-        }
-
-        domNode.setAttribute(
-          "data-structure-boundaries",
-          boundaryMarkers
-            .map((marker) => (marker.kind === "chapter" ? "Chapter" : "Episode"))
-            .join(", "),
-        );
-      }
-
-      if (blockFilterSummary.hasActiveFilters) {
-        if (matchingFilterBlockIds.has(blockId)) {
-          domNode.classList.add("manuscript-filter-match");
-        } else if (filterVisualMode === "dim-nonmatches") {
-          domNode.classList.add("manuscript-filter-dim");
-        } else if (filterVisualMode === "hide-nonmatches") {
-          if (contextFilterBlockIds.has(blockId)) {
-            domNode.classList.add("manuscript-filter-context");
-          } else if (!visibleFilterBlockIds.has(blockId)) {
-            domNode.classList.add("manuscript-filter-hide");
+          if (hasCharlieAuthor && hasHomerAuthor) {
+            domNode.classList.add("manuscript-author-block-mixed");
+          } else if (hasCharlieAuthor) {
+            domNode.classList.add("manuscript-author-block-charlie");
+          } else if (hasHomerAuthor) {
+            domNode.classList.add("manuscript-author-block-homer");
+          } else {
+            domNode.classList.add("manuscript-author-block-unassigned");
           }
         }
-      }
 
-    });
+        const hasClipSemantic =
+          blockDetail?.semanticTagTypes.includes("clip") ?? false;
+        const hasShowNotesSemantic =
+          blockDetail?.semanticTagTypes.includes("show-notes") ?? false;
+
+        if (hasClipSemantic || hasShowNotesSemantic) {
+          domNode.classList.add("manuscript-semantic-block");
+
+          if (hasClipSemantic && hasShowNotesSemantic) {
+            domNode.classList.add("manuscript-semantic-block-mixed");
+          } else if (hasClipSemantic) {
+            domNode.classList.add("manuscript-semantic-block-clip");
+          } else {
+            domNode.classList.add("manuscript-semantic-block-show-notes");
+          }
+        }
+
+        if (regions?.length) {
+          domNode.classList.add("manuscript-structure-block");
+
+          for (const region of regions) {
+            domNode.classList.add(`manuscript-structure-${region.colorKey}`);
+          }
+
+          domNode.setAttribute(
+            "data-structure-regions",
+            regions.map((region) => region.title).join(", "),
+          );
+        }
+
+        const boundaryMarkers = boundaryMarkersByBlockId.get(blockId);
+
+        if (boundaryMarkers?.length) {
+          domNode.classList.add("manuscript-boundary-marker-block");
+
+          if (boundaryMarkers.some((marker) => marker.kind === "chapter")) {
+            domNode.classList.add("manuscript-boundary-marker-chapter");
+            domNode.classList.add("manuscript-chapter-title-block");
+            domNode.setAttribute("data-manuscript-boundary-heading", "chapter");
+          }
+
+          if (boundaryMarkers.some((marker) => marker.kind === "episode")) {
+            domNode.classList.add("manuscript-boundary-marker-episode");
+            domNode.setAttribute("data-manuscript-boundary-heading", "episode");
+          }
+
+          domNode.setAttribute(
+            "data-structure-boundaries",
+            boundaryMarkers
+              .map((marker) =>
+                marker.kind === "chapter" ? "Chapter" : "Episode",
+              )
+              .join(", "),
+          );
+        }
+
+        if (blockFilterSummary.hasActiveFilters) {
+          if (matchingFilterBlockIds.has(blockId)) {
+            domNode.classList.add("manuscript-filter-match");
+          } else if (filterVisualMode === "dim-nonmatches") {
+            domNode.classList.add("manuscript-filter-dim");
+          } else if (filterVisualMode === "hide-nonmatches") {
+            if (contextFilterBlockIds.has(blockId)) {
+              domNode.classList.add("manuscript-filter-context");
+            } else if (!visibleFilterBlockIds.has(blockId)) {
+              domNode.classList.add("manuscript-filter-hide");
+            }
+          }
+        }
+      });
     };
 
     const scheduleBlockDecorations = () => {
@@ -1822,6 +1851,7 @@ export function StudioManuscriptClient({
   }, [
     blockFilterSummary.hasActiveFilters,
     blockDetails,
+    blockSummaries,
     editor,
     editorJson,
     filterVisualMode,
@@ -3582,11 +3612,24 @@ export function StudioManuscriptClient({
       return;
     }
 
+    const sourceEditorJson = ensureBlockIds(draft.editorJson);
+    editor.commands.setContent(sourceEditorJson as JSONContent);
+    const targetEditorJson = ensureBlockIds(
+      editor.getJSON() as ManuscriptEditorJson,
+    );
+    const reboundStructure = rebindManuscriptStructureBlockIds({
+      sourceJson: sourceEditorJson,
+      targetJson: targetEditorJson,
+      structureRegions: draft.structureRegions,
+      structureBoundaryMarkers: draft.structureBoundaryMarkers,
+      chapterTitleBlocks: draft.chapterTitleBlocks,
+    });
+
     setTitle(draft.title);
     setSourceFileName(draft.sourceFileName);
     setImportSummary(draft.importSummary);
-    setStructureRegions(draft.structureRegions);
-    setStructureBoundaryMarkers(draft.structureBoundaryMarkers);
+    setStructureRegions(reboundStructure.structureRegions);
+    setStructureBoundaryMarkers(reboundStructure.structureBoundaryMarkers);
     setQuoteReviews(draft.quoteReviews);
     setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
@@ -3596,9 +3639,8 @@ export function StudioManuscriptClient({
     setShowAuthorColors(draft.showAuthorColors);
     setShowSemanticColors(draft.showSemanticColors);
     setLastUpdatedAt(draft.lastUpdatedAt);
-    editor.commands.setContent(draft.editorJson as JSONContent);
-    setEditorJson(draft.editorJson);
-    setSessionStartWordCount(countWordsAndCharacters(draft.editorJson).words);
+    setEditorJson(targetEditorJson);
+    setSessionStartWordCount(countWordsAndCharacters(targetEditorJson).words);
     setExportStructureMarkdown("");
     setExportFilteredMarkdown("");
     setExportCitedQuotationMarkdown("");
@@ -4310,28 +4352,11 @@ export function StudioManuscriptClient({
       const parsedDraft = safeManuscriptDraft(parsed);
 
       if (parsedDraft) {
-        setTitle(parsedDraft.title);
-        setSourceFileName(parsedDraft.sourceFileName);
-        setImportSummary(parsedDraft.importSummary);
-        setStructureRegions(parsedDraft.structureRegions);
-        setStructureBoundaryMarkers(parsedDraft.structureBoundaryMarkers);
-        setQuoteReviews(parsedDraft.quoteReviews);
-        setEditingQuoteReviewHighlightId(null);
-        setSelectedStructureRange(null);
-        setActiveAuthorId(parsedDraft.activeAuthorId);
-        setShowAuthorColors(parsedDraft.showAuthorColors);
-        setShowSemanticColors(parsedDraft.showSemanticColors);
-        setLastUpdatedAt(parsedDraft.lastUpdatedAt);
-        editor.commands.setContent(parsedDraft.editorJson as JSONContent);
-        setEditorJson(parsedDraft.editorJson);
-        setSessionStartWordCount(countWordsAndCharacters(parsedDraft.editorJson).words);
-        setPendingStructureStartBlockId(null);
-        setPendingStructureEndBlockId(null);
-        setExportStructureMarkdown("");
-        setExportFilteredMarkdown("");
-        setExportCitedQuotationMarkdown("");
+        applyDraftToEditor(
+          parsedDraft,
+          "Full Manuscript Desk draft JSON imported.",
+        );
         setImportJson("");
-        setMessage("Full Manuscript Desk draft JSON imported.");
         return;
       }
 
