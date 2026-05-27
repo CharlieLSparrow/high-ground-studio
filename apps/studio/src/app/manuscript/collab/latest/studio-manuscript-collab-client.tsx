@@ -896,6 +896,9 @@ export default function StudioManuscriptCollabClient() {
       return;
     }
 
+    let animationFrameId: number | null = null;
+
+    const applyBlockDecorations = () => {
     const classNames = [
       "manuscript-boundary-marker-block",
       "manuscript-boundary-marker-chapter",
@@ -967,6 +970,34 @@ export default function StudioManuscriptCollabClient() {
 
       return true;
     });
+    };
+
+    const scheduleBlockDecorations = () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = null;
+        applyBlockDecorations();
+      });
+    };
+
+    scheduleBlockDecorations();
+    const timeoutId = window.setTimeout(scheduleBlockDecorations, 80);
+    editor.on("transaction", scheduleBlockDecorations);
+    editor.on("update", scheduleBlockDecorations);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      editor.off("transaction", scheduleBlockDecorations);
+      editor.off("update", scheduleBlockDecorations);
+    };
   }, [currentEditorJson, editor, liveBoundaryMarkers]);
 
   function applyLiveAuthorToCursor(

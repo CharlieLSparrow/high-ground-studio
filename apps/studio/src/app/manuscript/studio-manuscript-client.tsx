@@ -879,6 +879,9 @@ export function StudioManuscriptClient({
   const [serverSnapshotStatus, setServerSnapshotStatus] = useState(
     "Server snapshots not checked yet.",
   );
+  const [sessionStartWordCount, setSessionStartWordCount] = useState<number | null>(
+    null,
+  );
   const [editorJson, setEditorJson] = useState<ManuscriptEditorJson>(
     createEmptyManuscriptDoc(),
   );
@@ -1048,6 +1051,13 @@ export function StudioManuscriptClient({
     () => countWordsAndCharacters(currentEditorJson),
     [currentEditorJson],
   );
+
+  useEffect(() => {
+    if (isHydrated && sessionStartWordCount === null) {
+      setSessionStartWordCount(textStats.words);
+    }
+  }, [isHydrated, sessionStartWordCount, textStats.words]);
+
   const blockSummaries = useMemo(
     () => collectBlockSummaries(currentEditorJson),
     [currentEditorJson],
@@ -1608,6 +1618,9 @@ export function StudioManuscriptClient({
       return;
     }
 
+    let animationFrameId: number | null = null;
+
+    const applyBlockDecorations = () => {
     const classNames = [
       "manuscript-author-block",
       "manuscript-author-block-charlie",
@@ -1807,6 +1820,34 @@ export function StudioManuscriptClient({
 
       return true;
     });
+    };
+
+    const scheduleBlockDecorations = () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = null;
+        applyBlockDecorations();
+      });
+    };
+
+    scheduleBlockDecorations();
+    const timeoutId = window.setTimeout(scheduleBlockDecorations, 80);
+    editor.on("transaction", scheduleBlockDecorations);
+    editor.on("update", scheduleBlockDecorations);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      editor.off("transaction", scheduleBlockDecorations);
+      editor.off("update", scheduleBlockDecorations);
+    };
   }, [
     blockFilterSummary.hasActiveFilters,
     editor,
@@ -3114,6 +3155,7 @@ export function StudioManuscriptClient({
       });
 
       setEditorJson(importedJson);
+      setSessionStartWordCount(countWordsAndCharacters(importedJson).words);
       setSourceFileName(file.name);
       setImportSummary(summary);
       setStructureRegions([]);
@@ -3584,6 +3626,7 @@ export function StudioManuscriptClient({
     setLastUpdatedAt(draft.lastUpdatedAt);
     editor.commands.setContent(draft.editorJson as JSONContent);
     setEditorJson(draft.editorJson);
+    setSessionStartWordCount(countWordsAndCharacters(draft.editorJson).words);
     setExportStructureMarkdown("");
     setExportFilteredMarkdown("");
     setExportCitedQuotationMarkdown("");
@@ -4309,6 +4352,7 @@ export function StudioManuscriptClient({
         setLastUpdatedAt(parsedDraft.lastUpdatedAt);
         editor.commands.setContent(parsedDraft.editorJson as JSONContent);
         setEditorJson(parsedDraft.editorJson);
+        setSessionStartWordCount(countWordsAndCharacters(parsedDraft.editorJson).words);
         setPendingStructureStartBlockId(null);
         setPendingStructureEndBlockId(null);
         setExportStructureMarkdown("");
@@ -4327,6 +4371,7 @@ export function StudioManuscriptClient({
       const jsonWithBlockIds = ensureBlockIds(parsed);
       editor.commands.setContent(jsonWithBlockIds as JSONContent);
       setEditorJson(jsonWithBlockIds);
+      setSessionStartWordCount(countWordsAndCharacters(jsonWithBlockIds).words);
       setSourceFileName(null);
       setImportSummary(null);
       setStructureRegions([]);
@@ -4391,6 +4436,7 @@ export function StudioManuscriptClient({
     setShowSemanticColors(emptyDraft.showSemanticColors);
     setLastUpdatedAt(null);
     setEditorJson(emptyDraft.editorJson);
+    setSessionStartWordCount(countWordsAndCharacters(emptyDraft.editorJson).words);
     setExportJson("");
     setImportJson("");
     setExportHtml("");
