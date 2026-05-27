@@ -296,7 +296,12 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /Live edit auto-backup/);
   assert.match(client, /Turn off auto-backup/);
   assert.match(client, /Draft handoff/);
-  assert.match(client, /Use saved draft in room/);
+  assert.match(client, /DraftHandoffState/);
+  assert.match(client, /AUTO_HANDOFF_DELAY_MS/);
+  assert.match(client, /autoDraftHandoffAttemptedRef/);
+  assert.match(client, /compareDateTime/);
+  assert.match(client, /Use saved draft now/);
+  assert.match(client, /Keep current room/);
   assert.match(client, /URLSearchParams\(window\.location\.search\)/);
   assert.match(client, /Load latest into room/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/reset/);

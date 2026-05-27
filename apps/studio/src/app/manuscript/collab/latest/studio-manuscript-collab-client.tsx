@@ -123,6 +123,8 @@ type LiveEditStatusResponse =
 
 type ConnectionStatus = "idle" | "connecting" | "connected" | "synced" | "error";
 
+type DraftHandoffState = "idle" | "pending" | "loading" | "loaded" | "blocked";
+
 type LivePresenceParticipant = {
   clientId: number;
   name: string;
@@ -135,6 +137,7 @@ type LivePresenceParticipant = {
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 const AUTO_BACKUP_IDLE_MS = 15_000;
 const AUTO_BACKUP_MIN_INTERVAL_MS = 90_000;
+const AUTO_HANDOFF_DELAY_MS = 1_200;
 
 function createId(prefix: string) {
   return (
@@ -170,6 +173,20 @@ function formatDateTime(value: string | null | undefined) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function compareDateTime(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
+  const leftMs = left ? Date.parse(left) : Number.NaN;
+  const rightMs = right ? Date.parse(right) : Number.NaN;
+
+  if (Number.isNaN(leftMs) || Number.isNaN(rightMs)) {
+    return null;
+  }
+
+  return leftMs - rightMs;
 }
 
 function buildCheckpointDraft(input: {
@@ -275,6 +292,8 @@ export default function StudioManuscriptCollabClient() {
     useState<ConnectionStatus>("idle");
   const [message, setMessage] = useState("Preparing live edit room.");
   const [isDraftHandoffVisible, setIsDraftHandoffVisible] = useState(false);
+  const [draftHandoffState, setDraftHandoffState] =
+    useState<DraftHandoffState>("idle");
   const [isSaving, setIsSaving] = useState(false);
   const [isResettingFromLatest, setIsResettingFromLatest] = useState(false);
   const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
@@ -298,6 +317,7 @@ export default function StudioManuscriptCollabClient() {
   const [checkpointBaseDraft, setCheckpointBaseDraft] =
     useState<ManuscriptDraft | null>(null);
   const hasSeededRef = useRef(false);
+  const autoDraftHandoffAttemptedRef = useRef(false);
   const programmaticEditorUpdateRef = useRef(false);
   const autoBackupTimerRef = useRef<number | null>(null);
   const lastAutoBackupAtRef = useRef(0);
@@ -317,8 +337,9 @@ export default function StudioManuscriptCollabClient() {
 
     if (params.get("start") === "latest") {
       setIsDraftHandoffVisible(true);
+      setDraftHandoffState("pending");
       setMessage(
-        "Draft handoff ready. Review or load the latest backup into the room.",
+        "Draft handoff ready. The room will use the latest backup automatically if it is safe.",
       );
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -692,21 +713,30 @@ export default function StudioManuscriptCollabClient() {
     }
   }
 
-  async function resetRoomFromLatestBackup() {
+  async function resetRoomFromLatestBackup(
+    options: { skipConfirm?: boolean; source?: "manual" | "handoff" } = {},
+  ) {
     if (!editor || !setup?.ok || isResettingFromLatest) {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Load the latest manuscript backup into this shared room? This replaces the current unsaved room text for everyone connected.",
-    );
+    const confirmed =
+      options.skipConfirm ||
+      window.confirm(
+        "Load the latest manuscript backup into this shared room? This replaces the current unsaved room text for everyone connected.",
+      );
 
     if (!confirmed) {
       return;
     }
 
     setIsResettingFromLatest(true);
-    setMessage("Loading the latest manuscript backup into the room.");
+    if (options.source === "handoff") {
+      setDraftHandoffState("loading");
+      setMessage("Starting the room from the latest manuscript backup.");
+    } else {
+      setMessage("Loading the latest manuscript backup into the room.");
+    }
 
     try {
       const response = await fetch("/api/manuscript/collab/latest/reset", {
@@ -716,6 +746,9 @@ export default function StudioManuscriptCollabClient() {
 
       if (!payload.ok) {
         setMessage(payload.message);
+        if (options.source === "handoff") {
+          setDraftHandoffState("blocked");
+        }
         return;
       }
 
@@ -723,6 +756,9 @@ export default function StudioManuscriptCollabClient() {
 
       if (!latestDraft) {
         setMessage("The latest backup could not be opened in the room.");
+        if (options.source === "handoff") {
+          setDraftHandoffState("blocked");
+        }
         return;
       }
 
@@ -731,20 +767,116 @@ export default function StudioManuscriptCollabClient() {
       setCheckpointBaseDraft(latestDraft);
       setLastCheckpoint(payload.snapshot);
       setHasCheckpointChanges(false);
-      setMessage("Room loaded from the latest manuscript backup.");
+      if (options.source === "handoff") {
+        setDraftHandoffState("loaded");
+        setIsDraftHandoffVisible(false);
+        setMessage("Live room started from the latest manuscript backup.");
+      } else {
+        setMessage("Room loaded from the latest manuscript backup.");
+      }
       void refreshLiveStatus();
     } catch (error) {
       console.error("Live edit room reset failed.", error);
       setMessage("Could not load the latest backup into the room.");
+      if (options.source === "handoff") {
+        setDraftHandoffState("blocked");
+      }
     } finally {
       setIsResettingFromLatest(false);
     }
   }
 
   async function useLatestBackupFromDraftHandoff() {
-    await resetRoomFromLatestBackup();
-    setIsDraftHandoffVisible(false);
+    await resetRoomFromLatestBackup({
+      skipConfirm: true,
+      source: "handoff",
+    });
   }
+
+  useEffect(() => {
+    if (
+      draftHandoffState !== "pending" ||
+      autoDraftHandoffAttemptedRef.current ||
+      !editor ||
+      !setup?.ok ||
+      !liveStatus?.ok ||
+      !liveStatus.latestSnapshot ||
+      connectionStatus !== "synced" ||
+      isSaving ||
+      isResettingFromLatest
+    ) {
+      return;
+    }
+
+    if (hasCheckpointChanges) {
+      setDraftHandoffState("blocked");
+      setMessage(
+        "The live room has edits already. Compare before loading the saved draft.",
+      );
+      return;
+    }
+
+    const otherParticipants = presenceParticipants.filter(
+      (participant) => !participant.isCurrent,
+    );
+
+    if (otherParticipants.length > 0) {
+      setDraftHandoffState("blocked");
+      setMessage(
+        "Someone else is already in the live room. Compare before loading the saved draft.",
+      );
+      return;
+    }
+
+    const latestComparedToRoom = compareDateTime(
+      liveStatus.latestSnapshot.updatedAt,
+      liveStatus.room?.updatedAt,
+    );
+    const roomHasPersistedState = Boolean(liveStatus.room?.hasPersistedState);
+    const roomLooksNewerThanLatest =
+      roomHasPersistedState &&
+      (latestComparedToRoom === null || latestComparedToRoom < 0);
+
+    if (roomLooksNewerThanLatest) {
+      setDraftHandoffState("blocked");
+      setMessage(
+        "The live room has newer stored edits. Compare before loading the saved draft.",
+      );
+      return;
+    }
+
+    if (liveStatus.freshness.state === "current") {
+      setDraftHandoffState("loaded");
+      setIsDraftHandoffVisible(false);
+      setMessage("Live room is already lined up with the latest manuscript backup.");
+      return;
+    }
+
+    autoDraftHandoffAttemptedRef.current = true;
+    setDraftHandoffState("loading");
+    setMessage("Starting the live room from the latest saved draft.");
+
+    const timeoutId = window.setTimeout(() => {
+      void resetRoomFromLatestBackup({
+        skipConfirm: true,
+        source: "handoff",
+      });
+    }, AUTO_HANDOFF_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    connectionStatus,
+    draftHandoffState,
+    editor,
+    hasCheckpointChanges,
+    isResettingFromLatest,
+    isSaving,
+    liveStatus,
+    presenceParticipants,
+    setup,
+  ]);
 
   async function copySharedEditLink() {
     const href =
@@ -997,13 +1129,28 @@ export default function StudioManuscriptCollabClient() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className={labelClassName}>Draft handoff</span>
-                  <StudioChip tone="source">From editor</StudioChip>
+                  <StudioChip
+                    tone={
+                      draftHandoffState === "blocked"
+                        ? "review"
+                        : draftHandoffState === "loaded"
+                          ? "tag"
+                          : "source"
+                    }
+                  >
+                    {draftHandoffState === "loading"
+                      ? "Auto-starting"
+                      : draftHandoffState === "blocked"
+                        ? "Review first"
+                        : "From editor"}
+                  </StudioChip>
                 </div>
                 <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
-                  You opened this room after saving from the Manuscript Desk. If
-                  this shared room should start from that save, load the latest
-                  backup into the room. If someone is already editing here,
-                  compare first.
+                  {draftHandoffState === "loading"
+                    ? "You opened this room from a fresh Manuscript Desk save. No one else is active here, so the room is starting from that save automatically."
+                    : draftHandoffState === "blocked"
+                      ? "You opened this room from a fresh Manuscript Desk save, but the room may already have live edits. Compare first or load the saved draft when you are ready."
+                      : "You opened this room from a fresh Manuscript Desk save. If it is safe, the room starts from that save automatically; otherwise, compare first."}
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                   <button
@@ -1018,14 +1165,19 @@ export default function StudioManuscriptCollabClient() {
                     type="button"
                     onClick={() => void useLatestBackupFromDraftHandoff()}
                   >
-                    Use saved draft in room
+                    {draftHandoffState === "loading"
+                      ? "Starting room..."
+                      : "Use saved draft now"}
                   </button>
                   <button
                     className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10"
                     type="button"
-                    onClick={() => setIsDraftHandoffVisible(false)}
+                    onClick={() => {
+                      setDraftHandoffState("idle");
+                      setIsDraftHandoffVisible(false);
+                    }}
                   >
-                    Dismiss
+                    Keep current room
                   </button>
                 </div>
               </div>
