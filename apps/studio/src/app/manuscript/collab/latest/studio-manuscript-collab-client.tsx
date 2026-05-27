@@ -15,8 +15,13 @@ import {
   StudioChip,
   StudioGlyph,
 } from "../../../studio-ui";
-import { AuthorMark, SemanticHighlightMark } from "../../manuscript-editor-marks";
 import {
+  AuthorMark,
+  ManuscriptBlockAttributes,
+  SemanticHighlightMark,
+} from "../../manuscript-editor-marks";
+import {
+  applyManuscriptBoundaryAttrsToEditorJson,
   collectBlockSummaries,
   createManuscriptStructureBoundaryIndex,
   createDefaultManuscriptDraft,
@@ -417,17 +422,23 @@ function applyDraftContentToLiveEditor(
 
   editor.commands.setContent(sourceEditorJson as JSONContent);
 
-  const targetEditorJson = ensureManuscriptBlockIds(
+  const rawTargetEditorJson = ensureManuscriptBlockIds(
     editor.getJSON() as ManuscriptEditorJson,
     createBlockId,
   );
   const reboundStructure = rebindManuscriptStructureBlockIds({
     sourceJson: sourceEditorJson,
-    targetJson: targetEditorJson,
+    targetJson: rawTargetEditorJson,
     structureRegions: draft.structureRegions,
     structureBoundaryMarkers: draft.structureBoundaryMarkers,
     chapterTitleBlocks: draft.chapterTitleBlocks,
   });
+  const targetEditorJson = applyManuscriptBoundaryAttrsToEditorJson({
+    json: rawTargetEditorJson,
+    boundaryMarkers: reboundStructure.structureBoundaryMarkers,
+  });
+
+  editor.commands.setContent(targetEditorJson as JSONContent);
 
   return {
     ...draft,
@@ -858,13 +869,14 @@ export default function StudioManuscriptCollabClient() {
               },
               undoRedo: false,
             }),
-            UniqueID.configure({
-              attributeName: "blockId",
-              types: blockNodeTypes,
-              generateID: ({ node, pos }) => createBlockId(node.type.name, pos),
-            }),
-            AuthorMark,
-            SemanticHighlightMark,
+      UniqueID.configure({
+        attributeName: "blockId",
+        types: blockNodeTypes,
+        generateID: ({ node, pos }) => createBlockId(node.type.name, pos),
+      }),
+      ManuscriptBlockAttributes,
+      AuthorMark,
+      SemanticHighlightMark,
             Collaboration.configure({
               document: provider.document,
             }),
@@ -892,6 +904,7 @@ export default function StudioManuscriptCollabClient() {
               types: blockNodeTypes,
               generateID: ({ node, pos }) => createBlockId(node.type.name, pos),
             }),
+            ManuscriptBlockAttributes,
             AuthorMark,
             SemanticHighlightMark,
           ],

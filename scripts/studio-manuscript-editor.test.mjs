@@ -12,6 +12,7 @@ import {
   collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
+  applyManuscriptBoundaryAttrsToEditorJson,
   createBackupFileName,
   createBlockFilterOptions,
   createBlockRangeSummary,
@@ -832,6 +833,68 @@ test("rebindManuscriptStructureBlockIds follows regenerated editor block IDs", (
   assert.equal(rebound.structureBoundaryMarkers[0].blockId, "new-preface");
   assert.equal(rebound.structureBoundaryMarkers[1].blockId, "new-episode");
   assert.equal(rebound.chapterTitleBlocks[0].blockId, "new-preface");
+});
+
+test("applyManuscriptBoundaryAttrsToEditorJson stores renderable title attrs", () => {
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-preface" },
+        content: [{ type: "text", text: "Preface" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-episode" },
+        content: [{ type: "text", text: "The Wednesday Rule" }],
+      },
+      {
+        type: "paragraph",
+        attrs: {
+          blockId: "block-body",
+          manuscriptBoundaryKinds: "chapter",
+        },
+        content: [{ type: "text", text: "Body" }],
+      },
+    ],
+  };
+  const decorated = applyManuscriptBoundaryAttrsToEditorJson({
+    json: doc,
+    boundaryMarkers: [
+      {
+        id: "chapter-preface",
+        kind: "chapter",
+        blockId: "block-preface",
+        title: "Preface",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+      {
+        id: "episode-wednesday",
+        kind: "episode",
+        blockId: "block-episode",
+        title: "The Wednesday Rule",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(
+    decorated.content[0].attrs.manuscriptBoundaryKinds,
+    "chapter",
+  );
+  assert.equal(
+    decorated.content[1].attrs.manuscriptBoundaryKinds,
+    "episode",
+  );
+  assert.equal(
+    decorated.content[2].attrs.manuscriptBoundaryKinds,
+    undefined,
+  );
 });
 
 test("countMissingBlockIds reports block ID gaps", () => {

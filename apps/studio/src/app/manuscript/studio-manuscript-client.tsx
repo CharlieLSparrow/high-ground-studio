@@ -22,7 +22,11 @@ import {
   StudioChip,
   StudioGlyph,
 } from "../studio-ui";
-import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
+import {
+  AuthorMark,
+  ManuscriptBlockAttributes,
+  SemanticHighlightMark,
+} from "./manuscript-editor-marks";
 import {
   getManuscriptHelpNote,
   type ManuscriptHelpNoteId,
@@ -36,6 +40,7 @@ import {
   collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
+  applyManuscriptBoundaryAttrsToEditorJson,
   createBackupFileName,
   createBlockFilterOptions,
   createBlockRangeSummary,
@@ -961,6 +966,7 @@ export function StudioManuscriptClient({
         types: blockNodeTypes,
         generateID: ({ node, pos }) => createBlockId(node.type.name, pos),
       }),
+      ManuscriptBlockAttributes,
       AuthorMark,
       SemanticHighlightMark,
     ],
@@ -1859,6 +1865,27 @@ export function StudioManuscriptClient({
     structureBoundaryMarkers,
     structureRegionSummaries,
   ]);
+
+  useEffect(() => {
+    if (!editor || !isHydrated) {
+      return;
+    }
+
+    const currentJson = ensureBlockIds(
+      editor.getJSON() as ManuscriptEditorJson,
+    );
+    const nextJson = applyManuscriptBoundaryAttrsToEditorJson({
+      json: currentJson,
+      boundaryMarkers: structureBoundaryMarkers,
+    });
+
+    if (JSON.stringify(currentJson) === JSON.stringify(nextJson)) {
+      return;
+    }
+
+    editor.commands.setContent(nextJson as JSONContent);
+    setEditorJson(nextJson);
+  }, [editor, isHydrated, structureBoundaryMarkers]);
 
   useEffect(() => {
     if (
@@ -3614,16 +3641,22 @@ export function StudioManuscriptClient({
 
     const sourceEditorJson = ensureBlockIds(draft.editorJson);
     editor.commands.setContent(sourceEditorJson as JSONContent);
-    const targetEditorJson = ensureBlockIds(
+    const rawTargetEditorJson = ensureBlockIds(
       editor.getJSON() as ManuscriptEditorJson,
     );
     const reboundStructure = rebindManuscriptStructureBlockIds({
       sourceJson: sourceEditorJson,
-      targetJson: targetEditorJson,
+      targetJson: rawTargetEditorJson,
       structureRegions: draft.structureRegions,
       structureBoundaryMarkers: draft.structureBoundaryMarkers,
       chapterTitleBlocks: draft.chapterTitleBlocks,
     });
+    const targetEditorJson = applyManuscriptBoundaryAttrsToEditorJson({
+      json: rawTargetEditorJson,
+      boundaryMarkers: reboundStructure.structureBoundaryMarkers,
+    });
+
+    editor.commands.setContent(targetEditorJson as JSONContent);
 
     setTitle(draft.title);
     setSourceFileName(draft.sourceFileName);

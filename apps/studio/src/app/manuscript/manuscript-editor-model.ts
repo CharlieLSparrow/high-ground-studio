@@ -1501,6 +1501,65 @@ export function rebindManuscriptStructureBlockIds(input: {
   };
 }
 
+export function applyManuscriptBoundaryAttrsToEditorJson(input: {
+  json: ManuscriptEditorJson;
+  boundaryMarkers: ManuscriptStructureBoundaryMarker[];
+}): ManuscriptEditorJson {
+  const boundaryKindsByBlockId = new Map<
+    string,
+    ManuscriptStructureBoundaryKind[]
+  >();
+
+  for (const marker of input.boundaryMarkers) {
+    const kinds = boundaryKindsByBlockId.get(marker.blockId) ?? [];
+
+    if (!kinds.includes(marker.kind)) {
+      kinds.push(marker.kind);
+      boundaryKindsByBlockId.set(marker.blockId, kinds);
+    }
+  }
+
+  function visit(node: ManuscriptEditorJson): ManuscriptEditorJson {
+    const nextNode: ManuscriptEditorJson = {
+      ...node,
+      attrs: node.attrs ? { ...node.attrs } : undefined,
+      marks: node.marks?.map((mark) => ({
+        ...mark,
+        attrs: mark.attrs ? { ...mark.attrs } : undefined,
+      })),
+      content: node.content?.map((child) => visit(child)),
+    };
+
+    if (
+      typeof nextNode.type === "string" &&
+      manuscriptBlockNodeTypes.includes(
+        nextNode.type as (typeof manuscriptBlockNodeTypes)[number],
+      )
+    ) {
+      const blockId =
+        typeof nextNode.attrs?.blockId === "string" ? nextNode.attrs.blockId : "";
+      const boundaryKinds = blockId
+        ? (boundaryKindsByBlockId.get(blockId) ?? [])
+        : [];
+      const nextAttrs = {
+        ...(nextNode.attrs ?? {}),
+      };
+
+      if (boundaryKinds.length) {
+        nextAttrs.manuscriptBoundaryKinds = boundaryKinds.join(",");
+      } else {
+        delete nextAttrs.manuscriptBoundaryKinds;
+      }
+
+      nextNode.attrs = nextAttrs;
+    }
+
+    return nextNode;
+  }
+
+  return visit(input.json);
+}
+
 export function collectSemanticHighlights(
   json: ManuscriptEditorJson,
 ): SemanticHighlightSummary[] {

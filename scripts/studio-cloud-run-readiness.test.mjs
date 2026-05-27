@@ -521,6 +521,8 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /new ResizeObserver\(scheduleStructureRailUpdate\)/);
   assert.match(client, /data-testid="manuscript-structure-rail"/);
   assert.match(client, /collectRenderedManuscriptBlockNodeList/);
+  assert.match(client, /ManuscriptBlockAttributes/);
+  assert.match(client, /applyManuscriptBoundaryAttrsToEditorJson/);
   assert.match(client, /rebindManuscriptStructureBlockIds/);
   assert.match(client, /sourceBlockIndex/);
   assert.match(client, /\[data-blockid\]/);
@@ -529,6 +531,8 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(liveReader, /manuscript-boundary-marker-block/);
   assert.match(liveReader, /getLiveBoundaryAttributes/);
   assert.match(collabClient, /collectRenderedManuscriptBlockNodeList/);
+  assert.match(collabClient, /ManuscriptBlockAttributes/);
+  assert.match(collabClient, /applyManuscriptBoundaryAttrsToEditorJson/);
   assert.match(collabClient, /rebindManuscriptStructureBlockIds/);
   assert.match(collabClient, /sourceBlockIndex/);
   assert.match(collabClient, /\[data-blockid\]/);
