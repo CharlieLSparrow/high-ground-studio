@@ -22,6 +22,7 @@
     "studio:cloudrun:preflight": "node scripts/studio-cloud-run-preflight.mjs",
     "studio:cloudrun:deploy": "node scripts/studio-cloud-run-deploy.mjs",
     "studio:cloudrun:test": "node --test scripts/studio-cloud-run-readiness.test.mjs",
+    "studio:collab:cloudrun:deploy": "node scripts/studio-collab-cloud-run-deploy.mjs",
     "web:cloudbuild:image": "gcloud builds submit --config cloudbuild.web.yaml .",
     "web:cloudbuild:image:sha": "gcloud builds submit --config cloudbuild.web.yaml --substitutions=_IMAGE_TAG=$(git rev-parse --short HEAD) .",
     "web:cloudrun:preflight": "node scripts/web-cloud-run-preflight.mjs",

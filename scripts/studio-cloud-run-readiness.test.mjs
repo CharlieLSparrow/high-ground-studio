@@ -109,6 +109,26 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
   assert.match(dockerfile, /ca-certificates openssl/);
 });
 
+test("Studio Collab deploy helper pins the MVP room to one warm instance", () => {
+  const deployScript = readFileSync(
+    "scripts/studio-collab-cloud-run-deploy.mjs",
+    "utf8",
+  );
+  const packageJson = readFileSync("package.json", "utf8");
+
+  assert.match(packageJson, /studio:collab:cloudrun:deploy/);
+  assert.match(deployScript, /DEFAULT_MIN_INSTANCES = "1"/);
+  assert.match(deployScript, /DEFAULT_MAX_INSTANCES = "1"/);
+  assert.match(deployScript, /DEFAULT_TIMEOUT_SECONDS = "3600"/);
+  assert.match(deployScript, /cloudbuild\.studio-collab\.yaml/);
+  assert.match(deployScript, /--min-instances/);
+  assert.match(deployScript, /--max-instances/);
+  assert.match(deployScript, /--timeout/);
+  assert.match(deployScript, /--no-invoker-iam-check/);
+  assert.match(deployScript, /\/healthz/);
+  assert.match(deployScript, /high-ground-studio-collab/);
+});
+
 test("Content Studio checkpoints are wired through authenticated API", () => {
   const route = readFileSync(
     "apps/studio/src/app/api/content-studio/snapshots/route.ts",
