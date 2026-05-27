@@ -325,6 +325,7 @@ const semanticSwatchClassNames: Record<SemanticHighlightColorKey, string> = {
 const semanticActiveControlClassName = "ring-1 ring-inset ring-current";
 
 const MANUSCRIPT_LIVE_LATEST_PATH = "/manuscript/live/latest";
+const MANUSCRIPT_LIVE_EDIT_PATH = "/manuscript/collab/latest";
 
 function HelpHeading({
   children,
@@ -3585,11 +3586,14 @@ export function StudioManuscriptClient({
     }
   }
 
-  async function saveServerSnapshot() {
+  async function saveServerSnapshot(input?: {
+    description?: string;
+    successMessage?: string;
+  }): Promise<ManuscriptServerSnapshotSummary | null> {
     const draft = createCurrentDraft();
 
     if (!draft) {
-      return;
+      return null;
     }
 
     const checkpointKey = createManuscriptDraftCheckpointKey(draft);
@@ -3610,7 +3614,7 @@ export function StudioManuscriptClient({
         },
         body: JSON.stringify({
           draft,
-          description: serverSnapshotDescription,
+          description: input?.description ?? serverSnapshotDescription,
           manuscriptId: selectedServerManuscriptId || null,
           snapshotType: "manual",
         }),
@@ -3625,7 +3629,7 @@ export function StudioManuscriptClient({
         markServerSnapshotResponseState(response);
         setServerSnapshotStatus(message);
         setMessage(message);
-        return;
+        return null;
       }
 
       setIsServerSnapshotUnavailable(false);
@@ -3654,19 +3658,36 @@ export function StudioManuscriptClient({
         setHasConfirmedSyntheticServerSnapshotSaved(true);
       }
       setMessage(
-        manuscriptTitle
-          ? "Named manuscript snapshot saved."
-          : "Manuscript saved for phone handoff.",
+        input?.successMessage ??
+          (manuscriptTitle
+            ? "Named manuscript snapshot saved."
+            : "Manuscript saved for phone handoff."),
       );
+      return payload.snapshot;
     } catch (error) {
       console.error("Server snapshot save failed.", error);
       setIsServerSnapshotUnavailable(true);
       setServerConnectionState("unavailable");
       setServerSnapshotStatus("Server snapshot save failed.");
       setMessage("Server snapshot save failed.");
+      return null;
     } finally {
       setIsServerSnapshotBusy(false);
     }
+  }
+
+  async function saveAndOpenLiveEdit() {
+    setMessage("Saving this draft before opening the shared live room.");
+    const snapshot = await saveServerSnapshot({
+      description: serverSnapshotDescription || "Live edit handoff",
+      successMessage: "Saved this draft. Opening the live edit room.",
+    });
+
+    if (!snapshot) {
+      return;
+    }
+
+    window.location.assign(`${MANUSCRIPT_LIVE_EDIT_PATH}?start=latest`);
   }
 
   async function loadLatestServerSnapshot(input?: {
@@ -4160,15 +4181,18 @@ export function StudioManuscriptClient({
         >
           Save manuscript
         </button>
-        <a
+        <button
           className={cn(
             smallButtonClassName,
-            "border-studio-source/55 bg-studio-source/10 text-studio-source text-center",
+            "border-studio-source/55 bg-studio-source/10 text-studio-source",
           )}
-          href="/manuscript/collab/latest"
+          data-testid="manuscript-primary-save-live-edit"
+          disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+          type="button"
+          onClick={() => void saveAndOpenLiveEdit()}
         >
-          Live edit
-        </a>
+          Save + live edit
+        </button>
         <button
           className={smallButtonClassName}
           data-testid="manuscript-primary-copy-phone-link"
@@ -4197,6 +4221,10 @@ export function StudioManuscriptClient({
           ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
           : "No server save visible yet."}{" "}
         Local changes: {localChangesSinceServerSaveLabel}.
+      </p>
+      <p className="m-0 text-[0.72rem] leading-relaxed text-studio-dim">
+        Save + live edit creates a latest backup first, then opens the shared
+        room with a handoff prompt so the room can pull in that save deliberately.
       </p>
     </section>
   );
@@ -6552,7 +6580,7 @@ export function StudioManuscriptClient({
                     data-testid="manuscript-snapshot-save"
                     disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
                     type="button"
-                    onClick={saveServerSnapshot}
+                    onClick={() => void saveServerSnapshot()}
                   >
                     {selectedServerManuscript
                       ? "Save to manuscript"

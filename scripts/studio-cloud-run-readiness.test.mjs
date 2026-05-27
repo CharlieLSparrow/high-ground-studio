@@ -275,6 +275,9 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /Auto-backup/);
   assert.match(client, /Live edit auto-backup/);
   assert.match(client, /Turn off auto-backup/);
+  assert.match(client, /Draft handoff/);
+  assert.match(client, /Use saved draft in room/);
+  assert.match(client, /URLSearchParams\(window\.location\.search\)/);
   assert.match(client, /Load latest into room/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/reset/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/status/);
@@ -308,6 +311,9 @@ test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   assert.match(client, /data-testid="manuscript-mobile-tools-menu"/);
   assert.match(client, /data-testid="manuscript-primary-save-panel"/);
   assert.match(client, /data-testid="manuscript-primary-save"/);
+  assert.match(client, /data-testid="manuscript-primary-save-live-edit"/);
+  assert.match(client, /Save \+ live edit/);
+  assert.match(client, /start=latest/);
   assert.match(client, /data-testid="manuscript-primary-copy-phone-link"/);
   assert.match(client, /data-testid="manuscript-mode-select"/);
   assert.match(

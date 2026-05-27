@@ -274,6 +274,7 @@ export default function StudioManuscriptCollabClient() {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
   const [message, setMessage] = useState("Preparing live edit room.");
+  const [isDraftHandoffVisible, setIsDraftHandoffVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResettingFromLatest, setIsResettingFromLatest] = useState(false);
   const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
@@ -306,6 +307,22 @@ export default function StudioManuscriptCollabClient() {
       ? safeManuscriptDraft(setup.initialSnapshot.draft)
       : null;
   }, [setup]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("start") === "latest") {
+      setIsDraftHandoffVisible(true);
+      setMessage(
+        "Draft handoff ready. Review or load the latest backup into the room.",
+      );
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     if (!initialDraft) {
@@ -724,6 +741,11 @@ export default function StudioManuscriptCollabClient() {
     }
   }
 
+  async function useLatestBackupFromDraftHandoff() {
+    await resetRoomFromLatestBackup();
+    setIsDraftHandoffVisible(false);
+  }
+
   async function copySharedEditLink() {
     const href =
       typeof window === "undefined"
@@ -967,6 +989,47 @@ export default function StudioManuscriptCollabClient() {
                 backup.
               </p>
             </div>
+
+            {isDraftHandoffVisible ? (
+              <div
+                className="grid gap-2 rounded-lg border border-studio-source/45 bg-studio-source/10 p-3"
+                data-testid="manuscript-live-draft-handoff"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>Draft handoff</span>
+                  <StudioChip tone="source">From editor</StudioChip>
+                </div>
+                <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                  You opened this room after saving from the Manuscript Desk. If
+                  this shared room should start from that save, load the latest
+                  backup into the room. If someone is already editing here,
+                  compare first.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                  <button
+                    className="min-h-9 rounded-md border border-studio-source/55 bg-studio-source/15 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:bg-studio-source/20 disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+                    disabled={
+                      !editor ||
+                      !setup?.ok ||
+                      isResettingFromLatest ||
+                      isSaving ||
+                      !(liveStatus?.ok && liveStatus.latestSnapshot)
+                    }
+                    type="button"
+                    onClick={() => void useLatestBackupFromDraftHandoff()}
+                  >
+                    Use saved draft in room
+                  </button>
+                  <button
+                    className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10"
+                    type="button"
+                    onClick={() => setIsDraftHandoffVisible(false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
               <div className="flex items-center justify-between gap-2">
