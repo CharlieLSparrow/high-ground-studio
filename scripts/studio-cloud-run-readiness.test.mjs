@@ -466,6 +466,8 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /editingBoundaryMarkerId/);
   assert.match(client, /renderBoundaryOutlineCard/);
   assert.match(client, /saveStructureBoundaryMarker/);
+  assert.match(client, /moveStructureBoundaryMarkerToCurrentBlock/);
+  assert.match(client, /Use cursor line/);
   assert.match(client, /structureRailRegions/);
   assert.match(client, /structureBoundaryIndex\.warnings/);
   assert.match(client, /getCurrentManuscriptStructureBoundary/);
@@ -486,6 +488,14 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(globalsCss, /position: sticky;\n\s*top: 5\.25rem;/);
   assert.match(globalsCss, /\.manuscript-structure-rail-card-chapter/);
   assert.match(globalsCss, /\.manuscript-structure-rail-card-episode/);
+  assert.match(
+    globalsCss,
+    /\.manuscript-prosemirror \.manuscript-boundary-marker-chapter,[\s\S]*font-size: 2rem;[\s\S]*text-align: center;/,
+  );
+  assert.match(
+    globalsCss,
+    /\.manuscript-prosemirror \.manuscript-boundary-marker-episode \{[\s\S]*font-size: 1\.32rem;[\s\S]*text-align: center;/,
+  );
 });
 
 test("Manuscript author marks render as block washes under semantic marks", () => {

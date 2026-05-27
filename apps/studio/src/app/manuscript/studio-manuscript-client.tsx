@@ -2132,6 +2132,75 @@ export function StudioManuscriptClient({
     setMessage("Boundary saved.");
   }
 
+  function moveStructureBoundaryMarkerToCurrentBlock(markerId: string) {
+    const marker = getStructureBoundaryMarker(markerId);
+
+    if (!marker) {
+      setMessage("Boundary marker was not found.");
+      return;
+    }
+
+    const range =
+      selectedStructureRange ??
+      (editor ? getEditorSelectionBlockRange(editor) : null);
+    const nextBlockId = range?.startBlockId ?? null;
+
+    if (!nextBlockId) {
+      setMessage("Place the cursor in the line where this boundary should start.");
+      return;
+    }
+
+    if (nextBlockId === marker.blockId) {
+      setMessage("That boundary is already using the cursor line.");
+      return;
+    }
+
+    const previousTitle = getBlockPreview(marker.blockId);
+    const nextTitle = getBlockPreview(nextBlockId);
+    const existingTitle = marker.title.trim();
+    const nextMarkerTitle =
+      !existingTitle || existingTitle === previousTitle
+        ? nextTitle
+        : marker.title;
+    const replacedMarker = getStructureBoundaryMarkerForBlock(
+      marker.kind,
+      nextBlockId,
+    );
+    const label = marker.kind === "episode" ? "Episode" : "Chapter";
+
+    setStructureBoundaryMarkers((current) =>
+      current
+        .filter(
+          (candidate) =>
+            candidate.id === marker.id ||
+            !(
+              candidate.kind === marker.kind &&
+              candidate.blockId === nextBlockId
+            ),
+        )
+        .map((candidate) =>
+          candidate.id === marker.id
+            ? {
+                ...candidate,
+                blockId: nextBlockId,
+                title: nextMarkerTitle,
+                updatedAt: new Date().toISOString(),
+              }
+            : candidate,
+        ),
+    );
+
+    if (editingBoundaryMarkerId === marker.id) {
+      setEditingBoundaryTitle(nextMarkerTitle);
+    }
+
+    setMessage(
+      `${label} boundary moved to "${nextTitle}".${
+        replacedMarker ? " Existing marker on that line was replaced." : ""
+      }`,
+    );
+  }
+
   function removeStructureBoundaryMarker(markerId: string) {
     const marker = getStructureBoundaryMarker(markerId);
     const label = marker?.kind === "episode" ? "Episode" : "Chapter";
@@ -4604,6 +4673,15 @@ export function StudioManuscriptClient({
             </button>
             {!isRecordingMode && marker ? (
               <>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() =>
+                    moveStructureBoundaryMarkerToCurrentBlock(marker.id)
+                  }
+                >
+                  Use cursor line
+                </button>
                 {isEditing ? (
                   <>
                     <button
