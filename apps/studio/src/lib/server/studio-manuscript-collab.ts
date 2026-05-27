@@ -49,21 +49,41 @@ export async function getOrCreateStudioManuscriptLiveRoom(input: {
 }) {
   const prisma = getPrismaClient();
   const title = normalizeRoomTitle(input.title);
-
-  const room = await prisma.studioManuscriptCollaborationRoom.upsert({
+  const existingRoom = await prisma.studioManuscriptCollaborationRoom.findUnique({
     where: { roomName: STUDIO_MANUSCRIPT_LIVE_ROOM_NAME },
-    create: {
+  });
+
+  if (existingRoom) {
+    const canReplaceSeed = !existingRoom.seededAt && !existingRoom.ydocState?.length;
+    const room = await prisma.studioManuscriptCollaborationRoom.update({
+      where: { roomName: STUDIO_MANUSCRIPT_LIVE_ROOM_NAME },
+      data: {
+        title,
+        ...(canReplaceSeed ? { seedSnapshotId: input.seedSnapshotId ?? null } : {}),
+      },
+    });
+
+    return mapRoomSummary(room);
+  }
+
+  const room = await prisma.studioManuscriptCollaborationRoom.create({
+    data: {
       roomName: STUDIO_MANUSCRIPT_LIVE_ROOM_NAME,
       title,
       seedSnapshotId: input.seedSnapshotId ?? null,
     },
-    update: {
-      title,
-      seedSnapshotId: input.seedSnapshotId ?? undefined,
-    },
   });
 
   return mapRoomSummary(room);
+}
+
+export async function getStudioManuscriptLiveRoom() {
+  const prisma = getPrismaClient();
+  const room = await prisma.studioManuscriptCollaborationRoom.findUnique({
+    where: { roomName: STUDIO_MANUSCRIPT_LIVE_ROOM_NAME },
+  });
+
+  return room ? mapRoomSummary(room) : null;
 }
 
 export async function claimStudioManuscriptLiveRoomSeed(input: {

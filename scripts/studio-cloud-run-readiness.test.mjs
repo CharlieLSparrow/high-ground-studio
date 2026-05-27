@@ -217,6 +217,10 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
     "apps/studio/src/app/api/manuscript/collab/latest/checkpoint/route.ts",
     "utf8",
   );
+  const statusRoute = readFileSync(
+    "apps/studio/src/app/api/manuscript/collab/latest/status/route.ts",
+    "utf8",
+  );
   const page = readFileSync(
     "apps/studio/src/app/manuscript/collab/latest/page.tsx",
     "utf8",
@@ -235,6 +239,10 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
     "utf8",
   );
   const schema = readFileSync("prisma/schema.prisma", "utf8");
+  const collabStore = readFileSync(
+    "apps/studio/src/lib/server/studio-manuscript-collab.ts",
+    "utf8",
+  );
 
   assert.match(route, /getStudioAccessState/);
   assert.match(route, /signStudioCollabToken/);
@@ -242,6 +250,8 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(route, /claimStudioManuscriptLiveRoomSeed/);
   assert.match(checkpointRoute, /createStudioManuscriptSnapshot/);
   assert.match(checkpointRoute, /markStudioManuscriptLiveRoomCheckpoint/);
+  assert.match(statusRoute, /getStudioManuscriptLiveRoom/);
+  assert.match(statusRoute, /outside-changes/);
   assert.match(page, /StudioAccessShell/);
   assert.match(page, /StudioManuscriptCollabClient/);
   assert.match(client, /HocuspocusProvider/);
@@ -250,7 +260,12 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /Save to manuscript/);
   assert.match(client, /Copy edit link/);
   assert.match(client, /hasCheckpointChanges/);
+  assert.match(client, /Backup priority/);
+  assert.match(client, /Save room over latest/);
+  assert.match(client, /\/api\/manuscript\/collab\/latest\/status/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/checkpoint/);
+  assert.match(collabStore, /canReplaceSeed/);
+  assert.match(collabStore, /getStudioManuscriptLiveRoom/);
   assert.match(collabServer, /onAuthenticate/);
   assert.match(collabServer, /onLoadDocument/);
   assert.match(collabServer, /onStoreDocument/);

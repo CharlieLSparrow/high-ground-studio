@@ -75,6 +75,38 @@ type CheckpointResponse =
     }
   | { ok: false; message: string };
 
+type LiveEditFreshnessState =
+  | "current"
+  | "outside-changes"
+  | "no-backup"
+  | "no-room";
+
+type LiveEditStatusResponse =
+  | {
+      ok: true;
+      room: {
+        seedSnapshotId: string | null;
+        lastCheckpointSnapshotId: string | null;
+        hasPersistedState: boolean;
+        updatedAt: string;
+      } | null;
+      latestSnapshot: {
+        id: string;
+        title: string;
+        updatedAt: string;
+        wordCount: number;
+        blockCount: number;
+      } | null;
+      freshness: {
+        state: LiveEditFreshnessState;
+        latestSnapshotId: string | null;
+        roomBaselineSnapshotId: string | null;
+        seedSnapshotId: string | null;
+        lastCheckpointSnapshotId: string | null;
+      };
+    }
+  | { ok: false; message: string };
+
 type ConnectionStatus = "idle" | "connecting" | "connected" | "synced" | "error";
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
@@ -133,6 +165,14 @@ function buildCheckpointDraft(input: {
   };
 }
 
+async function fetchLiveEditStatus() {
+  const response = await fetch("/api/manuscript/collab/latest/status", {
+    cache: "no-store",
+  });
+
+  return (await response.json()) as LiveEditStatusResponse;
+}
+
 export default function StudioManuscriptCollabClient() {
   const [setup, setSetup] = useState<CollabSetupResponse | null>(null);
   const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
@@ -141,6 +181,9 @@ export default function StudioManuscriptCollabClient() {
   const [message, setMessage] = useState("Preparing live edit room.");
   const [isSaving, setIsSaving] = useState(false);
   const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
+  const [isCheckingLiveStatus, setIsCheckingLiveStatus] = useState(false);
+  const [liveStatus, setLiveStatus] =
+    useState<LiveEditStatusResponse | null>(null);
   const [shareLinkState, setShareLinkState] = useState<
     "idle" | "copied" | "error"
   >("idle");
@@ -229,6 +272,60 @@ export default function StudioManuscriptCollabClient() {
       provider?.destroy();
     };
   }, [provider]);
+
+  useEffect(() => {
+    if (!setup?.ok) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadLiveStatus() {
+      try {
+        const payload = await fetchLiveEditStatus();
+
+        if (isMounted) {
+          setLiveStatus(payload);
+        }
+      } catch (error) {
+        console.error("Live edit status check failed.", error);
+
+        if (isMounted) {
+          setLiveStatus({
+            ok: false,
+            message: "Could not check the latest manuscript backup.",
+          });
+        }
+      }
+    }
+
+    void loadLiveStatus();
+    const intervalId = window.setInterval(
+      () => void loadLiveStatus(),
+      30_000,
+    );
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [setup]);
+
+  async function refreshLiveStatus() {
+    setIsCheckingLiveStatus(true);
+
+    try {
+      setLiveStatus(await fetchLiveEditStatus());
+    } catch (error) {
+      console.error("Live edit status refresh failed.", error);
+      setLiveStatus({
+        ok: false,
+        message: "Could not check the latest manuscript backup.",
+      });
+    } finally {
+      setIsCheckingLiveStatus(false);
+    }
+  }
 
   const editor = useEditor(
     {
@@ -381,6 +478,7 @@ export default function StudioManuscriptCollabClient() {
       setLastCheckpoint(payload.snapshot);
       setHasCheckpointChanges(false);
       setMessage("Saved to the latest manuscript backup.");
+      void refreshLiveStatus();
     } catch (error) {
       console.error("Live edit checkpoint save failed.", error);
       setMessage("Could not save to the manuscript.");
@@ -412,6 +510,38 @@ export default function StudioManuscriptCollabClient() {
       : connectionStatus === "error"
         ? "danger"
         : "source";
+  const liveFreshness = liveStatus?.ok ? liveStatus.freshness : null;
+  const hasOutsideBackup = liveFreshness?.state === "outside-changes";
+  const backupPriorityTone = hasOutsideBackup
+    ? "review"
+    : liveFreshness?.state === "current"
+      ? "tag"
+      : liveStatus?.ok
+        ? "source"
+        : "danger";
+  const backupPriorityLabel = hasOutsideBackup
+    ? "Review"
+    : liveFreshness?.state === "current"
+      ? "Current"
+      : liveFreshness?.state === "no-backup"
+        ? "No backup"
+        : liveFreshness?.state === "no-room"
+          ? "No room"
+          : "Unknown";
+  const latestBackupLabel =
+    liveStatus?.ok && liveStatus.latestSnapshot
+      ? `${formatDateTime(liveStatus.latestSnapshot.updatedAt)} - ${liveStatus.latestSnapshot.wordCount.toLocaleString()} words`
+      : "No latest backup found.";
+  const backupPriorityCopy = hasOutsideBackup
+    ? "A newer backup exists outside this room. Saving here will make the room state the latest backup."
+    : liveFreshness?.state === "current"
+      ? "This room is lined up with the latest manuscript backup."
+      : liveStatus?.ok
+        ? "This room is waiting for its first manuscript backup baseline."
+        : liveStatus?.message ?? "Latest backup status is unavailable.";
+  const saveButtonLabel = hasOutsideBackup
+    ? "Save room over latest"
+    : "Save to manuscript";
 
   return (
     <main className="min-h-screen px-3.5 py-4 md:px-6 md:py-6">
@@ -446,6 +576,9 @@ export default function StudioManuscriptCollabClient() {
             {hasCheckpointChanges ? (
               <StudioChip tone="review">Needs save</StudioChip>
             ) : null}
+            {hasOutsideBackup ? (
+              <StudioChip tone="review">Backup changed</StudioChip>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -470,7 +603,7 @@ export default function StudioManuscriptCollabClient() {
               type="button"
               onClick={() => void saveCheckpoint()}
             >
-              {isSaving ? "Saving..." : "Save to manuscript"}
+              {isSaving ? "Saving..." : saveButtonLabel}
             </button>
           </div>
         </header>
@@ -498,6 +631,34 @@ export default function StudioManuscriptCollabClient() {
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
                 {message}
               </p>
+            </div>
+
+            <div
+              className={cn(
+                "grid gap-2 rounded-lg border bg-black/15 p-3",
+                hasOutsideBackup
+                  ? "border-studio-review/45 bg-studio-review/10"
+                  : "border-studio-line",
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className={labelClassName}>Backup priority</span>
+                <StudioChip tone={backupPriorityTone}>{backupPriorityLabel}</StudioChip>
+              </div>
+              <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                {backupPriorityCopy}
+              </p>
+              <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
+                Latest: {latestBackupLabel}
+              </p>
+              <button
+                className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10 disabled:text-studio-dim"
+                disabled={isCheckingLiveStatus}
+                type="button"
+                onClick={() => void refreshLiveStatus()}
+              >
+                {isCheckingLiveStatus ? "Checking..." : "Check latest"}
+              </button>
             </div>
 
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
