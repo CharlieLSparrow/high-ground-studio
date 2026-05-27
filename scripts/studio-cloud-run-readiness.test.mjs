@@ -247,7 +247,9 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /HocuspocusProvider/);
   assert.match(client, /Collaboration\.configure/);
   assert.match(client, /CollaborationCaret\.configure/);
-  assert.match(client, /Save checkpoint/);
+  assert.match(client, /Save to manuscript/);
+  assert.match(client, /Copy edit link/);
+  assert.match(client, /hasCheckpointChanges/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/checkpoint/);
   assert.match(collabServer, /onAuthenticate/);
   assert.match(collabServer, /onLoadDocument/);

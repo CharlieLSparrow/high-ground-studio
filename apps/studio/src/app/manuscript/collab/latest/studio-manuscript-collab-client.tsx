@@ -140,11 +140,16 @@ export default function StudioManuscriptCollabClient() {
     useState<ConnectionStatus>("idle");
   const [message, setMessage] = useState("Preparing live edit room.");
   const [isSaving, setIsSaving] = useState(false);
+  const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
+  const [shareLinkState, setShareLinkState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
   const [lastCheckpoint, setLastCheckpoint] =
     useState<Extract<CheckpointResponse, { ok: true }>["snapshot"] | null>(
       null,
     );
   const hasSeededRef = useRef(false);
+  const programmaticEditorUpdateRef = useRef(false);
 
   const initialDraft = useMemo(() => {
     return setup?.ok && setup.initialSnapshot
@@ -275,6 +280,14 @@ export default function StudioManuscriptCollabClient() {
       content: createEmptyManuscriptDoc() as JSONContent,
       editable: Boolean(provider),
       immediatelyRender: false,
+      onUpdate: () => {
+        if (programmaticEditorUpdateRef.current) {
+          programmaticEditorUpdateRef.current = false;
+          return;
+        }
+
+        setHasCheckpointChanges(true);
+      },
       editorProps: {
         attributes: {
           class:
@@ -315,8 +328,10 @@ export default function StudioManuscriptCollabClient() {
           initialDraft?.editorJson ?? createEmptyManuscriptDoc();
 
         if (isEmptyEditorJson(currentEditor.getJSON())) {
+          programmaticEditorUpdateRef.current = true;
           currentEditor.commands.setContent(seedJson as JSONContent);
           hasSeededRef.current = true;
+          setHasCheckpointChanges(false);
           setMessage("Live room initialized from the latest saved manuscript.");
         }
       } catch (error) {
@@ -334,7 +349,7 @@ export default function StudioManuscriptCollabClient() {
     }
 
     setIsSaving(true);
-    setMessage("Saving live edit checkpoint.");
+    setMessage("Saving the room to the latest manuscript backup.");
 
     const draft = buildCheckpointDraft({
       baseDraft: initialDraft,
@@ -364,12 +379,30 @@ export default function StudioManuscriptCollabClient() {
       }
 
       setLastCheckpoint(payload.snapshot);
-      setMessage("Live edit checkpoint saved.");
+      setHasCheckpointChanges(false);
+      setMessage("Saved to the latest manuscript backup.");
     } catch (error) {
       console.error("Live edit checkpoint save failed.", error);
-      setMessage("Could not save the live edit checkpoint.");
+      setMessage("Could not save to the manuscript.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function copySharedEditLink() {
+    const href =
+      typeof window === "undefined"
+        ? "/manuscript/collab/latest"
+        : `${window.location.origin}/manuscript/collab/latest`;
+
+    try {
+      await navigator.clipboard.writeText(href);
+      setShareLinkState("copied");
+      setMessage("Shared edit link copied.");
+    } catch (error) {
+      console.error("Live edit link copy failed.", error);
+      setShareLinkState("error");
+      setMessage("Could not copy the shared edit link.");
     }
   }
 
@@ -410,9 +443,19 @@ export default function StudioManuscriptCollabClient() {
                 {setup.actor.displayName}
               </StudioChip>
             ) : null}
+            {hasCheckpointChanges ? (
+              <StudioChip tone="review">Needs save</StudioChip>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              className="min-h-9 rounded-md border border-studio-source/45 bg-studio-source/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/60 hover:bg-studio-source/15"
+              type="button"
+              onClick={() => void copySharedEditLink()}
+            >
+              {shareLinkState === "copied" ? "Link copied" : "Copy edit link"}
+            </button>
             <a
               className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10"
               href="/manuscript"
@@ -427,7 +470,7 @@ export default function StudioManuscriptCollabClient() {
               type="button"
               onClick={() => void saveCheckpoint()}
             >
-              {isSaving ? "Saving..." : "Save checkpoint"}
+              {isSaving ? "Saving..." : "Save to manuscript"}
             </button>
           </div>
         </header>
@@ -441,8 +484,9 @@ export default function StudioManuscriptCollabClient() {
             <div>
               <p className={labelClassName}>Room</p>
               <p className="mt-1 mb-0 text-[0.92rem] leading-6 text-studio-muted">
-                This is the simultaneous editing room. Save a checkpoint when the
-                room state should become the latest manuscript backup.
+                This is the shared editing room. Changes appear for everyone in
+                the room; saving writes the room state back to the latest
+                manuscript backup.
               </p>
             </div>
 
@@ -466,11 +510,13 @@ export default function StudioManuscriptCollabClient() {
             </div>
 
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
-              <span className={labelClassName}>Last checkpoint</span>
+              <span className={labelClassName}>Manuscript save</span>
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
                 {lastCheckpoint
                   ? `${formatDateTime(lastCheckpoint.updatedAt)} - ${lastCheckpoint.wordCount.toLocaleString()} words`
-                  : "No checkpoint saved from this browser yet."}
+                  : hasCheckpointChanges
+                    ? "The room has edits that are not the latest manuscript backup yet."
+                    : "No new room edits need saving from this browser."}
               </p>
             </div>
 
