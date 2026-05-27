@@ -67,11 +67,13 @@ High Ground Studio is a monorepo with:
   snapshots through Cloud SQL-backed `StudioManuscriptSnapshot` rows. The
   everyday UI keeps `Save manuscript`, `Copy phone link`, and `Load latest`
   visible in a Save and Share panel, while old snapshot/export/smoke/publish
-  machinery is behind Dev Mode. The stable private route
-  `/manuscript/live/latest` opens the newest saved server snapshot for an
-  authorized Studio user. The browser-local draft remains the active working
-  copy unless the user enters the live room; server snapshots are cross-device
-  checkpoints and latest-backup anchors, not canonical manuscript truth.
+  machinery is behind Dev Mode. The manuscript filter lens is available from a
+  desktop top-bar Filter button and a mobile bottom-bar Filter button. The
+  stable private route `/manuscript/live/latest` opens the newest saved server
+  snapshot for an authorized Studio user. The browser-local draft remains the
+  active working copy unless the user enters the live room; server snapshots are
+  cross-device checkpoints and latest-backup anchors, not canonical manuscript
+  truth.
 - The private Studio live manuscript room at `/manuscript/collab/latest` is the
   current production-ish co-editing path. It uses a private token-gated
   Hocuspocus/Yjs room backed by Cloud SQL `ydocState`, presence, author and

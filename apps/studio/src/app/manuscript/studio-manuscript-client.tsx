@@ -745,6 +745,7 @@ export function StudioManuscriptClient({
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [isSaveShareDialogOpen, setIsSaveShareDialogOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [recordingOutlineKind, setRecordingOutlineKind] =
     useState<RecordingOutlineKind>("all");
   const [semanticType, setSemanticType] =
@@ -2318,6 +2319,13 @@ export function StudioManuscriptClient({
     setExportFilteredMarkdown("");
     setExportCitedQuotationMarkdown("");
     setMessage("Manuscript filters cleared.");
+  }
+
+  function openFilterMenu() {
+    setSidePanelMode("find");
+    setIsSaveShareDialogOpen(false);
+    setIsMobileToolsOpen(false);
+    setIsFilterMenuOpen(true);
   }
 
   function applyQuoteFocus(status: ManuscriptQuoteReviewStatusFilter | "" = "") {
@@ -4497,6 +4505,226 @@ export function StudioManuscriptClient({
       structureRailState.nextEpisode,
   );
 
+  function renderFilterMenuPanel() {
+    return (
+      <div className="grid gap-3" data-testid="manuscript-filter-menu-panel">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <StudioChip
+            tone={blockFilterSummary.hasActiveFilters ? "review" : "source"}
+          >
+            {filteredBlockDetails.length.toLocaleString()} /{" "}
+            {blockDetails.length.toLocaleString()} blocks
+          </StudioChip>
+          {blockFilterSummary.hasActiveFilters ? (
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={exitFocusView}
+            >
+              Full manuscript
+            </button>
+          ) : null}
+        </div>
+
+        <label className="grid gap-1.5">
+          <span className={fieldLabelClassName}>Search text</span>
+          <input
+            className={fieldClassName}
+            value={filterTextQuery}
+            onChange={(event) => setFilterTextQuery(event.target.value)}
+            placeholder="Search block text"
+          />
+        </label>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="author-marks">Author</HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterAuthorId}
+              onChange={(event) =>
+                setFilterAuthorId(event.target.value as ManuscriptAuthorId | "")
+              }
+            >
+              <option value="">Any author</option>
+              {manuscriptAuthorDefinitions.map((author) => (
+                <option key={author.id} value={author.id}>
+                  {author.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="semantic-meaning-tags">Semantic tag</HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterSemanticType}
+              onChange={(event) =>
+                setFilterSemanticType(
+                  event.target.value as SemanticHighlightType | "",
+                )
+              }
+            >
+              <option value="">Any semantic tag</option>
+              {semanticHighlightDefinitions.map((definition) => (
+                <option key={definition.id} value={definition.id}>
+                  {definition.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="structure-region">Structure region</HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterStructureRegionId}
+              onChange={(event) => setFilterStructureRegionId(event.target.value)}
+            >
+              <option value="">Any structure region</option>
+              {blockFilterOptions.structureRegions.map((region) => (
+                <option key={region.id} value={region.id}>
+                  {region.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={fieldLabelClassName}>Structure kind</span>
+            <select
+              className={fieldClassName}
+              value={filterStructureKind}
+              onChange={(event) =>
+                setFilterStructureKind(
+                  event.target.value as ManuscriptStructureKind | "",
+                )
+              }
+            >
+              <option value="">Any structure kind</option>
+              {manuscriptStructureDefinitions.map((definition) => (
+                <option key={definition.id} value={definition.id}>
+                  {definition.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="quote-review-metadata">
+              Quote review status
+            </HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterQuoteReviewStatus}
+              onChange={(event) =>
+                setFilterQuoteReviewStatus(
+                  event.target.value as ManuscriptQuoteReviewStatusFilter | "",
+                )
+              }
+            >
+              <option value="">Any quote review status</option>
+              {manuscriptQuoteReviewStatusFilterDefinitions.map((status) => (
+                <option key={status.id} value={status.id}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={fieldLabelClassName}>Visual mode</span>
+            <select
+              className={fieldClassName}
+              value={filterVisualMode}
+              onChange={(event) =>
+                setFilterVisualMode(
+                  event.target.value as ManuscriptFilterVisualMode,
+                )
+              }
+            >
+              {manuscriptFilterVisualModeDefinitions.map((mode) => (
+                <option key={mode.id} value={mode.id}>
+                  {mode.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+          <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+            <input
+              checked={filterOnlyUnstructured}
+              type="checkbox"
+              onChange={(event) =>
+                setFilterOnlyUnstructured(event.target.checked)
+              }
+            />
+            Only unstructured blocks
+          </label>
+          <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+            <input
+              checked={filterOnlyWithSemanticHighlights}
+              type="checkbox"
+              onChange={(event) =>
+                setFilterOnlyWithSemanticHighlights(event.target.checked)
+              }
+            />
+            Only blocks with semantic highlights
+          </label>
+          <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+            <input
+              checked={filterOnlyWithoutAuthor}
+              type="checkbox"
+              onChange={(event) =>
+                setFilterOnlyWithoutAuthor(event.target.checked)
+              }
+            />
+            Only blocks with no author mark
+          </label>
+        </div>
+
+        {blockFilterSummary.activeFilterLabels.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {blockFilterSummary.activeFilterLabels.map((label) => (
+              <StudioChip key={label} tone="review">
+                {label}
+              </StudioChip>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={() => applyQuoteFocus()}
+          >
+            Quote Focus
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={applyHomerReadingFocus}
+          >
+            Homer / Scott
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={() => applySemanticFocus()}
+          >
+            Semantic marks
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={clearBlockFilters}
+          >
+            Clear filters
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function renderStructureRailCard(
     kind: ManuscriptStructureBoundaryKind,
     currentRegion: ManuscriptStructureBoundary | null,
@@ -4896,6 +5124,19 @@ export function StudioManuscriptClient({
           </div>
 
           <div className="flex shrink-0 items-center justify-end gap-1.5">
+            <button
+              className={cn(
+                commandButtonClassName,
+                blockFilterSummary.hasActiveFilters ? activeButtonClassName : "",
+              )}
+              data-testid="manuscript-desktop-filter-menu"
+              type="button"
+              onClick={openFilterMenu}
+            >
+              {blockFilterSummary.hasActiveFilters
+                ? `Filter ${filteredBlockDetails.length.toLocaleString()}`
+                : "Filter"}
+            </button>
             <button
               className={cn(
                 commandButtonClassName,
@@ -7952,6 +8193,40 @@ export function StudioManuscriptClient({
           </aside>
         </section>
 
+        {isFilterMenuOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            role="presentation"
+            onMouseDown={() => setIsFilterMenuOpen(false)}
+          >
+            <section
+              className="grid max-h-[min(90dvh,760px)] w-full max-w-[680px] gap-3 overflow-auto rounded-lg border border-studio-line-strong bg-studio-panel p-4 shadow-[0_24px_80px_rgba(0,0,0,0.54)]"
+              aria-label="Filter manuscript"
+              aria-modal="true"
+              data-testid="manuscript-filter-menu-dialog"
+              role="dialog"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={labelClassName}>Manuscript</p>
+                  <h2 className="m-0 text-[1.05rem] leading-snug text-studio-ink">
+                    Filter
+                  </h2>
+                </div>
+                <button
+                  className={commandButtonClassName}
+                  type="button"
+                  onClick={() => setIsFilterMenuOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              {renderFilterMenuPanel()}
+            </section>
+          </div>
+        ) : null}
+
         {isSaveShareDialogOpen ? (
           <div
             className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
@@ -8554,6 +8829,19 @@ export function StudioManuscriptClient({
                 onClick={() => setIsSaveShareDialogOpen(true)}
               >
                 Save
+              </button>
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  blockFilterSummary.hasActiveFilters
+                    ? activeButtonClassName
+                    : "",
+                )}
+                data-testid="manuscript-mobile-filter-menu"
+                type="button"
+                onClick={openFilterMenu}
+              >
+                Filter
               </button>
               <button
                 className={cn(

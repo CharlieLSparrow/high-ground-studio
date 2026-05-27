@@ -383,9 +383,15 @@ test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   );
 
   assert.match(client, /isSaveShareDialogOpen/);
+  assert.match(client, /isFilterMenuOpen/);
+  assert.match(client, /openFilterMenu/);
+  assert.match(client, /data-testid="manuscript-desktop-filter-menu"/);
+  assert.match(client, /data-testid="manuscript-filter-menu-dialog"/);
+  assert.match(client, /data-testid="manuscript-filter-menu-panel"/);
   assert.match(client, /data-testid="manuscript-save-share-footer"/);
   assert.match(client, /data-testid="manuscript-save-share-dialog"/);
   assert.match(client, /data-testid="manuscript-mobile-save-share"/);
+  assert.match(client, /data-testid="manuscript-mobile-filter-menu"/);
   assert.match(client, /data-testid="manuscript-mobile-footer-status"/);
   assert.match(client, /data-testid="manuscript-mobile-tools-menu"/);
   assert.match(client, /data-testid="manuscript-mobile-structure-strip"/);
