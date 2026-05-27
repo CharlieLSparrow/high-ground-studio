@@ -213,20 +213,20 @@ export const manuscriptHelpNotes = {
   "structure-region": {
     id: "structure-region",
     label: "Structure",
-    title: "A named stretch of manuscript road",
-    body: "A structure region names a range of blocks, such as a chapter, episode, or section. It is a map overlay, not a knife.",
+    title: "A marker that names where a stretch begins",
+    body: "A structure boundary marks the title block where a chapter or episode starts. The desk treats everything after it as part of that stretch until the next matching boundary.",
     whatItDoes:
       "It helps navigate, outline, filter, and prepare reading or recording passes.",
     whatItDoesNot:
       "It does not split the manuscript, move paragraphs, or write canonical files.",
     whenToUse:
-      "Use it when a block range has a useful editorial identity.",
+      "Use it when a chapter or episode begins at the selected title block.",
   },
   "chapter-book-region": {
     id: "chapter-book-region",
     label: "Book region",
-    title: "Book-shaped scaffolding",
-    body: "A Chapter / book region marks manuscript ranges like Preface, Introduction, Chapter 0, Chapter One, or Appendix.",
+    title: "Book-shaped boundary",
+    body: "A chapter boundary marks the manuscript title block for Preface, Introduction, Chapter 0, Chapter One, Appendix, or any other book-scale section.",
     whatItDoes:
       "It helps the desk understand book-scale shape without committing public structure.",
     whatItDoesNot:
@@ -237,10 +237,10 @@ export const manuscriptHelpNotes = {
   "episode-region": {
     id: "episode-region",
     label: "Episode",
-    title: "A recording-sized path through the book",
-    body: "An Episode region marks the manuscript range that may support an episode or recording pass.",
+    title: "A recording-sized starting point",
+    body: "An episode boundary marks the title block where a recording or reading pass begins.",
     whatItDoes:
-      "It helps a phone or recording view jump through episode-sized chunks.",
+      "It helps a phone or recording view jump through episode-sized chunks derived from the marked starts.",
     whatItDoesNot:
       "It does not create a podcast episode, update arrangements, or publish content.",
     whenToUse:

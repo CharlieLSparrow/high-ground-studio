@@ -343,7 +343,11 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   const globalsCss = readFileSync("apps/studio/src/app/globals.css", "utf8");
 
   assert.match(client, /type ManuscriptStructureBoundary/);
+  assert.match(model, /type ManuscriptStructureBoundaryMarker/);
   assert.match(model, /createManuscriptStructureBoundaryIndex/);
+  assert.match(client, /structureBoundaryMarkers/);
+  assert.match(client, /toggleSelectedBlockAsEpisodeBoundary/);
+  assert.match(client, /Boundary map/);
   assert.match(client, /structureRailRegions/);
   assert.match(client, /structureBoundaryIndex\.warnings/);
   assert.match(client, /getCurrentManuscriptStructureBoundary/);

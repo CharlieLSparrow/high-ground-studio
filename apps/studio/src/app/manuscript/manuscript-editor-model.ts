@@ -135,6 +135,7 @@ export type ManuscriptDraft = {
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
   structureRegions: ManuscriptStructureRegion[];
+  structureBoundaryMarkers: ManuscriptStructureBoundaryMarker[];
   chapterTitleBlocks: ManuscriptChapterTitleBlock[];
   quoteReviews: Record<string, ManuscriptQuoteReview>;
   editorJson: ManuscriptEditorJson;
@@ -200,6 +201,16 @@ export type ManuscriptBlockSummary = {
 export type ManuscriptChapterTitleBlock = {
   id: string;
   blockId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ManuscriptStructureBoundaryMarker = {
+  id: string;
+  kind: ManuscriptStructureBoundaryKind;
+  blockId: string;
+  title: string;
+  notes: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -570,9 +581,7 @@ export type ManuscriptStructureBoundaryKind = Extract<
   "chapter" | "episode"
 >;
 
-export type ManuscriptStructureBoundarySource =
-  | "chapter-title"
-  | "structure-region";
+export type ManuscriptStructureBoundarySource = "boundary-marker";
 
 export type ManuscriptStructureBoundary = {
   id: string;
@@ -673,6 +682,12 @@ export function isManuscriptStructureKind(
   value: string,
 ): value is ManuscriptStructureKind {
   return manuscriptStructureDefinitions.some((kind) => kind.id === value);
+}
+
+export function isManuscriptStructureBoundaryKind(
+  value: string,
+): value is ManuscriptStructureBoundaryKind {
+  return value === "chapter" || value === "episode";
 }
 
 export function isManuscriptStructureLabelPreset(
@@ -793,6 +808,7 @@ export function createDefaultManuscriptDraft(
     sourceFileName: null,
     importSummary: null,
     structureRegions: [],
+    structureBoundaryMarkers: [],
     chapterTitleBlocks: [],
     quoteReviews: {},
     editorJson: createEmptyManuscriptDoc(),
@@ -1090,6 +1106,26 @@ export function createSyntheticManuscriptSmokeDraft(
     title: SYNTHETIC_MANUSCRIPT_SMOKE_TITLE,
     sourceFileName: SYNTHETIC_MANUSCRIPT_SMOKE_SOURCE_FILE_NAME,
     importSummary,
+    structureBoundaryMarkers: [
+      {
+        id: "synthetic-smoke-chapter-boundary",
+        kind: "chapter",
+        blockId: "synthetic-smoke-heading",
+        title: "Synthetic Smoke Chapter",
+        notes: "Synthetic chapter boundary marker for rail and structure smoke testing.",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: "synthetic-smoke-episode-boundary",
+        kind: "episode",
+        blockId: "synthetic-smoke-episode-heading",
+        title: "Synthetic Episode Cue",
+        notes: "Synthetic episode boundary marker for rail and recording smoke testing.",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
     chapterTitleBlocks: [
       {
         id: "synthetic-smoke-chapter-title",
@@ -1841,69 +1877,106 @@ function getManuscriptStructureBoundaryLabel(
     : `${baseLabel} ${index + 1}`;
 }
 
-function createStructureRegionBoundaries(
-  kind: ManuscriptStructureBoundaryKind,
-  regions: ManuscriptStructureRegionSummary[],
-): ManuscriptStructureBoundary[] {
-  return regions
-    .filter(
-      (region) =>
-        region.kind === kind && region.isRangeComplete && region.startIndex >= 0,
-    )
-    .sort((left, right) => left.startIndex - right.startIndex)
-    .map((region, index) => ({
-      id: `structure-${kind}:${region.id}`,
-      kind,
-      source: "structure-region",
-      sourceId: region.id,
-      label: getManuscriptStructureBoundaryLabel(kind, index, region.title),
-      title: getManuscriptStructureBoundaryTitle(
-        region.title,
-        `${kind === "episode" ? "Episode" : "Chapter"} ${index + 1}`,
-      ),
-      startIndex: region.startIndex,
-      endIndex: region.endIndex,
-      startBlockId: region.startBlockId,
-      endBlockId: region.endBlockId,
-      blockCount: region.blockCount,
-      blockIds: region.blockIds,
-      isRangeComplete: region.isRangeComplete,
-    }));
+function createStructureBoundaryFromBlocks(input: {
+  id: string;
+  kind: ManuscriptStructureBoundaryKind;
+  source: ManuscriptStructureBoundarySource;
+  sourceId: string;
+  title: string;
+  index: number;
+  startIndex: number;
+  endIndex: number;
+  blocks: ManuscriptBlockSummary[];
+}): ManuscriptStructureBoundary {
+  const boundaryBlocks = input.blocks.slice(
+    input.startIndex,
+    input.endIndex + 1,
+  );
+  const blockIds = boundaryBlocks.flatMap((block) =>
+    block.blockId ? [block.blockId] : [],
+  );
+
+  return {
+    id: input.id,
+    kind: input.kind,
+    source: input.source,
+    sourceId: input.sourceId,
+    label: getManuscriptStructureBoundaryLabel(
+      input.kind,
+      input.index,
+      input.title,
+    ),
+    title: getManuscriptStructureBoundaryTitle(
+      input.title,
+      `${input.kind === "episode" ? "Episode" : "Chapter"} ${input.index + 1}`,
+    ),
+    startIndex: input.startIndex,
+    endIndex: input.endIndex,
+    startBlockId: blockIds[0] ?? "",
+    endBlockId: blockIds[blockIds.length - 1] ?? "",
+    blockCount: boundaryBlocks.length,
+    blockIds,
+    isRangeComplete: boundaryBlocks.length > 0,
+  };
 }
 
-function createChapterTitleBoundaries(
+function createStructureMarkerBoundaries(
+  kind: ManuscriptStructureBoundaryKind,
   blocks: ManuscriptBlockSummary[],
-  chapterTitleBlocks: ManuscriptChapterTitleBlock[],
+  markers: ManuscriptStructureBoundaryMarker[],
 ): ManuscriptStructureBoundary[] {
-  return deriveManuscriptChaptersFromTitleBlocks({
-    blocks,
-    chapterTitleBlocks,
-  })
-    .filter(
-      (chapter) => chapter.isRangeComplete && chapter.startIndex >= 0,
-    )
-    .map((chapter, index) => ({
-      id: `chapter-title:${chapter.id}`,
-      kind: "chapter",
-      source: "chapter-title",
-      sourceId: chapter.id,
-      label: getManuscriptStructureBoundaryLabel(
-        "chapter",
-        index,
-        chapter.title,
-      ),
-      title: getManuscriptStructureBoundaryTitle(
-        chapter.title,
-        `Chapter ${index + 1}`,
-      ),
-      startIndex: chapter.startIndex,
-      endIndex: chapter.endIndex,
-      startBlockId: chapter.startBlockId,
-      endBlockId: chapter.endBlockId,
-      blockCount: chapter.blockCount,
-      blockIds: chapter.blockIds,
-      isRangeComplete: chapter.isRangeComplete,
-    }));
+  const blockIndexById = new Map<string, number>();
+
+  blocks.forEach((block, index) => {
+    if (block.blockId) {
+      blockIndexById.set(block.blockId, index);
+    }
+  });
+
+  const seenBlockIds = new Set<string>();
+  const orderedMarkers = markers
+    .filter((marker) => {
+      if (
+        marker.kind !== kind ||
+        seenBlockIds.has(marker.blockId) ||
+        !blockIndexById.has(marker.blockId)
+      ) {
+        return false;
+      }
+
+      seenBlockIds.add(marker.blockId);
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        (blockIndexById.get(left.blockId) ?? 0) -
+        (blockIndexById.get(right.blockId) ?? 0),
+    );
+
+  return orderedMarkers.map((marker, index) => {
+    const startIndex = blockIndexById.get(marker.blockId) ?? -1;
+    const nextMarker = orderedMarkers[index + 1];
+    const nextMarkerIndex = nextMarker
+      ? blockIndexById.get(nextMarker.blockId)
+      : undefined;
+    const endIndex =
+      nextMarkerIndex === undefined
+        ? blocks.length - 1
+        : Math.max(startIndex, nextMarkerIndex - 1);
+    const blockTitle = blocks[startIndex]?.preview ?? "";
+
+    return createStructureBoundaryFromBlocks({
+      id: `boundary-marker:${marker.id}`,
+      kind,
+      source: "boundary-marker",
+      sourceId: marker.id,
+      title: marker.title.trim() || blockTitle,
+      index,
+      startIndex,
+      endIndex,
+      blocks,
+    });
+  });
 }
 
 function createStructureBoundaryOverlapWarnings(
@@ -1936,38 +2009,23 @@ function createStructureBoundaryOverlapWarnings(
 
 export function createManuscriptStructureBoundaryIndex(input: {
   blocks: ManuscriptBlockSummary[];
-  chapterTitleBlocks: ManuscriptChapterTitleBlock[];
-  structureRegions: ManuscriptStructureRegionSummary[];
+  boundaryMarkers?: ManuscriptStructureBoundaryMarker[];
 }): ManuscriptStructureBoundaryIndex {
-  const chapterTitleBoundaries = createChapterTitleBoundaries(
-    input.blocks,
-    input.chapterTitleBlocks,
-  );
-  const explicitChapterBoundaries = createStructureRegionBoundaries(
+  const boundaryMarkers = input.boundaryMarkers ?? [];
+  const chapters = createStructureMarkerBoundaries(
     "chapter",
-    input.structureRegions,
+    input.blocks,
+    boundaryMarkers,
   );
-  const chapters = chapterTitleBoundaries.length
-    ? chapterTitleBoundaries
-    : explicitChapterBoundaries;
-  const episodes = createStructureRegionBoundaries(
+  const episodes = createStructureMarkerBoundaries(
     "episode",
-    input.structureRegions,
+    input.blocks,
+    boundaryMarkers,
   );
   const warnings: ManuscriptStructureBoundaryWarning[] = [
     ...createStructureBoundaryOverlapWarnings("chapter", chapters),
     ...createStructureBoundaryOverlapWarnings("episode", episodes),
   ];
-
-  if (chapterTitleBoundaries.length && explicitChapterBoundaries.length) {
-    warnings.unshift({
-      id: "chapter-title-overrides-explicit-regions",
-      kind: "chapter",
-      message:
-        "Chapter title markers are driving the chapter rail; saved chapter regions remain available as structure metadata.",
-      boundaryIds: explicitChapterBoundaries.map((boundary) => boundary.id),
-    });
-  }
 
   return {
     chapters,
@@ -4068,6 +4126,77 @@ export function safeManuscriptChapterTitleBlocks(
   return titleBlocks;
 }
 
+export function createStructureBoundaryMarkersFromChapterTitleBlocks(
+  titleBlocks: ManuscriptChapterTitleBlock[],
+): ManuscriptStructureBoundaryMarker[] {
+  return titleBlocks.map((titleBlock) => ({
+    id: `legacy-${titleBlock.id}`,
+    kind: "chapter",
+    blockId: titleBlock.blockId,
+    title: "",
+    notes: "Migrated from a legacy chapter-title marker.",
+    createdAt: titleBlock.createdAt,
+    updatedAt: titleBlock.updatedAt,
+  }));
+}
+
+export function safeManuscriptStructureBoundaryMarkers(
+  value: unknown,
+): ManuscriptStructureBoundaryMarker[] | null {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const markers: ManuscriptStructureBoundaryMarker[] = [];
+  const seenMarkerBlocks = new Set<string>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+
+    const marker = item as Partial<ManuscriptStructureBoundaryMarker>;
+    const kind = String(marker.kind ?? "");
+
+    if (
+      typeof marker.id !== "string" ||
+      !marker.id.trim() ||
+      !isManuscriptStructureBoundaryKind(kind) ||
+      typeof marker.blockId !== "string" ||
+      !marker.blockId.trim() ||
+      typeof marker.title !== "string" ||
+      typeof marker.notes !== "string" ||
+      typeof marker.createdAt !== "string" ||
+      typeof marker.updatedAt !== "string"
+    ) {
+      return null;
+    }
+
+    const markerBlockKey = `${kind}:${marker.blockId}`;
+
+    if (seenMarkerBlocks.has(markerBlockKey)) {
+      continue;
+    }
+
+    seenMarkerBlocks.add(markerBlockKey);
+    markers.push({
+      id: marker.id,
+      kind,
+      blockId: marker.blockId,
+      title: marker.title.trim(),
+      notes: marker.notes.trim(),
+      createdAt: marker.createdAt,
+      updatedAt: marker.updatedAt,
+    });
+  }
+
+  return markers;
+}
+
 export function safeManuscriptQuoteReviews(
   value: unknown,
 ): Record<string, ManuscriptQuoteReview> | null {
@@ -4157,6 +4286,7 @@ export function hasMeaningfulManuscriptDraft(input: {
   editorJson: ManuscriptEditorJson;
   importSummary?: ManuscriptImportSummary | null;
   structureRegions?: ManuscriptStructureRegion[];
+  structureBoundaryMarkers?: ManuscriptStructureBoundaryMarker[];
   chapterTitleBlocks?: ManuscriptChapterTitleBlock[];
   quoteReviews?: Record<string, ManuscriptQuoteReview>;
 }) {
@@ -4165,6 +4295,7 @@ export function hasMeaningfulManuscriptDraft(input: {
     Boolean(input.sourceFileName) ||
     Boolean(input.importSummary) ||
     Boolean(input.structureRegions?.length) ||
+    Boolean(input.structureBoundaryMarkers?.length) ||
     Boolean(input.chapterTitleBlocks?.length) ||
     Boolean(Object.keys(input.quoteReviews ?? {}).length) ||
     countWordsAndCharacters(input.editorJson).words > 0
@@ -4321,9 +4452,19 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
   const structureRegions = safeManuscriptStructureRegions(
     draft.structureRegions,
   );
+  const parsedStructureBoundaryMarkers =
+    safeManuscriptStructureBoundaryMarkers(draft.structureBoundaryMarkers);
   const chapterTitleBlocks = safeManuscriptChapterTitleBlocks(
     draft.chapterTitleBlocks,
   );
+  const structureBoundaryMarkers =
+    parsedStructureBoundaryMarkers?.length || draft.structureBoundaryMarkers !== undefined
+      ? parsedStructureBoundaryMarkers
+      : chapterTitleBlocks
+        ? createStructureBoundaryMarkersFromChapterTitleBlocks(
+            chapterTitleBlocks,
+          )
+        : null;
   const quoteReviews = safeManuscriptQuoteReviews(draft.quoteReviews);
 
   if (
@@ -4331,6 +4472,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     typeof draft.title !== "string" ||
     !validateEditorJsonShape(draft.editorJson) ||
     !structureRegions ||
+    !structureBoundaryMarkers ||
     !chapterTitleBlocks ||
     !quoteReviews ||
     !isManuscriptAuthorId(activeAuthorId) ||
@@ -4359,6 +4501,7 @@ export function safeManuscriptDraft(value: unknown): ManuscriptDraft | null {
     sourceFileName: draft.sourceFileName,
     importSummary,
     structureRegions,
+    structureBoundaryMarkers,
     chapterTitleBlocks,
     quoteReviews,
     editorJson: draft.editorJson,
