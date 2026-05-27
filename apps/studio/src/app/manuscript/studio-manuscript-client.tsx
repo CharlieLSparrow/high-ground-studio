@@ -327,8 +327,8 @@ const semanticControlClassNames: Record<SemanticHighlightColorKey, string> = {
     "border-studio-node/75 bg-studio-node/15 text-studio-node",
   "quote-candidate":
     "border-studio-source/55 bg-studio-source/10 text-studio-source",
-  clip: "border-[#69e2c8]/60 bg-[#69e2c8]/10 text-[#69e2c8]",
-  "show-notes": "border-[#f5ba78]/60 bg-[#f5ba78]/10 text-[#f5ba78]",
+  clip: "border-[#8b3126]/70 bg-[#8b3126]/15 text-[#e89a8e]",
+  "show-notes": "border-[#c19a55]/65 bg-[#c19a55]/10 text-[#e6c780]",
   story: "border-studio-tag/55 bg-studio-tag/10 text-studio-tag",
   insight: "border-studio-source/55 bg-studio-source/10 text-studio-source",
   research: "border-studio-review/55 bg-studio-review/10 text-studio-review",
@@ -343,8 +343,8 @@ const semanticSwatchClassNames: Record<SemanticHighlightColorKey, string> = {
   quote: "bg-studio-node",
   "cited-quotation": "bg-studio-node",
   "quote-candidate": "bg-studio-source",
-  clip: "bg-[#69e2c8]",
-  "show-notes": "bg-[#f5ba78]",
+  clip: "bg-[#8b3126]",
+  "show-notes": "bg-[#c19a55]",
   story: "bg-studio-tag",
   insight: "bg-studio-source",
   research: "bg-studio-review",
@@ -1597,6 +1597,10 @@ export function StudioManuscriptClient({
       "manuscript-author-block-homer",
       "manuscript-author-block-mixed",
       "manuscript-author-block-unassigned",
+      "manuscript-semantic-block",
+      "manuscript-semantic-block-clip",
+      "manuscript-semantic-block-show-notes",
+      "manuscript-semantic-block-mixed",
       "manuscript-structure-block",
       "manuscript-structure-chapter",
       "manuscript-structure-episode",
@@ -1666,21 +1670,37 @@ export function StudioManuscriptClient({
       }
 
       const blockAuthorIds = new Set<ManuscriptAuthorId>();
+      const blockSemanticColorKeys = new Set<
+        Extract<SemanticHighlightColorKey, "clip" | "show-notes">
+      >();
 
       node.descendants((childNode) => {
         for (const mark of childNode.marks ?? []) {
-          if (mark.type.name !== "authorMark") {
-            continue;
+          if (mark.type.name === "authorMark") {
+            const authorId = mark.attrs.authorId;
+
+            if (
+              authorId === "charlie" ||
+              authorId === "homer" ||
+              authorId === "unassigned"
+            ) {
+              blockAuthorIds.add(authorId);
+            }
           }
 
-          const authorId = mark.attrs.authorId;
+          if (
+            mark.type.name === "semanticHighlightMark" &&
+            (mark.attrs.colorKey === "clip" || mark.attrs.tagType === "clip")
+          ) {
+            blockSemanticColorKeys.add("clip");
+          }
 
           if (
-            authorId === "charlie" ||
-            authorId === "homer" ||
-            authorId === "unassigned"
+            mark.type.name === "semanticHighlightMark" &&
+            (mark.attrs.colorKey === "show-notes" ||
+              mark.attrs.tagType === "show-notes")
           ) {
-            blockAuthorIds.add(authorId);
+            blockSemanticColorKeys.add("show-notes");
           }
         }
 
@@ -1701,6 +1721,21 @@ export function StudioManuscriptClient({
           domNode.classList.add("manuscript-author-block-homer");
         } else {
           domNode.classList.add("manuscript-author-block-unassigned");
+        }
+      }
+
+      const hasClipSemantic = blockSemanticColorKeys.has("clip");
+      const hasShowNotesSemantic = blockSemanticColorKeys.has("show-notes");
+
+      if (hasClipSemantic || hasShowNotesSemantic) {
+        domNode.classList.add("manuscript-semantic-block");
+
+        if (hasClipSemantic && hasShowNotesSemantic) {
+          domNode.classList.add("manuscript-semantic-block-mixed");
+        } else if (hasClipSemantic) {
+          domNode.classList.add("manuscript-semantic-block-clip");
+        } else {
+          domNode.classList.add("manuscript-semantic-block-show-notes");
         }
       }
 

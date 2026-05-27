@@ -428,6 +428,10 @@ test("Manuscript semantic controls expose clip and production-note colors", () =
     "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
     "utf8",
   );
+  const collabClient = readFileSync(
+    "apps/studio/src/app/manuscript/collab/latest/studio-manuscript-collab-client.tsx",
+    "utf8",
+  );
   const model = readFileSync(
     "apps/studio/src/app/manuscript/manuscript-editor-model.ts",
     "utf8",
@@ -437,12 +441,25 @@ test("Manuscript semantic controls expose clip and production-note colors", () =
   assert.match(model, /id: "show-notes", label: "Production notes"/);
   assert.match(client, /quickSemanticHighlightTypes/);
   assert.match(client, /SemanticTagLabel/);
-  assert.ok(client.includes('clip: "border-[#69e2c8]/60'));
-  assert.ok(client.includes('"show-notes": "border-[#f5ba78]/60'));
+  assert.ok(client.includes('clip: "border-[#8b3126]/70'));
+  assert.ok(client.includes('"show-notes": "border-[#c19a55]/65'));
+  assert.ok(collabClient.includes("border-[#8b3126]/70"));
+  assert.ok(collabClient.includes("border-[#c19a55]/65"));
+  assert.doesNotMatch(client, /69e2c8|f5ba78/);
+  assert.doesNotMatch(collabClient, /69e2c8|f5ba78/);
+  assert.match(client, /manuscript-semantic-block-clip/);
+  assert.match(client, /manuscript-semantic-block-show-notes/);
+  assert.match(globalsCss, /--manuscript-semantic-wash/);
   assert.match(globalsCss, /\.manuscript-prosemirror \.manuscript-semantic-clip/);
   assert.match(
     globalsCss,
     /\.manuscript-prosemirror \.manuscript-semantic-show-notes/,
+  );
+  assert.match(globalsCss, /\.manuscript-semantic-block-clip/);
+  assert.match(globalsCss, /\.manuscript-semantic-block-show-notes/);
+  assert.match(
+    globalsCss,
+    /background-image:\n\s*var\(--manuscript-structure-wash\),\n\s*var\(--manuscript-semantic-wash\),\n\s*var\(--manuscript-author-wash\);/,
   );
 });
 
@@ -516,7 +533,7 @@ test("Manuscript author marks render as block washes under semantic marks", () =
   );
   assert.match(
     globalsCss,
-    /background-image:\n\s*var\(--manuscript-structure-wash\),\n\s*var\(--manuscript-author-wash\);/,
+    /background-image:\n\s*var\(--manuscript-structure-wash\),\n\s*var\(--manuscript-semantic-wash\),\n\s*var\(--manuscript-author-wash\);/,
   );
   assert.match(globalsCss, /margin-inline: -0\.42rem/);
   assert.match(globalsCss, /padding: 0\.16rem 0\.42rem 0\.22rem/);

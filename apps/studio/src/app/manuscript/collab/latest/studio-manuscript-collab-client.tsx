@@ -265,11 +265,17 @@ function getLiveSemanticButtonClassName(
   }
 
   if (colorKey === "clip") {
-    return cn(baseClassName, "border-[#69e2c8]/60 bg-[#69e2c8]/10 text-[#69e2c8]");
+    return cn(
+      baseClassName,
+      "border-[#8b3126]/70 bg-[#8b3126]/15 text-[#e89a8e]",
+    );
   }
 
   if (colorKey === "show-notes") {
-    return cn(baseClassName, "border-[#f5ba78]/60 bg-[#f5ba78]/10 text-[#f5ba78]");
+    return cn(
+      baseClassName,
+      "border-[#c19a55]/65 bg-[#c19a55]/10 text-[#e6c780]",
+    );
   }
 
   if (colorKey === "quote" || colorKey === "cited-quotation") {
@@ -297,11 +303,11 @@ function getLiveSemanticSwatchClassName(tagType: SemanticHighlightType) {
   const colorKey = getSemanticHighlightDefinition(tagType).colorKey;
 
   if (colorKey === "clip") {
-    return "bg-[#69e2c8]";
+    return "bg-[#8b3126]";
   }
 
   if (colorKey === "show-notes") {
-    return "bg-[#f5ba78]";
+    return "bg-[#c19a55]";
   }
 
   if (colorKey === "quote" || colorKey === "cited-quotation" || colorKey === "transition") {
