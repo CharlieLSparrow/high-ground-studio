@@ -197,6 +197,38 @@ type ManuscriptLiveSnapshotResponse =
     }
   | { ok: false; message: string };
 
+type ManuscriptLiveEditFreshnessState =
+  | "current"
+  | "outside-changes"
+  | "no-backup"
+  | "no-room";
+
+type ManuscriptLiveEditStatusResponse =
+  | {
+      ok: true;
+      room: {
+        seedSnapshotId: string | null;
+        lastCheckpointSnapshotId: string | null;
+        hasPersistedState: boolean;
+        updatedAt: string;
+      } | null;
+      latestSnapshot: {
+        id: string;
+        title: string;
+        updatedAt: string;
+        wordCount: number;
+        blockCount: number;
+      } | null;
+      freshness: {
+        state: ManuscriptLiveEditFreshnessState;
+        latestSnapshotId: string | null;
+        roomBaselineSnapshotId: string | null;
+        seedSnapshotId: string | null;
+        lastCheckpointSnapshotId: string | null;
+      };
+    }
+  | { ok: false; message: string };
+
 type ManuscriptSnapshotDetailResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
@@ -819,6 +851,9 @@ export function StudioManuscriptClient({
   const [serverConnectionState, setServerConnectionState] = useState<
     "unchecked" | "connected" | "unavailable"
   >("unchecked");
+  const [liveEditStatus, setLiveEditStatus] =
+    useState<ManuscriptLiveEditStatusResponse | null>(null);
+  const [isLiveEditStatusBusy, setIsLiveEditStatusBusy] = useState(false);
   const [lastSavedServerSnapshot, setLastSavedServerSnapshot] =
     useState<ManuscriptServerSnapshotSummary | null>(null);
   const [serverCheckpointKey, setServerCheckpointKey] = useState<string | null>(
@@ -1315,6 +1350,37 @@ export function StudioManuscriptClient({
     latestServerSnapshot ??
     selectedServerManuscript?.latestSnapshot ??
     null;
+  const liveEditFreshness = liveEditStatus?.ok
+    ? liveEditStatus.freshness.state
+    : null;
+  const liveEditStatusTone =
+    liveEditFreshness === "current"
+      ? "tag"
+      : liveEditFreshness === "outside-changes"
+        ? "review"
+        : liveEditStatus?.ok
+          ? "source"
+          : "danger";
+  const liveEditStatusLabel = isLiveEditStatusBusy
+    ? "Checking"
+    : liveEditFreshness === "current"
+      ? "Room current"
+      : liveEditFreshness === "outside-changes"
+        ? "Newer save"
+        : liveEditFreshness === "no-backup"
+          ? "No backup"
+          : liveEditFreshness === "no-room"
+            ? "No room"
+            : "Unknown";
+  const liveEditStatusCopy = liveEditStatus?.ok
+    ? liveEditFreshness === "current"
+      ? "The shared room is lined up with the latest manuscript backup."
+      : liveEditFreshness === "outside-changes"
+        ? "A newer manuscript backup exists. Open live edit with the handoff prompt before co-editing."
+        : liveEditFreshness === "no-backup"
+          ? "Save a manuscript backup before inviting someone into live edit."
+          : "The shared room has not been created yet."
+    : liveEditStatus?.message ?? "Live edit room status has not been checked yet.";
   const publishingSnapshotState = useMemo(
     () => ({
       serverConnectionState,
@@ -1426,6 +1492,7 @@ export function StudioManuscriptClient({
     initialServerRefreshStartedRef.current = true;
     void refreshManuscriptLibrary({ silent: true });
     void refreshServerSnapshots({ silent: true });
+    void refreshLiveEditStatus({ silent: true });
   }, [isHydrated, isRecordingMode]);
 
   useEffect(() => {
@@ -1435,6 +1502,7 @@ export function StudioManuscriptClient({
 
     void refreshManuscriptLibrary({ silent: true });
     void refreshServerSnapshots({ silent: true });
+    void refreshLiveEditStatus({ silent: true });
   }, [isHydrated, isRecordingMode, sidePanelMode]);
 
   useEffect(() => {
@@ -3586,6 +3654,47 @@ export function StudioManuscriptClient({
     }
   }
 
+  async function refreshLiveEditStatus(input?: { silent?: boolean }) {
+    setIsLiveEditStatusBusy(true);
+
+    try {
+      const response = await fetch("/api/manuscript/collab/latest/status", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ManuscriptLiveEditStatusResponse;
+
+      setLiveEditStatus(payload);
+
+      if (!response.ok || !payload.ok) {
+        if (!input?.silent) {
+          setMessage(
+            !payload.ok && payload.message
+              ? payload.message
+              : "Live edit room status is unavailable.",
+          );
+        }
+
+        return;
+      }
+
+      if (!input?.silent) {
+        setMessage("Live edit room status checked.");
+      }
+    } catch (error) {
+      console.error("Live edit status check failed.", error);
+      setLiveEditStatus({
+        ok: false,
+        message: "Live edit room status is unavailable right now.",
+      });
+
+      if (!input?.silent) {
+        setMessage("Live edit room status is unavailable right now.");
+      }
+    } finally {
+      setIsLiveEditStatusBusy(false);
+    }
+  }
+
   async function saveServerSnapshot(input?: {
     description?: string;
     successMessage?: string;
@@ -3654,6 +3763,7 @@ export function StudioManuscriptClient({
       if (selectedServerManuscriptId) {
         void refreshManuscriptLibrary({ silent: true });
       }
+      void refreshLiveEditStatus({ silent: true });
       if (isSyntheticManuscriptSmokeDraft(draft)) {
         setHasConfirmedSyntheticServerSnapshotSaved(true);
       }
@@ -4222,6 +4332,23 @@ export function StudioManuscriptClient({
           : "No server save visible yet."}{" "}
         Local changes: {localChangesSinceServerSaveLabel}.
       </p>
+      <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className={labelClassName}>Shared live room</span>
+          <StudioChip tone={liveEditStatusTone}>{liveEditStatusLabel}</StudioChip>
+        </div>
+        <p className="m-0 text-[0.72rem] leading-relaxed text-studio-muted">
+          {liveEditStatusCopy}
+        </p>
+        <button
+          className={smallButtonClassName}
+          disabled={isLiveEditStatusBusy}
+          type="button"
+          onClick={() => void refreshLiveEditStatus()}
+        >
+          {isLiveEditStatusBusy ? "Checking room..." : "Check room"}
+        </button>
+      </div>
       <p className="m-0 text-[0.72rem] leading-relaxed text-studio-dim">
         Save + live edit creates a latest backup first, then opens the shared
         room with a handoff prompt so the room can pull in that save deliberately.

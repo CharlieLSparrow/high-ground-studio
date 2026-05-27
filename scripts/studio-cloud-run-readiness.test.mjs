@@ -314,6 +314,9 @@ test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   assert.match(client, /data-testid="manuscript-primary-save-live-edit"/);
   assert.match(client, /Save \+ live edit/);
   assert.match(client, /start=latest/);
+  assert.match(client, /Shared live room/);
+  assert.match(client, /Check room/);
+  assert.match(client, /\/api\/manuscript\/collab\/latest\/status/);
   assert.match(client, /data-testid="manuscript-primary-copy-phone-link"/);
   assert.match(client, /data-testid="manuscript-mode-select"/);
   assert.match(
