@@ -336,12 +336,18 @@ test("Manuscript structure rail follows chapter and episode position", () => {
     "apps/studio/src/app/manuscript/studio-manuscript-client.tsx",
     "utf8",
   );
+  const model = readFileSync(
+    "apps/studio/src/app/manuscript/manuscript-editor-model.ts",
+    "utf8",
+  );
   const globalsCss = readFileSync("apps/studio/src/app/globals.css", "utf8");
 
-  assert.match(client, /type ManuscriptStructureRailRegion/);
+  assert.match(client, /type ManuscriptStructureBoundary/);
+  assert.match(model, /createManuscriptStructureBoundaryIndex/);
   assert.match(client, /structureRailRegions/);
-  assert.match(client, /derivedChapters\.length/);
-  assert.match(client, /getCurrentStructureRailRegion/);
+  assert.match(client, /structureBoundaryIndex\.warnings/);
+  assert.match(client, /getCurrentManuscriptStructureBoundary/);
+  assert.match(client, /getNextManuscriptStructureBoundary/);
   assert.match(client, /readBlockElements/);
   assert.match(client, /window\.addEventListener\("scroll", scheduleStructureRailUpdate/);
   assert.match(client, /document\.addEventListener\(\n\s*"scroll",\n\s*scheduleStructureRailUpdate,\n\s*scrollListenerOptions/);

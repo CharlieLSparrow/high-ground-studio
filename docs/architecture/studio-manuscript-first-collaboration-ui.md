@@ -25,6 +25,25 @@ anxiety-lowering workflow:
 
 Sidebars should be inspectors and controls, not the main mental model.
 
+## Product Bar
+
+The collaboration goal is not simply "Yjs works." Charlie and Homer should be
+able to open a shared manuscript, see each other, edit in the same place, and
+save a checkpoint with the same casual confidence they expect from OneNote or
+Apple Notes.
+
+That means the production UI needs:
+
+- a plain Live Edit entry point from Manuscript Desk
+- obvious participant presence
+- visible saved/checkpoint state
+- calm reconnect and stale-copy messaging
+- one deliberate Save checkpoint action when the room should become a manual
+  rollback anchor
+
+The machinery can stay sophisticated. The everyday interaction should feel
+ordinary.
+
 ## Presence And Margins
 
 Presence belongs around the manuscript. It should show who is reading, editing,

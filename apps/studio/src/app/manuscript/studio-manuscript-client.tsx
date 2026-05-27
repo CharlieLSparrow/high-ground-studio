@@ -42,6 +42,7 @@ import {
   createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
   createDefaultManuscriptQuoteReview,
+  createManuscriptStructureBoundaryIndex,
   deriveManuscriptChaptersFromTitleBlocks,
   createAuthorContributionMarkdown,
   createHgoEpisodeProjectionFromManuscript,
@@ -61,11 +62,13 @@ import {
   createStructureOutlineMarkdown,
   ensureManuscriptBlockIds,
   getManuscriptAuthorDefinition,
+  getCurrentManuscriptStructureBoundary,
   getManuscriptQuoteReviewStatusFilterLabel,
   getManuscriptQuoteReviewStatusDefinition,
   getManuscriptQuoteSourceTypeDefinition,
   getManuscriptStructureLabelPresetDefinition,
   getManuscriptStructureDefinition,
+  getNextManuscriptStructureBoundary,
   getSemanticHighlightDefinition,
   hasMeaningfulManuscriptDraft,
   isSyntheticManuscriptSmokeDraft,
@@ -109,6 +112,8 @@ import {
   type StudioHgoProjectionStatus,
   type StudioHgoProjectionVisibility,
   type StudioManuscriptLibraryKind,
+  type ManuscriptStructureBoundary,
+  type ManuscriptStructureBoundaryKind,
   type ManuscriptStructureKind,
   type ManuscriptStructureLabelPreset,
   type ManuscriptStructureRegion,
@@ -217,27 +222,11 @@ type ManuscriptTagContextMenuState = ManuscriptTextSelectionRange & {
   y: number;
 };
 
-type ManuscriptStructureRailKind = Extract<
-  ManuscriptStructureKind,
-  "chapter" | "episode"
->;
-
-type ManuscriptStructureRailRegion = {
-  id: string;
-  kind: ManuscriptStructureRailKind;
-  label: string;
-  title: string;
-  startIndex: number;
-  endIndex: number;
-  startBlockId: string;
-  endBlockId: string;
-};
-
 type ManuscriptStructureRailState = {
-  chapter: ManuscriptStructureRailRegion | null;
-  episode: ManuscriptStructureRailRegion | null;
-  nextChapter: ManuscriptStructureRailRegion | null;
-  nextEpisode: ManuscriptStructureRailRegion | null;
+  chapter: ManuscriptStructureBoundary | null;
+  episode: ManuscriptStructureBoundary | null;
+  nextChapter: ManuscriptStructureBoundary | null;
+  nextEpisode: ManuscriptStructureBoundary | null;
 };
 
 const emptyStructureRailState: ManuscriptStructureRailState = {
@@ -431,11 +420,12 @@ function SemanticTagLabel({
 }
 
 function areStructureRailRegionsEqual(
-  left: ManuscriptStructureRailRegion | null,
-  right: ManuscriptStructureRailRegion | null,
+  left: ManuscriptStructureBoundary | null,
+  right: ManuscriptStructureBoundary | null,
 ) {
   return (
     left?.id === right?.id &&
+    left?.source === right?.source &&
     left?.label === right?.label &&
     left?.title === right?.title &&
     left?.startIndex === right?.startIndex &&
@@ -453,59 +443,6 @@ function areStructureRailStatesEqual(
     areStructureRailRegionsEqual(left.nextChapter, right.nextChapter) &&
     areStructureRailRegionsEqual(left.nextEpisode, right.nextEpisode)
   );
-}
-
-function getCurrentStructureRailRegion(
-  regions: ManuscriptStructureRailRegion[],
-  blockIndex: number,
-) {
-  let currentRegion: ManuscriptStructureRailRegion | null = null;
-
-  for (const region of regions) {
-    if (region.startIndex > blockIndex) {
-      break;
-    }
-
-    if (region.endIndex >= blockIndex) {
-      currentRegion = region;
-    }
-  }
-
-  return currentRegion;
-}
-
-function getNextStructureRailRegion(
-  regions: ManuscriptStructureRailRegion[],
-  blockIndex: number,
-  currentRegion: ManuscriptStructureRailRegion | null,
-) {
-  return (
-    regions.find(
-      (region) =>
-        region.startIndex > blockIndex && region.id !== currentRegion?.id,
-    ) ?? null
-  );
-}
-
-function getStructureRailTitle(title: string, fallback: string) {
-  return title.trim() || fallback;
-}
-
-function getStructureRailLabel(
-  kind: ManuscriptStructureRailKind,
-  index: number,
-  title: string,
-) {
-  const baseLabel = kind === "episode" ? "Episode" : "Chapter";
-  const titlePrefixPattern =
-    kind === "episode"
-      ? /^(?:episode|ep\.?)\s+([a-z0-9-]+)\b/i
-      : /^(?:chapter|ch\.?)\s+([a-z0-9-]+)\b/i;
-  const titlePrefixMatch = title.trim().match(titlePrefixPattern);
-
-  return titlePrefixMatch
-    ? `${baseLabel} ${titlePrefixMatch[1]}`
-    : `${baseLabel} ${index + 1}`;
 }
 
 function formatDateTime(value: string | null) {
@@ -1076,63 +1013,22 @@ export function StudioManuscriptClient({
       }),
     [currentEditorJson, structureRegions],
   );
-  const structureRailRegions = useMemo(() => {
-    const explicitChapterRegions = structureRegionSummaries
-      .filter(
-        (region) =>
-          region.kind === "chapter" &&
-          region.isRangeComplete &&
-          region.startIndex >= 0,
-      )
-      .sort((left, right) => left.startIndex - right.startIndex)
-      .map<ManuscriptStructureRailRegion>((region, index) => ({
-        id: `structure-chapter:${region.id}`,
-        kind: "chapter",
-        label: getStructureRailLabel("chapter", index, region.title),
-        title: getStructureRailTitle(region.title, `Chapter ${index + 1}`),
-        startIndex: region.startIndex,
-        endIndex: region.endIndex,
-        startBlockId: region.startBlockId,
-        endBlockId: region.endBlockId,
-      }));
-    const chapterRegions = derivedChapters.length
-      ? derivedChapters.map<ManuscriptStructureRailRegion>(
-          (chapter, index) => ({
-            id: `chapter-title:${chapter.id}`,
-            kind: "chapter",
-            label: getStructureRailLabel("chapter", index, chapter.title),
-            title: getStructureRailTitle(chapter.title, `Chapter ${index + 1}`),
-            startIndex: chapter.startIndex,
-            endIndex: chapter.endIndex,
-            startBlockId: chapter.startBlockId,
-            endBlockId: chapter.endBlockId,
-          }),
-        )
-      : explicitChapterRegions;
-    const episodeRegions = structureRegionSummaries
-      .filter(
-        (region) =>
-          region.kind === "episode" &&
-          region.isRangeComplete &&
-          region.startIndex >= 0,
-      )
-      .sort((left, right) => left.startIndex - right.startIndex)
-      .map<ManuscriptStructureRailRegion>((region, index) => ({
-        id: `structure-episode:${region.id}`,
-        kind: "episode",
-        label: getStructureRailLabel("episode", index, region.title),
-        title: getStructureRailTitle(region.title, `Episode ${index + 1}`),
-        startIndex: region.startIndex,
-        endIndex: region.endIndex,
-        startBlockId: region.startBlockId,
-        endBlockId: region.endBlockId,
-      }));
-
-    return {
-      chapters: chapterRegions,
-      episodes: episodeRegions,
-    };
-  }, [derivedChapters, structureRegionSummaries]);
+  const structureBoundaryIndex = useMemo(
+    () =>
+      createManuscriptStructureBoundaryIndex({
+        blocks: blockSummaries,
+        chapterTitleBlocks,
+        structureRegions: structureRegionSummaries,
+      }),
+    [blockSummaries, chapterTitleBlocks, structureRegionSummaries],
+  );
+  const structureRailRegions = useMemo(
+    () => ({
+      chapters: structureBoundaryIndex.chapters,
+      episodes: structureBoundaryIndex.episodes,
+    }),
+    [structureBoundaryIndex],
+  );
   const hgoEpisodeRegionOptions = useMemo(
     () => structureRegionSummaries.filter((region) => region.kind === "episode"),
     [structureRegionSummaries],
@@ -1842,23 +1738,23 @@ export function StudioManuscriptClient({
         return;
       }
 
-      const chapter = getCurrentStructureRailRegion(
+      const chapter = getCurrentManuscriptStructureBoundary(
         structureRailRegions.chapters,
         currentBlockIndex,
       );
-      const episode = getCurrentStructureRailRegion(
+      const episode = getCurrentManuscriptStructureBoundary(
         structureRailRegions.episodes,
         currentBlockIndex,
       );
       const nextState: ManuscriptStructureRailState = {
         chapter,
         episode,
-        nextChapter: getNextStructureRailRegion(
+        nextChapter: getNextManuscriptStructureBoundary(
           structureRailRegions.chapters,
           currentBlockIndex,
           chapter,
         ),
-        nextEpisode: getNextStructureRailRegion(
+        nextEpisode: getNextManuscriptStructureBoundary(
           structureRailRegions.episodes,
           currentBlockIndex,
           episode,
@@ -4144,9 +4040,9 @@ export function StudioManuscriptClient({
   );
 
   function renderStructureRailCard(
-    kind: ManuscriptStructureRailKind,
-    currentRegion: ManuscriptStructureRailRegion | null,
-    nextRegion: ManuscriptStructureRailRegion | null,
+    kind: ManuscriptStructureBoundaryKind,
+    currentRegion: ManuscriptStructureBoundary | null,
+    nextRegion: ManuscriptStructureBoundary | null,
   ) {
     if (!currentRegion && !nextRegion) {
       return null;
@@ -4760,6 +4656,42 @@ export function StudioManuscriptClient({
                   >
                     Suggest book regions from headings
                   </button>
+                </section>
+
+                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                      Boundary index
+                    </h2>
+                    <div className="flex flex-wrap gap-1.5">
+                      <StudioChip tone="node">
+                        {structureBoundaryIndex.chapters.length.toLocaleString()}{" "}
+                        rail chapters
+                      </StudioChip>
+                      <StudioChip tone="source">
+                        {structureBoundaryIndex.episodes.length.toLocaleString()}{" "}
+                        rail episodes
+                      </StudioChip>
+                      {structureBoundaryIndex.warnings.length ? (
+                        <StudioChip tone="review">
+                          {structureBoundaryIndex.warnings.length.toLocaleString()}{" "}
+                          warnings
+                        </StudioChip>
+                      ) : null}
+                    </div>
+                  </div>
+                  {structureBoundaryIndex.warnings.length ? (
+                    <div className="grid gap-1.5">
+                      {structureBoundaryIndex.warnings.map((warning) => (
+                        <p
+                          className="m-0 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2 text-[0.76rem] leading-relaxed text-studio-muted"
+                          key={warning.id}
+                        >
+                          {warning.message}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                 </section>
 
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>

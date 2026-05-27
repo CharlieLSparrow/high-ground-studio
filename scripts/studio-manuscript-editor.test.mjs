@@ -17,8 +17,11 @@ import {
   createBlockRangeSummary,
   createCitedQuotationMarkdown,
   createDefaultManuscriptQuoteReview,
+  createManuscriptStructureBoundaryIndex,
   deriveManuscriptChaptersFromTitleBlocks,
+  getCurrentManuscriptStructureBoundary,
   createHgoEpisodeProjectionFromManuscript,
+  getNextManuscriptStructureBoundary,
   ensureManuscriptBlockIds,
   createManuscriptDraftCheckpointKey,
   createFilteredBlockListMarkdown,
@@ -854,6 +857,181 @@ test("chapter title blocks derive contiguous chapter ranges", () => {
     "block-chapter-two",
     "block-two-body",
   ]);
+});
+
+test("structure boundary index prefers chapter title rails and keeps episodes", () => {
+  const chapterDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-preface-note" },
+        content: [{ type: "text", text: "Loose opening note" }],
+      },
+      {
+        type: "heading",
+        attrs: { blockId: "block-chapter-one" },
+        content: [{ type: "text", text: "Chapter One" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-one-body" },
+        content: [{ type: "text", text: "Chapter one body" }],
+      },
+      {
+        type: "heading",
+        attrs: { blockId: "block-chapter-two" },
+        content: [{ type: "text", text: "Chapter Two" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-two-body" },
+        content: [{ type: "text", text: "Chapter two body" }],
+      },
+    ],
+  };
+  const blocks = collectBlockSummaries(chapterDoc);
+  const chapterTitleBlocks = [
+    {
+      id: "chapter-title-one",
+      blockId: "block-chapter-one",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:00:00.000Z",
+    },
+    {
+      id: "chapter-title-two",
+      blockId: "block-chapter-two",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:00:00.000Z",
+    },
+  ];
+  const structureRegions = collectStructureRegionSummaries({
+    json: chapterDoc,
+    regions: [
+      {
+        id: "legacy-chapter-region",
+        kind: "chapter",
+        title: "Legacy chapter region",
+        startBlockId: "block-preface-note",
+        endBlockId: "block-one-body",
+        order: 1,
+        colorKey: "chapter",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+      {
+        id: "episode-twelve-region",
+        kind: "episode",
+        title: "Episode 12: First glue",
+        startBlockId: "block-one-body",
+        endBlockId: "block-two-body",
+        order: 2,
+        colorKey: "episode",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ],
+  });
+
+  const boundaryIndex = createManuscriptStructureBoundaryIndex({
+    blocks,
+    chapterTitleBlocks,
+    structureRegions,
+  });
+
+  assert.equal(boundaryIndex.chapters.length, 2);
+  assert.equal(boundaryIndex.chapters[0].source, "chapter-title");
+  assert.equal(boundaryIndex.chapters[0].label, "Chapter One");
+  assert.equal(boundaryIndex.chapters[0].endBlockId, "block-one-body");
+  assert.equal(boundaryIndex.episodes.length, 1);
+  assert.equal(boundaryIndex.episodes[0].source, "structure-region");
+  assert.equal(boundaryIndex.episodes[0].label, "Episode 12");
+  assert.equal(
+    boundaryIndex.warnings[0].id,
+    "chapter-title-overrides-explicit-regions",
+  );
+
+  const currentChapter = getCurrentManuscriptStructureBoundary(
+    boundaryIndex.chapters,
+    2,
+  );
+  const nextChapter = getNextManuscriptStructureBoundary(
+    boundaryIndex.chapters,
+    2,
+    currentChapter,
+  );
+
+  assert.equal(currentChapter?.label, "Chapter One");
+  assert.equal(nextChapter?.label, "Chapter Two");
+});
+
+test("structure boundary index reports overlapping episode ranges", () => {
+  const episodeDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-a" },
+        content: [{ type: "text", text: "A" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-b" },
+        content: [{ type: "text", text: "B" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { blockId: "block-c" },
+        content: [{ type: "text", text: "C" }],
+      },
+    ],
+  };
+  const structureRegions = collectStructureRegionSummaries({
+    json: episodeDoc,
+    regions: [
+      {
+        id: "episode-one-region",
+        kind: "episode",
+        title: "Episode One",
+        startBlockId: "block-a",
+        endBlockId: "block-b",
+        order: 1,
+        colorKey: "episode",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+      {
+        id: "episode-two-region",
+        kind: "episode",
+        title: "Episode Two",
+        startBlockId: "block-b",
+        endBlockId: "block-c",
+        order: 2,
+        colorKey: "episode",
+        notes: "",
+        createdAt: "2026-05-26T12:00:00.000Z",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ],
+  });
+
+  const boundaryIndex = createManuscriptStructureBoundaryIndex({
+    blocks: collectBlockSummaries(episodeDoc),
+    chapterTitleBlocks: [],
+    structureRegions,
+  });
+
+  assert.equal(boundaryIndex.episodes.length, 2);
+  assert.ok(
+    boundaryIndex.warnings.some(
+      (warning) =>
+        warning.kind === "episode" &&
+        warning.id.startsWith("episode-boundary-overlap:"),
+    ),
+  );
 });
 
 test("safeManuscriptChapterTitleBlocks validates marker shape", () => {

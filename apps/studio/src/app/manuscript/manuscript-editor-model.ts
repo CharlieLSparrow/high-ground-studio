@@ -565,6 +565,44 @@ export type ManuscriptStructureRegionSummary = ManuscriptStructureRegion & {
   isRangeComplete: boolean;
 };
 
+export type ManuscriptStructureBoundaryKind = Extract<
+  ManuscriptStructureKind,
+  "chapter" | "episode"
+>;
+
+export type ManuscriptStructureBoundarySource =
+  | "chapter-title"
+  | "structure-region";
+
+export type ManuscriptStructureBoundary = {
+  id: string;
+  kind: ManuscriptStructureBoundaryKind;
+  source: ManuscriptStructureBoundarySource;
+  sourceId: string;
+  label: string;
+  title: string;
+  startIndex: number;
+  endIndex: number;
+  startBlockId: string;
+  endBlockId: string;
+  blockCount: number;
+  blockIds: string[];
+  isRangeComplete: boolean;
+};
+
+export type ManuscriptStructureBoundaryWarning = {
+  id: string;
+  kind: ManuscriptStructureBoundaryKind;
+  message: string;
+  boundaryIds: string[];
+};
+
+export type ManuscriptStructureBoundaryIndex = {
+  chapters: ManuscriptStructureBoundary[];
+  episodes: ManuscriptStructureBoundary[];
+  warnings: ManuscriptStructureBoundaryWarning[];
+};
+
 export type ManuscriptBlockRangeSummary = {
   startBlockId: string | null;
   endBlockId: string | null;
@@ -1780,6 +1818,194 @@ export function collectStructureRegionSummaries(input: {
         isRangeComplete: rangeSummary?.isRangeComplete ?? false,
       };
     });
+}
+
+function getManuscriptStructureBoundaryTitle(title: string, fallback: string) {
+  return title.trim() || fallback;
+}
+
+function getManuscriptStructureBoundaryLabel(
+  kind: ManuscriptStructureBoundaryKind,
+  index: number,
+  title: string,
+) {
+  const baseLabel = kind === "episode" ? "Episode" : "Chapter";
+  const titlePrefixPattern =
+    kind === "episode"
+      ? /^(?:episode|ep\.?)\s+([a-z0-9-]+)\b/i
+      : /^(?:chapter|ch\.?)\s+([a-z0-9-]+)\b/i;
+  const titlePrefixMatch = title.trim().match(titlePrefixPattern);
+
+  return titlePrefixMatch
+    ? `${baseLabel} ${titlePrefixMatch[1]}`
+    : `${baseLabel} ${index + 1}`;
+}
+
+function createStructureRegionBoundaries(
+  kind: ManuscriptStructureBoundaryKind,
+  regions: ManuscriptStructureRegionSummary[],
+): ManuscriptStructureBoundary[] {
+  return regions
+    .filter(
+      (region) =>
+        region.kind === kind && region.isRangeComplete && region.startIndex >= 0,
+    )
+    .sort((left, right) => left.startIndex - right.startIndex)
+    .map((region, index) => ({
+      id: `structure-${kind}:${region.id}`,
+      kind,
+      source: "structure-region",
+      sourceId: region.id,
+      label: getManuscriptStructureBoundaryLabel(kind, index, region.title),
+      title: getManuscriptStructureBoundaryTitle(
+        region.title,
+        `${kind === "episode" ? "Episode" : "Chapter"} ${index + 1}`,
+      ),
+      startIndex: region.startIndex,
+      endIndex: region.endIndex,
+      startBlockId: region.startBlockId,
+      endBlockId: region.endBlockId,
+      blockCount: region.blockCount,
+      blockIds: region.blockIds,
+      isRangeComplete: region.isRangeComplete,
+    }));
+}
+
+function createChapterTitleBoundaries(
+  blocks: ManuscriptBlockSummary[],
+  chapterTitleBlocks: ManuscriptChapterTitleBlock[],
+): ManuscriptStructureBoundary[] {
+  return deriveManuscriptChaptersFromTitleBlocks({
+    blocks,
+    chapterTitleBlocks,
+  })
+    .filter(
+      (chapter) => chapter.isRangeComplete && chapter.startIndex >= 0,
+    )
+    .map((chapter, index) => ({
+      id: `chapter-title:${chapter.id}`,
+      kind: "chapter",
+      source: "chapter-title",
+      sourceId: chapter.id,
+      label: getManuscriptStructureBoundaryLabel(
+        "chapter",
+        index,
+        chapter.title,
+      ),
+      title: getManuscriptStructureBoundaryTitle(
+        chapter.title,
+        `Chapter ${index + 1}`,
+      ),
+      startIndex: chapter.startIndex,
+      endIndex: chapter.endIndex,
+      startBlockId: chapter.startBlockId,
+      endBlockId: chapter.endBlockId,
+      blockCount: chapter.blockCount,
+      blockIds: chapter.blockIds,
+      isRangeComplete: chapter.isRangeComplete,
+    }));
+}
+
+function createStructureBoundaryOverlapWarnings(
+  kind: ManuscriptStructureBoundaryKind,
+  boundaries: ManuscriptStructureBoundary[],
+): ManuscriptStructureBoundaryWarning[] {
+  const warnings: ManuscriptStructureBoundaryWarning[] = [];
+  const orderedBoundaries = [...boundaries].sort(
+    (left, right) => left.startIndex - right.startIndex,
+  );
+
+  for (let index = 1; index < orderedBoundaries.length; index += 1) {
+    const previousBoundary = orderedBoundaries[index - 1];
+    const boundary = orderedBoundaries[index];
+
+    if (previousBoundary.endIndex < boundary.startIndex) {
+      continue;
+    }
+
+    warnings.push({
+      id: `${kind}-boundary-overlap:${previousBoundary.id}:${boundary.id}`,
+      kind,
+      message: `${kind === "episode" ? "Episode" : "Chapter"} boundaries overlap between ${previousBoundary.label} and ${boundary.label}.`,
+      boundaryIds: [previousBoundary.id, boundary.id],
+    });
+  }
+
+  return warnings;
+}
+
+export function createManuscriptStructureBoundaryIndex(input: {
+  blocks: ManuscriptBlockSummary[];
+  chapterTitleBlocks: ManuscriptChapterTitleBlock[];
+  structureRegions: ManuscriptStructureRegionSummary[];
+}): ManuscriptStructureBoundaryIndex {
+  const chapterTitleBoundaries = createChapterTitleBoundaries(
+    input.blocks,
+    input.chapterTitleBlocks,
+  );
+  const explicitChapterBoundaries = createStructureRegionBoundaries(
+    "chapter",
+    input.structureRegions,
+  );
+  const chapters = chapterTitleBoundaries.length
+    ? chapterTitleBoundaries
+    : explicitChapterBoundaries;
+  const episodes = createStructureRegionBoundaries(
+    "episode",
+    input.structureRegions,
+  );
+  const warnings: ManuscriptStructureBoundaryWarning[] = [
+    ...createStructureBoundaryOverlapWarnings("chapter", chapters),
+    ...createStructureBoundaryOverlapWarnings("episode", episodes),
+  ];
+
+  if (chapterTitleBoundaries.length && explicitChapterBoundaries.length) {
+    warnings.unshift({
+      id: "chapter-title-overrides-explicit-regions",
+      kind: "chapter",
+      message:
+        "Chapter title markers are driving the chapter rail; saved chapter regions remain available as structure metadata.",
+      boundaryIds: explicitChapterBoundaries.map((boundary) => boundary.id),
+    });
+  }
+
+  return {
+    chapters,
+    episodes,
+    warnings,
+  };
+}
+
+export function getCurrentManuscriptStructureBoundary(
+  boundaries: ManuscriptStructureBoundary[],
+  blockIndex: number,
+) {
+  let currentBoundary: ManuscriptStructureBoundary | null = null;
+
+  for (const boundary of boundaries) {
+    if (boundary.startIndex > blockIndex) {
+      break;
+    }
+
+    if (boundary.endIndex >= blockIndex) {
+      currentBoundary = boundary;
+    }
+  }
+
+  return currentBoundary;
+}
+
+export function getNextManuscriptStructureBoundary(
+  boundaries: ManuscriptStructureBoundary[],
+  blockIndex: number,
+  currentBoundary: ManuscriptStructureBoundary | null,
+) {
+  return (
+    boundaries.find(
+      (boundary) =>
+        boundary.startIndex > blockIndex && boundary.id !== currentBoundary?.id,
+    ) ?? null
+  );
 }
 
 export function collectManuscriptBlockDetails(input: {
