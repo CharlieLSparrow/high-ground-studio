@@ -75,6 +75,20 @@ type CheckpointResponse =
     }
   | { ok: false; message: string };
 
+type ResetRoomResponse =
+  | {
+      ok: true;
+      snapshot: {
+        id: string;
+        title: string;
+        updatedAt: string;
+        wordCount: number;
+        blockCount: number;
+        draft: ManuscriptDraft;
+      };
+    }
+  | { ok: false; message: string };
+
 type LiveEditFreshnessState =
   | "current"
   | "outside-changes"
@@ -180,6 +194,7 @@ export default function StudioManuscriptCollabClient() {
     useState<ConnectionStatus>("idle");
   const [message, setMessage] = useState("Preparing live edit room.");
   const [isSaving, setIsSaving] = useState(false);
+  const [isResettingFromLatest, setIsResettingFromLatest] = useState(false);
   const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
   const [isCheckingLiveStatus, setIsCheckingLiveStatus] = useState(false);
   const [liveStatus, setLiveStatus] =
@@ -191,6 +206,8 @@ export default function StudioManuscriptCollabClient() {
     useState<Extract<CheckpointResponse, { ok: true }>["snapshot"] | null>(
       null,
     );
+  const [checkpointBaseDraft, setCheckpointBaseDraft] =
+    useState<ManuscriptDraft | null>(null);
   const hasSeededRef = useRef(false);
   const programmaticEditorUpdateRef = useRef(false);
 
@@ -199,6 +216,14 @@ export default function StudioManuscriptCollabClient() {
       ? safeManuscriptDraft(setup.initialSnapshot.draft)
       : null;
   }, [setup]);
+
+  useEffect(() => {
+    if (!initialDraft) {
+      return;
+    }
+
+    setCheckpointBaseDraft((current) => current ?? initialDraft);
+  }, [initialDraft]);
 
   useEffect(() => {
     let isMounted = true;
@@ -449,7 +474,7 @@ export default function StudioManuscriptCollabClient() {
     setMessage("Saving the room to the latest manuscript backup.");
 
     const draft = buildCheckpointDraft({
-      baseDraft: initialDraft,
+      baseDraft: checkpointBaseDraft ?? initialDraft,
       editorJson: editor.getJSON() as ManuscriptEditorJson,
       actorId: setup.actor.actorId,
     });
@@ -476,6 +501,7 @@ export default function StudioManuscriptCollabClient() {
       }
 
       setLastCheckpoint(payload.snapshot);
+      setCheckpointBaseDraft(draft);
       setHasCheckpointChanges(false);
       setMessage("Saved to the latest manuscript backup.");
       void refreshLiveStatus();
@@ -484,6 +510,55 @@ export default function StudioManuscriptCollabClient() {
       setMessage("Could not save to the manuscript.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function resetRoomFromLatestBackup() {
+    if (!editor || !setup?.ok || isResettingFromLatest) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Load the latest manuscript backup into this shared room? This replaces the current unsaved room text for everyone connected.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsResettingFromLatest(true);
+    setMessage("Loading the latest manuscript backup into the room.");
+
+    try {
+      const response = await fetch("/api/manuscript/collab/latest/reset", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as ResetRoomResponse;
+
+      if (!payload.ok) {
+        setMessage(payload.message);
+        return;
+      }
+
+      const latestDraft = safeManuscriptDraft(payload.snapshot.draft);
+
+      if (!latestDraft) {
+        setMessage("The latest backup could not be opened in the room.");
+        return;
+      }
+
+      programmaticEditorUpdateRef.current = true;
+      editor.commands.setContent(latestDraft.editorJson as JSONContent);
+      setCheckpointBaseDraft(latestDraft);
+      setLastCheckpoint(payload.snapshot);
+      setHasCheckpointChanges(false);
+      setMessage("Room loaded from the latest manuscript backup.");
+      void refreshLiveStatus();
+    } catch (error) {
+      console.error("Live edit room reset failed.", error);
+      setMessage("Could not load the latest backup into the room.");
+    } finally {
+      setIsResettingFromLatest(false);
     }
   }
 
@@ -599,7 +674,7 @@ export default function StudioManuscriptCollabClient() {
               className={cn(
                 "min-h-9 rounded-md border border-studio-tag/55 bg-studio-tag/15 px-3 py-2 text-[0.78rem] font-extrabold text-studio-tag transition hover:bg-studio-tag/20 disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim",
               )}
-              disabled={!editor || !setup?.ok || isSaving}
+              disabled={!editor || !setup?.ok || isSaving || isResettingFromLatest}
               type="button"
               onClick={() => void saveCheckpoint()}
             >
@@ -661,6 +736,53 @@ export default function StudioManuscriptCollabClient() {
               </button>
             </div>
 
+            <div
+              className={cn(
+                "grid gap-2 rounded-lg border bg-black/15 p-3",
+                hasOutsideBackup
+                  ? "border-studio-review/45 bg-studio-review/10"
+                  : "border-studio-line",
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className={labelClassName}>Recovery</span>
+                {hasOutsideBackup ? (
+                  <StudioChip tone="review">Compare first</StudioChip>
+                ) : null}
+              </div>
+              <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                Open the latest backup beside this room, or load it into the
+                shared room when the room should start fresh from the saved
+                manuscript.
+              </p>
+              <div className="grid gap-2">
+                <a
+                  className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-center text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10"
+                  href="/manuscript/live/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Compare latest
+                </a>
+                <button
+                  className="min-h-9 rounded-md border border-studio-review/55 bg-studio-review/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-review transition hover:bg-studio-review/15 disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+                  disabled={
+                    !editor ||
+                    !setup?.ok ||
+                    isResettingFromLatest ||
+                    isSaving ||
+                    !(liveStatus?.ok && liveStatus.latestSnapshot)
+                  }
+                  type="button"
+                  onClick={() => void resetRoomFromLatestBackup()}
+                >
+                  {isResettingFromLatest
+                    ? "Loading latest..."
+                    : "Load latest into room"}
+                </button>
+              </div>
+            </div>
+
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
               <span className={labelClassName}>Seed</span>
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
@@ -683,11 +805,9 @@ export default function StudioManuscriptCollabClient() {
 
             <a
               className="min-h-10 rounded-lg border border-studio-line bg-studio-ink/5 px-3 py-2 text-center text-[0.86rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10"
-              href="/manuscript/live/latest"
-              target="_blank"
-              rel="noreferrer"
+              href="/manuscript"
             >
-              Open read-only latest
+              Back to Manuscript Desk
             </a>
           </aside>
         </div>

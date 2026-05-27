@@ -728,6 +728,11 @@ export function StudioManuscriptClient({
   const [structureBoundaryMarkers, setStructureBoundaryMarkers] = useState<
     ManuscriptStructureBoundaryMarker[]
   >([]);
+  const [editingBoundaryMarkerId, setEditingBoundaryMarkerId] = useState<
+    string | null
+  >(null);
+  const [editingBoundaryTitle, setEditingBoundaryTitle] = useState("");
+  const [editingBoundaryNotes, setEditingBoundaryNotes] = useState("");
   const [quoteReviews, setQuoteReviews] = useState<
     Record<string, ManuscriptQuoteReview>
   >({});
@@ -1935,6 +1940,16 @@ export function StudioManuscriptClient({
     );
   }
 
+  function getStructureBoundaryMarker(markerId: string | null) {
+    if (!markerId) {
+      return null;
+    }
+
+    return (
+      structureBoundaryMarkers.find((marker) => marker.id === markerId) ?? null
+    );
+  }
+
   function toggleStructureBoundaryMarker(
     kind: ManuscriptStructureBoundaryKind,
     blockId: string | null,
@@ -2005,6 +2020,64 @@ export function StudioManuscriptClient({
     }
 
     toggleStructureBoundaryMarker("episode", range.startBlockId);
+  }
+
+  function beginEditingStructureBoundary(markerId: string) {
+    const marker = getStructureBoundaryMarker(markerId);
+
+    if (!marker) {
+      setMessage("Boundary marker was not found.");
+      return;
+    }
+
+    setEditingBoundaryMarkerId(marker.id);
+    setEditingBoundaryTitle(marker.title || getBlockPreview(marker.blockId));
+    setEditingBoundaryNotes(marker.notes);
+    setMessage(`Editing ${marker.kind} boundary.`);
+  }
+
+  function cancelEditingStructureBoundary() {
+    setEditingBoundaryMarkerId(null);
+    setEditingBoundaryTitle("");
+    setEditingBoundaryNotes("");
+    setMessage("Boundary edit canceled.");
+  }
+
+  function saveStructureBoundaryMarker(markerId: string) {
+    setStructureBoundaryMarkers((current) =>
+      current.map((marker) =>
+        marker.id === markerId
+          ? {
+              ...marker,
+              title:
+                editingBoundaryTitle.trim() || getBlockPreview(marker.blockId),
+              notes: editingBoundaryNotes.trim(),
+              updatedAt: new Date().toISOString(),
+            }
+          : marker,
+      ),
+    );
+    setEditingBoundaryMarkerId(null);
+    setEditingBoundaryTitle("");
+    setEditingBoundaryNotes("");
+    setMessage("Boundary saved.");
+  }
+
+  function removeStructureBoundaryMarker(markerId: string) {
+    const marker = getStructureBoundaryMarker(markerId);
+    const label = marker?.kind === "episode" ? "Episode" : "Chapter";
+
+    setStructureBoundaryMarkers((current) =>
+      current.filter((candidate) => candidate.id !== markerId),
+    );
+
+    if (editingBoundaryMarkerId === markerId) {
+      setEditingBoundaryMarkerId(null);
+      setEditingBoundaryTitle("");
+      setEditingBoundaryNotes("");
+    }
+
+    setMessage(`${label} boundary removed.`);
   }
 
   function focusDerivedChapter(
@@ -4176,6 +4249,125 @@ export function StudioManuscriptClient({
     );
   }
 
+  function renderBoundaryOutlineCard(
+    boundary: ManuscriptStructureBoundary,
+    index: number,
+  ) {
+    const marker = getStructureBoundaryMarker(boundary.sourceId);
+    const isEditing = editingBoundaryMarkerId === boundary.sourceId;
+    const tone = boundary.kind === "chapter" ? "node" : "source";
+    const kindLabel =
+      boundary.kind === "chapter" ? `Chapter ${index + 1}` : boundary.label;
+    const removeLabel =
+      boundary.kind === "chapter" ? "Remove chapter" : "Remove episode";
+
+    return (
+      <article
+        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+        key={boundary.id}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap gap-1.5">
+              <StudioChip tone={tone}>{kindLabel}</StudioChip>
+              <StudioChip tone="node">
+                {boundary.blockCount.toLocaleString()} blocks
+              </StudioChip>
+            </div>
+            <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
+              {boundary.title}
+            </h3>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={() => focusBlock(boundary.startBlockId)}
+            >
+              Jump start
+            </button>
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={() => focusBlock(boundary.endBlockId)}
+            >
+              Jump end
+            </button>
+            {!isRecordingMode && marker ? (
+              <>
+                {isEditing ? (
+                  <>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => saveStructureBoundaryMarker(marker.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={cancelEditingStructureBoundary}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={() => beginEditingStructureBoundary(marker.id)}
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  className={dangerButtonClassName}
+                  type="button"
+                  onClick={() => removeStructureBoundaryMarker(marker.id)}
+                >
+                  {removeLabel}
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="grid gap-2 pt-1">
+            <label className="grid gap-1.5">
+              <span className={fieldLabelClassName}>Boundary title</span>
+              <input
+                className={fieldClassName}
+                value={editingBoundaryTitle}
+                onChange={(event) => setEditingBoundaryTitle(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className={fieldLabelClassName}>Boundary notes</span>
+              <textarea
+                className={cn(textareaClassName, "min-h-[72px]")}
+                value={editingBoundaryNotes}
+                onChange={(event) => setEditingBoundaryNotes(event.target.value)}
+              />
+            </label>
+          </div>
+        ) : (
+          <>
+            {marker?.notes ? (
+              <p className="m-0 text-[0.75rem] leading-relaxed text-studio-review">
+                {marker.notes}
+              </p>
+            ) : null}
+            <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+              Start {boundary.startIndex + 1} / End {boundary.endIndex + 1}
+            </p>
+          </>
+        )}
+      </article>
+    );
+  }
+
   return (
     <main className="min-h-screen overflow-x-clip px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
       <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
@@ -4852,7 +5044,8 @@ export function StudioManuscriptClient({
                     </h2>
                     <div className="flex flex-wrap gap-1.5">
                       <StudioChip tone="node">
-                        {derivedChapters.length.toLocaleString()} chapters
+                        {structureBoundaryIndex.chapters.length.toLocaleString()}{" "}
+                        chapters
                       </StudioChip>
                       <StudioChip tone="source">
                         {structureBoundaryIndex.episodes.length.toLocaleString()}{" "}
@@ -4868,65 +5061,10 @@ export function StudioManuscriptClient({
                     </p>
                   ) : null}
                   <div className="grid max-h-[260px] gap-2 overflow-auto pr-1">
-                    {derivedChapters.length ? (
-                      derivedChapters.map((chapter, index) => (
-                        <article
-                          className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                          key={chapter.id}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap gap-1.5">
-                                <StudioChip tone="node">
-                                  Chapter {index + 1}
-                                </StudioChip>
-                                <StudioChip tone="source">
-                                  {chapter.blockCount.toLocaleString()} blocks
-                                </StudioChip>
-                              </div>
-                              <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
-                                {chapter.title}
-                              </h3>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              <button
-                                className={smallButtonClassName}
-                                type="button"
-                                onClick={() =>
-                                  focusDerivedChapter(chapter, "title")
-                                }
-                              >
-                                Jump title
-                              </button>
-                              <button
-                                className={smallButtonClassName}
-                                type="button"
-                                onClick={() => focusDerivedChapter(chapter, "end")}
-                              >
-                                Jump end
-                              </button>
-                              {!isRecordingMode ? (
-                                <button
-                                  className={dangerButtonClassName}
-                                  type="button"
-                                  onClick={() =>
-                                    toggleChapterTitleBlock(chapter.titleBlockId)
-                                  }
-                                >
-                                  Remove title
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                          <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
-                            {chapter.bodyBlockCount.toLocaleString()} body block
-                            {chapter.bodyBlockCount === 1 ? "" : "s"}
-                          </p>
-                          <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                            End: {chapter.endPreview}
-                          </p>
-                        </article>
-                      ))
+                    {structureBoundaryIndex.chapters.length ? (
+                      structureBoundaryIndex.chapters.map((chapter, index) =>
+                        renderBoundaryOutlineCard(chapter, index),
+                      )
                     ) : (
                       <p className={panelCopyClassName}>
                         No chapter boundaries marked yet.
@@ -4935,44 +5073,9 @@ export function StudioManuscriptClient({
                   </div>
                   <div className="grid max-h-[220px] gap-2 overflow-auto pr-1">
                     {structureBoundaryIndex.episodes.length ? (
-                      structureBoundaryIndex.episodes.map((episode) => (
-                        <article
-                          className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                          key={episode.id}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap gap-1.5">
-                                <StudioChip tone="source">
-                                  {episode.label}
-                                </StudioChip>
-                                <StudioChip tone="node">
-                                  {episode.blockCount.toLocaleString()} blocks
-                                </StudioChip>
-                              </div>
-                              <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
-                                {episode.title}
-                              </h3>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              <button
-                                className={smallButtonClassName}
-                                type="button"
-                                onClick={() => focusBlock(episode.startBlockId)}
-                              >
-                                Jump start
-                              </button>
-                              <button
-                                className={smallButtonClassName}
-                                type="button"
-                                onClick={() => focusBlock(episode.endBlockId)}
-                              >
-                                Jump end
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      ))
+                      structureBoundaryIndex.episodes.map((episode, index) =>
+                        renderBoundaryOutlineCard(episode, index),
+                      )
                     ) : (
                       <p className={panelCopyClassName}>
                         No episode boundaries marked yet.

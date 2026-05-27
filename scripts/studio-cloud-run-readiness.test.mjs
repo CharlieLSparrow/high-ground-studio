@@ -221,6 +221,10 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
     "apps/studio/src/app/api/manuscript/collab/latest/status/route.ts",
     "utf8",
   );
+  const resetRoute = readFileSync(
+    "apps/studio/src/app/api/manuscript/collab/latest/reset/route.ts",
+    "utf8",
+  );
   const page = readFileSync(
     "apps/studio/src/app/manuscript/collab/latest/page.tsx",
     "utf8",
@@ -252,6 +256,8 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(checkpointRoute, /markStudioManuscriptLiveRoomCheckpoint/);
   assert.match(statusRoute, /getStudioManuscriptLiveRoom/);
   assert.match(statusRoute, /outside-changes/);
+  assert.match(resetRoute, /markStudioManuscriptLiveRoomResetBaseline/);
+  assert.match(resetRoute, /getLatestStudioManuscriptSnapshotForLiveSlug/);
   assert.match(page, /StudioAccessShell/);
   assert.match(page, /StudioManuscriptCollabClient/);
   assert.match(client, /HocuspocusProvider/);
@@ -262,10 +268,13 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /hasCheckpointChanges/);
   assert.match(client, /Backup priority/);
   assert.match(client, /Save room over latest/);
+  assert.match(client, /Load latest into room/);
+  assert.match(client, /\/api\/manuscript\/collab\/latest\/reset/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/status/);
   assert.match(client, /\/api\/manuscript\/collab\/latest\/checkpoint/);
   assert.match(collabStore, /canReplaceSeed/);
   assert.match(collabStore, /getStudioManuscriptLiveRoom/);
+  assert.match(collabStore, /markStudioManuscriptLiveRoomResetBaseline/);
   assert.match(collabServer, /onAuthenticate/);
   assert.match(collabServer, /onLoadDocument/);
   assert.match(collabServer, /onStoreDocument/);
@@ -365,6 +374,9 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /structureBoundaryMarkers/);
   assert.match(client, /toggleSelectedBlockAsEpisodeBoundary/);
   assert.match(client, /Boundary map/);
+  assert.match(client, /editingBoundaryMarkerId/);
+  assert.match(client, /renderBoundaryOutlineCard/);
+  assert.match(client, /saveStructureBoundaryMarker/);
   assert.match(client, /structureRailRegions/);
   assert.match(client, /structureBoundaryIndex\.warnings/);
   assert.match(client, /getCurrentManuscriptStructureBoundary/);

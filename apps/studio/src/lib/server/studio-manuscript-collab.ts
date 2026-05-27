@@ -127,3 +127,34 @@ export async function markStudioManuscriptLiveRoomCheckpoint(input: {
 
   return mapRoomSummary(room);
 }
+
+export async function markStudioManuscriptLiveRoomResetBaseline(input: {
+  snapshotId: string;
+  title: string;
+  email: string;
+}) {
+  const prisma = getPrismaClient();
+  const title = normalizeRoomTitle(input.title);
+  const email = input.email.trim().toLowerCase();
+
+  const room = await prisma.studioManuscriptCollaborationRoom.upsert({
+    where: { roomName: STUDIO_MANUSCRIPT_LIVE_ROOM_NAME },
+    create: {
+      roomName: STUDIO_MANUSCRIPT_LIVE_ROOM_NAME,
+      title,
+      seedSnapshotId: input.snapshotId,
+      seededAt: new Date(),
+      seededByEmail: email,
+      lastCheckpointSnapshotId: input.snapshotId,
+    },
+    update: {
+      title,
+      seedSnapshotId: input.snapshotId,
+      seededAt: new Date(),
+      seededByEmail: email,
+      lastCheckpointSnapshotId: input.snapshotId,
+    },
+  });
+
+  return mapRoomSummary(room);
+}
