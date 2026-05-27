@@ -309,6 +309,14 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(client, /getLiveSemanticSwatchClassName/);
   assert.match(client, /applyLiveSemanticHighlight/);
   assert.match(client, /clearLiveSemanticHighlight/);
+  assert.match(
+    client,
+    /data-testid=\{`\$\{testIdPrefix\}-structure-marker-controls`\}/,
+  );
+  assert.match(client, /data-testid=\{`\$\{testIdPrefix\}-mark-current-chapter`\}/);
+  assert.match(client, /data-testid=\{`\$\{testIdPrefix\}-mark-current-episode`\}/);
+  assert.match(client, /toggleLiveStructureBoundaryMarker/);
+  assert.match(client, /Marked during live edit/);
   assert.match(client, /data-testid="manuscript-live-structure-navigation"/);
   assert.match(client, /data-testid="manuscript-live-mobile-structure-navigation"/);
   assert.match(client, /data-testid="manuscript-live-mobile-structure-strip"/);

@@ -34,6 +34,7 @@ import {
   type ManuscriptEditorJson,
   type ManuscriptStructureBoundary,
   type ManuscriptStructureBoundaryKind,
+  type ManuscriptStructureBoundaryMarker,
   type SemanticHighlightType,
 } from "../../manuscript-editor-model";
 
@@ -522,6 +523,24 @@ export default function StudioManuscriptCollabClient() {
 
     return matchedIndex >= 0 ? matchedIndex : 0;
   }, [currentBlockId, liveBlockSummaries]);
+  const liveCurrentBlock =
+    liveCurrentBlockIndex >= 0 ? liveBlockSummaries[liveCurrentBlockIndex] : null;
+  const liveCurrentChapterMarker =
+    liveCurrentBlock?.blockId
+      ? liveBoundaryMarkers.find(
+          (marker) =>
+            marker.kind === "chapter" &&
+            marker.blockId === liveCurrentBlock.blockId,
+        ) ?? null
+      : null;
+  const liveCurrentEpisodeMarker =
+    liveCurrentBlock?.blockId
+      ? liveBoundaryMarkers.find(
+          (marker) =>
+            marker.kind === "episode" &&
+            marker.blockId === liveCurrentBlock.blockId,
+        ) ?? null
+      : null;
   const liveStructureState = useMemo(() => {
     if (liveCurrentBlockIndex < 0) {
       return emptyLiveStructureState;
@@ -955,6 +974,83 @@ export default function StudioManuscriptCollabClient() {
     editor.chain().focus().unsetMark("semanticHighlightMark").run();
     setHasCheckpointChanges(true);
     setMessage("Cleared semantic marks from the current selection.");
+  }
+
+  function updateLiveStructureBoundaryMarkers(
+    updater: (
+      markers: ManuscriptStructureBoundaryMarker[],
+      updatedAt: string,
+    ) => ManuscriptStructureBoundaryMarker[],
+  ) {
+    const updatedAt = new Date().toISOString();
+
+    setCheckpointBaseDraft((current) => {
+      const baseDraft =
+        current ??
+        initialDraft ??
+        createDefaultManuscriptDraft(updatedAt);
+
+      return {
+        ...baseDraft,
+        editorJson: currentEditorJson,
+        activeAuthorId,
+        showAuthorColors: true,
+        showSemanticColors: true,
+        structureBoundaryMarkers: updater(
+          baseDraft.structureBoundaryMarkers ?? [],
+          updatedAt,
+        ),
+        lastUpdatedAt: updatedAt,
+      };
+    });
+  }
+
+  function toggleLiveStructureBoundaryMarker(
+    kind: ManuscriptStructureBoundaryKind,
+  ) {
+    const blockId = liveCurrentBlock?.blockId;
+
+    if (!blockId) {
+      setMessage("Place the cursor in a block before marking structure.");
+      return;
+    }
+
+    const definition = getManuscriptStructureDefinition(kind);
+    const fallbackTitle =
+      kind === "chapter" ? "Chapter / book boundary" : "Episode boundary";
+    const title = (liveCurrentBlock?.preview || fallbackTitle).trim();
+    const existingMarker = liveBoundaryMarkers.find(
+      (marker) => marker.kind === kind && marker.blockId === blockId,
+    );
+
+    updateLiveStructureBoundaryMarkers((markers, updatedAt) => {
+      const markerToRemove = markers.find(
+        (marker) => marker.kind === kind && marker.blockId === blockId,
+      );
+
+      if (markerToRemove) {
+        return markers.filter((marker) => marker.id !== markerToRemove.id);
+      }
+
+      return [
+        ...markers,
+        {
+          id: `live-boundary-${kind}-${createId("marker")}`,
+          kind,
+          blockId,
+          title,
+          notes: "Marked during live edit.",
+          createdAt: updatedAt,
+          updatedAt,
+        },
+      ];
+    });
+    setHasCheckpointChanges(true);
+    setMessage(
+      existingMarker
+        ? `${definition.label} marker removed from the current block.`
+        : `Marked current block as ${definition.label}.`,
+    );
   }
 
   function focusLiveBlock(blockId: string | null) {
@@ -1480,6 +1576,58 @@ export default function StudioManuscriptCollabClient() {
     );
   }
 
+  function renderLiveStructureMarkerControls(context: "desktop" | "mobile") {
+    const testIdPrefix =
+      context === "mobile" ? "manuscript-live-mobile" : "manuscript-live";
+
+    return (
+      <div
+        className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
+        data-testid={`${testIdPrefix}-structure-marker-controls`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className={labelClassName}>Structure markers</span>
+          <StudioChip tone={liveCurrentBlock?.blockId ? "source" : "default"}>
+            {liveCurrentBlock?.blockId ? "Current block" : "No block"}
+          </StudioChip>
+        </div>
+        <p className="m-0 text-[0.78rem] leading-5 text-studio-muted">
+          {liveCurrentBlock?.preview || "Place the cursor in a title block first."}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={cn(
+              "min-h-9 rounded-md border px-3 py-2 text-[0.78rem] font-extrabold transition disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim",
+              liveCurrentChapterMarker
+                ? "border-studio-node/60 bg-studio-node/15 text-studio-node"
+                : "border-studio-line bg-studio-ink/5 text-studio-source hover:border-studio-source/55 hover:bg-studio-source/10",
+            )}
+            data-testid={`${testIdPrefix}-mark-current-chapter`}
+            disabled={!editor || !setup?.ok || !liveCurrentBlock?.blockId}
+            type="button"
+            onClick={() => toggleLiveStructureBoundaryMarker("chapter")}
+          >
+            {liveCurrentChapterMarker ? "Remove chapter" : "Mark chapter"}
+          </button>
+          <button
+            className={cn(
+              "min-h-9 rounded-md border px-3 py-2 text-[0.78rem] font-extrabold transition disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim",
+              liveCurrentEpisodeMarker
+                ? "border-studio-source/60 bg-studio-source/15 text-studio-source"
+                : "border-studio-line bg-studio-ink/5 text-studio-source hover:border-studio-source/55 hover:bg-studio-source/10",
+            )}
+            data-testid={`${testIdPrefix}-mark-current-episode`}
+            disabled={!editor || !setup?.ok || !liveCurrentBlock?.blockId}
+            type="button"
+            onClick={() => toggleLiveStructureBoundaryMarker("episode")}
+          >
+            {liveCurrentEpisodeMarker ? "Remove episode" : "Mark episode"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function renderLiveStructureStatusItem(
     kind: ManuscriptStructureBoundaryKind,
     currentBoundary: ManuscriptStructureBoundary | null,
@@ -1872,6 +2020,8 @@ export default function StudioManuscriptCollabClient() {
 
             {renderLiveSemanticControls("desktop")}
 
+            {renderLiveStructureMarkerControls("desktop")}
+
             {hasLiveStructureContent ? (
               <div
                 className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
@@ -2131,6 +2281,8 @@ export default function StudioManuscriptCollabClient() {
               </div>
 
               {renderLiveSemanticControls("mobile")}
+
+              {renderLiveStructureMarkerControls("mobile")}
 
               {hasLiveStructureContent ? (
                 <div
