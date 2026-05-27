@@ -174,18 +174,6 @@ function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
   return nodesByBlockId;
 }
 
-function getManuscriptNodeBlockId(attrs: Record<string, unknown>) {
-  for (const key of ["blockId", "blockid", "data-blockid"]) {
-    const value = attrs[key];
-
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
 const liveWritableAuthorIds: LiveWritableAuthorId[] = ["charlie", "homer"];
 const liveQuickSemanticHighlightTypes = [
   "clip",
@@ -920,8 +908,6 @@ export default function StudioManuscriptCollabClient() {
     const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
       editor.view.dom,
     );
-    const renderedBlockNodes = Array.from(renderedBlockNodesById.values());
-    let renderedBlockIndex = 0;
     const boundaryMarkersByBlockId = new Map<
       string,
       ManuscriptStructureBoundaryMarker[]
@@ -939,28 +925,11 @@ export default function StudioManuscriptCollabClient() {
       domNode.removeAttribute("data-manuscript-boundary-heading");
     });
 
-    editor.state.doc.descendants((node) => {
-      if (!blockNodeTypes.includes(node.type.name)) {
-        return true;
-      }
-
-      const nodeBlockId = getManuscriptNodeBlockId(node.attrs);
-      const domNode = nodeBlockId
-        ? renderedBlockNodesById.get(nodeBlockId)
-        : renderedBlockNodes[renderedBlockIndex];
-      const blockId =
-        nodeBlockId ?? domNode?.getAttribute("data-blockid") ?? null;
-
-      renderedBlockIndex += 1;
-
-      if (!domNode || !blockId) {
-        return true;
-      }
-
+    renderedBlockNodesById.forEach((domNode, blockId) => {
       const boundaryMarkers = boundaryMarkersByBlockId.get(blockId);
 
       if (!boundaryMarkers?.length) {
-        return true;
+        return;
       }
 
       domNode.classList.add("manuscript-boundary-marker-block");
@@ -982,8 +951,6 @@ export default function StudioManuscriptCollabClient() {
           .map((marker) => (marker.kind === "chapter" ? "Chapter" : "Episode"))
           .join(", "),
       );
-
-      return true;
     });
     };
 

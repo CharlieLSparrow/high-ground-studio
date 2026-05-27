@@ -562,7 +562,8 @@ test("Manuscript author marks render as block washes under semantic marks", () =
 
   assert.match(client, /manuscript-author-block-charlie/);
   assert.match(client, /manuscript-author-block-homer/);
-  assert.match(client, /node\.descendants\(\(childNode\)/);
+  assert.match(client, /blockDetailsById/);
+  assert.match(client, /semanticTagTypes\.includes\("clip"\)/);
   assert.match(globalsCss, /--manuscript-author-wash/);
   assert.doesNotMatch(globalsCss, /--manuscript-author-outline/);
   assert.doesNotMatch(

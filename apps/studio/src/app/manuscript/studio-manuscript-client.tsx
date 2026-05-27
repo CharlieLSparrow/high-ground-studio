@@ -328,18 +328,6 @@ function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
   return nodesByBlockId;
 }
 
-function getManuscriptNodeBlockId(attrs: Record<string, unknown>) {
-  for (const key of ["blockId", "blockid", "data-blockid"]) {
-    const value = attrs[key];
-
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
 type SemanticHighlightDefinition =
   (typeof semanticHighlightDefinitions)[number];
 type SemanticHighlightColorKey = SemanticHighlightDefinition["colorKey"];
@@ -1659,8 +1647,6 @@ export function StudioManuscriptClient({
     const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
       editor.view.dom,
     );
-    const renderedBlockNodes = Array.from(renderedBlockNodesById.values());
-    let renderedBlockIndex = 0;
 
     renderedBlockNodesById.forEach((domNode) => {
       domNode.classList.remove(...classNames);
@@ -1693,62 +1679,16 @@ export function StudioManuscriptClient({
       boundaryMarkersByBlockId.set(marker.blockId, markers);
     }
 
-    editor.state.doc.descendants((node) => {
-      if (!blockNodeTypes.includes(node.type.name)) {
-        return true;
-      }
+    const blockDetailsById = new Map(
+      blockDetails.flatMap((block) =>
+        block.blockId ? [[block.blockId, block] as const] : [],
+      ),
+    );
 
-      const nodeBlockId = getManuscriptNodeBlockId(node.attrs);
-      const domNode = nodeBlockId
-        ? renderedBlockNodesById.get(nodeBlockId)
-        : renderedBlockNodes[renderedBlockIndex];
-      const blockId =
-        nodeBlockId ?? domNode?.getAttribute("data-blockid") ?? null;
-
-      renderedBlockIndex += 1;
-
-      if (!domNode || !blockId) {
-        return true;
-      }
-
+    renderedBlockNodesById.forEach((domNode, blockId) => {
       const regions = regionsByBlockId.get(blockId);
-      const blockAuthorIds = new Set<ManuscriptAuthorId>();
-      const blockSemanticColorKeys = new Set<
-        Extract<SemanticHighlightColorKey, "clip" | "show-notes">
-      >();
-
-      node.descendants((childNode) => {
-        for (const mark of childNode.marks ?? []) {
-          if (mark.type.name === "authorMark") {
-            const authorId = mark.attrs.authorId;
-
-            if (
-              authorId === "charlie" ||
-              authorId === "homer" ||
-              authorId === "unassigned"
-            ) {
-              blockAuthorIds.add(authorId);
-            }
-          }
-
-          if (
-            mark.type.name === "semanticHighlightMark" &&
-            (mark.attrs.colorKey === "clip" || mark.attrs.tagType === "clip")
-          ) {
-            blockSemanticColorKeys.add("clip");
-          }
-
-          if (
-            mark.type.name === "semanticHighlightMark" &&
-            (mark.attrs.colorKey === "show-notes" ||
-              mark.attrs.tagType === "show-notes")
-          ) {
-            blockSemanticColorKeys.add("show-notes");
-          }
-        }
-
-        return true;
-      });
+      const blockDetail = blockDetailsById.get(blockId);
+      const blockAuthorIds = new Set(blockDetail?.authorIds ?? []);
 
       const hasCharlieAuthor = blockAuthorIds.has("charlie");
       const hasHomerAuthor = blockAuthorIds.has("homer");
@@ -1767,8 +1707,10 @@ export function StudioManuscriptClient({
         }
       }
 
-      const hasClipSemantic = blockSemanticColorKeys.has("clip");
-      const hasShowNotesSemantic = blockSemanticColorKeys.has("show-notes");
+      const hasClipSemantic =
+        blockDetail?.semanticTagTypes.includes("clip") ?? false;
+      const hasShowNotesSemantic =
+        blockDetail?.semanticTagTypes.includes("show-notes") ?? false;
 
       if (hasClipSemantic || hasShowNotesSemantic) {
         domNode.classList.add("manuscript-semantic-block");
@@ -1833,7 +1775,6 @@ export function StudioManuscriptClient({
         }
       }
 
-      return true;
     });
     };
 
@@ -1865,6 +1806,7 @@ export function StudioManuscriptClient({
     };
   }, [
     blockFilterSummary.hasActiveFilters,
+    blockDetails,
     editor,
     editorJson,
     filterVisualMode,
