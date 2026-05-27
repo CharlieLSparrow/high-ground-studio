@@ -123,7 +123,18 @@ type LiveEditStatusResponse =
 
 type ConnectionStatus = "idle" | "connecting" | "connected" | "synced" | "error";
 
+type LivePresenceParticipant = {
+  clientId: number;
+  name: string;
+  color: string;
+  actorId: "charlie" | "homer" | "studio";
+  role: string;
+  isCurrent: boolean;
+};
+
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
+const AUTO_BACKUP_IDLE_MS = 15_000;
+const AUTO_BACKUP_MIN_INTERVAL_MS = 90_000;
 
 function createId(prefix: string) {
   return (
@@ -179,6 +190,76 @@ function buildCheckpointDraft(input: {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function normalizePresenceActorId(
+  value: unknown,
+): LivePresenceParticipant["actorId"] {
+  return value === "charlie" || value === "homer" ? value : "studio";
+}
+
+function getPresenceUserField(
+  state: Record<string, unknown>,
+  key: "name" | "color",
+) {
+  const user = isRecord(state.user) ? state.user : {};
+  const value = user[key] ?? state[key];
+
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function collectPresenceParticipants(
+  provider: HocuspocusProvider | null,
+): LivePresenceParticipant[] {
+  const awareness = provider?.awareness;
+
+  if (!awareness) {
+    return [];
+  }
+
+  const localClientId =
+    typeof awareness.clientID === "number" ? awareness.clientID : null;
+
+  return Array.from(awareness.getStates().entries())
+    .map(([clientId, rawState]) => {
+      const state = isRecord(rawState) ? rawState : {};
+      const studio = isRecord(state.studio) ? state.studio : {};
+      const actorId = normalizePresenceActorId(studio.actorId);
+      const name =
+        getPresenceUserField(state, "name") ||
+        (actorId === "homer"
+          ? "Homer / Scott"
+          : actorId === "charlie"
+            ? "Charlie"
+            : "Studio");
+      const color =
+        getPresenceUserField(state, "color") ||
+        (actorId === "homer" ? "#93d977" : "#8eddf2");
+      const rawRole = studio.role;
+      const role = typeof rawRole === "string" && rawRole.trim()
+        ? rawRole.trim()
+        : "editor";
+
+      return {
+        clientId,
+        name,
+        color,
+        actorId,
+        role,
+        isCurrent: localClientId === clientId,
+      };
+    })
+    .sort((left, right) => {
+      if (left.isCurrent !== right.isCurrent) {
+        return left.isCurrent ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+}
+
 async function fetchLiveEditStatus() {
   const response = await fetch("/api/manuscript/collab/latest/status", {
     cache: "no-store",
@@ -196,6 +277,13 @@ export default function StudioManuscriptCollabClient() {
   const [isSaving, setIsSaving] = useState(false);
   const [isResettingFromLatest, setIsResettingFromLatest] = useState(false);
   const [hasCheckpointChanges, setHasCheckpointChanges] = useState(false);
+  const [isAutoBackupEnabled, setIsAutoBackupEnabled] = useState(true);
+  const [autoBackupStatus, setAutoBackupStatus] =
+    useState("Auto-backup is on.");
+  const [unsyncedChangeCount, setUnsyncedChangeCount] = useState(0);
+  const [presenceParticipants, setPresenceParticipants] = useState<
+    LivePresenceParticipant[]
+  >([]);
   const [isCheckingLiveStatus, setIsCheckingLiveStatus] = useState(false);
   const [liveStatus, setLiveStatus] =
     useState<LiveEditStatusResponse | null>(null);
@@ -210,6 +298,8 @@ export default function StudioManuscriptCollabClient() {
     useState<ManuscriptDraft | null>(null);
   const hasSeededRef = useRef(false);
   const programmaticEditorUpdateRef = useRef(false);
+  const autoBackupTimerRef = useRef<number | null>(null);
+  const lastAutoBackupAtRef = useRef(0);
 
   const initialDraft = useMemo(() => {
     return setup?.ok && setup.initialSnapshot
@@ -264,8 +354,12 @@ export default function StudioManuscriptCollabClient() {
           onSynced: ({ state }: { state: boolean }) => {
             if (state) {
               setConnectionStatus("synced");
+              setUnsyncedChangeCount(0);
               setMessage("Live room synced.");
             }
+          },
+          onUnsyncedChanges: ({ number }: { number: number }) => {
+            setUnsyncedChangeCount(Math.max(0, Math.floor(number)));
           },
           onStatus: ({ status }: { status: string }) => {
             if (status === "connected") {
@@ -295,6 +389,43 @@ export default function StudioManuscriptCollabClient() {
   useEffect(() => {
     return () => {
       provider?.destroy();
+    };
+  }, [provider]);
+
+  useEffect(() => {
+    if (!provider || !setup?.ok) {
+      return;
+    }
+
+    provider.setAwarenessField("user", {
+      name: setup.actor.displayName,
+      color: setup.actor.color,
+    });
+    provider.setAwarenessField("studio", {
+      actorId: setup.actor.actorId,
+      role: "editor",
+    });
+  }, [provider, setup]);
+
+  useEffect(() => {
+    if (!provider) {
+      setPresenceParticipants([]);
+      return;
+    }
+
+    function refreshPresence() {
+      setPresenceParticipants(collectPresenceParticipants(provider));
+    }
+
+    refreshPresence();
+    provider.on("awarenessChange", refreshPresence);
+    provider.on("awarenessUpdate", refreshPresence);
+    const intervalId = window.setInterval(refreshPresence, 5_000);
+
+    return () => {
+      provider.off("awarenessChange", refreshPresence);
+      provider.off("awarenessUpdate", refreshPresence);
+      window.clearInterval(intervalId);
     };
   }, [provider]);
 
@@ -465,13 +596,26 @@ export default function StudioManuscriptCollabClient() {
     void seedRoom();
   }, [connectionStatus, editor, initialDraft, provider, setup]);
 
-  async function saveCheckpoint() {
+  async function saveCheckpoint(
+    options: { mode?: "manual" | "auto" } = {},
+  ) {
     if (!editor || !setup?.ok) {
       return;
     }
 
+    if (options.mode === "auto" && hasOutsideBackup) {
+      setAutoBackupStatus(
+        "Auto-backup paused because a newer backup exists outside this room.",
+      );
+      return;
+    }
+
     setIsSaving(true);
-    setMessage("Saving the room to the latest manuscript backup.");
+    setMessage(
+      options.mode === "auto"
+        ? "Auto-backing up the room to the latest manuscript."
+        : "Saving the room to the latest manuscript backup.",
+    );
 
     const draft = buildCheckpointDraft({
       baseDraft: checkpointBaseDraft ?? initialDraft,
@@ -489,7 +633,10 @@ export default function StudioManuscriptCollabClient() {
           },
           body: JSON.stringify({
             draft,
-            description: "Live edit checkpoint",
+            description:
+              options.mode === "auto"
+                ? "Live edit auto-backup"
+                : "Live edit checkpoint",
           }),
         },
       );
@@ -503,11 +650,26 @@ export default function StudioManuscriptCollabClient() {
       setLastCheckpoint(payload.snapshot);
       setCheckpointBaseDraft(draft);
       setHasCheckpointChanges(false);
-      setMessage("Saved to the latest manuscript backup.");
+      if (options.mode === "auto") {
+        lastAutoBackupAtRef.current = Date.now();
+        setAutoBackupStatus(
+          `Auto-backed up ${formatDateTime(payload.snapshot.updatedAt)}.`,
+        );
+      }
+      setMessage(
+        options.mode === "auto"
+          ? "Auto-backed up to the latest manuscript."
+          : "Saved to the latest manuscript backup.",
+      );
       void refreshLiveStatus();
     } catch (error) {
       console.error("Live edit checkpoint save failed.", error);
-      setMessage("Could not save to the manuscript.");
+      const failedMessage =
+        options.mode === "auto"
+          ? "Auto-backup could not save to the manuscript."
+          : "Could not save to the manuscript.";
+      setAutoBackupStatus(failedMessage);
+      setMessage(failedMessage);
     } finally {
       setIsSaving(false);
     }
@@ -617,6 +779,94 @@ export default function StudioManuscriptCollabClient() {
   const saveButtonLabel = hasOutsideBackup
     ? "Save room over latest"
     : "Save to manuscript";
+  const activeParticipantCount = Math.max(
+    presenceParticipants.length,
+    setup?.ok ? 1 : 0,
+  );
+  const roomSyncLabel =
+    unsyncedChangeCount > 0
+      ? `${unsyncedChangeCount.toLocaleString()} syncing`
+      : connectionStatus === "synced"
+        ? "Room synced"
+        : connectionStatus === "connected"
+          ? "Syncing"
+          : connectionStatus === "error"
+            ? "Offline"
+            : "Connecting";
+  const autoBackupTone = !isAutoBackupEnabled
+    ? "source"
+    : hasOutsideBackup
+      ? "review"
+      : hasCheckpointChanges
+        ? "review"
+        : "tag";
+  const autoBackupLabel = !isAutoBackupEnabled
+    ? "Manual"
+    : hasOutsideBackup
+      ? "Paused"
+      : hasCheckpointChanges
+        ? "Queued"
+        : "On";
+
+  useEffect(() => {
+    if (autoBackupTimerRef.current !== null) {
+      window.clearTimeout(autoBackupTimerRef.current);
+      autoBackupTimerRef.current = null;
+    }
+
+    if (!isAutoBackupEnabled) {
+      setAutoBackupStatus("Auto-backup is off. Use Save to manuscript.");
+      return;
+    }
+
+    if (hasOutsideBackup) {
+      setAutoBackupStatus(
+        "Auto-backup paused until the newer outside backup is reviewed.",
+      );
+      return;
+    }
+
+    if (
+      !hasCheckpointChanges ||
+      !editor ||
+      !setup?.ok ||
+      isSaving ||
+      isResettingFromLatest ||
+      connectionStatus === "error"
+    ) {
+      return;
+    }
+
+    const elapsedSinceLastBackup = Date.now() - lastAutoBackupAtRef.current;
+    const delay = Math.max(
+      AUTO_BACKUP_IDLE_MS,
+      AUTO_BACKUP_MIN_INTERVAL_MS - elapsedSinceLastBackup,
+    );
+
+    setAutoBackupStatus(
+      `Auto-backup queued in ${Math.ceil(delay / 1000).toLocaleString()} seconds.`,
+    );
+    autoBackupTimerRef.current = window.setTimeout(() => {
+      autoBackupTimerRef.current = null;
+      void saveCheckpoint({ mode: "auto" });
+    }, delay);
+
+    return () => {
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current);
+        autoBackupTimerRef.current = null;
+      }
+    };
+  }, [
+    connectionStatus,
+    editor,
+    hasCheckpointChanges,
+    hasOutsideBackup,
+    isAutoBackupEnabled,
+    isResettingFromLatest,
+    isSaving,
+    setup,
+  ]);
 
   return (
     <main className="min-h-screen px-3.5 py-4 md:px-6 md:py-6">
@@ -648,6 +898,11 @@ export default function StudioManuscriptCollabClient() {
                 {setup.actor.displayName}
               </StudioChip>
             ) : null}
+            {setup?.ok ? (
+              <StudioChip tone="source">
+                {activeParticipantCount.toLocaleString()} active
+              </StudioChip>
+            ) : null}
             {hasCheckpointChanges ? (
               <StudioChip tone="review">Needs save</StudioChip>
             ) : null}
@@ -676,7 +931,7 @@ export default function StudioManuscriptCollabClient() {
               )}
               disabled={!editor || !setup?.ok || isSaving || isResettingFromLatest}
               type="button"
-              onClick={() => void saveCheckpoint()}
+              onClick={() => void saveCheckpoint({ mode: "manual" })}
             >
               {isSaving ? "Saving..." : saveButtonLabel}
             </button>
@@ -701,11 +956,53 @@ export default function StudioManuscriptCollabClient() {
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className={labelClassName}>Status</span>
-                <StudioChip tone={statusTone}>{connectionStatus}</StudioChip>
+                <StudioChip tone={statusTone}>{roomSyncLabel}</StudioChip>
               </div>
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
                 {message}
               </p>
+              <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
+                Live edits are saved to this shared room automatically. Use
+                Save to manuscript when this room should become the latest
+                backup.
+              </p>
+            </div>
+
+            <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className={labelClassName}>People in room</span>
+                <StudioChip tone="source">
+                  {activeParticipantCount.toLocaleString()} active
+                </StudioChip>
+              </div>
+              <div className="grid gap-2">
+                {presenceParticipants.length ? (
+                  presenceParticipants.map((participant) => (
+                    <div
+                      className="flex items-center justify-between gap-2 rounded-md border border-studio-line bg-studio-ink/5 px-2.5 py-2"
+                      key={participant.clientId}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: participant.color }}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate text-[0.84rem] font-extrabold text-studio-ink">
+                          {participant.name}
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-[0.7rem] font-extrabold uppercase tracking-[0.08em] text-studio-dim">
+                        {participant.isCurrent ? "You" : participant.role}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
+                    Waiting for room presence.
+                  </p>
+                )}
+              </div>
             </div>
 
             <div
@@ -793,7 +1090,10 @@ export default function StudioManuscriptCollabClient() {
             </div>
 
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
-              <span className={labelClassName}>Manuscript save</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className={labelClassName}>Manuscript backup</span>
+                <StudioChip tone={autoBackupTone}>{autoBackupLabel}</StudioChip>
+              </div>
               <p className="m-0 text-[0.82rem] leading-5 text-studio-muted">
                 {lastCheckpoint
                   ? `${formatDateTime(lastCheckpoint.updatedAt)} - ${lastCheckpoint.wordCount.toLocaleString()} words`
@@ -801,6 +1101,18 @@ export default function StudioManuscriptCollabClient() {
                     ? "The room has edits that are not the latest manuscript backup yet."
                     : "No new room edits need saving from this browser."}
               </p>
+              <p className="m-0 text-[0.76rem] leading-5 text-studio-dim">
+                {autoBackupStatus}
+              </p>
+              <button
+                className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10"
+                type="button"
+                onClick={() => {
+                  setIsAutoBackupEnabled((current) => !current);
+                }}
+              >
+                {isAutoBackupEnabled ? "Turn off auto-backup" : "Turn on auto-backup"}
+              </button>
             </div>
 
             <a
