@@ -2307,6 +2307,20 @@ export function StudioManuscriptClient({
     window.requestAnimationFrame(() => focusBlock(blockId));
   }
 
+  function focusMobileStructureBoundary(
+    boundary: ManuscriptStructureBoundary | null,
+    edge: "start" | "end" = "start",
+  ) {
+    if (!boundary) {
+      setMessage("No chapter or episode boundary is available yet.");
+      return;
+    }
+
+    focusBlockFromMobileTools(
+      edge === "end" ? boundary.endBlockId : boundary.startBlockId,
+    );
+  }
+
   function updateRecordingMode(enabled: boolean) {
     setIsRecordingMode(enabled);
     setTagContextMenu(null);
@@ -4400,6 +4414,146 @@ export function StudioManuscriptClient({
             Next {nextRegion.label}
           </span>
         ) : null}
+      </article>
+    );
+  }
+
+  function renderMobileStructureStatusItem(
+    kind: ManuscriptStructureBoundaryKind,
+    currentRegion: ManuscriptStructureBoundary | null,
+    nextRegion: ManuscriptStructureBoundary | null,
+  ) {
+    const definition = getManuscriptStructureDefinition(kind);
+    const targetRegion = currentRegion ?? nextRegion;
+    const statusLabel =
+      currentRegion?.label ??
+      (nextRegion ? `Before ${nextRegion.label}` : `No ${definition.label}`);
+    const title = currentRegion?.title ?? nextRegion?.title ?? "Not marked yet";
+    const testId =
+      kind === "chapter"
+        ? "manuscript-mobile-current-chapter"
+        : "manuscript-mobile-current-episode";
+
+    return (
+      <button
+        aria-label={
+          targetRegion
+            ? `Jump to ${definition.label.toLowerCase()} ${targetRegion.label}`
+            : `${definition.label} is not marked yet`
+        }
+        className={cn(
+          "min-w-0 rounded-lg border px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50",
+          kind === "chapter"
+            ? "border-studio-node/45 bg-studio-node/10"
+            : "border-studio-source/45 bg-studio-source/10",
+        )}
+        data-testid={testId}
+        disabled={!targetRegion}
+        type="button"
+        onClick={() => focusMobileStructureBoundary(targetRegion)}
+      >
+        <span
+          className={cn(
+            "block truncate text-[0.62rem] font-extrabold tracking-[0.08em] uppercase",
+            kind === "chapter" ? "text-studio-node" : "text-studio-source",
+          )}
+        >
+          {definition.label}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.76rem] leading-tight text-studio-ink">
+          {statusLabel}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.66rem] leading-tight text-studio-muted">
+          {title}
+        </span>
+      </button>
+    );
+  }
+
+  function renderMobileStructureNavigationCard(
+    kind: ManuscriptStructureBoundaryKind,
+    currentRegion: ManuscriptStructureBoundary | null,
+    nextRegion: ManuscriptStructureBoundary | null,
+  ) {
+    if (!currentRegion && !nextRegion) {
+      return null;
+    }
+
+    const definition = getManuscriptStructureDefinition(kind);
+    const testId =
+      kind === "chapter"
+        ? "manuscript-mobile-chapter-nav"
+        : "manuscript-mobile-episode-nav";
+
+    return (
+      <article
+        className={cn(
+          "grid gap-2 rounded-lg border p-2.5",
+          kind === "chapter"
+            ? "border-studio-node/35 bg-studio-node/10"
+            : "border-studio-source/35 bg-studio-source/10",
+        )}
+        data-testid={testId}
+        key={kind}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="m-0 text-[0.88rem] leading-snug text-studio-ink">
+            {definition.label}
+          </h3>
+          <StudioChip tone={kind === "chapter" ? "node" : "source"}>
+            {currentRegion ? "Current" : "Upcoming"}
+          </StudioChip>
+        </div>
+
+        {currentRegion ? (
+          <div className="min-w-0">
+            <p className="m-0 truncate text-[0.82rem] font-bold text-studio-ink">
+              {currentRegion.label}
+            </p>
+            <p className="m-0 truncate text-[0.72rem] leading-relaxed text-studio-muted">
+              {currentRegion.title}
+            </p>
+          </div>
+        ) : (
+          <p className={panelCopyClassName}>
+            Before {nextRegion?.label ?? definition.label.toLowerCase()}.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={smallButtonClassName}
+            disabled={!currentRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(currentRegion)}
+          >
+            Jump {definition.label.toLowerCase()}
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!currentRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(currentRegion, "end")}
+          >
+            End
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!nextRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(nextRegion)}
+          >
+            Next {definition.label.toLowerCase()}
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!nextRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(nextRegion, "end")}
+          >
+            Next end
+          </button>
+        </div>
       </article>
     );
   }
@@ -7784,6 +7938,32 @@ export function StudioManuscriptClient({
                 {serverSnapshotStatus}
               </p>
 
+              {hasStructureRailContent ? (
+                <div
+                  className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                  data-testid="manuscript-mobile-structure-navigation"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="m-0 text-[0.95rem] leading-snug text-studio-ink">
+                      Chapter / episode
+                    </h3>
+                    <StudioChip tone="node">Scroll synced</StudioChip>
+                  </div>
+                  <div className="grid gap-2">
+                    {renderMobileStructureNavigationCard(
+                      "chapter",
+                      structureRailState.chapter,
+                      structureRailState.nextChapter,
+                    )}
+                    {renderMobileStructureNavigationCard(
+                      "episode",
+                      structureRailState.episode,
+                      structureRailState.nextEpisode,
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
               {!isRecordingMode ? (
                 <div className="grid gap-3 rounded-lg border border-studio-tag/35 bg-studio-tag/10 p-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -8157,6 +8337,24 @@ export function StudioManuscriptClient({
                   )}
                 </div>
               </div>
+            </div>
+          ) : null}
+
+          {hasStructureRailContent ? (
+            <div
+              className="mb-2 grid grid-cols-2 gap-2"
+              data-testid="manuscript-mobile-structure-strip"
+            >
+              {renderMobileStructureStatusItem(
+                "chapter",
+                structureRailState.chapter,
+                structureRailState.nextChapter,
+              )}
+              {renderMobileStructureStatusItem(
+                "episode",
+                structureRailState.episode,
+                structureRailState.nextEpisode,
+              )}
             </div>
           ) : null}
 

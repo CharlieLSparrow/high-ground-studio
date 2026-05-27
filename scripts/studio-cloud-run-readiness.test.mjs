@@ -329,6 +329,7 @@ test("Manuscript everyday UI keeps save controls in the footer dialog", () => {
   assert.match(client, /data-testid="manuscript-mobile-save-share"/);
   assert.match(client, /data-testid="manuscript-mobile-footer-status"/);
   assert.match(client, /data-testid="manuscript-mobile-tools-menu"/);
+  assert.match(client, /data-testid="manuscript-mobile-structure-strip"/);
   assert.match(client, /data-testid="manuscript-primary-save-panel"/);
   assert.match(client, /data-testid="manuscript-primary-save"/);
   assert.match(client, /data-testid="manuscript-primary-save-live-edit"/);
@@ -422,6 +423,12 @@ test("Manuscript structure rail follows chapter and episode position", () => {
   assert.match(client, /document\.addEventListener\(\n\s*"scroll",\n\s*scheduleStructureRailUpdate,\n\s*scrollListenerOptions/);
   assert.match(client, /new ResizeObserver\(scheduleStructureRailUpdate\)/);
   assert.match(client, /data-testid="manuscript-structure-rail"/);
+  assert.match(client, /"manuscript-mobile-current-chapter"/);
+  assert.match(client, /"manuscript-mobile-current-episode"/);
+  assert.match(client, /data-testid="manuscript-mobile-structure-navigation"/);
+  assert.match(client, /focusMobileStructureBoundary/);
+  assert.match(client, /Jump \{definition\.label\.toLowerCase\(\)\}/);
+  assert.match(client, /Next \{definition\.label\.toLowerCase\(\)\}/);
   assert.match(globalsCss, /\.manuscript-editor-shell-with-rail/);
   assert.match(globalsCss, /\.manuscript-structure-rail \{/);
   assert.match(globalsCss, /position: sticky;\n\s*top: 5\.25rem;/);
