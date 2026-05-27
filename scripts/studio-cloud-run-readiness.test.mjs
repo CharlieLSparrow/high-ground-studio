@@ -300,6 +300,16 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
     /data-testid=\{`manuscript-live-mobile-author-\$\{authorId\}`\}/,
   );
   assert.match(client, /data-testid="manuscript-live-mobile-author-mark-selection"/);
+  assert.match(client, /data-testid="manuscript-live-structure-navigation"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-structure-navigation"/);
+  assert.match(client, /data-testid="manuscript-live-mobile-structure-strip"/);
+  assert.match(
+    client,
+    /data-testid=\{`manuscript-live-mobile-current-\$\{kind\}`\}/,
+  );
+  assert.match(client, /createManuscriptStructureBoundaryIndex/);
+  assert.match(client, /getCurrentManuscriptStructureBoundary/);
+  assert.match(client, /getNextManuscriptStructureBoundary/);
   assert.match(client, /onSelectionUpdate/);
   assert.match(client, /getAuthorMarkAttrs/);
   assert.match(client, /hidden flex-wrap items-center justify-end gap-2 lg:flex/);

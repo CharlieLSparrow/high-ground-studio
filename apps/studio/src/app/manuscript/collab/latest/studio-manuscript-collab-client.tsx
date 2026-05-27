@@ -1,6 +1,6 @@
 "use client";
 
-import type { JSONContent } from "@tiptap/core";
+import type { Editor, JSONContent } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import UniqueID from "@tiptap/extension-unique-id";
@@ -17,14 +17,21 @@ import {
 } from "../../../studio-ui";
 import { AuthorMark, SemanticHighlightMark } from "../../manuscript-editor-marks";
 import {
+  collectBlockSummaries,
+  createManuscriptStructureBoundaryIndex,
   createDefaultManuscriptDraft,
   createEmptyManuscriptDoc,
   ensureManuscriptBlockIds,
+  getCurrentManuscriptStructureBoundary,
   getManuscriptAuthorDefinition,
+  getManuscriptStructureDefinition,
+  getNextManuscriptStructureBoundary,
   safeManuscriptDraft,
   type ManuscriptAuthorId,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
+  type ManuscriptStructureBoundary,
+  type ManuscriptStructureBoundaryKind,
 } from "../../manuscript-editor-model";
 
 type CollabSetupResponse =
@@ -138,11 +145,24 @@ type LivePresenceParticipant = {
 
 type LiveWritableAuthorId = Extract<ManuscriptAuthorId, "charlie" | "homer">;
 
+type LiveStructureState = {
+  chapter: ManuscriptStructureBoundary | null;
+  episode: ManuscriptStructureBoundary | null;
+  nextChapter: ManuscriptStructureBoundary | null;
+  nextEpisode: ManuscriptStructureBoundary | null;
+};
+
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 const liveWritableAuthorIds: LiveWritableAuthorId[] = ["charlie", "homer"];
 const AUTO_BACKUP_IDLE_MS = 15_000;
 const AUTO_BACKUP_MIN_INTERVAL_MS = 90_000;
 const AUTO_HANDOFF_DELAY_MS = 1_200;
+const emptyLiveStructureState: LiveStructureState = {
+  chapter: null,
+  episode: null,
+  nextChapter: null,
+  nextEpisode: null,
+};
 
 function createId(prefix: string) {
   return (
@@ -219,6 +239,29 @@ function getLiveAuthorButtonClassName(
         : "border-studio-source/60 bg-studio-source/10 text-studio-source"
       : "border-studio-line bg-studio-ink/5 text-studio-source hover:border-studio-source/55 hover:bg-studio-source/10",
   );
+}
+
+function getEditorSelectionBlockId(editor: Editor) {
+  const { $from } = editor.state.selection;
+
+  for (let depth = $from.depth; depth >= 0; depth -= 1) {
+    const node = $from.node(depth);
+    const blockId = node.attrs.blockId;
+
+    if (
+      blockNodeTypes.includes(node.type.name) &&
+      typeof blockId === "string" &&
+      blockId.trim()
+    ) {
+      return blockId;
+    }
+  }
+
+  return null;
+}
+
+function getLiveStructureTone(kind: ManuscriptStructureBoundaryKind) {
+  return kind === "chapter" ? "node" : "source";
 }
 
 function buildCheckpointDraft(input: {
@@ -325,6 +368,11 @@ export default function StudioManuscriptCollabClient() {
   const [message, setMessage] = useState("Preparing live edit room.");
   const [activeAuthorId, setActiveAuthorId] =
     useState<LiveWritableAuthorId>("charlie");
+  const [currentEditorJson, setCurrentEditorJson] =
+    useState<ManuscriptEditorJson>(
+      createEmptyManuscriptDoc() as ManuscriptEditorJson,
+    );
+  const [currentBlockId, setCurrentBlockId] = useState<string | null>(null);
   const [isDraftHandoffVisible, setIsDraftHandoffVisible] = useState(false);
   const [draftHandoffState, setDraftHandoffState] =
     useState<DraftHandoffState>("idle");
@@ -363,6 +411,68 @@ export default function StudioManuscriptCollabClient() {
       ? safeManuscriptDraft(setup.initialSnapshot.draft)
       : null;
   }, [setup]);
+  const liveBoundaryMarkers =
+    checkpointBaseDraft?.structureBoundaryMarkers?.length
+      ? checkpointBaseDraft.structureBoundaryMarkers
+      : initialDraft?.structureBoundaryMarkers ?? [];
+  const liveBlockSummaries = useMemo(
+    () => collectBlockSummaries(currentEditorJson),
+    [currentEditorJson],
+  );
+  const liveStructureBoundaryIndex = useMemo(
+    () =>
+      createManuscriptStructureBoundaryIndex({
+        blocks: liveBlockSummaries,
+        boundaryMarkers: liveBoundaryMarkers,
+      }),
+    [liveBlockSummaries, liveBoundaryMarkers],
+  );
+  const liveCurrentBlockIndex = useMemo(() => {
+    if (!liveBlockSummaries.length) {
+      return -1;
+    }
+
+    const matchedIndex = liveBlockSummaries.findIndex(
+      (block) => block.blockId === currentBlockId,
+    );
+
+    return matchedIndex >= 0 ? matchedIndex : 0;
+  }, [currentBlockId, liveBlockSummaries]);
+  const liveStructureState = useMemo(() => {
+    if (liveCurrentBlockIndex < 0) {
+      return emptyLiveStructureState;
+    }
+
+    const chapter = getCurrentManuscriptStructureBoundary(
+      liveStructureBoundaryIndex.chapters,
+      liveCurrentBlockIndex,
+    );
+    const episode = getCurrentManuscriptStructureBoundary(
+      liveStructureBoundaryIndex.episodes,
+      liveCurrentBlockIndex,
+    );
+
+    return {
+      chapter,
+      episode,
+      nextChapter: getNextManuscriptStructureBoundary(
+        liveStructureBoundaryIndex.chapters,
+        liveCurrentBlockIndex,
+        chapter,
+      ),
+      nextEpisode: getNextManuscriptStructureBoundary(
+        liveStructureBoundaryIndex.episodes,
+        liveCurrentBlockIndex,
+        episode,
+      ),
+    };
+  }, [liveCurrentBlockIndex, liveStructureBoundaryIndex]);
+  const hasLiveStructureContent = Boolean(
+    liveStructureState.chapter ||
+      liveStructureState.episode ||
+      liveStructureState.nextChapter ||
+      liveStructureState.nextEpisode,
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -387,6 +497,7 @@ export default function StudioManuscriptCollabClient() {
     }
 
     setCheckpointBaseDraft((current) => current ?? initialDraft);
+    setCurrentEditorJson(initialDraft.editorJson);
   }, [initialDraft]);
 
   useEffect(() => {
@@ -610,7 +721,10 @@ export default function StudioManuscriptCollabClient() {
       content: createEmptyManuscriptDoc() as JSONContent,
       editable: Boolean(provider),
       immediatelyRender: false,
-      onUpdate: () => {
+      onUpdate: ({ editor: updatedEditor }) => {
+        setCurrentEditorJson(updatedEditor.getJSON() as ManuscriptEditorJson);
+        setCurrentBlockId(getEditorSelectionBlockId(updatedEditor));
+
         if (programmaticEditorUpdateRef.current) {
           programmaticEditorUpdateRef.current = false;
           return;
@@ -619,6 +733,8 @@ export default function StudioManuscriptCollabClient() {
         setHasCheckpointChanges(true);
       },
       onSelectionUpdate: ({ editor: selectionEditor }) => {
+        setCurrentBlockId(getEditorSelectionBlockId(selectionEditor));
+
         if (
           !selectionEditor.isEditable ||
           !selectionEditor.state.selection.empty
@@ -703,6 +819,52 @@ export default function StudioManuscriptCollabClient() {
     setMessage(`Marked selected text as ${author.label}.`);
   }
 
+  function focusLiveBlock(blockId: string | null) {
+    if (!editor || !blockId) {
+      setMessage("No structure marker is available to jump to yet.");
+      return;
+    }
+
+    let targetPosition: number | null = null;
+
+    editor.state.doc.descendants((node, pos) => {
+      if (node.attrs?.blockId === blockId) {
+        targetPosition = pos;
+        return false;
+      }
+
+      return true;
+    });
+
+    if (targetPosition === null) {
+      setMessage("That structure marker was not found in the live room.");
+      return;
+    }
+
+    editor
+      .chain()
+      .focus()
+      .setTextSelection(
+        Math.min(targetPosition + 1, editor.state.doc.content.size),
+      )
+      .scrollIntoView()
+      .run();
+    setCurrentBlockId(blockId);
+    setMessage("Jumped to the live room structure marker.");
+  }
+
+  function focusLiveBoundary(
+    boundary: ManuscriptStructureBoundary | null,
+    edge: "start" | "end" = "start",
+  ) {
+    const blockId =
+      edge === "end"
+        ? boundary?.endBlockId ?? null
+        : boundary?.startBlockId ?? null;
+
+    focusLiveBlock(blockId);
+  }
+
   useEffect(() => {
     activeAuthorIdRef.current = activeAuthorId;
     applyLiveAuthorToCursor(activeAuthorId);
@@ -740,6 +902,8 @@ export default function StudioManuscriptCollabClient() {
         if (isEmptyEditorJson(currentEditor.getJSON())) {
           programmaticEditorUpdateRef.current = true;
           currentEditor.commands.setContent(seedJson as JSONContent);
+          setCurrentEditorJson(seedJson as ManuscriptEditorJson);
+          setCurrentBlockId(getEditorSelectionBlockId(currentEditor));
           hasSeededRef.current = true;
           setHasCheckpointChanges(false);
           setMessage("Live room initialized from the latest saved manuscript.");
@@ -883,6 +1047,8 @@ export default function StudioManuscriptCollabClient() {
 
       programmaticEditorUpdateRef.current = true;
       editor.commands.setContent(latestDraft.editorJson as JSONContent);
+      setCurrentEditorJson(latestDraft.editorJson);
+      setCurrentBlockId(getEditorSelectionBlockId(editor));
       setCheckpointBaseDraft(latestDraft);
       setLastCheckpoint(payload.snapshot);
       setHasCheckpointChanges(false);
@@ -1080,6 +1246,129 @@ export default function StudioManuscriptCollabClient() {
       : hasCheckpointChanges
         ? "Queued"
         : "On";
+
+  function renderLiveStructureStatusItem(
+    kind: ManuscriptStructureBoundaryKind,
+    currentBoundary: ManuscriptStructureBoundary | null,
+    nextBoundary: ManuscriptStructureBoundary | null,
+  ) {
+    const definition = getManuscriptStructureDefinition(kind);
+    const targetBoundary = currentBoundary ?? nextBoundary;
+    const statusLabel =
+      currentBoundary?.label ??
+      (nextBoundary ? `Before ${nextBoundary.label}` : `No ${definition.label}`);
+    const title = currentBoundary?.title ?? nextBoundary?.title ?? "Not marked yet";
+
+    return (
+      <button
+        aria-label={
+          targetBoundary
+            ? `Jump to ${definition.label.toLowerCase()} ${targetBoundary.label}`
+            : `${definition.label} is not marked yet`
+        }
+        className={cn(
+          "min-w-0 rounded-lg border px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50",
+          kind === "chapter"
+            ? "border-studio-node/45 bg-studio-node/10"
+            : "border-studio-source/45 bg-studio-source/10",
+        )}
+        data-testid={`manuscript-live-mobile-current-${kind}`}
+        disabled={!targetBoundary}
+        key={kind}
+        type="button"
+        onClick={() => focusLiveBoundary(targetBoundary)}
+      >
+        <span
+          className={cn(
+            "block truncate text-[0.62rem] font-extrabold tracking-[0.08em] uppercase",
+            kind === "chapter" ? "text-studio-node" : "text-studio-source",
+          )}
+        >
+          {definition.label}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.76rem] leading-tight text-studio-ink">
+          {statusLabel}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.66rem] leading-tight text-studio-muted">
+          {title}
+        </span>
+      </button>
+    );
+  }
+
+  function renderLiveStructureNavigationCard(
+    kind: ManuscriptStructureBoundaryKind,
+    currentBoundary: ManuscriptStructureBoundary | null,
+    nextBoundary: ManuscriptStructureBoundary | null,
+  ) {
+    if (!currentBoundary && !nextBoundary) {
+      return null;
+    }
+
+    const definition = getManuscriptStructureDefinition(kind);
+
+    return (
+      <article
+        className={cn(
+          "grid gap-2 rounded-lg border p-2.5",
+          kind === "chapter"
+            ? "border-studio-node/35 bg-studio-node/10"
+            : "border-studio-source/35 bg-studio-source/10",
+        )}
+        data-testid={`manuscript-live-structure-nav-${kind}`}
+        key={kind}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className={labelClassName}>{definition.label}</span>
+          <StudioChip tone={getLiveStructureTone(kind)}>
+            {currentBoundary ? "Current" : "Upcoming"}
+          </StudioChip>
+        </div>
+        <div className="min-w-0">
+          <p className="m-0 truncate text-[0.82rem] font-bold text-studio-ink">
+            {(currentBoundary ?? nextBoundary)?.label}
+          </p>
+          <p className="m-0 truncate text-[0.72rem] leading-relaxed text-studio-muted">
+            {(currentBoundary ?? nextBoundary)?.title}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim"
+            disabled={!currentBoundary}
+            type="button"
+            onClick={() => focusLiveBoundary(currentBoundary)}
+          >
+            Current
+          </button>
+          <button
+            className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim"
+            disabled={!currentBoundary}
+            type="button"
+            onClick={() => focusLiveBoundary(currentBoundary, "end")}
+          >
+            End
+          </button>
+          <button
+            className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim"
+            disabled={!nextBoundary}
+            type="button"
+            onClick={() => focusLiveBoundary(nextBoundary)}
+          >
+            Next
+          </button>
+          <button
+            className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source disabled:text-studio-dim"
+            disabled={!nextBoundary}
+            type="button"
+            onClick={() => focusLiveBoundary(nextBoundary, "end")}
+          >
+            Next end
+          </button>
+        </div>
+      </article>
+    );
+  }
 
   useEffect(() => {
     if (autoBackupTimerRef.current !== null) {
@@ -1348,6 +1637,30 @@ export default function StudioManuscriptCollabClient() {
               </button>
             </div>
 
+            {hasLiveStructureContent ? (
+              <div
+                className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
+                data-testid="manuscript-live-structure-navigation"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className={labelClassName}>Live outline</span>
+                  <StudioChip tone="source">
+                    {liveBlockSummaries.length.toLocaleString()} blocks
+                  </StudioChip>
+                </div>
+                {renderLiveStructureNavigationCard(
+                  "chapter",
+                  liveStructureState.chapter,
+                  liveStructureState.nextChapter,
+                )}
+                {renderLiveStructureNavigationCard(
+                  "episode",
+                  liveStructureState.episode,
+                  liveStructureState.nextEpisode,
+                )}
+              </div>
+            ) : null}
+
             <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className={labelClassName}>People in room</span>
@@ -1582,6 +1895,30 @@ export default function StudioManuscriptCollabClient() {
                 </button>
               </div>
 
+              {hasLiveStructureContent ? (
+                <div
+                  className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
+                  data-testid="manuscript-live-mobile-structure-navigation"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={labelClassName}>Live outline</span>
+                    <StudioChip tone="source">
+                      {liveBlockSummaries.length.toLocaleString()} blocks
+                    </StudioChip>
+                  </div>
+                  {renderLiveStructureNavigationCard(
+                    "chapter",
+                    liveStructureState.chapter,
+                    liveStructureState.nextChapter,
+                  )}
+                  {renderLiveStructureNavigationCard(
+                    "episode",
+                    liveStructureState.episode,
+                    liveStructureState.nextEpisode,
+                  )}
+                </div>
+              ) : null}
+
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className={labelClassName}>People</span>
@@ -1705,6 +2042,24 @@ export default function StudioManuscriptCollabClient() {
               >
                 Back to Manuscript Desk
               </a>
+            </div>
+          ) : null}
+
+          {hasLiveStructureContent ? (
+            <div
+              className="mb-2 grid grid-cols-2 gap-2"
+              data-testid="manuscript-live-mobile-structure-strip"
+            >
+              {renderLiveStructureStatusItem(
+                "chapter",
+                liveStructureState.chapter,
+                liveStructureState.nextChapter,
+              )}
+              {renderLiveStructureStatusItem(
+                "episode",
+                liveStructureState.episode,
+                liveStructureState.nextEpisode,
+              )}
             </div>
           ) : null}
 
