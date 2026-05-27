@@ -26,12 +26,15 @@ import {
   getManuscriptAuthorDefinition,
   getManuscriptStructureDefinition,
   getNextManuscriptStructureBoundary,
+  getSemanticHighlightDefinition,
   safeManuscriptDraft,
+  semanticHighlightDefinitions,
   type ManuscriptAuthorId,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptStructureBoundary,
   type ManuscriptStructureBoundaryKind,
+  type SemanticHighlightType,
 } from "../../manuscript-editor-model";
 
 type CollabSetupResponse =
@@ -154,6 +157,10 @@ type LiveStructureState = {
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
 const liveWritableAuthorIds: LiveWritableAuthorId[] = ["charlie", "homer"];
+const liveQuickSemanticHighlightTypes = [
+  "clip",
+  "show-notes",
+] as const satisfies readonly SemanticHighlightType[];
 const AUTO_BACKUP_IDLE_MS = 15_000;
 const AUTO_BACKUP_MIN_INTERVAL_MS = 90_000;
 const AUTO_HANDOFF_DELAY_MS = 1_200;
@@ -239,6 +246,80 @@ function getLiveAuthorButtonClassName(
         : "border-studio-source/60 bg-studio-source/10 text-studio-source"
       : "border-studio-line bg-studio-ink/5 text-studio-source hover:border-studio-source/55 hover:bg-studio-source/10",
   );
+}
+
+function getLiveSemanticButtonClassName(
+  tagType: SemanticHighlightType,
+  isActive: boolean,
+) {
+  const definition = getSemanticHighlightDefinition(tagType);
+  const colorKey = definition.colorKey;
+  const baseClassName =
+    "min-h-9 rounded-md border px-3 py-2 text-[0.78rem] font-extrabold transition disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim";
+  const inactiveClassName =
+    "border-studio-line bg-studio-ink/5 text-studio-source hover:border-studio-source/55 hover:bg-studio-source/10";
+
+  if (!isActive) {
+    return cn(baseClassName, inactiveClassName);
+  }
+
+  if (colorKey === "clip") {
+    return cn(baseClassName, "border-[#69e2c8]/60 bg-[#69e2c8]/10 text-[#69e2c8]");
+  }
+
+  if (colorKey === "show-notes") {
+    return cn(baseClassName, "border-[#f5ba78]/60 bg-[#f5ba78]/10 text-[#f5ba78]");
+  }
+
+  if (colorKey === "quote" || colorKey === "cited-quotation") {
+    return cn(baseClassName, "border-studio-node/60 bg-studio-node/10 text-studio-node");
+  }
+
+  if (colorKey === "question" || colorKey === "needs-review") {
+    return cn(
+      baseClassName,
+      "border-studio-danger/55 bg-studio-danger/10 text-studio-danger",
+    );
+  }
+
+  if (colorKey === "research") {
+    return cn(
+      baseClassName,
+      "border-studio-review/55 bg-studio-review/10 text-studio-review",
+    );
+  }
+
+  return cn(baseClassName, "border-studio-source/55 bg-studio-source/10 text-studio-source");
+}
+
+function getLiveSemanticSwatchClassName(tagType: SemanticHighlightType) {
+  const colorKey = getSemanticHighlightDefinition(tagType).colorKey;
+
+  if (colorKey === "clip") {
+    return "bg-[#69e2c8]";
+  }
+
+  if (colorKey === "show-notes") {
+    return "bg-[#f5ba78]";
+  }
+
+  if (colorKey === "quote" || colorKey === "cited-quotation" || colorKey === "transition") {
+    return "bg-studio-node";
+  }
+
+  if (colorKey === "question" || colorKey === "needs-review") {
+    return "bg-studio-danger";
+  }
+
+  if (colorKey === "research") {
+    return "bg-studio-review";
+  }
+
+  if (colorKey === "story") {
+    return "bg-studio-tag";
+  }
+
+  return "bg-studio-source";
 }
 
 function getEditorSelectionBlockId(editor: Editor) {
@@ -368,6 +449,9 @@ export default function StudioManuscriptCollabClient() {
   const [message, setMessage] = useState("Preparing live edit room.");
   const [activeAuthorId, setActiveAuthorId] =
     useState<LiveWritableAuthorId>("charlie");
+  const [semanticType, setSemanticType] =
+    useState<SemanticHighlightType>("clip");
+  const [semanticNote, setSemanticNote] = useState("");
   const [currentEditorJson, setCurrentEditorJson] =
     useState<ManuscriptEditorJson>(
       createEmptyManuscriptDoc() as ManuscriptEditorJson,
@@ -819,6 +903,60 @@ export default function StudioManuscriptCollabClient() {
     setMessage(`Marked selected text as ${author.label}.`);
   }
 
+  function applyLiveSemanticHighlight(
+    tagType: SemanticHighlightType = semanticType,
+  ) {
+    if (!editor) {
+      return;
+    }
+
+    const selection = editor.state.selection;
+
+    if (selection.empty || selection.from === selection.to) {
+      setMessage("Select live room text before applying a semantic mark.");
+      return;
+    }
+
+    const selectedText = editor.state.doc
+      .textBetween(selection.from, selection.to, " ")
+      .trim();
+
+    if (!selectedText) {
+      setMessage("Select live room text before applying a semantic mark.");
+      return;
+    }
+
+    const definition = getSemanticHighlightDefinition(tagType);
+
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: selection.from, to: selection.to })
+      .setMark("semanticHighlightMark", {
+        highlightId: createId("live-highlight"),
+        tagType: definition.id,
+        label: definition.label,
+        colorKey: definition.colorKey,
+        note: semanticNote.trim(),
+        createdAt: new Date().toISOString(),
+      })
+      .run();
+    setSemanticType(definition.id);
+    setSemanticNote("");
+    setHasCheckpointChanges(true);
+    setMessage(`Marked selected text as ${definition.label}.`);
+  }
+
+  function clearLiveSemanticHighlight() {
+    if (!editor) {
+      return;
+    }
+
+    editor.chain().focus().unsetMark("semanticHighlightMark").run();
+    setHasCheckpointChanges(true);
+    setMessage("Cleared semantic marks from the current selection.");
+  }
+
   function focusLiveBlock(blockId: string | null) {
     if (!editor || !blockId) {
       setMessage("No structure marker is available to jump to yet.");
@@ -1247,6 +1385,101 @@ export default function StudioManuscriptCollabClient() {
         ? "Queued"
         : "On";
 
+  function renderLiveSemanticControls(context: "desktop" | "mobile") {
+    const testIdPrefix =
+      context === "mobile" ? "manuscript-live-mobile" : "manuscript-live";
+
+    return (
+      <div
+        className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
+        data-testid={`${testIdPrefix}-semantic-controls`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className={labelClassName}>Semantic marks</span>
+          <StudioChip tone="source">
+            {getSemanticHighlightDefinition(semanticType).label}
+          </StudioChip>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {liveQuickSemanticHighlightTypes.map((tagType) => {
+            const definition = getSemanticHighlightDefinition(tagType);
+
+            return (
+              <button
+                className={getLiveSemanticButtonClassName(
+                  definition.id,
+                  semanticType === definition.id,
+                )}
+                data-testid={`${testIdPrefix}-semantic-quick-${definition.id}`}
+                disabled={!editor || !setup?.ok}
+                key={definition.id}
+                type="button"
+                onClick={() => applyLiveSemanticHighlight(definition.id)}
+              >
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <span
+                    className={cn(
+                      "size-2.5 shrink-0 rounded-full",
+                      getLiveSemanticSwatchClassName(definition.id),
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{definition.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <label className="grid gap-1.5">
+          <span className={labelClassName}>Tag type</span>
+          <select
+            className="min-h-10 rounded-lg border border-studio-line bg-[#031c1a] px-3 py-2 text-[0.9rem] text-studio-ink outline-none focus:border-studio-source/70"
+            data-testid={`${testIdPrefix}-semantic-select`}
+            value={semanticType}
+            onChange={(event) =>
+              setSemanticType(event.target.value as SemanticHighlightType)
+            }
+          >
+            {semanticHighlightDefinitions.map((definition) => (
+              <option key={definition.id} value={definition.id}>
+                {definition.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5">
+          <span className={labelClassName}>Note</span>
+          <textarea
+            className="min-h-[72px] resize-y rounded-lg border border-studio-line bg-[#031c1a] px-3 py-2 text-[0.86rem] leading-5 text-studio-ink outline-none focus:border-studio-source/70"
+            data-testid={`${testIdPrefix}-semantic-note`}
+            value={semanticNote}
+            onChange={(event) => setSemanticNote(event.target.value)}
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="min-h-9 rounded-md border border-studio-source/55 bg-studio-source/10 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:bg-studio-source/15 disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim"
+            data-testid={`${testIdPrefix}-semantic-apply`}
+            disabled={!editor || !setup?.ok}
+            type="button"
+            onClick={() => applyLiveSemanticHighlight()}
+          >
+            Apply
+          </button>
+          <button
+            className="min-h-9 rounded-md border border-studio-line bg-studio-ink/5 px-3 py-2 text-[0.78rem] font-extrabold text-studio-source transition hover:border-studio-source/55 hover:bg-studio-source/10 disabled:text-studio-dim"
+            data-testid={`${testIdPrefix}-semantic-clear`}
+            disabled={!editor || !setup?.ok}
+            type="button"
+            onClick={() => clearLiveSemanticHighlight()}
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function renderLiveStructureStatusItem(
     kind: ManuscriptStructureBoundaryKind,
     currentBoundary: ManuscriptStructureBoundary | null,
@@ -1637,6 +1870,8 @@ export default function StudioManuscriptCollabClient() {
               </button>
             </div>
 
+            {renderLiveSemanticControls("desktop")}
+
             {hasLiveStructureContent ? (
               <div
                 className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-3"
@@ -1894,6 +2129,8 @@ export default function StudioManuscriptCollabClient() {
                   Mark selection
                 </button>
               </div>
+
+              {renderLiveSemanticControls("mobile")}
 
               {hasLiveStructureContent ? (
                 <div
