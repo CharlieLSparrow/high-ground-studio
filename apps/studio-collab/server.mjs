@@ -146,7 +146,7 @@ const hocuspocus = new Server({
     await storeDocument(documentName, document);
   },
   async onRequest({ request, response }) {
-    if (request.url === "/" || request.url === "/healthz") {
+    if (request.url === "/" || request.url === "/health" || request.url === "/healthz") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({

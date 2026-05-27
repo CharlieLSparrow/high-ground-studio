@@ -125,7 +125,7 @@ test("Studio Collab deploy helper pins the MVP room to one warm instance", () =>
   assert.match(deployScript, /--max-instances/);
   assert.match(deployScript, /--timeout/);
   assert.match(deployScript, /--no-invoker-iam-check/);
-  assert.match(deployScript, /\/healthz/);
+  assert.match(deployScript, /\/health/);
   assert.match(deployScript, /high-ground-studio-collab/);
 });
 
@@ -309,7 +309,7 @@ test("Manuscript live edit room is private token-gated collaboration", () => {
   assert.match(collabServer, /onLoadDocument/);
   assert.match(collabServer, /onStoreDocument/);
   assert.match(collabServer, /Y\.encodeStateAsUpdate/);
-  assert.match(collabServer, /\/healthz/);
+  assert.match(collabServer, /\/health/);
   assert.match(collabDockerfile, /studio-collab/);
   assert.match(collabCloudBuild, /apps\/studio-collab\/Dockerfile/);
   assert.match(collabCloudBuild, /studio-collab/);

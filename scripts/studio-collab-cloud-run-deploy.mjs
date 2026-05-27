@@ -290,7 +290,7 @@ if (templateAnnotations["autoscaling.knative.dev/maxScale"] !== maxInstances) {
   );
 }
 
-await assertHttpOk(`${serviceUrl}/healthz`, (body) => {
+await assertHttpOk(`${serviceUrl}/health`, (body) => {
   try {
     const parsed = JSON.parse(body);
     return parsed.ok === true && parsed.service === "high-ground-studio-collab";

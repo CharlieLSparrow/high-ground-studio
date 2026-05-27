@@ -119,7 +119,7 @@ writes disabled in Cloud Run.
   - deploys the collaboration service with MVP-safe defaults:
     `--min-instances=1`, `--max-instances=1`, `--timeout=3600s`, and
     `--concurrency=80`
-  - smokes `/healthz` and prints a rollback command
+  - smokes `/health` and prints a rollback command
 - `.dockerignore`
   - keeps local build artifacts, dependencies, logs, env files, and large
     staging/inbox content out of the Docker context
