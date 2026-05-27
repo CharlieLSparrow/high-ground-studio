@@ -174,6 +174,18 @@ function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
   return nodesByBlockId;
 }
 
+function getManuscriptNodeBlockId(attrs: Record<string, unknown>) {
+  for (const key of ["blockId", "blockid", "data-blockid"]) {
+    const value = attrs[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 const liveWritableAuthorIds: LiveWritableAuthorId[] = ["charlie", "homer"];
 const liveQuickSemanticHighlightTypes = [
   "clip",
@@ -908,6 +920,8 @@ export default function StudioManuscriptCollabClient() {
     const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
       editor.view.dom,
     );
+    const renderedBlockNodes = Array.from(renderedBlockNodesById.values());
+    let renderedBlockIndex = 0;
     const boundaryMarkersByBlockId = new Map<
       string,
       ManuscriptStructureBoundaryMarker[]
@@ -930,15 +944,16 @@ export default function StudioManuscriptCollabClient() {
         return true;
       }
 
-      const blockId = node.attrs.blockId;
+      const nodeBlockId = getManuscriptNodeBlockId(node.attrs);
+      const domNode = nodeBlockId
+        ? renderedBlockNodesById.get(nodeBlockId)
+        : renderedBlockNodes[renderedBlockIndex];
+      const blockId =
+        nodeBlockId ?? domNode?.getAttribute("data-blockid") ?? null;
 
-      if (typeof blockId !== "string") {
-        return true;
-      }
+      renderedBlockIndex += 1;
 
-      const domNode = renderedBlockNodesById.get(blockId);
-
-      if (!domNode) {
+      if (!domNode || !blockId) {
         return true;
       }
 

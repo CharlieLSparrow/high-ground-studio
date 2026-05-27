@@ -328,6 +328,18 @@ function collectRenderedManuscriptBlockNodes(root: HTMLElement) {
   return nodesByBlockId;
 }
 
+function getManuscriptNodeBlockId(attrs: Record<string, unknown>) {
+  for (const key of ["blockId", "blockid", "data-blockid"]) {
+    const value = attrs[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 type SemanticHighlightDefinition =
   (typeof semanticHighlightDefinitions)[number];
 type SemanticHighlightColorKey = SemanticHighlightDefinition["colorKey"];
@@ -1647,6 +1659,8 @@ export function StudioManuscriptClient({
     const renderedBlockNodesById = collectRenderedManuscriptBlockNodes(
       editor.view.dom,
     );
+    const renderedBlockNodes = Array.from(renderedBlockNodesById.values());
+    let renderedBlockIndex = 0;
 
     renderedBlockNodesById.forEach((domNode) => {
       domNode.classList.remove(...classNames);
@@ -1684,19 +1698,20 @@ export function StudioManuscriptClient({
         return true;
       }
 
-      const blockId = node.attrs.blockId;
+      const nodeBlockId = getManuscriptNodeBlockId(node.attrs);
+      const domNode = nodeBlockId
+        ? renderedBlockNodesById.get(nodeBlockId)
+        : renderedBlockNodes[renderedBlockIndex];
+      const blockId =
+        nodeBlockId ?? domNode?.getAttribute("data-blockid") ?? null;
 
-      if (typeof blockId !== "string") {
+      renderedBlockIndex += 1;
+
+      if (!domNode || !blockId) {
         return true;
       }
 
       const regions = regionsByBlockId.get(blockId);
-      const domNode = renderedBlockNodesById.get(blockId);
-
-      if (!domNode) {
-        return true;
-      }
-
       const blockAuthorIds = new Set<ManuscriptAuthorId>();
       const blockSemanticColorKeys = new Set<
         Extract<SemanticHighlightColorKey, "clip" | "show-notes">
