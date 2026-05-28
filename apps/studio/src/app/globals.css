@@ -30,11 +30,10 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  background: linear-gradient(135deg, #000f0f 0%, #001918 52%, #032724 100%);
+  background: radial-gradient(circle at 50% 0%, #0a1a18 0%, #030a09 40%, #020505 100%);
+  background-attachment: fixed;
   color: var(--color-studio-ink);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -53,56 +52,103 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.manuscript-page-shell {
-  min-height: 100vh;
-  overflow-x: clip;
-  padding: 0.875rem 0.875rem calc(7rem + env(safe-area-inset-bottom));
-}
-
-.manuscript-page-stack {
-  display: grid;
-  min-height: calc(100vh - 1.75rem);
-  gap: 0.875rem;
-}
-
-.manuscript-workspace-grid {
-  display: grid;
-  align-items: start;
-  gap: 1.125rem;
-  overflow: visible;
-}
-
-.manuscript-control-rail {
-  display: none;
+.manuscript-editor-shell {
   min-width: 0;
-  align-self: start;
+  position: relative;
 }
 
-.manuscript-tagging-dock {
+.manuscript-editor-body {
+  min-width: 0;
+}
+
+.manuscript-structure-rail {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .manuscript-editor-shell-with-rail {
+    align-items: start;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(3.4rem, 4.1rem) minmax(0, 1fr);
+  }
+
+  .manuscript-editor-shell-with-rail .manuscript-editor-body {
+    grid-column: 2;
+  }
+
+  .manuscript-editor-shell-with-rail .manuscript-structure-rail {
+    align-self: start;
+    display: grid;
+    gap: 0.5rem;
+    grid-column: 1;
+    pointer-events: none;
+    position: sticky;
+    top: 5.25rem;
+    z-index: 8;
+  }
+}
+
+.manuscript-structure-rail-card {
+  background: rgba(4, 31, 30, 0.72);
+  border-left: 2px solid rgba(244, 240, 232, 0.35);
+  border-radius: 0.45rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
   display: grid;
-  gap: 0.75rem;
-  border: 1px solid rgba(159, 209, 139, 0.45);
-  border-radius: 0.5rem;
-  background: rgba(3, 41, 39, 0.96);
-  padding: 0.75rem;
-  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.34);
-  backdrop-filter: blur(14px);
+  gap: 0.24rem;
+  min-width: 0;
+  padding: 0.5rem 0.42rem;
 }
 
-.manuscript-tools-scroll {
-  min-height: 0;
-  border: 1px solid var(--color-studio-line);
-  border-radius: 0.5rem;
-  background: rgba(3, 35, 33, 0.78);
-  padding: 0.75rem;
-  overflow-y: auto;
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(14px);
+.manuscript-structure-rail-card-chapter {
+  border-left-color: rgba(240, 183, 101, 0.82);
+}
+
+.manuscript-structure-rail-card-episode {
+  border-left-color: rgba(130, 198, 216, 0.82);
+}
+
+.manuscript-structure-rail-label {
+  color: rgb(244, 240, 232);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.manuscript-structure-rail-title {
+  color: rgb(167, 225, 232);
+  display: -webkit-box;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.manuscript-structure-rail-card-chapter .manuscript-structure-rail-title {
+  color: rgb(240, 183, 101);
+}
+
+.manuscript-structure-rail-next {
+  color: rgba(244, 240, 232, 0.62);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.manuscript-structure-rail-date {
+  color: rgba(130, 198, 216, 0.88);
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1.15;
 }
 
 .manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
   margin: 0 0 1rem;
   scroll-margin-top: 5.5rem;
+  overflow-wrap: anywhere;
 }
 
 .manuscript-prosemirror :where(h1, h2, h3) {
@@ -113,28 +159,166 @@ button:disabled {
   padding-left: 1.35rem;
 }
 
-.manuscript-prosemirror .manuscript-author-charlie {
-  background: rgba(130, 198, 216, 0.18);
-  box-shadow: inset 0 -0.18em rgba(130, 198, 216, 0.42);
+.manuscript-prosemirror :where(p, h1, h2, h3, li) {
+  --manuscript-author-wash: none;
+  --manuscript-semantic-wash: none;
+  --manuscript-structure-wash: none;
+  background-color: transparent;
+  background-image:
+    var(--manuscript-structure-wash),
+    var(--manuscript-semantic-wash),
+    var(--manuscript-author-wash);
+  border-radius: 0.55rem;
+  margin-inline: -0.42rem;
+  padding: 0.16rem 0.42rem 0.22rem;
 }
 
-.manuscript-prosemirror .manuscript-author-homer {
-  background: rgba(159, 209, 139, 0.17);
-  box-shadow: inset 0 -0.18em rgba(159, 209, 139, 0.42);
+.manuscript-prosemirror .manuscript-author-mark {
+  background: transparent;
+  border-radius: 0.2rem;
+  box-shadow: none;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0;
 }
 
+.manuscript-prosemirror .manuscript-author-charlie,
+.manuscript-prosemirror .manuscript-author-homer,
 .manuscript-prosemirror .manuscript-author-unassigned {
-  background: rgba(244, 240, 232, 0.08);
-  box-shadow: inset 0 -0.18em rgba(244, 240, 232, 0.22);
+  background: transparent;
+  box-shadow: none;
+}
+
+.manuscript-prosemirror .manuscript-author-block {
+  border-radius: 0.45rem;
+}
+
+.manuscript-prosemirror .manuscript-author-block-charlie {
+  --manuscript-author-wash: linear-gradient(
+    rgba(82, 164, 220, 0.18),
+    rgba(82, 164, 220, 0.18)
+  );
+}
+
+.manuscript-prosemirror .manuscript-author-block-homer {
+  --manuscript-author-wash: linear-gradient(
+    rgba(126, 200, 134, 0.18),
+    rgba(126, 200, 134, 0.18)
+  );
+}
+
+.manuscript-prosemirror .manuscript-author-block-mixed {
+  --manuscript-author-wash: linear-gradient(
+    90deg,
+    rgba(82, 164, 220, 0.15),
+    rgba(126, 200, 134, 0.15)
+  );
+}
+
+.manuscript-prosemirror .manuscript-author-block-unassigned {
+  --manuscript-author-wash: linear-gradient(
+    rgba(244, 240, 232, 0.045),
+    rgba(244, 240, 232, 0.045)
+  );
+}
+
+.manuscript-prosemirror .manuscript-semantic-block {
+  border-radius: 0.45rem;
+}
+
+.manuscript-prosemirror .manuscript-semantic-block-clip {
+  --manuscript-semantic-wash: linear-gradient(
+    rgba(139, 49, 38, 0.22),
+    rgba(139, 49, 38, 0.18)
+  );
+}
+
+.manuscript-prosemirror .manuscript-semantic-block-show-notes {
+  --manuscript-semantic-wash: linear-gradient(
+    rgba(193, 154, 85, 0.18),
+    rgba(193, 154, 85, 0.14)
+  );
+}
+
+.manuscript-prosemirror .manuscript-semantic-block-mixed {
+  --manuscript-semantic-wash: linear-gradient(
+    90deg,
+    rgba(139, 49, 38, 0.2),
+    rgba(193, 154, 85, 0.16)
+  );
+}
+
+@supports selector(:has(*)) {
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-author-charlie) {
+    --manuscript-author-wash: linear-gradient(
+      rgba(82, 164, 220, 0.18),
+      rgba(82, 164, 220, 0.18)
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-author-homer) {
+    --manuscript-author-wash: linear-gradient(
+      rgba(126, 200, 134, 0.18),
+      rgba(126, 200, 134, 0.18)
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-author-charlie):has(
+      .manuscript-author-homer
+    ) {
+    --manuscript-author-wash: linear-gradient(
+      90deg,
+      rgba(82, 164, 220, 0.15),
+      rgba(126, 200, 134, 0.15)
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-semantic-clip) {
+    --manuscript-semantic-wash: linear-gradient(
+      rgba(139, 49, 38, 0.22),
+      rgba(139, 49, 38, 0.18)
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-semantic-show-notes) {
+    --manuscript-semantic-wash: linear-gradient(
+      rgba(193, 154, 85, 0.18),
+      rgba(193, 154, 85, 0.14)
+    );
+  }
+
+  .manuscript-prosemirror
+    :where(p, h1, h2, h3, li):has(.manuscript-semantic-clip):has(
+      .manuscript-semantic-show-notes
+    ) {
+    --manuscript-semantic-wash: linear-gradient(
+      90deg,
+      rgba(139, 49, 38, 0.2),
+      rgba(193, 154, 85, 0.16)
+    );
+  }
 }
 
 .manuscript-prosemirror .manuscript-semantic-quote {
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(240, 183, 101, 0.65);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-cited-quotation {
   background: rgba(240, 183, 101, 0.18);
+  border-radius: 0.22rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 2px solid rgba(240, 183, 101, 0.9);
+  outline-offset: 0.08em;
   box-shadow:
     inset 0 -0.2em rgba(240, 183, 101, 0.32),
     0 0 0 2px rgba(240, 183, 101, 0.12);
@@ -142,33 +326,87 @@ button:disabled {
 
 .manuscript-prosemirror .manuscript-semantic-quote-candidate {
   background: rgba(130, 198, 216, 0.12);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px dashed rgba(130, 198, 216, 0.82);
+  outline-offset: 0.08em;
   box-shadow: inset 0 -0.18em rgba(130, 198, 216, 0.2);
 }
 
+.manuscript-prosemirror .manuscript-semantic-clip {
+  background: transparent;
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  box-shadow: none;
+  outline: none;
+  padding: 0;
+}
+
+.manuscript-prosemirror .manuscript-semantic-show-notes {
+  background: transparent;
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  box-shadow: none;
+  outline: none;
+  padding: 0;
+}
+
 .manuscript-prosemirror .manuscript-semantic-story {
+  background: rgba(159, 209, 139, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(159, 209, 139, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-insight {
+  background: rgba(130, 198, 216, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(130, 198, 216, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-research {
+  background: rgba(201, 179, 255, 0.09);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(201, 179, 255, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-question,
 .manuscript-prosemirror .manuscript-semantic-needs-review {
+  background: rgba(242, 166, 166, 0.1);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(242, 166, 166, 0.78);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-thesis {
+  background: rgba(244, 240, 232, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px solid rgba(244, 240, 232, 0.72);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-semantic-transition {
+  background: rgba(240, 183, 101, 0.08);
+  border-radius: 0.2rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   outline: 1px dashed rgba(240, 183, 101, 0.75);
+  outline-offset: 0.08em;
 }
 
 .manuscript-prosemirror .manuscript-structure-block {
@@ -177,18 +415,72 @@ button:disabled {
 }
 
 .manuscript-prosemirror .manuscript-structure-chapter {
-  background: linear-gradient(90deg, rgba(240, 183, 101, 0.13), transparent 72%);
+  --manuscript-structure-wash: linear-gradient(
+    90deg,
+    rgba(240, 183, 101, 0.13),
+    transparent 72%
+  );
   border-left-color: rgba(240, 183, 101, 0.76);
 }
 
 .manuscript-prosemirror .manuscript-structure-episode {
-  background: linear-gradient(90deg, rgba(130, 198, 216, 0.13), transparent 72%);
+  --manuscript-structure-wash: linear-gradient(
+    90deg,
+    rgba(130, 198, 216, 0.13),
+    transparent 72%
+  );
   border-left-color: rgba(130, 198, 216, 0.76);
 }
 
 .manuscript-prosemirror .manuscript-structure-section {
-  background: linear-gradient(90deg, rgba(201, 179, 255, 0.13), transparent 72%);
+  --manuscript-structure-wash: linear-gradient(
+    90deg,
+    rgba(201, 179, 255, 0.13),
+    transparent 72%
+  );
   border-left-color: rgba(201, 179, 255, 0.76);
+}
+
+.manuscript-prosemirror .manuscript-boundary-marker-block {
+  border-radius: 0.35rem;
+  outline-offset: 3px;
+}
+
+.manuscript-prosemirror .manuscript-boundary-marker-chapter,
+.manuscript-prosemirror .manuscript-chapter-title-block {
+  --manuscript-structure-wash: linear-gradient(
+    rgba(240, 183, 101, 0.2),
+    rgba(240, 183, 101, 0.16)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(240, 183, 101, 0.32),
+    inset 0 -1px 0 rgba(240, 183, 101, 0.18);
+  color: rgb(252, 229, 188);
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.14;
+  margin-block: 2.15rem 1.55rem;
+  padding: 1.05rem 0.85rem 0.95rem;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.manuscript-prosemirror .manuscript-boundary-marker-episode {
+  --manuscript-structure-wash: linear-gradient(
+    rgba(130, 198, 216, 0.18),
+    rgba(130, 198, 216, 0.12)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(130, 198, 216, 0.3),
+    inset 0 -1px 0 rgba(130, 198, 216, 0.16);
+  color: rgb(185, 231, 242);
+  font-size: 1.32rem;
+  font-weight: 760;
+  line-height: 1.18;
+  margin-block: 1.55rem 1.1rem;
+  padding: 0.72rem 0.8rem 0.66rem;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .manuscript-prosemirror .manuscript-filter-match {
@@ -216,14 +508,30 @@ button:disabled {
 }
 
 .manuscript-hide-author-colors .manuscript-author-mark {
-  background: transparent;
-  box-shadow: none;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.manuscript-hide-author-colors .manuscript-prosemirror .manuscript-author-block {
+  --manuscript-author-wash: none !important;
+}
+
+.manuscript-hide-author-colors
+  .manuscript-prosemirror
+  :where(p, h1, h2, h3, li) {
+  --manuscript-author-wash: none !important;
 }
 
 .manuscript-hide-semantic-colors .manuscript-semantic-mark {
   background: transparent;
   outline: none;
   box-shadow: none;
+}
+
+.manuscript-hide-semantic-colors
+  .manuscript-prosemirror
+  :where(p, h1, h2, h3, li) {
+  --manuscript-semantic-wash: none !important;
 }
 
 .manuscript-recording-mode .manuscript-prosemirror {
@@ -237,14 +545,13 @@ button:disabled {
   cursor: default;
 }
 
-.manuscript-recording-mode .manuscript-prosemirror .manuscript-author-homer {
-  background: transparent;
-  box-shadow: none;
-}
-
-.manuscript-recording-mode .manuscript-prosemirror .manuscript-author-charlie {
-  background: rgba(130, 198, 216, 0.24);
-  box-shadow: inset 0 -0.2em rgba(130, 198, 216, 0.52);
+.manuscript-recording-mode
+  .manuscript-prosemirror
+  .manuscript-author-block-charlie {
+  --manuscript-author-wash: linear-gradient(
+    rgba(82, 164, 220, 0.22),
+    rgba(82, 164, 220, 0.22)
+  );
 }
 
 .manuscript-recording-mode
@@ -279,55 +586,42 @@ button:disabled {
 
 @media (max-width: 640px) {
   .manuscript-prosemirror {
-    font-size: 1.02rem;
-    line-height: 1.9;
-    padding: 1rem;
+    min-height: 58dvh;
+    padding: 1rem 0.95rem calc(6.75rem + env(safe-area-inset-bottom));
+    caret-color: var(--color-studio-tag);
+    font-size: 1.0625rem;
+    line-height: 1.95;
+    overflow-wrap: anywhere;
+    touch-action: manipulation;
   }
 
   .manuscript-prosemirror :where(p, h1, h2, h3, ul, ol) {
-    margin-bottom: 1.15rem;
-    scroll-margin-top: 1.25rem;
-  }
-}
-
-@media (min-width: 768px) {
-  .manuscript-page-shell {
-    padding: 1.5rem;
+    margin-bottom: 1.25rem;
+    scroll-margin-top: 8.5rem;
   }
 
-  .manuscript-page-stack {
-    min-height: calc(100vh - 3rem);
-    grid-template-rows: auto 1fr;
-    gap: 1.125rem;
+  .manuscript-prosemirror :where(h1, h2, h3) {
+    font-size: 1.08em;
+    line-height: 1.35;
   }
 
-  .manuscript-workspace-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+  .manuscript-prosemirror .manuscript-author-mark,
+  .manuscript-prosemirror
+    .manuscript-semantic-mark:not(.manuscript-semantic-clip):not(
+      .manuscript-semantic-show-notes
+    ) {
+    padding: 0.04em 0.12em;
   }
 
-  .manuscript-control-rail {
-    position: sticky;
-    top: 68px;
-    z-index: 30;
-    display: grid;
-    max-height: calc(100dvh - 80px);
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 0.75rem;
+  .manuscript-prosemirror .manuscript-filter-match {
+    outline-width: 3px;
+    outline-offset: 3px;
   }
 
-  .manuscript-tagging-dock {
-    max-height: min(44dvh, 430px);
-    overflow: auto;
-  }
-}
-
-@media (min-width: 1280px) {
-  .manuscript-workspace-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(380px, 430px);
-  }
-
-  .manuscript-control-rail {
-    top: 64px;
-    max-height: calc(100dvh - 76px);
+  .manuscript-recording-mode .manuscript-prosemirror {
+    min-height: 60dvh;
+    padding: 1rem 0.95rem calc(7rem + env(safe-area-inset-bottom));
+    font-size: 1.08rem;
+    line-height: 2.05;
   }
 }

@@ -18,13 +18,15 @@ import {
   cardClassName,
   cn,
   labelClassName,
-  panelClassName,
   panelCopyClassName,
-  panelTitleClassName,
   StudioChip,
   StudioGlyph,
 } from "../studio-ui";
-import { AuthorMark, SemanticHighlightMark } from "./manuscript-editor-marks";
+import {
+  AuthorMark,
+  ManuscriptBlockAttributes,
+  SemanticHighlightMark,
+} from "./manuscript-editor-marks";
 import {
   getManuscriptHelpNote,
   type ManuscriptHelpNoteId,
@@ -38,12 +40,16 @@ import {
   collectStructureRegionSummaries,
   countMissingBlockIds,
   countWordsAndCharacters,
+  applyManuscriptBoundaryAttrsToEditorJson,
   createBackupFileName,
   createBlockFilterOptions,
   createBlockRangeSummary,
   createCitedQuotationMarkdown,
   createDefaultManuscriptDraft,
   createDefaultManuscriptQuoteReview,
+  createManuscriptStructureBoundaryIndex,
+  createStructureBoundaryMarkersFromChapterTitleBlocks,
+  deriveManuscriptChaptersFromTitleBlocks,
   createAuthorContributionMarkdown,
   createHgoEpisodeProjectionFromManuscript,
   createPublishingPacketMarkdown,
@@ -53,7 +59,6 @@ import {
   createRecordingHandoffMarkdown,
   createSyntheticManuscriptSmokeDraft,
   createStudioManuscriptLibraryInputFromDraft,
-  createManuscriptDraftPlainText,
   createManuscriptDraftCheckpointKey,
   createEmptyManuscriptDoc,
   createFilteredBlockListMarkdown,
@@ -62,12 +67,16 @@ import {
   createStructureRegionDefaultTitle,
   createStructureOutlineMarkdown,
   ensureManuscriptBlockIds,
+  formatEpisodePublicationDate,
   getManuscriptAuthorDefinition,
+  getCurrentManuscriptStructureBoundary,
+  getEpisodePublicationDateForIndex,
   getManuscriptQuoteReviewStatusFilterLabel,
   getManuscriptQuoteReviewStatusDefinition,
   getManuscriptQuoteSourceTypeDefinition,
   getManuscriptStructureLabelPresetDefinition,
   getManuscriptStructureDefinition,
+  getNextManuscriptStructureBoundary,
   getSemanticHighlightDefinition,
   hasMeaningfulManuscriptDraft,
   isSyntheticManuscriptSmokeDraft,
@@ -82,6 +91,7 @@ import {
   manuscriptStructureLabelPresets,
   moveManuscriptStructureRegionWithinKind,
   removeManuscriptQuoteReview,
+  rebindManuscriptStructureBlockIds,
   semanticHighlightDefinitions,
   safeManuscriptDraft,
   filterCitedQuotationsByReviewStatus,
@@ -98,6 +108,7 @@ import {
   type ManuscriptAuthorId,
   type ManuscriptBlockFilterCriteria,
   type ManuscriptCitedQuotationSummary,
+  type ManuscriptDerivedChapter,
   type ManuscriptDraft,
   type ManuscriptEditorJson,
   type ManuscriptFilterVisualMode,
@@ -109,6 +120,9 @@ import {
   type StudioHgoProjectionStatus,
   type StudioHgoProjectionVisibility,
   type StudioManuscriptLibraryKind,
+  type ManuscriptStructureBoundary,
+  type ManuscriptStructureBoundaryKind,
+  type ManuscriptStructureBoundaryMarker,
   type ManuscriptStructureKind,
   type ManuscriptStructureLabelPreset,
   type ManuscriptStructureRegion,
@@ -120,6 +134,7 @@ type StudioManuscriptClientProps = {
   actor: {
     primaryEmail: string;
   };
+  initialLiveSnapshotSlug?: string | null;
 };
 
 type ManuscriptServerSnapshotSummary = {
@@ -182,12 +197,48 @@ type ManuscriptSnapshotLatestResponse =
   | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
 
-type ManuscriptSnapshotDetailResponse =
-  | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
+type ManuscriptLiveSnapshotResponse =
+  | {
+      ok: true;
+      slug: string;
+      snapshot: ManuscriptServerSnapshotDetail | null;
+    }
   | { ok: false; message: string };
 
-type ManuscriptLiveRoomCreateResponse =
-  | { ok: true; room: { id: string } }
+type ManuscriptLiveEditFreshnessState =
+  | "current"
+  | "outside-changes"
+  | "no-backup"
+  | "no-room";
+
+type ManuscriptLiveEditStatusResponse =
+  | {
+      ok: true;
+      room: {
+        seedSnapshotId: string | null;
+        lastCheckpointSnapshotId: string | null;
+        hasPersistedState: boolean;
+        updatedAt: string;
+      } | null;
+      latestSnapshot: {
+        id: string;
+        title: string;
+        updatedAt: string;
+        wordCount: number;
+        blockCount: number;
+      } | null;
+      freshness: {
+        state: ManuscriptLiveEditFreshnessState;
+        latestSnapshotId: string | null;
+        roomBaselineSnapshotId: string | null;
+        seedSnapshotId: string | null;
+        lastCheckpointSnapshotId: string | null;
+      };
+    }
+  | { ok: false; message: string };
+
+type ManuscriptSnapshotDetailResponse =
+  | { ok: true; snapshot: ManuscriptServerSnapshotDetail | null }
   | { ok: false; message: string };
 
 type ManuscriptSidePanelMode =
@@ -195,6 +246,7 @@ type ManuscriptSidePanelMode =
   | "structure"
   | "find"
   | "quotes"
+  | "focus-list"
   | "backup"
   | "publish";
 
@@ -212,13 +264,36 @@ type ManuscriptTagContextMenuState = ManuscriptTextSelectionRange & {
   y: number;
 };
 
-const manuscriptSidePanelModes = [
+type ManuscriptStructureRailState = {
+  chapter: ManuscriptStructureBoundary | null;
+  episode: ManuscriptStructureBoundary | null;
+  nextChapter: ManuscriptStructureBoundary | null;
+  nextEpisode: ManuscriptStructureBoundary | null;
+};
+
+const emptyStructureRailState: ManuscriptStructureRailState = {
+  chapter: null,
+  episode: null,
+  nextChapter: null,
+  nextEpisode: null,
+};
+
+const everydayManuscriptSidePanelModes = [
   { id: "mark", label: "Mark" },
   { id: "structure", label: "Structure" },
   { id: "find", label: "Find" },
+  { id: "focus-list", label: "Focus list" },
   { id: "quotes", label: "Quotes" },
+] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
+
+const devManuscriptSidePanelModes = [
   { id: "backup", label: "Backup" },
   { id: "publish", label: "Publish" },
+] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
+
+const manuscriptSidePanelModes = [
+  ...everydayManuscriptSidePanelModes,
+  ...devManuscriptSidePanelModes,
 ] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
 const fieldLabelClassName =
@@ -246,6 +321,85 @@ const dangerButtonClassName =
   "min-h-10 rounded-lg border border-studio-danger/45 bg-studio-danger/10 px-3 py-2 text-[0.8rem] font-extrabold text-studio-danger sm:min-h-8 sm:px-2.5 sm:py-1.5 sm:text-[0.78rem]";
 
 const blockNodeTypes = ["paragraph", "heading", "listItem"];
+
+function collectRenderedManuscriptBlockNodeList(root: HTMLElement) {
+  const nodes: HTMLElement[] = [];
+  const seenBlockIds = new Set<string>();
+  const collectFrom = (parent: ParentNode) => {
+    parent.querySelectorAll<HTMLElement>("[data-blockid]").forEach((node) => {
+      const blockId = node.getAttribute("data-blockid");
+
+      if (blockId && !seenBlockIds.has(blockId)) {
+        seenBlockIds.add(blockId);
+        nodes.push(node);
+      }
+    });
+  };
+
+  collectFrom(root);
+
+  if (!nodes.length) {
+    document
+      .querySelectorAll<HTMLElement>(".manuscript-prosemirror [data-blockid]")
+      .forEach((node) => {
+        const blockId = node.getAttribute("data-blockid");
+
+        if (blockId && !seenBlockIds.has(blockId)) {
+          seenBlockIds.add(blockId);
+          nodes.push(node);
+        }
+      });
+  }
+
+  return nodes;
+}
+
+type SemanticHighlightDefinition =
+  (typeof semanticHighlightDefinitions)[number];
+type SemanticHighlightColorKey = SemanticHighlightDefinition["colorKey"];
+
+const quickSemanticHighlightTypes = [
+  "clip",
+  "show-notes",
+] as const satisfies readonly SemanticHighlightType[];
+
+const semanticControlClassNames: Record<SemanticHighlightColorKey, string> = {
+  quote: "border-studio-node/55 bg-studio-node/10 text-studio-node",
+  "cited-quotation":
+    "border-studio-node/75 bg-studio-node/15 text-studio-node",
+  "quote-candidate":
+    "border-studio-source/55 bg-studio-source/10 text-studio-source",
+  clip: "border-[#8b3126]/70 bg-[#8b3126]/15 text-[#e89a8e]",
+  "show-notes": "border-[#c19a55]/65 bg-[#c19a55]/10 text-[#e6c780]",
+  story: "border-studio-tag/55 bg-studio-tag/10 text-studio-tag",
+  insight: "border-studio-source/55 bg-studio-source/10 text-studio-source",
+  research: "border-studio-review/55 bg-studio-review/10 text-studio-review",
+  question: "border-studio-danger/55 bg-studio-danger/10 text-studio-danger",
+  "needs-review":
+    "border-studio-danger/55 bg-studio-danger/10 text-studio-danger",
+  thesis: "border-studio-ink/45 bg-studio-ink/10 text-studio-ink",
+  transition: "border-studio-node/55 bg-studio-node/10 text-studio-node",
+};
+
+const semanticSwatchClassNames: Record<SemanticHighlightColorKey, string> = {
+  quote: "bg-studio-node",
+  "cited-quotation": "bg-studio-node",
+  "quote-candidate": "bg-studio-source",
+  clip: "bg-[#8b3126]",
+  "show-notes": "bg-[#c19a55]",
+  story: "bg-studio-tag",
+  insight: "bg-studio-source",
+  research: "bg-studio-review",
+  question: "bg-studio-danger",
+  "needs-review": "bg-studio-danger",
+  thesis: "bg-studio-ink",
+  transition: "bg-studio-node",
+};
+
+const semanticActiveControlClassName = "ring-1 ring-inset ring-current";
+
+const MANUSCRIPT_LIVE_LATEST_PATH = "/manuscript/live/latest";
+const MANUSCRIPT_LIVE_EDIT_PATH = "/manuscript/collab/latest";
 
 function HelpHeading({
   children,
@@ -305,6 +459,81 @@ function createStructureRegionId() {
   return `structure-${createId("region")}`;
 }
 
+function createStructureBoundaryMarkerId(kind: ManuscriptStructureBoundaryKind) {
+  return `boundary-${kind}-${createId("marker")}`;
+}
+
+function createLegacyChapterTitleBlocks(
+  markers: ManuscriptStructureBoundaryMarker[],
+) {
+  return markers
+    .filter((marker) => marker.kind === "chapter")
+    .map((marker) => ({
+      id: marker.id,
+      blockId: marker.blockId,
+      createdAt: marker.createdAt,
+      updatedAt: marker.updatedAt,
+    }));
+}
+
+function getSemanticControlClassName(
+  definition: SemanticHighlightDefinition,
+  isActive: boolean,
+  baseClassName = smallButtonClassName,
+) {
+  return cn(
+    baseClassName,
+    "inline-flex min-w-0 items-center justify-center gap-1.5",
+    semanticControlClassNames[definition.colorKey],
+    isActive && semanticActiveControlClassName,
+  );
+}
+
+function SemanticTagLabel({
+  definition,
+}: {
+  definition: SemanticHighlightDefinition;
+}) {
+  return (
+    <span className="inline-flex min-w-0 items-center justify-center gap-1.5">
+      <span
+        className={cn(
+          "size-2.5 shrink-0 rounded-full shadow-[0_0_0_2px_rgba(244,240,232,0.14)]",
+          semanticSwatchClassNames[definition.colorKey],
+        )}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 truncate">{definition.label}</span>
+    </span>
+  );
+}
+
+function areStructureRailRegionsEqual(
+  left: ManuscriptStructureBoundary | null,
+  right: ManuscriptStructureBoundary | null,
+) {
+  return (
+    left?.id === right?.id &&
+    left?.source === right?.source &&
+    left?.label === right?.label &&
+    left?.title === right?.title &&
+    left?.startIndex === right?.startIndex &&
+    left?.endIndex === right?.endIndex
+  );
+}
+
+function areStructureRailStatesEqual(
+  left: ManuscriptStructureRailState,
+  right: ManuscriptStructureRailState,
+) {
+  return (
+    areStructureRailRegionsEqual(left.chapter, right.chapter) &&
+    areStructureRailRegionsEqual(left.episode, right.episode) &&
+    areStructureRailRegionsEqual(left.nextChapter, right.nextChapter) &&
+    areStructureRailRegionsEqual(left.nextEpisode, right.nextEpisode)
+  );
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return "Not saved yet";
@@ -356,6 +585,10 @@ function getSidePanelModeHelpNoteId(
     return "quotes-mode";
   }
 
+  if (mode === "focus-list") {
+    return "find-mode";
+  }
+
   if (mode === "backup") {
     return "backup-mode";
   }
@@ -393,6 +626,7 @@ function createDraftFromState(input: {
   sourceFileName: string | null;
   importSummary: ManuscriptImportSummary | null;
   structureRegions: ManuscriptStructureRegion[];
+  structureBoundaryMarkers: ManuscriptStructureBoundaryMarker[];
   quoteReviews: Record<string, ManuscriptQuoteReview>;
   editorJson: ManuscriptEditorJson;
   activeAuthorId: ManuscriptAuthorId;
@@ -406,6 +640,10 @@ function createDraftFromState(input: {
     sourceFileName: input.sourceFileName,
     importSummary: input.importSummary,
     structureRegions: input.structureRegions,
+    structureBoundaryMarkers: input.structureBoundaryMarkers,
+    chapterTitleBlocks: createLegacyChapterTitleBlocks(
+      input.structureBoundaryMarkers,
+    ),
     quoteReviews: input.quoteReviews,
     editorJson: input.editorJson,
     activeAuthorId: input.activeAuthorId,
@@ -530,8 +768,11 @@ function downloadTextFile(input: {
 
 export function StudioManuscriptClient({
   actor,
+  initialLiveSnapshotSlug = null,
 }: StudioManuscriptClientProps) {
   const skipNextPersistRef = useRef(false);
+  const liveSnapshotLoadStartedRef = useRef(false);
+  const initialServerRefreshStartedRef = useRef(false);
   const manuscriptSurfaceRef = useRef<HTMLElement | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [title, setTitle] = useState("Untitled manuscript");
@@ -544,8 +785,11 @@ export function StudioManuscriptClient({
   const [showSemanticColors, setShowSemanticColors] = useState(true);
   const [sidePanelMode, setSidePanelMode] =
     useState<ManuscriptSidePanelMode>("mark");
+  const [isDevMode, setIsDevMode] = useState(false);
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+  const [isSaveShareDialogOpen, setIsSaveShareDialogOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [recordingOutlineKind, setRecordingOutlineKind] =
     useState<RecordingOutlineKind>("all");
   const [semanticType, setSemanticType] =
@@ -561,6 +805,14 @@ export function StudioManuscriptClient({
   const [structureRegions, setStructureRegions] = useState<
     ManuscriptStructureRegion[]
   >([]);
+  const [structureBoundaryMarkers, setStructureBoundaryMarkers] = useState<
+    ManuscriptStructureBoundaryMarker[]
+  >([]);
+  const [editingBoundaryMarkerId, setEditingBoundaryMarkerId] = useState<
+    string | null
+  >(null);
+  const [editingBoundaryTitle, setEditingBoundaryTitle] = useState("");
+  const [editingBoundaryNotes, setEditingBoundaryNotes] = useState("");
   const [quoteReviews, setQuoteReviews] = useState<
     Record<string, ManuscriptQuoteReview>
   >({});
@@ -578,6 +830,8 @@ export function StudioManuscriptClient({
     endBlockId: string;
     blockCount: number;
   } | null>(null);
+  const [structureRailState, setStructureRailState] =
+    useState<ManuscriptStructureRailState>(emptyStructureRailState);
   const [hasTextSelection, setHasTextSelection] = useState(false);
   const [tagContextMenu, setTagContextMenu] =
     useState<ManuscriptTagContextMenuState | null>(null);
@@ -639,12 +893,14 @@ export function StudioManuscriptClient({
   const [serverSnapshotDescription, setServerSnapshotDescription] =
     useState("");
   const [isServerSnapshotBusy, setIsServerSnapshotBusy] = useState(false);
-  const [isStartingLiveRoom, setIsStartingLiveRoom] = useState(false);
   const [isServerSnapshotUnavailable, setIsServerSnapshotUnavailable] =
     useState(false);
   const [serverConnectionState, setServerConnectionState] = useState<
     "unchecked" | "connected" | "unavailable"
   >("unchecked");
+  const [liveEditStatus, setLiveEditStatus] =
+    useState<ManuscriptLiveEditStatusResponse | null>(null);
+  const [isLiveEditStatusBusy, setIsLiveEditStatusBusy] = useState(false);
   const [lastSavedServerSnapshot, setLastSavedServerSnapshot] =
     useState<ManuscriptServerSnapshotSummary | null>(null);
   const [serverCheckpointKey, setServerCheckpointKey] = useState<string | null>(
@@ -652,6 +908,9 @@ export function StudioManuscriptClient({
   );
   const [serverSnapshotStatus, setServerSnapshotStatus] = useState(
     "Server snapshots not checked yet.",
+  );
+  const [sessionStartWordCount, setSessionStartWordCount] = useState<number | null>(
+    null,
   );
   const [editorJson, setEditorJson] = useState<ManuscriptEditorJson>(
     createEmptyManuscriptDoc(),
@@ -713,6 +972,7 @@ export function StudioManuscriptClient({
         types: blockNodeTypes,
         generateID: ({ node, pos }) => createBlockId(node.type.name, pos),
       }),
+      ManuscriptBlockAttributes,
       AuthorMark,
       SemanticHighlightMark,
     ],
@@ -721,7 +981,7 @@ export function StudioManuscriptClient({
     editorProps: {
       attributes: {
         class:
-          "manuscript-prosemirror min-h-[560px] rounded-lg border border-studio-line-strong bg-[#031918] px-5 py-4 text-[1rem] leading-8 text-studio-ink outline-none",
+          "manuscript-prosemirror min-h-[560px] bg-transparent px-0 py-0 text-[1rem] leading-8 text-studio-ink outline-none",
       },
     },
     onUpdate: ({ editor: currentEditor }) => {
@@ -741,18 +1001,7 @@ export function StudioManuscriptClient({
         const parsed = safeManuscriptDraft(JSON.parse(rawDraft));
 
         if (parsed) {
-          setTitle(parsed.title);
-          setSourceFileName(parsed.sourceFileName);
-          setImportSummary(parsed.importSummary);
-          setStructureRegions(parsed.structureRegions);
-          setQuoteReviews(parsed.quoteReviews);
-          setActiveAuthorId(parsed.activeAuthorId);
-          setShowAuthorColors(parsed.showAuthorColors);
-          setShowSemanticColors(parsed.showSemanticColors);
-          setLastUpdatedAt(parsed.lastUpdatedAt);
-          setEditorJson(parsed.editorJson);
-          editor.commands.setContent(parsed.editorJson as JSONContent);
-          setMessage("Loaded browser-local Manuscript Desk draft.");
+          applyDraftToEditor(parsed, "Loaded browser-local Manuscript Desk draft.");
         }
       }
     } catch (error) {
@@ -779,6 +1028,7 @@ export function StudioManuscriptClient({
       sourceFileName,
       importSummary,
       structureRegions,
+      structureBoundaryMarkers,
       quoteReviews,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
@@ -807,6 +1057,7 @@ export function StudioManuscriptClient({
     showAuthorColors,
     showSemanticColors,
     sourceFileName,
+    structureBoundaryMarkers,
     structureRegions,
     title,
   ]);
@@ -819,10 +1070,49 @@ export function StudioManuscriptClient({
     () => countWordsAndCharacters(currentEditorJson),
     [currentEditorJson],
   );
+
+  useEffect(() => {
+    if (isHydrated && sessionStartWordCount === null) {
+      setSessionStartWordCount(textStats.words);
+    }
+  }, [isHydrated, sessionStartWordCount, textStats.words]);
+
   const blockSummaries = useMemo(
     () => collectBlockSummaries(currentEditorJson),
     [currentEditorJson],
   );
+  const chapterTitleBlocks = useMemo(
+    () => createLegacyChapterTitleBlocks(structureBoundaryMarkers),
+    [structureBoundaryMarkers],
+  );
+  const derivedChapters = useMemo(
+    () =>
+      deriveManuscriptChaptersFromTitleBlocks({
+        blocks: blockSummaries,
+        chapterTitleBlocks,
+      }),
+    [blockSummaries, chapterTitleBlocks],
+  );
+  const chapterTitleBlockIds = useMemo(
+    () => new Set(chapterTitleBlocks.map((titleBlock) => titleBlock.blockId)),
+    [chapterTitleBlocks],
+  );
+  const episodeBoundaryBlockIds = useMemo(
+    () =>
+      new Set(
+        structureBoundaryMarkers
+          .filter((marker) => marker.kind === "episode")
+          .map((marker) => marker.blockId),
+      ),
+    [structureBoundaryMarkers],
+  );
+  const leadingChapterlessBlockCount = useMemo(() => {
+    if (!blockSummaries.length || !derivedChapters.length) {
+      return blockSummaries.length;
+    }
+
+    return Math.max(0, derivedChapters[0].startIndex);
+  }, [blockSummaries.length, derivedChapters]);
   const pendingStructureRange = useMemo(
     () =>
       createBlockRangeSummary({
@@ -839,6 +1129,21 @@ export function StudioManuscriptClient({
         regions: structureRegions,
       }),
     [currentEditorJson, structureRegions],
+  );
+  const structureBoundaryIndex = useMemo(
+    () =>
+      createManuscriptStructureBoundaryIndex({
+        blocks: blockSummaries,
+        boundaryMarkers: structureBoundaryMarkers,
+      }),
+    [blockSummaries, structureBoundaryMarkers],
+  );
+  const structureRailRegions = useMemo(
+    () => ({
+      chapters: structureBoundaryIndex.chapters,
+      episodes: structureBoundaryIndex.episodes,
+    }),
+    [structureBoundaryIndex],
   );
   const hgoEpisodeRegionOptions = useMemo(
     () => structureRegionSummaries.filter((region) => region.kind === "episode"),
@@ -1005,14 +1310,18 @@ export function StudioManuscriptClient({
         sourceFileName,
         importSummary,
         structureRegions,
+        structureBoundaryMarkers,
+        chapterTitleBlocks,
         quoteReviews,
         editorJson: currentEditorJson,
       }),
     [
+      chapterTitleBlocks,
       currentEditorJson,
       importSummary,
       quoteReviews,
       sourceFileName,
+      structureBoundaryMarkers,
       structureRegions,
       title,
     ],
@@ -1024,6 +1333,7 @@ export function StudioManuscriptClient({
         sourceFileName,
         importSummary,
         structureRegions,
+        structureBoundaryMarkers,
         quoteReviews,
         editorJson: currentEditorJson,
         activeAuthorId,
@@ -1040,6 +1350,7 @@ export function StudioManuscriptClient({
       showAuthorColors,
       showSemanticColors,
       sourceFileName,
+      structureBoundaryMarkers,
       structureRegions,
       title,
     ],
@@ -1073,6 +1384,49 @@ export function StudioManuscriptClient({
       : hasLocalChangesSinceServerSave
         ? "Yes"
         : "No";
+  const visibleSidePanelModes = isDevMode
+    ? manuscriptSidePanelModes
+    : everydayManuscriptSidePanelModes;
+  const visibleWorkModeOptions = visibleSidePanelModes.filter(
+    (mode) =>
+      !isRecordingMode || (mode.id !== "mark" && mode.id !== "backup"),
+  );
+  const latestShareSnapshot =
+    lastSavedServerSnapshot ??
+    latestServerSnapshot ??
+    selectedServerManuscript?.latestSnapshot ??
+    null;
+  const liveEditFreshness = liveEditStatus?.ok
+    ? liveEditStatus.freshness.state
+    : null;
+  const liveEditStatusTone =
+    liveEditFreshness === "current"
+      ? "tag"
+      : liveEditFreshness === "outside-changes"
+        ? "review"
+        : liveEditStatus?.ok
+          ? "source"
+          : "danger";
+  const liveEditStatusLabel = isLiveEditStatusBusy
+    ? "Checking"
+    : liveEditFreshness === "current"
+      ? "Room current"
+      : liveEditFreshness === "outside-changes"
+        ? "Newer save"
+        : liveEditFreshness === "no-backup"
+          ? "No backup"
+          : liveEditFreshness === "no-room"
+            ? "No room"
+            : "Unknown";
+  const liveEditStatusCopy = liveEditStatus?.ok
+    ? liveEditFreshness === "current"
+      ? "The shared room is lined up with the latest manuscript backup."
+      : liveEditFreshness === "outside-changes"
+        ? "A newer manuscript backup exists. Open live edit with the handoff prompt before co-editing."
+        : liveEditFreshness === "no-backup"
+          ? "Save a manuscript backup before inviting someone into live edit."
+          : "The shared room has not been created yet."
+    : liveEditStatus?.message ?? "Live edit room status has not been checked yet.";
   const publishingSnapshotState = useMemo(
     () => ({
       serverConnectionState,
@@ -1160,10 +1514,32 @@ export function StudioManuscriptClient({
   }, [editor, isRecordingMode]);
 
   useEffect(() => {
-    if (isRecordingMode && sidePanelMode === "backup") {
+    if (
+      isRecordingMode &&
+      (sidePanelMode === "backup" || sidePanelMode === "publish")
+    ) {
       setSidePanelMode("structure");
     }
   }, [isRecordingMode, sidePanelMode]);
+
+  useEffect(() => {
+    if (isDevMode || (sidePanelMode !== "backup" && sidePanelMode !== "publish")) {
+      return;
+    }
+
+    setSidePanelMode("mark");
+  }, [isDevMode, sidePanelMode]);
+
+  useEffect(() => {
+    if (!isHydrated || isRecordingMode || initialServerRefreshStartedRef.current) {
+      return;
+    }
+
+    initialServerRefreshStartedRef.current = true;
+    void refreshManuscriptLibrary({ silent: true });
+    void refreshServerSnapshots({ silent: true });
+    void refreshLiveEditStatus({ silent: true });
+  }, [isHydrated, isRecordingMode]);
 
   useEffect(() => {
     if (!isHydrated || isRecordingMode || sidePanelMode !== "backup") {
@@ -1172,6 +1548,7 @@ export function StudioManuscriptClient({
 
     void refreshManuscriptLibrary({ silent: true });
     void refreshServerSnapshots({ silent: true });
+    void refreshLiveEditStatus({ silent: true });
   }, [isHydrated, isRecordingMode, sidePanelMode]);
 
   useEffect(() => {
@@ -1181,6 +1558,20 @@ export function StudioManuscriptClient({
 
     void refreshServerSnapshots({ silent: true });
   }, [isHydrated, isRecordingMode, selectedServerManuscriptId, sidePanelMode]);
+
+  useEffect(() => {
+    if (
+      !editor ||
+      !isHydrated ||
+      !initialLiveSnapshotSlug ||
+      liveSnapshotLoadStartedRef.current
+    ) {
+      return;
+    }
+
+    liveSnapshotLoadStartedRef.current = true;
+    void loadLiveSnapshotBySlug(initialLiveSnapshotSlug);
+  }, [editor, initialLiveSnapshotSlug, isHydrated]);
 
   useEffect(() => {
     if (isSyntheticSmokeDraftLoaded) {
@@ -1246,101 +1637,441 @@ export function StudioManuscriptClient({
       return;
     }
 
-    const classNames = [
-      "manuscript-structure-block",
-      "manuscript-structure-chapter",
-      "manuscript-structure-episode",
-      "manuscript-structure-section",
-      "manuscript-filter-match",
-      "manuscript-filter-dim",
-      "manuscript-filter-hide",
-      "manuscript-filter-context",
-    ];
+    let animationFrameId: number | null = null;
 
-    editor.state.doc.descendants((node, pos) => {
-      if (!blockNodeTypes.includes(node.type.name)) {
-        return true;
-      }
+    const applyBlockDecorations = () => {
+      const classNames = [
+        "manuscript-author-block",
+        "manuscript-author-block-charlie",
+        "manuscript-author-block-homer",
+        "manuscript-author-block-mixed",
+        "manuscript-author-block-unassigned",
+        "manuscript-semantic-block",
+        "manuscript-semantic-block-clip",
+        "manuscript-semantic-block-show-notes",
+        "manuscript-semantic-block-mixed",
+        "manuscript-structure-block",
+        "manuscript-structure-chapter",
+        "manuscript-structure-episode",
+        "manuscript-structure-section",
+        "manuscript-chapter-title-block",
+        "manuscript-boundary-marker-block",
+        "manuscript-boundary-marker-chapter",
+        "manuscript-boundary-marker-episode",
+        "manuscript-filter-match",
+        "manuscript-filter-dim",
+        "manuscript-filter-hide",
+        "manuscript-filter-context",
+      ];
+      const renderedBlockNodes = collectRenderedManuscriptBlockNodeList(
+        editor.view.dom,
+      );
+      const renderedBlockNodesById = new Map(
+        renderedBlockNodes.flatMap((node) => {
+          const blockId = node.getAttribute("data-blockid");
 
-      const domNode = editor.view.nodeDOM(pos);
+          return blockId ? [[blockId, node] as const] : [];
+        }),
+      );
 
-      if (domNode instanceof HTMLElement) {
+      renderedBlockNodesById.forEach((domNode) => {
         domNode.classList.remove(...classNames);
         domNode.removeAttribute("data-structure-regions");
+        domNode.removeAttribute("data-structure-boundaries");
+        domNode.removeAttribute("data-manuscript-boundary-heading");
+      });
+
+      const regionsByBlockId = new Map<
+        string,
+        ManuscriptStructureRegionSummary[]
+      >();
+
+      for (const region of structureRegionSummaries) {
+        for (const blockId of region.blockIds) {
+          const regions = regionsByBlockId.get(blockId) ?? [];
+          regions.push(region);
+          regionsByBlockId.set(blockId, regions);
+        }
       }
 
-      return true;
-    });
+      const matchingFilterBlockIds = new Set(
+        focusVisibleBlockIds.matchingBlockIds,
+      );
+      const contextFilterBlockIds = new Set(
+        focusVisibleBlockIds.contextBlockIds,
+      );
+      const visibleFilterBlockIds = new Set(focusVisibleBlockIds.visibleBlockIds);
+      const blockIndexById = new Map(
+        blockSummaries.flatMap((block, index) =>
+          block.blockId ? [[block.blockId, index] as const] : [],
+        ),
+      );
+      const boundaryMarkersByBlockId = new Map<
+        string,
+        ManuscriptStructureBoundaryMarker[]
+      >();
 
-    const regionsByBlockId = new Map<string, ManuscriptStructureRegionSummary[]>();
+      for (const marker of structureBoundaryMarkers) {
+        const sourceBlockIndex = blockIndexById.get(marker.blockId);
+        const fallbackBlockId =
+          sourceBlockIndex === undefined
+            ? null
+            : renderedBlockNodes[sourceBlockIndex]?.getAttribute("data-blockid");
+        const resolvedBlockId = renderedBlockNodesById.has(marker.blockId)
+          ? marker.blockId
+          : fallbackBlockId;
 
-    for (const region of structureRegionSummaries) {
-      for (const blockId of region.blockIds) {
-        const regions = regionsByBlockId.get(blockId) ?? [];
-        regions.push(region);
-        regionsByBlockId.set(blockId, regions);
-      }
-    }
-
-    const matchingFilterBlockIds = new Set(focusVisibleBlockIds.matchingBlockIds);
-    const contextFilterBlockIds = new Set(focusVisibleBlockIds.contextBlockIds);
-    const visibleFilterBlockIds = new Set(focusVisibleBlockIds.visibleBlockIds);
-
-    editor.state.doc.descendants((node, pos) => {
-      if (!blockNodeTypes.includes(node.type.name)) {
-        return true;
-      }
-
-      const blockId = node.attrs.blockId;
-
-      if (typeof blockId !== "string") {
-        return true;
-      }
-
-      const regions = regionsByBlockId.get(blockId);
-      const domNode = editor.view.nodeDOM(pos);
-
-      if (!(domNode instanceof HTMLElement)) {
-        return true;
-      }
-
-      if (regions?.length) {
-        domNode.classList.add("manuscript-structure-block");
-
-        for (const region of regions) {
-          domNode.classList.add(`manuscript-structure-${region.colorKey}`);
+        if (!resolvedBlockId) {
+          continue;
         }
 
-        domNode.setAttribute(
-          "data-structure-regions",
-          regions.map((region) => region.title).join(", "),
-        );
+        const markers = boundaryMarkersByBlockId.get(resolvedBlockId) ?? [];
+        markers.push(marker);
+        boundaryMarkersByBlockId.set(resolvedBlockId, markers);
       }
 
-      if (blockFilterSummary.hasActiveFilters) {
-        if (matchingFilterBlockIds.has(blockId)) {
-          domNode.classList.add("manuscript-filter-match");
-        } else if (filterVisualMode === "dim-nonmatches") {
-          domNode.classList.add("manuscript-filter-dim");
-        } else if (filterVisualMode === "hide-nonmatches") {
-          if (contextFilterBlockIds.has(blockId)) {
-            domNode.classList.add("manuscript-filter-context");
-          } else if (!visibleFilterBlockIds.has(blockId)) {
-            domNode.classList.add("manuscript-filter-hide");
+      const blockDetailsById = new Map(
+        blockDetails.flatMap((block) =>
+          block.blockId ? [[block.blockId, block] as const] : [],
+        ),
+      );
+
+      renderedBlockNodesById.forEach((domNode, blockId) => {
+        const regions = regionsByBlockId.get(blockId);
+        const blockDetail = blockDetailsById.get(blockId);
+        const blockAuthorIds = new Set(blockDetail?.authorIds ?? []);
+
+        const hasCharlieAuthor = blockAuthorIds.has("charlie");
+        const hasHomerAuthor = blockAuthorIds.has("homer");
+
+        if (
+          hasCharlieAuthor ||
+          hasHomerAuthor ||
+          blockAuthorIds.has("unassigned")
+        ) {
+          domNode.classList.add("manuscript-author-block");
+
+          if (hasCharlieAuthor && hasHomerAuthor) {
+            domNode.classList.add("manuscript-author-block-mixed");
+          } else if (hasCharlieAuthor) {
+            domNode.classList.add("manuscript-author-block-charlie");
+          } else if (hasHomerAuthor) {
+            domNode.classList.add("manuscript-author-block-homer");
+          } else {
+            domNode.classList.add("manuscript-author-block-unassigned");
           }
         }
+
+        const hasClipSemantic =
+          blockDetail?.semanticTagTypes.includes("clip") ?? false;
+        const hasShowNotesSemantic =
+          blockDetail?.semanticTagTypes.includes("show-notes") ?? false;
+
+        if (hasClipSemantic || hasShowNotesSemantic) {
+          domNode.classList.add("manuscript-semantic-block");
+
+          if (hasClipSemantic && hasShowNotesSemantic) {
+            domNode.classList.add("manuscript-semantic-block-mixed");
+          } else if (hasClipSemantic) {
+            domNode.classList.add("manuscript-semantic-block-clip");
+          } else {
+            domNode.classList.add("manuscript-semantic-block-show-notes");
+          }
+        }
+
+        if (regions?.length) {
+          domNode.classList.add("manuscript-structure-block");
+
+          for (const region of regions) {
+            domNode.classList.add(`manuscript-structure-${region.colorKey}`);
+          }
+
+          domNode.setAttribute(
+            "data-structure-regions",
+            regions.map((region) => region.title).join(", "),
+          );
+        }
+
+        const boundaryMarkers = boundaryMarkersByBlockId.get(blockId);
+
+        if (boundaryMarkers?.length) {
+          domNode.classList.add("manuscript-boundary-marker-block");
+
+          if (boundaryMarkers.some((marker) => marker.kind === "chapter")) {
+            domNode.classList.add("manuscript-boundary-marker-chapter");
+            domNode.classList.add("manuscript-chapter-title-block");
+            domNode.setAttribute("data-manuscript-boundary-heading", "chapter");
+          }
+
+          if (boundaryMarkers.some((marker) => marker.kind === "episode")) {
+            domNode.classList.add("manuscript-boundary-marker-episode");
+            domNode.setAttribute("data-manuscript-boundary-heading", "episode");
+          }
+
+          domNode.setAttribute(
+            "data-structure-boundaries",
+            boundaryMarkers
+              .map((marker) =>
+                marker.kind === "chapter" ? "Chapter" : "Episode",
+              )
+              .join(", "),
+          );
+        }
+
+        if (blockFilterSummary.hasActiveFilters) {
+          if (matchingFilterBlockIds.has(blockId)) {
+            domNode.classList.add("manuscript-filter-match");
+          } else if (filterVisualMode === "dim-nonmatches") {
+            domNode.classList.add("manuscript-filter-dim");
+          } else if (filterVisualMode === "hide-nonmatches") {
+            if (contextFilterBlockIds.has(blockId)) {
+              domNode.classList.add("manuscript-filter-context");
+            } else if (!visibleFilterBlockIds.has(blockId)) {
+              domNode.classList.add("manuscript-filter-hide");
+            }
+          }
+        }
+      });
+    };
+
+    const scheduleBlockDecorations = () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
       }
 
-      return true;
-    });
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = null;
+        applyBlockDecorations();
+      });
+    };
+
+    scheduleBlockDecorations();
+    const timeoutId = window.setTimeout(scheduleBlockDecorations, 80);
+    editor.on("transaction", scheduleBlockDecorations);
+    editor.on("update", scheduleBlockDecorations);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      editor.off("transaction", scheduleBlockDecorations);
+      editor.off("update", scheduleBlockDecorations);
+    };
   }, [
     blockFilterSummary.hasActiveFilters,
+    blockDetails,
+    blockSummaries,
     editor,
     editorJson,
     filterVisualMode,
     focusVisibleBlockIds,
+    structureBoundaryMarkers,
     structureRegionSummaries,
   ]);
+
+  useEffect(() => {
+    if (!editor || !isHydrated) {
+      return;
+    }
+
+    const currentJson = ensureBlockIds(
+      editor.getJSON() as ManuscriptEditorJson,
+    );
+    const nextJson = applyManuscriptBoundaryAttrsToEditorJson({
+      json: currentJson,
+      boundaryMarkers: structureBoundaryMarkers,
+    });
+
+    if (JSON.stringify(currentJson) === JSON.stringify(nextJson)) {
+      return;
+    }
+
+    editor.commands.setContent(nextJson as JSONContent);
+    setEditorJson(nextJson);
+  }, [editor, isHydrated, structureBoundaryMarkers]);
+
+  useEffect(() => {
+    if (
+      !editor ||
+      !blockSummaries.length ||
+      (!structureRailRegions.chapters.length &&
+        !structureRailRegions.episodes.length)
+    ) {
+      setStructureRailState((previous) =>
+        areStructureRailStatesEqual(previous, emptyStructureRailState)
+          ? previous
+          : emptyStructureRailState,
+      );
+      return;
+    }
+
+    const blockIndexById = new Map<string, number>();
+
+    blockSummaries.forEach((block, index) => {
+      if (block.blockId) {
+        blockIndexById.set(block.blockId, index);
+      }
+    });
+
+    let animationFrame = 0;
+
+    const readBlockElements = () => {
+      const blockElements: Array<{
+        index: number;
+        element: HTMLElement;
+      }> = [];
+
+      editor.state.doc.descendants((node, pos) => {
+        if (!blockNodeTypes.includes(node.type.name)) {
+          return true;
+        }
+
+        const blockId = node.attrs.blockId;
+
+        if (typeof blockId !== "string") {
+          return true;
+        }
+
+        const index = blockIndexById.get(blockId);
+        const domNode = editor.view.nodeDOM(pos);
+
+        if (typeof index === "number" && domNode instanceof HTMLElement) {
+          blockElements.push({ index, element: domNode });
+        }
+
+        return true;
+      });
+
+      return blockElements.sort((left, right) => left.index - right.index);
+    };
+
+    const readCurrentBlockIndex = () => {
+      const blockElements = readBlockElements();
+
+      if (!blockElements.length) {
+        return null;
+      }
+
+      const anchorY = Math.min(Math.max(window.innerHeight * 0.22, 96), 180);
+      let currentIndex = blockElements[0]?.index ?? 0;
+
+      for (const block of blockElements) {
+        const rect = block.element.getBoundingClientRect();
+
+        if (rect.height <= 0) {
+          continue;
+        }
+
+        if (rect.bottom < anchorY) {
+          currentIndex = block.index;
+          continue;
+        }
+
+        if (rect.top <= anchorY) {
+          currentIndex = block.index;
+        } else if (currentIndex < 0) {
+          currentIndex = block.index;
+        }
+
+        break;
+      }
+
+      return currentIndex;
+    };
+
+    const updateStructureRail = () => {
+      animationFrame = 0;
+
+      const currentBlockIndex = readCurrentBlockIndex();
+
+      if (currentBlockIndex === null) {
+        setStructureRailState((previous) =>
+          areStructureRailStatesEqual(previous, emptyStructureRailState)
+            ? previous
+            : emptyStructureRailState,
+        );
+        return;
+      }
+
+      const chapter = getCurrentManuscriptStructureBoundary(
+        structureRailRegions.chapters,
+        currentBlockIndex,
+      );
+      const episode = getCurrentManuscriptStructureBoundary(
+        structureRailRegions.episodes,
+        currentBlockIndex,
+      );
+      const nextState: ManuscriptStructureRailState = {
+        chapter,
+        episode,
+        nextChapter: getNextManuscriptStructureBoundary(
+          structureRailRegions.chapters,
+          currentBlockIndex,
+          chapter,
+        ),
+        nextEpisode: getNextManuscriptStructureBoundary(
+          structureRailRegions.episodes,
+          currentBlockIndex,
+          episode,
+        ),
+      };
+
+      setStructureRailState((previous) =>
+        areStructureRailStatesEqual(previous, nextState) ? previous : nextState,
+      );
+    };
+
+    const scheduleStructureRailUpdate = () => {
+      if (animationFrame) {
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(updateStructureRail);
+    };
+
+    scheduleStructureRailUpdate();
+    const scrollListenerOptions: AddEventListenerOptions = {
+      capture: true,
+      passive: true,
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleStructureRailUpdate);
+
+    window.addEventListener("scroll", scheduleStructureRailUpdate, {
+      passive: true,
+    });
+    document.addEventListener(
+      "scroll",
+      scheduleStructureRailUpdate,
+      scrollListenerOptions,
+    );
+    window.addEventListener("resize", scheduleStructureRailUpdate);
+    resizeObserver?.observe(editor.view.dom);
+
+    if (manuscriptSurfaceRef.current) {
+      resizeObserver?.observe(manuscriptSurfaceRef.current);
+    }
+
+    return () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      window.removeEventListener("scroll", scheduleStructureRailUpdate);
+      document.removeEventListener(
+        "scroll",
+        scheduleStructureRailUpdate,
+        scrollListenerOptions,
+      );
+      window.removeEventListener("resize", scheduleStructureRailUpdate);
+      resizeObserver?.disconnect();
+    };
+  }, [blockSummaries, editor, structureRailRegions]);
 
   function confirmDraftReplacement(action: string) {
     if (!hasReplaceableDraft) {
@@ -1378,6 +2109,262 @@ export function StudioManuscriptClient({
       blockSummaries.find((block) => block.blockId === blockId)?.preview ||
       "Empty block"
     );
+  }
+
+  function getChapterForTitleBlock(blockId: string | null) {
+    if (!blockId) {
+      return null;
+    }
+
+    return (
+      derivedChapters.find((chapter) => chapter.titleBlockId === blockId) ??
+      null
+    );
+  }
+
+  function getStructureBoundaryMarkerForBlock(
+    kind: ManuscriptStructureBoundaryKind,
+    blockId: string | null,
+  ) {
+    if (!blockId) {
+      return null;
+    }
+
+    return (
+      structureBoundaryMarkers.find(
+        (marker) => marker.kind === kind && marker.blockId === blockId,
+      ) ?? null
+    );
+  }
+
+  function getStructureBoundaryMarker(markerId: string | null) {
+    if (!markerId) {
+      return null;
+    }
+
+    return (
+      structureBoundaryMarkers.find((marker) => marker.id === markerId) ?? null
+    );
+  }
+
+  function toggleStructureBoundaryMarker(
+    kind: ManuscriptStructureBoundaryKind,
+    blockId: string | null,
+  ) {
+    if (!blockId) {
+      setMessage("Cannot mark a boundary without a block ID.");
+      return;
+    }
+
+    const label = kind === "chapter" ? "chapter" : "episode";
+    const existingMarker = getStructureBoundaryMarkerForBlock(kind, blockId);
+
+    if (existingMarker) {
+      setStructureBoundaryMarkers((current) =>
+        current.filter((marker) => marker.id !== existingMarker.id),
+      );
+      setMessage(`${label[0].toUpperCase()}${label.slice(1)} boundary removed.`);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const title = getBlockPreview(blockId);
+    const publicationDate =
+      kind === "episode"
+        ? getEpisodePublicationDateForIndex(
+            structureBoundaryMarkers.filter(
+              (marker) => marker.kind === "episode",
+            ).length,
+          )
+        : null;
+    const publicationDateLabel = formatEpisodePublicationDate(publicationDate);
+
+    setStructureBoundaryMarkers((current) => [
+      ...current,
+      {
+        id: createStructureBoundaryMarkerId(kind),
+        kind,
+        blockId,
+        title,
+        notes: "",
+        ...(publicationDate ? { publicationDate } : {}),
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    setMessage(
+      publicationDateLabel
+        ? `Marked "${title}" as a ${label} boundary. Publishes ${publicationDateLabel}.`
+        : `Marked "${title}" as a ${label} boundary.`,
+    );
+  }
+
+  function toggleChapterTitleBlock(blockId: string | null) {
+    toggleStructureBoundaryMarker("chapter", blockId);
+  }
+
+  function toggleSelectedBlockAsChapterTitle() {
+    if (!editor) {
+      return;
+    }
+
+    const range = selectedStructureRange ?? getEditorSelectionBlockRange(editor);
+
+    if (!range?.startBlockId) {
+      setMessage("Place the cursor in a title block before marking it.");
+      return;
+    }
+
+    toggleChapterTitleBlock(range.startBlockId);
+  }
+
+  function toggleSelectedBlockAsEpisodeBoundary() {
+    if (!editor) {
+      return;
+    }
+
+    const range = selectedStructureRange ?? getEditorSelectionBlockRange(editor);
+
+    if (!range?.startBlockId) {
+      setMessage("Place the cursor in an episode title block before marking it.");
+      return;
+    }
+
+    toggleStructureBoundaryMarker("episode", range.startBlockId);
+  }
+
+  function beginEditingStructureBoundary(markerId: string) {
+    const marker = getStructureBoundaryMarker(markerId);
+
+    if (!marker) {
+      setMessage("Boundary marker was not found.");
+      return;
+    }
+
+    setEditingBoundaryMarkerId(marker.id);
+    setEditingBoundaryTitle(marker.title || getBlockPreview(marker.blockId));
+    setEditingBoundaryNotes(marker.notes);
+    setMessage(`Editing ${marker.kind} boundary.`);
+  }
+
+  function cancelEditingStructureBoundary() {
+    setEditingBoundaryMarkerId(null);
+    setEditingBoundaryTitle("");
+    setEditingBoundaryNotes("");
+    setMessage("Boundary edit canceled.");
+  }
+
+  function saveStructureBoundaryMarker(markerId: string) {
+    setStructureBoundaryMarkers((current) =>
+      current.map((marker) =>
+        marker.id === markerId
+          ? {
+              ...marker,
+              title:
+                editingBoundaryTitle.trim() || getBlockPreview(marker.blockId),
+              notes: editingBoundaryNotes.trim(),
+              updatedAt: new Date().toISOString(),
+            }
+          : marker,
+      ),
+    );
+    setEditingBoundaryMarkerId(null);
+    setEditingBoundaryTitle("");
+    setEditingBoundaryNotes("");
+    setMessage("Boundary saved.");
+  }
+
+  function moveStructureBoundaryMarkerToCurrentBlock(markerId: string) {
+    const marker = getStructureBoundaryMarker(markerId);
+
+    if (!marker) {
+      setMessage("Boundary marker was not found.");
+      return;
+    }
+
+    const range =
+      selectedStructureRange ??
+      (editor ? getEditorSelectionBlockRange(editor) : null);
+    const nextBlockId = range?.startBlockId ?? null;
+
+    if (!nextBlockId) {
+      setMessage("Place the cursor in the line where this boundary should start.");
+      return;
+    }
+
+    if (nextBlockId === marker.blockId) {
+      setMessage("That boundary is already using the cursor line.");
+      return;
+    }
+
+    const previousTitle = getBlockPreview(marker.blockId);
+    const nextTitle = getBlockPreview(nextBlockId);
+    const existingTitle = marker.title.trim();
+    const nextMarkerTitle =
+      !existingTitle || existingTitle === previousTitle
+        ? nextTitle
+        : marker.title;
+    const replacedMarker = getStructureBoundaryMarkerForBlock(
+      marker.kind,
+      nextBlockId,
+    );
+    const label = marker.kind === "episode" ? "Episode" : "Chapter";
+
+    setStructureBoundaryMarkers((current) =>
+      current
+        .filter(
+          (candidate) =>
+            candidate.id === marker.id ||
+            !(
+              candidate.kind === marker.kind &&
+              candidate.blockId === nextBlockId
+            ),
+        )
+        .map((candidate) =>
+          candidate.id === marker.id
+            ? {
+                ...candidate,
+                blockId: nextBlockId,
+                title: nextMarkerTitle,
+                updatedAt: new Date().toISOString(),
+              }
+            : candidate,
+        ),
+    );
+
+    if (editingBoundaryMarkerId === marker.id) {
+      setEditingBoundaryTitle(nextMarkerTitle);
+    }
+
+    setMessage(
+      `${label} boundary moved to "${nextTitle}".${
+        replacedMarker ? " Existing marker on that line was replaced." : ""
+      }`,
+    );
+  }
+
+  function removeStructureBoundaryMarker(markerId: string) {
+    const marker = getStructureBoundaryMarker(markerId);
+    const label = marker?.kind === "episode" ? "Episode" : "Chapter";
+
+    setStructureBoundaryMarkers((current) =>
+      current.filter((candidate) => candidate.id !== markerId),
+    );
+
+    if (editingBoundaryMarkerId === markerId) {
+      setEditingBoundaryMarkerId(null);
+      setEditingBoundaryTitle("");
+      setEditingBoundaryNotes("");
+    }
+
+    setMessage(`${label} boundary removed.`);
+  }
+
+  function focusDerivedChapter(
+    chapter: ManuscriptDerivedChapter,
+    boundary: "title" | "end",
+  ) {
+    focusBlock(boundary === "end" ? chapter.endBlockId : chapter.titleBlockId);
   }
 
   function setPendingStructureStart(blockId: string | null) {
@@ -1424,6 +2411,13 @@ export function StudioManuscriptClient({
     setMessage("Manuscript filters cleared.");
   }
 
+  function openFilterMenu() {
+    setSidePanelMode("find");
+    setIsSaveShareDialogOpen(false);
+    setIsMobileToolsOpen(false);
+    setIsFilterMenuOpen(true);
+  }
+
   function applyQuoteFocus(status: ManuscriptQuoteReviewStatusFilter | "" = "") {
     setSidePanelMode("find");
     setFilterTextQuery("");
@@ -1447,26 +2441,59 @@ export function StudioManuscriptClient({
     );
   }
 
-  function applySemanticFocus(tagType: SemanticHighlightType) {
-    const definition = getSemanticHighlightDefinition(tagType);
+  function applySemanticFocus(tagType: SemanticHighlightType | "" = "") {
+    const definition = tagType ? getSemanticHighlightDefinition(tagType) : null;
 
     setSidePanelMode("find");
     setFilterTextQuery("");
     setFilterAuthorId("");
-    setFilterSemanticType(definition.id);
+    setFilterSemanticType(tagType);
     setFilterStructureRegionId("");
     setFilterStructureKind("");
     setFilterBlockType("");
     setFilterQuoteReviewStatus("");
     setFilterOnlyUnstructured(false);
+    setFilterOnlyWithSemanticHighlights(!tagType);
+    setFilterOnlyWithoutAuthor(false);
+    setFilterVisualMode("hide-nonmatches");
+    setFilterContextBlockCount(1);
+    setCurrentQuoteIndex(0);
+    setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
+    setMessage(
+      definition
+        ? `${definition.label} semantic focus enabled.`
+        : "Semantic focus enabled.",
+    );
+  }
+
+  function applyStructureRegionFocus(
+    structureKind: ManuscriptStructureKind,
+    regionId: string,
+  ) {
+    const regionLabel =
+      structureRegionSummaries.find((region) => region.id === regionId)?.title ??
+      "Unknown region";
+
+    setSidePanelMode("find");
+    setFilterTextQuery("");
+    setFilterAuthorId("");
+    setFilterSemanticType("");
+    setFilterStructureRegionId(regionId);
+    setFilterStructureKind(structureKind);
+    setFilterBlockType("");
+    setFilterQuoteReviewStatus("");
+    setFilterOnlyUnstructured(false);
     setFilterOnlyWithSemanticHighlights(false);
     setFilterOnlyWithoutAuthor(false);
-    setFilterVisualMode("highlight-matches");
+    setFilterVisualMode("hide-nonmatches");
     setFilterContextBlockCount(0);
     setCurrentQuoteIndex(0);
     setExportFilteredMarkdown("");
     setExportCitedQuotationMarkdown("");
-    setMessage(`${definition.label} semantic focus enabled.`);
+    setMessage(
+      `${getManuscriptStructureDefinition(structureKind).label} focus: ${regionLabel}`,
+    );
   }
 
   function exitFocusView() {
@@ -1525,6 +2552,20 @@ export function StudioManuscriptClient({
   function focusBlockFromMobileTools(blockId: string | null) {
     setIsMobileToolsOpen(false);
     window.requestAnimationFrame(() => focusBlock(blockId));
+  }
+
+  function focusMobileStructureBoundary(
+    boundary: ManuscriptStructureBoundary | null,
+    edge: "start" | "end" = "start",
+  ) {
+    if (!boundary) {
+      setMessage("No chapter or episode boundary is available yet.");
+      return;
+    }
+
+    focusBlockFromMobileTools(
+      edge === "end" ? boundary.endBlockId : boundary.startBlockId,
+    );
   }
 
   function updateRecordingMode(enabled: boolean) {
@@ -1797,19 +2838,35 @@ export function StudioManuscriptClient({
   }
 
   function applySemanticHighlight() {
-    const definition = getSemanticHighlightDefinition(semanticType);
-
-    if (
-      !applySemanticHighlightToSelection({
-        tagType: definition.id,
-        note: semanticNote,
-        message: `Applied ${definition.label} semantic highlight.`,
-      })
-    ) {
+    if (!applySemanticHighlightForType(semanticType)) {
       return;
     }
 
     setSemanticNote("");
+  }
+
+  function applySemanticHighlightForType(
+    tagType: SemanticHighlightType,
+    options?: {
+      note?: string;
+      range?: ManuscriptTextSelectionRange;
+    },
+  ) {
+    const definition = getSemanticHighlightDefinition(tagType);
+    const appliedHighlightId = applySemanticHighlightToSelection({
+      tagType: definition.id,
+      note: (options?.note ?? semanticNote).trim(),
+      range: options?.range,
+      message: `Applied ${definition.label} semantic highlight.`,
+    });
+
+    if (!appliedHighlightId) {
+      return null;
+    }
+
+    setSemanticType(definition.id);
+    setSemanticNote("");
+    return appliedHighlightId;
   }
 
   function markCitedQuotation(range?: ManuscriptTextSelectionRange) {
@@ -1863,19 +2920,14 @@ export function StudioManuscriptClient({
       return;
     }
 
-    const definition = getSemanticHighlightDefinition(tagType);
-    const appliedHighlightId = applySemanticHighlightToSelection({
-      tagType: definition.id,
-      note: semanticNote,
+    const appliedHighlightId = applySemanticHighlightForType(tagType, {
       range: tagContextMenu,
-      message: `Applied ${definition.label} semantic highlight.`,
     });
 
     if (!appliedHighlightId) {
       return;
     }
 
-    setSemanticType(definition.id);
     setSemanticNote("");
   }
 
@@ -2167,9 +3219,11 @@ export function StudioManuscriptClient({
       });
 
       setEditorJson(importedJson);
+      setSessionStartWordCount(countWordsAndCharacters(importedJson).words);
       setSourceFileName(file.name);
       setImportSummary(summary);
       setStructureRegions([]);
+      setStructureBoundaryMarkers([]);
       setQuoteReviews({});
       setEditingQuoteReviewHighlightId(null);
       setSelectedStructureRange(null);
@@ -2229,6 +3283,7 @@ export function StudioManuscriptClient({
       sourceFileName,
       importSummary,
       structureRegions,
+      structureBoundaryMarkers,
       quoteReviews,
       editorJson: ensureBlockIds(editor.getJSON() as ManuscriptEditorJson),
       activeAuthorId,
@@ -2619,10 +3674,30 @@ export function StudioManuscriptClient({
       return;
     }
 
+    const sourceEditorJson = ensureBlockIds(draft.editorJson);
+    editor.commands.setContent(sourceEditorJson as JSONContent);
+    const rawTargetEditorJson = ensureBlockIds(
+      editor.getJSON() as ManuscriptEditorJson,
+    );
+    const reboundStructure = rebindManuscriptStructureBlockIds({
+      sourceJson: sourceEditorJson,
+      targetJson: rawTargetEditorJson,
+      structureRegions: draft.structureRegions,
+      structureBoundaryMarkers: draft.structureBoundaryMarkers,
+      chapterTitleBlocks: draft.chapterTitleBlocks,
+    });
+    const targetEditorJson = applyManuscriptBoundaryAttrsToEditorJson({
+      json: rawTargetEditorJson,
+      boundaryMarkers: reboundStructure.structureBoundaryMarkers,
+    });
+
+    editor.commands.setContent(targetEditorJson as JSONContent);
+
     setTitle(draft.title);
     setSourceFileName(draft.sourceFileName);
     setImportSummary(draft.importSummary);
-    setStructureRegions(draft.structureRegions);
+    setStructureRegions(reboundStructure.structureRegions);
+    setStructureBoundaryMarkers(reboundStructure.structureBoundaryMarkers);
     setQuoteReviews(draft.quoteReviews);
     setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
@@ -2632,8 +3707,8 @@ export function StudioManuscriptClient({
     setShowAuthorColors(draft.showAuthorColors);
     setShowSemanticColors(draft.showSemanticColors);
     setLastUpdatedAt(draft.lastUpdatedAt);
-    editor.commands.setContent(draft.editorJson as JSONContent);
-    setEditorJson(draft.editorJson);
+    setEditorJson(targetEditorJson);
+    setSessionStartWordCount(countWordsAndCharacters(targetEditorJson).words);
     setExportStructureMarkdown("");
     setExportFilteredMarkdown("");
     setExportCitedQuotationMarkdown("");
@@ -2662,6 +3737,31 @@ export function StudioManuscriptClient({
     return `/api/manuscript/snapshots/latest?manuscriptId=${encodeURIComponent(
       manuscriptId,
     )}`;
+  }
+
+  function createLiveSnapshotUrl(slug: string) {
+    return `/api/manuscript/live/${encodeURIComponent(slug)}`;
+  }
+
+  function createLiveLatestBrowserUrl() {
+    return new URL(MANUSCRIPT_LIVE_LATEST_PATH, window.location.origin).href;
+  }
+
+  async function copyLiveLatestSnapshotLink() {
+    const url = createLiveLatestBrowserUrl();
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        setMessage(`Phone link: ${url}`);
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      setMessage("Copied latest manuscript phone link.");
+    } catch (error) {
+      console.error("Latest manuscript phone link copy failed.", error);
+      setMessage(`Phone link: ${url}`);
+    }
   }
 
   async function refreshManuscriptLibrary(input?: { silent?: boolean }) {
@@ -2835,11 +3935,55 @@ export function StudioManuscriptClient({
     }
   }
 
-  async function saveServerSnapshot() {
+  async function refreshLiveEditStatus(input?: { silent?: boolean }) {
+    setIsLiveEditStatusBusy(true);
+
+    try {
+      const response = await fetch("/api/manuscript/collab/latest/status", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ManuscriptLiveEditStatusResponse;
+
+      setLiveEditStatus(payload);
+
+      if (!response.ok || !payload.ok) {
+        if (!input?.silent) {
+          setMessage(
+            !payload.ok && payload.message
+              ? payload.message
+              : "Live edit room status is unavailable.",
+          );
+        }
+
+        return;
+      }
+
+      if (!input?.silent) {
+        setMessage("Live edit room status checked.");
+      }
+    } catch (error) {
+      console.error("Live edit status check failed.", error);
+      setLiveEditStatus({
+        ok: false,
+        message: "Live edit room status is unavailable right now.",
+      });
+
+      if (!input?.silent) {
+        setMessage("Live edit room status is unavailable right now.");
+      }
+    } finally {
+      setIsLiveEditStatusBusy(false);
+    }
+  }
+
+  async function saveServerSnapshot(input?: {
+    description?: string;
+    successMessage?: string;
+  }): Promise<ManuscriptServerSnapshotSummary | null> {
     const draft = createCurrentDraft();
 
     if (!draft) {
-      return;
+      return null;
     }
 
     const checkpointKey = createManuscriptDraftCheckpointKey(draft);
@@ -2849,7 +3993,7 @@ export function StudioManuscriptClient({
     setServerSnapshotStatus(
       manuscriptTitle
         ? `Saving snapshot under ${manuscriptTitle}...`
-        : "Saving legacy server snapshot...",
+        : "Saving manuscript backup...",
     );
 
     try {
@@ -2860,7 +4004,7 @@ export function StudioManuscriptClient({
         },
         body: JSON.stringify({
           draft,
-          description: serverSnapshotDescription,
+          description: input?.description ?? serverSnapshotDescription,
           manuscriptId: selectedServerManuscriptId || null,
           snapshotType: "manual",
         }),
@@ -2875,7 +4019,7 @@ export function StudioManuscriptClient({
         markServerSnapshotResponseState(response);
         setServerSnapshotStatus(message);
         setMessage(message);
-        return;
+        return null;
       }
 
       setIsServerSnapshotUnavailable(false);
@@ -2893,90 +4037,48 @@ export function StudioManuscriptClient({
           ? `Saved ${manuscriptTitle} snapshot ${formatDateTime(
               payload.snapshot.updatedAt,
             )}.`
-          : `Saved legacy server snapshot ${formatDateTime(
+          : `Saved manuscript backup ${formatDateTime(
               payload.snapshot.updatedAt,
             )}.`,
       );
       if (selectedServerManuscriptId) {
         void refreshManuscriptLibrary({ silent: true });
       }
+      void refreshLiveEditStatus({ silent: true });
       if (isSyntheticManuscriptSmokeDraft(draft)) {
         setHasConfirmedSyntheticServerSnapshotSaved(true);
       }
       setMessage(
-        manuscriptTitle
-          ? "Named manuscript snapshot saved."
-          : "Legacy server manuscript snapshot saved.",
+        input?.successMessage ??
+          (manuscriptTitle
+            ? "Named manuscript snapshot saved."
+            : "Manuscript saved for phone handoff."),
       );
+      return payload.snapshot;
     } catch (error) {
       console.error("Server snapshot save failed.", error);
       setIsServerSnapshotUnavailable(true);
       setServerConnectionState("unavailable");
       setServerSnapshotStatus("Server snapshot save failed.");
       setMessage("Server snapshot save failed.");
+      return null;
     } finally {
       setIsServerSnapshotBusy(false);
     }
   }
 
-  async function startLiveRoomFromCurrentDraft() {
-    const draft = createCurrentDraft();
+  async function saveAndOpenLiveEdit() {
+    setMessage("Saving this draft before opening the shared live room.");
+    const snapshot = await saveServerSnapshot({
+      description: serverSnapshotDescription || "Live edit handoff",
+      successMessage: "Saved this draft. Opening the live edit room.",
+    });
 
-    if (!draft) {
+    if (!snapshot) {
       return;
     }
 
-    const initialText = createManuscriptDraftPlainText(draft);
-    const manuscriptTitle = selectedServerManuscript?.title ?? draft.title;
-
-    setIsStartingLiveRoom(true);
-    setServerSnapshotStatus(
-      manuscriptTitle
-        ? `Creating live room from ${manuscriptTitle}...`
-        : "Creating live room from current draft...",
-    );
-
-    try {
-      const response = await fetch("/api/manuscript/live-rooms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: `${(draft.title.trim() || "Manuscript Desk")} live room`,
-          initialText,
-          manuscriptId: selectedServerManuscriptId || null,
-        }),
-      });
-      const payload = (await response.json()) as ManuscriptLiveRoomCreateResponse;
-
-      if (!response.ok || !payload.ok) {
-        const message =
-          !payload.ok && payload.message
-            ? payload.message
-            : "Live room could not be created.";
-        markServerSnapshotResponseState(response);
-        setServerSnapshotStatus(message);
-        setMessage(message);
-        return;
-      }
-
-      setIsServerSnapshotUnavailable(false);
-      setServerConnectionState("connected");
-      setServerSnapshotStatus("Live room created. Opening shared editor...");
-      setMessage("Live room created. Opening shared editor...");
-      window.location.assign(
-        `/manuscript/live?room=${encodeURIComponent(payload.room.id)}`,
-      );
-    } catch (error) {
-      console.error("Live room create from Manuscript Desk failed.", error);
-      setIsServerSnapshotUnavailable(true);
-      setServerConnectionState("unavailable");
-      setServerSnapshotStatus("Live room create failed.");
-      setMessage("Live room create failed.");
-    } finally {
-      setIsStartingLiveRoom(false);
-    }
+    window.location.assign(`${MANUSCRIPT_LIVE_EDIT_PATH}?start=latest`);
   }
 
   async function loadLatestServerSnapshot(input?: {
@@ -3069,6 +4171,84 @@ export function StudioManuscriptClient({
       setServerConnectionState("unavailable");
       setServerSnapshotStatus("Latest server snapshot load failed.");
       setMessage("Latest server snapshot load failed.");
+    } finally {
+      setIsServerSnapshotBusy(false);
+    }
+  }
+
+  async function loadLiveSnapshotBySlug(slug: string) {
+    if (!editor) {
+      return;
+    }
+
+    const liveLabel = slug === "latest" ? "latest live" : slug;
+
+    setIsServerSnapshotBusy(true);
+    setServerSnapshotStatus(`Loading ${liveLabel} manuscript backup...`);
+
+    try {
+      const response = await fetch(createLiveSnapshotUrl(slug), {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ManuscriptLiveSnapshotResponse;
+
+      if (!response.ok || !payload.ok) {
+        const message =
+          !payload.ok && payload.message
+            ? payload.message
+            : "Live manuscript backup could not be loaded.";
+        markServerSnapshotResponseState(response);
+        setServerSnapshotStatus(message);
+        setMessage(message);
+        return;
+      }
+
+      setIsServerSnapshotUnavailable(false);
+      setServerConnectionState("connected");
+
+      if (!payload.snapshot) {
+        setServerSnapshotStatus("No live manuscript backup saved yet.");
+        setMessage("No live manuscript backup saved yet.");
+        return;
+      }
+
+      const loadedSnapshot = payload.snapshot;
+      const draft = safeManuscriptDraft(loadedSnapshot.draft);
+
+      if (!draft) {
+        setServerSnapshotStatus("Live manuscript backup failed draft validation.");
+        setMessage("Live manuscript backup failed draft validation.");
+        return;
+      }
+
+      applyDraftToEditor(
+        draft,
+        `Loaded latest live manuscript backup from ${formatDateTime(
+          loadedSnapshot.updatedAt,
+        )}.`,
+      );
+      setSelectedServerSnapshotId(loadedSnapshot.id);
+      setLastSavedServerSnapshot(loadedSnapshot);
+      setServerCheckpointKey(createManuscriptDraftCheckpointKey(draft));
+      setServerSnapshots((current) => [
+        loadedSnapshot,
+        ...current.filter((snapshot) => snapshot.id !== loadedSnapshot.id),
+      ]);
+      setServerSnapshotStatus(
+        `Loaded latest live manuscript backup from ${formatDateTime(
+          loadedSnapshot.updatedAt,
+        )}.`,
+      );
+
+      if (isSyntheticManuscriptSmokeDraft(draft)) {
+        setHasConfirmedSyntheticPhoneLoad(true);
+      }
+    } catch (error) {
+      console.error("Live manuscript backup load failed.", error);
+      setIsServerSnapshotUnavailable(true);
+      setServerConnectionState("unavailable");
+      setServerSnapshotStatus("Live manuscript backup load failed.");
+      setMessage("Live manuscript backup load failed.");
     } finally {
       setIsServerSnapshotBusy(false);
     }
@@ -3240,26 +4420,11 @@ export function StudioManuscriptClient({
       const parsedDraft = safeManuscriptDraft(parsed);
 
       if (parsedDraft) {
-        setTitle(parsedDraft.title);
-        setSourceFileName(parsedDraft.sourceFileName);
-        setImportSummary(parsedDraft.importSummary);
-        setStructureRegions(parsedDraft.structureRegions);
-        setQuoteReviews(parsedDraft.quoteReviews);
-        setEditingQuoteReviewHighlightId(null);
-        setSelectedStructureRange(null);
-        setActiveAuthorId(parsedDraft.activeAuthorId);
-        setShowAuthorColors(parsedDraft.showAuthorColors);
-        setShowSemanticColors(parsedDraft.showSemanticColors);
-        setLastUpdatedAt(parsedDraft.lastUpdatedAt);
-        editor.commands.setContent(parsedDraft.editorJson as JSONContent);
-        setEditorJson(parsedDraft.editorJson);
-        setPendingStructureStartBlockId(null);
-        setPendingStructureEndBlockId(null);
-        setExportStructureMarkdown("");
-        setExportFilteredMarkdown("");
-        setExportCitedQuotationMarkdown("");
+        applyDraftToEditor(
+          parsedDraft,
+          "Full Manuscript Desk draft JSON imported.",
+        );
         setImportJson("");
-        setMessage("Full Manuscript Desk draft JSON imported.");
         return;
       }
 
@@ -3271,9 +4436,11 @@ export function StudioManuscriptClient({
       const jsonWithBlockIds = ensureBlockIds(parsed);
       editor.commands.setContent(jsonWithBlockIds as JSONContent);
       setEditorJson(jsonWithBlockIds);
+      setSessionStartWordCount(countWordsAndCharacters(jsonWithBlockIds).words);
       setSourceFileName(null);
       setImportSummary(null);
       setStructureRegions([]);
+      setStructureBoundaryMarkers([]);
       setQuoteReviews({});
       setEditingQuoteReviewHighlightId(null);
       setSelectedStructureRange(null);
@@ -3321,6 +4488,7 @@ export function StudioManuscriptClient({
     setSourceFileName(null);
     setImportSummary(null);
     setStructureRegions([]);
+    setStructureBoundaryMarkers([]);
     setQuoteReviews({});
     setEditingQuoteReviewHighlightId(null);
     setSelectedStructureRange(null);
@@ -3333,6 +4501,7 @@ export function StudioManuscriptClient({
     setShowSemanticColors(emptyDraft.showSemanticColors);
     setLastUpdatedAt(null);
     setEditorJson(emptyDraft.editorJson);
+    setSessionStartWordCount(countWordsAndCharacters(emptyDraft.editorJson).words);
     setExportJson("");
     setImportJson("");
     setExportHtml("");
@@ -3362,168 +4531,673 @@ export function StudioManuscriptClient({
           message.includes("Loaded")
         ? "tag"
         : "default";
-  function renderTaggingDock(variant: "rail" | "mobile") {
-    if (isRecordingMode) {
+  const saveSharePanel = (
+    <section
+      className={cn(
+        cardClassName,
+        "grid gap-3 border-studio-tag/45 bg-[#0a2a22]/95 p-3.5 shadow-[0_10px_24px_rgba(0,0,0,0.22)]",
+      )}
+      data-testid="manuscript-primary-save-panel"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <HelpLabel noteId="server-snapshot">Save and share</HelpLabel>
+        <StudioChip tone={serverConnectionState === "connected" ? "source" : "review"}>
+          {serverConnectionLabel}
+        </StudioChip>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+        <button
+          className={cn(
+            smallButtonClassName,
+            "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+          )}
+          data-testid="manuscript-primary-save"
+          disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+          type="button"
+          onClick={() => void saveServerSnapshot()}
+        >
+          Save manuscript
+        </button>
+        <button
+          className={cn(
+            smallButtonClassName,
+            "border-studio-source/55 bg-studio-source/10 text-studio-source",
+          )}
+          data-testid="manuscript-primary-save-live-edit"
+          disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+          type="button"
+          onClick={() => void saveAndOpenLiveEdit()}
+        >
+          Save + live edit
+        </button>
+        <button
+          className={smallButtonClassName}
+          data-testid="manuscript-primary-copy-phone-link"
+          type="button"
+          onClick={() => void copyLiveLatestSnapshotLink()}
+        >
+          Copy phone link
+        </button>
+        <button
+          className={smallButtonClassName}
+          disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+          type="button"
+          onClick={() => void loadLiveSnapshotBySlug("latest")}
+        >
+          Load latest
+        </button>
+      </div>
+      <p
+        className="m-0 truncate font-mono text-[0.7rem] leading-relaxed text-studio-muted"
+        title={MANUSCRIPT_LIVE_LATEST_PATH}
+      >
+        {MANUSCRIPT_LIVE_LATEST_PATH}
+      </p>
+      <p className="m-0 text-[0.72rem] leading-relaxed text-studio-muted">
+        {latestShareSnapshot
+          ? `Latest saved ${formatDateTime(latestShareSnapshot.updatedAt)}`
+          : "No server save visible yet."}{" "}
+        Local changes: {localChangesSinceServerSaveLabel}.
+      </p>
+      <div className="grid gap-2 rounded-lg border border-studio-line bg-black/15 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className={labelClassName}>Shared live room</span>
+          <StudioChip tone={liveEditStatusTone}>{liveEditStatusLabel}</StudioChip>
+        </div>
+        <p className="m-0 text-[0.72rem] leading-relaxed text-studio-muted">
+          {liveEditStatusCopy}
+        </p>
+        <button
+          className={smallButtonClassName}
+          disabled={isLiveEditStatusBusy}
+          type="button"
+          onClick={() => void refreshLiveEditStatus()}
+        >
+          {isLiveEditStatusBusy ? "Checking room..." : "Check room"}
+        </button>
+      </div>
+      <p className="m-0 text-[0.72rem] leading-relaxed text-studio-dim">
+        Save + live edit creates a latest backup first, then opens the shared
+        room with a handoff prompt so the room can pull in that save deliberately.
+      </p>
+    </section>
+  );
+
+  const hasStructureRailContent = Boolean(
+    structureRailState.chapter ||
+      structureRailState.episode ||
+      structureRailState.nextChapter ||
+      structureRailState.nextEpisode,
+  );
+
+  function renderFilterMenuPanel() {
+    return (
+      <div className="grid gap-3" data-testid="manuscript-filter-menu-panel">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <StudioChip
+            tone={blockFilterSummary.hasActiveFilters ? "review" : "source"}
+          >
+            {filteredBlockDetails.length.toLocaleString()} /{" "}
+            {blockDetails.length.toLocaleString()} blocks
+          </StudioChip>
+          {blockFilterSummary.hasActiveFilters ? (
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={exitFocusView}
+            >
+              Full manuscript
+            </button>
+          ) : null}
+        </div>
+
+        <label className="grid gap-1.5">
+          <span className={fieldLabelClassName}>Search text</span>
+          <input
+            className={fieldClassName}
+            value={filterTextQuery}
+            onChange={(event) => setFilterTextQuery(event.target.value)}
+            placeholder="Search block text"
+          />
+        </label>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="author-marks">Author</HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterAuthorId}
+              onChange={(event) =>
+                setFilterAuthorId(event.target.value as ManuscriptAuthorId | "")
+              }
+            >
+              <option value="">Any author</option>
+              {manuscriptAuthorDefinitions.map((author) => (
+                <option key={author.id} value={author.id}>
+                  {author.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="semantic-meaning-tags">Semantic tag</HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterSemanticType}
+              onChange={(event) =>
+                setFilterSemanticType(
+                  event.target.value as SemanticHighlightType | "",
+                )
+              }
+            >
+              <option value="">Any semantic tag</option>
+              {semanticHighlightDefinitions.map((definition) => (
+                <option key={definition.id} value={definition.id}>
+                  {definition.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="structure-region">Structure region</HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterStructureRegionId}
+              onChange={(event) => setFilterStructureRegionId(event.target.value)}
+            >
+              <option value="">Any structure region</option>
+              {blockFilterOptions.structureRegions.map((region) => (
+                <option key={region.id} value={region.id}>
+                  {region.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={fieldLabelClassName}>Structure kind</span>
+            <select
+              className={fieldClassName}
+              value={filterStructureKind}
+              onChange={(event) =>
+                setFilterStructureKind(
+                  event.target.value as ManuscriptStructureKind | "",
+                )
+              }
+            >
+              <option value="">Any structure kind</option>
+              {manuscriptStructureDefinitions.map((definition) => (
+                <option key={definition.id} value={definition.id}>
+                  {definition.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <HelpLabel noteId="quote-review-metadata">
+              Quote review status
+            </HelpLabel>
+            <select
+              className={fieldClassName}
+              value={filterQuoteReviewStatus}
+              onChange={(event) =>
+                setFilterQuoteReviewStatus(
+                  event.target.value as ManuscriptQuoteReviewStatusFilter | "",
+                )
+              }
+            >
+              <option value="">Any quote review status</option>
+              {manuscriptQuoteReviewStatusFilterDefinitions.map((status) => (
+                <option key={status.id} value={status.id}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className={fieldLabelClassName}>Visual mode</span>
+            <select
+              className={fieldClassName}
+              value={filterVisualMode}
+              onChange={(event) =>
+                setFilterVisualMode(
+                  event.target.value as ManuscriptFilterVisualMode,
+                )
+              }
+            >
+              {manuscriptFilterVisualModeDefinitions.map((mode) => (
+                <option key={mode.id} value={mode.id}>
+                  {mode.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
+          <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+            <input
+              checked={filterOnlyUnstructured}
+              type="checkbox"
+              onChange={(event) =>
+                setFilterOnlyUnstructured(event.target.checked)
+              }
+            />
+            Only unstructured blocks
+          </label>
+          <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+            <input
+              checked={filterOnlyWithSemanticHighlights}
+              type="checkbox"
+              onChange={(event) =>
+                setFilterOnlyWithSemanticHighlights(event.target.checked)
+              }
+            />
+            Only blocks with semantic highlights
+          </label>
+          <label className="flex items-start gap-2 text-[0.8rem] leading-snug text-studio-muted">
+            <input
+              checked={filterOnlyWithoutAuthor}
+              type="checkbox"
+              onChange={(event) =>
+                setFilterOnlyWithoutAuthor(event.target.checked)
+              }
+            />
+            Only blocks with no author mark
+          </label>
+        </div>
+
+        {blockFilterSummary.activeFilterLabels.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {blockFilterSummary.activeFilterLabels.map((label) => (
+              <StudioChip key={label} tone="review">
+                {label}
+              </StudioChip>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={() => applyQuoteFocus()}
+          >
+            Quote Focus
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={applyHomerReadingFocus}
+          >
+            Homer / Scott
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={() => applySemanticFocus()}
+          >
+            Semantic marks
+          </button>
+          <button
+            className={smallButtonClassName}
+            type="button"
+            onClick={clearBlockFilters}
+          >
+            Clear filters
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderStructureRailCard(
+    kind: ManuscriptStructureBoundaryKind,
+    currentRegion: ManuscriptStructureBoundary | null,
+    nextRegion: ManuscriptStructureBoundary | null,
+  ) {
+    if (!currentRegion && !nextRegion) {
       return null;
     }
 
+    const railLabel =
+      currentRegion?.label ??
+      (nextRegion ? `Before ${nextRegion.label}` : "Before");
+    const railTitle = currentRegion?.title ?? nextRegion?.title ?? "";
+    const railPublicationDate = formatEpisodePublicationDate(
+      kind === "episode"
+        ? (currentRegion ?? nextRegion)?.publicationDate
+        : null,
+    );
+    const shouldShowTitle =
+      railTitle.trim().length > 0 &&
+      railTitle.trim().toLowerCase() !==
+        (currentRegion ?? nextRegion)?.label.toLowerCase();
+
     return (
-      <section
-        className="manuscript-tagging-dock"
-        data-testid={`manuscript-tagging-dock-${variant}`}
-        aria-label="Sticky tagging menu"
+      <article
+        className={cn(
+          "manuscript-structure-rail-card",
+          `manuscript-structure-rail-card-${kind}`,
+        )}
+        key={kind}
       >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <HelpLabel noteId="mark-mode">Tagging menu</HelpLabel>
-          <StudioChip tone={hasTextSelection ? "tag" : "default"}>
-            {hasTextSelection ? "Selection ready" : "Select text"}
-          </StudioChip>
-          <StudioChip tone="source">
-            {getManuscriptAuthorDefinition(activeAuthorId).label}
-          </StudioChip>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            className={cn(
-              commandButtonClassName,
-              editor?.isActive("bold") ? activeButtonClassName : "",
-            )}
-            type="button"
-            onClick={() => editor?.chain().focus().toggleBold().run()}
-          >
-            Bold
-          </button>
-          <button
-            className={cn(
-              commandButtonClassName,
-              editor?.isActive("italic") ? activeButtonClassName : "",
-            )}
-            type="button"
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
-          >
-            Italic
-          </button>
-          <button
-            className={commandButtonClassName}
-            type="button"
-            onClick={() => editor?.chain().focus().undo().run()}
-          >
-            Undo
-          </button>
-          <button
-            className={commandButtonClassName}
-            type="button"
-            onClick={() => editor?.chain().focus().redo().run()}
-          >
-            Redo
-          </button>
-        </div>
-      </div>
+        <span className="manuscript-structure-rail-label">{railLabel}</span>
+        {shouldShowTitle ? (
+          <strong className="manuscript-structure-rail-title">
+            {railTitle}
+          </strong>
+        ) : null}
+        {railPublicationDate ? (
+          <span className="manuscript-structure-rail-date">
+            Publishes {railPublicationDate}
+          </span>
+        ) : null}
+        {currentRegion && nextRegion ? (
+          <span className="manuscript-structure-rail-next">
+            Next {nextRegion.label}
+          </span>
+        ) : null}
+      </article>
+    );
+  }
 
-      <div className="grid gap-3">
-        <div className="grid gap-2">
-          <HelpLabel noteId="author-marks">Author</HelpLabel>
-          <div className="grid grid-cols-3 gap-2 xl:grid-cols-1">
-            {manuscriptAuthorDefinitions.map((author) => (
-              <button
-                className={cn(
-                  smallButtonClassName,
-                  "px-2 text-[0.74rem]",
-                  activeAuthorId === author.id ? activeButtonClassName : "",
+  function renderMobileStructureStatusItem(
+    kind: ManuscriptStructureBoundaryKind,
+    currentRegion: ManuscriptStructureBoundary | null,
+    nextRegion: ManuscriptStructureBoundary | null,
+  ) {
+    const definition = getManuscriptStructureDefinition(kind);
+    const targetRegion = currentRegion ?? nextRegion;
+    const statusLabel =
+      currentRegion?.label ??
+      (nextRegion ? `Before ${nextRegion.label}` : `No ${definition.label}`);
+    const title = currentRegion?.title ?? nextRegion?.title ?? "Not marked yet";
+    const publicationDate = formatEpisodePublicationDate(
+      kind === "episode" ? targetRegion?.publicationDate : null,
+    );
+    const testId =
+      kind === "chapter"
+        ? "manuscript-mobile-current-chapter"
+        : "manuscript-mobile-current-episode";
+
+    return (
+      <button
+        aria-label={
+          targetRegion
+            ? `Jump to ${definition.label.toLowerCase()} ${targetRegion.label}`
+            : `${definition.label} is not marked yet`
+        }
+        className={cn(
+          "min-w-0 rounded-lg border px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50",
+          kind === "chapter"
+            ? "border-studio-node/45 bg-studio-node/10"
+            : "border-studio-source/45 bg-studio-source/10",
+        )}
+        data-testid={testId}
+        disabled={!targetRegion}
+        type="button"
+        onClick={() => focusMobileStructureBoundary(targetRegion)}
+      >
+        <span
+          className={cn(
+            "block truncate text-[0.62rem] font-extrabold tracking-[0.08em] uppercase",
+            kind === "chapter" ? "text-studio-node" : "text-studio-source",
+          )}
+        >
+          {definition.label}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.76rem] leading-tight text-studio-ink">
+          {statusLabel}
+        </span>
+        <span className="mt-0.5 block truncate text-[0.66rem] leading-tight text-studio-muted">
+          {publicationDate ? `Publishes ${publicationDate}` : title}
+        </span>
+      </button>
+    );
+  }
+
+  function renderMobileStructureNavigationCard(
+    kind: ManuscriptStructureBoundaryKind,
+    currentRegion: ManuscriptStructureBoundary | null,
+    nextRegion: ManuscriptStructureBoundary | null,
+  ) {
+    if (!currentRegion && !nextRegion) {
+      return null;
+    }
+
+    const definition = getManuscriptStructureDefinition(kind);
+    const targetRegion = currentRegion ?? nextRegion;
+    const publicationDate = formatEpisodePublicationDate(
+      kind === "episode" ? targetRegion?.publicationDate : null,
+    );
+    const testId =
+      kind === "chapter"
+        ? "manuscript-mobile-chapter-nav"
+        : "manuscript-mobile-episode-nav";
+
+    return (
+      <article
+        className={cn(
+          "grid gap-2 rounded-lg border p-2.5",
+          kind === "chapter"
+            ? "border-studio-node/35 bg-studio-node/10"
+            : "border-studio-source/35 bg-studio-source/10",
+        )}
+        data-testid={testId}
+        key={kind}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="m-0 text-[0.88rem] leading-snug text-studio-ink">
+            {definition.label}
+          </h3>
+          <StudioChip tone={kind === "chapter" ? "node" : "source"}>
+            {currentRegion ? "Current" : "Upcoming"}
+          </StudioChip>
+        </div>
+
+        {currentRegion ? (
+          <div className="min-w-0">
+            <p className="m-0 truncate text-[0.82rem] font-bold text-studio-ink">
+              {currentRegion.label}
+            </p>
+            <p className="m-0 truncate text-[0.72rem] leading-relaxed text-studio-muted">
+              {currentRegion.title}
+            </p>
+            {publicationDate ? (
+              <p className="m-0 truncate text-[0.68rem] font-bold leading-relaxed text-studio-source">
+                Publishes {publicationDate}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <p className={panelCopyClassName}>
+              Before {nextRegion?.label ?? definition.label.toLowerCase()}.
+            </p>
+            {publicationDate ? (
+              <p className="m-0 truncate text-[0.68rem] font-bold leading-relaxed text-studio-source">
+                Publishes {publicationDate}
+              </p>
+            ) : null}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={smallButtonClassName}
+            disabled={!currentRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(currentRegion)}
+          >
+            Jump {definition.label.toLowerCase()}
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!currentRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(currentRegion, "end")}
+          >
+            End
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!nextRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(nextRegion)}
+          >
+            Next {definition.label.toLowerCase()}
+          </button>
+          <button
+            className={smallButtonClassName}
+            disabled={!nextRegion}
+            type="button"
+            onClick={() => focusMobileStructureBoundary(nextRegion, "end")}
+          >
+            Next end
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  function renderBoundaryOutlineCard(
+    boundary: ManuscriptStructureBoundary,
+    index: number,
+  ) {
+    const marker = getStructureBoundaryMarker(boundary.sourceId);
+    const isEditing = editingBoundaryMarkerId === boundary.sourceId;
+    const tone = boundary.kind === "chapter" ? "node" : "source";
+    const kindLabel = boundary.label;
+    const removeLabel =
+      boundary.kind === "chapter" ? "Remove chapter" : "Remove episode";
+    const publicationDate = formatEpisodePublicationDate(
+      boundary.publicationDate,
+    );
+
+    return (
+      <article
+        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+        key={boundary.id}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap gap-1.5">
+              <StudioChip tone={tone}>{kindLabel}</StudioChip>
+              <StudioChip tone="node">
+                {boundary.blockCount.toLocaleString()} blocks
+              </StudioChip>
+              {publicationDate ? (
+                <StudioChip tone="source">
+                  Publishes {publicationDate}
+                </StudioChip>
+              ) : null}
+            </div>
+            <h3 className="mt-2 mb-0 text-[1rem] leading-snug text-studio-ink">
+              {boundary.title}
+            </h3>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={() => focusBlock(boundary.startBlockId)}
+            >
+              Jump start
+            </button>
+            <button
+              className={smallButtonClassName}
+              type="button"
+              onClick={() => focusBlock(boundary.endBlockId)}
+            >
+              Jump end
+            </button>
+            {!isRecordingMode && marker ? (
+              <>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
+                  onClick={() =>
+                    moveStructureBoundaryMarkerToCurrentBlock(marker.id)
+                  }
+                >
+                  Use cursor line
+                </button>
+                {isEditing ? (
+                  <>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => saveStructureBoundaryMarker(marker.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={cancelEditingStructureBoundary}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className={smallButtonClassName}
+                    type="button"
+                    onClick={() => beginEditingStructureBoundary(marker.id)}
+                  >
+                    Edit
+                  </button>
                 )}
-                key={author.id}
-                type="button"
-                onClick={() => markSelectionAsAuthor(author.id)}
-              >
-                {author.id === "homer"
-                  ? "Homer"
-                  : author.id === "charlie"
-                    ? "Charlie"
-                    : "Clear"}
-              </button>
-            ))}
+                <button
+                  className={dangerButtonClassName}
+                  type="button"
+                  onClick={() => removeStructureBoundaryMarker(marker.id)}
+                >
+                  {removeLabel}
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-2">
-          <HelpLabel noteId="semantic-meaning-tags">Semantic palette</HelpLabel>
-          <div className="flex snap-x gap-2 overflow-x-auto pb-1">
-            {semanticHighlightDefinitions.map((definition) => (
-              <button
-                className={cn(
-                  smallButtonClassName,
-                  "min-w-fit shrink-0 snap-start px-3",
-                  semanticType === definition.id ? activeButtonClassName : "",
-                )}
-                key={definition.id}
-                type="button"
-                onClick={() => setSemanticType(definition.id)}
-              >
-                {definition.label}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              className={smallButtonClassName}
-              disabled={!hasTextSelection}
-              type="button"
-              onClick={applySemanticHighlight}
-            >
-              Apply semantic
-            </button>
-            <button
-              className={smallButtonClassName}
-              disabled={!hasTextSelection}
-              type="button"
-              onClick={() => markCitedQuotation()}
-            >
-              Mark cited quote
-            </button>
-            <button
-              className={smallButtonClassName}
-              disabled={!hasTextSelection}
-              type="button"
-              onClick={() => clearSemanticHighlight()}
-            >
-              Clear semantic
-            </button>
-            <button
-              className={smallButtonClassName}
-              type="button"
-              onClick={() => applySemanticFocus(semanticType)}
-            >
-              Focus tag
-            </button>
-          </div>
-          <div className="grid gap-2">
+        {isEditing ? (
+          <div className="grid gap-2 pt-1">
             <label className="grid gap-1.5">
-              <span className={fieldLabelClassName}>Semantic note</span>
-              <textarea
-                className={cn(textareaClassName, "min-h-[58px]")}
-                value={semanticNote}
-                onChange={(event) => setSemanticNote(event.target.value)}
+              <span className={fieldLabelClassName}>Boundary title</span>
+              <input
+                className={fieldClassName}
+                value={editingBoundaryTitle}
+                onChange={(event) => setEditingBoundaryTitle(event.target.value)}
               />
             </label>
             <label className="grid gap-1.5">
-              <span className={fieldLabelClassName}>Citation / source note</span>
+              <span className={fieldLabelClassName}>Boundary notes</span>
               <textarea
-                className={cn(textareaClassName, "min-h-[58px]")}
-                value={citationNote}
-                onChange={(event) => setCitationNote(event.target.value)}
+                className={cn(textareaClassName, "min-h-[72px]")}
+                value={editingBoundaryNotes}
+                onChange={(event) => setEditingBoundaryNotes(event.target.value)}
               />
             </label>
           </div>
-        </div>
-      </div>
-      </section>
+        ) : (
+          <>
+            {marker?.notes ? (
+              <p className="m-0 text-[0.75rem] leading-relaxed text-studio-review">
+                {marker.notes}
+              </p>
+            ) : null}
+            <p className="m-0 font-mono text-[0.7rem] leading-relaxed text-studio-muted">
+              Start {boundary.startIndex + 1} / End {boundary.endIndex + 1}
+            </p>
+          </>
+        )}
+      </article>
     );
   }
 
   return (
-    <main className="manuscript-page-shell">
-      <div className="manuscript-page-stack">
+    <main className="min-h-screen overflow-x-clip px-3.5 pt-3.5 pb-[calc(7rem+env(safe-area-inset-bottom))] md:p-6">
+      <div className="grid min-h-[calc(100vh-28px)] gap-[14px] md:min-h-[calc(100vh-48px)] md:grid-rows-[auto_1fr] md:gap-[18px]">
         <header
           className={cn(
             "sticky top-2 z-40 hidden overflow-visible rounded-lg border border-studio-line bg-studio-panel/68 px-2.5 py-1.5 shadow-[0_12px_34px_rgba(0,0,0,0.22)] backdrop-blur-md",
@@ -3577,6 +5251,19 @@ export function StudioManuscriptClient({
             <button
               className={cn(
                 commandButtonClassName,
+                blockFilterSummary.hasActiveFilters ? activeButtonClassName : "",
+              )}
+              data-testid="manuscript-desktop-filter-menu"
+              type="button"
+              onClick={openFilterMenu}
+            >
+              {blockFilterSummary.hasActiveFilters
+                ? `Filter ${filteredBlockDetails.length.toLocaleString()}`
+                : "Filter"}
+            </button>
+            <button
+              className={cn(
+                commandButtonClassName,
                 isRecordingMode ? activeButtonClassName : "",
               )}
               type="button"
@@ -3591,6 +5278,15 @@ export function StudioManuscriptClient({
               className="-ml-1"
               note={getManuscriptHelpNote("recording-reading-mode")}
             />
+            <a
+              className={cn(
+                commandButtonClassName,
+                "border-studio-source/45 bg-studio-source/10 text-studio-source",
+              )}
+              href="/manuscript/collab/latest"
+            >
+              Live Edit
+            </a>
             {blockFilterSummary.hasActiveFilters ? (
               <div className="flex items-center gap-1.5">
                 <button
@@ -3604,11 +5300,16 @@ export function StudioManuscriptClient({
               </div>
             ) : null}
             <button
-              className={commandButtonClassName}
+              className={cn(
+                commandButtonClassName,
+                isDevMode ? activeButtonClassName : "",
+              )}
+              data-testid="manuscript-dev-mode-toggle"
               type="button"
-              onClick={downloadFullDraftJson}
+              title="Show advanced backup, export, smoke, and publish tools"
+              onClick={() => setIsDevMode((current) => !current)}
             >
-              Backup
+              Dev Mode
             </button>
           </div>
           <p
@@ -3625,147 +5326,92 @@ export function StudioManuscriptClient({
         </header>
 
         <section
-          className="manuscript-workspace-grid"
+          className={cn(
+            "grid gap-[18px] overflow-visible md:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] md:items-start xl:grid-cols-[minmax(0,1fr)_400px]",
+          )}
           aria-label="Manuscript Desk workspace"
         >
           <section
             ref={manuscriptSurfaceRef}
             className={cn(
-              panelClassName,
-              "order-1 grid gap-3 md:order-none",
+              "order-1 grid min-w-0 gap-3 md:order-none",
               isRecordingMode && "manuscript-recording-mode",
               !showAuthorColors && "manuscript-hide-author-colors",
               !showSemanticColors && "manuscript-hide-semantic-colors",
             )}
             aria-label={isRecordingMode ? "Read-only manuscript" : "Editable manuscript"}
           >
-            <div className="hidden">
-              <div>
-                <p className={labelClassName}>Editor</p>
-                <h2 className={panelTitleClassName}>Manuscript surface</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <StudioChip tone="tag">
-                  {textStats.words.toLocaleString()} words
-                </StudioChip>
-                <StudioChip tone="source">
-                  {blockSummaries.length.toLocaleString()} blocks
-                </StudioChip>
-                <StudioChip tone="node">
-                  {structureRegions.length.toLocaleString()} structure
-                </StudioChip>
-                {blockFilterSummary.hasActiveFilters ? (
-                  <StudioChip tone="review">
-                    {filteredBlockDetails.length.toLocaleString()} filter
-                    matches
-                  </StudioChip>
-                ) : null}
-              </div>
-            </div>
-
             {isRecordingMode ? (
-              <div className="hidden rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted">
+              <div className="rounded-lg border border-studio-node/45 bg-studio-node/10 p-3 text-[0.86rem] leading-relaxed text-studio-muted md:hidden">
                 Recording mode is view-only. Exit recording mode to edit.
               </div>
-            ) : (
-              <div className="md:hidden">{renderTaggingDock("mobile")}</div>
-            )}
+            ) : null}
 
-            <div onContextMenu={handleManuscriptContextMenu}>
-              <EditorContent editor={editor} />
+            <div
+              className={cn(
+                "manuscript-editor-shell",
+                hasStructureRailContent && "manuscript-editor-shell-with-rail",
+              )}
+              onContextMenu={handleManuscriptContextMenu}
+            >
+              {hasStructureRailContent ? (
+                <div
+                  aria-label="Current chapter and episode"
+                  className="manuscript-structure-rail"
+                  data-testid="manuscript-structure-rail"
+                >
+                  {renderStructureRailCard(
+                    "chapter",
+                    structureRailState.chapter,
+                    structureRailState.nextChapter,
+                  )}
+                  {renderStructureRailCard(
+                    "episode",
+                    structureRailState.episode,
+                    structureRailState.nextEpisode,
+                  )}
+                </div>
+              ) : null}
+              <div className="manuscript-editor-body">
+                <EditorContent editor={editor} />
+              </div>
             </div>
 
             <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
-              Paragraphs, headings, and list items carry `blockId` attributes in
-              the editor JSON. Structure regions are block ranges. Author marks
-              and semantic highlights are separate inline marks and can overlap.
+              {message}
             </p>
           </section>
 
           <aside
-            className="manuscript-control-rail order-2"
-            aria-label="Manuscript tagging and tools sidebar"
+            className={cn(
+              "order-2 hidden min-w-0 rounded-lg border border-studio-line bg-studio-panel/78 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.2)] backdrop-blur-md",
+              "md:sticky md:top-[68px] md:z-20 md:flex md:max-h-[calc(100vh-80px)] md:flex-col md:self-start md:overflow-hidden xl:top-[64px] xl:max-h-[calc(100vh-76px)]",
+            )}
+            aria-label="Manuscript tools sidebar"
           >
-            {renderTaggingDock("rail")}
-            <div className="manuscript-tools-scroll" aria-label="Manuscript tools">
-              <div className="mb-3.5 flex items-start justify-between gap-3">
+            <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Tools</p>
-              <StudioChip tone="node">
-                {getSidePanelModeLabel(sidePanelMode)}
+              <StudioChip tone={isDevMode ? "review" : "node"}>
+                {isDevMode ? "Dev Mode" : getSidePanelModeLabel(sidePanelMode)}
               </StudioChip>
             </div>
 
-            <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
-              <HelpHeading noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
-                Sidebar modes
-              </HelpHeading>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {manuscriptSidePanelModes
-                  .filter(
-                    (mode) =>
-                      !isRecordingMode ||
-                      (mode.id !== "mark" && mode.id !== "backup"),
-                  )
-                  .map((mode) => (
-                    <div className="flex items-center gap-1.5" key={mode.id}>
-                      <button
-                        className={cn(
-                          smallButtonClassName,
-                          "flex-1",
-                          sidePanelMode === mode.id
-                            ? activeButtonClassName
-                            : "",
-                        )}
-                        data-testid={`manuscript-mode-${mode.id}`}
-                        type="button"
-                        onClick={() => setSidePanelMode(mode.id)}
-                      >
-                        {mode.label}
-                      </button>
-                      <ManuscriptHelpTip
-                        note={getManuscriptHelpNote(
-                          getSidePanelModeHelpNoteId(mode.id),
-                        )}
-                      />
-                    </div>
-                  ))}
-              </div>
-            </section>
-
+            <div className="grid min-h-0 flex-1 gap-3.5 overflow-y-auto pr-1">
             {sidePanelMode === "mark" ? (
               <>
-                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-                  <HelpHeading noteId="author-marks">Author counts</HelpHeading>
-                  <div className="grid gap-2">
-                    {authorSummaries.map((summary) => (
-                      <div
-                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                        key={summary.authorId}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[0.82rem] font-extrabold text-studio-ink">
-                            {summary.label}
-                          </span>
-                          <span className="font-mono text-[0.72rem] text-studio-dim">
-                            {summary.spans} spans
-                          </span>
-                        </div>
-                        <span className="font-mono text-[0.72rem] text-studio-muted">
-                          {summary.words} words / {summary.characters} chars
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <section className={cn(cardClassName, "grid gap-3 p-3.5")}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <HelpHeading noteId="mark-mode">
                       Mark selected text
                     </HelpHeading>
-                    <StudioChip tone="source">
-                      {getManuscriptAuthorDefinition(activeAuthorId).label}
-                    </StudioChip>
+                    <div className="flex flex-wrap gap-1.5">
+                      <StudioChip tone={hasTextSelection ? "tag" : "default"}>
+                        {hasTextSelection ? "Selection ready" : "Select text"}
+                      </StudioChip>
+                      <StudioChip tone="source">
+                        {getManuscriptAuthorDefinition(activeAuthorId).label}
+                      </StudioChip>
+                    </div>
                   </div>
 
                   <div className="grid gap-2">
@@ -3844,21 +5490,44 @@ export function StudioManuscriptClient({
                       onChange={(event) => setSemanticNote(event.target.value)}
                     />
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={applySemanticHighlight}
-                    >
-                      Apply semantic
-                    </button>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={() => clearSemanticHighlight()}
-                    >
-                      Clear semantic
-                    </button>
+                  <div className="grid gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={applySemanticHighlight}
+                      >
+                        Apply semantic
+                      </button>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={() => clearSemanticHighlight()}
+                      >
+                        Clear semantic
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {quickSemanticHighlightTypes.map((tagType) => {
+                        const definition = getSemanticHighlightDefinition(tagType);
+
+                        return (
+                          <button
+                            className={getSemanticControlClassName(
+                              definition,
+                              semanticType === definition.id,
+                            )}
+                            key={definition.id}
+                            type="button"
+                            onClick={() =>
+                              applySemanticHighlightForType(definition.id)
+                            }
+                          >
+                            <SemanticTagLabel definition={definition} />
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-3">
@@ -3935,6 +5604,30 @@ export function StudioManuscriptClient({
                     </button>
                   </div>
                 </section>
+
+                <section className={cn(cardClassName, "grid gap-2 p-3.5")}>
+                  <HelpHeading noteId="author-marks">Author counts</HelpHeading>
+                  <div className="grid gap-2">
+                    {authorSummaries.map((summary) => (
+                      <div
+                        className="grid gap-1 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={summary.authorId}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[0.82rem] font-extrabold text-studio-ink">
+                            {summary.label}
+                          </span>
+                          <span className="font-mono text-[0.72rem] text-studio-dim">
+                            {summary.spans} spans
+                          </span>
+                        </div>
+                        <span className="font-mono text-[0.72rem] text-studio-muted">
+                          {summary.words} words / {summary.characters} chars
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               </>
             ) : null}
 
@@ -3944,7 +5637,7 @@ export function StudioManuscriptClient({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
                       <HelpHeading noteId="structure-region">
-                        Create structure
+                        Mark boundaries
                       </HelpHeading>
                       <ManuscriptHelpTip
                         note={getManuscriptHelpNote("chapter-book-region")}
@@ -3956,152 +5649,303 @@ export function StudioManuscriptClient({
                     <StudioChip tone="node">
                       {selectedStructureRange
                         ? `${selectedStructureRange.blockCount.toLocaleString()} selected`
-                        : "Block range"}
+                        : "Cursor block"}
                     </StudioChip>
                   </div>
-                  <label className="grid gap-2">
-                    <HelpLabel noteId="structure-region">Region kind</HelpLabel>
-                    <select
-                      className={fieldClassName}
-                      value={structureKind}
-                      onChange={(event) =>
-                        updateStructureKind(
-                          event.target.value as ManuscriptStructureKind,
-                        )
-                      }
-                    >
-                      {manuscriptStructureDefinitions.map((definition) => (
-                        <option key={definition.id} value={definition.id}>
-                          {definition.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {structureKind === "chapter" ? (
-                    <label className="grid gap-2">
-                      <HelpLabel noteId="chapter-book-region">
-                        Book label preset
-                      </HelpLabel>
-                      <select
-                        className={fieldClassName}
-                        value={structureLabelPreset}
-                        onChange={(event) =>
-                          updateStructureLabelPreset(
-                            event.target.value as ManuscriptStructureLabelPreset,
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        selectedStructureRange?.startBlockId &&
+                          chapterTitleBlockIds.has(
+                            selectedStructureRange.startBlockId,
                           )
-                        }
-                      >
-                        {manuscriptStructureLabelPresets.map((preset) => (
-                          <option key={preset.id} value={preset.id}>
-                            {preset.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <label className="grid gap-2">
-                    <span className={fieldLabelClassName}>Region title</span>
-                    <input
-                      className={fieldClassName}
-                      placeholder={getDefaultStructureTitle(
-                        structureKind,
-                        structureLabelPreset,
+                          ? activeButtonClassName
+                          : "",
                       )}
-                      value={structureTitle}
-                      onChange={(event) => setStructureTitle(event.target.value)}
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <HelpLabel noteId="structure-region">
-                      Structure notes
-                    </HelpLabel>
-                    <textarea
-                      className={cn(textareaClassName, "min-h-[76px]")}
-                      value={structureNotes}
-                      onChange={(event) => setStructureNotes(event.target.value)}
-                    />
-                  </label>
-                  {pendingStructureRange ? (
-                    <div className="grid gap-2 rounded-lg border border-studio-node/40 bg-studio-node/10 p-2.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className={fieldLabelClassName}>
-                          Pending range
-                        </span>
-                        <StudioChip
-                          tone={
-                            pendingStructureRange.isRangeComplete
-                              ? "node"
-                              : "review"
+                      type="button"
+                      onClick={toggleSelectedBlockAsChapterTitle}
+                    >
+                      {selectedStructureRange?.startBlockId &&
+                      chapterTitleBlockIds.has(selectedStructureRange.startBlockId)
+                        ? "Unmark chapter"
+                        : "Mark chapter"}
+                    </button>
+                    <button
+                      className={cn(
+                        smallButtonClassName,
+                        selectedStructureRange?.startBlockId &&
+                          episodeBoundaryBlockIds.has(
+                            selectedStructureRange.startBlockId,
+                          )
+                          ? activeButtonClassName
+                          : "",
+                      )}
+                      type="button"
+                      onClick={toggleSelectedBlockAsEpisodeBoundary}
+                    >
+                      {selectedStructureRange?.startBlockId &&
+                      episodeBoundaryBlockIds.has(
+                        selectedStructureRange.startBlockId,
+                      )
+                        ? "Unmark episode"
+                        : "Mark episode"}
+                    </button>
+                  </div>
+                  {isDevMode ? (
+                    <>
+                      <label className="grid gap-2">
+                        <HelpLabel noteId="structure-region">
+                          Region kind
+                        </HelpLabel>
+                        <select
+                          className={fieldClassName}
+                          value={structureKind}
+                          onChange={(event) =>
+                            updateStructureKind(
+                              event.target.value as ManuscriptStructureKind,
+                            )
                           }
                         >
-                          {pendingStructureRange.isRangeComplete
-                            ? `${pendingStructureRange.blockCount.toLocaleString()} blocks`
-                            : "Set both ends"}
-                        </StudioChip>
+                          {manuscriptStructureDefinitions.map((definition) => (
+                            <option key={definition.id} value={definition.id}>
+                              {definition.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {structureKind === "chapter" ? (
+                        <label className="grid gap-2">
+                          <HelpLabel noteId="chapter-book-region">
+                            Book label preset
+                          </HelpLabel>
+                          <select
+                            className={fieldClassName}
+                            value={structureLabelPreset}
+                            onChange={(event) =>
+                              updateStructureLabelPreset(
+                                event.target
+                                  .value as ManuscriptStructureLabelPreset,
+                              )
+                            }
+                          >
+                            {manuscriptStructureLabelPresets.map((preset) => (
+                              <option key={preset.id} value={preset.id}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      <label className="grid gap-2">
+                        <span className={fieldLabelClassName}>
+                          Region title
+                        </span>
+                        <input
+                          className={fieldClassName}
+                          placeholder={getDefaultStructureTitle(
+                            structureKind,
+                            structureLabelPreset,
+                          )}
+                          value={structureTitle}
+                          onChange={(event) =>
+                            setStructureTitle(event.target.value)
+                          }
+                        />
+                      </label>
+                      <label className="grid gap-2">
+                        <HelpLabel noteId="structure-region">
+                          Structure notes
+                        </HelpLabel>
+                        <textarea
+                          className={cn(textareaClassName, "min-h-[76px]")}
+                          value={structureNotes}
+                          onChange={(event) =>
+                            setStructureNotes(event.target.value)
+                          }
+                        />
+                      </label>
+                      {pendingStructureRange ? (
+                        <div className="grid gap-2 rounded-lg border border-studio-node/40 bg-studio-node/10 p-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={fieldLabelClassName}>
+                              Pending range
+                            </span>
+                            <StudioChip
+                              tone={
+                                pendingStructureRange.isRangeComplete
+                                  ? "node"
+                                  : "review"
+                              }
+                            >
+                              {pendingStructureRange.isRangeComplete
+                                ? `${pendingStructureRange.blockCount.toLocaleString()} blocks`
+                                : "Set both ends"}
+                            </StudioChip>
+                          </div>
+                          <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                            Start:{" "}
+                            {getBlockPreview(pendingStructureStartBlockId) ||
+                              pendingStructureRange.startPreview}
+                          </p>
+                          <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
+                            End:{" "}
+                            {getBlockPreview(pendingStructureEndBlockId) ||
+                              pendingStructureRange.endPreview}
+                          </p>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={clearPendingStructureRange}
+                          >
+                            Clear pending range
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={captureStructureRange}
+                        >
+                          Capture range
+                        </button>
+                        <button
+                          className={smallButtonClassName}
+                          type="button"
+                          onClick={createStructureRegion}
+                        >
+                          Add structure
+                        </button>
                       </div>
-                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                        Start:{" "}
-                        {getBlockPreview(pendingStructureStartBlockId) ||
-                          pendingStructureRange.startPreview}
-                      </p>
-                      <p className="m-0 text-[0.76rem] leading-relaxed text-studio-muted">
-                        End:{" "}
-                        {getBlockPreview(pendingStructureEndBlockId) ||
-                          pendingStructureRange.endPreview}
-                      </p>
                       <button
                         className={smallButtonClassName}
                         type="button"
-                        onClick={clearPendingStructureRange}
+                        onClick={toggleSelectedBlockAsChapterTitle}
                       >
-                        Clear pending range
+                        {selectedStructureRange?.startBlockId &&
+                        chapterTitleBlockIds.has(
+                          selectedStructureRange.startBlockId,
+                        )
+                          ? "Unmark chapter title"
+                          : "Mark chapter title"}
                       </button>
-                    </div>
+                      <button
+                        className={smallButtonClassName}
+                        type="button"
+                        onClick={suggestBookRegionsFromHeadings}
+                      >
+                        Suggest book regions from headings
+                      </button>
+                    </>
                   ) : null}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={captureStructureRange}
-                    >
-                      Capture range
-                    </button>
-                    <button
-                      className={smallButtonClassName}
-                      type="button"
-                      onClick={createStructureRegion}
-                    >
-                      Add structure
-                    </button>
-                  </div>
-                  <button
-                    className={smallButtonClassName}
-                    type="button"
-                    onClick={suggestBookRegionsFromHeadings}
-                  >
-                    Suggest book regions from headings
-                  </button>
                 </section>
 
                 <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <HelpHeading noteId="structure-region">
-                  Structure regions
-                </HelpHeading>
-                <StudioChip tone="node">
-                  {structureRegions.length.toLocaleString()} regions
-                </StudioChip>
-              </div>
-              <div className="grid max-h-[280px] gap-2 overflow-auto pr-1">
-                {structureRegionSummaries.length ? (
-                  structureRegionSummaries.map((region) => {
-                    const isEditing = editingStructureRegionId === region.id;
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                      Boundary index
+                    </h2>
+                    <div className="flex flex-wrap gap-1.5">
+                      <StudioChip tone="node">
+                        {structureBoundaryIndex.chapters.length.toLocaleString()}{" "}
+                        rail chapters
+                      </StudioChip>
+                      <StudioChip tone="source">
+                        {structureBoundaryIndex.episodes.length.toLocaleString()}{" "}
+                        rail episodes
+                      </StudioChip>
+                      {structureBoundaryIndex.warnings.length ? (
+                        <StudioChip tone="review">
+                          {structureBoundaryIndex.warnings.length.toLocaleString()}{" "}
+                          warnings
+                        </StudioChip>
+                      ) : null}
+                    </div>
+                  </div>
+                  {structureBoundaryIndex.warnings.length ? (
+                    <div className="grid gap-1.5">
+                      {structureBoundaryIndex.warnings.map((warning) => (
+                        <p
+                          className="m-0 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2 text-[0.76rem] leading-relaxed text-studio-muted"
+                          key={warning.id}
+                        >
+                          {warning.message}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
 
-                    return (
-                      <article
-                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
-                        key={region.id}
-                      >
+                <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
+                      Boundary map
+                    </h2>
+                    <div className="flex flex-wrap gap-1.5">
+                      <StudioChip tone="node">
+                        {structureBoundaryIndex.chapters.length.toLocaleString()}{" "}
+                        chapters
+                      </StudioChip>
+                      <StudioChip tone="source">
+                        {structureBoundaryIndex.episodes.length.toLocaleString()}{" "}
+                        episodes
+                      </StudioChip>
+                    </div>
+                  </div>
+                  {leadingChapterlessBlockCount ? (
+                    <p className="m-0 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2 text-[0.76rem] leading-relaxed text-studio-muted">
+                      {leadingChapterlessBlockCount.toLocaleString()} block
+                      {leadingChapterlessBlockCount === 1 ? "" : "s"} before the
+                      first chapter title.
+                    </p>
+                  ) : null}
+                  <div className="grid max-h-[260px] gap-2 overflow-auto pr-1">
+                    {structureBoundaryIndex.chapters.length ? (
+                      structureBoundaryIndex.chapters.map((chapter, index) =>
+                        renderBoundaryOutlineCard(chapter, index),
+                      )
+                    ) : (
+                      <p className={panelCopyClassName}>
+                        No chapter boundaries marked yet.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid max-h-[220px] gap-2 overflow-auto pr-1">
+                    {structureBoundaryIndex.episodes.length ? (
+                      structureBoundaryIndex.episodes.map((episode, index) =>
+                        renderBoundaryOutlineCard(episode, index),
+                      )
+                    ) : (
+                      <p className={panelCopyClassName}>
+                        No episode boundaries marked yet.
+                      </p>
+                    )}
+                  </div>
+                </section>
+
+                {isDevMode ? (
+                  <section
+                    className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <HelpHeading noteId="structure-region">
+                        Structure regions
+                      </HelpHeading>
+                      <StudioChip tone="node">
+                        {structureRegions.length.toLocaleString()} regions
+                      </StudioChip>
+                    </div>
+                    <div className="grid max-h-[280px] gap-2 overflow-auto pr-1">
+                      {structureRegionSummaries.length ? (
+                        structureRegionSummaries.map((region) => {
+                          const isEditing = editingStructureRegionId === region.id;
+
+                          return (
+                            <article
+                              className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                              key={region.id}
+                            >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex flex-wrap gap-1.5">
@@ -4310,7 +6154,10 @@ export function StudioManuscriptClient({
                 )}
               </div>
             </section>
+                ) : null}
 
+            {isDevMode ? (
+              <>
             <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
@@ -4333,6 +6180,7 @@ export function StudioManuscriptClient({
                     const blockRegions = getStructureRegionsForBlock(
                       block.blockId,
                     );
+                    const blockChapter = getChapterForTitleBlock(block.blockId);
 
                     return (
                       <article
@@ -4355,6 +6203,9 @@ export function StudioManuscriptClient({
                             {block.blockId &&
                             block.blockId === pendingStructureEndBlockId ? (
                               <StudioChip tone="review">End</StudioChip>
+                            ) : null}
+                            {blockChapter ? (
+                              <StudioChip tone="node">Chapter title</StudioChip>
                             ) : null}
                           </div>
                           <span className="font-mono text-[0.68rem] leading-tight text-studio-dim">
@@ -4383,6 +6234,16 @@ export function StudioManuscriptClient({
                                 }}
                               >
                                 Set end
+                              </button>
+                              <button
+                                className={smallButtonClassName}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleChapterTitleBlock(block.blockId);
+                                }}
+                              >
+                                {blockChapter ? "Unmark title" : "Mark title"}
                               </button>
                             </>
                           ) : null}
@@ -4451,6 +6312,74 @@ export function StudioManuscriptClient({
               </div>
             </section>
               </>
+            ) : null}
+              </>
+            ) : null}
+
+            {sidePanelMode === "focus-list" ? (
+              <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <HelpHeading noteId="structure-region">
+                    Focus from structure list
+                  </HelpHeading>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid gap-1.5">
+                    <h3 className="m-0 text-[0.94rem] leading-snug text-studio-ink">
+                      Chapters
+                    </h3>
+                    <div className="grid gap-2">
+                      {structureRegionSummaries.filter(
+                        (region) => region.kind === "chapter",
+                      ).length ? (
+                        structureRegionSummaries
+                          .filter((region) => region.kind === "chapter")
+                          .map((region) => (
+                            <button
+                              className={smallButtonClassName}
+                              key={region.id}
+                              type="button"
+                              onClick={() =>
+                                applyStructureRegionFocus("chapter", region.id)
+                              }
+                            >
+                              {region.title}
+                            </button>
+                          ))
+                      ) : (
+                        <p className={panelCopyClassName}>No chapter regions yet.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <h3 className="m-0 text-[0.94rem] leading-snug text-studio-ink">
+                      Episodes
+                    </h3>
+                    <div className="grid gap-2">
+                      {structureRegionSummaries.filter(
+                        (region) => region.kind === "episode",
+                      ).length ? (
+                        structureRegionSummaries
+                          .filter((region) => region.kind === "episode")
+                          .map((region) => (
+                            <button
+                              className={smallButtonClassName}
+                              key={region.id}
+                              type="button"
+                              onClick={() =>
+                                applyStructureRegionFocus("episode", region.id)
+                              }
+                            >
+                              {region.title}
+                            </button>
+                          ))
+                      ) : (
+                        <p className={panelCopyClassName}>No episode regions yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
             ) : null}
 
             {sidePanelMode === "find" || sidePanelMode === "quotes" ? (
@@ -5195,7 +7124,7 @@ export function StudioManuscriptClient({
               </section>
             ) : null}
 
-            {sidePanelMode === "backup" && !isRecordingMode ? (
+            {isDevMode && sidePanelMode === "backup" && !isRecordingMode ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-2 p-3.5")}>
               <HelpHeading noteId="backup-mode">Export / backup</HelpHeading>
               <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
@@ -5523,17 +7452,17 @@ export function StudioManuscriptClient({
                     placeholder="Optional note, for example: ready for Homer phone recording."
                   />
                 </label>
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <button
                     className={smallButtonClassName}
                     data-testid="manuscript-snapshot-save"
                     disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
                     type="button"
-                    onClick={saveServerSnapshot}
+                    onClick={() => void saveServerSnapshot()}
                   >
                     {selectedServerManuscript
                       ? "Save to manuscript"
-                      : "Save legacy snapshot"}
+                      : "Save manuscript"}
                   </button>
                   <button
                     className={smallButtonClassName}
@@ -5556,13 +7485,18 @@ export function StudioManuscriptClient({
                   </button>
                   <button
                     className={smallButtonClassName}
-                    data-testid="manuscript-live-room-start-current"
-                    disabled={isStartingLiveRoom || isServerSnapshotUnavailable}
+                    data-testid="manuscript-snapshot-copy-live-latest-link"
                     type="button"
-                    onClick={() => void startLiveRoomFromCurrentDraft()}
+                    onClick={() => void copyLiveLatestSnapshotLink()}
                   >
-                    {isStartingLiveRoom ? "Opening..." : "Start live room"}
+                    Copy phone link
                   </button>
+                </div>
+                <div className="rounded-lg border border-studio-line bg-black/20 p-2.5">
+                  <p className={labelClassName}>Latest phone link</p>
+                  <p className="m-0 mt-1 break-all font-mono text-[0.72rem] text-studio-muted">
+                    {MANUSCRIPT_LIVE_LATEST_PATH}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <ManuscriptHelpTip
@@ -5667,7 +7601,7 @@ export function StudioManuscriptClient({
                   </div>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <div className="flex items-center gap-1.5">
                   <button
                     className={cn(smallButtonClassName, "flex-1")}
@@ -5829,7 +7763,7 @@ export function StudioManuscriptClient({
             </section>
             ) : null}
 
-            {sidePanelMode === "publish" ? (
+            {isDevMode && sidePanelMode === "publish" ? (
               <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <HelpHeading noteId="publish-mode">
@@ -6378,20 +8312,156 @@ export function StudioManuscriptClient({
               </section>
             ) : null}
             </div>
+
+            <footer
+              className="mt-3 grid shrink-0 gap-2 border-t border-studio-line pt-3"
+              aria-label="Manuscript sidebar footer"
+            >
+              <label className="grid gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <HelpLabel noteId={getSidePanelModeHelpNoteId(sidePanelMode)}>
+                    Work mode
+                  </HelpLabel>
+                  <ManuscriptHelpTip
+                    note={getManuscriptHelpNote(
+                      getSidePanelModeHelpNoteId(sidePanelMode),
+                    )}
+                  />
+                </div>
+                <select
+                  className={fieldClassName}
+                  data-testid="manuscript-mode-select"
+                  value={sidePanelMode}
+                  onChange={(event) =>
+                    setSidePanelMode(event.target.value as ManuscriptSidePanelMode)
+                  }
+                >
+                  {visibleWorkModeOptions.map((mode) => (
+                    <option key={mode.id} value={mode.id}>
+                      {mode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+                  )}
+                  data-testid="manuscript-save-share-footer"
+                  type="button"
+                  onClick={() => setIsSaveShareDialogOpen(true)}
+                >
+                  Save/share
+                </button>
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    "border-studio-source/55 bg-studio-source/10 text-studio-source disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim",
+                  )}
+                  data-testid="manuscript-live-edit-footer"
+                  disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
+                  type="button"
+                  onClick={() => void saveAndOpenLiveEdit()}
+                >
+                  Live edit
+                </button>
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    isDevMode ? activeButtonClassName : "",
+                  )}
+                  type="button"
+                  onClick={() => setIsDevMode((current) => !current)}
+                >
+                  {isDevMode ? "Hide Dev" : "Dev Mode"}
+                </button>
+              </div>
+            </footer>
           </aside>
         </section>
 
+        {isFilterMenuOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            role="presentation"
+            onMouseDown={() => setIsFilterMenuOpen(false)}
+          >
+            <section
+              className="grid max-h-[min(90dvh,760px)] w-full max-w-[680px] gap-3 overflow-auto rounded-lg border border-studio-line-strong bg-studio-panel p-4 shadow-[0_24px_80px_rgba(0,0,0,0.54)]"
+              aria-label="Filter manuscript"
+              aria-modal="true"
+              data-testid="manuscript-filter-menu-dialog"
+              role="dialog"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={labelClassName}>Manuscript</p>
+                  <h2 className="m-0 text-[1.05rem] leading-snug text-studio-ink">
+                    Filter
+                  </h2>
+                </div>
+                <button
+                  className={commandButtonClassName}
+                  type="button"
+                  onClick={() => setIsFilterMenuOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              {renderFilterMenuPanel()}
+            </section>
+          </div>
+        ) : null}
+
+        {isSaveShareDialogOpen ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            role="presentation"
+            onMouseDown={() => setIsSaveShareDialogOpen(false)}
+          >
+            <section
+              className="grid max-h-[min(90dvh,720px)] w-full max-w-[560px] gap-3 overflow-auto rounded-lg border border-studio-line-strong bg-studio-panel p-4 shadow-[0_24px_80px_rgba(0,0,0,0.54)]"
+              aria-label="Save and share manuscript"
+              aria-modal="true"
+              data-testid="manuscript-save-share-dialog"
+              role="dialog"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={labelClassName}>Manuscript</p>
+                  <h2 className="m-0 text-[1.05rem] leading-snug text-studio-ink">
+                    Save and share
+                  </h2>
+                </div>
+                <button
+                  className={commandButtonClassName}
+                  type="button"
+                  onClick={() => setIsSaveShareDialogOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              {saveSharePanel}
+            </section>
+          </div>
+        ) : null}
+
         <section
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 py-2 shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-studio-line-strong bg-studio-panel/98 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-18px_54px_rgba(0,0,0,0.38)] backdrop-blur md:hidden"
           aria-label="Mobile manuscript tools"
         >
           {isMobileToolsOpen ? (
             <div className="mb-2 grid max-h-[70vh] gap-3 overflow-auto rounded-t-2xl border border-studio-line-strong bg-[#041f1e] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className={labelClassName}>Mobile tools</p>
+                  <p className={labelClassName}>Mobile menu</p>
                   <h2 className="m-0 text-[1rem] leading-snug text-studio-ink">
-                    Manuscript support controls
+                    Marking tools
                   </h2>
                 </div>
                 <button
@@ -6447,6 +8517,13 @@ export function StudioManuscriptClient({
                 <button
                   className={smallButtonClassName}
                   type="button"
+                  onClick={toggleSelectedBlockAsChapterTitle}
+                >
+                  Mark chapter title
+                </button>
+                <button
+                  className={smallButtonClassName}
+                  type="button"
                   onClick={() => {
                     applyQuoteFocus();
                     returnToManuscript();
@@ -6464,19 +8541,6 @@ export function StudioManuscriptClient({
                 >
                   Full manuscript
                 </button>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    className={cn(smallButtonClassName, "flex-1")}
-                    disabled={isServerSnapshotBusy || isServerSnapshotUnavailable}
-                    type="button"
-                    onClick={() => void loadLatestServerSnapshot()}
-                  >
-                    Load latest snapshot
-                  </button>
-                  <ManuscriptHelpTip
-                    note={getManuscriptHelpNote("load-latest-snapshot")}
-                  />
-                </div>
                 <button
                   className={smallButtonClassName}
                   type="button"
@@ -6493,11 +8557,191 @@ export function StudioManuscriptClient({
                     ? "Hide semantic colors"
                     : "Show semantic colors"}
                 </button>
+                <button
+                  className={cn(
+                    smallButtonClassName,
+                    isDevMode ? activeButtonClassName : "",
+                  )}
+                  type="button"
+                  onClick={() => setIsDevMode((current) => !current)}
+                >
+                  {isDevMode ? "Hide Dev Mode" : "Dev Mode"}
+                </button>
               </div>
               <p className="m-0 text-[0.74rem] leading-relaxed text-studio-muted">
                 {serverSnapshotStatus}
               </p>
 
+              {hasStructureRailContent ? (
+                <div
+                  className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                  data-testid="manuscript-mobile-structure-navigation"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="m-0 text-[0.95rem] leading-snug text-studio-ink">
+                      Chapter / episode
+                    </h3>
+                    <StudioChip tone="node">Scroll synced</StudioChip>
+                  </div>
+                  <div className="grid gap-2">
+                    {renderMobileStructureNavigationCard(
+                      "chapter",
+                      structureRailState.chapter,
+                      structureRailState.nextChapter,
+                    )}
+                    {renderMobileStructureNavigationCard(
+                      "episode",
+                      structureRailState.episode,
+                      structureRailState.nextEpisode,
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {!isRecordingMode ? (
+                <div className="grid gap-3 rounded-lg border border-studio-tag/35 bg-studio-tag/10 p-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <HelpLabel noteId="mark-mode">Write and mark</HelpLabel>
+                    <StudioChip tone="source">
+                      {getManuscriptAuthorDefinition(activeAuthorId).label}
+                    </StudioChip>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {manuscriptAuthorDefinitions.map((author) => (
+                      <button
+                        className={cn(
+                          smallButtonClassName,
+                          "px-2 text-[0.74rem]",
+                          activeAuthorId === author.id
+                            ? activeButtonClassName
+                            : "",
+                        )}
+                        key={author.id}
+                        type="button"
+                        onClick={() => markSelectionAsAuthor(author.id)}
+                      >
+                        {author.id === "homer"
+                          ? "Homer"
+                          : author.id === "charlie"
+                            ? "Charlie"
+                            : "Clear"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HelpLabel noteId="semantic-meaning-tags">
+                      Semantic palette
+                    </HelpLabel>
+                    <div className="flex snap-x gap-2 overflow-x-auto pb-1">
+                      {semanticHighlightDefinitions.map((definition) => (
+                        <button
+                          className={getSemanticControlClassName(
+                            definition,
+                            semanticType === definition.id,
+                            cn(
+                              smallButtonClassName,
+                              "min-w-fit shrink-0 snap-start px-3",
+                            ),
+                          )}
+                          key={definition.id}
+                          type="button"
+                          onClick={() => setSemanticType(definition.id)}
+                        >
+                          <SemanticTagLabel definition={definition} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>Semantic note</span>
+                    <textarea
+                      className={cn(textareaClassName, "min-h-[68px]")}
+                      value={semanticNote}
+                      onChange={(event) => setSemanticNote(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className={fieldLabelClassName}>
+                      Citation / source note
+                    </span>
+                    <textarea
+                      className={cn(textareaClassName, "min-h-[68px]")}
+                      value={citationNote}
+                      onChange={(event) => setCitationNote(event.target.value)}
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={applySemanticHighlight}
+                    >
+                      Apply semantic
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => markCitedQuotation()}
+                    >
+                      Mark cited quote
+                    </button>
+                    {quickSemanticHighlightTypes.map((tagType) => {
+                      const definition = getSemanticHighlightDefinition(tagType);
+
+                      return (
+                        <button
+                          className={getSemanticControlClassName(
+                            definition,
+                            semanticType === definition.id,
+                          )}
+                          key={definition.id}
+                          type="button"
+                          onClick={() =>
+                            applySemanticHighlightForType(definition.id)
+                          }
+                        >
+                          <SemanticTagLabel definition={definition} />
+                        </button>
+                      );
+                    })}
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applySemanticFocus(semanticType)}
+                    >
+                      Focus selected tag
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => applySemanticFocus()}
+                    >
+                      All semantic marks
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={() => clearSemanticHighlight()}
+                    >
+                      Clear semantic
+                    </button>
+                    <button
+                      className={smallButtonClassName}
+                      type="button"
+                      onClick={returnToManuscript}
+                    >
+                      Back to writing
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {isDevMode ? (
               <div className="grid gap-2 rounded-lg border border-studio-review/35 bg-studio-review/10 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <HelpLabel noteId="publish-mode">
@@ -6588,6 +8832,7 @@ export function StudioManuscriptClient({
                   </button>
                 </div>
               </div>
+              ) : null}
 
               <div className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -6602,7 +8847,11 @@ export function StudioManuscriptClient({
                             .label}
                     </StudioChip>
                     <StudioChip tone="source">
-                      {recordingOutlineRegions.length.toLocaleString()} items
+                      {(recordingOutlineKind === "chapter" &&
+                      derivedChapters.length
+                        ? derivedChapters.length
+                        : recordingOutlineRegions.length
+                      ).toLocaleString()} items
                     </StudioChip>
                   </div>
                 </div>
@@ -6634,7 +8883,49 @@ export function StudioManuscriptClient({
                 </div>
 
                 <div className="grid max-h-[32vh] gap-2 overflow-auto pr-1">
-                  {recordingOutlineRegions.length ? (
+                  {recordingOutlineKind === "chapter" &&
+                  derivedChapters.length ? (
+                    derivedChapters.map((chapter, index) => (
+                      <article
+                        className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
+                        key={chapter.id}
+                      >
+                        <div className="flex flex-wrap gap-1.5">
+                          <StudioChip tone="node">
+                            Chapter {index + 1}
+                          </StudioChip>
+                          <StudioChip tone="source">
+                            {chapter.blockCount.toLocaleString()} blocks
+                          </StudioChip>
+                        </div>
+                        <h4 className="m-0 text-[0.9rem] leading-snug text-studio-ink">
+                          {chapter.title}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() => {
+                              focusDerivedChapter(chapter, "title");
+                              returnToManuscript();
+                            }}
+                          >
+                            Jump title
+                          </button>
+                          <button
+                            className={smallButtonClassName}
+                            type="button"
+                            onClick={() => {
+                              focusDerivedChapter(chapter, "end");
+                              returnToManuscript();
+                            }}
+                          >
+                            Jump end
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  ) : recordingOutlineRegions.length ? (
                     recordingOutlineRegions.map((region) => (
                       <article
                         className="grid gap-2 rounded-lg border border-studio-line bg-black/20 p-2.5"
@@ -6683,20 +8974,65 @@ export function StudioManuscriptClient({
             </div>
           ) : null}
 
+          {hasStructureRailContent ? (
+            <div
+              className="mb-2 grid grid-cols-2 gap-2"
+              data-testid="manuscript-mobile-structure-strip"
+            >
+              {renderMobileStructureStatusItem(
+                "chapter",
+                structureRailState.chapter,
+                structureRailState.nextChapter,
+              )}
+              {renderMobileStructureStatusItem(
+                "episode",
+                structureRailState.episode,
+                structureRailState.nextEpisode,
+              )}
+            </div>
+          ) : null}
+
           <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="m-0 truncate text-[0.82rem] font-extrabold leading-tight text-studio-ink">
-                {title || "Untitled manuscript"}
+            <div
+              className="min-w-0"
+              data-testid="manuscript-mobile-footer-status"
+            >
+              <p className={cn(labelClassName, "truncate")}>
+                Editor / Manuscript surface
               </p>
               <p className="m-0 truncate text-[0.72rem] leading-tight text-studio-muted">
                 {isRecordingMode
                   ? "Recording view-only"
                   : blockFilterSummary.hasActiveFilters
                     ? `${filteredBlockDetails.length.toLocaleString()} matches visible`
-                    : `${blockSummaries.length.toLocaleString()} manuscript blocks`}
+                    : `${textStats.words.toLocaleString()} words / ${blockSummaries.length.toLocaleString()} blocks / ${structureRegions.length.toLocaleString()} structure`}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  "border-studio-tag/60 bg-studio-tag/15 text-studio-tag",
+                )}
+                data-testid="manuscript-mobile-save-share"
+                type="button"
+                onClick={() => setIsSaveShareDialogOpen(true)}
+              >
+                Save
+              </button>
+              <button
+                className={cn(
+                  smallButtonClassName,
+                  blockFilterSummary.hasActiveFilters
+                    ? activeButtonClassName
+                    : "",
+                )}
+                data-testid="manuscript-mobile-filter-menu"
+                type="button"
+                onClick={openFilterMenu}
+              >
+                Filter
+              </button>
               <button
                 className={cn(
                   smallButtonClassName,
@@ -6710,13 +9046,29 @@ export function StudioManuscriptClient({
               <button
                 className={cn(
                   smallButtonClassName,
+                  "grid size-10 place-items-center px-0",
                   isMobileToolsOpen ? activeButtonClassName : "",
                 )}
+                data-testid="manuscript-mobile-tools-menu"
                 type="button"
                 aria-expanded={isMobileToolsOpen}
+                aria-label={
+                  isMobileToolsOpen
+                    ? "Close marking tools"
+                    : "Open marking tools"
+                }
+                title={
+                  isMobileToolsOpen
+                    ? "Close marking tools"
+                    : "Open marking tools"
+                }
                 onClick={() => setIsMobileToolsOpen((current) => !current)}
               >
-                {isMobileToolsOpen ? "Close tools" : "Tools"}
+                <span className="grid gap-1" aria-hidden="true">
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                  <span className="block h-0.5 w-4 rounded-full bg-current" />
+                </span>
               </button>
             </div>
             </div>
@@ -6775,10 +9127,10 @@ export function StudioManuscriptClient({
                 <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">
                   {semanticHighlightDefinitions.map((definition) => (
                     <button
-                      className={cn(
-                        commandButtonClassName,
-                        "justify-start text-left",
-                        semanticType === definition.id ? activeButtonClassName : "",
+                      className={getSemanticControlClassName(
+                        definition,
+                        semanticType === definition.id,
+                        cn(commandButtonClassName, "justify-start text-left"),
                       )}
                       key={definition.id}
                       role="menuitem"
@@ -6787,10 +9139,34 @@ export function StudioManuscriptClient({
                         applySemanticHighlightFromContextMenu(definition.id)
                       }
                     >
-                      {definition.label}
+                      <SemanticTagLabel definition={definition} />
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                {quickSemanticHighlightTypes.map((tagType) => {
+                  const definition = getSemanticHighlightDefinition(tagType);
+
+                  return (
+                    <button
+                      className={getSemanticControlClassName(
+                        definition,
+                        semanticType === definition.id,
+                        commandButtonClassName,
+                      )}
+                      key={definition.id}
+                      role="menuitem"
+                      type="button"
+                      onClick={() =>
+                        applySemanticHighlightFromContextMenu(definition.id)
+                      }
+                    >
+                      <SemanticTagLabel definition={definition} />
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">

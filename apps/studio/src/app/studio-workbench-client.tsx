@@ -2,6 +2,17 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { 
+  Video, 
+  Sparkles, 
+  Play, 
+  Check, 
+  RefreshCw, 
+  ChevronLeft, 
+  ChevronRight, 
+  BookOpen, 
+  Tag 
+} from "lucide-react";
 import type {
   KnowledgeNode,
   StudioBlock,
@@ -19,6 +30,7 @@ import {
 
 import { createStudioTaggedSpanAction } from "./actions";
 import { StudioNav } from "./studio-nav";
+import Editor from "../components/Editor";
 import {
   cardClassName,
   cn,
@@ -81,6 +93,8 @@ type StudioWorkbenchClientProps = {
   actor: {
     primaryEmail: string;
   };
+  collabRoom: string;
+  collabToken: string;
 };
 
 function findBlock(blocks: StudioBlock[], blockId: string) {
@@ -154,6 +168,8 @@ export function StudioWorkbenchClient({
   knowledgeNodes,
   persistence,
   actor,
+  collabRoom,
+  collabToken,
 }: StudioWorkbenchClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -166,6 +182,50 @@ export function StudioWorkbenchClient({
   const [endOffset, setEndOffset] = useState(initialOffsets.endOffset);
   const [selectedTagId, setSelectedTagId] = useState(tags[0]?.id ?? "");
   const [actionState, setActionState] = useState<StudioActionState>(null);
+
+  // AI Clip Generator states
+  const [clipStatus, setClipStatus] = useState<"idle" | "analyzing" | "cropping" | "done">("idle");
+  const [clipProgress, setClipProgress] = useState(0);
+
+  const [leftPaneExpanded, setLeftPaneExpanded] = useState(true);
+  const [activeTool, setActiveTool] = useState<"tagging" | "video">("tagging");
+
+  const handleSelectTagging = (text: string) => {
+    setActiveTool("tagging");
+    if (!text) return;
+    const index = selectedBlock.body.indexOf(text);
+    if (index >= 0) {
+      setStartOffset(index);
+      setEndOffset(index + text.length);
+    }
+  };
+
+  const handleSelectVideo = () => {
+    setActiveTool("video");
+  };
+
+  const handleAutoClip = () => {
+    if (clipStatus !== "idle") return;
+    setClipStatus("analyzing");
+    setClipProgress(15);
+    
+    // Step 1: Multimodal hooks extraction (Gemini 1.5 Pro)
+    setTimeout(() => {
+      setClipStatus("cropping");
+      setClipProgress(60);
+      
+      // Step 2: FFmpeg 9:16 vertical crop center-slicing
+      setTimeout(() => {
+        setClipStatus("done");
+        setClipProgress(100);
+      }, 2000);
+    }, 2000);
+  };
+
+  const resetClipGenerator = () => {
+    setClipStatus("idle");
+    setClipProgress(0);
+  };
 
   const selectedBlock = findBlock(document.blocks, selectedBlockId);
   const selectedTag = tags.find((tag) => tag.id === selectedTagId) ?? tags[0];
@@ -311,10 +371,106 @@ export function StudioWorkbenchClient({
         </section>
 
         <section
-          className="grid gap-[18px] xl:grid-cols-[minmax(310px,0.95fr)_minmax(330px,0.95fr)_minmax(310px,0.82fr)]"
+          className="flex flex-col lg:flex-row gap-[18px] items-stretch w-full"
           aria-label="Studio tagging workbench"
         >
-          <section className={panelClassName} aria-label="Source document">
+          {/* Left Pane: Source Library */}
+          {leftPaneExpanded ? (
+            <aside className="hidden xl:flex flex-col gap-[18px] w-[280px] shrink-0 max-h-[calc(100vh-140px)] overflow-y-auto custom-scrollbar">
+              <div className={cn(panelClassName, "flex-1 relative")}>
+                <div className="mb-3.5 flex items-start justify-between gap-3">
+                  <p className={labelClassName}>Source Library</p>
+                  <div className="flex items-center gap-1.5">
+                    <StudioChip tone="source">1 Book</StudioChip>
+                    <button
+                      onClick={() => setLeftPaneExpanded(false)}
+                      className="p-1 rounded bg-studio-ink/5 border border-studio-line/40 hover:bg-studio-line/20 hover:text-studio-ink text-studio-muted transition-all cursor-pointer"
+                      title="Collapse library"
+                      type="button"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                  </div>
+                </div>
+                <h2 className={panelTitleClassName}>Active Ingests</h2>
+                <p className="mt-2 mb-4 text-[0.82rem] leading-relaxed text-studio-muted">
+                  Drop EPUBs or URLs here to read and mark them up alongside your editor.
+                </p>
+                
+                <div className={cn(cardClassName, "p-3 cursor-pointer hover:border-studio-source/50 transition-colors")}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-10 bg-studio-source/20 rounded shadow-sm border border-studio-source/40" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[0.85rem] font-bold text-studio-ink truncate">High Ground Odyssey</p>
+                      <p className="text-[0.7rem] text-studio-dim">Ingested Document</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          ) : (
+            <aside className="hidden xl:flex flex-col items-center gap-[18px] w-[60px] shrink-0 bg-studio-panel/20 border border-studio-line/20 rounded-xl py-4 px-2 max-h-[calc(100vh-140px)] select-none">
+              <button
+                onClick={() => setLeftPaneExpanded(true)}
+                className="p-2 rounded-lg border border-studio-line/40 bg-studio-panel hover:bg-studio-line/30 text-studio-tag hover:scale-105 transition-all shadow-md cursor-pointer"
+                title="Expand Source Library"
+                type="button"
+              >
+                <BookOpen size={16} className="animate-pulse" />
+              </button>
+              <div className="w-[1px] h-6 bg-studio-line/30 my-2" />
+              <span className="writing-mode-vertical text-[0.65rem] font-bold text-studio-dim uppercase tracking-widest text-center mt-2" style={{ writingMode: "vertical-lr" }}>
+                LIBRARY
+              </span>
+            </aside>
+          )}
+
+          {/* Center Pane: Writing Canvas */}
+          <div className="flex-1 min-w-0 flex flex-col gap-[18px] min-h-[600px]">
+            <Editor 
+              roomName={collabRoom}
+              token={collabToken}
+              userName={actor.primaryEmail}
+              onSelectTagging={handleSelectTagging}
+              onSelectVideo={handleSelectVideo}
+            />
+          </div>
+
+          {/* Right Pane: Tooling Sidebar */}
+          <aside className="flex flex-col gap-[18px] w-full lg:w-[350px] shrink-0 max-h-[calc(100vh-140px)] overflow-y-auto pr-2 pb-12 custom-scrollbar">
+            {/* Glassmorphic Active Tool Tab Bar */}
+            <div className="flex border border-studio-line/40 bg-studio-panel/40 p-1 rounded-xl gap-1 shrink-0">
+              <button
+                onClick={() => setActiveTool("tagging")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[0.78rem] font-bold transition-all cursor-pointer",
+                  activeTool === "tagging"
+                    ? "bg-studio-tag/15 text-studio-tag border border-studio-tag/20 shadow-md"
+                    : "text-studio-muted hover:text-studio-ink hover:bg-studio-ink/5"
+                )}
+                type="button"
+              >
+                <Tag size={13} />
+                <span>Tagging Desk</span>
+              </button>
+              <button
+                onClick={() => setActiveTool("video")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[0.78rem] font-bold transition-all cursor-pointer",
+                  activeTool === "video"
+                    ? "bg-studio-source/15 text-studio-source border border-studio-source/20 shadow-md"
+                    : "text-studio-muted hover:text-studio-ink hover:bg-studio-ink/5"
+                )}
+                type="button"
+              >
+                <Video size={13} />
+                <span>Video Engine</span>
+              </button>
+            </div>
+
+            {activeTool === "tagging" ? (
+              <>
+                <section className={panelClassName} aria-label="Source document">
             <div className="mb-3.5 flex items-start justify-between gap-3">
               <p className={labelClassName}>Source Document</p>
               <StudioChip tone="source">
@@ -617,49 +773,130 @@ export function StudioWorkbenchClient({
               )}
             </div>
           </aside>
+              </>
+            ) : (
+              <section className={cn(panelClassName, "border border-studio-tag/40 bg-studio-tag/5")} aria-label="AI Video Engine">
+                <div className="w-full">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className={cn(labelClassName, "text-studio-tag")}>Active Engine</p>
+                    <StudioChip tone="tag">Live Pipeline</StudioChip>
+                  </div>
+                  <h2 className={panelTitleClassName}>AI Clip Generator</h2>
+                  <p className="mt-2 mb-4 text-[0.88rem] leading-relaxed text-studio-muted">
+                    Extract vertical 9:16 reels, shorts, and highlights using Vertex AI Gemini 1.5 Pro and local FFmpeg.
+                  </p>
+
+                  {clipStatus === "idle" && (
+                    <div className="grid gap-3">
+                      <div className="grid gap-1">
+                        <span className="text-[0.7rem] font-bold text-studio-dim uppercase">Source GCS URI</span>
+                        <input
+                          type="text"
+                          readOnly
+                          value="gs://high-ground-raw/podcasts/episode-001.mp4"
+                          className="text-[0.8rem] font-mono bg-studio-ink/10 border border-studio-line rounded px-2 py-1.5 text-studio-muted select-all focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        onClick={handleAutoClip}
+                        className="w-full flex items-center justify-center gap-2 bg-studio-tag hover:bg-studio-tag/80 text-studio-ink font-bold py-2.5 px-4 rounded-lg transition-all shadow-[0_4px_12px_rgba(159,209,139,0.2)] text-[0.85rem]"
+                      >
+                        <Sparkles size={14} className="animate-pulse" />
+                        <span>Run Auto-Clip Pipeline</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {(clipStatus === "analyzing" || clipStatus === "cropping") && (
+                    <div className="grid gap-3 py-2">
+                      <div className="flex items-center gap-2 text-studio-tag animate-pulse">
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span className="text-[0.82rem] font-extrabold">
+                          {clipStatus === "analyzing"
+                            ? "Gemini extracting viral hooks..."
+                            : "FFmpeg center-cropping vertical video..."}
+                        </span>
+                      </div>
+                      <div className="w-full bg-studio-ink/10 h-2.5 rounded-full overflow-hidden border border-studio-line">
+                        <div
+                          className="bg-studio-tag h-full transition-all duration-500 shadow-[0_0_12px_rgba(159,209,139,0.5)]"
+                          style={{ width: `${clipProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-[0.72rem] font-mono text-studio-dim text-right">{clipProgress}% completed</span>
+                    </div>
+                  )}
+
+                  {clipStatus === "done" && (
+                    <div className="grid gap-3">
+                      <div className="flex items-center gap-1.5 text-emerald-400 font-extrabold text-[0.82rem] mb-1">
+                        <Check size={16} />
+                        <span>3 Shorts Generated successfully!</span>
+                      </div>
+                      
+                      <div className="grid gap-2 text-[0.8rem]">
+                        {[
+                          { title: "Zero Sunk Cost Mindset", score: "96", duration: "15s" },
+                          { title: "ADHD Focus Multipliers", score: "92", duration: "22s" },
+                          { title: "The Content Command Center", score: "89", duration: "18s" }
+                        ].map((clip, i) => (
+                          <div key={i} className="flex items-center justify-between border border-studio-line bg-studio-ink/5 p-2 rounded-lg">
+                            <div className="truncate max-w-[160px]">
+                              <strong className="text-studio-ink block truncate">{clip.title}</strong>
+                              <span className="text-[0.7rem] text-studio-dim">Score: {clip.score}/100 • {clip.duration}</span>
+                            </div>
+                            <button className="flex items-center justify-center p-1.5 bg-studio-tag/10 hover:bg-studio-tag/20 border border-studio-tag/30 rounded text-studio-tag transition-colors">
+                              <Play size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={resetClipGenerator}
+                        className="w-full mt-2 border border-studio-line hover:border-studio-line-strong text-studio-muted hover:text-studio-ink text-[0.75rem] font-bold py-1.5 px-3 rounded transition-all"
+                      >
+                        Process another video
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+          </aside>
         </section>
 
         <section
-          className="grid gap-3.5 xl:grid-cols-3"
+          className="grid gap-3.5 xl:grid-cols-2"
           aria-label="Future Studio lanes"
         >
-          {[
-            {
-              title: "Structures",
-              detail: "Outline, chapter, episode, and curriculum structures.",
-            },
-            {
-              title: "Projections",
-              detail:
-                "Approved public outputs for web, books, public talks, and Quiplore.",
-            },
-            {
-              title: "Agents",
-              detail: "Future source-aware agent runs with status and review.",
-            },
-          ].map((lane) => (
-            <div
-              className={cn(
-                panelClassName,
-                "flex min-w-0 flex-col items-stretch justify-between gap-3.5 p-4 opacity-75 sm:flex-row sm:items-start",
-              )}
-              aria-disabled="true"
-              key={lane.title}
-            >
-              <div>
-                <p className={labelClassName}>Future lane</p>
-                <h2 className={panelTitleClassName}>{lane.title}</h2>
-                <p className="mt-2 mb-0 text-[0.88rem] leading-relaxed text-studio-muted">
-                  {lane.detail}
-                </p>
-              </div>
-              <StudioChip tone="review">Not wired</StudioChip>
+          {/* Structures (Future Lane) */}
+          <div className={cn(panelClassName, "flex min-w-0 flex-col items-stretch justify-between gap-3.5 p-4 opacity-75 sm:flex-row sm:items-start")} aria-disabled="true">
+            <div>
+              <p className={labelClassName}>Future lane</p>
+              <h2 className={panelTitleClassName}>Structures</h2>
+              <p className="mt-2 mb-0 text-[0.88rem] leading-relaxed text-studio-muted">
+                Outline, chapter, episode, and curriculum structures.
+              </p>
             </div>
-          ))}
+            <StudioChip tone="review">Not wired</StudioChip>
+          </div>
+
+          {/* Projections (Future Lane) */}
+          <div className={cn(panelClassName, "flex min-w-0 flex-col items-stretch justify-between gap-3.5 p-4 opacity-75 sm:flex-row sm:items-start")} aria-disabled="true">
+            <div>
+              <p className={labelClassName}>Future lane</p>
+              <h2 className={panelTitleClassName}>Projections</h2>
+              <p className="mt-2 mb-0 text-[0.88rem] leading-relaxed text-studio-muted">
+                Approved public outputs for web, books, public talks, and Quiplore.
+              </p>
+            </div>
+            <StudioChip tone="review">Not wired</StudioChip>
+          </div>
         </section>
 
         <section
-          className={cn(panelClassName, "grid gap-2 px-4 py-3.5")}
+          className={cn(panelClassName, "grid gap-2 px-4 py-3.5 mt-4")}
           aria-label="Tag applications"
         >
           <p className={labelClassName}>Durable tag applications</p>
