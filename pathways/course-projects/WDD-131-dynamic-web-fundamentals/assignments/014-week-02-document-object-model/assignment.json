@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 14,
+  "lesson": "Week 02",
+  "title": "Document Object Model",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: Document Object Model The purpose of this activity is to introduce the HTML DOM and learn how to manipulate the document using JavaScript. Reference: Manipulating documents \u2013 MDN. [Manipulating documents: https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Client-side_web_APIs/Manipulating_documents]",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week02/prepare-dom-manipulation.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week02/",
+  "status": "ok"
+}

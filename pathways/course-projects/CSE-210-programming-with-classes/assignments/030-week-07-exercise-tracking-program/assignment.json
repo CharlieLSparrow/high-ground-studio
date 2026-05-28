@@ -1,0 +1,12 @@
+{
+  "course": "CSE 210",
+  "course_title": "Programming with Classes",
+  "index": 30,
+  "lesson": "Week 07",
+  "title": "Exercise Tracking Program",
+  "category": "Learning activity / exercise",
+  "summary": "W07 Assignment: Exercise Tracking Program The final principles of Programming with Classes are inheritance and polymorphism. For this assignment, you will write a program that demonstrates your knowledge of these principles. Assume that a local fitness center has hired you to write an app for their customers to track their exercise. They have facilities...",
+  "url": "https://byui-cse.github.io/cse210-ww-course/week07/foundation-inheritance.html",
+  "source_page": "https://byui-cse.github.io/cse210-ww-course/week07/index.html",
+  "status": "ok"
+}

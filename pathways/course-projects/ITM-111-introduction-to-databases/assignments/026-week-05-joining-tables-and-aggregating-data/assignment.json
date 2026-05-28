@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 26,
+  "lesson": "Week 05",
+  "title": "Joining Tables and Aggregating Data",
+  "category": "Project / major deliverable",
+  "summary": "Prepare 5: Joining and Summarizing Data This week you will... use multiple tables in a query called joins.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week05/prepare.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week05/index.html",
+  "status": "ok"
+}

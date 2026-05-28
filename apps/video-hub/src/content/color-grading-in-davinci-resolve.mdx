@@ -1,0 +1,45 @@
+---
+title: "Color Grading in DaVinci Resolve: The Node Flow Manual"
+subtitle: "Structuring serial, parallel, and layer nodes for clean skin tones"
+description: "How to structure serial, parallel, and layer nodes for clean skin tones and consistent spatial exposure."
+category: "Color Science"
+date: "2026-05-28"
+author: "Charlie"
+readTime: "10 min read"
+status: "published"
+tags: 
+  - "DaVinci Resolve"
+  - "Color Grading"
+  - "Post Production"
+---
+
+# Color Grading in DaVinci Resolve: The Node Flow Manual
+
+Color grading is the process of defining the visual mood and consistency of your footage. In DaVinci Resolve, this is accomplished through a powerful, non-destructive node-based pipeline.
+
+## Designing a Logical Node Tree
+
+To ensure consistency and ease of revision, you must construct a standardized node flow. A recommended professional node tree includes:
+
+```
+[Node 01: Exposure] -> [Node 02: Contrast/Pivot] -> [Node 03: Balance]
+                                  |
+                                  v
+[Node 05: Color Space Transform] <--- [Node 04: Skin Tones (Parallel)]
+```
+
+### 1. Exposure and Primaries
+The first node should always be reserved for fundamental exposure adjustments (Luma lift, gamma, gain). This establishes your base signal.
+
+### 2. Contrast and Pivot
+Adjusting contrast on a separate node allows you to set the overall black and white boundaries, pivoting to control where the midpoint sits.
+
+### 3. Temperature and Balance
+Use the primary wheels to correct color casts, ensuring neutral grays and whites are balanced before applying creative lookup tables (LUTs).
+
+### 4. Special Isolations (Parallel Nodes)
+Parallel nodes allow you to perform selective secondary adjustments—such as sharpening skin tones or adjusting high-saturated greens—without one adjustment bleeding into the other.
+
+## Color Space Transforms (CST)
+
+Always grade in a wide working space (like DaVinci Wide Gamut/Intermediate) and use a Color Space Transform node at the very end of your tree to convert to your final display target (typically Rec.709 for web and YouTube). This preserves maximum dynamic range during adjustments.

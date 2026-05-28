@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 9,
+  "lesson": "Week 01",
+  "title": "Install and Configure Microsoft Teams",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Microsoft Teams Team learning is a collaborative effort and teams are an essential part of most career fields. In this setup activity, you will install and setup Microsoft Teams, which you will use to communication with your teacher and the other students in the course. Activity Instructions",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/setup-msteams.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

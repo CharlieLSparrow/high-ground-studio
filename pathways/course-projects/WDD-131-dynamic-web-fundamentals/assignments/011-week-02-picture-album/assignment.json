@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 11,
+  "lesson": "Week 02",
+  "title": "Picture Album",
+  "category": "Submit / prove assignment",
+  "summary": "W02 Assignment: Picture Album This assignment applies the concepts presented in the learning activities to a picture album page that is responsive in both small and larger views. This page will utilize a 'hamburger' menu and respond to user interaction. File and Folder Setup",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week02/assignment-02.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week02/",
+  "status": "ok"
+}

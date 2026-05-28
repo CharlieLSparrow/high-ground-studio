@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 12,
+  "lesson": "Week 02",
+  "title": "JavaScript Debugging",
+  "category": "Learning activity / exercise",
+  "summary": "02 Learning Activity: JavaScript Debugging Debugging is the process of finding and fixing errors in your code. This is an essential skill for any developer. In this activity, you will learn how to use the browser's DevTools to debug your JavaScript code. Syntax Errors \u2013 These errors occur when you write code that does not follow the rules of the...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week02/prepare-debugging.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week02/",
+  "status": "ok"
+}

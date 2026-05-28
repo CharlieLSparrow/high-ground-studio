@@ -1,0 +1,12 @@
+{
+  "course": "CSE 210",
+  "course_title": "Programming with Classes",
+  "index": 7,
+  "lesson": "Week 01",
+  "title": "Tools",
+  "category": "Learning activity / exercise",
+  "summary": "Git (For getting, tracking, and sharing files) Visual Studio Code, usually called \"VS Code\" (For writing your programs) The .NET Framework (For building and running your programs)",
+  "url": "https://byui-cse.github.io/cse210-ww-course/week01/prepare-tools.html",
+  "source_page": "https://byui-cse.github.io/cse210-ww-course/week01/index.html",
+  "status": "ok"
+}

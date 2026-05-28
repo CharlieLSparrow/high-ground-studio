@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 8,
+  "lesson": "Week 03",
+  "title": "Test Case Execution",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Assignment: Test Cases Execution By now you will have generated test cases for the first version of the Chamber of Commerce web site. It will now be your job as a tester to execute the test cases and report on the results. Once you have finished executing all the test cases, you can generate reports that shows how many tests passed and how many failed...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week03/assignment_test_cases_execution.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week03/index.html",
+  "status": "ok"
+}

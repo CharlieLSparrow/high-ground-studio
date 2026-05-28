@@ -1,0 +1,12 @@
+{
+  "course": "CSE 210",
+  "course_title": "Programming with Classes",
+  "index": 10,
+  "lesson": "Week 02",
+  "title": "Journal Design",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Team Activity: Journal Design This activity will walk you through the process of creating a design for your developer project. It is very important that you understand the decisions and tradeoffs that are made along the way so that later on, you can produce a design on your own with less guidance. Team Activity Instructions",
+  "url": "https://byui-cse.github.io/cse210-ww-course/week02/design.html",
+  "source_page": "https://byui-cse.github.io/cse210-ww-course/week02/index.html",
+  "status": "ok"
+}

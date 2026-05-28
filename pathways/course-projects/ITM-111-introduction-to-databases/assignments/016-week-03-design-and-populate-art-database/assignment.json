@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 16,
+  "lesson": "Week 03",
+  "title": "Design and Populate Art Database",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Assignment: Design and Populate Art Database Purpose 1: To design a simple database from data that has not been normalized. Task 1: Create an ERD from data about artists and their artwork and keywords that go with each piece of art.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week03/assignment-design-and-populate-art-database.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week03/index.html",
+  "status": "ok"
+}

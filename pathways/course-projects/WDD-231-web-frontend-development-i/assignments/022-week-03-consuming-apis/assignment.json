@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 22,
+  "lesson": "Week 03",
+  "title": "Consuming APIs",
+  "category": "Submit / prove assignment",
+  "summary": "The purpose of this activity is to introduce an external weather source which can be used to serve up live, weather information based on location and other parameters. This activity uses the third-party OpenWeatherMap API which will require you to obtain a free account in order to consume the data. You will only need to submit some basic information to...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week03/prepare-api-weather.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week03/",
+  "status": "ok"
+}

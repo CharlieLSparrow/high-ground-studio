@@ -376,6 +376,8 @@ function createSyntheticDraftFromBlocks(input: {
     sourceFileName: null,
     importSummary: null,
     structureRegions: [],
+    structureBoundaryMarkers: [],
+    chapterTitleBlocks: [],
     quoteReviews: {},
     editorJson,
     activeAuthorId: "charlie",

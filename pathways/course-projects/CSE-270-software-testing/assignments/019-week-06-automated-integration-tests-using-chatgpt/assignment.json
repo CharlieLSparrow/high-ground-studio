@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 19,
+  "lesson": "Week 06",
+  "title": "Automated Integration Tests using ChatGPT",
+  "category": "Submit / prove assignment",
+  "summary": "W06 Assignment: Integration Tests using ChatGPT Setup Your Test Environment Configure your test environment as follows (If you need a refresher view W04 Activity: Setup a Local Test Environment): [W04 Activity: Setup a Local Test Environment: https://byui-cse.github.io/cse270-ww-course/week04/activity_setup_local_test_environment.html]",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week06/prove_tests_with_chatgpt.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week06/index.html",
+  "status": "ok"
+}

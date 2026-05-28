@@ -1,0 +1,12 @@
+{
+  "course": "WDD 430",
+  "course_title": "Web Full-Stack Development",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "Tools",
+  "category": "Setup/tooling task",
+  "summary": "Setup: Development Environment This setup activity will prepare you with the development tools and services necessary to complete the assigned activities and projects in the course. Visual Studio Code \u2013 Verify that you have an up-to-date, working instance of VS Code running and install or update as needed. [Visual Studio Code: https://code.visualstudio.com]",
+  "url": "https://byui-cse.github.io/wdd430-ww-course/week01/setup-course-tools.html",
+  "source_page": "https://byui-cse.github.io/wdd430-ww-course/week01/",
+  "status": "ok"
+}

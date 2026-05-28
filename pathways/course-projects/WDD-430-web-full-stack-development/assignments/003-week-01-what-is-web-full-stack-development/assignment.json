@@ -1,0 +1,12 @@
+{
+  "course": "WDD 430",
+  "course_title": "Web Full-Stack Development",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "What is Web Full-Stack Development?",
+  "category": "Learning activity / exercise",
+  "summary": "The Web Full Stack refers to all the components and layers of web site and application design and development. A Full-Stack Developer works with both the client-side (front-end) and the server-side (back-end) of web development. In addition, full-stack developers must have a proficient mastery of user experience focused design, databases, server and cloud...",
+  "url": "https://byui-cse.github.io/wdd430-ww-course/week01/prepare-fullstack.html",
+  "source_page": "https://byui-cse.github.io/wdd430-ww-course/week01/",
+  "status": "ok"
+}

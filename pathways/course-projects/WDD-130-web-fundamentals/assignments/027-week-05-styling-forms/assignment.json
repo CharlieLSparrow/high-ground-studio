@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 27,
+  "lesson": "Week 05",
+  "title": "Styling Forms",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity: Styling Forms An HTML form is a user interface that needs styling to be usable and provide a positive user experience. In this activity, you will add CSS to the User Poll form built in the previous activity. The basic User Poll form from the previous activity with no styling.",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week05/prepare-css-form.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week05/",
+  "status": "ok"
+}

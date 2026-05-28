@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 16,
+  "lesson": "Week 05",
+  "title": "Conducting a Load Test",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Activity: Conducting a Load Test As the chamber of commerce, I want the website server to respond with an average response time of less than 50 milliseconds under average load (5 simultaneous users). As the chamber of commerce, I want the website server to respond with an average response time of less than 100 milliseconds under peak load (100...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week05/activity_load_test.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week05/index.html",
+  "status": "ok"
+}

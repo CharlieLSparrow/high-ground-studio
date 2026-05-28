@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 19,
+  "lesson": "Week 02",
+  "title": "JSON (JavaScript Object Notation)",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: JSON In this learning activity you will learn about the JSON format and how to create a JSON file to be used later. JSON is a lightweight, text-based, data interchange format that is easy for humans to read and write and easy for machines to parse and generate.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week02/prepare-json.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week02/",
+  "status": "ok"
+}

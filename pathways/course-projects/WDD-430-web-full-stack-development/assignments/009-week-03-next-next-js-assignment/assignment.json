@@ -1,0 +1,12 @@
+{
+  "course": "WDD 430",
+  "course_title": "Web Full-Stack Development",
+  "index": 9,
+  "lesson": "Week 03",
+  "title": "Next \u27a1\ufe0f Next.js Assignment",
+  "category": "Submit / prove assignment",
+  "summary": "The objective of the assignment activity is to become familiar with Next.js. The assignment will be to complete the Learn Next.js application. Finish the dashboard application tutorial from nextjs.org by completing the remaining chapters (16): Learn Next.js. [Learn Next.js: https://nextjs.org/learn/dashboard-app] Submit the Vercel deployment URL in...",
+  "url": "https://byui-cse.github.io/wdd430-ww-course/week03/assignment-learnnextjs-03.html",
+  "source_page": "https://byui-cse.github.io/wdd430-ww-course/week03/prepare-nextjsapp.html",
+  "status": "ok"
+}

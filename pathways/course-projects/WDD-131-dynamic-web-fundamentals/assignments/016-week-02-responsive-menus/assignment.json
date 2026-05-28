@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 16,
+  "lesson": "Week 02",
+  "title": "Responsive Menus",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: Responsive Menus In this activity you will build a responsive menu using JavaScript. The menu adapts to different viewport sizes and responds when the user clicks a \"hamburger\" button (\u2261). In responsive design, the goal is to give users a positive, familiar experience across devices. Watch this example application of a responsive...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week02/prepare-responsive-menu.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week02/",
+  "status": "ok"
+}

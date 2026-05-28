@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 16,
+  "lesson": "Week 03",
+  "title": "Error Handling",
+  "category": "Submit / prove assignment",
+  "summary": "Learning Activity (3 of 3): Error Handling An important part of any dynamic web application is to properly handle errors that might emerge. This activity will walk you through proper error handling techniques. Activity Instructions",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week03/prepare-3-error-handling.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/week03/index.html",
+  "status": "ok"
+}

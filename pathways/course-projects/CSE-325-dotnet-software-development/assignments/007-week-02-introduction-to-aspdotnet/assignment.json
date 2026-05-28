@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 7,
+  "lesson": "Week 02",
+  "title": "Introduction to ASP.NET",
+  "category": "Report / case study",
+  "summary": "Introduction to ASP.NET Core Read \ud83d\udcc4What is ASP.NET Core? \u2013 dotnet.microsoft.com [What is ASP.NET Core?: https://dotnet.microsoft.com/en-us/learn/aspnet/what-is-aspnet-core] Watch \ud83c\udfa6Back-end Web Development with .NET for Beginners \u2013 learn.microsoft.com (9 video series ~ 1 hour) [Back-end Web Development with .NET for Beginners:...",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week02/prepare-intro-aspnet.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week02/",
+  "status": "ok"
+}

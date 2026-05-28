@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import { Inter, Merriweather } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
 
 export const metadata: Metadata = {
   title: "High Ground Studio",
@@ -16,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
+      <body className="font-sans bg-[#050505] text-studio-ink antialiased">{children}</body>
     </html>
   );
 }

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 27,
+  "lesson": "Week 04",
+  "title": "JavaScript Objects",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activity: JavaScript Objects JavaScript objects group related data and functions together. They are a core concept in JavaScript and used extensively throughout the language. In this activity, you will learn how to create and use objects effectively. Demonstrate proficiency with JavaScript language syntax.",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week04/prepare-objects.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week04/",
+  "status": "ok"
+}

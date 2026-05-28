@@ -1,0 +1,12 @@
+{
+  "course": "CSE 310",
+  "course_title": "Applied Programming",
+  "index": 2,
+  "lesson": "Module Submit Form",
+  "title": "Module Submit Form",
+  "category": "Submit / prove assignment",
+  "summary": "Select your completed module. Enter your full name and select the module number. Provide your GitHub repo and YouTube video links.",
+  "url": "https://byui-cse.github.io/cse310-ww-course/modules/cse310_module_submit.html",
+  "source_page": "https://byui-cse.github.io/cse310-ww-course/modules/prove.html",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 31,
+  "lesson": "Week 06",
+  "title": "SQL Indexes Explained",
+  "category": "Project / major deliverable",
+  "summary": "You can create SQL indexes from single or multiple columns. A SQL index is like the index of a book. It speeds up retrieval of a record. The relational database management system (RDBMS) can retrieve a record with the index key instead of having to perform a table scan. MySQL automatically creates indexes for primary and foreign keys significantly...",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week06/sql-indexes-explained.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week06/prepare.html",
+  "status": "ok"
+}

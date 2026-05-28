@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 27,
+  "lesson": "Week 05",
+  "title": "Authentication and Authorization",
+  "category": "Submit / prove assignment",
+  "summary": "Learning Activity (1 of 2): Authentication and Authorization Preparation Material Read: JWT Authentication: Best Practices [JWT Authentication: Best Practices: https://blog.logrocket.com/jwt-authentication-best-practices/]",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week05/prepare-1-auth.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/week05/index.html",
+  "status": "ok"
+}

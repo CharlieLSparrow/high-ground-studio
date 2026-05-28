@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 14,
+  "lesson": "Week 05",
+  "title": "Conducting an Accessibility Test",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Activity: Conducting an Accessibility Test A number of tools, both free and paid, exist to help ensure best practices are followed so your web site is accessible to people with visual or other impairments. In this exercise we will conduct an accessibility test on the Teton Chamber of Commerce v1.3 site and answer a quiz about the results. We will be...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week05/activity_accessibility_test.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week05/index.html",
+  "status": "ok"
+}

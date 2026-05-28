@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 22,
+  "lesson": "Week 03",
+  "title": "Responsive Images",
+  "category": "Learning activity / exercise",
+  "summary": "W03 Learning Activity: Responsive Images The work of responsive image design is to support smaller page weights and deliver content based on screen size. You have already worked on basic image optimization (format, sizing, and quality). You also need to consider how images appear on different screen sizes. This activity's objective is to reduce page...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week03/prepare-responsive-images.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week03/",
+  "status": "ok"
+}

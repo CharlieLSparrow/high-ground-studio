@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 33,
+  "lesson": "Week 06",
+  "title": "University Data",
+  "category": "Project / major deliverable",
+  "summary": "Use these data to design and populate the review project's University Database. Catalog View (3 different entities) Section View (4 different entities)",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week06/university-data.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week06/assignment-review-project.html",
+  "status": "ok"
+}

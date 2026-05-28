@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 18,
+  "lesson": "Week 03",
+  "title": "Third-Party APIs",
+  "category": "Learning activity / exercise",
+  "summary": "W03 Learning Activity: Third-Party APIs API Endpoints: The specific URLs where the API can be accessed. HTTP Methods: The methods used to interact with the API, such as GET, POST, PUT, and DELETE.",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week03/prepare-apis.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week03/",
+  "status": "ok"
+}

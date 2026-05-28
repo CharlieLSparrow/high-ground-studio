@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 22,
+  "lesson": "Week 04",
+  "title": "Data Retrieval",
+  "category": "Project / major deliverable",
+  "summary": "W04 Learning Activity: Data Retrieval This week you will... create single table queries using the SQL SELECT statement.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week04/prepare.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week04/index.html",
+  "status": "ok"
+}

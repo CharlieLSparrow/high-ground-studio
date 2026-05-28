@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 17,
+  "lesson": "Week 05",
+  "title": "Security Analysis",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Activity: Security Analysis One of the key industry standards for security analysis is the OWASP Top Ten. This is a list of the most common security vulnerabilities that are found in the industry which is periodically updated. Most security analysts use the OWASP Top Ten as a guide for determining what security defects to look for in computer...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week05/activity_security_analysis.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week05/index.html",
+  "status": "ok"
+}

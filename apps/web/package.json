@@ -11,6 +11,8 @@
     "@high-ground/worldhub-domain": "workspace:*",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
+    "@tiptap/react": "^3.23.5",
+    "@tiptap/starter-kit": "^3.23.5",
     "@types/mdx": "^2.0.13",
     "fumadocs-core": "^16.6.9",
     "fumadocs-mdx": "^14.2.9",

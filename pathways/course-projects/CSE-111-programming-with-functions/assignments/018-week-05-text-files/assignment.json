@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 18,
+  "lesson": "Week 05",
+  "title": "Text Files",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity (1 of 2): Text Files Open the file for reading text Read from the file, usually one line of text at a time",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week05/prepare-1.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week05/index.html",
+  "status": "ok"
+}

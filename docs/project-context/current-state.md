@@ -1,6 +1,6 @@
 # Current State
 
-Date: 2026-05-25
+Date: 2026-05-26
 
 ## What The Repo Is Right Now
 
@@ -63,19 +63,31 @@ High Ground Studio is a monorepo with:
   `/team/progress`, and future agents can add entries with
   `pnpm progress:story:add`.
 - The internal Learning to Lead Story Map can save database-backed Live Story Drafts attached to Story Candidates and Homer source blocks. These drafts are live app state, not canonical manuscript truth.
-- The private Studio `/manuscript` desk can save and load manual server snapshots through Cloud SQL-backed `StudioManuscriptSnapshot` rows. The browser-local draft remains the active working copy; server snapshots are cross-device checkpoints, not autosave, collaboration, or canonical manuscript truth.
+- The private Studio `/manuscript` desk can save and load manual server
+  snapshots through Cloud SQL-backed `StudioManuscriptSnapshot` rows. The
+  everyday UI keeps `Save manuscript`, `Copy phone link`, and `Load latest`
+  visible in a Save and Share panel, while old snapshot/export/smoke/publish
+  machinery is behind Dev Mode. The manuscript filter lens is available from a
+  desktop top-bar Filter button and a mobile bottom-bar Filter button. The
+  stable private route `/manuscript/live/latest` opens the newest saved server
+  snapshot for an authorized Studio user. The browser-local draft remains the
+  active working copy unless the user enters the live room; server snapshots are
+  cross-device checkpoints and latest-backup anchors, not canonical manuscript
+  truth. Chapter and episode boundary markers style their title lines in the
+  editor, live room, and read-only live links; chapter labels use the written
+  title such as Preface or Introduction instead of forcing `Chapter 1`.
+- The private Studio live manuscript room at `/manuscript/collab/latest` is the
+  current production-ish co-editing path. It uses a private token-gated
+  Hocuspocus/Yjs room backed by Cloud SQL `ydocState`, presence, author and
+  semantic marks, structure markers, safe latest-backup handoff links, and
+  short-idle auto-save into the latest manuscript backup. Episode structure
+  markers derive Wednesday publication dates from manuscript order, anchored on
+  Episode 4 publishing June 3, 2026.
 - The private Studio `/manuscript` desk now has a Manuscript Library MVP in
   `Backup` mode. A named `StudioManuscript` can group manual snapshots, mark a
   manuscript as `WORKING` or `SYNTHETIC`, and load the latest snapshot for that
   selected manuscript. Existing snapshots without a manuscript id remain
   loadable as legacy/orphan snapshots.
-- The private Studio `/manuscript/live` route is a first live collaboration
-  surface for Charlie and Homer. It creates authenticated, database-backed Yjs
-  text rooms, exposes a shareable room URL, polls Cloud SQL-backed update events
-  for near-real-time convergence, tracks active presence heartbeats, and can
-  save the current room text as a manual Manuscript Desk snapshot. It is a
-  live writing surface, not canonical manuscript truth and not a public publish
-  action.
 - The private Studio `/manuscript` desk now includes a Publish / handoff mode
   that derives browser-only readiness reports and Markdown exports from the
   existing browser-local draft, structure regions, author marks, cited
@@ -86,6 +98,22 @@ High Ground Studio is a monorepo with:
   to test marks, structure, quotes, quote reviews, manual snapshots,
   phone/second-browser loading, Recording / Reading mode, and Publish exports
   before real manuscript material enters Studio.
+- The private Studio `/manuscript` desk now has mobile writing and semantic
+  highlighting controls. Phone-width users can mark selected text by author,
+  choose and apply semantic tags, mark cited quotations, enter semantic Focus
+  View, and return to the manuscript surface without relying on the desktop
+  sidebar.
+- The private Studio `/manuscript` desk can mark chapter title blocks and
+  derive chapter ranges from current manuscript order. The saved draft keeps a
+  `chapterTitleBlocks` marker list, while the chapter map treats each title as
+  the start of a chapter that continues until the next marked title.
+- The current Manuscript Desk improvement roadmap is recorded in
+  `docs/plans/studio-manuscript-desk-improvement-roadmap.md`, with competitive
+  research in
+  `docs/analysis/studio-manuscript-writing-tool-competitive-research.md`. The
+  roadmap preserves the long manuscript as the home surface and treats maps,
+  semantic lenses, review queues, timelines, source bibles, and exports as
+  projections around the same block-aware draft state.
 - The private Studio `/manuscript` desk can generate a browser-only HGO episode
   projection JSON draft from synthetic/tagged manuscript metadata in Publish
   mode. The export is a projection draft/staged review draft, not raw
@@ -370,14 +398,16 @@ High Ground Studio is a monorepo with:
 - Email notification delivery has no retry queue or persisted delivery status.
 - Story Draft promotion into real `ManuscriptBlock` truth is not active.
 - Story Draft revision history is not active.
-- Studio Manuscript autosave is not active.
-- Studio Manuscript rich-document simultaneous editing inside the full
-  Manuscript Desk is not active. `/manuscript/live` is the first production
-  shared editing surface, but it is text-room based and checkpoints into manual
-  snapshots instead of replacing the full Manuscript Desk editor.
-- Studio collaboration checkpoints are local lab checkpoints only. They are not
-  production manual snapshots, autosave, server persistence, or a replacement
-  for rollback anchors.
+- Studio Manuscript browser-local autosave in the classic `/manuscript` desk is
+  not active.
+- Studio Manuscript production simultaneous editing is active as an MVP in
+  `/manuscript/collab/latest`, backed by the separate `studio-collab` Cloud Run
+  service and a single warm instance. It is still intentionally simple: one
+  shared latest room, manual/latest-backup recovery controls, and no general
+  room list yet.
+- Studio collaboration checkpoint lab payloads remain synthetic-only, but the
+  live room now writes real latest manuscript backups through the authenticated
+  checkpoint API.
 - Studio collaboration Manuscript adapter payloads are synthetic bridge payloads
   only. They are not production imports, server snapshots, autosave state, or a
   collaboration-enabled replacement for `/manuscript`.

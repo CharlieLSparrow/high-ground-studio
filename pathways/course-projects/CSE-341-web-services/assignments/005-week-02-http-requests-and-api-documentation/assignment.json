@@ -1,0 +1,12 @@
+{
+  "course": "CSE 341",
+  "course_title": "Web Services",
+  "index": 5,
+  "lesson": "Week 02",
+  "title": "HTTP Requests and API Documentation",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: HTTP Requests and API Documentation Topics for this lesson: JavaScript URIs [JavaScript URIs: https://medialize.github.io/URI.js/]",
+  "url": "https://byui-cse.github.io/cse341-ww-course/week02/prepare.html",
+  "source_page": "https://byui-cse.github.io/cse341-ww-course/week02/index.html",
+  "status": "ok"
+}

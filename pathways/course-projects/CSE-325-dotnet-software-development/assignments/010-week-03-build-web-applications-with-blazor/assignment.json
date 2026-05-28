@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 10,
+  "lesson": "Week 03",
+  "title": "Build Web Applications with Blazor",
+  "category": "Submit / prove assignment",
+  "summary": "Complete the following learning modules found at the \ud83d\udcc4Build web applications with Blazor path at learn.microsoft.com: [Build web applications with Blazor: https://learn.microsoft.com/en-us/training/paths/build-web-apps-with-blazor/] Introduction to Web Development with Blazor [Introduction to Web Development with Blazor: https://learn.microsoft.com/en-...",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week03/prepare-blazor-app-build-03.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week03/",
+  "status": "ok"
+}

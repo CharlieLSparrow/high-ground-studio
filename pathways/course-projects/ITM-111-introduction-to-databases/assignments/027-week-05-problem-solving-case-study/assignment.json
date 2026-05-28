@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 27,
+  "lesson": "Week 05",
+  "title": "Problem Solving Case Study.",
+  "category": "Report / case study",
+  "summary": "CASE STUDY \ufffd Apply the principles of problem solving to help create effective queries. MIT had a good page about problem solving which is where most of the information in this case study came from: http://web.mit.edu/be.400/www/problem.htm \"The questions in this course will be different than the exercises to which you are accustomed. In exercise solving,...",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week05/problem-solving.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week05/assignment-joins-and-aggregates.html",
+  "status": "ok"
+}

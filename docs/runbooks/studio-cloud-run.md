@@ -32,7 +32,8 @@ Studio routes remain private:
 - `/structure` - Structure Mode
 - `/content-studio` - browser-local Content Management Studio command board
 - `/manuscript` - Manuscript Desk
-- `/manuscript/live` - first database-backed shared manuscript text room
+- `/manuscript/live/latest` - read-only latest manuscript backup link
+- `/manuscript/collab/latest` - private live-edit manuscript room
 
 The health route is intentionally public and non-sensitive:
 
@@ -70,16 +71,12 @@ high-ground-studio.manuscript-editor.v1
 
 The Manuscript Desk also has manual server snapshots for cross-device
 checkpoints when Cloud Run is configured with the Studio Cloud SQL
-`DATABASE_URL` secret and Cloud SQL attachment. These snapshots remain explicit:
-no autosave, no simultaneous editing, no Yjs collaboration, and no canonical
-manuscript/content writes. The existing local-only persistence guard should
-keep other development seed writes disabled in Cloud Run.
-
-`/manuscript/live` is the exception to the older no-simultaneous-editing
-boundary. It is an authenticated text-room collaboration surface backed by
-Cloud SQL-stored Yjs updates and presence heartbeats. It can save the current
-room text as a manual Manuscript Desk snapshot, but it does not replace the
-full rich Manuscript Desk editor or publish public content.
+`DATABASE_URL` secret and Cloud SQL attachment. The private live-edit room uses
+the separate `studio-collab` Cloud Run service for Yjs/Hocuspocus WebSocket
+sync and checkpoints room state back into explicit manuscript snapshots.
+Canonical manuscript/content files are still not written by this workflow.
+The existing local-only persistence guard should keep other development seed
+writes disabled in Cloud Run.
 
 ## Checked-In Deployment Files
 
@@ -108,6 +105,21 @@ full rich Manuscript Desk editor or publish public content.
     Docker when `STUDIO_IMAGE_BUILD_STRATEGY=docker`
   - deploys the image, smokes `/api/health` and `/content-studio`, and prints a
     rollback command
+- `apps/studio-collab/Dockerfile`
+  - builds the small Hocuspocus/Yjs collaboration service used by the live
+    manuscript room
+- `cloudbuild.studio-collab.yaml`
+  - builds the `studio-collab` image
+  - does not deploy by itself
+- `scripts/studio-collab-cloud-run-deploy.mjs`
+  - local one-command build/deploy/smoke helper for `studio-collab`
+  - requires a clean working tree unless `ALLOW_DIRTY_DEPLOY=1`
+  - runs `node --check apps/studio-collab/server.mjs` and Studio Cloud Run
+    readiness tests unless `SKIP_LOCAL_CHECKS=1`
+  - deploys the collaboration service with MVP-safe defaults:
+    `--min-instances=1`, `--max-instances=1`, `--timeout=3600s`, and
+    `--concurrency=80`
+  - smokes `/health` and prints a rollback command
 - `.dockerignore`
   - keeps local build artifacts, dependencies, logs, env files, and large
     staging/inbox content out of the Docker context
@@ -289,10 +301,52 @@ The helper updates only the Cloud Run image for the existing service. It relies
 on the existing service configuration for auth, secrets, service account, and
 invoker posture.
 
+### Studio Collab Deploy
+
+Use the collab deploy helper when changing the Hocuspocus service or its MVP
+runtime posture:
+
+```bash
+pnpm studio:collab:cloudrun:deploy
+```
+
+For the current two-person co-editing goal, the collaboration service should
+prefer stability and shared memory over elastic scaling:
+
+- `min-instances=1` keeps the first join from paying a cold-start penalty.
+- `max-instances=1` keeps Charlie and Homer in the same Yjs room process.
+- `timeout=3600s` prevents Cloud Run from dropping WebSocket sessions every
+  five minutes.
+- `concurrency=80` is more than enough for the private MVP while still allowing
+  the single warm instance to accept both editors and reconnects.
+
+This is intentionally not the forever scaling model. If the collaboration room
+ever needs multiple simultaneous rooms or more than a tiny trusted editing
+group, introduce a proper shared coordination layer before raising max
+instances.
+
+Useful overrides:
+
+```bash
+STUDIO_COLLAB_MIN_INSTANCES=1 \
+STUDIO_COLLAB_MAX_INSTANCES=1 \
+STUDIO_COLLAB_TIMEOUT_SECONDS=3600 \
+pnpm studio:collab:cloudrun:deploy
+```
+
 Rollback command shape:
 
 ```bash
 gcloud run services update-traffic studio \
+  --project=high-ground-odyssey \
+  --region=us-central1 \
+  --to-revisions=PREVIOUS_REVISION=100
+```
+
+Collab rollback command shape:
+
+```bash
+gcloud run services update-traffic studio-collab \
   --project=high-ground-odyssey \
   --region=us-central1 \
   --to-revisions=PREVIOUS_REVISION=100
@@ -407,14 +461,14 @@ After the first service URL exists:
 3. Re-deploy or update the Cloud Run service with that environment value if
    needed.
 
-## Future Manuscript Snapshot Enablement
+## Manuscript Snapshot And Collaboration Changes
 
-The checked-in `/manuscript` snapshot code does not make live production
-snapshots active by itself. Without a configured `DATABASE_URL`, the snapshot
-routes return a clear `503` and browser-local manuscript backups remain the
-portable path.
+The live Studio service now has a configured `DATABASE_URL`, manual manuscript
+snapshots, and a separate `studio-collab` service for the private live-edit
+room. Treat future changes to either persistence path as explicit runtime work,
+not incidental UI polish.
 
-Enable server snapshots only through an explicit persistence release:
+When changing manuscript snapshot persistence:
 
 1. Choose the Studio database target.
 2. Apply the `StudioManuscriptSnapshot` schema through the approved Prisma
@@ -433,7 +487,7 @@ Enable server snapshots only through an explicit persistence release:
    manuscript material.
 
 Do not combine this enablement with IAM, DNS, OAuth, billing, service-account,
-Yjs, or public projection changes.
+new collaboration services, or public projection changes.
 
 ## Verification Checklist
 
@@ -468,7 +522,7 @@ After an explicitly approved deployment:
   persistence release requires it.
 - Do not deploy public projections.
 - Do not import manuscript files.
-- Do not add Yjs, embeddings, Vertex AI calls, or new importers in this
-  deployment-readiness slice.
+- Do not add embeddings, Vertex AI calls, new importers, or additional
+  collaboration services in a routine deployment-readiness slice.
 - Do not commit real secrets.
 - Do not change DNS until the Cloud Run URL is verified.

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "Review: The Document Object Model",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Review: The Document Object Model This activity is a review of DOM principles that were presented in prerequisite coursework. Document Object Model [Document Object Model: https://byui-cse.github.io/wdd131-ww-course/week02/prepare-dom-manipulation.html]",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week01/prepare-dom.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week01/",
+  "status": "ok"
+}

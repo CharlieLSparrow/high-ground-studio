@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -23,11 +23,11 @@ docs/agents/restart-playbook.md
 
 ## Current Snapshot
 
-Verified at the start of the Content Studio persistence fanout on 2026-05-25.
+Verified during the Codex application handoff prep on 2026-05-26.
 
 | Branch | Head | Worktree | Lane | Notes |
 | --- | --- | --- | --- | --- |
-| `codex/content-studio-persistence-supervisor-001` | `29d78bc` | `/Users/wall-e/Dev/high-ground-studio` | Supervisor / integration fanout | Active coordination branch for the 2026-05-25 multi-agent push. Started from `origin/main` at `29d78bc`. Tracks three worker lanes: Content Studio project persistence, coaching tools, and private HGO episode publish workflow. |
+| `codex/content-studio-persistence-supervisor-001` | `b4c3914` | `/Users/wall-e/Dev/high-ground-studio` | Supervisor / integration fanout plus handoff prep | Active coordination branch for the 2026-05-25 multi-agent push and 2026-05-26 Codex application handoff. Quipsly/QuipLore scaffold and Manuscript Desk mobile/planning work are local to this branch until committed. See `docs/agents/codex-application-handoff-2026-05-26.md`. |
 | `main` | Coaching feature grant deploy docs `29d78bc` | `/Users/wall-e/Dev/high-ground-studio` | Trunk / live runtime | Content Studio checkpoints, HGO staging/publish-intent rails, WorldHub provider rails, Google Calendar sync jobs, the Growth desk, SEO briefs, analytics snapshots, ad/affiliate/sponsor placement planning, gated GA/AdSense runtime hooks, manual coaching feature grants, the web Cloud SQL cutover, `app.highgroundodyssey.com` Cloud Run cutover, and public `/updates` build journal are merged and deployed. Do not do feature work directly on `main`; use fresh branches. |
 | `codex/hgo-staged-artifact-store-001` | `9598cb7` | none active | HGO private review store | Merged by PR #21 as `b07c73d`; branch can be left closed. |
 | `codex/web-deploy-hgo-smoke-001` | `c9e4d28` | none active | Web deploy hardening | Merged by PR #20 as `97d6bd6`; branch can be left closed. |
@@ -39,6 +39,18 @@ Verified at the start of the Content Studio persistence fanout on 2026-05-25.
 | `codex/content-studio-command-001` | `bfa9dc0` | none active | Content Studio command surface and deploy helper | Included in PR #4; PR #3 was closed as superseded; final continuity note is being cherry-picked to `main`. |
 | `codex/worldhub-001-foundation` | `ee26a41` | no active terminal | WorldHub / monetization foundation | Included in PR #4. Terminal can remain closed. |
 | `codex/studio-cut-001-web-shell` | `64c024a` | `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001` | Studio Cut / media tooling | Jason reports the worktree is clean and the lane will stay out of HGO/web deploy files without coordination. |
+
+## Handoff Notes
+
+- 2026-05-26: Sibling worktrees were checked and were clean:
+  `/private/tmp/hgs-deploy-928d68f`,
+  `/private/tmp/hgs-manuscript-live-001`,
+  `/Users/wall-e/Dev/hgs-worldhub-codex`,
+  `/Users/wall-e/Dev/hgs-worldhub-project`, and
+  `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001`.
+- The historical `codex/*live-room*` branches with ahead/behind counts should
+  not be merged, deleted, or rebased blindly. Treat them as old feature/deploy
+  lanes unless a future agent has an explicit recovery task.
 
 ## Active Lanes
 

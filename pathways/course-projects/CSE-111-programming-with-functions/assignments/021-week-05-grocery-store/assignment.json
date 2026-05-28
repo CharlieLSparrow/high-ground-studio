@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 21,
+  "lesson": "Week 05",
+  "title": "Grocery Store",
+  "category": "Project / major deliverable",
+  "summary": "W05 Project: Grocery Store Prove that you can write a Python program that reads CSV files and creates, populates, and uses a dictionary. Read the products inventory from the file products.csv.",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week05/project.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week05/index.html",
+  "status": "ok"
+}

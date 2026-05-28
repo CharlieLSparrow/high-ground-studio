@@ -1,0 +1,12 @@
+{
+  "course": "CSE 110",
+  "course_title": "Introduction to Programming",
+  "index": 17,
+  "lesson": "Week 03",
+  "title": "If Statements",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Learning Activity (1 of 2): If Statements For example, in the assignment from last week, it would have been nice if you could ask the user if they wanted to pay with cash or a credit card, or ask if they had any coupons, and if so, ask what the discount was, and then to have the program behave appropriately depending on how the user responded....",
+  "url": "https://byui-cse.github.io/cse110-ww-course/week03/prepare-if-statements.html",
+  "source_page": "https://byui-cse.github.io/cse110-ww-course/week03/index.html",
+  "status": "ok"
+}

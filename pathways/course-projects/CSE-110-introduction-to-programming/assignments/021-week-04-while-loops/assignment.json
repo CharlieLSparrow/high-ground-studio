@@ -1,0 +1,12 @@
+{
+  "course": "CSE 110",
+  "course_title": "Introduction to Programming",
+  "index": 21,
+  "lesson": "Week 04",
+  "title": "While Loops",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activity (1 of 3): While Loops Preparation Material There are two types of loops in Python, while loops and for loops. This learning activity will focus on while loops and the next learning activity will focus on for loops.",
+  "url": "https://byui-cse.github.io/cse110-ww-course/week04/prepare-1-while-loops.html",
+  "source_page": "https://byui-cse.github.io/cse110-ww-course/week04/index.html",
+  "status": "ok"
+}

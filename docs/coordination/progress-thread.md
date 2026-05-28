@@ -6,231 +6,6 @@ checks, blockers, and next handoff.
 
 ## 2026-05-25
 
-### Codex / `codex/live-room-section-packet-001`
-
-- Continuing the OneNote-style live-room push after `studio-00073-kxc`.
-- Targeting a copyable section packet so a focused notebook section can be
-  handed off without copying the whole room.
-
-### Codex / `main` Studio live-room session packet
-
-- Continued the OneNote-style live-room push after `studio-00071-7ks`.
-- Added a copyable session packet with room metadata, section outline,
-  structured recap, and current text for Homer-session handoff.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `56a0881`
-  `feat(studio): add live room session packet`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `eec677ce-1a38-46cc-a18f-bea005c20b93`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:56a0881`
-  - Studio revision `studio-00073-kxc`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00071-7ks=100`
-
-### Codex / `main` Studio live-room section focus mode
-
-- Continued the OneNote-style live-room push after `studio-00069-c9k`.
-- Added a section focus mode so the selected notebook section can become the
-  primary writing surface during Homer working sessions while the outline stays
-  available for navigation.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `fd18ded`
-  `feat(studio): add live room section focus mode`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `808c243d-a2d3-4b44-89aa-b51be4c2d2fe`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:fd18ded`
-  - Studio revision `studio-00071-7ks`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00069-c9k=100`
-
-### Codex / `main` Studio live-room section kind controls
-
-- Continued the OneNote-style live-room push after `studio-00067-h6z`.
-- Added per-section kind controls so notes can be marked as decisions, actions,
-  questions, or sources without remembering exact heading syntax.
-- The model preserves section body text by replacing known section headings or
-  prefixing a heading when a plain note is re-marked.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `36c4c2e`
-  `feat(studio): add live room section kind controls`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `49bbd56a-7342-4b36-ba5d-bb3dab88c3d3`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:36c4c2e`
-  - Studio revision `studio-00069-c9k`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00067-h6z=100`
-
-### Codex / `main` Studio live-room recap snapshots
-
-- Continued the session-recap slice after `studio-00065-sjh`.
-- Added compact recap digests to manual snapshot descriptions so saved
-  live-room checkpoints carry decisions, action items, open questions, and
-  source notes forward into Manuscript Desk recovery history.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `8e96a23`
-  `feat(studio): include live room recap in snapshots`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `fdb8bb65-d33e-430d-95b1-f1cf617055ce`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:8e96a23`
-  - Studio revision `studio-00067-h6z`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00065-sjh=100`
-
-### Codex / `main` Studio live-room session recap
-
-- Continued the OneNote-style live-room push after `studio-00063-982`.
-- Added a computed session recap that extracts decisions, action items, open
-  questions, and source notes from notebook sections for a copyable handoff.
-- Added a `Session recap` panel and `Copy recap` action to `/manuscript/live`.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `d7e73b1`
-  `feat(studio): add live room session recap`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `1a368379-6da6-4ed8-9ef0-d6f02b5def07`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:d7e73b1`
-  - Studio revision `studio-00065-sjh`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00063-982=100`
-
-### Codex / `main` Studio live-room quick sections
-
-- Continued the OneNote-style live-room push after `studio-00061-h7l`.
-- Added quick-insert notebook sections for notes, decisions, action items,
-  questions, and source notes while keeping the same shared Yjs text document.
-- Added section-kind inference and chips in the notebook outline and section
-  headers.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `20afe3d`
-  `feat(studio): add live room quick sections`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `4e9826fb-479d-4877-96c7-a267414ff09e`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:20afe3d`
-  - Studio revision `studio-00063-982`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00061-h7l=100`
-
-### Codex / `main` Studio live-room section presence
-
-- Continued the OneNote-style live-room push after `studio-00059-btd`.
-- Added section-aware presence so focused editors publish `editing section N`
-  through the existing presence `mode` string.
-- The notebook outline and section headers now show active collaborators on the
-  section they are editing.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `6fb0cb4`
-  `feat(studio): show live room section presence`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `a042bb40-8854-4523-b955-62ae888d6f59`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:6fb0cb4`
-  - Studio revision `studio-00061-h7l`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00059-btd=100`
-
-### Codex / `main` Studio live-room notebook section controls
-
-- Continued the OneNote-style live-room push after `studio-00057-87h`.
-- Added notebook starter templates for session notes, writing passes, and
-  coaching sessions.
-- Added section-level controls to add below, move up, move down, and remove
-  notebook sections while keeping the same Yjs room API and database state.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `982150d`
-  `feat(studio): add live room notebook section controls`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `a759698c-7b55-47a6-912c-e441beaa052f`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:982150d`
-  - Studio revision `studio-00059-btd`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00057-87h=100`
-
-### Codex / `main` Studio live-room notebook mode
-
-- Made `/manuscript/live` open in notebook mode by default while preserving the
-  existing shared Yjs text protocol and raw-text fallback.
-- Added editable notebook sections, an outline rail, per-section stats, and an
-  `Add section` control for a more OneNote-style co-editing flow.
-- Validation passed: `pnpm studio:manuscript:live-room:test`,
-  `pnpm studio:cloudrun:test`, `pnpm --filter studio typecheck`,
-  `pnpm --filter studio build`, and `git diff --check`.
-- Functional commit: `27af190`
-  `feat(studio): add live room notebook mode`.
-- Deployed Studio through `pnpm studio:cloudrun:deploy`:
-  - Cloud Build `e3ed3f83-84ec-4da5-943e-cd54a5e7daf0`
-  - Studio image
-    `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:27af190`
-  - Studio revision `studio-00057-87h`, serving 100%
-- Live smoke passed:
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/manuscript/live` returned 200.
-  - `https://studio-hm2odnvjga-uc.a.run.app/api/manuscript/live-rooms`
-    returned the expected unauthenticated 401.
-- Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00055-bgv=100`
-
 ### Codex / `main` coaching feature controls
 
 - Added manual coaching feature access independent of subscription tiers:
@@ -1572,87 +1347,34 @@ checks, blockers, and next handoff.
   `web-cloudsql-db-push-6b12434`, execution
   `web-cloudsql-db-push-6b12434-49qpc`. Logs reported:
   `Your database is now in sync with your Prisma schema.`
-- Merged PR #23 to `main` as `928d68f`.
-- Deployed Studio from the clean merged worktree:
-  - Cloud Build `f4f25dc4-58aa-48d4-980b-8ae702a92132`
-  - image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:928d68f`
-  - revision `studio-00047-zm2`, serving 100%
-  - smokes passed: `/api/health`, `/content-studio`
-  - rollback:
-    `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00045-8k4=100`
-- Deployed Web from the clean merged worktree:
-  - Cloud Build `43420d27-7a3b-4a59-99a8-3024033cbdaa`
-  - image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:928d68f`
-  - revision `web-00074-n9v`, serving 100%
-  - smokes passed: `/api/health`, `/`, `/projection-stage/import`,
-    `/team/progress` unauthenticated sign-in redirect, and
-    `/team/hgo-publish-queue` unauthenticated sign-in redirect
-  - rollback:
-    `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00073-lnw=100`
-- Added public progress story entry `content-studio-persistence-fanout-live`
-  for `/updates`.
-- Started urgent Manuscript Live Room slice on
-  `codex/manuscript-live-room-001` from clean `origin/main` because Charlie and
-  Homer need a shared editing surface for a working session tonight. Added
-  `/manuscript/live`, authenticated live-room APIs, additive Prisma live-room
-  models, Yjs update polling, presence heartbeat, manual snapshot checkpointing,
-  and `docs/runbooks/studio-manuscript-live-room.md`.
-- Merged PR #25 as `330f466`, built db-push image
-  `prisma-db-push:330f466` with Cloud Build
-  `c5b00e97-0bda-498c-9f6a-55af9dd4bb71`, synced the live Studio database with
-  Cloud Run Job `studio-db-push-330f466` execution
-  `studio-db-push-330f466-4lntn`, and deployed Studio revision
-  `studio-00049-lt2` from Cloud Build
-  `e7d0f864-6207-49ff-9d84-50f67f5ee964`. Direct Cloud Run smoke passed for
-  `/manuscript/live`; `studio.highgroundodyssey.com` does not currently
-  resolve.
-- Merged PR #27 as `9e46ce6` to let any authenticated Studio-access user with
-  a room URL join/edit the live room, while keeping recent-room listing
-  creator-scoped. Deployed Studio revision `studio-00051-zl8` from Cloud Build
-  `010fcd7a-a46a-4352-901f-a96f9f9be94b`; final smokes passed for
-  `/api/health`, `/content-studio`, `/manuscript/live`, and unauthenticated
-  `401` on `/api/manuscript/live-rooms`.
-- Started follow-up branch `codex/manuscript-live-room-snapshot-start-001` so
-  `/manuscript/live` can seed new rooms from the latest Manuscript Library
-  snapshot and save checkpoints back to the selected manuscript.
-- Validation passed on the snapshot-start branch:
-  `pnpm studio:manuscript:live-room:test`, `pnpm studio:cloudrun:test`,
-  `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
-  sandbox after the known Turbopack port-binding failure, and
-  `git diff --check`.
-- Merged PR #29 as `533151c` and deployed Studio revision `studio-00053-rfn`
-  from Cloud Build `2a62f5bd-2a9a-4cc5-8c28-8c1a85033bb0`. Live smokes passed
-  for `/manuscript/live` (`HTTP 200`) and unauthenticated
-  `/api/manuscript/live-rooms` (`401`). Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00051-zl8=100`.
-- Deployed Web from current `main` `8d84886` so `/updates` includes the latest
-  progress story content. Cloud Build `6b078d8d-15bb-4034-bde0-7aeb3dbfac64`,
-  image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web:8d84886`,
-  revision `web-00078-x9q`, direct Cloud Run URL
-  `https://web-hm2odnvjga-uc.a.run.app`. Smokes passed for `/api/health`, `/`,
-  `/projection-stage/import`, `/team/progress` sign-in redirect,
-  `/team/hgo-publish-queue` sign-in redirect, and `/updates` (`HTTP 200`).
-  Rollback:
-  `gcloud run services update-traffic web --project=high-ground-odyssey --region=us-central1 --to-revisions=web-00077-h56=100`.
-- Started `codex/manuscript-live-room-launch-from-desk-001` to let Manuscript
-  Desk create and open a live room directly from the current browser-local
-  draft, avoiding an extra save/load hop before a shared writing session.
-- Validation passed on the launch-from-Desk branch:
-  `pnpm studio:cloudrun:test`, `pnpm studio:manuscript:live-room:test`,
-  `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
-  sandbox after the known Turbopack port-binding failure, and
-  `git diff --check`.
-- Merged PR #32 as `bbb095f` and deployed Studio revision `studio-00055-bgv`
-  from Cloud Build `d3c9f219-4457-4581-8993-e888a9babaeb`. Direct smokes
-  passed for `/manuscript` (`HTTP 200`), `/manuscript/live` (`HTTP 200`), and
-  unauthenticated `/api/manuscript/live-rooms` (`401`). Rollback:
-  `gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00053-rfn=100`.
-- Started `codex/live-room-notebook-mode-001` to make `/manuscript/live`
-  default to a notebook-style editing surface. This keeps the existing Yjs text
-  protocol but splits the shared text into editable sections with an outline
-  and a raw-text fallback.
-- Validation passed on the notebook-mode branch:
-  `pnpm studio:manuscript:live-room:test`, `pnpm studio:cloudrun:test`,
-  `pnpm --filter studio typecheck`, `pnpm --filter studio build` outside the
-  sandbox after the known Turbopack port-binding failure, and
-  `git diff --check`.
+
+### Codex / Manuscript Desk mobile and roadmap handoff
+
+- 2026-05-26: Took over the interrupted local state on
+  `codex/content-studio-persistence-supervisor-001`.
+- Added a mobile writing and semantic marking pass for private Studio
+  `/manuscript`: phone-width users can mark selected text by author, apply or
+  clear semantic tags, mark cited quotations, enter semantic Focus View, and
+  return to the manuscript surface without the desktop sidebar.
+- Recorded competitive research for comparable writing tools in
+  `docs/analysis/studio-manuscript-writing-tool-competitive-research.md`.
+- Recorded the next Manuscript Desk roadmap in
+  `docs/plans/studio-manuscript-desk-improvement-roadmap.md`.
+- Recorded the Codex application handoff in
+  `docs/agents/codex-application-handoff-2026-05-26.md`.
+- Sibling worktrees checked clean:
+  `/private/tmp/hgs-deploy-928d68f`,
+  `/private/tmp/hgs-manuscript-live-001`,
+  `/Users/wall-e/Dev/hgs-worldhub-codex`,
+  `/Users/wall-e/Dev/hgs-worldhub-project`, and
+  `/Users/wall-e/Dev/high-ground-studio-codex-studio-cut-001`.
+- Manuscript validation passed: `pnpm studio:manuscript:test`,
+  `pnpm --filter studio typecheck`, and `git diff --check`.
+- Repaired the local generated-client issue by pinning the new QuipLore apps
+  and the root `react-datepicker` peer graph to the repo's current
+  Next/React versions: `next@16.1.6`, `react@19.2.4`, and
+  `react-dom@19.2.4`. `pnpm why @prisma/client -r` now reports one
+  `@prisma/client` instance.
+- `pnpm --filter studio build` still fails inside the sandbox with the known
+  Turbopack/PostCSS helper port-bind restriction, but the outside-sandbox build
+  passed.

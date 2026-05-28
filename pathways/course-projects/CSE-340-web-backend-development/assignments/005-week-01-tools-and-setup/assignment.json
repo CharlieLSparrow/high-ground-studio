@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Tools and Setup",
+  "category": "Setup/tooling task",
+  "summary": "This activity will help you set up the tools you'll need this semester. MS Teams, Git, and VS Code (if you have not already installed them) Complete the following if not already installed:",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week01/setup.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/",
+  "status": "ok"
+}

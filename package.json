@@ -10,6 +10,8 @@
     "postinstall": "prisma generate",
     "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
     "studio": "pnpm --filter studio dev",
+    "dev:studio:all": "concurrently \"pnpm studio\" \"pnpm studio:collab\"",
+    "studio:collab": "PORT=8789 pnpm --filter studio-collab start",
     "studio:build": "pnpm --filter studio build",
     "studio:db:up": "docker compose -f compose.studio.yml up -d --wait studio-postgres",
     "studio:db:down": "docker compose -f compose.studio.yml down",
@@ -21,6 +23,7 @@
     "studio:cloudrun:preflight": "node scripts/studio-cloud-run-preflight.mjs",
     "studio:cloudrun:deploy": "node scripts/studio-cloud-run-deploy.mjs",
     "studio:cloudrun:test": "node --test scripts/studio-cloud-run-readiness.test.mjs",
+    "studio:collab:cloudrun:deploy": "node scripts/studio-collab-cloud-run-deploy.mjs",
     "web:cloudbuild:image": "gcloud builds submit --config cloudbuild.web.yaml .",
     "web:cloudbuild:image:sha": "gcloud builds submit --config cloudbuild.web.yaml --substitutions=_IMAGE_TAG=$(git rev-parse --short HEAD) .",
     "web:cloudrun:preflight": "node scripts/web-cloud-run-preflight.mjs",
@@ -30,6 +33,23 @@
     "web:db:target:report": "node scripts/web-database-target-report.mjs",
     "web:domain:check": "node scripts/web-domain-readiness.mjs",
     "web:cloudrun:test": "node --test scripts/web-cloud-run-readiness.test.mjs",
+    "quiplore": "pnpm --filter quiplore dev",
+    "quiplore:build": "pnpm --filter quiplore build",
+    "quiplore:typecheck": "pnpm --filter quiplore typecheck",
+    "quipsly:api": "pnpm --filter quipsly-api dev",
+    "quipsly:api:build": "pnpm --filter quipsly-api build",
+    "quipsly:api:typecheck": "pnpm --filter quipsly-api typecheck",
+    "ai:hub": "pnpm --filter ai-hub dev",
+    "ai:hub:build": "pnpm --filter ai-hub build",
+    "ai:hub:typecheck": "pnpm --filter ai-hub typecheck",
+    "photo:hub": "pnpm --filter photography-hub dev",
+    "photo:hub:build": "pnpm --filter photography-hub build",
+    "photo:hub:typecheck": "pnpm --filter photography-hub typecheck",
+    "video:hub": "pnpm --filter video-hub dev",
+    "video:hub:build": "pnpm --filter video-hub build",
+    "video:hub:typecheck": "pnpm --filter video-hub typecheck",
+    "quipsly:domain:build": "pnpm --filter @high-ground/quipsly-domain build",
+    "quipsly:domain:typecheck": "pnpm --filter @high-ground/quipsly-domain typecheck",
     "progress:story:add": "node scripts/progress-story-add-entry.mjs",
     "progress:story:test": "node --test scripts/progress-story-add-entry.test.mjs",
     "studio:manuscript:test": "node --experimental-strip-types --test scripts/studio-manuscript-editor.test.mjs",
@@ -74,10 +94,13 @@
   "dependencies": {
     "@prisma/client": "^7.7.0",
     "@prisma/config": "^7.7.0",
-    "react-datepicker": "^9.1.0"
+    "react": "19.2.4",
+    "react-datepicker": "^9.1.0",
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "concurrently": "^10.0.0",
     "prisma": "^7.7.0"
   }
 }

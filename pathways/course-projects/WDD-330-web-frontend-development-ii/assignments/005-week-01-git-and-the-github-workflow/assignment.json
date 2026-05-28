@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Git and the GitHub Workflow",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Git and the GitHub Workflow Throughout the course you will be working with your team on the same learning project. Not only will you need to manage tasks but also the shared code and your individual contributions to the team. Git technology will provide the ability to collaborate effectively, track changes, and publish to a common...",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week01/prepare-git.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week01/",
+  "status": "ok"
+}

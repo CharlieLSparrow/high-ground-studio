@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 26,
+  "lesson": "Week 04",
+  "title": "Lazyloading Images",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activity: Lazyloading Images In terms of site performance and search engine optimization, your goal is to load the webpage and make it ready for action within a few seconds of a user request. Webpages, however, often contain many requests and payloads, including images, that increase the load time beyond the ideal target. This activity...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week04/prepare-lazyload.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week04/",
+  "status": "ok"
+}

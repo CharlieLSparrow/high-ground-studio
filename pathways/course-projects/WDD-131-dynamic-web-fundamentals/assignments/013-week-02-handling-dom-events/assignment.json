@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 13,
+  "lesson": "Week 02",
+  "title": "Handling DOM Events",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: Handling DOM Events Handling DOM events in JavaScript is a fundamental part of building interactive web pages. In this activity, you'll learn about the different events you can handle, how to handle them, and how to pass data between the event handler and the rest of your code. Reference: Introduction to Events \u2013 MDN [Introduction...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week02/prepare-dom-eventhandling.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week02/",
+  "status": "ok"
+}

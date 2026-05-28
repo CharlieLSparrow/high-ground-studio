@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "CSS Normalization",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: CSS Normalization Activity Instructions In this activity, you will create your own normalize CSS file and include it on your site.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-css-normalization.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

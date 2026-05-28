@@ -52,7 +52,7 @@ export const manuscriptHelpNotes = {
     whatItDoesNot:
       "It does not automatically appear on another device. Homer on a phone will not see it unless you export a full draft JSON backup or save a server snapshot.",
     whenToUse:
-      "Use it for day-to-day editing. Use Backup mode before anything needs to travel.",
+      "Use it for day-to-day editing. Use Save manuscript before anything needs to travel.",
   },
   "full-draft-json-backup": {
     id: "full-draft-json-backup",
@@ -70,13 +70,13 @@ export const manuscriptHelpNotes = {
     id: "manuscript-library",
     label: "Library",
     title: "Named manuscripts above the snapshot stack",
-    body: "The manuscript library is the named shelf above manual snapshots. Pick a manuscript first, then save or load checkpoints under that manuscript.",
+    body: "The manuscript library is the named shelf above manual snapshots. It now lives in Dev Mode because the everyday flow can simply save the current manuscript and use the latest phone link.",
     whatItDoes:
       "It separates working manuscripts from synthetic smoke drafts and makes recent named projects easier to find.",
     whatItDoesNot:
       "It does not autosave, merge devices, delete legacy snapshots, publish content, or turn a snapshot into canonical manuscript truth.",
     whenToUse:
-      "Use it before saving real work so a checkpoint belongs to the right named manuscript instead of a flat account-wide stack.",
+      "Use it only when a checkpoint needs a named manuscript container instead of the simple latest-save flow.",
   },
   "server-snapshot": {
     id: "server-snapshot",
@@ -94,7 +94,7 @@ export const manuscriptHelpNotes = {
     id: "save-snapshot",
     label: "Save",
     title: "Make the checkpoint on purpose",
-    body: "Save snapshot writes the current browser-local draft to Studio's database as a manual checkpoint. The button is intentionally plain because ceremony is cheaper than confusion.",
+    body: "Save manuscript writes the current browser-local draft to Studio's database as a manual checkpoint. It is the everyday button for moving the draft to another signed-in device.",
     whatItDoes:
       "It creates a new manual server snapshot for the signed-in Studio account.",
     whatItDoesNot:
@@ -178,7 +178,7 @@ export const manuscriptHelpNotes = {
     id: "semantic-meaning-tags",
     label: "Meaning tags",
     title: "Labels for what the words are doing",
-    body: "Semantic tags mark why a span matters: quote, story, insight, research, question, thesis, transition, or review need.",
+    body: "Semantic tags mark why a span matters: clip, production notes, quote, story, insight, research, question, thesis, transition, or review need.",
     whatItDoes:
       "It turns meaning into visible editorial metadata without moving the text.",
     whatItDoesNot:
@@ -213,20 +213,20 @@ export const manuscriptHelpNotes = {
   "structure-region": {
     id: "structure-region",
     label: "Structure",
-    title: "A named stretch of manuscript road",
-    body: "A structure region names a range of blocks, such as a chapter, episode, or section. It is a map overlay, not a knife.",
+    title: "A marker that names where a stretch begins",
+    body: "A structure boundary marks the title block where a chapter or episode starts. The desk treats everything after it as part of that stretch until the next matching boundary.",
     whatItDoes:
       "It helps navigate, outline, filter, and prepare reading or recording passes.",
     whatItDoesNot:
       "It does not split the manuscript, move paragraphs, or write canonical files.",
     whenToUse:
-      "Use it when a block range has a useful editorial identity.",
+      "Use it when a chapter or episode begins at the selected title block.",
   },
   "chapter-book-region": {
     id: "chapter-book-region",
     label: "Book region",
-    title: "Book-shaped scaffolding",
-    body: "A Chapter / book region marks manuscript ranges like Preface, Introduction, Chapter 0, Chapter One, or Appendix.",
+    title: "Book-shaped boundary",
+    body: "A chapter boundary marks the manuscript title block for Preface, Introduction, Chapter 0, Chapter One, Appendix, or any other book-scale section.",
     whatItDoes:
       "It helps the desk understand book-scale shape without committing public structure.",
     whatItDoesNot:
@@ -237,10 +237,10 @@ export const manuscriptHelpNotes = {
   "episode-region": {
     id: "episode-region",
     label: "Episode",
-    title: "A recording-sized path through the book",
-    body: "An Episode region marks the manuscript range that may support an episode or recording pass.",
+    title: "A recording-sized starting point",
+    body: "An episode boundary marks the title block where a recording or reading pass begins.",
     whatItDoes:
-      "It helps a phone or recording view jump through episode-sized chunks.",
+      "It helps a phone or recording view jump through episode-sized chunks derived from the marked starts.",
     whatItDoesNot:
       "It does not create a podcast episode, update arrangements, or publish content.",
     whenToUse:
@@ -249,14 +249,14 @@ export const manuscriptHelpNotes = {
   "backup-mode": {
     id: "backup-mode",
     label: "Backup",
-    title: "The cautious drawer",
-    body: "Backup mode is where the desk puts travel papers, spare keys, and serious warnings in one place.",
+    title: "The cautious drawer behind Dev Mode",
+    body: "Backup mode is where the desk keeps old travel papers, spare keys, raw exports, and serious warnings without crowding the everyday writing surface.",
     whatItDoes:
-      "It handles local downloads, JSON import/export, manual server snapshots, and snapshot loading.",
+      "It handles local downloads, JSON import/export, named manuscript selection, manual server snapshots, and selected snapshot loading.",
     whatItDoesNot:
       "It does not autosave or turn server snapshots into collaboration.",
     whenToUse:
-      "Use it before imports, before risky edits, and whenever the manuscript needs to move devices.",
+      "Use it from Dev Mode before risky imports, raw JSON work, or selected-snapshot recovery.",
   },
   "mark-mode": {
     id: "mark-mode",
@@ -298,13 +298,13 @@ export const manuscriptHelpNotes = {
     id: "publish-mode",
     label: "Publish",
     title: "The export table before the public square",
-    body: "Publish mode gathers readiness warnings and handoff exports. It is where the manuscript puts on sensible shoes before meeting other humans.",
+    body: "Publish mode gathers readiness warnings and handoff exports. It lives in Dev Mode until the packet workflow is part of ordinary editorial work.",
     whatItDoes:
       "It reports structure, author, quote review, and snapshot cautions, then prepares browser-downloadable Markdown packets.",
     whatItDoesNot:
       "It does not publish public pages, write server files, save snapshots, or declare the manuscript finished.",
     whenToUse:
-      "Use it before recording, sharing a handoff packet, or checking whether a synthetic draft is ready for real-manuscript work.",
+      "Use it from Dev Mode before recording, sharing a handoff packet, or checking whether a synthetic draft is ready for real-manuscript work.",
   },
   "publishing-packet": {
     id: "publishing-packet",

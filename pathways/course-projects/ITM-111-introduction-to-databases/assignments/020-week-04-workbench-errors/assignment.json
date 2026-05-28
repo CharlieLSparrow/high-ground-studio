@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 20,
+  "lesson": "Week 04",
+  "title": "Workbench Errors",
+  "category": "Project / major deliverable",
+  "summary": "W04 Activity (2 of 2): Workbench Errors This activity helps you practice troubleshooting SQL errors. Is is implemented as an Canvas Quiz, It is NOT a quiz (in the sense of a test), though the quiz tool is used to present the activity to you. Track how long it takes you, but do not spend more than a few minutes per question. Start the activity by starting...",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week04/activity-workbench-errors.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week04/index.html",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "MySQL Workbench",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: MySQL Workbench Windows MySQL Workbench Install Instructions [Windows MySQL Workbench Install Instructions: https://byui-cse.github.io/itm111-ww-course/week01/mysql-workbench-install-windows.html] Mac MySQL Workbench Install Instructions [Mac MySQL Workbench Install Instructions: https://byui-cse.github.io/itm111-ww-course/week01/mysql-...",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week01/activity-install-mysql-workbench.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week01/index.html",
+  "status": "ok"
+}

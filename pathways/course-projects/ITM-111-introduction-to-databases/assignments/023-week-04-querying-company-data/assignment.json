@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 23,
+  "lesson": "Week 04",
+  "title": "Querying Company Data",
+  "category": "Team activity",
+  "summary": "Team Activity - Querying Company Data Purpose: Participate in a 60-minute online team meeting to practice writing queries that answer questions about company data. Task: Write SQL queries that answer questions about a bike store's business.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week04/team-activity-querying-company-data.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week04/index.html",
+  "status": "ok"
+}

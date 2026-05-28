@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 8,
+  "lesson": "Week 02",
+  "title": "Password Strength",
+  "category": "Project / major deliverable",
+  "summary": "W02 Project: Password Strength Prove that you can write functions with parameters and call those functions multiple times with arguments. The password checker should allow users to check passwords until they choose to quit. The hope is that by using the password checker tool employees will learn how to create better passwords.",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week02/project.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week02/index.html",
+  "status": "ok"
+}

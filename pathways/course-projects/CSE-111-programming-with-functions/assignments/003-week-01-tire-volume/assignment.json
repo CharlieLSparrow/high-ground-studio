@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "Tire Volume",
+  "category": "Project / major deliverable",
+  "summary": "W01 Project: Tire Volume Prove that you can write a Python program that gets input from a user, performs math, displays and logs the results to a file. AI-assisted Software Development",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week01/project.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week01/index.html",
+  "status": "ok"
+}

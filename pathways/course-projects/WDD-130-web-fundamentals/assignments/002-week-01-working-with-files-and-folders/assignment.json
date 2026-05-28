@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 2,
+  "lesson": "Week 01",
+  "title": "Working with Files and Folders",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Working with Files and Folders This activity will review file path essentials and define the file naming conventions that you need to follow in this course. [naming conventions: https://byui-cse.github.io/wdd130-ww-course/week01/prepare-files-folders.html#conventions] File Path Essentials",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/prepare-files-folders.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

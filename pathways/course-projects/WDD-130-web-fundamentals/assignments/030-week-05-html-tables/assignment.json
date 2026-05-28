@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 30,
+  "lesson": "Week 05",
+  "title": "HTML Tables",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity: HTML Tables Basic Table Structure <table> \u2013 Creates the container for the entire table",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week05/prepare-html-table.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week05/",
+  "status": "ok"
+}

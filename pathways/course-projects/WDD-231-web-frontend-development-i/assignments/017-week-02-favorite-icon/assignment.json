@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 17,
+  "lesson": "Week 02",
+  "title": "Favorite Icon",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: Favicon In this activity you will learn more about favicons and how to create and add one to your pages. For example, this learning activity page has the BYU-Idaho logo as a favicon, as you can see in the tab title:",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week02/prepare-favicon.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week02/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 8,
+  "lesson": "Week 03",
+  "title": ".NET Blazor Application",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Assignment: Build Web Applications with Blazor Complete the assigned modules from the week's learning activities. [learning activities: https://byui-cse.github.io/cse325-ww-course/week03/prepare-blazor-app-build-03.html] Complete the Use pages, routing, and layouts to improve Blazor navigation unit. [Use pages, routing, and layouts to improve Blazor...",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week03/assignment-03.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week03/",
+  "status": "ok"
+}

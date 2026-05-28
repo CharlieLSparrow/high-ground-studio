@@ -1,0 +1,12 @@
+{
+  "course": "CSE 341",
+  "course_title": "Web Services",
+  "index": 16,
+  "lesson": "Week 06",
+  "title": "Testing",
+  "category": "Project / major deliverable",
+  "summary": "W06 Learning Activity: Testing Welcome to Week 06! This lesson you are going to learn how to write unit tests using the Jest framework. You will also continue to work on your final project. Topics for this lesson:",
+  "url": "https://byui-cse.github.io/cse341-ww-course/week06/prepare.html",
+  "source_page": "https://byui-cse.github.io/cse341-ww-course/week06/index.html",
+  "status": "ok"
+}

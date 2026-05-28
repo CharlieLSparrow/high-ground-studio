@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 5,
+  "lesson": "Week 02",
+  "title": "ASP.NET Core",
+  "category": "Submit / prove assignment",
+  "summary": "W02 Assignment: ASP.NET Core UI: MVC In this assignment, you will apply your learning to building a ASP.NET Core UI web application using the MVC approach. Complete the following series of tutorials found at \ud83d\udcc4Get started with ASP.NET Core MVC on learn.microsoft.com Be sure to always select the Visual Studio Code tab when working through MS tutorials. [Get...",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week02/assignment-02.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week02/",
+  "status": "ok"
+}

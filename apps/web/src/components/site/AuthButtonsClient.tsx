@@ -10,10 +10,10 @@ export default function AuthButtonsClient({
   if (!session) {
     return (
       <button
-        onClick={() => signIn("google")}
-        className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-[var(--text-light)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+        onClick={() => signIn("patreon")}
+        className="rounded-full border border-white/15 bg-white/10 px-6 py-2.5 text-sm font-semibold text-[var(--text-light)] transition hover:border-[#FF424D] hover:text-[#FF424D]"
       >
-        Join / Sign in
+        Sign in with Patreon
       </button>
     );
   }

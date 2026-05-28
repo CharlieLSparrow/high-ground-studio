@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 8,
+  "lesson": "Week 01",
+  "title": "Workflow",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Workflow A modern frontend web development workflow streamlines how websites and applications are built and managed. Even for a medium-sized project, you'll likely juggle numerous JavaScript or TypeScript files, several CSS stylesheets, and a variety of assets such as icons, fonts, and images. Many projects now rely on component-...",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week01/prepare-workflow.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week01/",
+  "status": "ok"
+}

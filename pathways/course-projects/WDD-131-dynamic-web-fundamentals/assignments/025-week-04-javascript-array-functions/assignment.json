@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 25,
+  "lesson": "Week 04",
+  "title": "JavaScript Array Functions",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activity: JavaScript Array Functions Functional programming is a programming paradigm that treats computation as the evaluation of mathematical functions and avoids changing state and mutable data. It is a declarative programming paradigm, which means you express your program through expressions or declarations rather than statements. Array...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week04/prepare-array-functions.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week04/",
+  "status": "ok"
+}

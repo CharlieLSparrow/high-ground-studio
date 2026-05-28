@@ -1,0 +1,12 @@
+{
+  "course": "CSE 341",
+  "course_title": "Web Services",
+  "index": 9,
+  "lesson": "Week 03",
+  "title": "Project 2 Part 1 (CRUD Operations)",
+  "category": "Project / major deliverable",
+  "summary": "W03 Project: Project 2 Part 1 (CRUD Operations) Project Description For Weeks 03-04, you will create a new project of your choosing. You will have two weeks in this course to complete it, just like the last project. This project will perform CRUD operations on a MongoDB database, be published to the Web, incorporate security measures, and include API...",
+  "url": "https://byui-cse.github.io/cse341-ww-course/week03/project.html",
+  "source_page": "https://byui-cse.github.io/cse341-ww-course/week03/index.html",
+  "status": "ok"
+}

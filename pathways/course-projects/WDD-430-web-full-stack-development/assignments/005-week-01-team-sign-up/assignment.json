@@ -1,0 +1,12 @@
+{
+  "course": "WDD 430",
+  "course_title": "Web Full-Stack Development",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Team Sign-up",
+  "category": "Setup/tooling task",
+  "summary": "In this setup activity, you will sign up for a group in Canvas based upon your preferred weekly meeting time and then you will connect via the MS Teams platform. Group Selection in Canvas In Canvas, select the People link in the course menu.",
+  "url": "https://byui-cse.github.io/wdd430-ww-course/week01/setup-teams.html",
+  "source_page": "https://byui-cse.github.io/wdd430-ww-course/week01/",
+  "status": "ok"
+}

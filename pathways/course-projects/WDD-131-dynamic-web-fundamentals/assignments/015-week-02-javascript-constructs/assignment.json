@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 15,
+  "lesson": "Week 02",
+  "title": "JavaScript Constructs",
+  "category": "Submit / prove assignment",
+  "summary": "W02 Learning Activity: JavaScript Constructs Through the prerequisite programming courses, you have built a foundational understanding of common programming constructs, including operators, expressions, decision structures, loops, and functions. This activity focuses on a few core control structures. In programming, operators are symbols used to perform...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week02/prepare-js-constructs.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week02/",
+  "status": "ok"
+}

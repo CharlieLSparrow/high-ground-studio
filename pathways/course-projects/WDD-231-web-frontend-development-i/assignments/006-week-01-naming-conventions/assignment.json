@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 6,
+  "lesson": "Week 01",
+  "title": "Naming Conventions",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Naming Conventions Use all lowercase syntax, for example, products.html Do NOT use spaces in names. Use dashes instead, for example, design-document.html Spaces are interpreted poorly by user agents. Do not use them. The Hypertext Transfer Protocol (HTTP) ignores spaces, except in file names. In file names, it replaces a space with...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-naming-conventions.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

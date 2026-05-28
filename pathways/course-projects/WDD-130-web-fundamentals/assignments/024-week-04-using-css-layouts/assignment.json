@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 24,
+  "lesson": "Week 04",
+  "title": "Using CSS Layouts",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activities: Using CSS Layouts Mastering CSS Flex and Grid can be challenging. This activity highlights some of the most relevant layouts and the principles behind them. When do I use CSS Flex versus CSS Grid?",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week04/prepare-layouts.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week04/",
+  "status": "ok"
+}

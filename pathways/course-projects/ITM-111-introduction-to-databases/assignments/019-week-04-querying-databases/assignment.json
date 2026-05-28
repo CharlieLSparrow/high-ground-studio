@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 19,
+  "lesson": "Week 04",
+  "title": "Querying Databases",
+  "category": "Project / major deliverable",
+  "summary": "W04: Activity (1 of 2): Querying Databases This activity will install the course database. This database will be used throughout the remainder of the semester. You will use this database to learn to query tables. Setup the databases you will need for assignments for the remainder of the course.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week04/activity-querying-databases.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week04/index.html",
+  "status": "ok"
+}

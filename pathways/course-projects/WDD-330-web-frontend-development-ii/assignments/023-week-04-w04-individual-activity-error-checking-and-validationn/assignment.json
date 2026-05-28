@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 23,
+  "lesson": "Week 04",
+  "title": "W04 Individual Activity: Error Checking and Validationn",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Individual Activity: Error Checking and Validation In the last activity, the checkout was working at a minimum level. If the user does everything exactly the way you want the to the order will succeed. You cannot rely upon users to do the right thing every time. You need to make sure that the user is doing the right thing. Do this by adding error...",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week04/individual.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week04/",
+  "status": "ok"
+}

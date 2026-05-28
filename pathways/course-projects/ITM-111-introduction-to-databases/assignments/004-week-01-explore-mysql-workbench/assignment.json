@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "Explore MySQL Workbench",
+  "category": "Submit / prove assignment",
+  "summary": "W01 Activity: Explore MySQL Workbench Purpose: Become familiar with the CASE (Computer-Aided Software Engineering) tool used in the course. Task: Watch and follow along with videos to learn about Workbench.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week01/assignment-explore-mysql-workbench.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week01/index.html",
+  "status": "ok"
+}

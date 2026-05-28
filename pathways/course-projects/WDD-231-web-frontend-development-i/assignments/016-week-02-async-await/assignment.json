@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 16,
+  "lesson": "Week 02",
+  "title": "async/await",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: JavaScript async/await In this learning activity you will learn about async and await, then in a separate learning activity on the Fetch API you will practice using them. You will have a chance to apply async/await in the next learning activity, Fetch API where you will fetch latter-day prophet data from a JSON file and process that...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week02/prepare-async-await.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week02/",
+  "status": "ok"
+}

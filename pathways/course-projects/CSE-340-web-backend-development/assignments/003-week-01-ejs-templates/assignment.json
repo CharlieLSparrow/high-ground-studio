@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "EJS Templates",
+  "category": "Learning activity / exercise",
+  "summary": "Learning Activity: EJS Templates Activity Instructions Download and Implement Server Code [Download and Implement Server Code: https://byui-cse.github.io/cse340-ww-content/views/github-starter.html]",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week01/prepare-2-ejs-templates.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/week01/index.html",
+  "status": "ok"
+}

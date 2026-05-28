@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 13,
+  "lesson": "Week 04",
+  "title": "W04 Activity: Integration Testing Tools and Techniques",
+  "category": "Learning activity / exercise",
+  "summary": "Installing and Using Postman Postman is a tool that is widely used by testers and developers alike to exercise web-based service endpoints. You will install the Postman tool on your computer by navigating to the Postman web site and downloading and installing the application. Follow the link below to begin. Using Browser Developer Tools (Chrome edition)",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week04/activity_testing_tools_and_techniques.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week04/activity_regression_and_integration.html",
+  "status": "ok"
+}

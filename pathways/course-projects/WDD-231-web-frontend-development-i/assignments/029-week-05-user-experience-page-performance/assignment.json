@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 29,
+  "lesson": "Week 05",
+  "title": "User Experience: Page Performance",
+  "category": "Learning activity / exercise",
+  "summary": "UX: Page Performance This learning activity introduces the key questions and metrics you should consider as you design your site to optimize for better performance. Focusing on this performance data will equip you to enhance the overall user experience and engagement. Did the navigation start successfully? Has the server responded?",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week05/prepare-ux-page-load.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week05/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 18,
+  "lesson": "Week 06",
+  "title": "Setting up a CI/CD Pipeline with GitHub Actions",
+  "category": "Learning activity / exercise",
+  "summary": "W06 Activity: Setting up a CI/CD Pipeline with GitHub Actions Complete the activity below, then answer the quiz questions once the setup is complete. Step 1: Setting up a GitHub Account (if you don't have one already)",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week06/activity_cicd_pipeline.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week06/index.html",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 9,
+  "lesson": "Week 03",
+  "title": "Tutorial: Test Execution",
+  "category": "Submit / prove assignment",
+  "summary": "Create a test iteration Show the Executions screen by selecting Executions from the left navigating bar. Select the test plan you wish to execute.",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week03/tutorial_test_execution.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week03/assignment_test_cases_execution.html",
+  "status": "ok"
+}

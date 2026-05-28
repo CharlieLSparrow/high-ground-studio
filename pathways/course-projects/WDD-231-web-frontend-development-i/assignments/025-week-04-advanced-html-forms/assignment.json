@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 25,
+  "lesson": "Week 04",
+  "title": "Advanced HTML Forms",
+  "category": "Submit / prove assignment",
+  "summary": "The focus of this learning activity is to capture and display HTML form data on a confirmation page using URL query parameters. URLSearchParams is a built-in JavaScript object that provides utility methods to easily access, manipulate, and iterate over the parameters in the URL query string. HTML forms are used to collect user input and submit it to a...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week04/prepare-adv-forms.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week04/",
+  "status": "ok"
+}

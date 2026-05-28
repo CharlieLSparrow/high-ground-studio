@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Working with Web Images",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Working with Web Images Most websites contain not only words, but also images. Some image formats are better suited for the web than others. This activity introduces using images for the web and how to optimize images so that they use less memory, thus supporting smaller page weights, which decreases the overall download time. JPEG...",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/prepare-images.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

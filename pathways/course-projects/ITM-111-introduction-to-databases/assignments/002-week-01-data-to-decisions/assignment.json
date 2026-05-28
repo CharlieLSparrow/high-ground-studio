@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 2,
+  "lesson": "Week 01",
+  "title": "Data to Decisions",
+  "category": "Project / major deliverable",
+  "summary": "This activity will help you understand the relationship of data to information. It will also help you understand tabular data and spreadsheets. This will prepare you to start designing databases to store data that ultimately will be used to answer business questions, keep customer data, drive web sites or a million other uses. Data to Information...",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week01/activity-data-to-decisions.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week01/index.html",
+  "status": "ok"
+}

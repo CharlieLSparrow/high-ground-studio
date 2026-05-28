@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 12,
+  "lesson": "Week 02",
+  "title": "setTimeout / setInterval",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: setTimeout / setInterval In this activity, you will discover how to create timed events in a web applications. Activity Instructions",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week02/prepare-settimeout-setinterval.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week02/",
+  "status": "ok"
+}

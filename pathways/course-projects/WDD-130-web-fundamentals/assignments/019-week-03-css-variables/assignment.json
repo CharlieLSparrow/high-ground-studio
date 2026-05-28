@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 19,
+  "lesson": "Week 03",
+  "title": "CSS Variables",
+  "category": "Learning activity / exercise",
+  "summary": "W03 Learning Activities: CSS Variables CSS variables are a powerful tool for managing a website's design. They allow you to create reusable values that can be used throughout a stylesheet, helping to maintain design congruency. This activity will introduce you to CSS variables and how to use them in your projects. Defining CSS Variables",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week03/prepare-css-variables.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week03/",
+  "status": "ok"
+}

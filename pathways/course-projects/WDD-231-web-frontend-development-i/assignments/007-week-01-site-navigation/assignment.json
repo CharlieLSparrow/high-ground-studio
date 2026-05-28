@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 7,
+  "lesson": "Week 01",
+  "title": "Site Navigation",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Site Navigation Site navigation is a critical part of any website. It allows users to find their way around the site and discover content. In this activity, you will learn how to create a responsive navigation menu that works well on both small and large screens. Semantic Clarity: The links are grouped as related items and the order...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-navigation.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

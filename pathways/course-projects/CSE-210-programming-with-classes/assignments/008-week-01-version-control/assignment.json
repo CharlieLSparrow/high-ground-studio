@@ -1,0 +1,12 @@
+{
+  "course": "CSE 210",
+  "course_title": "Programming with Classes",
+  "index": 8,
+  "lesson": "Week 01",
+  "title": "Version Control",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Version Control This activity will help you become familiar with version control systems and using use Git and GitHub. Preparation Material",
+  "url": "https://byui-cse.github.io/cse210-ww-course/week01/prepare-version-control.html",
+  "source_page": "https://byui-cse.github.io/cse210-ww-course/week01/index.html",
+  "status": "ok"
+}

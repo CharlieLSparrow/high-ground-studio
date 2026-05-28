@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "Site Footer",
+  "category": "Submit / prove assignment",
+  "summary": "W01 Learning Activity: Site Footer The assignment footer this week requires linked, social media icons as well as some basic page and author information, and dynamic 'lastModified' date. To help you prepare for this assignment, this activity will look at how to use SVG icons, how to modify them, and how to lay them out in a footer.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-footer.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

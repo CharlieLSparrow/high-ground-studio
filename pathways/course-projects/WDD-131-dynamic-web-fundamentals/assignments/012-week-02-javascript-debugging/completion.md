@@ -1,0 +1,40 @@
+# Example Completion
+
+> Study-example draft for **WDD 131 012: JavaScript Debugging**.
+
+## Assignment Snapshot
+
+- Course: WDD 131 - Dynamic Web Fundamentals
+- Lesson: Week 02
+- Category: Learning activity / exercise
+- Source: https://byui-cse.github.io/wdd131-ww-course/week02/prepare-debugging.html
+
+## What This Example Should Demonstrate
+
+02 Learning Activity: JavaScript Debugging Debugging is the process of finding and fixing errors in your code. This is an essential skill for any developer. In this activity, you will learn how to use the browser's DevTools to debug your JavaScript code. Syntax Errors – These errors occur when you write code that does not follow the rules of the...
+
+## Example Completion Draft
+
+This is a scaffolded completion space. Replace this section with an original worked example, runnable program, written response, report, test artifact, or project deliverable that demonstrates the assignment goals in your own words.
+
+For programming work, prefer:
+
+- small, runnable files;
+- sample input and output;
+- comments that explain the why, not just the what;
+- a short reflection on what was confusing and how the example solved it.
+
+For writing or planning work, prefer:
+
+- a concrete scenario;
+- a concise answer;
+- evidence, tradeoffs, or decision notes;
+- a final paragraph in your own voice.
+
+## Completion Checklist
+
+- [ ] Original example is present.
+- [ ] Any code runs locally or has clear setup notes.
+- [ ] Important assumptions are named.
+- [ ] Footnote-style explanatory notes are added in `notes.md` or code comments.
+- [ ] Nothing here is treated as a copy-paste course submission.

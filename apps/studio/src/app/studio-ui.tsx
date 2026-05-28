@@ -16,10 +16,10 @@ const chipToneClassName: Record<StudioTone, string> = {
 };
 
 export const panelClassName =
-  "min-w-0 rounded-lg border border-studio-line bg-studio-panel/95 p-[18px] shadow-studio-panel";
+  "min-w-0 rounded-xl border border-studio-line/40 bg-studio-panel/60 p-[18px] shadow-studio-panel backdrop-blur-xl transition-all duration-300";
 
 export const cardClassName =
-  "rounded-lg border border-studio-line bg-black/15";
+  "rounded-lg border border-studio-line/30 bg-black/25 backdrop-blur-md transition-all duration-300 hover:bg-black/35";
 
 export const labelClassName =
   "m-0 text-[0.72rem] font-black uppercase leading-tight tracking-normal text-studio-dim";
@@ -34,10 +34,10 @@ export const monoMetaClassName =
   "mt-1 break-words font-mono text-xs leading-relaxed text-studio-muted";
 
 export const primaryButtonClassName =
-  "mt-4 min-h-11 w-full rounded-lg border border-studio-tag/60 bg-studio-tag/15 px-4 py-2 font-black text-studio-tag disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim";
+  "mt-4 min-h-11 w-full rounded-lg border border-studio-tag/40 bg-studio-tag/15 px-4 py-2 font-black text-studio-tag backdrop-blur-sm transition-all duration-300 hover:bg-studio-tag/25 hover:border-studio-tag/60 shadow-[0_4px_12px_rgba(159,209,139,0.1)] disabled:border-studio-line disabled:bg-studio-ink/5 disabled:text-studio-dim";
 
 export const secondaryButtonClassName =
-  "min-h-11 w-full rounded-lg border border-studio-danger/40 bg-studio-danger/10 px-4 py-2 font-black text-studio-danger";
+  "min-h-11 w-full rounded-lg border border-studio-danger/30 bg-studio-danger/10 px-4 py-2 font-black text-studio-danger backdrop-blur-sm transition-all duration-300 hover:bg-studio-danger/20 hover:border-studio-danger/50";
 
 export function StudioChip({
   children,

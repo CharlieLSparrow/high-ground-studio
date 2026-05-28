@@ -1,10 +1,12 @@
-import { Mark, mergeAttributes } from "@tiptap/core";
+import { Extension, Mark, mergeAttributes } from "@tiptap/core";
 
 import {
   getManuscriptAuthorDefinition,
   getSemanticHighlightDefinition,
+  isManuscriptStructureBoundaryKind,
   isManuscriptAuthorId,
   isSemanticHighlightType,
+  type ManuscriptStructureBoundaryKind,
   type ManuscriptAuthorId,
   type SemanticHighlightType,
 } from "./manuscript-editor-model";
@@ -37,10 +39,7 @@ function getSemanticAttrs(attrs: Record<string, unknown>) {
     typeof attrs.highlightId === "string" && attrs.highlightId.trim()
       ? attrs.highlightId
       : "highlight-unassigned";
-  const label =
-    typeof attrs.label === "string" && attrs.label.trim()
-      ? attrs.label
-      : definition.label;
+  const label = definition.label;
   const colorKey =
     typeof attrs.colorKey === "string" && attrs.colorKey.trim()
       ? attrs.colorKey
@@ -60,6 +59,68 @@ function getSemanticAttrs(attrs: Record<string, unknown>) {
     createdAt,
   };
 }
+
+function getBoundaryKinds(value: unknown) {
+  const kinds: ManuscriptStructureBoundaryKind[] = [];
+
+  for (const rawKind of String(value ?? "").split(",")) {
+    const kind = rawKind.trim();
+
+    if (isManuscriptStructureBoundaryKind(kind) && !kinds.includes(kind)) {
+      kinds.push(kind);
+    }
+  }
+
+  return kinds;
+}
+
+export const ManuscriptBlockAttributes = Extension.create({
+  name: "manuscriptBlockAttributes",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph", "heading", "listItem"],
+        attributes: {
+          manuscriptBoundaryKinds: {
+            default: "",
+            parseHTML: (element) =>
+              element.getAttribute("data-manuscript-boundary-kinds") ?? "",
+            renderHTML: (attributes) => {
+              const boundaryKinds = getBoundaryKinds(
+                attributes.manuscriptBoundaryKinds,
+              );
+
+              if (!boundaryKinds.length) {
+                return {};
+              }
+
+              const hasChapterBoundary = boundaryKinds.includes("chapter");
+              const hasEpisodeBoundary = boundaryKinds.includes("episode");
+              const classNames = [
+                "manuscript-boundary-marker-block",
+                hasChapterBoundary && "manuscript-boundary-marker-chapter",
+                hasChapterBoundary && "manuscript-chapter-title-block",
+                hasEpisodeBoundary && "manuscript-boundary-marker-episode",
+              ].filter(Boolean);
+
+              return {
+                "data-manuscript-boundary-kinds": boundaryKinds.join(","),
+                "data-manuscript-boundary-heading": hasEpisodeBoundary
+                  ? "episode"
+                  : "chapter",
+                "data-structure-boundaries": boundaryKinds
+                  .map((kind) => (kind === "chapter" ? "Chapter" : "Episode"))
+                  .join(", "),
+                class: classNames.join(" "),
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
 
 export const AuthorMark = Mark.create({
   name: "authorMark",

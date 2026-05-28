@@ -1,0 +1,19 @@
+substitutions:
+  _REGION: us-central1
+  _ARTIFACT_REPOSITORY: high-ground-studio
+  _IMAGE_NAME: studio-collab
+  _IMAGE_TAG: manual
+
+steps:
+  - id: build-studio-collab-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file
+      - apps/studio-collab/Dockerfile
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}

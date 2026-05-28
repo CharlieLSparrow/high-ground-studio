@@ -1,0 +1,16 @@
+{
+  "name": "studio-collab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=../../.env server.mjs"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "^4.1.0",
+    "pg": "^8.20.0",
+    "yjs": "^13.6.30"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0"
+  }
+}

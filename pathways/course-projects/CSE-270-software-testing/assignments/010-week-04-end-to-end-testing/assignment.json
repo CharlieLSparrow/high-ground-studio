@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 10,
+  "lesson": "Week 04",
+  "title": "End-to-End Testing",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Activity: End-To-End Testing In this exercise you will create and execute end-to-end tests for the teton chamber of commerce. The development team has also reviewed our test case reports and corrected several errors. They have now created a version 1.1 web site for us to test.",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week04/activity_end_to_end_testing.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week04/index.html",
+  "status": "ok"
+}

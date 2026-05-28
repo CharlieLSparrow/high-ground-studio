@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 20,
+  "lesson": "Week 03",
+  "title": "HTML Forms and User Input Validation",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Learning Activity: HTML Forms and User Input Validation Forms provide an interface for user input and interaction. They are essential for collecting data from users, such as in contact forms, surveys, and e-commerce checkouts. HTML provides a set of elements to create forms, allowing developers to define input fields, buttons, and other controls. This...",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week03/prepare-forms.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week03/",
+  "status": "ok"
+}

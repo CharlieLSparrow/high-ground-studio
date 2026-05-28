@@ -1,0 +1,35 @@
+---
+title: "Context Windows and Retrieval-Augmented Generation"
+subtitle: "Analyzing retrieval latency, chunking density, and vector models"
+description: "Analyzing retrieval latency, chunking density, and vector score models for extremely large enterprise codebases."
+category: "Retrieval (RAG)"
+date: "2026-05-28"
+author: "Charlie"
+readTime: "10 min read"
+status: "published"
+tags: 
+  - "RAG"
+  - "Vector Search"
+  - "Context Windows"
+---
+
+# Context Windows and Retrieval-Augmented Generation
+
+As LLM context windows scale to millions of tokens, developers face a critical choice: should they load everything into the prompt context, or continue to use Retrieval-Augmented Generation (RAG)?
+
+## The Context Cost Curve
+
+While loading large documents directly into the prompt reduces the need for complex retrieval pipelines, it introduces significant downsides:
+- **Latency Scaling:** Attention compute scales quadratically $O(N^2)$ or linearly $O(N)$ with sequence length, leading to high time-to-first-token.
+- **Financial Cost:** Standard API providers charge per token; loading massive codebases for every trivial query quickly becomes cost-prohibitive.
+- **Lost in the Middle:** Models still experience reduced retrieval accuracy in the middle of extremely long contexts.
+
+## Optimal Hybrid Architecture
+
+The most successful enterprise engineering systems leverage a hybrid layout:
+1. **Semantic Indexing:** A fast vector database indexes all files with sensible overlap (e.g., class-level chunking).
+2. **Dense Retrieval:** A lightweight retriever extracts the top 20–30 relevant snippets based on semantic cosine similarity.
+3. **Cross-Encoder Reranking:** A secondary reranker computes precise pairwise relevance scores to narrow down the context.
+4. **Context Injection:** Injecting only the highest-scoring snippets into the active LLM context.
+
+This maintains low latency, preserves high precision, and optimizes compute costs.

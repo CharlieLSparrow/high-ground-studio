@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 2,
+  "lesson": "Week 01",
+  "title": "JavaScript Review",
+  "category": "Submit / prove assignment",
+  "summary": "W01 Learning Activity: JavaScript Review This activity is a review of some basic JavaScript concepts, application, and DOM (Document Object Model) manipulation. JavaScript is a core web technology in web frontend design and development along with HTML and CSS. This course will require the application of JavaScript to meet functional and developmental...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-applied-javascript.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

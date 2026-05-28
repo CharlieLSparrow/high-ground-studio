@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 12,
+  "lesson": "Week 03",
+  "title": "Water Pressure",
+  "category": "Project / major deliverable",
+  "summary": "W03 Project: Water Pressure Prove that you can write and run test functions to help you find and fix mistakes in a Python program. A computer program was written by a volunteer to help with the design, but when the team started to use the program, the numbers didn't seem to be correct. The original programmer is not available to fix the program so you...",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week03/project.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week03/index.html",
+  "status": "ok"
+}
