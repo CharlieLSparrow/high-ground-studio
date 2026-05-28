@@ -1,0 +1,12 @@
+{
+  "course": "CSE 110",
+  "course_title": "Introduction to Programming",
+  "index": 1,
+  "lesson": "Week 01",
+  "title": "Input/Output",
+  "category": "Quiz / check your understanding",
+  "summary": "W01 Quiz: Input/Output Return to Canvas to take the quiz. [Canvas: https://byupw.instructure.com/calendar#view_name=agenda] W01 Code-along Activity: ID Badge Generator [ID Badge Generator: https://byui-cse.github.io/cse110-ww-course/week01/code-along.html]",
+  "url": "https://byui-cse.github.io/cse110-ww-course/week01/check-understanding.html",
+  "source_page": "https://byui-cse.github.io/cse110-ww-course/week01/index.html",
+  "status": "ok"
+}

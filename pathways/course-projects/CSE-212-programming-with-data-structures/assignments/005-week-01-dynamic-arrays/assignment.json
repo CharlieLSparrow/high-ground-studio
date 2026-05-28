@@ -1,0 +1,12 @@
+{
+  "course": "CSE 212",
+  "course_title": "Programming with Data Structures",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Dynamic Arrays",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Dynamic Arrays In this learning activity you will learn about the first data structure of this course, the Dynamic Array. It is similar to a fixed array, but can grow in size to accommodate any number of items. The fixed array cannot grow or shrink after it is created.",
+  "url": "https://byui-cse.github.io/cse212-ww-course/week01/prepare-dynamic-arrays.html",
+  "source_page": "https://byui-cse.github.io/cse212-ww-course/week01/index.html",
+  "status": "ok"
+}

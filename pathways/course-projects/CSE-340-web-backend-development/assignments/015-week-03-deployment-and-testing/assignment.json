@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 15,
+  "lesson": "Week 03",
+  "title": "Deployment and Testing",
+  "category": "Submit / prove assignment",
+  "summary": "Learning Activity (2 of 3): Deployment and Testing This activity will walk you through the steps of setting up the application server. It will also walk you through the process of deploying updates and testing them. Activity Instructions",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week03/prepare-2-deployment.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/week03/index.html",
+  "status": "ok"
+}

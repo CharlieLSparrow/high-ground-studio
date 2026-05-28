@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 6,
+  "lesson": "Week 01",
+  "title": "Student's Home Page",
+  "category": "Submit / prove assignment",
+  "summary": "W01 Assignment: Student's Home Page In this assignment, you will apply your learning by creating your home page in HTML. In VS Code, open your wdd130 folder using File -> Open Folder...",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/prove-html-start.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Site Header",
+  "category": "Submit / prove assignment",
+  "summary": "W01 Learning Activity: Site Header The site header for the assignment this week will contain an svg logo which you will find or create. The header will also contain the site name, which will be your name, and a hamburger icon on small screens to show and hide the navigation. Timeless: A timeless logo remains effective and relevant even if trends change.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-header.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

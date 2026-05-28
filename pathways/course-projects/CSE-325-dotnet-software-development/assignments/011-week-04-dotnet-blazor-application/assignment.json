@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 11,
+  "lesson": "Week 04",
+  "title": ".NET Blazor Application",
+  "category": "Submit / prove assignment",
+  "summary": "W04 Assignment: Build Connect Four game with Blazor In this assignment, you will apply your learning in building a \"Connect Four\" game using the fundamentals of Blazor. If you have not completed the learning activity for this week, do those modules first.",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week04/assignment-04.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week04/",
+  "status": "ok"
+}

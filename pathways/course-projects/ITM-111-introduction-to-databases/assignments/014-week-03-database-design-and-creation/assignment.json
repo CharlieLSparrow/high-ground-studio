@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 14,
+  "lesson": "Week 03",
+  "title": "Database Design and Creation",
+  "category": "Project / major deliverable",
+  "summary": "Activity: Movie Database Design and CRUD Movie Database Design Watch Movie Activity Part 1:",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week03/activity-movie-database.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week03/index.html",
+  "status": "ok"
+}

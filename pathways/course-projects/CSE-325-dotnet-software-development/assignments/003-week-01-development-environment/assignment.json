@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "Development Environment",
+  "category": "Setup/tooling task",
+  "summary": "Setup: Development Environment This setup activity will prepare you with the development tools, extensions, and services necessary to complete the assigned activities and projects in the course. Integrated Development Environment",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week01/setup-course-tools.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week01/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 10,
+  "lesson": "Week 01",
+  "title": "GitHub Pages",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Tools \u2013 Hosting \u2013 GitHub Pages GitHub Pages is a feature of GitHub that allows you to host your GitHub repository content as a website with a basic domain. This will allow you to share and submit your deployed work for review and evaluation. This activity provides the necessary steps to enable GitHub Pages on your wdd231 repository on GitHub.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/setup-github-pages.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

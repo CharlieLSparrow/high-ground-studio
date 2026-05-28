@@ -1,0 +1,12 @@
+{
+  "course": "CSE 325",
+  "course_title": ".NET Software Development",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "Groups using MS Teams",
+  "category": "Setup/tooling task",
+  "summary": "In this setup activity, you will sign up for a group in Canvas based upon your preferred weekly meeting time and then you will connect via the MS Teams platform. Group Selection in Canvas In Canvas, select the People link in the course menu.",
+  "url": "https://byui-cse.github.io/cse325-ww-course/week01/setup-teams.html",
+  "source_page": "https://byui-cse.github.io/cse325-ww-course/week01/",
+  "status": "ok"
+}

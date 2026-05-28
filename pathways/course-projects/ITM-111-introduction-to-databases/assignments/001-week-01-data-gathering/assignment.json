@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 1,
+  "lesson": "Week 01",
+  "title": "Data Gathering",
+  "category": "Project / major deliverable",
+  "summary": "W01 Activity: Data Gathering Learn the different types of databases and their uses. Learn how to gather data.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week01/activity-data-gathering.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week01/index.html",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 23,
+  "lesson": "Week 03",
+  "title": "Web Accessibility",
+  "category": "Report / case study",
+  "summary": "Web accessibility is the practice of making websites usable by people of all abilities, for example, including those that have difficulty viewing a traditional screen or using a mouse. This learning activity focuses on the basics of web accessibility and the tools that are available to help create accessible websites. The DevTools Lighthouse report...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week03/prepare-web-accessibility.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week03/",
+  "status": "ok"
+}

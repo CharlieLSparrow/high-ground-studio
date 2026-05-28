@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 23,
+  "lesson": "Week 03",
+  "title": "Image File Formats",
+  "category": "Learning activity / exercise",
+  "summary": "W03 Learning Activity: Image File Formats You have worked with various image formats, some of which are better suited for the web. Responsive image design aims to reduce page weight and deliver optimized images for different screen sizes. This activity explores the SVG (Scalable Vector Graphics) and WebP formats, which offer better compression for faster...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week03/prepare-webp.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week03/",
+  "status": "ok"
+}

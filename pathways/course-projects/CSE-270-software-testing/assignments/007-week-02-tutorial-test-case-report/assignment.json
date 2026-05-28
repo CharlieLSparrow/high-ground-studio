@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 7,
+  "lesson": "Week 02",
+  "title": "Tutorial: Test Case Report",
+  "category": "Report / case study",
+  "summary": "To document your test cases you can run a Test case report. This tutorial will demonstrate how to create and download the report. Creating a test case report Select Reporting from the navigation menu.",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week02/tutorial_test_case_report.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week02/activity_test_case_generation.html",
+  "status": "ok"
+}

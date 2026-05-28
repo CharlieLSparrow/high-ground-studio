@@ -1,0 +1,12 @@
+{
+  "course": "CSE 110",
+  "course_title": "Introduction to Programming",
+  "index": 29,
+  "lesson": "Week 05",
+  "title": "List Indexes",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity (2 of 2): List Indexes This activity dives deeper into working with lists. In the previous activity, you learned how to append items to a list and how to iterate through the items one by one. In this activity, you'll learn how to access items in a list at any location, and also how to remove items.",
+  "url": "https://byui-cse.github.io/cse110-ww-course/week05/prepare-2-list-indexes.html",
+  "source_page": "https://byui-cse.github.io/cse110-ww-course/week05/index.html",
+  "status": "ok"
+}

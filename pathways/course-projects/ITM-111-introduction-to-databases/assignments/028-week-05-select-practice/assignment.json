@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 28,
+  "lesson": "Week 05",
+  "title": "Select Practice",
+  "category": "Team activity",
+  "summary": "W05 Team Activity - SQL Select Practice Purpose: Participate in a 60-minute online team meeting to practice writing queries. Task: Create questions about the class database that can be answered by SQL queries. As a team create queries to answer those questions.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week05/team-activity-select-practice.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week05/index.html",
+  "status": "ok"
+}

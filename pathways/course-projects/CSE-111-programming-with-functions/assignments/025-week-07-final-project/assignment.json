@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 25,
+  "lesson": "Week 07",
+  "title": "Final Project",
+  "category": "Project / major deliverable",
+  "summary": "Prove that you can write a significant Python project that solves a real-world problem and is well organized with functions. Finish developing the Student Chosen Program program that you started in week 06. Your program must include multiple functions that you verify are correct with test functions and pytest. [week 06: https://byui-...",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week07/prove.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week07/index.html",
+  "status": "ok"
+}

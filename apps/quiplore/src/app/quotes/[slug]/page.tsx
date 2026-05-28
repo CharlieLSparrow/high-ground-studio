@@ -9,6 +9,9 @@ import { QuipslyPanel } from "@/components/QuipslyPanel";
 import { SourceBadge } from "@/components/SourceBadge";
 import { StatPanel } from "@/components/StatPanel";
 import { VerificationBadge } from "@/components/VerificationBadge";
+import AdSenseBannerSlot from "@/components/monetization/AdSenseBannerSlot";
+import AffiliateBookCard from "@/components/monetization/AffiliateBookCard";
+import PatreonPledgeBanner from "@/components/monetization/PatreonPledgeBanner";
 import {
   getQuotePassportBySlug,
   getQuoteStoryBySlug,
@@ -190,6 +193,20 @@ export default async function QuotePassportPage({
             state={passport.person.quipslyState}
             note={passport.quote.quipslyNote}
           />
+
+          <AdSenseBannerSlot slotId="quiplore-sidebar-ad" />
+
+          {passport.sourceWork && (
+            <AffiliateBookCard
+              title={passport.sourceWork.title}
+              author={passport.person.displayName}
+              description="Explore the original context, footnotes, and surrounding commentary of this referenced work."
+              amazonUrl={`https://www.amazon.com/s?k=${encodeURIComponent(passport.sourceWork.title)}`}
+              bookshopUrl={`https://bookshop.org/search?keywords=${encodeURIComponent(passport.sourceWork.title)}`}
+            />
+          )}
+
+          <PatreonPledgeBanner />
 
           {merch ? (
             <section className={`panel merch-panel ${merch.status}`}>

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 212",
+  "course_title": "Programming with Data Structures",
+  "index": 38,
+  "lesson": "Week 06",
+  "title": "Trees",
+  "category": "Learning activity / exercise",
+  "summary": "W06 Learning Activity: Trees Binary Search Trees Start at the root node 15 and compare with the new value 20",
+  "url": "https://byui-cse.github.io/cse212-ww-course/week06/prepare.html",
+  "source_page": "https://byui-cse.github.io/cse212-ww-course/week06/index.html",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 8,
+  "lesson": "Week 01",
+  "title": "CSS Specificity",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: CSS Specificity 1 ID selector (#sub-menu) \u2014 0 1 0 0 1 class selector (.nav) \u2014 0 0 1 0",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-specificity.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

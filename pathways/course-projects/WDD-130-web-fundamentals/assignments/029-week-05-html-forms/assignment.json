@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 29,
+  "lesson": "Week 05",
+  "title": "HTML Forms",
+  "category": "Submit / prove assignment",
+  "summary": "W05 Learning Activity: HTML Forms HTML forms allow us to interact with users and collect data. The form element is a container for all form elements and includes attributes that enable data processing. In this activity, you will focus only on frontend design and development, learning how to build a form using basic form elements. Processing form data...",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week05/prepare-html-form.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week05/",
+  "status": "ok"
+}

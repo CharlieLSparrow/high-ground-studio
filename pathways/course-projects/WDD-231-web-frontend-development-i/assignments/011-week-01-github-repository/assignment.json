@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 11,
+  "lesson": "Week 01",
+  "title": "GitHub Repository",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Tools \u2013 Deploying \u2013 GitHub Repository This setup activity establishes your remote wdd231 repository that is cloned to your local computer system. This class uses GitHub to store course work and the GitHub Pages service to host your work as a live website. Activity Instructions",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/setup-hosting.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

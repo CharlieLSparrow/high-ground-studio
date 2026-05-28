@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Naming Conventions",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Naming Conventions The file and folder naming conventions outlined in this lesson will be considered 'best-practice' rules for this course. These rules should be applied to all files and folders created in your course work. Use all lowercase syntax such as products.html",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/prepare-naming-conventions.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

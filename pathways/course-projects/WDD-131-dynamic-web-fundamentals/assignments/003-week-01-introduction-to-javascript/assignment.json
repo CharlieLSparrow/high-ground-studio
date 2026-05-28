@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "Introduction to JavaScript",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Introduction to JavaScript HTML defines the structure and meaning of a page. CSS defines the style or presentation of a page.",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/prepare-javascript-introduction.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

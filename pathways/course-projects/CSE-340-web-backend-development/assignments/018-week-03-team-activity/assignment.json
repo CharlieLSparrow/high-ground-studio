@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 18,
+  "lesson": "Week 03",
+  "title": "Team Activity",
+  "category": "Team activity",
+  "summary": "Team Activity: Debugging MVC For this activity you will practice debugging as a team. Keep in mind that the goal here is to develop the skills to track down a problem, not to simply get to the end of this assignment. This activity is designed to be completed as a team. There are two main purposes for this:",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week03/team-activity.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 1,
+  "lesson": "Setup Course Tools",
+  "title": "Setup Course Tools",
+  "category": "Setup/tooling task",
+  "summary": "This setup activity will prepare you with the development and course tools necessary to complete the activities and assignments. Verify that you have a working instance of VS Code running and install it if necessary from code.visualstudio.com. [code.visualstudio.com: https://code.visualstudio.com] If you already have VS Code installed, check for updates...",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/intro/setup-course-tools.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week01/",
+  "status": "ok"
+}

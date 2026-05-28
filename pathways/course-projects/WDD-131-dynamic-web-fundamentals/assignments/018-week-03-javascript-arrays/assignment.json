@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 18,
+  "lesson": "Week 03",
+  "title": "JavaScript Arrays",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Learning Activity: JavaScript Arrays scores[0] = 99; // This assignment expression changed the first score in the array from 100 to 99. Reference JavaScript Arrays Reference \u2013 MDN [JavaScript Arrays Reference: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array]",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week03/prepare-arrays-and-array-methods.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week03/",
+  "status": "ok"
+}

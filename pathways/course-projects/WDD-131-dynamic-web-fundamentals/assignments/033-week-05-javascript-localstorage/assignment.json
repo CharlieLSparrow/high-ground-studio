@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 33,
+  "lesson": "Week 05",
+  "title": "JavaScript localStorage",
+  "category": "Submit / prove assignment",
+  "summary": "W05 Learning Activity: JavaScript localStorage Non-sensitive data storage can provide a better user experience and improve site performance. The Web Storage API allows you to store information in key-value format based on a specific user agent or origin. In this activity, you will explore the purpose and scope of the localStorage mechanism through the...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week05/prepare-localStorage.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week05/",
+  "status": "ok"
+}

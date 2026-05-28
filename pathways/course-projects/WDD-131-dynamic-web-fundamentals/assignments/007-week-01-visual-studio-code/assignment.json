@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 7,
+  "lesson": "Week 01",
+  "title": "Visual Studio Code",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Tools \u2013 Editing \u2013 Visual Studio Code The purpose of this setup activity is to install Visual Studio Code (VS Code), a free and, open source, code editor that supports customized code writing, editing, and management on all major platforms. VS Code is lightweight, powerful, and flexible. Install the VS Code editor if you do not already have it...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/setup-code-editor.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

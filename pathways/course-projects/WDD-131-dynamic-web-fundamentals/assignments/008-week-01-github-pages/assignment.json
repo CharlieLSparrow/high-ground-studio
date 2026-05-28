@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 8,
+  "lesson": "Week 01",
+  "title": "GitHub Pages",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Tools \u2013 Website \u2013 GitHub Pages GitHub Pages is a free service that allows you to host your GitHub repository content as a website with a basic domain. It is required in this class so that you can submit and share your web work for review and evaluation. This setup activity explains the steps to enable GitHub Pages on your wdd131 repository on...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/setup-github-pages.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

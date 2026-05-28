@@ -1,0 +1,12 @@
+{
+  "course": "CSE 110",
+  "course_title": "Introduction to Programming",
+  "index": 9,
+  "lesson": "Week 02",
+  "title": "Area of Shapes",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Code-along Activity: Areas of Shapes Code-along Activity Overview For this activity, you will code along with an instructor video that walks you through each step of the activity below. Make sure that you pause the video, or watch sections over if you need to, so that you are able to complete the entire activity.",
+  "url": "https://byui-cse.github.io/cse110-ww-course/week02/code-along.html",
+  "source_page": "https://byui-cse.github.io/cse110-ww-course/week02/index.html",
+  "status": "ok"
+}

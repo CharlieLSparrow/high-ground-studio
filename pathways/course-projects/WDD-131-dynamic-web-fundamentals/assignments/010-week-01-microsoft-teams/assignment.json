@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 10,
+  "lesson": "Week 01",
+  "title": "Microsoft Teams",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Tools \u2013 Collaboration \u2013 Microsoft Teams In this setup activity, you will install Microsoft Teams. Download Microsoft Teams on your computer and other device(s) as desired. [Microsoft Teams: https://www.microsoft.com/en-us/microsoft-365/microsoft-teams/download-app]",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/setup-msteams.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

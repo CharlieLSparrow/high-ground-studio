@@ -1,0 +1,34 @@
+---
+title: "Understanding Multimodal LLM Inference"
+subtitle: "How next-generation models process complex spatial data and diagrams"
+description: "How next-generation models process complex spatial data, diagram projections, and text-based layouts concurrently."
+category: "Deep Learning"
+date: "2026-05-28"
+author: "Charlie"
+readTime: "12 min read"
+status: "published"
+tags: 
+  - "Deep Learning"
+  - "Multimodal"
+  - "Neural Networks"
+---
+
+# Understanding Multimodal LLM Inference
+
+Modern Large Language Models have evolved beyond text. They can now ingest, process, and reason over visual media, diagrams, layouts, and charts concurrently with text instructions.
+
+## Joint Visual-Text Embeddings
+
+Unlike early systems that ran optical character recognition (OCR) first, modern multimodal architectures utilize unified embedding spaces.
+1. **Vision Encoder:** A specialized model (e.g. ViT or SigLIP) splits the input image into spatial patches.
+2. **Projection Layer:** A projection matrix translates these visual features into tokens matching the LLM's text vocabulary dimension.
+3. **Sequence Concat:** The text token embeddings and visual token embeddings are concatenated as a single sequence.
+
+This unified representation allows the transformer core to apply self-attention across both text instructions and visual patches simultaneously.
+
+## Applications in UI Engineering
+
+This visual capability makes multimodal models excellent partners for design QA:
+- **Visual Auditing:** Comparing mockup screenshots with actual frontends to catch alignment shifts.
+- **A11y Checks:** Inspecting layouts for contrast violations and unlabeled interactive targets.
+- **Diagram Translation:** Reading architectural diagrams (like Mermaid flowcharts) and generating executable code templates directly.

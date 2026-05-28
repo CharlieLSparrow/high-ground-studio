@@ -246,6 +246,7 @@ type ManuscriptSidePanelMode =
   | "structure"
   | "find"
   | "quotes"
+  | "focus-list"
   | "backup"
   | "publish";
 
@@ -281,6 +282,7 @@ const everydayManuscriptSidePanelModes = [
   { id: "mark", label: "Mark" },
   { id: "structure", label: "Structure" },
   { id: "find", label: "Find" },
+  { id: "focus-list", label: "Focus list" },
   { id: "quotes", label: "Quotes" },
 ] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
@@ -581,6 +583,10 @@ function getSidePanelModeHelpNoteId(
 
   if (mode === "quotes") {
     return "quotes-mode";
+  }
+
+  if (mode === "focus-list") {
+    return "find-mode";
   }
 
   if (mode === "backup") {
@@ -2458,6 +2464,35 @@ export function StudioManuscriptClient({
       definition
         ? `${definition.label} semantic focus enabled.`
         : "Semantic focus enabled.",
+    );
+  }
+
+  function applyStructureRegionFocus(
+    structureKind: ManuscriptStructureKind,
+    regionId: string,
+  ) {
+    const regionLabel =
+      structureRegionSummaries.find((region) => region.id === regionId)?.title ??
+      "Unknown region";
+
+    setSidePanelMode("find");
+    setFilterTextQuery("");
+    setFilterAuthorId("");
+    setFilterSemanticType("");
+    setFilterStructureRegionId(regionId);
+    setFilterStructureKind(structureKind);
+    setFilterBlockType("");
+    setFilterQuoteReviewStatus("");
+    setFilterOnlyUnstructured(false);
+    setFilterOnlyWithSemanticHighlights(false);
+    setFilterOnlyWithoutAuthor(false);
+    setFilterVisualMode("hide-nonmatches");
+    setFilterContextBlockCount(0);
+    setCurrentQuoteIndex(0);
+    setExportFilteredMarkdown("");
+    setExportCitedQuotationMarkdown("");
+    setMessage(
+      `${getManuscriptStructureDefinition(structureKind).label} focus: ${regionLabel}`,
     );
   }
 
@@ -6279,6 +6314,72 @@ export function StudioManuscriptClient({
               </>
             ) : null}
               </>
+            ) : null}
+
+            {sidePanelMode === "focus-list" ? (
+              <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <HelpHeading noteId="structure-region">
+                    Focus from structure list
+                  </HelpHeading>
+                </div>
+                <div className="grid gap-2">
+                  <div className="grid gap-1.5">
+                    <h3 className="m-0 text-[0.94rem] leading-snug text-studio-ink">
+                      Chapters
+                    </h3>
+                    <div className="grid gap-2">
+                      {structureRegionSummaries.filter(
+                        (region) => region.kind === "chapter",
+                      ).length ? (
+                        structureRegionSummaries
+                          .filter((region) => region.kind === "chapter")
+                          .map((region) => (
+                            <button
+                              className={smallButtonClassName}
+                              key={region.id}
+                              type="button"
+                              onClick={() =>
+                                applyStructureRegionFocus("chapter", region.id)
+                              }
+                            >
+                              {region.title}
+                            </button>
+                          ))
+                      ) : (
+                        <p className={panelCopyClassName}>No chapter regions yet.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <h3 className="m-0 text-[0.94rem] leading-snug text-studio-ink">
+                      Episodes
+                    </h3>
+                    <div className="grid gap-2">
+                      {structureRegionSummaries.filter(
+                        (region) => region.kind === "episode",
+                      ).length ? (
+                        structureRegionSummaries
+                          .filter((region) => region.kind === "episode")
+                          .map((region) => (
+                            <button
+                              className={smallButtonClassName}
+                              key={region.id}
+                              type="button"
+                              onClick={() =>
+                                applyStructureRegionFocus("episode", region.id)
+                              }
+                            >
+                              {region.title}
+                            </button>
+                          ))
+                      ) : (
+                        <p className={panelCopyClassName}>No episode regions yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
             ) : null}
 
             {sidePanelMode === "find" || sidePanelMode === "quotes" ? (

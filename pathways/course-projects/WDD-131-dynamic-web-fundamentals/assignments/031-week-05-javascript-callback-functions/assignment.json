@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 31,
+  "lesson": "Week 05",
+  "title": "JavaScript Callback Functions",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity: JavaScript Callback Functions Demonstrate proficiency with JavaScript language syntax. Use JavaScript to respond to events and dynamically modify HTML.",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week05/prepare-callback-functions.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week05/",
+  "status": "ok"
+}

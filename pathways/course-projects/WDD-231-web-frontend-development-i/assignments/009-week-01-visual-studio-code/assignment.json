@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 9,
+  "lesson": "Week 01",
+  "title": "Visual Studio Code",
+  "category": "Setup/tooling task",
+  "summary": "More than likely you already have Visual Studio Code (VS Code) installed, however, you should walk through this activity to check for updates and to customize your installation. W01 Setup: Tools \u2013 Editing \u2013 Visual Studio Code The purpose of this setup activity is to install VS Code. It is free to install on Mac, Windows, and Linus operating systems. This...",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/setup-code-editor.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/",
+  "status": "ok"
+}

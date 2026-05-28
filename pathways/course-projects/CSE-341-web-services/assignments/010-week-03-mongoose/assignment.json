@@ -1,0 +1,12 @@
+{
+  "course": "CSE 341",
+  "course_title": "Web Services",
+  "index": 10,
+  "lesson": "Week 03",
+  "title": "Mongoose",
+  "category": "Team activity",
+  "summary": "W03 Team Activity: Mongoose Your team assignment this lesson will give you experience working with a complete RESTful API that uses MongoDB and Mongoose. You may use the code from your completed Week 01-02 project, or from this repository. [this repository.: https://github.com/byui-cse/cse341-ww-student-code/tree/w03-2-team-start]",
+  "url": "https://byui-cse.github.io/cse341-ww-course/week03/team-activity.html",
+  "source_page": "https://byui-cse.github.io/cse341-ww-course/week03/index.html",
+  "status": "ok"
+}

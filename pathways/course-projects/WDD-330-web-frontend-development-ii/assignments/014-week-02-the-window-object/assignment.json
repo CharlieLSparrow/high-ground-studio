@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 14,
+  "lesson": "Week 02",
+  "title": "The Window Object",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: The Window Interface Activity Instructions A commonly used example of the Window interface is detecting when the user resizes the browser window. This is useful for responsive behavior or adjusting elements dynamically. In this activity, you will look at an example and modify that example to use additional features:",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week02/prepare-window-object.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week02/",
+  "status": "ok"
+}

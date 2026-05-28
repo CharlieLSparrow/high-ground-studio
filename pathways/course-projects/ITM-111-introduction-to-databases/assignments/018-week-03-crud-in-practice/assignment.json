@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 18,
+  "lesson": "Week 03",
+  "title": "CRUD in Practice",
+  "category": "Team activity",
+  "summary": "W03 Team Activity: CRUD in Practice Purpose: Participate in a 60-minute online team meeting to help understand how adding, editing, deleting, and backing up data works. Task: Understand how the CRUD statements can be used in a system to run even if users don't know SQL and how to backup your database.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week03/team-activity-crud.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week03/index.html",
+  "status": "ok"
+}

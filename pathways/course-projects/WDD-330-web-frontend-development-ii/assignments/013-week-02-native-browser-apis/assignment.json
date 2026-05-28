@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 13,
+  "lesson": "Week 02",
+  "title": "Native Browser APIs",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: Native Browser Web APIs This learning activity focuses on some of those Web APIs supported in modern browsers and in the Node.js runtime. Storage API (session)",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week02/prepare-web-apis.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week02/",
+  "status": "ok"
+}

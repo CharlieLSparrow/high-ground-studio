@@ -1,0 +1,12 @@
+{
+  "course": "CSE 370",
+  "course_title": "Software Engineering Principles",
+  "index": 23,
+  "lesson": "Week 05",
+  "title": "Release and Maintenance",
+  "category": "Submit / prove assignment",
+  "summary": "W05 Learning Activity: Release and Maintenance Key Points to Remember: Once a piece of software is deployed, it cannot be forgotten. It requires proper care and feeding.",
+  "url": "https://byui-cse.github.io/cse370-ww-course/week05/prepare.html",
+  "source_page": "https://byui-cse.github.io/cse370-ww-course/week05/index.html",
+  "status": "ok"
+}

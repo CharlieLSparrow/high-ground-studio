@@ -1,0 +1,12 @@
+{
+  "course": "CSE 341",
+  "course_title": "Web Services",
+  "index": 7,
+  "lesson": "Week 02",
+  "title": "Add Documentation to an API",
+  "category": "Team activity",
+  "summary": "W02 Team Activity: Add Documentation to an API For this team activity, your group will be given a Node.js project similar to the one you've been working on and add API documentation to it. Download this project as your starting point. [this project: https://github.com/byui-cse/cse341-ww-student-code/tree/w02-2-team-start]",
+  "url": "https://byui-cse.github.io/cse341-ww-course/week02/team-activity.html",
+  "source_page": "https://byui-cse.github.io/cse341-ww-course/week02/index.html",
+  "status": "ok"
+}

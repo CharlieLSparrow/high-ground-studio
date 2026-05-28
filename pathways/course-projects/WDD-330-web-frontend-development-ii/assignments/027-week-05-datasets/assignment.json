@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 27,
+  "lesson": "Week 05",
+  "title": "Datasets",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity: Dataset Activity Instructions This activity will teach you how to embed structured data into HTML elements using data-* attributes and access that data using JavaScript to build interactive behavior and CSS to style elements based on that data.",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week05/prepare-dataset.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week05/",
+  "status": "ok"
+}

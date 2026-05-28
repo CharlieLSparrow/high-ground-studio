@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 18,
+  "lesson": "Week 02",
+  "title": "The Fetch API",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: The Fetch API Activity Instructions In this activity you will use the modern Fetch API to make an asynchronous request for prophet data that is stored in JSON format and then you will create a page of content dynamically using that data.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week02/prepare-fetch.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week02/",
+  "status": "ok"
+}

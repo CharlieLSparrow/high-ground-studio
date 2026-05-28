@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 24,
+  "lesson": "Week 04",
+  "title": "Picture Album Enhancement",
+  "category": "Submit / prove assignment",
+  "summary": "W04 Assignment: Picture Album Enhancement This assignment applies the learning activities to enhance a previous assignment by adding native lazy loading and making the webpage responsive to user interaction through filtering the displayed temple data. Develop responsive web pages that follow best practices and use valid HTML and CSS.",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week04/assignment-04.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week04/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 10,
+  "lesson": "Week 02",
+  "title": "Database Design",
+  "category": "Submit / prove assignment",
+  "summary": "Assignment: Database Design Purpose: To begin to understand how databases are designed by taking an existing database and reverse engineering it into how it would look in an ERD (or how it was designed to begin with). Task: To create an ERD from data you find on a web based database.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week02/assignment-database-design.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week02/index.html",
+  "status": "ok"
+}

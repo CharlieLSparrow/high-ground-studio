@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 34,
+  "lesson": "Week 06",
+  "title": "Working with Subqueries",
+  "category": "Project / major deliverable",
+  "summary": "The Subquery in a SELECT statement A subquery is a SELECT statement coded within another SELECT statement. A subquery can return a single value or a list of values",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week06/working-with-subqueries.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week06/prepare.html",
+  "status": "ok"
+}

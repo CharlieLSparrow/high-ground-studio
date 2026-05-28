@@ -54,3 +54,9 @@ GIT
 !.env.example
 apps/web/.env.local
 .aider*
+
+# Large data sets (exceeds GitHub limits)
+pathways/data/
+pathways/web/data/
+*.sqlite
+*.sqlite3

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 212",
+  "course_title": "Programming with Data Structures",
+  "index": 6,
+  "lesson": "Week 01",
+  "title": "Evaluating Performance",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Evaluating Performance Big O Notation and Linear Performance The size of the data in this function is based on the size of the nameList. We will say that size of the data is n. The for loop in the code means that we will potentially run n times. This worst case potential will only happen if \"Bob\" is not in the list of names....",
+  "url": "https://byui-cse.github.io/cse212-ww-course/week01/prepare-performance.html",
+  "source_page": "https://byui-cse.github.io/cse212-ww-course/week01/index.html",
+  "status": "ok"
+}

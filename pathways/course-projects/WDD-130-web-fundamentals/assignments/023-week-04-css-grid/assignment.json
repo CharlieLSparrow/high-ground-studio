@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 23,
+  "lesson": "Week 04",
+  "title": "CSS Grid",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activity: CSS Grids CSS Grid Layout is a two-dimensional layout system for the web that allows you to arrange content in rows and columns. It includes many features that make building complex layouts straightforward. The goal of this activity is for you to understand the basic features of CSS Grid and how to use them to create layouts....",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week04/prepare-css-grid.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week04/",
+  "status": "ok"
+}

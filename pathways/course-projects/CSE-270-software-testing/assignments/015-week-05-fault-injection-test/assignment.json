@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 15,
+  "lesson": "Week 05",
+  "title": "Fault Injection Test",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Activity: Fault Injection Test Chaos engineering is used to test and improve the resilience and reliability of software systems. It involves intentionally introducing controlled and measured forms of failure into a system to observe how it responds and to identify potential weaknesses or vulnerabilities. Configure your test environment as follows (If...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week05/activity_fault_injection_test.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week05/index.html",
+  "status": "ok"
+}

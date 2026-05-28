@@ -1,0 +1,12 @@
+{
+  "course": "WDD 231",
+  "course_title": "Web Frontend Development I",
+  "index": 13,
+  "lesson": "Week 01",
+  "title": "this page",
+  "category": "Learning activity / exercise",
+  "summary": "Paragraph element with an inline style, id attribute, and class attribute. Paragraph element with the \"highlight\" class.",
+  "url": "https://byui-cse.github.io/wdd231-ww-course/week01/specificity-activity.html",
+  "source_page": "https://byui-cse.github.io/wdd231-ww-course/week01/prepare-specificity.html",
+  "status": "ok"
+}

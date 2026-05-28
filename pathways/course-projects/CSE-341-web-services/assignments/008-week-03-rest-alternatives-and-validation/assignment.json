@@ -1,0 +1,12 @@
+{
+  "course": "CSE 341",
+  "course_title": "Web Services",
+  "index": 8,
+  "lesson": "Week 03",
+  "title": "REST, Alternatives, and Validation",
+  "category": "Learning activity / exercise",
+  "summary": "W03 Learning Activity: REST, Alternatives, and Validation Welcome to Week 03! This week, you'll start a new project of your choosing. You will also learn how to add validation to your routes, and how to handle errors in your routes. Topics for this lesson:",
+  "url": "https://byui-cse.github.io/cse341-ww-course/week03/prepare.html",
+  "source_page": "https://byui-cse.github.io/cse341-ww-course/week03/index.html",
+  "status": "ok"
+}

@@ -237,6 +237,10 @@ model User {
   membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
   weeklyCommitmentsReviewed WeeklyCommitment[] @relation("WeeklyCommitmentReviewedBy")
+
+  collections         Collection[]
+  snippets            Snippet[]
+  bookmarks           Bookmark[]
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -1186,4 +1190,62 @@ model StudioKnowledgeNode {
   @@index([tagId])
   @@index([documentId, blockId])
   @@index([reviewStatus, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// USER ENGAGEMENT MODELS (Massive Swings Pipeline)
+// -----------------------------------------------------------------------------
+
+model Collection {
+  id          String    @id @default(cuid())
+  userId      String
+  slug        String    @unique
+  name        String
+  description String?
+  isPublic    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snippets    Snippet[]
+  bookmarks   Bookmark[]
+
+  @@unique([userId, slug])
+  @@index([userId, isPublic])
+}
+
+model Snippet {
+  id              String      @id @default(cuid())
+  userId          String
+  collectionId    String?
+  sourceUrl       String?
+  sourceTitle     String?
+  highlightedText String
+  note            String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([collectionId])
+}
+
+model Bookmark {
+  id           String      @id @default(cuid())
+  userId       String
+  collectionId String?
+  url          String
+  title        String
+  metadataJson Json?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, url])
+  @@index([userId, createdAt])
+  @@index([collectionId])
 }

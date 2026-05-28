@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 8,
+  "lesson": "Week 01",
+  "title": "Create Your GitHub Repository",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Create Your GitHub Repository The purpose of this setup activity is to create a free GitHub account and set up the repository you will use throughout the course to store the web pages you will create. GitHub is a popular and free online collaboration and version control service. You can think of GitHub repositories as a cloud-based storage...",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/setup-github.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

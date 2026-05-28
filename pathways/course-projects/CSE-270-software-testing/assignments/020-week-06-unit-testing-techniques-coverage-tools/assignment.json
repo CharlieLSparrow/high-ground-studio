@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 20,
+  "lesson": "Week 06",
+  "title": "Unit Testing Techniques + Coverage Tools",
+  "category": "Submit / prove assignment",
+  "summary": "W06 Assignment: Unit Testing Techniques + Coverage Tools Unit testing can sometimes involve being creative with testing techniques. Inside the cse270-v15.zip file is the tests folder which you would have downloaded in the previous assignment. You will see two files in this folder that we will look at together. [cse270-v15.zip: https://byui-...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week06/prove_unit_test_and_coverage.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week06/index.html",
+  "status": "ok"
+}

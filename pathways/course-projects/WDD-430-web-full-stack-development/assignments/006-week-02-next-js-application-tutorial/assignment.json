@@ -1,0 +1,12 @@
+{
+  "course": "WDD 430",
+  "course_title": "Web Full-Stack Development",
+  "index": 6,
+  "lesson": "Week 02",
+  "title": "Next.js Application Tutorial",
+  "category": "Submit / prove assignment",
+  "summary": "The objective of the assignment activity is to become familiar with Next.js. The assignment will be to complete the Next.js course building an application over the next couple of weeks. This tutorial should reside in its own project folder. Start the dashboard application tutorial from nextjs.org by completing the first five chapters of the tutorial:...",
+  "url": "https://byui-cse.github.io/wdd430-ww-course/week02/assignment-learnnextjs.html",
+  "source_page": "https://byui-cse.github.io/wdd430-ww-course/week02/",
+  "status": "ok"
+}

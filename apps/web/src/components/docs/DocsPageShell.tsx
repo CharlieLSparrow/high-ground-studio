@@ -7,6 +7,8 @@ import PairedReadingCard from "@/components/docs/PairedReadingCard";
 import FeaturedQuoteCard from "@/components/docs/FeaturedQuoteCard";
 import type { LayoutVariant } from "@/lib/layout-variant";
 import { getLayoutSurfaceBackground } from "@/lib/layout-variant-styles";
+import AdSenseBannerSlot from "@/components/monetization/AdSenseBannerSlot";
+import PatreonPledgeBanner from "@/components/monetization/PatreonPledgeBanner";
 
 type RelatedContent = {
   eyebrow: string;
@@ -151,12 +153,22 @@ export default function DocsPageShell({
                   </div>
                 </GlassPanel>
               ) : null}
+
+              <PatreonPledgeBanner />
+
+              <AdSenseBannerSlot slotId="hgo-docs-sidebar-ad" />
             </div>
           </section>
         ) : (
-          <PaperCard className="max-w-[860px]">
-            <div className="prose-hgo">{children}</div>
-          </PaperCard>
+          <div className="space-y-8 max-w-[860px]">
+            <PaperCard className="w-full">
+              <div className="prose-hgo">{children}</div>
+            </PaperCard>
+
+            <PatreonPledgeBanner />
+
+            <AdSenseBannerSlot slotId="hgo-docs-bottom-ad" />
+          </div>
         )}
       </PageContainer>
     </main>

@@ -11,6 +11,8 @@ import {
   getLayoutGlowEnabled,
   getLayoutSurfaceBackground,
 } from "@/lib/layout-variant-styles";
+import AdSenseBannerSlot from "@/components/monetization/AdSenseBannerSlot";
+import PatreonPledgeBanner from "@/components/monetization/PatreonPledgeBanner";
 
 type RelatedContent = {
   eyebrow: string;
@@ -195,6 +197,10 @@ export default function EpisodePageShell({
                 something worthwhile uphill.
               </p>
             </GlassPanel>
+
+            <PatreonPledgeBanner />
+
+            <AdSenseBannerSlot slotId="hgo-episode-sidebar-ad" />
           </div>
         </section>
       </PageContainer>

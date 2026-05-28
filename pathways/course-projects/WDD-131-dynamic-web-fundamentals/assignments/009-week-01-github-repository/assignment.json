@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 9,
+  "lesson": "Week 01",
+  "title": "GitHub Repository",
+  "category": "Setup/tooling task",
+  "summary": "W01 Setup: Tools \u2013 Hosting \u2013 GitHub Repository The purpose of this setup activity is to establish a remote repository that will render and serve web pages to clients. This class uses the GitHub platform to host your coursework and the GitHub Pages service to render your work as a normal, client-requested website. If you already have a GitHub account, sign...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/setup-hosting.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

@@ -1,0 +1,39 @@
+certificate,course_code,course_title,page_type,week,topic,title,url,notes
+Web & Computer Programming,CSE 110,Introduction to Programming,course_home,,,Course Home,https://byui-cse.github.io/cse110-ww-course/,verified public page
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,01,Input and Output,Week 01,https://byui-cse.github.io/cse110-ww-course/week01/,verified pattern from site nav
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,02,Variables and Expressions,Week 02,https://byui-cse.github.io/cse110-ww-course/week02/,verified pattern from site nav
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,03,Decisions,Week 03,https://byui-cse.github.io/cse110-ww-course/week03/,verified pattern from site nav
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,04,Loops,Week 04,https://byui-cse.github.io/cse110-ww-course/week04/,verified pattern from site nav
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,05,Lists,Week 05,https://byui-cse.github.io/cse110-ww-course/week05/,verified pattern from site nav
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,06,Files,Week 06,https://byui-cse.github.io/cse110-ww-course/week06/,verified pattern from site nav
+Web & Computer Programming,CSE 110,Introduction to Programming,week_overview,07,Functions,Week 07,https://byui-cse.github.io/cse110-ww-course/week07/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,course_home,,,Course Home,https://byui-cse.github.io/cse111-ww-course/,verified public page
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,01,Python Review & Calling Functions,Week 01,https://byui-cse.github.io/cse111-ww-course/week01/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,02,Writing Functions,Week 02,https://byui-cse.github.io/cse111-ww-course/week02/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,03,Testing and Fixing Functions,Week 03,https://byui-cse.github.io/cse111-ww-course/week03/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,04,Lists and Dictionaries,Week 04,https://byui-cse.github.io/cse111-ww-course/week04/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,05,Text Files and Exceptions,Week 05,https://byui-cse.github.io/cse111-ww-course/week05/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,06,Objects and Programming Project,Week 06,https://byui-cse.github.io/cse111-ww-course/week06/,verified pattern from site nav
+Web & Computer Programming,CSE 111,Programming with Functions,week_overview,07,Student Project,Week 07,https://byui-cse.github.io/cse111-ww-course/week07/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,course_home,,,Course Home,https://byui-cse.github.io/cse210-ww-course/,verified public page
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,01,Introduction,Week 01,https://byui-cse.github.io/cse210-ww-course/week01/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,02,Abstraction,Week 02,https://byui-cse.github.io/cse210-ww-course/week02/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,03,Encapsulation,Week 03,https://byui-cse.github.io/cse210-ww-course/week03/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,04,Firm up Your Foundation,Week 04,https://byui-cse.github.io/cse210-ww-course/week04/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,05,Inheritance,Week 05,https://byui-cse.github.io/cse210-ww-course/week05/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,06,Polymorphism,Week 06,https://byui-cse.github.io/cse210-ww-course/week06/,verified pattern from site nav
+Web & Computer Programming,CSE 210,Programming with Classes,week_overview,07,Final Foundation,Week 07,https://byui-cse.github.io/cse210-ww-course/week07/,verified pattern from site nav
+Web & Computer Programming,WDD 130,Web Fundamentals,course_home,,,Course Home,https://byui-cse.github.io/wdd130-ww-course/,verified public page
+Web & Computer Programming,WDD 131,Dynamic Web Fundamentals,course_home,,,Course Home,https://byui-cse.github.io/wdd131-ww-course/,verified public page
+Web & Computer Programming,WDD 231,Web Frontend Development I,course_home,,,Course Home,https://byui-cse.github.io/wdd231-ww-course/,verified public page
+Web Development,ITM 111,Introduction to Databases,course_home,,,Course Home,https://byui-cse.github.io/itm111-ww-course/,verified public page
+Web Development,CSE 340,Web Backend Development,course_home,,,Course Home,https://byui-cse.github.io/cse340-ww-course/,verified public page
+Web Development,CSE 341,Web Services,course_home,,,Course Home,https://byui-cse.github.io/cse341-ww-course/,verified public page
+Web Development,WDD 330,Web Frontend Development II,course_home,,,Course Home,https://byui-cse.github.io/wdd330-ww-course/,verified public page
+Web Development,WDD 430,Web Full-Stack Development,course_home,,,Course Home,https://byui-cse.github.io/wdd430-ww-course/,verified public page
+Software Development,CSE 212,Programming with Data Structures,course_home,,,Course Home,https://byui-cse.github.io/cse212-ww-course/,not verified in this run
+Software Development,CSE 270,Software Testing,course_home,,,Course Home,https://byui-cse.github.io/cse270-ww-course/,verified public page
+Software Development,CSE 300,Professional Readiness,course_home,,,Course Home,https://byui-cse.github.io/cse300-ww-course/,verified public page
+Software Development,CSE 310,Applied Programming,course_home,,,Course Home,https://byui-cse.github.io/cse310-ww-course/,fetch failed in this run
+Software Development,CSE 325,.NET Software Development,course_home,,,Course Home,https://byui-cse.github.io/cse325-ww-course/,verified public page
+Software Development,CSE 370,Software Engineering Principles,course_home,,,Course Home,https://byui-cse.github.io/cse370-ww-course/,verified public page

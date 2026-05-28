@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 29,
+  "lesson": "Week 05",
+  "title": "Account Management",
+  "category": "Project / major deliverable",
+  "summary": "Assignment 5: Account Management For your project work this week, you will add authentication/authorization to your application and add the ability to update and delete data. This will be demonstrated by adding Account Management functionality to your site. Assignment 5 Instructions [Assignment 5 Instructions: https://byui-cse.github.io/cse340-ww-...",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week05/project.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/",
+  "status": "ok"
+}

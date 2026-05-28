@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 2,
+  "lesson": "Week 01",
+  "title": "Python Review",
+  "category": "Submit / prove assignment",
+  "summary": "W01 Learning Activities: Python Review A variable is a location in a computer\u2019s memory where a program stores a value. A variable has a name, a data type, and a value. In Python, we assign a value to a variable by using the assignment operator, which is the equals symbol (=). A computer may change the value and data type of a variable while executing a...",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week01/prepare-1.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week01/index.html",
+  "status": "ok"
+}

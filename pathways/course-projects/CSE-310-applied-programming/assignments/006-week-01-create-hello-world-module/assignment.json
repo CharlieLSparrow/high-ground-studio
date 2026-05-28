@@ -1,0 +1,12 @@
+{
+  "course": "CSE 310",
+  "course_title": "Applied Programming",
+  "index": 6,
+  "lesson": "Week 01",
+  "title": "Create Hello World Module",
+  "category": "Project / major deliverable",
+  "summary": "W01 Activity: Hello World Module To prepare for the individual modules that you will implement in each Sprint, you must first ensure that you have a working development environment and that you understand how to submit software in this course. During this first week, you will create the classic \"Hello World\" software program. The instructions for the...",
+  "url": "https://byui-cse.github.io/cse310-ww-course/week01/activity_portfolio.html",
+  "source_page": "https://byui-cse.github.io/cse310-ww-course/week01/index.html",
+  "status": "ok"
+}

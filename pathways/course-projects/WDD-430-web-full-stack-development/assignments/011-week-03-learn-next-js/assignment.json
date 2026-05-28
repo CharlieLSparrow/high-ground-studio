@@ -1,0 +1,12 @@
+{
+  "course": "WDD 430",
+  "course_title": "Web Full-Stack Development",
+  "index": 11,
+  "lesson": "Week 03",
+  "title": "Learn Next.js",
+  "category": "Submit / prove assignment",
+  "summary": "Learn Next.js \u2013 Continued The content of this module comes from the nextjs.org dashboard application tutorial. This will prepare you to develop your group's application project. [nextjs.org: https://nextjs.org/learn/dashboard-app] Note that completing this activity is also this week's assignment.",
+  "url": "https://byui-cse.github.io/wdd430-ww-course/week03/prepare-nextjsapp.html",
+  "source_page": "https://byui-cse.github.io/wdd430-ww-course/week03/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 32,
+  "lesson": "Week 06",
+  "title": "SQL Views",
+  "category": "Project / major deliverable",
+  "summary": "A SQL view is a SELECT statement that is stored as a database object. A SQL view acts as a virtual table, but contains no data. You can use a view anywhere you would use a table including in a SELECT, INSERT, UPDATE, or DELETE statement.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week06/sql-views.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week06/prepare.html",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 3,
+  "lesson": "Week 01",
+  "title": "Publishing your Pages to GitHub",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Prepare: Publishing Your Pages to GitHub Created a new GitHub repository Enabled GitHub pages for your repository so that it hosts your content as a webpage for others to see.",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/prepare-git-pushing.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

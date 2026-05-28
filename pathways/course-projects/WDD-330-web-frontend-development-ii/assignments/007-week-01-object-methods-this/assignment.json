@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 7,
+  "lesson": "Week 01",
+  "title": "Object Methods, \"this\"",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Learning Activity: Object Methods, \"this\" In this activity, you will learn about the this keyword in JavaScript and how it is used to access properties and methods of an object. The bind() method to explicitly set the value of this in a function.",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week01/prepare-this.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week01/",
+  "status": "ok"
+}

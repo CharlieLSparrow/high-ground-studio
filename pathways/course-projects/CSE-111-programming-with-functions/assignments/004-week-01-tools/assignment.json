@@ -1,0 +1,12 @@
+{
+  "course": "CSE 111",
+  "course_title": "Programming with Functions",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "Tools",
+  "category": "Setup/tooling task",
+  "summary": "Preparation Material Install Python and Visual Studio Code Download a sample Python program.",
+  "url": "https://byui-cse.github.io/cse111-ww-course/week01/setup.html",
+  "source_page": "https://byui-cse.github.io/cse111-ww-course/week01/index.html",
+  "status": "ok"
+}

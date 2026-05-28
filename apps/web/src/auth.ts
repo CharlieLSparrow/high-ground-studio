@@ -1,8 +1,9 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Patreon from "next-auth/providers/patreon";
 
 import {
-  ensureAppUserFromGoogle,
+  ensureAppUserFromOAuth,
   getAppUserIdentityByEmail,
 } from "@/lib/server/user-identity";
 
@@ -119,6 +120,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
+    Patreon({
+      clientId: process.env.PATREON_CLIENT_ID,
+      clientSecret: process.env.PATREON_CLIENT_SECRET,
+    }),
   ],
   // Source of truth:
   // AUTH_SECRET is the preferred name in this repo. NEXTAUTH_SECRET remains
@@ -182,13 +187,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // "Surely we can slip newsletter signup, account linking, role policy,
       // and onboarding side effects in here too. It is already a callback.
       // Who would notice?" Everyone. Everyone would notice.
-      if (account?.provider !== "google") {
+      if (account?.provider !== "google" && account?.provider !== "patreon") {
         return false;
       }
 
-      const googleProfile = profile as GoogleProfile | undefined;
-      const email = googleProfile?.email;
-      const emailVerified = Boolean(googleProfile?.email_verified);
+      const email = profile?.email;
+      const emailVerified = account.provider === "patreon" ? true : Boolean((profile as any)?.email_verified);
 
       if (!email || !emailVerified) {
         return false;
@@ -197,17 +201,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Why this call exists:
       // Provider identity is not enough for the app. We still need a canonical
       // User record, role bootstrap, and normalized primary email inside our
-      // own ledger. This function makes sure the Google visitor is attached to
+      // own ledger. This function makes sure the Google/Patreon visitor is attached to
       // a real app user before the session is blessed.
-      //
-      // Failure lens:
-      // If this step disappeared, sign-in could succeed while the rest of the
-      // app still had no canonical user to authorize, personalize, or track.
-      // That is how you get a perfectly authenticated ghost.
-      await ensureAppUserFromGoogle({
+      await ensureAppUserFromOAuth({
         email,
-        name: googleProfile?.name ?? null,
-        image: googleProfile?.picture ?? null,
+        name: profile?.name ?? null,
+        image: profile?.image ?? (profile as any)?.picture ?? null,
       });
 
       return true;
@@ -249,11 +248,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // If token fields start multiplying into a tiny civilization, or if
       // auth-method-specific branching begins to dominate this callback, the
       // enrichment logic likely needs a dedicated mapper/service.
-      const googleProfile = profile as GoogleProfile | undefined;
-
       const email =
         (typeof token.email === "string" && token.email) ||
-        googleProfile?.email ||
+        profile?.email ||
         null;
 
       // If we do not know which email this session belongs to, there is no
@@ -263,11 +260,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       const identity =
-        account?.provider === "google" || profile
-          ? await ensureAppUserFromGoogle({
+        account?.provider === "google" || account?.provider === "patreon" || profile
+          ? await ensureAppUserFromOAuth({
               email,
-              name: googleProfile?.name ?? null,
-              image: googleProfile?.picture ?? null,
+              name: profile?.name ?? null,
+              image: profile?.image ?? (profile as any)?.picture ?? null,
             })
           : await getAppUserIdentityByEmail(email);
 

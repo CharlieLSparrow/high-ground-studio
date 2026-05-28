@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 9,
+  "lesson": "Week 02",
+  "title": "Server Setup",
+  "category": "Setup/tooling task",
+  "summary": "Learning Activity (2 of 2): Server Setup This learning activity will help you setup the database on your server. Because you will be deploying your web application to a remote server, you need to set up this server for your application including both the Node.js part of the application, and also you will host a database there as well. This activity will...",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week02/prepare-2-server-setup.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/week02/index.html",
+  "status": "ok"
+}

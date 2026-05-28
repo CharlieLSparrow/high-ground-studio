@@ -1,0 +1,12 @@
+{
+  "course": "CSE 110",
+  "course_title": "Introduction to Programming",
+  "index": 7,
+  "lesson": "Week 01",
+  "title": "Tools",
+  "category": "Setup/tooling task",
+  "summary": "Preparation Material Install Python and Visual Studio Code Adjust Tools for Learning",
+  "url": "https://byui-cse.github.io/cse110-ww-course/week01/setup.html",
+  "source_page": "https://byui-cse.github.io/cse110-ww-course/week01/index.html",
+  "status": "ok"
+}

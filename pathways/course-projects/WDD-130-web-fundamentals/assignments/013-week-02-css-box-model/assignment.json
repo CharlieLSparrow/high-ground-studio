@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 13,
+  "lesson": "Week 02",
+  "title": "CSS Box Model",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: CSS Box Model content: This is where the text and images appear. padding: This is the area around the content and separates the content from the border.",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week02/prepare-css-box-model.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week02/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 25,
+  "lesson": "Week 04",
+  "title": "Nested CSS",
+  "category": "Learning activity / exercise",
+  "summary": "Modern nested CSS is a way to write CSS that is more readable and maintainable, especially for large projects. It allows you to nest CSS rules inside other rules, which can help to keep your styles organized and potentially reduce the amount of CSS data that needs to be downloaded. In this activity, you will learn how to use nested CSS. Activity Instructions",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week04/prepare-nested-css.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week04/",
+  "status": "ok"
+}

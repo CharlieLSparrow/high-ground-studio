@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 19,
+  "lesson": "Week 03",
+  "title": "Review: Fetch API",
+  "category": "Learning activity / exercise",
+  "summary": "W03 Learning Activity: Review: The Fetch API A key in modern web development is making asynchronous HTTP requests to communicate with servers without forcing a full page refresh. This activity will help you review how to use the Fetch API to make these requests. The Fetch API [The Fetch API: https://byui-cse.github.io/wdd231-ww-course/week02/prepare-...",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week03/prepare-fetch.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week03/",
+  "status": "ok"
+}

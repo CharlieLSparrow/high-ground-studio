@@ -1,0 +1,12 @@
+{
+  "course": "CSE 210",
+  "course_title": "Programming with Classes",
+  "index": 5,
+  "lesson": "Week 01",
+  "title": "Lists and Generics",
+  "category": "Learning activity / exercise",
+  "summary": "C# Programming Exercise 4: Lists and Generics This activity will help you learn to work with Lists and Generics in C#. Generic Data Types",
+  "url": "https://byui-cse.github.io/cse210-ww-course/week01/csharp-4.html",
+  "source_page": "https://byui-cse.github.io/cse210-ww-course/week01/index.html",
+  "status": "ok"
+}

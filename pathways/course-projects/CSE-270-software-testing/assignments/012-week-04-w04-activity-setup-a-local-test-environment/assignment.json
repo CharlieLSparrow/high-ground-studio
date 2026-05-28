@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 12,
+  "lesson": "Week 04",
+  "title": "W04 Activity: Setup a Local Test Environment",
+  "category": "Setup/tooling task",
+  "summary": "Testers are often required to test pre-release versions of software on a dedicated testing environment. Sometimes, that testing environment is created on your own computer! In this exercise we will set up your computer to run the latest version of the Teton Chamber of Commerce Web Site so you can do an integration test. In order to set up your test...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week04/activity_setup_local_test_environment.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week04/activity_regression_and_integration.html",
+  "status": "ok"
+}

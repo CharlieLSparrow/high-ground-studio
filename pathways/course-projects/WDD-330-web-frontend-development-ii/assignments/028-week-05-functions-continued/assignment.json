@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 28,
+  "lesson": "Week 05",
+  "title": "Functions Continued",
+  "category": "Learning activity / exercise",
+  "summary": "W05 Learning Activity: Advanced Function Concepts Immediately Invoked Function Expressions (IIFE) This example comes from a previous learning activity using the free REST API service, jsonplaceholder.typicode.com. [previous learning activity: https://byui-cse.github.io/wdd330-ww-course/week03/prepare-apis.html]",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week05/prepare-functions-2.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week05/",
+  "status": "ok"
+}

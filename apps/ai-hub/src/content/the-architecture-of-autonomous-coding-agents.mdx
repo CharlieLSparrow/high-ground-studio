@@ -1,0 +1,43 @@
+---
+title: "The Architecture of Autonomous Coding Agents"
+subtitle: "Decision loops, tool-calling constraints, and contextual state recovery"
+description: "Exploring decision loops, tool-calling constraints, and contextual state recovery mechanisms in agentic AI frameworks."
+category: "Agentic Systems"
+date: "2026-05-28"
+author: "Charlie"
+readTime: "8 min read"
+status: "published"
+tags: 
+  - "AI Agents"
+  - "Agentic Architecture"
+  - "LLMs"
+---
+
+# The Architecture of Autonomous Coding Agents
+
+Autonomous coding agents represent a fundamental shift in how software is developed. Instead of serving as static autocompletion tools, these systems reason, plan, execute, and verify operations autonomously.
+
+## The Decision Loop
+
+At the core of any agent is the **Reasoning-Action loop** (often styled as ReAct or similar paradigms). The agent:
+1. **Observes** the current workspace state (logs, compiler errors, file structure).
+2. **Thinks** to form an optimal plan or hypothesis.
+3. **Acts** by calling specialized tools (viewing a file, modifying a file, running a shell command).
+
+This loop continues until the goal is accomplished or progress is blocked.
+
+## Tool-Calling Constraints
+
+To ensure reliability, autonomous agents operate within tight boundaries:
+- **Context Sandboxing:** Restricting shell executions to safe workspace roots.
+- **Deterministic Formats:** Forcing structured JSON outputs for tools.
+- **Safety Checkpoints:** Requiring human review for high-impact operations like publishing or database migrations.
+
+## Contextual State Recovery
+
+Because LLM context windows are finite, agents must implement robust compression. When a conversation is compacted:
+- Important architectural agreements must be preserved.
+- Unfinished tasks must be clearly tracked in a state ledger.
+- System prompts must be updated with current sprint progress.
+
+This ensures continuity across execution turn compactions without context bloat.

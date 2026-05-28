@@ -10,6 +10,7 @@
     "postinstall": "prisma generate",
     "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
     "studio": "pnpm --filter studio dev",
+    "dev:studio:all": "concurrently \"pnpm studio\" \"pnpm studio:collab\"",
     "studio:collab": "PORT=8789 pnpm --filter studio-collab start",
     "studio:build": "pnpm --filter studio build",
     "studio:db:up": "docker compose -f compose.studio.yml up -d --wait studio-postgres",
@@ -38,6 +39,15 @@
     "quipsly:api": "pnpm --filter quipsly-api dev",
     "quipsly:api:build": "pnpm --filter quipsly-api build",
     "quipsly:api:typecheck": "pnpm --filter quipsly-api typecheck",
+    "ai:hub": "pnpm --filter ai-hub dev",
+    "ai:hub:build": "pnpm --filter ai-hub build",
+    "ai:hub:typecheck": "pnpm --filter ai-hub typecheck",
+    "photo:hub": "pnpm --filter photography-hub dev",
+    "photo:hub:build": "pnpm --filter photography-hub build",
+    "photo:hub:typecheck": "pnpm --filter photography-hub typecheck",
+    "video:hub": "pnpm --filter video-hub dev",
+    "video:hub:build": "pnpm --filter video-hub build",
+    "video:hub:typecheck": "pnpm --filter video-hub typecheck",
     "quipsly:domain:build": "pnpm --filter @high-ground/quipsly-domain build",
     "quipsly:domain:typecheck": "pnpm --filter @high-ground/quipsly-domain typecheck",
     "progress:story:add": "node scripts/progress-story-add-entry.mjs",
@@ -89,6 +99,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "concurrently": "^10.0.0",
     "prisma": "^7.7.0"
   }
 }

@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pathways Study Workbench</title>
+    <link rel="stylesheet" href="tailwind.generated.css">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body data-agent-app="pathways-study-workbench">
+    <header class="app-header" data-agent-region="app-header">
+      <div class="brand">
+        <div class="brand-mark">PW</div>
+        <div>
+          <h1>Pathways Study Workbench</h1>
+          <p id="dataStatus">Loading course data</p>
+          <p id="syncStatus" class="sync-status">Storage: browser</p>
+        </div>
+      </div>
+      <div class="top-controls">
+        <nav id="modeDock" class="mode-dock" aria-label="Workspace mode">
+          <button type="button" data-mode="browse">Browse</button>
+          <button type="button" data-mode="study">Study</button>
+          <button type="button" data-mode="review">Review</button>
+          <button type="button" data-mode="agent">Agent</button>
+        </nav>
+        <select id="courseSelect" aria-label="Course"></select>
+        <input id="searchInput" type="search" placeholder="Search source, edits, tags, notes">
+        <button id="assignmentFilterButton" type="button">Assignments</button>
+        <button id="focusModeButton" type="button">Focus</button>
+        <button id="exportButton" type="button">Export</button>
+        <label class="file-button">
+          Import
+          <input id="importInput" type="file" accept="application/json">
+        </label>
+      </div>
+    </header>
+
+    <section class="catalog" id="catalog">
+      <div class="catalog-toolbar">
+        <div>
+          <h2>Knowledge Catalog</h2>
+          <p id="catalogSubtitle">Browse courses, lessons, source pages, media, and your study progress.</p>
+        </div>
+        <div class="catalog-controls">
+          <input id="catalogSearchInput" type="search" placeholder="Find a course or lesson">
+          <select id="certificateFilter" aria-label="Path filter"></select>
+          <select id="catalogSort" aria-label="Sort courses">
+            <option value="sequence">Course order</option>
+            <option value="edited">Most edited</option>
+            <option value="blocks">Most material</option>
+            <option value="media">Most media</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="pathAisles" class="flex flex-wrap gap-2"></div>
+
+      <div id="studyCockpit" class="grid gap-3 md:grid-cols-4"></div>
+
+      <div class="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+        <div id="continuePanel" class="min-h-44 rounded-lg border border-slate-200 bg-slate-950 p-5 text-white shadow-sm"></div>
+        <div id="studyCart" class="min-h-44 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"></div>
+      </div>
+
+      <div id="courseGrid" class="course-grid"></div>
+
+      <div class="lesson-browser">
+        <div class="lesson-browser-header">
+          <div>
+            <h2 id="lessonShelfTitle">Lessons</h2>
+            <p id="lessonShelfMeta"></p>
+          </div>
+          <button id="openCourseButton" type="button">Open Course</button>
+        </div>
+        <div id="lessonShelf" class="lesson-shelf"></div>
+      </div>
+    </section>
+
+    <section id="reviewDeck" class="review-deck" data-agent-region="review-queue">
+      <div class="review-deck-header">
+        <div>
+          <h2>Review Queue</h2>
+          <p id="reviewDeckMeta"></p>
+        </div>
+        <div class="review-deck-controls">
+          <select id="reviewTagSelect" aria-label="Review tag"></select>
+          <select id="reviewScopeSelect" aria-label="Review scope">
+            <option value="active">Active course</option>
+            <option value="all">All courses</option>
+          </select>
+          <button id="startReviewButton" type="button">Start</button>
+        </div>
+      </div>
+      <div id="reviewQueue" class="review-queue"></div>
+    </section>
+
+    <div class="shell" data-agent-region="study-reader">
+      <aside class="sidebar" data-agent-region="left-sidebar">
+        <section class="panel stats-panel">
+          <div class="stat">
+            <span id="pageCount">0</span>
+            <label>Pages</label>
+          </div>
+          <div class="stat">
+            <span id="blockCount">0</span>
+            <label>Blocks</label>
+          </div>
+          <div class="stat">
+            <span id="editedCount">0</span>
+            <label>Edited</label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Outline</h2>
+            <button id="clearFiltersButton" type="button">Clear</button>
+          </div>
+          <label class="toggle-row">
+            <input id="showHiddenToggle" type="checkbox">
+            Show hidden blocks
+          </label>
+          <label class="toggle-row">
+            <input id="assignmentOnlyToggle" type="checkbox">
+            Assignments only
+          </label>
+          <nav id="outline" class="outline"></nav>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Tags</h2>
+          </div>
+          <div id="tagFilters" class="tag-filters"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Database Search</h2>
+            <button id="dbSearchButton" type="button">Run</button>
+          </div>
+          <input id="dbSearchInput" type="search" placeholder="Search SQLite FTS">
+          <div id="dbSearchResults" class="db-results"></div>
+        </section>
+      </aside>
+
+      <main id="content" class="content" tabindex="-1" data-agent-region="editable-study-surface"></main>
+
+      <aside class="inspector" data-agent-region="right-inspector">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Selection</h2>
+          </div>
+          <div id="selectionEmpty" class="empty-state">Select a block.</div>
+          <div id="selectionPanel" class="selection-panel" hidden>
+            <div class="source-meta" id="selectionMeta"></div>
+            <label class="field-label" for="selectionTags">Tags</label>
+            <input id="selectionTags" type="text" placeholder="comma, separated, tags">
+            <div id="quickTags" class="quick-tags"></div>
+            <label class="field-label" for="selectionNotes">Annotations</label>
+            <textarea id="selectionNotes" rows="8" placeholder="Notes, questions, examples"></textarea>
+            <div class="inspector-actions">
+              <button id="resetBlockButton" type="button">Reset Edit</button>
+              <button id="hideBlockButton" type="button">Hide Block</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Transcript</h2>
+          </div>
+          <textarea id="transcriptImport" rows="8" placeholder="Paste VTT, SRT, or plain transcript text"></textarea>
+          <button id="attachTranscriptButton" type="button">Attach To Selection</button>
+          <div id="transcriptPreview" class="transcript-preview"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Review Export</h2>
+          </div>
+          <label class="field-label" for="exportMode">Mode</label>
+          <select id="exportMode">
+            <option value="full">Full edited course</option>
+            <option value="rewritten">Only rewritten blocks</option>
+            <option value="annotations">Only annotated blocks</option>
+            <option value="examples">All example tags</option>
+            <option value="confusing">All confusing tags</option>
+            <option value="custom-tag">Custom tag</option>
+          </select>
+          <label class="field-label" for="exportTagInput">Custom Tag</label>
+          <input id="exportTagInput" type="text" placeholder="tag name">
+          <div class="inspector-actions">
+            <button id="previewReviewButton" type="button">Preview</button>
+            <button id="exportMarkdownButton" type="button">Export</button>
+          </div>
+          <div id="reviewPreview" class="review-preview"></div>
+        </section>
+
+        <section class="panel" data-agent-region="agent-context">
+          <div class="panel-heading">
+            <h2>Agent Context</h2>
+          </div>
+          <div id="agentContextSummary" class="agent-context-summary"></div>
+          <div class="inspector-actions">
+            <button id="copyAgentContextButton" type="button">Copy</button>
+            <button id="downloadAgentContextButton" type="button">Download</button>
+          </div>
+          <pre id="agentContextPreview" class="agent-context-preview"></pre>
+        </section>
+      </aside>
+    </div>
+
+    <template id="pageTemplate">
+      <section class="page-section"></section>
+    </template>
+
+    <template id="blockTemplate">
+      <article class="study-block">
+        <div class="block-source"></div>
+        <div class="block-work">
+          <div class="block-toolbar">
+            <div class="block-tags"></div>
+            <div class="block-actions">
+              <button data-action="tag" type="button">Tag</button>
+              <button data-action="note" type="button">Note</button>
+              <button data-action="hide" type="button">Hide</button>
+            </div>
+          </div>
+          <div class="editable" contenteditable="true" spellcheck="true"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>

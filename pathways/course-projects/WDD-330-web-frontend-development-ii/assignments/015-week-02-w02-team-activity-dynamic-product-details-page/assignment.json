@@ -1,0 +1,12 @@
+{
+  "course": "WDD 330",
+  "course_title": "Web Frontend Development II",
+  "index": 15,
+  "lesson": "Week 02",
+  "title": "W02 Team Activity: Dynamic Product Details Page",
+  "category": "Team activity",
+  "summary": "W02 Team Activity: Dynamic Product Detail Page This activity will review the tools introduced last week, and begin the process of making the application scalable by adding dynamically generated product detail pages, and more organization using ES Modules. Activity Instructions",
+  "url": "https://byui-cse.github.io/wdd330-ww-course/week02/team.html",
+  "source_page": "https://byui-cse.github.io/wdd330-ww-course/week02/",
+  "status": "ok"
+}

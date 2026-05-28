@@ -1,0 +1,12 @@
+{
+  "course": "CSE 212",
+  "course_title": "Programming with Data Structures",
+  "index": 7,
+  "lesson": "Week 01",
+  "title": "Tools",
+  "category": "Setup/tooling task",
+  "summary": "Git: The version control system you will use to update and submit your code. VS Code: The integrated development environment (IDE) you will use to write code. The C# extension in VS Code: Allows VS Code to format C# code correctly.",
+  "url": "https://byui-cse.github.io/cse212-ww-course/week01/setup.html",
+  "source_page": "https://byui-cse.github.io/cse212-ww-course/week01/index.html",
+  "status": "ok"
+}

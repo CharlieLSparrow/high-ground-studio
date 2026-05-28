@@ -1,0 +1,12 @@
+{
+  "course": "WDD 130",
+  "course_title": "Web Fundamentals",
+  "index": 1,
+  "lesson": "Week 01",
+  "title": "Code-along Activity: Creating a New HTML File",
+  "category": "Learning activity / exercise",
+  "summary": "W01 Code-along Activity: Creating a New HTML File Code-along Activity Overview For this activity, you will code along with an instructor video that walks you through each step of this activity. Make sure that you pause the video, or watch sections over if you need to, so that you are able to complete the entire activity.",
+  "url": "https://byui-cse.github.io/wdd130-ww-course/week01/code-along-create-html-page.html",
+  "source_page": "https://byui-cse.github.io/wdd130-ww-course/week01/",
+  "status": "ok"
+}

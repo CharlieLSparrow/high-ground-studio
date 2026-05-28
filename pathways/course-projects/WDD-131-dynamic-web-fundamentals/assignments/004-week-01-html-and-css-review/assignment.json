@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 4,
+  "lesson": "Week 01",
+  "title": "HTML and CSS Review",
+  "category": "Report / case study",
+  "summary": "W01 Learning Activity: HTML and CSS Review This learning activity reviews HTML and CSS layout principles with a focus on core layout design and development. Mastering the workflow process\u2014writing code in VS Code, testing, committing, and pushing your work to your GitHub repository\u2014is critical to your success in this course. Watch: The holy grail layout...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week01/prepare-layout-review.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week01/",
+  "status": "ok"
+}

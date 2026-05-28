@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 28,
+  "lesson": "Week 04",
+  "title": "HTML Tables",
+  "category": "Learning activity / exercise",
+  "summary": "W04 Learning Activity: HTML Tables Develop responsive web pages that follow best practices and use valid HTML and CSS. The markup becomes bloated, which can cause confusion and make it hard to maintain and debug the page. There are better choices.",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week04/prepare-tables.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week04/",
+  "status": "ok"
+}

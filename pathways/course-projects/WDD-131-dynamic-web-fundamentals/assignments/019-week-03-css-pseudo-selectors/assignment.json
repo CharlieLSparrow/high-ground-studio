@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 19,
+  "lesson": "Week 03",
+  "title": "CSS Pseudo-Selectors",
+  "category": "Submit / prove assignment",
+  "summary": "W03 Learning Activity: CSS Pseudo-Selectors Reference: \ud83d\udcd1 Pseudo-classes \u2013 MDN [Pseudo-classes: https://developer.mozilla.org/en-US/docs/Web/CSS/Pseudo-classes] Reference: \ud83d\udcd1 :root \u2013 MDN The :root CSS pseudo-class can be useful for declaring global CSS variables \u2013 MDN. What are the advantages of using CSS variables/custom properties? Check Your...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week03/prepare-css-pseudo.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week03/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 270",
+  "course_title": "Software Testing",
+  "index": 1,
+  "lesson": "Week 01",
+  "title": "Setting up Squash Test Management",
+  "category": "Setup/tooling task",
+  "summary": "W01 Activity: Setup Test Management Tools For the next several weeks you will use the Squash test management tool to manage your project requirements, tests, and test results. This tool will be run on your local computer using Docker Desktop. Each student will run their own copy of Squash and configure their project. Squash is one of several test...",
+  "url": "https://byui-cse.github.io/cse270-ww-course/week01/activity_setup.html",
+  "source_page": "https://byui-cse.github.io/cse270-ww-course/week01/index.html",
+  "status": "ok"
+}

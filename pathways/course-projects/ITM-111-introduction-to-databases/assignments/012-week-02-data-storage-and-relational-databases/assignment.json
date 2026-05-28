@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 12,
+  "lesson": "Week 02",
+  "title": "Data Storage and Relational Databases",
+  "category": "Project / major deliverable",
+  "summary": "W02 Learning Activity: Data Storage and Relational Databases This week you will... Study different types of databases, how data is stored, and what datatype the data belongs to.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week02/prepare.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week02/index.html",
+  "status": "ok"
+}

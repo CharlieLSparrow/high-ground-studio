@@ -348,7 +348,7 @@ export async function getAppUserIdentityByEmail(
 // Signal to evolve it:
 // The second auth method. Not the fifth. The second. That is the moment to stop
 // naming core identity orchestration after a single provider.
-export async function ensureAppUserFromGoogle(input: {
+export async function ensureAppUserFromOAuth(input: {
   email: string;
   name?: string | null;
   image?: string | null;

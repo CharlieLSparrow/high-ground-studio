@@ -1,0 +1,12 @@
+{
+  "course": "ITM 111",
+  "course_title": "Introduction to Databases",
+  "index": 25,
+  "lesson": "Week 05",
+  "title": "Joining and Summarizing Data",
+  "category": "Submit / prove assignment",
+  "summary": "W05 Assignment: Joining and Summarizing Data Purpose: Use queries that combine multiple tables to get the desired results. Use aggregate function to summarize data. Task: Create queries that use different types of JOINs and aggregate functions to get result sets from multiple tables.",
+  "url": "https://byui-cse.github.io/itm111-ww-course/week05/assignment-joins-and-aggregates.html",
+  "source_page": "https://byui-cse.github.io/itm111-ww-course/week05/index.html",
+  "status": "ok"
+}

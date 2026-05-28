@@ -1,0 +1,12 @@
+{
+  "course": "WDD 131",
+  "course_title": "Dynamic Web Fundamentals",
+  "index": 32,
+  "lesson": "Week 05",
+  "title": "HTML Forms",
+  "category": "Submit / prove assignment",
+  "summary": "W05 Learning Activity: HTML Forms In WDD 130, you were introduced to basic form design concepts. This activity continues that exploration by examining form design and development in greater depth. \"The <form> HTML element represents a document section containing interactive controls for submitting information.\" \u2013 MDN [MDN:...",
+  "url": "https://byui-cse.github.io/wdd131-ww-course/week05/prepare-forms.html",
+  "source_page": "https://byui-cse.github.io/wdd131-ww-course/week05/",
+  "status": "ok"
+}

@@ -1,0 +1,12 @@
+{
+  "course": "CSE 340",
+  "course_title": "Web Backend Development",
+  "index": 21,
+  "lesson": "Week 04",
+  "title": "HTML Forms",
+  "category": "Learning activity / exercise",
+  "summary": "Learning Activity (1 of 2): HTML Forms HTTP Request Methods: GET and POST [HTTP Request Methods: GET and POST: https://www.w3schools.com/tags/ref_httpmethods.asp] Name-Value Pairs [Name-Value Pairs: https://en.wikipedia.org/wiki/Name%E2%80%93value_pair]",
+  "url": "https://byui-cse.github.io/cse340-ww-course/week04/prepare-1-html-forms.html",
+  "source_page": "https://byui-cse.github.io/cse340-ww-course/week04/index.html",
+  "status": "ok"
+}

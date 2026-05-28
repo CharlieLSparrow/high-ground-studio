@@ -1,0 +1,12 @@
+{
+  "course": "CSE 212",
+  "course_title": "Programming with Data Structures",
+  "index": 16,
+  "lesson": "Week 02",
+  "title": "Finding Defects using Tests",
+  "category": "Learning activity / exercise",
+  "summary": "W02 Learning Activity: Finding Defects using Tests Testing Code From Requirements Every 4 years shall be a leap year.",
+  "url": "https://byui-cse.github.io/cse212-ww-course/week02/prepare-tests.html",
+  "source_page": "https://byui-cse.github.io/cse212-ww-course/week02/index.html",
+  "status": "ok"
+}
