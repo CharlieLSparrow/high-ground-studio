@@ -81,7 +81,7 @@ jobs:
 
               changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
               web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|\.dockerignore$)'
-              studio_re='^(apps/studio/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|\.dockerignore$)'
+              studio_re='^(apps/quipsly/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|\.dockerignore$)'
 
               if grep -Eq "$web_re" <<< "$changed"; then
                 web=true

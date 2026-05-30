@@ -1,5 +1,8 @@
 import { Prisma } from "@prisma/client";
 
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import {
   buildHgoEpisodePublishCandidateStoreRecordInput,
   type HgoEpisodePublishCandidateStoreRecordInput,
@@ -270,5 +273,68 @@ export async function saveHgoEpisodePublishCandidateForOwner({
     created: true,
     candidate: toDto(candidate),
     warnings: built.warnings,
+  };
+}
+
+export async function executeHgoEpisodePublishCandidate({
+  candidateId,
+  executedByEmail,
+}: {
+  candidateId: string;
+  executedByEmail: string;
+}) {
+  const candidate = await prisma.hgoEpisodePublishCandidate.findUnique({
+    where: { id: candidateId },
+  });
+
+  if (!candidate) {
+    return { ok: false, error: "Candidate not found." };
+  }
+
+  if (candidate.candidateStatus === "published") {
+    return { ok: false, error: "Candidate is already published." };
+  }
+
+  if (candidate.archivedAt) {
+    return { ok: false, error: "Archived candidates cannot be published." };
+  }
+
+  // Determine the file path for the new episode
+  const contentDir = path.join(process.cwd(), "content", "publish", "episodes");
+  const filePath = path.join(contentDir, `${candidate.projectionSlug}.mdx`);
+
+  try {
+    // Ensure the episodes directory exists
+    await fs.mkdir(contentDir, { recursive: true });
+
+    // Write the MDX content directly to disk
+    await fs.writeFile(filePath, candidate.mdxDraft, "utf8");
+  } catch (error) {
+    return { 
+      ok: false, 
+      error: `Failed to write MDX file to disk: ${error instanceof Error ? error.message : String(error)}` 
+    };
+  }
+
+  // Update candidate status to published
+  const updatedCandidate = await prisma.hgoEpisodePublishCandidate.update({
+    where: { id: candidate.id },
+    data: {
+      candidateStatus: "published",
+      note: `Published to ${filePath} by ${executedByEmail}.`,
+    },
+  });
+
+  // Also mark the original staged artifact as published
+  await prisma.hgoStagedProjectionArtifact.update({
+    where: { id: candidate.sourceStagedArtifactId },
+    data: {
+      projectionStatus: "published",
+    },
+  });
+
+  return {
+    ok: true,
+    candidate: toDto(updatedCandidate),
   };
 }

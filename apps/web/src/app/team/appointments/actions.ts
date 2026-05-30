@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canManageAppointments } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { syncAppointmentToGoogleCalendar } from "@/lib/server/google-calendar-sync";
 
 function buildRedirect(params: Record<string, string>) {
   const search = new URLSearchParams(params);
@@ -71,7 +72,7 @@ export async function createAppointmentAction(formData: FormData) {
   }
 
   try {
-    await prisma.appointment.create({
+    const appointment = await prisma.appointment.create({
       data: {
         clientUserId,
         coachUserId: coachUserIdRaw || null,
@@ -85,6 +86,13 @@ export async function createAppointmentAction(formData: FormData) {
         notes: notes || null,
       },
     });
+
+    try {
+      await syncAppointmentToGoogleCalendar({
+        appointmentId: appointment.id,
+        requestedByEmail: session.user.primaryEmail,
+      });
+    } catch (e) {}
 
     revalidatePath("/team/appointments");
 
@@ -147,6 +155,13 @@ export async function updateAppointmentAction(formData: FormData) {
       },
     });
 
+    try {
+      await syncAppointmentToGoogleCalendar({
+        appointmentId,
+        requestedByEmail: session.user.primaryEmail,
+      });
+    } catch (e) {}
+
     revalidatePath("/team/appointments");
 
     redirect(buildRedirect({ success: "Appointment updated." }));
@@ -178,6 +193,13 @@ export async function cancelAppointmentAction(formData: FormData) {
       },
     });
 
+    try {
+      await syncAppointmentToGoogleCalendar({
+        appointmentId,
+        requestedByEmail: session.user.primaryEmail,
+      });
+    } catch (e) {}
+
     revalidatePath("/team/appointments");
 
     redirect(buildRedirect({ success: "Appointment canceled." }));
@@ -208,6 +230,13 @@ export async function completeAppointmentAction(formData: FormData) {
         updatedByUserId: session.user.id,
       },
     });
+
+    try {
+      await syncAppointmentToGoogleCalendar({
+        appointmentId,
+        requestedByEmail: session.user.primaryEmail,
+      });
+    } catch (e) {}
 
     revalidatePath("/team/appointments");
 

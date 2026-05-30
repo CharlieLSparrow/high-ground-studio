@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canManageAppointments } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { syncAppointmentToGoogleCalendar } from "@/lib/server/google-calendar-sync";
 
 function buildRedirect(params: Record<string, string>) {
   const search = new URLSearchParams(params);
@@ -249,7 +250,7 @@ export async function convertCoachingRequestToAppointmentAction(formData: FormDa
   try {
     const nextCoachUserId = await loadCoachUserIdOrThrow(coachUserId);
 
-    await prisma.$transaction(async (tx) => {
+    const newlyCreatedAppointmentId = await prisma.$transaction(async (tx) => {
       const request = await tx.coachingRequest.findUnique({
         where: {
           id: coachingRequestId,
@@ -304,7 +305,18 @@ export async function convertCoachingRequestToAppointmentAction(formData: FormDa
           internalNotes: appendInternalNotes(request.internalNotes, internalNotes),
         },
       });
+      
+      return appointment.id;
     });
+
+    try {
+      await syncAppointmentToGoogleCalendar({
+        appointmentId: newlyCreatedAppointmentId,
+        requestedByEmail: session.user.primaryEmail,
+      });
+    } catch (e) {
+      // Ignore background sync errors, the job is queued and can be retried manually or by cron
+    }
 
     revalidatePath("/team/coaching-requests");
     revalidatePath("/team/appointments");

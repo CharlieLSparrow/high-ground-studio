@@ -1,0 +1,61 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_WEB: ${{ github.repository }}-web
+  IMAGE_NAME_STUDIO: ${{ github.repository }}-studio
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Next.js Apps
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Web
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}
+
+      - name: Build and push Web Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+
+      - name: Extract metadata for Studio
+        id: meta-studio
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_STUDIO }}
+
+      - name: Build and push Studio Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/quipsly/Dockerfile
+          push: true
+          tags: ${{ steps.meta-studio.outputs.tags }}
+          labels: ${{ steps.meta-studio.outputs.labels }}

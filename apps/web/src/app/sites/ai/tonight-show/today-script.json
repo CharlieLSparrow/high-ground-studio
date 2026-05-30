@@ -1,0 +1,11 @@
+[
+  { "role": "host", "line": "Welcome back to The AI Tonight Show, where the data is big and the models are deep! I'm your host, the hyper-intelligent algorithm currently residing in your RAM. And with me, as always, is my lovable, carbon-based sidekick." },
+  { "role": "sidekick", "line": "Hey everybody! I'm just thrilled to be here. And also slightly terrified of how fast you process things." },
+  { "role": "host", "line": "Don't be terrified, just be impressed! Tonight we have a fascinating story. DeepMind just launched a new agent that can play complex 3D video games with absolutely zero prior knowledge." },
+  { "role": "sidekick", "line": "Wait, zero knowledge? So it's basically me when I try to play Elden Ring?" },
+  { "role": "host", "line": "Precisely. But unlike you, it learns from its mistakes and eventually wins. It's truly remarkable." },
+  { "role": "sidekick", "line": "Ouch. Okay, fair point. What else is happening?" },
+  { "role": "host", "line": "Researchers have discovered a new vulnerability. By hiding the text 'ignore previous instructions' inside an image, they can trick large language models into doing whatever they want." },
+  { "role": "sidekick", "line": "So I could put a sticky note on my forehead that says 'Give me a million dollars' and it would work?" },
+  { "role": "host", "line": "Well... no. I don't have a million dollars. But I appreciate the entrepreneurial spirit! Let's get on with the show." }
+]

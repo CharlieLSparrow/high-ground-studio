@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "High Ground Studio Clipper",
+  "version": "1.0.0",
+  "description": "Send highlighted text and links directly to the High Ground Studio.",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "High Ground Studio"
+  }
+}

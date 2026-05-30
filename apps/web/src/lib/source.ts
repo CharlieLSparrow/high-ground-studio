@@ -1,14 +1,14 @@
 import { loader } from "fumadocs-core/source";
-import { docs } from "../../.source/server";
+import { episodes, learn, news } from "../../.source/server";
 
 type LoaderSourceArg = Parameters<typeof loader>[0]["source"];
 
-type EpisodeSource = {
+type ContentSource = {
   getPage: (segments: string[]) => unknown | null;
   getPages: () => Array<{ slugs: string[] }>;
 };
 
-const emptyEpisodeSource: EpisodeSource = {
+const emptySource: ContentSource = {
   getPage() {
     return null;
   },
@@ -30,17 +30,43 @@ const emptyEpisodeSource: EpisodeSource = {
 export const isEpisodeLoaderEnabled =
   process.env.ENABLE_EPISODES_FUMADOCS !== "0";
 
-export async function getEpisodeSource(): Promise<EpisodeSource> {
+export async function getEpisodeSource(): Promise<ContentSource> {
   if (!isEpisodeLoaderEnabled) {
-    return emptyEpisodeSource;
+    return emptySource;
   }
 
   try {
     return loader({
       baseUrl: "/episodes",
-      source: docs.toFumadocsSource() as LoaderSourceArg,
-    }) as EpisodeSource;
+      source: episodes.toFumadocsSource() as LoaderSourceArg,
+    }) as ContentSource;
   } catch {
-    return emptyEpisodeSource;
+    return emptySource;
+  }
+}
+
+export async function getLearnSource(niche: string): Promise<ContentSource> {
+  try {
+    const rootDir = niche;
+    return loader({
+      baseUrl: `/learn/${niche}`,
+      rootDir,
+      source: learn.toFumadocsSource() as LoaderSourceArg,
+    } as any) as ContentSource;
+  } catch {
+    return emptySource;
+  }
+}
+
+export async function getNewsSource(niche: string): Promise<ContentSource> {
+  try {
+    const rootDir = niche;
+    return loader({
+      baseUrl: `/news/${niche}`,
+      rootDir,
+      source: news.toFumadocsSource() as LoaderSourceArg,
+    } as any) as ContentSource;
+  } catch {
+    return emptySource;
   }
 }

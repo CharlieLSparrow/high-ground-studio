@@ -60,3 +60,10 @@ pathways/data/
 pathways/web/data/
 *.sqlite
 *.sqlite3
+
+# Cloud Credentials
+gcs-key.json
+*.gcs-key.json
+*.json.key
+credentials.json
+

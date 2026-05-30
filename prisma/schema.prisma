@@ -75,6 +75,7 @@ enum AppRole {
   TEAM_SCHEDULER
   COACH
   CLIENT
+  NETWORK_PASS
 }
 
 // Membership lifecycle inside the app. This is product state, not billing
@@ -205,42 +206,44 @@ enum StudioManuscriptKind {
 // Changing primary email rules or collapsing aliases/roles into columns looks
 // simple for about six minutes, after which the family tree catches fire.
 model User {
-  id                  String        @id @default(cuid())
-  primaryEmail        String        @unique
-  name                String?
-  image               String?
-  newsletterOptIn     Boolean       @default(false)
-  announcementsOptIn  Boolean       @default(false)
-  welcomeCompletedAt  DateTime?
-  isActive            Boolean       @default(true)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  id                 String    @id @default(cuid())
+  primaryEmail       String    @unique
+  name               String?
+  image              String?
+  newsletterOptIn    Boolean   @default(false)
+  announcementsOptIn Boolean   @default(false)
+  welcomeCompletedAt DateTime?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  aliases             UserEmail[]
-  roles               UserRole[]
-  clientProfile       ClientProfile?
-  memberships         Membership[]  @relation("MembershipUser")
+  aliases               UserEmail[]
+  roles                 UserRole[]
+  clientProfile         ClientProfile?
+  memberships           Membership[]           @relation("MembershipUser")
   coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
-  weeklyCommitments   WeeklyCommitment[] @relation("WeeklyCommitmentClient")
+  weeklyCommitments     WeeklyCommitment[]     @relation("WeeklyCommitmentClient")
 
-  clientAppointments  Appointment[] @relation("AppointmentClient")
-  coachAppointments   Appointment[] @relation("AppointmentCoach")
-  appointmentsCreated Appointment[] @relation("AppointmentCreatedBy")
-  appointmentsUpdated Appointment[] @relation("AppointmentUpdatedBy")
-  coachingRequests    CoachingRequest[] @relation("CoachingRequestClient")
-  assignedCoachingRequests CoachingRequest[] @relation("CoachingRequestCoach")
-  companySupportRequests CompanySupportRequest[]
-  storyDraftsCreated  StoryDraft[] @relation("StoryDraftCreatedBy")
-  storyDraftsUpdated  StoryDraft[] @relation("StoryDraftUpdatedBy")
-  storyDraftsReviewed StoryDraft[] @relation("StoryDraftReviewedBy")
+  clientAppointments       Appointment[]           @relation("AppointmentClient")
+  coachAppointments        Appointment[]           @relation("AppointmentCoach")
+  appointmentsCreated      Appointment[]           @relation("AppointmentCreatedBy")
+  appointmentsUpdated      Appointment[]           @relation("AppointmentUpdatedBy")
+  coachingRequests         CoachingRequest[]       @relation("CoachingRequestClient")
+  assignedCoachingRequests CoachingRequest[]       @relation("CoachingRequestCoach")
+  companySupportRequests   CompanySupportRequest[]
+  storyDraftsCreated       StoryDraft[]            @relation("StoryDraftCreatedBy")
+  storyDraftsUpdated       StoryDraft[]            @relation("StoryDraftUpdatedBy")
+  storyDraftsReviewed      StoryDraft[]            @relation("StoryDraftReviewedBy")
 
-  membershipsGranted  Membership[]  @relation("MembershipGrantedBy")
+  membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
-  weeklyCommitmentsReviewed WeeklyCommitment[] @relation("WeeklyCommitmentReviewedBy")
+  weeklyCommitmentsReviewed    WeeklyCommitment[]     @relation("WeeklyCommitmentReviewedBy")
 
-  collections         Collection[]
-  snippets            Snippet[]
-  bookmarks           Bookmark[]
+  collections        Collection[]
+  snippets           Snippet[]
+  bookmarks          Bookmark[]
+  quipStreamSessions QuipStreamSession[]
+  socialAccounts     SocialAccount[]
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -254,7 +257,7 @@ model UserEmail {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -274,7 +277,7 @@ model UserRole {
   role      AppRole
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, role])
   @@index([role])
@@ -290,7 +293,7 @@ model ClientProfile {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // MembershipPlan is the product catalog layer: what kinds of memberships exist
@@ -302,17 +305,17 @@ model ClientProfile {
 // We are NOT doing that yet because memberships are still manual/internal and
 // Stripe is intentionally quarantined.
 model MembershipPlan {
-  id                    String       @id @default(cuid())
+  id                    String   @id @default(cuid())
   name                  String
-  slug                  String       @unique
+  slug                  String   @unique
   description           String?
   priceCents            Int?
   billingIntervalMonths Int?
-  isActive              Boolean      @default(true)
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  memberships           Membership[]
+  memberships Membership[]
 }
 
 // Membership is the actual grant of a plan to a user.
@@ -340,49 +343,49 @@ model Membership {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  user            User             @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
-  plan            MembershipPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
-  grantedBy       User?            @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+  user      User           @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  plan      MembershipPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  grantedBy User?          @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
   @@index([planId])
 }
 
 model CoachingFeature {
-  id              String   @id @default(cuid())
-  featureKey      String   @unique
-  title           String
-  category        String   @default("tool")
-  clientSummary   String
-  coachSummary    String?
-  status          String   @default("active")
-  sortOrder       Int      @default(100)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  featureKey    String   @unique
+  title         String
+  category      String   @default("tool")
+  clientSummary String
+  coachSummary  String?
+  status        String   @default("active")
+  sortOrder     Int      @default(100)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  grants          CoachingFeatureGrant[]
+  grants CoachingFeatureGrant[]
 
   @@index([category, status])
   @@index([status, sortOrder])
 }
 
 model CoachingFeatureGrant {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
   featureId       String
-  status          String   @default("enabled")
-  source          String   @default("manual")
-  visibility      String   @default("client_and_coach")
-  startsAt        DateTime @default(now())
+  status          String    @default("enabled")
+  source          String    @default("manual")
+  visibility      String    @default("client_and_coach")
+  startsAt        DateTime  @default(now())
   endsAt          DateTime?
   notes           String?
   grantedByUserId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user            User     @relation("CoachingFeatureGrantUser", fields: [userId], references: [id], onDelete: Cascade)
-  feature         CoachingFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  grantedBy       User?    @relation("CoachingFeatureGrantGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+  user      User            @relation("CoachingFeatureGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  feature   CoachingFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  grantedBy User?           @relation("CoachingFeatureGrantGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([userId, featureId])
   @@index([featureId, status])
@@ -406,8 +409,8 @@ model WeeklyCommitment {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  clientUser       User                   @relation("WeeklyCommitmentClient", fields: [clientUserId], references: [id], onDelete: Cascade)
-  reviewedByUser   User?                  @relation("WeeklyCommitmentReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  clientUser     User  @relation("WeeklyCommitmentClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  reviewedByUser User? @relation("WeeklyCommitmentReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([clientUserId, weekStartsAt])
   @@index([clientUserId, status, weekStartsAt])
@@ -450,10 +453,10 @@ model Appointment {
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
-  clientUser      User                    @relation("AppointmentClient", fields: [clientUserId], references: [id], onDelete: Cascade)
-  coachUser       User?                   @relation("AppointmentCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
-  createdByUser   User                    @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedByUser   User?                   @relation("AppointmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  clientUser                User             @relation("AppointmentClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  coachUser                 User?            @relation("AppointmentCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
+  createdByUser             User             @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUser             User?            @relation("AppointmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   coachingRequestConversion CoachingRequest?
 
   @@index([clientUserId, scheduledStart])
@@ -462,24 +465,24 @@ model Appointment {
 }
 
 model CoachingRequest {
-  id                    String                @id @default(cuid())
-  clientUserId          String
+  id                     String                @id @default(cuid())
+  clientUserId           String
   preferredContactMethod ContactPreference
-  email                 String
-  phone                 String?
-  availabilityNotes     String?
-  coachingGoals         String
-  contactConsent        Boolean
-  status                CoachingRequestStatus @default(NEW)
-  assignedCoachUserId   String?
-  convertedAppointmentId String?             @unique
-  internalNotes         String?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  email                  String
+  phone                  String?
+  availabilityNotes      String?
+  coachingGoals          String
+  contactConsent         Boolean
+  status                 CoachingRequestStatus @default(NEW)
+  assignedCoachUserId    String?
+  convertedAppointmentId String?               @unique
+  internalNotes          String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
-  clientUser            User                  @relation("CoachingRequestClient", fields: [clientUserId], references: [id], onDelete: Cascade)
-  assignedCoachUser     User?                 @relation("CoachingRequestCoach", fields: [assignedCoachUserId], references: [id], onDelete: SetNull)
-  convertedAppointment  Appointment?          @relation(fields: [convertedAppointmentId], references: [id], onDelete: SetNull)
+  clientUser           User         @relation("CoachingRequestClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  assignedCoachUser    User?        @relation("CoachingRequestCoach", fields: [assignedCoachUserId], references: [id], onDelete: SetNull)
+  convertedAppointment Appointment? @relation(fields: [convertedAppointmentId], references: [id], onDelete: SetNull)
 
   @@index([clientUserId, createdAt])
   @@index([status, createdAt])
@@ -487,18 +490,18 @@ model CoachingRequest {
 }
 
 model CompanySupportRequest {
-  id                     String   @id @default(cuid())
+  id                     String            @id @default(cuid())
   name                   String
   email                  String
   phone                  String?
   preferredContactMethod ContactPreference
   supportType            String
   note                   String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
   userId                 String?
 
-  user                   User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([supportType, createdAt])
@@ -506,51 +509,51 @@ model CompanySupportRequest {
 }
 
 model WorldHubProviderConnection {
-  id                 String   @id @default(cuid())
-  providerKey        String   @unique
-  providerKind       String
-  displayName        String
-  status             String   @default("planned")
-  accountLabel       String?
-  capabilitiesJson   Json
-  requiredEnvJson    Json
-  configuredEnvJson  Json
-  missingEnvJson     Json
-  setupUrl           String?
-  setupNotes         String?
-  healthStatus       String   @default("not_checked")
-  lastCheckedAt      DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String    @id @default(cuid())
+  providerKey       String    @unique
+  providerKind      String
+  displayName       String
+  status            String    @default("planned")
+  accountLabel      String?
+  capabilitiesJson  Json
+  requiredEnvJson   Json
+  configuredEnvJson Json
+  missingEnvJson    Json
+  setupUrl          String?
+  setupNotes        String?
+  healthStatus      String    @default("not_checked")
+  lastCheckedAt     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  events             WorldHubProviderEvent[]
-  syncJobs           WorldHubProviderSyncJob[]
-  offers             WorldHubOffer[]
-  orders             WorldHubOrder[]
-  fulfillmentJobs    WorldHubFulfillmentJob[]
+  events          WorldHubProviderEvent[]
+  syncJobs        WorldHubProviderSyncJob[]
+  offers          WorldHubOffer[]
+  orders          WorldHubOrder[]
+  fulfillmentJobs WorldHubFulfillmentJob[]
 
   @@index([providerKind, status])
   @@index([status, updatedAt])
 }
 
 model WorldHubProviderEvent {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   connectionId       String
   eventType          String
   externalEventId    String?
   idempotencyKey     String?
-  verificationStatus String   @default("unchecked")
-  processingStatus   String   @default("received")
+  verificationStatus String    @default("unchecked")
+  processingStatus   String    @default("received")
   payloadHash        String?
   payloadSummaryJson Json
   errorMessage       String?
   occurredAt         DateTime?
-  receivedAt         DateTime @default(now())
+  receivedAt         DateTime  @default(now())
   processedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  connection         WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, idempotencyKey])
   @@index([connectionId, receivedAt])
@@ -558,40 +561,40 @@ model WorldHubProviderEvent {
 }
 
 model WorldHubProviderSyncJob {
-  id                 String   @id @default(cuid())
-  connectionId       String?
-  providerKey        String
-  jobType            String
-  subjectType        String
-  subjectId          String?
-  status             String   @default("queued")
-  payloadJson        Json
-  resultJson         Json?
-  errorMessage       String?
-  requestedByEmail   String?
-  requestedAt        DateTime @default(now())
-  startedAt          DateTime?
-  completedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id               String    @id @default(cuid())
+  connectionId     String?
+  providerKey      String
+  jobType          String
+  subjectType      String
+  subjectId        String?
+  status           String    @default("queued")
+  payloadJson      Json
+  resultJson       Json?
+  errorMessage     String?
+  requestedByEmail String?
+  requestedAt      DateTime  @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  connection         WorldHubProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  connection WorldHubProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
 
   @@index([providerKey, status, requestedAt])
   @@index([subjectType, subjectId])
 }
 
 model WorldHubCatalogItem {
-  id                 String   @id @default(cuid())
-  slug               String   @unique
-  name               String
-  kind               String
-  status             String   @default("draft")
-  description        String?
-  fulfillmentRequired Boolean @default(false)
-  metadataJson       Json
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  slug                String   @unique
+  name                String
+  kind                String
+  status              String   @default("draft")
+  description         String?
+  fulfillmentRequired Boolean  @default(false)
+  metadataJson        Json
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([kind, status])
 }
@@ -613,27 +616,27 @@ model WorldHubOffer {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  providerConnection   WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+  providerConnection WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
 
   @@index([kind, status])
   @@index([providerConnectionId, status])
 }
 
 model WorldHubCart {
-  id             String   @id @default(cuid())
-  cartKey        String   @unique
-  ownerUserId    String?
-  email          String?
-  status         String   @default("draft")
-  currency       String   @default("USD")
-  lineItemsJson  Json
-  subtotalCents  Int      @default(0)
-  discountCents  Int      @default(0)
-  totalCents     Int      @default(0)
-  expiresAt      DateTime?
-  checkedOutAt   DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String    @id @default(cuid())
+  cartKey       String    @unique
+  ownerUserId   String?
+  email         String?
+  status        String    @default("draft")
+  currency      String    @default("USD")
+  lineItemsJson Json
+  subtotalCents Int       @default(0)
+  discountCents Int       @default(0)
+  totalCents    Int       @default(0)
+  expiresAt     DateTime?
+  checkedOutAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([ownerUserId, updatedAt])
   @@index([email, updatedAt])
@@ -641,29 +644,29 @@ model WorldHubCart {
 }
 
 model WorldHubOrder {
-  id                   String   @id @default(cuid())
-  orderNumber          String   @unique
+  id                   String    @id @default(cuid())
+  orderNumber          String    @unique
   sourceCartId         String?
   ownerUserId          String?
   email                String?
-  status               String   @default("pending")
-  currency             String   @default("USD")
+  status               String    @default("pending")
+  currency             String    @default("USD")
   lineItemsJson        Json
-  subtotalCents        Int      @default(0)
-  discountCents        Int      @default(0)
-  totalCents           Int      @default(0)
-  checkoutMode         String   @default("provider_checkout")
+  subtotalCents        Int       @default(0)
+  discountCents        Int       @default(0)
+  totalCents           Int       @default(0)
+  checkoutMode         String    @default("provider_checkout")
   providerConnectionId String?
   externalCheckoutUrl  String?
   providerRefsJson     Json
   placedAt             DateTime?
   paidAt               DateTime?
   canceledAt           DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  providerConnection   WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
-  fulfillmentJobs      WorldHubFulfillmentJob[]
+  providerConnection WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+  fulfillmentJobs    WorldHubFulfillmentJob[]
 
   @@index([ownerUserId, updatedAt])
   @@index([email, updatedAt])
@@ -672,21 +675,21 @@ model WorldHubOrder {
 }
 
 model WorldHubFulfillmentJob {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   orderId              String?
   providerConnectionId String?
-  status               String   @default("queued")
+  status               String    @default("queued")
   lineItemsJson        Json
   providerRefsJson     Json
-  queuedAt             DateTime @default(now())
+  queuedAt             DateTime  @default(now())
   sentAt               DateTime?
   completedAt          DateTime?
   failureReason        String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  order                WorldHubOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  providerConnection   WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+  order              WorldHubOrder?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  providerConnection WorldHubProviderConnection? @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
 
   @@index([orderId, status])
   @@index([providerConnectionId, status])
@@ -813,9 +816,9 @@ model StoryDraft {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  createdBy           User             @relation("StoryDraftCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy           User?            @relation("StoryDraftUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  reviewedBy          User?            @relation("StoryDraftReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdBy  User  @relation("StoryDraftCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy  User? @relation("StoryDraftUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy User? @relation("StoryDraftReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
   @@index([storyCandidateId, status])
   @@index([sourceBlockId, status])
@@ -824,36 +827,40 @@ model StoryDraft {
 }
 
 model StudioWorkspace {
-  id          String          @id @default(cuid())
-  slug        String          @unique
+  id          String   @id @default(cuid())
+  slug        String   @unique
   name        String
   description String?
   ownerLabel  String?
-  isPrivate   Boolean         @default(true)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  isPrivate   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  projects    StudioProject[]
+  projects StudioProject[]
 }
 
 model StudioProject {
-  id          String                @id @default(cuid())
-  workspaceId String
-  slug        String
-  name        String
-  description String?
-  sourceLabel String?
-  isPrivate   Boolean               @default(true)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  id           String   @id @default(cuid())
+  workspaceId  String
+  slug         String
+  name         String
+  description  String?
+  sourceLabel  String?
+  isPrivate    Boolean  @default(true)
+  manuscriptId String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  workspace   StudioWorkspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents   StudioDocument[]
-  tags        StudioTag[]
+  workspace      StudioWorkspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents      StudioDocument[]
+  tags           StudioTag[]
   knowledgeNodes StudioKnowledgeNode[]
+  manuscript     StudioManuscript?     @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets    StudioMediaAsset[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
+  @@index([manuscriptId])
 }
 
 model StudioDocument {
@@ -868,28 +875,29 @@ model StudioDocument {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  project          StudioProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  blocks           StudioDocumentBlock[]
-  taggedSpans      StudioTaggedSpan[]
-  knowledgeNodes   StudioKnowledgeNode[]
+  project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blocks         StudioDocumentBlock[]
+  taggedSpans    StudioTaggedSpan[]
+  knowledgeNodes StudioKnowledgeNode[]
 
   @@index([projectId, stableId])
   @@index([projectId, projectionStatus])
 }
 
 model StudioManuscript {
-  id             String                 @id @default(cuid())
+  id             String               @id @default(cuid())
   ownerEmail     String
   title          String
   description    String?
   sourceFileName String?
-  kind           StudioManuscriptKind   @default(WORKING)
+  kind           StudioManuscriptKind @default(WORKING)
   lastSnapshotAt DateTime?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
   archivedAt     DateTime?
 
-  snapshots      StudioManuscriptSnapshot[]
+  snapshots StudioManuscriptSnapshot[]
+  project   StudioProject?
 
   @@index([ownerEmail, updatedAt])
   @@index([ownerEmail, kind, updatedAt])
@@ -897,26 +905,26 @@ model StudioManuscript {
 }
 
 model StudioManuscriptSnapshot {
-  id              String   @id @default(cuid())
-  manuscriptId    String?
-  ownerEmail      String
-  title           String
-  description     String?
-  schemaVersion   Int
-  sourceFileName  String?
-  draftJson       Json
-  contentHash     String?
-  clientUpdatedAt DateTime?
-  wordCount       Int      @default(0)
-  characterCount  Int      @default(0)
-  blockCount      Int      @default(0)
-  structureCount  Int      @default(0)
-  citedQuoteCount Int      @default(0)
+  id               String    @id @default(cuid())
+  manuscriptId     String?
+  ownerEmail       String
+  title            String
+  description      String?
+  schemaVersion    Int
+  sourceFileName   String?
+  draftJson        Json
+  contentHash      String?
+  clientUpdatedAt  DateTime?
+  wordCount        Int       @default(0)
+  characterCount   Int       @default(0)
+  blockCount       Int       @default(0)
+  structureCount   Int       @default(0)
+  citedQuoteCount  Int       @default(0)
   quoteReviewCount Int       @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  manuscript        StudioManuscript? @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  manuscript StudioManuscript? @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
 
   @@index([ownerEmail, updatedAt])
   @@index([ownerEmail, createdAt])
@@ -925,16 +933,16 @@ model StudioManuscriptSnapshot {
 }
 
 model StudioManuscriptCollaborationRoom {
-  id                       String   @id @default(cuid())
-  roomName                 String   @unique
+  id                       String    @id @default(cuid())
+  roomName                 String    @unique
   title                    String
   seedSnapshotId           String?
   seededAt                 DateTime?
   seededByEmail            String?
   lastCheckpointSnapshotId String?
   ydocState                Bytes?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@index([updatedAt])
   @@index([seedSnapshotId])
@@ -942,27 +950,27 @@ model StudioManuscriptCollaborationRoom {
 }
 
 model StudioContentWorkspaceSnapshot {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   ownerEmail      String
   title           String
   description     String?
   schemaVersion   Int
   workspaceJson   Json
   contentHash     String?
-  projectCount    Int      @default(0)
-  activeCount     Int      @default(0)
-  readyCount      Int      @default(0)
-  blockedCount    Int      @default(0)
+  projectCount    Int       @default(0)
+  activeCount     Int       @default(0)
+  readyCount      Int       @default(0)
+  blockedCount    Int       @default(0)
   clientUpdatedAt DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([ownerEmail, updatedAt])
   @@index([ownerEmail, createdAt])
 }
 
 model StudioContentProject {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   ownerEmail           String
   localProjectId       String
   title                String
@@ -976,8 +984,8 @@ model StudioContentProject {
   handoffJson          Json
   productionPacketJson Json?
   clientUpdatedAt      DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@unique([ownerEmail, localProjectId])
   @@index([ownerEmail, updatedAt])
@@ -986,7 +994,7 @@ model StudioContentProject {
 }
 
 model HgoStagedProjectionArtifact {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   ownerUserId           String?
   ownerEmail            String
   recordId              String
@@ -1006,17 +1014,17 @@ model HgoStagedProjectionArtifact {
   artifactJson          Json
   artifactSummaryJson   Json
   eventLogJson          Json
-  blockerCount          Int      @default(0)
-  warningCount          Int      @default(0)
-  containsRealContent   String   @default("unknown")
+  blockerCount          Int       @default(0)
+  warningCount          Int       @default(0)
+  containsRealContent   String    @default("unknown")
   note                  String?
   reviewedAt            DateTime?
   reviewedByEmail       String?
   archivedAt            DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  publishCandidates     HgoEpisodePublishCandidate[]
+  publishCandidates HgoEpisodePublishCandidate[]
 
   @@unique([ownerEmail, artifactHash])
   @@unique([ownerEmail, recordId])
@@ -1028,35 +1036,35 @@ model HgoStagedProjectionArtifact {
 }
 
 model HgoEpisodePublishCandidate {
-  id                       String   @id @default(cuid())
-  ownerUserId              String?
-  ownerEmail               String
-  candidateId              String
-  sourceStagedArtifactId   String
-  sourceRecordId           String
-  sourceArtifactId         String
-  sourceArtifactHash       String
-  projectionId             String
-  projectionSlug           String
-  projectionTitle          String
-  proposedRoute            String
-  readinessState           String
-  candidateStatus          String   @default("private-review")
-  packetJson               Json
-  reviewBriefJson          Json
-  draftPacketJson          Json
-  frontmatterJson          Json
-  mdxDraft                 String
-  blockerCount             Int      @default(0)
-  warningCount             Int      @default(0)
-  containsRealContent      String   @default("unknown")
-  note                     String?
-  createdByEmail           String?
-  approvedAt               DateTime?
-  approvedByEmail          String?
-  archivedAt               DateTime?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  id                     String    @id @default(cuid())
+  ownerUserId            String?
+  ownerEmail             String
+  candidateId            String
+  sourceStagedArtifactId String
+  sourceRecordId         String
+  sourceArtifactId       String
+  sourceArtifactHash     String
+  projectionId           String
+  projectionSlug         String
+  projectionTitle        String
+  proposedRoute          String
+  readinessState         String
+  candidateStatus        String    @default("private-review")
+  packetJson             Json
+  reviewBriefJson        Json
+  draftPacketJson        Json
+  frontmatterJson        Json
+  mdxDraft               String
+  blockerCount           Int       @default(0)
+  warningCount           Int       @default(0)
+  containsRealContent    String    @default("unknown")
+  note                   String?
+  createdByEmail         String?
+  approvedAt             DateTime?
+  approvedByEmail        String?
+  archivedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   sourceStagedArtifact HgoStagedProjectionArtifact @relation(fields: [sourceStagedArtifactId], references: [id], onDelete: Restrict)
 
@@ -1086,9 +1094,9 @@ model StudioDocumentBlock {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  document         StudioDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  taggedSpans      StudioTaggedSpan[]
-  knowledgeNodes   StudioKnowledgeNode[]
+  document       StudioDocument        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  taggedSpans    StudioTaggedSpan[]
+  knowledgeNodes StudioKnowledgeNode[]
 
   @@unique([documentId, stableId])
   @@unique([documentId, order])
@@ -1098,20 +1106,20 @@ model StudioDocumentBlock {
 }
 
 model StudioTag {
-  id           String                  @id @default(cuid())
-  projectId    String
-  slug         String
-  label        String
-  description  String?
-  category     StudioTagCategory       @default(meaning)
-  nodeType     StudioKnowledgeNodeType @default(source_note)
-  isPrivate    Boolean                 @default(true)
-  isActive     Boolean                 @default(true)
-  createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @updatedAt
+  id          String                  @id @default(cuid())
+  projectId   String
+  slug        String
+  label       String
+  description String?
+  category    StudioTagCategory       @default(meaning)
+  nodeType    StudioKnowledgeNodeType @default(source_note)
+  isPrivate   Boolean                 @default(true)
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
 
-  project      StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taggedSpans  StudioTaggedSpan[]
+  project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taggedSpans    StudioTaggedSpan[]
   knowledgeNodes StudioKnowledgeNode[]
 
   @@unique([projectId, slug])
@@ -1140,10 +1148,10 @@ model StudioTaggedSpan {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
-  document              StudioDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  block                 StudioDocumentBlock    @relation(fields: [blockId], references: [id], onDelete: Cascade)
-  tag                   StudioTag              @relation(fields: [tagId], references: [id], onDelete: Restrict)
-  knowledgeNode         StudioKnowledgeNode?
+  document      StudioDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  block         StudioDocumentBlock  @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  tag           StudioTag            @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  knowledgeNode StudioKnowledgeNode?
 
   @@unique([blockId, tagId, startOffset, endOffset])
   @@index([documentId, blockId])
@@ -1180,11 +1188,11 @@ model StudioKnowledgeNode {
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
-  project               StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document              StudioDocument          @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  block                 StudioDocumentBlock     @relation(fields: [blockId], references: [id], onDelete: Cascade)
-  taggedSpan            StudioTaggedSpan        @relation(fields: [taggedSpanId], references: [id], onDelete: Cascade)
-  tag                   StudioTag               @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  project    StudioProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document   StudioDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  block      StudioDocumentBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  taggedSpan StudioTaggedSpan    @relation(fields: [taggedSpanId], references: [id], onDelete: Cascade)
+  tag        StudioTag           @relation(fields: [tagId], references: [id], onDelete: Restrict)
 
   @@index([projectId, projectionStatus])
   @@index([tagId])
@@ -1197,55 +1205,281 @@ model StudioKnowledgeNode {
 // -----------------------------------------------------------------------------
 
 model Collection {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   userId      String
-  slug        String    @unique
+  slug        String   @unique
   name        String
   description String?
-  isPublic    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  snippets    Snippet[]
-  bookmarks   Bookmark[]
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snippets  Snippet[]
+  bookmarks Bookmark[]
 
   @@unique([userId, slug])
   @@index([userId, isPublic])
 }
 
 model Snippet {
-  id              String      @id @default(cuid())
+  id              String   @id @default(cuid())
   userId          String
   collectionId    String?
   sourceUrl       String?
   sourceTitle     String?
   highlightedText String
   note            String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([collectionId])
 }
 
 model Bookmark {
-  id           String      @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
   collectionId String?
   url          String
   title        String
   metadataJson Json?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
 
   @@unique([userId, url])
   @@index([userId, createdAt])
   @@index([collectionId])
+}
+
+enum QuipslyNodeType {
+  PERSON
+  QUOTE
+  THEME
+  SOURCE_WORK
+  EVIDENCE
+  LORELIST
+}
+
+enum QuipslyEdgeType {
+  QUOTED_BY
+  APPEARS_IN
+  SUPPORTED_BY
+  HAS_THEME
+  CONTAINS
+  RELATED_TO
+  VARIANT_OF
+}
+
+model QuipslyNode {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  nodeType    QuipslyNodeType
+  status      String          @default("draft")
+  payloadJson Json
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  outgoingEdges QuipLoreEdge[] @relation("EdgeSource")
+  incomingEdges QuipLoreEdge[] @relation("EdgeTarget")
+
+  @@index([nodeType, status])
+  @@index([status, updatedAt])
+}
+
+model QuipLoreEdge {
+  id           String          @id @default(cuid())
+  sourceNodeId String
+  targetNodeId String
+  edgeType     QuipslyEdgeType
+  weight       Int             @default(0)
+  metadataJson Json?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  sourceNode QuipslyNode @relation("EdgeSource", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode QuipslyNode @relation("EdgeTarget", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNodeId, targetNodeId, edgeType])
+  @@index([targetNodeId, edgeType])
+}
+
+model QuipStreamSession {
+  id           String   @id @default(cuid())
+  mode         String
+  startedAt    DateTime @default(now())
+  entrySurface String
+  anonymous    Boolean  @default(true)
+  userId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user   User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  events QuipStreamEvent[]
+
+  @@index([userId, startedAt])
+}
+
+model QuipStreamEvent {
+  id           String   @id @default(cuid())
+  sessionId    String
+  type         String
+  quoteId      String?
+  mode         String
+  occurredAt   DateTime @default(now())
+  dwellMs      Int?
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  session QuipStreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, occurredAt])
+  @@index([quoteId, type])
+}
+
+// PhD Telemetry Tracking
+// Tracks viewership drop-off over time for each parsed video
+model RetentionTelemetry {
+  id            String   @id @default(cuid())
+  videoId       String
+  segmentIndex  Int
+  timestamp     Int
+  retentionRate Float
+  cohortId      String?
+  createdAt     DateTime @default(now())
+
+  @@index([videoId])
+}
+
+// Professional Podcast Hosting & Demographics
+model PodcastEpisode {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  title           String
+  description     String
+  audioUrl        String
+  audioSizeBytes  Int
+  durationSeconds Int
+  episodeType     String   @default("full") // full, bonus, trailer
+  season          Int?
+  episodeNumber   Int?
+  publishedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  downloads PodcastDownloadLog[]
+}
+
+model PodcastDownloadLog {
+  id        String   @id @default(cuid())
+  episodeId String
+  userAgent String
+  ipHash    String
+  country   String   @default("US")
+  city      String?
+  timestamp DateTime @default(now())
+
+  episode PodcastEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([episodeId])
+  @@index([timestamp])
+}
+
+// Social Media Command Center
+model SocialAccount {
+  id           String   @id @default(cuid())
+  platform     String // youtube, instagram, tiktok, linkedin
+  handle       String
+  accessToken  String
+  refreshToken String?
+  userId       String
+  createdAt    DateTime @default(now())
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts SocialPost[]
+
+  @@unique([platform, handle])
+}
+
+model SocialPost {
+  id            String    @id @default(cuid())
+  accountId     String
+  content       String
+  mediaUrl      String?
+  scheduledFor  DateTime?
+  publishedAt   DateTime?
+  status        String    @default("draft") // draft, scheduled, published, failed
+  analyticsJson Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  account SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([status, scheduledFor])
+}
+
+model StudioMediaAsset {
+  id            String   @id @default(cuid())
+  filename      String
+  url           String
+  mimeType      String?
+  sizeBytes     BigInt?
+  isProxy       Boolean  @default(false)
+  rawAssetId    String? // If this is a proxy, points to the original raw StudioMediaAsset
+  cloudProvider String   @default("gcs")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  projects StudioProject[]
+
+  @@index([createdAt])
+}
+
+// Agent Control Center
+model AgentNode {
+  id              String      @id @default(cuid())
+  hostName        String      @unique
+  ipAddress       String
+  status          String      @default("offline")
+  capabilities    Json
+  lastHeartbeatAt DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  agentTasks      AgentTask[]
+}
+
+model QuipslyAgent {
+  id                String   @id @default(cuid())
+  designation       String // e.g. "forager", "builder", "publisher"
+  status            String   @default("idle")
+  currentTask       String?
+  assignedProjectId String?
+  lastActiveAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([designation, status])
+}
+
+model AgentTask {
+  id          String    @id @default(cuid())
+  agentId     String
+  instruction String
+  outputJson  Json?
+  status      String    @default("QUEUED") // QUEUED, IN_PROGRESS, COMPLETED, FAILED
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  agent AgentNode @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([status])
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { recordWorldHubProviderEvent } from "@/lib/server/worldhub-provider-events";
 import { verifyStripeWebhookSignature } from "@/lib/worldhub/webhook-signatures";
+import { processStripeWebhookEvent } from "@/lib/server/stripe";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   };
   const eventType = payload.type || "stripe.event";
 
-  await recordWorldHubProviderEvent({
+  const event = await recordWorldHubProviderEvent({
     providerKey: "stripe",
     eventType,
     externalEventId: payload.id || null,
@@ -50,6 +51,13 @@ export async function POST(request: Request) {
     payloadJson,
     occurredAt: eventDate(payload.created),
   });
+
+  try {
+    // Process it inline so it reconciles with WorldHubOrder immediately
+    await processStripeWebhookEvent(event.id, payloadJson as any);
+  } catch (e) {
+    // Ignore error here so we still return 200 to Stripe, the event is saved and can be retried
+  }
 
   return NextResponse.json({ ok: true, received: true });
 }

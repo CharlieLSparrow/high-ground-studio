@@ -40,7 +40,10 @@ import {
 import { getHgoEpisodePublishCandidateForOwner } from "@/lib/server/hgo-episode-publish-candidates";
 import { getHgoStagedArtifactForOwner } from "@/lib/server/hgo-staged-artifacts";
 import ArtifactHandoffPanel from "../../hgo-staged-artifacts/ArtifactHandoffPanel";
-import { saveHgoEpisodePublishCandidateAction } from "./actions";
+import { 
+  executeHgoEpisodePublishCandidateAction,
+  saveHgoEpisodePublishCandidateAction 
+} from "./actions";
 import OperatorHandoffPanel from "./OperatorHandoffPanel";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
@@ -449,6 +452,20 @@ export default async function TeamHgoPublishQueueDetailPage({
                     },
                   ]}
                 />
+                
+                {persistedCandidate.candidateStatus !== "published" && (
+                  <form action={executeHgoEpisodePublishCandidateAction} className="mt-4">
+                    <input type="hidden" name="candidateId" value={persistedCandidate.id} />
+                    <input type="hidden" name="recordId" value={record.recordId} />
+                    <button
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-300/12 px-3 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-300/18"
+                      type="submit"
+                    >
+                      <Route aria-hidden="true" className="h-4 w-4" />
+                      Execute Live Publish
+                    </button>
+                  </form>
+                )}
               </>
             ) : (
               <>

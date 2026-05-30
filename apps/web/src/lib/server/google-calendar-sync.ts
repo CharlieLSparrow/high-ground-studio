@@ -249,7 +249,7 @@ async function markProviderHealth(
   });
 }
 
-async function syncAppointmentToGoogleCalendar({
+export async function syncAppointmentToGoogleCalendar({
   appointmentId,
   requestedByEmail,
 }: {

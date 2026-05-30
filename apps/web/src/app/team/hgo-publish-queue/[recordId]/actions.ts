@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { resolveTeamAccess } from "@/lib/content-access";
-import { saveHgoEpisodePublishCandidateForOwner } from "@/lib/server/hgo-episode-publish-candidates";
+import { 
+  executeHgoEpisodePublishCandidate,
+  saveHgoEpisodePublishCandidateForOwner 
+} from "@/lib/server/hgo-episode-publish-candidates";
 
 function getOwnerEmail(access: Awaited<ReturnType<typeof resolveTeamAccess>>) {
   return (
@@ -49,4 +52,35 @@ export async function saveHgoEpisodePublishCandidateAction(formData: FormData) {
 
   revalidatePath("/team/hgo-publish-queue");
   revalidatePath(`/team/hgo-publish-queue/${encodeURIComponent(recordId)}`);
+}
+
+export async function executeHgoEpisodePublishCandidateAction(formData: FormData) {
+  const ownerEmail = await requireTeamOperator();
+  const candidateId = String(formData.get("candidateId") ?? "").trim();
+  const recordId = String(formData.get("recordId") ?? "").trim();
+
+  if (!candidateId) {
+    throw new Error("candidateId is required.");
+  }
+
+  const result = await executeHgoEpisodePublishCandidate({
+    candidateId,
+    executedByEmail: ownerEmail,
+  });
+
+  if (!result.ok) {
+    throw new Error(result.error || "Publish failed");
+  }
+
+  // Revalidate the team queues
+  revalidatePath("/team/hgo-publish-queue");
+  if (recordId) {
+    revalidatePath(`/team/hgo-publish-queue/${encodeURIComponent(recordId)}`);
+  }
+
+  // Revalidate the public site content routes
+  revalidatePath("/episodes");
+  if (result.candidate?.projectionSlug) {
+    revalidatePath(`/episodes/${result.candidate.projectionSlug}`, "page");
+  }
 }

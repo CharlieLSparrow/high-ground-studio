@@ -1,8 +1,15 @@
 import { defineDocs, defineConfig } from "fumadocs-mdx/config";
 
-export const docs = defineDocs({
-  // This MUST match the folder name you see in your VS Code sidebar
-  dir: "content/publish", 
+export const episodes = defineDocs({
+  dir: "content/publish/episodes",
+});
+
+export const learn = defineDocs({
+  dir: "content/publish/learn",
+});
+
+export const news = defineDocs({
+  dir: "content/publish/news",
 });
 
 export default defineConfig();

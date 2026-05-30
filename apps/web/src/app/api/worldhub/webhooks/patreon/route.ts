@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { recordWorldHubProviderEvent } from "@/lib/server/worldhub-provider-events";
 import { verifyPatreonWebhookSignature } from "@/lib/worldhub/webhook-signatures";
+import { processPatreonWebhookEvent } from "@/lib/server/patreon";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     request.headers.get("x-patreon-event")?.trim() || "patreon.webhook";
   const externalEventId = eventId(payloadJson);
 
-  await recordWorldHubProviderEvent({
+  const event = await recordWorldHubProviderEvent({
     providerKey: "patreon",
     eventType,
     externalEventId,
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
     payloadText,
     payloadJson,
   });
+
+  try {
+    await processPatreonWebhookEvent(event.id, payloadJson);
+  } catch (e) {
+    // Ignore error here so we still return 200, the event is saved
+  }
 
   return NextResponse.json({ ok: true, received: true });
 }
