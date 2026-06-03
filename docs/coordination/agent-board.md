@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-05-26
+Last updated: 2026-06-02
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -22,6 +22,28 @@ docs/agents/restart-playbook.md
 ```
 
 ## Current Snapshot
+
+### Quipsly SaaS Transition (Build Our Own) Sprint
+
+Current authority:
+- `docs/vision/quipsly-creative-os-north-star.md`
+- `docs/architecture/quipsly-document-kernel.md`
+- `implementation_plan.md` (Internal Custom SaaS Transition Plan)
+
+Live app:
+- `https://nest.quipsly.com`
+- active package: `apps/quipsly`
+
+Current north star:
+- Transition from internal prototype to a "Build Our Own" internal SaaS (Product-Led Growth).
+- Target audience: Small team content creators, authors, coaches.
+- We will replace third-party tools (Stripe Billing CRM, HubSpot, PostHog, Intercom) with custom internal modules that fit our exact data models.
+
+Immediate next implementation:
+- **Phase 1 (Self-Serve Core):** Custom Auth & Org Roles, Basic Admin Feedback Loop, Internal Event Tracking V1.
+- Ensure all new API/database scaffolding is built internally within the High Ground Studio ecosystem.
+
+### Historical Board Snapshot
 
 Verified during the Codex application handoff prep on 2026-05-26.
 

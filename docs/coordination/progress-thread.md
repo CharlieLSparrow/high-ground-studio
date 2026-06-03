@@ -4,6 +4,62 @@ Append short updates here so the project has one readable async thread across
 agents and worktrees. Keep updates concrete: branch, action, files touched,
 checks, blockers, and next handoff.
 
+## 2026-06-02
+
+### Codex / Quipsly Creative OS canonical docs
+
+- Created the new current-authority Quipsly docs:
+  - `docs/vision/quipsly-creative-os-north-star.md`
+  - `docs/architecture/quipsly-document-kernel.md`
+  - `docs/plans/quipsly-kernel-now-next-later.md`
+  - `docs/agents/quipsly-current-brief.md`
+  - `docs/archive/quipsly-guidance-supersession.md`
+- Updated `docs/README.md` so future agents see the new Quipsly docs first.
+- Updated `docs/coordination/agent-board.md` with the live Quipsly sprint,
+  current app/package/domain, and immediate kernel implementation lane.
+- Decision recorded:
+  - do not physically move or delete older docs tonight
+  - treat older Studio, Manuscript Desk, and Quipsly/QuipLore docs as
+    historical source material when they conflict with the new north-star docs
+  - build a Quipsly-native document kernel as the canonical brain
+  - keep editor engines as adapters and current DB block/span rows as
+    materialized projections during transition
+
+### Codex / Quipsly document kernel first slice
+
+- Created `packages/quipsly-document-kernel` as the first pure TypeScript kernel
+  package.
+- Added core types for:
+  - `QuipslyDocument`
+  - `DocumentNode`
+  - `BoundaryMarker`
+  - `Region`
+  - `InlineAnnotation`
+  - `EntityReference`
+  - text, node, boundary, region, media-time, and timeline anchors
+- Added operation support for:
+  - insert text
+  - delete text
+  - split node
+  - merge adjacent nodes
+  - add/remove boundary
+  - add region
+  - apply/remove inline annotation
+- Added projections for materialized blocks, tagged spans, boundary ranges, and
+  region ranges so the current DB block/span layer can remain a transition
+  projection.
+- Added `studioProjection.ts` to convert the current `/create` block/span shape
+  into a kernel document and project kernel state back into block/span-shaped
+  records.
+- Added `getAgentVisibleContext(...)` so future agents can read kernel context
+  instead of pixels.
+- Added validation and migration stubs.
+- Added a Benjamin Franklin fixture/test proving the intended quote split case:
+  when a paragraph is split before the quote, the quote annotation moves to the
+  new node and projections point at the new block.
+- Added `/kernel-lab` in `apps/quipsly` as a safe non-production visual proof
+  surface for the kernel split/projection behavior.
+
 ## 2026-05-25
 
 ### Codex / `main` coaching feature controls
@@ -1378,3 +1434,121 @@ checks, blockers, and next handoff.
 - `pnpm --filter studio build` still fails inside the sandbox with the known
   Turbopack/PostCSS helper port-bind restriction, but the outside-sandbox build
   passed.
+
+## 2026-06-02 - Quipsly kernel validation and live deploy push
+
+- Built the first `@high-ground/quipsly-document-kernel` package and validated the hard case: a Benjamin Franklin quote annotation survives a paragraph split and projects back into Studio block/span records.
+- Added `/kernel-lab` to Quipsly and linked it from `/create` when Publisher Mode is enabled.
+- Local validations passed: `pnpm quipsly:kernel:typecheck`, `pnpm quipsly:kernel:build`, `pnpm quipsly:kernel:test`, and `pnpm --filter quipsly build` with collab env vars.
+- Browser smoke passed on `http://127.0.0.1:3000/kernel-lab`: validation shows Clean, 2 nodes after split, 1 projected span, and the Studio bridge output.
+- Browser smoke passed on `http://127.0.0.1:3000/create?publisher=1` without local `DATABASE_URL`: the workbench now falls back to an explicit offline browser lab instead of a 500, still showing Episode 4/8/9 views and the Kernel Lab link.
+- Production schema push completed through Cloud Run Job execution `prisma-db-push-tt9cg`.
+- App deploy Cloud Build started as `c26090c7-2ff9-468f-93e3-b40644000c88`; smoke live `/create` and `/kernel-lab` after it completes.
+
+## 2026-06-02 - Document outline lens added
+
+- Added a `/create` document-outline lens that derives clickable boundaries from short heading blocks such as `Preface`, `Introduction`, `Chapter ...`, and `Episode ...`.
+- Selecting an outline item filters the editor from that heading until the next heading, so chapters/episodes work before any manual tags exist.
+- Local browser smoke verified the offline fallback: clicking `Episode 8` reduced the editor to the `Episode 8` heading and body only.
+
+## 2026-06-02 - Enter creates blocks
+
+- Added server-backed block splitting in `/create`: Enter splits the current block at the cursor and creates a new `StudioDocumentBlock`; Shift+Enter remains the inline newline escape hatch.
+- The split action shifts following block order, updates the current block body, creates the next block, and remaps tagged spans across the split when possible.
+- Local browser smoke verified the Franklin-quote-style hard case: pressing Enter at the start of a block increased visible editor blocks from 7 to 8 and separated the text into its own block.
+
+## 2026-06-02 - Show Mode marking foundation
+
+- Added foundational show-production tags to the `/create` workbench: `Homer`, `Charlie`, `Show Note`, `Clip Cue`, and `YouTube Clip`.
+- Added a `Show Mode` lens so the manuscript can become the recording run sheet: speaker/author passages, show notes, and clip cues are filterable from the sidebar.
+- Loaded persisted `StudioTaggedSpan` offsets into the client block model and added a marked reading layer above each editable textarea so tagged ranges can be seen while reading.
+- Local browser smoke verified `Show Mode`, voice/show/media tags, and filtered editor output.
+
+## 2026-06-02 - Dev Lab vs real manuscript projects
+
+- Changed `/create` default to the `quipsly-dev-lab` project so agents and experiments have a safe mutable sandbox.
+- Added `high-ground-odyssey-manuscript` as the canonical real manuscript project; it seeds from the latest manuscript snapshot if empty.
+- Kept `quipsly-live` as `Legacy Live` so existing data remains reachable.
+- Added a visible project switcher in the workbench header: Dev Lab, HGO Manuscript, Legacy Live.
+- Local browser smoke verified default Dev Lab, Show Mode, and project switcher visibility.
+
+## 2026-06-02 - Live deploy `studio-00131-v42`
+
+- Deployed Cloud Run revision `studio-00131-v42` from image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:quipsly-projects-show-20260602020656`.
+- This revision includes: Quipsly Document Kernel lab, offline fallback, project switcher, Dev Lab default, HGO Manuscript project, Legacy Live link, Document Outline lens, Enter-to-split blocks, Show Mode, speaker/show-note/clip tags, and marked reading layer.
+- HTTP smoke passed for `/create?project=high-ground-odyssey-manuscript&publisher=1` and `/kernel-lab` on `studio-hm2odnvjga-uc.a.run.app`.
+
+## 2026-06-02 - Live deploy `studio-00132-xkz`
+
+- Deployed Cloud Run revision `studio-00132-xkz` from image `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:quipsly-devlab-repair-20260602021324`.
+- Added Dev Lab self-healing for old seed data: if Show Mode has no speaker/show/media spans, Dev Lab seeds Homer/Charlie/show-note/clip-cue spans automatically on load.
+- Final live browser smoke passed: `/create?publisher=1&view=show-mode` shows Dev Lab Show Mode content, and `/create?project=high-ground-odyssey-manuscript&publisher=1` opens the real manuscript with project switcher visible.
+
+## 2026-06-02 - Embedded YouTube clip cue in manuscript
+
+- Added `ClipCueCard` to `/create`: a block tagged `clip-cue`/`youtube-clip`, or containing a YouTube URL/clip syntax, now renders an embedded clip editor directly in the writing surface.
+- Clip cues use manuscript-native text fields: `Clip:`, `Start:`, `End:`, and `Note:` so agents and humans can edit the same source of truth.
+- The card renders a YouTube iframe with `start` and `end` parameters so recording playback can be adjusted while writing.
+- Local browser smoke verified entering URL `https://www.youtube.com/watch?v=ysz5S6PUM-U`, Start `0:05`, End `0:12` produced iframe `https://www.youtube.com/embed/ysz5S6PUM-U?rel=0&modestbranding=1&start=5&end=12` and wrote the cue back into the manuscript block.
+
+### 2026-06-02 - Codex clip-stack cue card
+
+- Extended the `/create` Show Mode clip cue card from single-video segment playback into a manuscript-native clip stack.
+- Text format remains readable and editable in the document: repeated `Clip: <youtube-url>` sections with one or more `Segment: start-end` rows under each clip.
+- Play mode flattens those clip sections into one playback stack so Episode/show blocks can stitch ranges from multiple YouTube videos without leaving the writing surface.
+- This is intentionally a near-seamless iframe-based sequence first; frame-perfect playback can come later through the YouTube IFrame API or the real media pipeline.
+
+### 2026-06-02 - Codex default everything and subtractive Book Mode
+
+- Adjusted `/create` view semantics so the default lens is `Everything Mode`: the living document shows manuscript, notes, tags, and clip scaffolding by default.
+- Added `Book Mode` as the subtractive clean-reading/export lens. It hides production/media tags such as `show-note`, `clip-cue`, `youtube-clip`, `internal_note`, `social-clip`, and `media` instead of requiring prose to be specially selected into a book view.
+- Added `excludeTagSlugs` support to workbench views so future lenses can hide clutter without creating dangerous additive shadow-documents.
+- Product rule: the manuscript remains the object; modes are ways of hiding or focusing the same object, not separate content stores.
+
+### 2026-06-02 - Default starter project concept
+
+- Add a default project/document for every new Quipsly account.
+- The starter document should explain how Quipsly works by using Quipsly features inside the document itself: tags, lenses, Book Mode, notes, clip cues, speaker/voice markings, embedded media cues, and example sidebar/research patterns.
+- This should feel like a living demo manuscript, not a separate onboarding checklist or docs page.
+- Tone target: whimsical, sharp, humane comic-fantasy narrator energy with Discworld-style vibes, but no direct Discworld references, names, settings, or imitation that would make it feel like a parody/copy.
+- Product purpose: show users immediately why the “everything visible by default, subtractive lenses when needed” model is powerful for books, episodes, articles, talks, studying, and research.
+
+### 2026-06-02 - Codex starter-demo document foundation
+
+- Added `apps/quipsly/src/app/create/starterDocuments.ts` as the source for seeded starter content.
+- The default Dev Lab seed now uses a living Quipsly starter document that demonstrates tags, Everything Mode, subtractive Book Mode, show notes, clip stacks, episode headings, and research-note patterns inside the document itself.
+- Existing documents are not overwritten: starter blocks are only used when a seeded document has zero blocks.
+- The writing tone aims for whimsical, sharp, humane comic-fantasy narrator energy without direct references to Discworld or any Discworld-specific characters/settings.
+
+### 2026-06-02 - Codex starter demo project route
+
+- Added `quipsly-starter-demo` as a separate project config and project switcher option.
+- This gives us a visible, safe place to iterate on the future new-account default document without overwriting Dev Lab experiments or the High Ground Odyssey manuscript.
+- The Starter Demo uses the same starter block source as the future default onboarding template.
+
+### 2026-06-02 - Navigation system needs to grow up
+
+- Future navigation should read from the actual Quipsly document/project graph instead of being mostly hardcoded sidebar view buttons.
+- Base unit language is still settling: project, document, note, manuscript, notebook, and workspace need a clear hierarchy that feels obvious to users.
+- Navigation should understand headings, episodes, chapters, stories, notes, clip cues, research/source material, and saved lenses as first-class surfaces derived from the same living document model.
+- Product direction: evolve the sidebar from a view picker into a mature table-of-contents plus knowledge-map system that can support writing, studying, production, and future onboarding documents.
+
+### 2026-06-02 - Codex QA login follow-up
+
+- Follow-up reminder: create a real Google/Workspace QA account for Codex testing, such as `codex@quipsly.com` or `qa@quipsly.com`.
+- Once the account exists, wire that email into Studio access using the existing Google/NextAuth role or allowlist path instead of adding a fake password or backdoor.
+- Purpose: let Codex test authenticated Studio/collab flows directly in the browser without using Charlie's personal session.
+
+### 2026-06-02 - Reliability before video-editor sprint
+
+- Product course correction: stop overfitting the workbench language around specific episode numbers. Episode/chapter/story numbers are document data, not the architecture.
+- Current priority is editor trust: clear save-state feedback, durable writing, safe tagging, and navigation that helps with the active production job without dragging the team back into old manuscript-recovery obsession.
+- After the current editor reliability/navigation slices, shift hard into the video editor so Quipsly can support syncing, clip review, and episode editing under the same living-document workflow.
+
+### 2026-06-02 - Audio-first recording room direction
+
+- Product direction: start the recording system audio-first instead of trying to clone Riverside/Descript video recording immediately.
+- Core flow: a live call for conversation/coordination, local high-quality asynchronous audio capture/upload per participant, manuscript/show notes visible in the same surface, and clip cues that can be played during the recording with timing captured against the session timeline.
+- Video can remain synchronized as an asset layer: local/remote video tracks, YouTube/reference clips, screen/video cues, and later multicam assets align to the high-quality audio spine rather than defining the whole recording system up front.
+- This connects naturally to transcript generation, paper edit, multitrack podcast editing, show notes, clip extraction, and publishing. The editing system should remain robust and multitrack, but connected tangibly to manuscript blocks, recording cues, and transcript ranges.
+- Existing video-editor work remains useful as timeline/render/segment/asset/360 groundwork, but mock assets and toy UI assumptions should not be treated as product truth.

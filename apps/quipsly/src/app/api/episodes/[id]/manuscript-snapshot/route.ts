@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import * as Y from "yjs";
-// We need to query raw SQL since StudioManuscriptCollaborationRoom isn't in Prisma schema
-const prisma = new PrismaClient();
+import { getPrismaClient } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const prisma = getPrismaClient();
+
   try {
-    const episodeId = params.id;
+    const { id: episodeId } = await params;
     
     // The collab server uses roomName = 'episode-{id}' or similar
     // Let's assume roomName is just the episodeId for now

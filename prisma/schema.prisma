@@ -150,6 +150,7 @@ enum StudioTagCategory {
   source
   projection
   review
+  production_breakdown
 }
 
 enum StudioKnowledgeNodeType {
@@ -159,6 +160,7 @@ enum StudioKnowledgeNodeType {
   question
   projection_candidate
   source_note
+  production_element
 }
 
 enum StudioManuscriptKind {
@@ -244,6 +246,16 @@ model User {
   bookmarks          Bookmark[]
   quipStreamSessions QuipStreamSession[]
   socialAccounts     SocialAccount[]
+  marketingFunnels   MarketingFunnel[]
+  marketingPersonas  MarketingPersona[]
+  projects           Project[]
+  landingPages       LandingPage[]
+  emailSequences     EmailSequence[]
+  marketingLeads     MarketingLead[]
+  marketingCampaigns MarketingCampaign[]
+  organizationMemberships OrganizationMember[]
+  feedbackTickets    FeedbackTicket[]
+  userEvents         UserEvent[]
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -857,6 +869,8 @@ model StudioProject {
   knowledgeNodes StudioKnowledgeNode[]
   manuscript     StudioManuscript?     @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
   mediaAssets    StudioMediaAsset[]
+  mediaBins      MediaBin[]
+  episodeProductions StudioEpisodeProduction[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -879,9 +893,39 @@ model StudioDocument {
   blocks         StudioDocumentBlock[]
   taggedSpans    StudioTaggedSpan[]
   knowledgeNodes StudioKnowledgeNode[]
+  episodeProductions StudioEpisodeProduction[]
 
   @@index([projectId, stableId])
   @@index([projectId, projectionStatus])
+}
+
+model StudioEpisodeProduction {
+  id                    String   @id @default(cuid())
+  projectId             String
+  documentId            String
+  slug                  String
+  title                 String
+  boundaryLabel         String
+  boundaryKind          String   @default("episode")
+  boundaryStartBlockId  String?
+  boundaryEndBlockId    String?
+  boundaryStartOrder    Int?
+  boundaryEndOrder      Int?
+  status                String   @default("draft")
+  recordingRoomJson     Json?
+  timelineJson          Json?
+  transcriptJson        Json?
+  productionJson        Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  project  StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, slug])
+  @@index([documentId])
+  @@index([projectId, boundaryKind])
+  @@index([projectId, status, updatedAt])
 }
 
 model StudioManuscript {
@@ -1121,6 +1165,7 @@ model StudioTag {
   project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taggedSpans    StudioTaggedSpan[]
   knowledgeNodes StudioKnowledgeNode[]
+  mediaClips     MediaClip[]
 
   @@unique([projectId, slug])
   @@index([projectId, category])
@@ -1433,12 +1478,53 @@ model StudioMediaAsset {
   isProxy       Boolean  @default(false)
   rawAssetId    String? // If this is a proxy, points to the original raw StudioMediaAsset
   cloudProvider String   @default("gcs")
+  
+  // New Video Metadata
+  duration      Float?
+  resolution    String?
+  fps           Float?
+  thumbnailUrl  String?
+  mediaBinId    String?
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  projects StudioProject[]
+  projects      StudioProject[]
+  mediaBin      MediaBin?   @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips         MediaClip[]
 
   @@index([createdAt])
+  @@index([mediaBinId])
+}
+
+model MediaBin {
+  id            String   @id @default(cuid())
+  projectId     String
+  name          String
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mediaAssets   StudioMediaAsset[]
+
+  @@index([projectId])
+}
+
+model MediaClip {
+  id            String   @id @default(cuid())
+  mediaAssetId  String
+  title         String
+  description   String?
+  inTimecode    Float
+  outTimecode   Float
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  mediaAsset    StudioMediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  tags          StudioTag[]
+
+  @@index([mediaAssetId])
 }
 
 // Agent Control Center
@@ -1482,4 +1568,397 @@ model AgentTask {
 
   @@index([agentId])
   @@index([status])
+}
+
+// -----------------------------------------------------------------------------
+// DYNAMIC FUNNEL SIMULATOR (MARKETING)
+// -----------------------------------------------------------------------------
+
+model MarketingFunnel {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  goalType    String   @default("lead_generation") // e.g., lead_generation, sales, webinar_registration
+  targetValue Float?   // e.g., Revenue goal
+  status      String   @default("draft")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps       FunnelStep[]
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model FunnelStep {
+  id              String   @id @default(cuid())
+  funnelId        String
+  stepOrder       Int
+  stepType        String   // e.g., landing_page, email_sequence, checkout
+  name            String
+  expectedConvRate Float?  // AI predicted conversion rate
+  actualConvRate  Float?   // Real analytics data
+  views           Int      @default(0)
+  conversions     Int      @default(0)
+  metadataJson    Json     // Store URLs, email sequence IDs, etc.
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  funnel          MarketingFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([funnelId, stepOrder])
+}
+
+// -----------------------------------------------------------------------------
+// LIVING AVATAR MATRIX (MARKETING)
+// -----------------------------------------------------------------------------
+
+model MarketingPersona {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  avatarImageUrl  String?
+  demographics    String
+  psychographics  String
+  painPointsJson  Json
+  desiresJson     Json
+  objectionsJson  Json
+  contentPillarsJson Json
+  sourceDataJson  Json
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+// -----------------------------------------------------------------------------
+// STORYBOARD (PRE-PRODUCTION)
+// -----------------------------------------------------------------------------
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenes      Scene[]
+  shootDays   ShootDay[]
+
+  @@index([userId, title])
+}
+
+model Scene {
+  id          String   @id @default(cuid())
+  projectId   String
+  sceneNumber String
+  title       String?
+  location    String?
+  timeOfDay   String?
+  sortOrder   Int      @default(0)
+  stripOrder  Int      @default(0)
+  shootDayId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shootDay    ShootDay? @relation(fields: [shootDayId], references: [id], onDelete: SetNull)
+  shots       StoryboardShot[]
+
+  @@index([projectId, sortOrder])
+  @@index([projectId, stripOrder])
+}
+
+model ShootDay {
+  id          String   @id @default(cuid())
+  projectId   String
+  dayNumber   Int
+  date        DateTime?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes      Scene[]
+
+  @@index([projectId, sortOrder])
+}
+
+model StoryboardShot {
+  id          String   @id @default(cuid())
+  sceneId     String
+  sortOrder   Int      @default(0)
+  shotNumber  String
+  imageUrl    String?
+  action      String
+  dialogue    String?
+  cameraInfo  String
+  vfxNotes    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scene       Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  @@index([sceneId, sortOrder])
+}
+
+// -----------------------------------------------------------------------------
+// LEAD CAPTURE BUILDER (MARKETING)
+// -----------------------------------------------------------------------------
+
+model LandingPage {
+  id              String   @id @default(cuid())
+  userId          String
+  personaId       String?  // The target avatar for this page
+  name            String
+  headline        String?
+  subheadline     String?
+  ctaText         String?
+  status          String   @default("draft") // draft, published
+  slug            String?  @unique
+  views           Int      @default(0)
+  conversions     Int      @default(0)
+  campaignId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organizationId  String?
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign        MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  leads           MarketingLead[]
+  
+  @@index([userId, status])
+  @@index([organizationId])
+}
+
+model MarketingLead {
+  id              String   @id @default(cuid())
+  userId          String
+  landingPageId   String?
+  email           String
+  name            String?
+  status          String   @default("subscribed") // subscribed, unsubscribed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organizationId  String?
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  landingPage     LandingPage? @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
+
+  @@index([userId, email])
+  @@index([landingPageId])
+  @@index([organizationId])
+}
+
+// -----------------------------------------------------------------------------
+// EMAIL SEQUENCE AUTOMATOR (MARKETING)
+// -----------------------------------------------------------------------------
+
+model EmailSequence {
+  id              String   @id @default(cuid())
+  userId          String
+  personaId       String?
+  name            String
+  status          String   @default("draft") // draft, active
+  emailsJson      Json     // Array of email objects (subject, body, dayOffset)
+  campaignId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organizationId  String?
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign        MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([organizationId])
+}
+
+// -----------------------------------------------------------------------------
+// CAMPAIGN SANDBOX (MARKETING)
+// -----------------------------------------------------------------------------
+
+model MarketingCampaign {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  description     String?
+  status          String   @default("draft") // draft, active, completed
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organizationId  String?
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  landingPages    LandingPage[]
+  emailSequences  EmailSequence[]
+
+  @@index([userId, status])
+  @@index([organizationId])
+}
+
+// -----------------------------------------------------------------------------
+// ORGANIZATION & IDENTITY (QUIPSLY SAAS)
+// -----------------------------------------------------------------------------
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members            OrganizationMember[]
+  feedbackTickets    FeedbackTicket[]
+  userEvents         UserEvent[]
+  subscription       Subscription?
+  landingPages       LandingPage[]
+  marketingLeads     MarketingLead[]
+  emailSequences     EmailSequence[]
+  marketingCampaigns MarketingCampaign[]
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(VIEWER)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+enum FeedbackTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum FeedbackTicketType {
+  BUG
+  FEATURE_REQUEST
+  GENERAL
+}
+
+model FeedbackTicket {
+  id             String               @id @default(cuid())
+  userId         String
+  organizationId String?
+  type           FeedbackTicketType
+  status         FeedbackTicketStatus @default(OPEN)
+  title          String
+  description    String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+model UserEvent {
+  id             String        @id @default(cuid())
+  userId         String
+  organizationId String?
+  eventName      String
+  payloadJson    Json
+  createdAt      DateTime      @default(now())
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([eventName])
+  @@index([createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// SUBSCRIPTION ENGINE (QUIPSLY SAAS)
+// -----------------------------------------------------------------------------
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+model SubscriptionPlan {
+  id              String   @id @default(cuid())
+  name            String
+  stripeProductId String?  @unique
+  price           Int      
+  currency        String   @default("usd")
+  interval        String   @default("month") 
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subscriptions   Subscription[]
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
+  planId               String
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  status               SubscriptionStatus @default(TRIALING)
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                 SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+}
+
+// -----------------------------------------------------------------------------
+// PUBLIC MARKETING (QUIPSLY.COM)
+// -----------------------------------------------------------------------------
+
+model WaitlistSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  status    String   @default("pending") // pending, invited, active
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
 }

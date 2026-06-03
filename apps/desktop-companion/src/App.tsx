@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Activity, Cloud, Settings, X, HardDrive, Database, UploadCloud, Trash2, CheckCircle2, Video, Cpu, RefreshCw, Smartphone, ScanLine } from 'lucide-react';
+import { Terminal, Activity, Cloud, Settings, X, HardDrive, Database, UploadCloud, Trash2, CheckCircle2, Video, Cpu, RefreshCw, Smartphone, ScanLine, Folder, File, ChevronLeft } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -10,7 +10,7 @@ declare global {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'status'|'cloud'|'ingest'|'migration'>('migration');
+  const [activeTab, setActiveTab] = useState<'status'|'cloud'|'ingest'|'migration'|'files'|'reports'>('files');
   const [wsStatus, setWsStatus] = useState<'connecting'|'online'|'offline'>('connecting');
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -20,9 +20,13 @@ export default function App() {
   const [syncProgress, setSyncProgress] = useState(0);
 
   const [insta360Data, setInsta360Data] = useState<{ isScanning: boolean; error?: string; videos: any[] }>({ isScanning: false, videos: [] });
+  const [fileBrowserData, setFileBrowserData] = useState<{ isScanning: boolean; error?: string; files: any[], currentPath: string, root: 'icloud'|'desktop' }>({ isScanning: false, files: [], currentPath: '', root: 'desktop' });
+  const [verifiedHashes, setVerifiedHashes] = useState<Record<string, string>>({});
+  const [pushingFiles, setPushingFiles] = useState<Record<string, number>>({});
   const [sourceDir, setSourceDir] = useState('/Volumes/Bender/DCIM/107CANON');
   const [availableProjects, setAvailableProjects] = useState<{id: string, name: string}[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
 
   useEffect(() => {
     connectWebSocket();
@@ -45,6 +49,7 @@ export default function App() {
         const { type, payload } = JSON.parse(event.data);
         if (type === 'RENDER_PROGRESS') setRenderJobs(payload);
         if (type === 'INGEST_PROGRESS') setIngestJobs(payload);
+        if (type === 'REPORTS_UPDATED') setReports(payload);
         if (type === 'SYNC_STATUS') {
           setCloudSyncData(payload);
           if (!payload.isSyncing && syncProgress > 0 && syncProgress < 100) {
@@ -55,11 +60,30 @@ export default function App() {
           setSyncProgress(payload.progress);
           setCloudSyncData(payload.status);
         }
+        if (type === 'FILE_PUSH_PROGRESS') {
+          setPushingFiles((prev: any) => {
+             const updated = { ...prev, [payload.fileName]: payload.progress };
+             if (payload.progress >= 100) delete updated[payload.fileName];
+             return updated;
+          });
+        }
         if (type === 'INSTA360_SCAN_RESULT') {
           if (payload.error) {
              setInsta360Data({ isScanning: false, videos: [], error: payload.error });
           } else {
              setInsta360Data({ isScanning: false, videos: payload.videos });
+          }
+        }
+        if (type === 'LOCAL_DIR_RESULT') {
+          if (payload.error) {
+             setFileBrowserData((prev: any) => ({ ...prev, isScanning: false, error: payload.error }));
+          } else {
+             setFileBrowserData({ isScanning: false, files: payload.files, currentPath: payload.currentPath, root: payload.root, error: undefined });
+          }
+        }
+        if (type === 'FILE_CHECKSUM_RESULT') {
+          if (payload.md5) {
+             setVerifiedHashes((prev: any) => ({ ...prev, [payload.fileName]: payload.md5 }));
           }
         }
         if (type === 'PROJECTS_LIST') {
@@ -92,6 +116,19 @@ export default function App() {
     if (wsRef.current && wsStatus === 'online') {
       setInsta360Data({ isScanning: true, videos: [], error: undefined });
       wsRef.current.send(JSON.stringify({ type: 'SCAN_INSTA360' }));
+    }
+  };
+
+  const loadLocalDir = (root: 'icloud'|'desktop', subpath: string = '') => {
+    if (wsRef.current && wsStatus === 'online') {
+      setFileBrowserData(prev => ({ ...prev, isScanning: true, error: undefined, root }));
+      wsRef.current.send(JSON.stringify({ type: 'READ_LOCAL_DIR', payload: { root, subpath } }));
+    }
+  };
+
+  const openGcsBucket = () => {
+    if (wsRef.current && wsStatus === 'online') {
+      wsRef.current.send(JSON.stringify({ type: 'OPEN_GCS_BUCKET' }));
     }
   };
 
@@ -133,10 +170,22 @@ export default function App() {
             <Smartphone className="w-4 h-4" /> 360 Migration
           </button>
           <button 
+            onClick={() => setActiveTab('files')}
+            className={`flex items-center gap-3 px-3 py-2 rounded text-sm font-bold transition-colors ${activeTab === 'files' ? 'bg-sky-500/10 text-sky-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
+          >
+            <Folder className="w-4 h-4" /> Local Files
+          </button>
+          <button 
             onClick={() => setActiveTab('cloud')}
             className={`flex items-center gap-3 px-3 py-2 rounded text-sm font-bold transition-colors ${activeTab === 'cloud' ? 'bg-blue-500/10 text-blue-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
           >
-            <Cloud className="w-4 h-4" /> Cloud Sync
+            <Database className="w-4 h-4" /> Cloud Sync
+          </button>
+          <button 
+            onClick={() => setActiveTab('reports')}
+            className={`flex items-center gap-3 px-3 py-2 rounded text-sm font-bold transition-colors ${activeTab === 'reports' ? 'bg-indigo-500/10 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'}`}
+          >
+            <File className="w-4 h-4" /> AI Reports
           </button>
           <button className="flex items-center gap-3 px-3 py-2 rounded text-sm font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors mt-auto">
             <Settings className="w-4 h-4" /> Settings
@@ -230,10 +279,25 @@ export default function App() {
                       insta360Data.videos.map((vid: any) => (
                         <div key={vid.id} className="bg-black/50 border border-zinc-800 p-2 rounded flex justify-between items-center">
                           <div className="flex flex-col">
-                            <span className="text-sm text-zinc-300 truncate w-40">{vid.name}</span>
-                            <span className="text-xs text-amber-500 font-mono">{vid.size} • Proprietary format</span>
+                            <span className="text-sm text-zinc-300 truncate w-64" title={vid.name}>{vid.name}</span>
+                            {(() => {
+                              const match = vid.name.match(/VID_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+                              if (match) {
+                                const [_, y, m, d, h, min, s] = match;
+                                const date = new Date(`${y}-${m}-${d}T${h}:${min}:${s}`);
+                                const dateStr = date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                                return <span className="text-sm text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded mt-1 mb-1 inline-block w-fit">{dateStr}</span>;
+                              }
+                              return null;
+                            })()}
+                            <span className="text-xs text-amber-500 font-mono">{vid.size} • {vid.path ? 'Local Drive' : 'Proprietary format'}</span>
                           </div>
-                          <button className="text-[10px] uppercase font-bold bg-amber-500/20 text-amber-400 px-2 py-1 rounded">Migrate</button>
+                          <button 
+                            className="text-[10px] uppercase font-bold bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded transition-colors"
+                            onClick={() => wsRef.current?.send(JSON.stringify({ type: 'EXECUTE_INSTA360_CLICK', payload: { box: vid.download_btn_box } }))}
+                          >
+                            Migrate
+                          </button>
                         </div>
                       ))
                     ) : (
@@ -249,10 +313,25 @@ export default function App() {
                     <Database className="w-4 h-4" />
                     High Ground GCS Vault
                   </div>
-                  <div className="flex-1 p-3 overflow-y-auto flex items-center justify-center">
-                    <div className="text-sm text-zinc-500 text-center">
-                      Migrated videos will appear here.
-                    </div>
+                  <div className="flex-1 p-3 overflow-y-auto space-y-2">
+                    {(!cloudSyncData?.cloudVault || cloudSyncData.cloudVault.length === 0) ? (
+                      <div className="h-full flex items-center justify-center text-sm text-zinc-500 text-center">
+                        Migrated videos will appear here.
+                      </div>
+                    ) : (
+                      cloudSyncData.cloudVault.map((v: any, i: number) => (
+                        <div key={i} className="bg-black/50 border border-zinc-800 p-2 rounded flex justify-between items-center">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-zinc-300 truncate w-48" title={v.filename}>{v.filename}</span>
+                            <div className="flex items-center gap-2 mt-1">
+                               <span className="text-xs text-blue-400 bg-blue-500/10 px-2 rounded">{v.sizeMb} MB</span>
+                               <span className="text-[10px] text-zinc-500 font-mono">MD5: {v.md5 ? v.md5.substring(0,8) + '...' : 'Unknown'}</span>
+                            </div>
+                          </div>
+                          <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -336,6 +415,157 @@ export default function App() {
             </>
           )}
 
+          {activeTab === 'files' && (
+            <>
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h1 className="text-2xl font-black text-white">Local Files</h1>
+                  <p className="text-sm text-zinc-400">Scan and migrate assets from your local drives</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => loadLocalDir('desktop', '')}
+                    disabled={fileBrowserData.isScanning}
+                    className={`px-4 py-2 transition-colors text-white text-sm font-bold rounded shadow-lg flex items-center gap-2 ${fileBrowserData.root === 'desktop' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-zinc-800 hover:bg-zinc-700'}`}
+                  >
+                    <Folder className={`w-4 h-4 ${fileBrowserData.isScanning && fileBrowserData.root === 'desktop' ? 'animate-pulse' : ''}`} />
+                    Desktop
+                  </button>
+                  <button 
+                    onClick={() => loadLocalDir('icloud', '')}
+                    disabled={fileBrowserData.isScanning}
+                    className={`px-4 py-2 transition-colors text-white text-sm font-bold rounded shadow-lg flex items-center gap-2 ${fileBrowserData.root === 'icloud' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-zinc-800 hover:bg-zinc-700'}`}
+                  >
+                    <Cloud className={`w-4 h-4 ${fileBrowserData.isScanning && fileBrowserData.root === 'icloud' ? 'animate-pulse' : ''}`} />
+                    iCloud Drive
+                  </button>
+                  <div className="w-px h-8 bg-zinc-800 mx-2 self-center"></div>
+                  <button 
+                    onClick={openGcsBucket}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 transition-colors text-white text-sm font-bold rounded shadow-lg flex items-center gap-2"
+                  >
+                    <Database className="w-4 h-4" />
+                    Open Bucket
+                  </button>
+                </div>
+              </div>
+
+              {fileBrowserData.error && (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-lg mb-6 text-sm font-bold">
+                  {fileBrowserData.error}
+                </div>
+              )}
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col overflow-hidden h-[500px]">
+                <div className="p-3 border-b border-zinc-800 bg-zinc-950/50 flex items-center justify-between gap-2 text-sky-400 text-sm font-bold">
+                  <div className="flex items-center gap-2">
+                    {fileBrowserData.currentPath ? (
+                      <button 
+                        onClick={() => loadLocalDir(fileBrowserData.root, fileBrowserData.currentPath.split('/').slice(0, -1).join('/'))}
+                        className="p-1 hover:bg-sky-500/20 rounded mr-1 transition-colors"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      fileBrowserData.root === 'icloud' ? <Cloud className="w-4 h-4" /> : <Folder className="w-4 h-4" />
+                    )}
+                    {fileBrowserData.root === 'icloud' ? 'iCloud Drive' : 'Desktop'} {fileBrowserData.currentPath ? `/ ${fileBrowserData.currentPath}` : ''}
+                  </div>
+                  <span className="text-xs text-zinc-500">{fileBrowserData.files.length} items found</span>
+                </div>
+                <div className="flex-1 p-3 overflow-y-auto space-y-2">
+                  {fileBrowserData.files.length > 0 ? (
+                    fileBrowserData.files.map((vid: any) => (
+                      <div 
+                        key={vid.id} 
+                        className={`bg-black/50 border border-zinc-800 p-3 rounded flex justify-between items-center transition-colors ${vid.isDirectory ? 'hover:bg-zinc-800 cursor-pointer' : 'hover:border-zinc-700'}`}
+                        onClick={vid.isDirectory ? () => loadLocalDir(fileBrowserData.root, fileBrowserData.currentPath ? `${fileBrowserData.currentPath}/${vid.name}` : vid.name) : undefined}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg bg-zinc-900 flex items-center justify-center ${vid.isDirectory ? 'text-amber-500' : 'text-sky-500'}`}>
+                             {vid.isDirectory ? <Folder className="w-5 h-5" /> : <File className="w-5 h-5" />}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-zinc-300">{vid.name}</span>
+                            <span className="text-xs text-zinc-500 font-mono">{vid.isDirectory ? 'Folder' : vid.size} • {vid.date}</span>
+                          </div>
+                        </div>
+                        {(() => {
+                          const vaultMatch = !vid.isDirectory && cloudSyncData?.cloudVault?.find((v: any) => v.filename === vid.name);
+                          
+                          if (vid.isDirectory) return null;
+                          
+                          if (vaultMatch) {
+                            const localHash = verifiedHashes[vid.name];
+                            if (localHash && localHash === vaultMatch.md5) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] uppercase font-bold text-green-400 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" /> Vaulted
+                                  </span>
+                                  <button 
+                                    className="text-[10px] uppercase font-bold bg-red-500/20 hover:bg-red-500/40 text-red-400 px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                                    onClick={(e) => { e.stopPropagation(); wsRef.current?.send(JSON.stringify({ type: 'DELETE_LOCAL_FILE', payload: { fileName: vid.name, root: fileBrowserData.root, subpath: fileBrowserData.currentPath } })); }}
+                                  >
+                                    <Trash2 className="w-3 h-3" /> Delete Local
+                                  </button>
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                               <button 
+                                 className="text-[10px] uppercase font-bold bg-purple-500/20 hover:bg-purple-500/40 text-purple-400 px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                                 onClick={(e) => { e.stopPropagation(); wsRef.current?.send(JSON.stringify({ type: 'VERIFY_FILE_CHECKSUM', payload: { fileName: vid.name, root: fileBrowserData.root, subpath: fileBrowserData.currentPath } })); }}
+                               >
+                                 Verify Safe to Delete
+                               </button>
+                            );
+                          }
+                          
+                          if (pushingFiles[vid.name] !== undefined) {
+                            const progress = pushingFiles[vid.name];
+                            return (
+                              <div className="flex flex-col gap-1 w-32">
+                                <span className="text-[10px] uppercase font-bold text-blue-400 flex items-center justify-between">
+                                  <span>{progress === 0 ? 'Hashing...' : 'Uploading'}</span>
+                                  <span>{progress > 0 ? `${progress}%` : ''}</span>
+                                </span>
+                                <div className="w-full bg-black rounded-full h-1.5 border border-zinc-800">
+                                  <div className="h-1.5 rounded-full bg-blue-500 transition-all duration-300" style={{ width: `${Math.max(5, progress)}%` }}></div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <button 
+                              className="text-[10px] uppercase font-bold bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                              onClick={(e) => { 
+                                 e.stopPropagation(); 
+                                 setPushingFiles((prev: any) => ({...prev, [vid.name]: 0}));
+                                 wsRef.current?.send(JSON.stringify({ type: 'PUSH_LOCAL_TO_VAULT', payload: { fileName: vid.name, root: fileBrowserData.root, subpath: fileBrowserData.currentPath } })); 
+                              }}
+                            >
+                              <UploadCloud className="w-3 h-3" /> Push to Vault
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-zinc-500 space-y-3">
+                       {fileBrowserData.root === 'icloud' ? <Cloud className="w-12 h-12 text-zinc-700" /> : <Folder className="w-12 h-12 text-zinc-700" />}
+                       <div className="text-sm text-center px-8">
+                         {fileBrowserData.isScanning ? 'Loading directory...' : `Click "Desktop" or "iCloud" to view your files.`}
+                       </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
           {activeTab === 'cloud' && (
             <>
               <div className="flex justify-between items-start mb-8">
@@ -343,14 +573,23 @@ export default function App() {
                   <h1 className="text-2xl font-black text-white">Cloud Sync</h1>
                   <p className="text-sm text-zinc-400">Smart Media Pipeline to GCS Vault</p>
                 </div>
-                <button 
-                  onClick={triggerSync}
-                  disabled={cloudSyncData.isSyncing}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:text-blue-400 transition-colors text-white text-sm font-bold rounded shadow-lg flex items-center gap-2"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  {cloudSyncData.isSyncing ? 'Syncing...' : 'Sync Now'}
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={openGcsBucket}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 transition-colors text-white text-sm font-bold rounded shadow-lg flex items-center gap-2"
+                  >
+                    <Database className="w-4 h-4" />
+                    Open Bucket
+                  </button>
+                  <button 
+                    onClick={triggerSync}
+                    disabled={cloudSyncData.isSyncing}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:text-blue-400 transition-colors text-white text-sm font-bold rounded shadow-lg flex items-center gap-2"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    {cloudSyncData.isSyncing ? 'Syncing...' : 'Sync Now'}
+                  </button>
+                </div>
               </div>
 
               {cloudSyncData.isSyncing && (
@@ -417,6 +656,91 @@ export default function App() {
                      ))}
                   </div>
                 </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'reports' && (
+            <>
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h1 className="text-2xl font-black text-white">AI Reports</h1>
+                  <p className="text-sm text-zinc-400">Gemini 2.5 Auto-Logging & Offload Reports</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {reports.length === 0 ? (
+                  <div className="text-sm text-zinc-500 text-center py-12">No reports generated in this session yet. Run an offload!</div>
+                ) : (
+                  reports.map((report, idx) => {
+                    const cropJob = croppingJobs[report.sourceFile];
+                    
+                    return (
+                    <div key={idx} className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 flex gap-6">
+                      <div className="w-64 h-36 bg-black rounded-lg border border-zinc-800 overflow-hidden flex-shrink-0">
+                        {report.thumbnailPath ? (
+                          <img src={`file://${report.thumbnailPath}`} alt="thumbnail" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-zinc-700">No Thumb</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col justify-center flex-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            {report.smartName && (
+                              <h2 className="text-xl font-bold text-amber-400 mb-1 flex items-center gap-2">
+                                ✨ {report.smartName}
+                              </h2>
+                            )}
+                            <h3 className="text-sm text-zinc-400 mb-3">{report.sourceFile.split('/').pop()}</h3>
+                          </div>
+                          
+                          {/* Slice to Vertical Button / Status */}
+                          <div className="flex flex-col items-end gap-2 w-48">
+                            {cropJob && cropJob.status === 'SLICING' ? (
+                               <div className="w-full">
+                                  <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase mb-1">
+                                     <span>Cropping...</span>
+                                     <span className="text-emerald-400">{cropJob.progress}%</span>
+                                  </div>
+                                  <div className="w-full bg-black rounded-full h-1.5 border border-zinc-800">
+                                     <div className="h-1.5 rounded-full bg-emerald-500 transition-all duration-300" style={{width: `${cropJob.progress}%`}}></div>
+                                  </div>
+                               </div>
+                            ) : cropJob && cropJob.status === 'COMPLETE' ? (
+                               <div className="text-xs font-bold text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/30">
+                                 <CheckCircle2 className="w-4 h-4" /> Sliced to Vertical
+                               </div>
+                            ) : (
+                               <button 
+                                 onClick={() => triggerSliceToVertical(report.sourceFile)}
+                                 className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 transition-colors text-white text-xs font-bold rounded shadow flex items-center gap-2"
+                               >
+                                 <ScanLine className="w-3 h-3" />
+                                 Slice to Vertical
+                               </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {report.tags && report.tags.map((tag: string, i: number) => (
+                            <span key={i} className="px-3 py-1 bg-indigo-500/20 text-indigo-400 rounded-full text-xs font-bold border border-indigo-500/30">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="text-xs font-mono text-zinc-500 grid grid-cols-2 gap-x-8 gap-y-2">
+                          <p>Size: {report.sizeMb} MB</p>
+                          <p>Hash: <span className="text-emerald-400">{report.hashHex?.substring(0,10)}...</span></p>
+                          <p className="col-span-2 text-[10px]">Drives: {report.destinations?.join(', ')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )})
+                )}
               </div>
             </>
           )}

@@ -83,7 +83,8 @@ export type KnowledgeNodeType =
   | "quote"
   | "question"
   | "projection_candidate"
-  | "source_note";
+  | "source_note"
+  | "production_element";
 
 export type KnowledgeEdgeType =
   | "supports"
@@ -131,7 +132,7 @@ export type StudioTag = {
   id: string;
   label: string;
   description?: string;
-  category?: "meaning" | "structure" | "source" | "projection" | "review";
+  category?: "meaning" | "structure" | "source" | "projection" | "review" | "production_breakdown";
   nodeType?: KnowledgeNodeType;
 };
 

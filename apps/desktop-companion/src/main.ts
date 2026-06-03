@@ -55,8 +55,8 @@ const showWindow = () => {
 const createWindow = () => {
   // Create the browser window and show it immediately so the user can see it
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 650,
+    width: 1100,
+    height: 750,
     show: true, // Show initially so they don't miss it!
     frame: false, // Borderless modern look
     transparent: true,

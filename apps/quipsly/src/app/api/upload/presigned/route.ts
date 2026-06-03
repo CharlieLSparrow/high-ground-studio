@@ -1,20 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Storage } from "@google-cloud/storage";
 
 export async function POST(request: NextRequest) {
   try {
-    const { filename, contentType, episodeId } = await request.json();
+    const { filename, contentType, episodeId, directory = "episodes" } = await request.json();
     
-    // In a real app, this would use @google-cloud/storage to generate a V4 Signed URL
-    // e.g. storage.bucket('high-ground-raws').file(`episodes/${episodeId}/${filename}`).getSignedUrl(...)
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID;
+    const bucketName = process.env.NEXT_PUBLIC_GCS_BUCKET || process.env.GCS_BUCKET_NAME || "quipsly-studio-assets";
     
-    // For this prototype, we'll return a mock URL that the iOS app will pretend to upload to
-    // Or if running locally, we could return a URL to a local MinIO/S3 emulator.
+    // Determine the storage path based on context (episode vs storyboard etc)
+    const storagePath = episodeId 
+      ? `${directory}/${episodeId}/${Date.now()}-${filename}`
+      : `${directory}/${Date.now()}-${filename}`;
+
+    // If we have GCP credentials, generate a real signed URL
+    if (projectId) {
+      const storage = new Storage({ projectId });
+      const bucket = storage.bucket(bucketName);
+      const file = bucket.file(storagePath);
+      
+      const [url] = await file.getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+        contentType: contentType,
+      });
+
+      return NextResponse.json({ 
+        url,
+        bucketPath: storagePath,
+        publicUrl: `https://storage.googleapis.com/${bucketName}/${storagePath}`
+      });
+    }
     
-    const mockSignedUrl = `https://storage.googleapis.com/high-ground-raws/episodes/${episodeId}/${filename}?X-Goog-Signature=mock`;
+    // Graceful fallback for local development without GCP credentials
+    console.warn("[GCS Upload] Missing Google Cloud credentials. Falling back to mock URL.");
+    const mockSignedUrl = `https://storage.googleapis.com/${bucketName}/${storagePath}?X-Goog-Signature=mock`;
     
     return NextResponse.json({ 
       url: mockSignedUrl,
-      bucketPath: `episodes/${episodeId}/${filename}` 
+      bucketPath: storagePath,
+      publicUrl: `https://storage.googleapis.com/${bucketName}/${storagePath}`
     });
     
   } catch (error) {

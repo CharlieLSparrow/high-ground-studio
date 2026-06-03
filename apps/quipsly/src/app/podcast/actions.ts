@@ -19,6 +19,20 @@ export type EpisodeData = {
   publishedAt?: string;
 };
 
+type PodcastEpisodeRecord = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  audioUrl: string;
+  audioSizeBytes: number;
+  durationSeconds: number;
+  episodeType: string;
+  season: number | null;
+  episodeNumber: number | null;
+  publishedAt: Date;
+};
+
 // Resilient helper to verify Studio permissions
 async function checkAuth() {
   const session = await auth();
@@ -58,7 +72,7 @@ export async function getEpisodesAction() {
 
     return { 
       success: true, 
-      episodes: episodes.map(e => ({
+      episodes: episodes.map((e: PodcastEpisodeRecord) => ({
         id: e.id,
         slug: e.slug,
         title: e.title,

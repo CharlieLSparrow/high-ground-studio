@@ -51,6 +51,18 @@ const primaryLinks = [
     label: "Podcast Desk",
   },
   {
+    href: "/recorder",
+    label: "Record Room",
+  },
+  {
+    href: "/editor",
+    label: "Video Editor",
+  },
+  {
+    href: "/storyboard",
+    label: "Storyboard Desk",
+  },
+  {
     href: "/publishing",
     label: "Publishing Queue",
   },

@@ -1,8 +1,10 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { IngestService } from './IngestService.ts';
-import { RenderService } from './RenderService.ts';
-import { CloudSyncDaemon } from './CloudSync.ts';
+import { IngestService } from './IngestService';
+import { RenderService } from './RenderService';
+import { CloudSyncDaemon } from './CloudSync';
 import path from 'path';
+import * as dotenv from 'dotenv';
+dotenv.config({ path: path.join(__dirname, '..', '..', '..', '.env') });
 
 const PORT = 4000;
 const wss = new WebSocketServer({ port: PORT });
@@ -47,8 +49,13 @@ wss.on('connection', (ws: WebSocket) => {
           console.log(`🤖 Dispatching Antigravity UI Agent to scan Insta360 Studio...`);
           const { exec } = require('node:child_process');
           const scriptPath = path.join(process.cwd(), 'scripts', 'insta360-scraper-agent.py');
+          const uvPath = path.join(process.env.HOME || '/Users/wall-e', '.local', 'bin', 'uv');
           
-          exec(`python3 "${scriptPath}"`, (error: any, stdout: string, stderr: string) => {
+          exec(`"${uvPath}" run --with google-genai --with pillow python3 "${scriptPath}"`, { env: process.env }, (error: any, stdout: string, stderr: string) => {
+             console.log("--- PYTHON STDOUT ---");
+             console.log(stdout);
+             console.log("--- PYTHON STDERR ---");
+             console.error(stderr);
              if (error) {
                console.error(`❌ Agent Error: ${error.message}`);
                broadcast('INSTA360_SCAN_RESULT', { error: error.message });
@@ -56,13 +63,288 @@ wss.on('connection', (ws: WebSocket) => {
              }
              
              // Extract JSON payload
-             const match = stdout.match(/===AGENT_PAYLOAD_START===\n(.*)\n===AGENT_PAYLOAD_END===/m);
+             const match = stdout.match(/===AGENT_PAYLOAD_START===\n([\s\S]*?)\n===AGENT_PAYLOAD_END===/m);
              if (match && match[1]) {
-                const videos = JSON.parse(match[1]);
-                broadcast('INSTA360_SCAN_RESULT', { success: true, videos });
+                let jsonStr = match[1].trim();
+                // Strip markdown block if present
+                if (jsonStr.startsWith('```json')) jsonStr = jsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
+                if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
+                try {
+                   const videos = JSON.parse(jsonStr);
+                   broadcast('INSTA360_SCAN_RESULT', { success: true, videos });
+                } catch (parseError) {
+                   console.error(`❌ Failed to parse JSON: ${jsonStr}`);
+                   broadcast('INSTA360_SCAN_RESULT', { error: 'Agent payload was not valid JSON.' });
+                }
              } else {
                 broadcast('INSTA360_SCAN_RESULT', { error: 'Failed to parse agent output.' });
              }
+          });
+          break;
+        case 'EXECUTE_INSTA360_CLICK':
+          console.log(`🖱️ Executing UI Automation click...`);
+          const { box } = payload;
+          const { exec: clickExec } = require('node:child_process');
+          const clickScriptPath = path.join(process.cwd(), 'scripts', 'insta360-click-agent.py');
+          const uvExecPath = path.join(process.env.HOME || '/Users/wall-e', '.local', 'bin', 'uv');
+          clickExec(`"${uvExecPath}" run --with pyautogui python3 "${clickScriptPath}" ${box.x} ${box.y} ${box.w} ${box.h}`, (error: any, stdout: string) => {
+             if (error) console.error(`❌ Click Agent Error: ${error.message}`);
+             else console.log(stdout);
+          });
+          break;
+        case 'PUSH_LOCAL_TO_VAULT':
+          console.log(`☁️ Pushing ${payload.fileName} to GCS Vault...`);
+          const fsPush = require('node:fs');
+          const cryptoPush = require('node:crypto');
+          const osPush = require('node:os');
+          let pushBaseRoot = osPush.homedir();
+          if (payload.root === 'icloud') pushBaseRoot = path.join(osPush.homedir(), 'Library/Mobile Documents/com~apple~CloudDocs');
+          else if (payload.root === 'desktop') pushBaseRoot = path.join(osPush.homedir(), 'Desktop');
+          else if (payload.root === 'downloads') pushBaseRoot = path.join(osPush.homedir(), 'Downloads');
+          
+          const pushTargetPath = path.join(pushBaseRoot, payload.subpath || '', payload.fileName);
+          
+          broadcast('SYNC_PROGRESS', { progress: 10, status: { pendingFiles: [], cloudVault: cloudSync.getStatus().cloudVault, isSyncing: true } });
+          
+          const { Storage: PushStorage } = require('@google-cloud/storage');
+          const { OAuth2Client: PushOAuth2Client } = require('google-auth-library');
+          const { execSync: pushExecSync } = require('child_process');
+          const pushToken = pushExecSync('gcloud auth print-access-token').toString().trim();
+          const pushAuthClient = new PushOAuth2Client();
+          pushAuthClient.setCredentials({ access_token: pushToken });
+
+          const pushStorage = new PushStorage({ projectId: 'high-ground-odyssey', authClient: pushAuthClient });
+          const pushBucket = pushStorage.bucket('high-ground-raw-footage');
+          const gcsFile = pushBucket.file(payload.fileName);
+          
+          const fsStat = fsPush.statSync(pushTargetPath);
+          const fileSize = fsStat.size;
+          
+          const readStream = fsPush.createReadStream(pushTargetPath);
+          const writeStream = gcsFile.createWriteStream({ resumable: true });
+          
+          let uploadedBytes = 0;
+          
+          readStream.on('data', (chunk: any) => {
+             uploadedBytes += chunk.length;
+             const progress = Math.min(99, Math.floor((uploadedBytes / fileSize) * 100));
+             broadcast('FILE_PUSH_PROGRESS', { fileName: payload.fileName, progress });
+          });
+          
+          readStream.pipe(writeStream);
+          
+          writeStream.on('finish', () => {
+             broadcast('FILE_PUSH_PROGRESS', { fileName: payload.fileName, progress: 100 });
+             broadcast('SYNC_PROGRESS', { progress: 100, status: { pendingFiles: [], cloudVault: cloudSync.getStatus().cloudVault, isSyncing: false } });
+          });
+          
+          writeStream.on('error', (err: any) => {
+             console.error(`❌ GCS Push error: ${err.message}`);
+             broadcast('SYNC_PROGRESS', { progress: 0, status: { pendingFiles: [], cloudVault: cloudSync.getStatus().cloudVault, isSyncing: false } });
+          });
+          
+          readStream.on('error', (err: any) => {
+             console.error(`❌ Local file read error: ${err.message}`);
+             broadcast('SYNC_PROGRESS', { progress: 0, status: { pendingFiles: [], cloudVault: cloudSync.getStatus().cloudVault, isSyncing: false } });
+          });
+          break;
+
+        case 'START_OFFLOAD':
+          console.log(`🚀 Starting offload: ${payload.sourcePath} -> ${payload.destinations.join(', ')}`);
+          const { OffloadManager } = require('./OffloadManager');
+          const { ProxyGenerator } = require('./ProxyGenerator');
+          const { ReportGenerator } = require('./ReportGenerator');
+          const { AILogger } = require('./AILogger');
+          
+          const offloadMgr = new OffloadManager();
+          const proxyGen = new ProxyGenerator();
+          const reportGen = new ReportGenerator();
+          const aiLogger = new AILogger();
+          
+          // Keep a global array of offloaded clips for the report.
+          // In a real app this would be in a DB, but for the local engine memory is fine.
+          if (!(global as any).offloadedClips) (global as any).offloadedClips = [];
+          
+          broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: 0, status: 'STARTING' });
+          
+          offloadMgr.offload(payload.sourcePath, payload.destinations, (prog: number) => {
+            broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: prog, status: 'RUNNING' });
+          }).then(async (result: any) => {
+            console.log(`✅ Offload complete. Hash: ${result.hash}`);
+            broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: 100, status: 'PROXYING', hash: result.hash });
+            
+            try {
+              // Now generate Proxy + Thumbnail
+              const { proxyPath, thumbnailPath } = await proxyGen.generateProxyAndThumbnail(payload.sourcePath);
+              broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: 100, status: 'AI_LOGGING', hash: result.hash, proxy: proxyPath });
+              
+              // Now call Gemini for AI Auto-logging
+              const { tags, smartName } = await aiLogger.extractTagsAndRename(thumbnailPath, path.basename(payload.sourcePath));
+              
+              const fs = require('fs');
+              const stat = fs.statSync(payload.sourcePath);
+              const sizeMb = (stat.size / (1024 * 1024)).toFixed(2);
+              
+              const newClip = {
+                 sourceFile: payload.sourcePath,
+                 destinations: payload.destinations,
+                 hashHex: result.hash,
+                 sizeMb,
+                 thumbnailPath,
+                 tags,
+                 smartName
+              };
+              
+              (global as any).offloadedClips.push(newClip);
+              
+              // Generate the Daily Report HTML file
+              reportGen.generateDailyReport((global as any).offloadedClips);
+              
+              broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: 100, status: 'COMPLETE', hash: result.hash, proxy: proxyPath, tags, smartName });
+              broadcast('REPORTS_UPDATED', (global as any).offloadedClips);
+            } catch (err: any) {
+              console.error('❌ Proxy/Report error:', err);
+              broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: 100, status: 'ERROR', hash: result.hash, error: err.message });
+            }
+          }).catch((err: any) => {
+            console.error(`❌ Offload error:`, err);
+            broadcast('OFFLOAD_PROGRESS', { file: path.basename(payload.sourcePath), progress: 0, status: 'ERROR', error: err.message });
+          });
+          break;
+        case 'VERIFY_FILE_CHECKSUM':
+          console.log(`🔍 Verifying checksum for ${payload.fileName}...`);
+          const fsVerify = require('node:fs');
+          const cryptoVerify = require('node:crypto');
+          const osVerify = require('node:os');
+          let verifyBaseRoot = osVerify.homedir();
+          if (payload.root === 'icloud') verifyBaseRoot = path.join(osVerify.homedir(), 'Library/Mobile Documents/com~apple~CloudDocs');
+          else if (payload.root === 'desktop') verifyBaseRoot = path.join(osVerify.homedir(), 'Desktop');
+          else if (payload.root === 'downloads') verifyBaseRoot = path.join(osVerify.homedir(), 'Downloads');
+          
+          const verifyTargetPath = path.join(verifyBaseRoot, payload.subpath || '', payload.fileName);
+          
+          const vHashStream = cryptoVerify.createHash('md5');
+          const vReadStream = fsVerify.createReadStream(verifyTargetPath);
+          
+          vReadStream.on('data', (chunk: any) => vHashStream.update(chunk));
+          vReadStream.on('end', () => {
+             const md5 = vHashStream.digest('hex');
+             broadcast('FILE_CHECKSUM_RESULT', { fileName: payload.fileName, md5 });
+          });
+          vReadStream.on('error', (err: any) => {
+             console.error(`❌ Checksum error: ${err.message}`);
+             broadcast('FILE_CHECKSUM_RESULT', { fileName: payload.fileName, error: err.message });
+          });
+          break;
+        case 'DELETE_LOCAL_FILE':
+          console.log(`🗑️ Deleting local file: ${payload.fileName} from ${payload.root}`);
+          try {
+             const fs = require('node:fs/promises');
+             const os = require('node:os');
+             let delBaseRoot = os.homedir();
+             if (payload.root === 'icloud') delBaseRoot = path.join(os.homedir(), 'Library/Mobile Documents/com~apple~CloudDocs');
+             else if (payload.root === 'desktop') delBaseRoot = path.join(os.homedir(), 'Desktop');
+             else if (payload.root === 'downloads') delBaseRoot = path.join(os.homedir(), 'Downloads');
+             
+             const delTargetPath = path.join(delBaseRoot, payload.subpath || '', payload.fileName);
+             await fs.unlink(delTargetPath);
+             console.log(`✅ Successfully deleted ${delTargetPath}`);
+             // Trigger a re-read of the directory to refresh UI
+             const dirents = await fs.readdir(path.join(delBaseRoot, payload.subpath || ''), { withFileTypes: true });
+             const files = dirents.filter((d: any) => !d.name.startsWith('.')).map((d: any) => ({
+                id: crypto.randomUUID(), name: d.name, isDirectory: d.isDirectory(), size: d.isDirectory() ? null : 'Unknown', date: new Date().toISOString().split('T')[0]
+             }));
+             broadcast('LOCAL_DIR_RESULT', { files, currentPath: payload.subpath, root: payload.root });
+          } catch (e: any) {
+             console.error(`❌ Failed to delete file: ${e.message}`);
+          }
+          break;
+        case 'SLICE_TO_VERTICAL':
+          console.log(`✂️ Slicing to vertical: ${payload.sourceFile}`);
+          try {
+             const { AutoCropper } = require('./AutoCropper');
+             const cropper = new AutoCropper();
+             
+             broadcast('CROP_PROGRESS', { file: payload.sourceFile, progress: 0, status: 'SLICING' });
+             
+             const outPath = await cropper.sliceToVertical(payload.sourceFile, (prog: number) => {
+                broadcast('CROP_PROGRESS', { file: payload.sourceFile, progress: prog, status: 'SLICING' });
+             });
+             
+             broadcast('CROP_PROGRESS', { file: payload.sourceFile, progress: 100, status: 'COMPLETE', outPath });
+          } catch (e: any) {
+             console.error(`❌ Crop error: ${e.message}`);
+             broadcast('CROP_PROGRESS', { file: payload.sourceFile, progress: 0, status: 'ERROR', error: e.message });
+          }
+          break;
+        case 'READ_LOCAL_DIR':
+          console.log(`📂 Reading local directory: root=${payload.root}, path=${payload.subpath || '/'}`);
+          const fs = require('node:fs/promises');
+          const os = require('node:os');
+          
+          let baseRoot = os.homedir();
+          if (payload.root === 'icloud') {
+            baseRoot = path.join(os.homedir(), 'Library/Mobile Documents/com~apple~CloudDocs');
+          } else if (payload.root === 'desktop') {
+            baseRoot = path.join(os.homedir(), 'Desktop');
+          } else if (payload.root === 'downloads') {
+            baseRoot = path.join(os.homedir(), 'Downloads');
+          }
+          
+          const targetPath = path.join(baseRoot, payload.subpath || '');
+          
+          try {
+            const dirents = await fs.readdir(targetPath, { withFileTypes: true });
+            const files = [];
+            
+            for (const dirent of dirents) {
+               if (dirent.name === '.DS_Store') continue;
+               const fullPath = path.join(targetPath, dirent.name);
+               try {
+                   const stats = await fs.stat(fullPath);
+                   
+                   let sizeStr = '';
+                   if (dirent.isFile()) {
+                      const mb = stats.size / (1024 * 1024);
+                      if (mb > 1024) sizeStr = (mb / 1024).toFixed(1) + ' GB';
+                      else sizeStr = mb.toFixed(1) + ' MB';
+                   }
+                   
+                   files.push({
+                     id: dirent.name,
+                     name: dirent.name,
+                     isDirectory: dirent.isDirectory(),
+                     size: sizeStr,
+                     date: stats.mtime.toLocaleDateString()
+                   });
+               } catch (e) {
+                   // Skip files we can't stat
+               }
+            }
+            
+            files.sort((a, b) => {
+               if (a.isDirectory && !b.isDirectory) return -1;
+               if (!a.isDirectory && b.isDirectory) return 1;
+               return a.name.localeCompare(b.name);
+            });
+            
+            broadcast('LOCAL_DIR_RESULT', { success: true, files, currentPath: payload.subpath || '', root: payload.root });
+          } catch (err: any) {
+            broadcast('LOCAL_DIR_RESULT', { error: `Failed to read directory: ${err.message}`, root: payload.root });
+          }
+          break;
+        case 'OPEN_GCS_BUCKET':
+          console.log(`🌐 Opening GCS Vault in browser...`);
+          const { exec: execGcs } = require('node:child_process');
+          // Bucket derived from scripts
+          const bucketUrl = 'https://console.cloud.google.com/storage/browser/high-ground-raw-footage';
+          
+          let openCmd = 'open'; // macOS
+          if (process.platform === 'win32') openCmd = 'start';
+          if (process.platform === 'linux') openCmd = 'xdg-open';
+          
+          execGcs(`${openCmd} "${bucketUrl}"`, (err: any) => {
+             if (err) console.error(`Failed to open browser: ${err.message}`);
           });
           break;
         case 'GET_STATUS':

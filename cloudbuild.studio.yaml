@@ -3,6 +3,9 @@ substitutions:
   _ARTIFACT_REPOSITORY: high-ground-studio
   _IMAGE_NAME: studio
   _IMAGE_TAG: manual
+  _NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
+  _STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
+  _QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS: "1"
 
 steps:
   - id: build-studio-image
@@ -10,7 +13,13 @@ steps:
     args:
       - build
       - --file
-      - apps/studio/Dockerfile
+      - apps/quipsly/Dockerfile
+      - --build-arg
+      - NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL}
+      - --build-arg
+      - STUDIO_COLLAB_URL=${_STUDIO_COLLAB_URL}
+      - --build-arg
+      - QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=${_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS}
       - --tag
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
       - .

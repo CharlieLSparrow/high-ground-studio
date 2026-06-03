@@ -17,36 +17,71 @@ import {
   Tag, 
   Video, 
   User, 
-  BookOpen 
+  BookOpen,
+  Clapperboard
 } from "lucide-react";
 
 interface EditorProps {
   roomName: string;
   token?: string; // JWT token for collab auth
+  collabUrl?: string;
   userName?: string;
   userColor?: string;
   onSelectTagging?: (text: string) => void;
+  onSelectBreakdown?: (text: string) => void;
   onSelectVideo?: () => void;
+  onSelectStoryboard?: (text: string) => void;
+  disableCollab?: boolean;
 }
 
 export default function Editor({ 
   roomName, 
   token = "", 
+  collabUrl = "",
   userName = "Anonymous", 
   userColor = "#f97316", // Default orange
   onSelectTagging,
-  onSelectVideo
+  onSelectBreakdown,
+  onSelectVideo,
+  onSelectStoryboard,
+  disableCollab = false
 }: EditorProps) {
   const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
+  const [collabError, setCollabError] = useState("");
 
   useEffect(() => {
-    // Connect to the local Hocuspocus Collab Server
+    if (disableCollab) {
+      setCollabError("");
+      setProvider(null);
+      return;
+    }
+
+    const resolvedCollabUrl =
+      collabUrl ||
+      process.env.NEXT_PUBLIC_STUDIO_COLLAB_URL ||
+      (process.env.NODE_ENV === "production" ? "" : "ws://localhost:8789");
+
+    if (!resolvedCollabUrl) {
+      setCollabError("Collaboration service is not configured.");
+      setProvider(null);
+      return;
+    }
+
+    if (!token) {
+      setCollabError("Collaboration token is missing.");
+      setProvider(null);
+      return;
+    }
+
+    setCollabError("");
+
     const hocuspocusProvider = new HocuspocusProvider({
-      url: "ws://localhost:8789",
+      url: resolvedCollabUrl,
       name: roomName,
       token,
       onAuthenticationFailed: () => {
         console.error("Collab authentication failed. Check your token.");
+        setCollabError("Collaboration authentication failed.");
       },
     });
 
@@ -55,24 +90,26 @@ export default function Editor({
     return () => {
       hocuspocusProvider.destroy();
     };
-  }, [roomName, token]);
+  }, [collabUrl, roomName, token]);
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         // @ts-expect-error - Required to disable history for Yjs collab
-        history: false,
+        history: disableCollab ? true : false,
       }),
-      Collaboration.configure({
-        document: provider?.document,
-      }),
-      CollaborationCaret.configure({
-        provider: provider,
-        user: {
-          name: userName,
-          color: userColor,
-        },
-      }),
+      ...(disableCollab ? [] : [
+        Collaboration.configure({
+          document: provider?.document,
+        }),
+        CollaborationCaret.configure({
+          provider: provider,
+          user: {
+            name: userName,
+            color: userColor,
+          },
+        })
+      ]),
       SnippetExtension,
     ],
     editorProps: {
@@ -90,7 +127,15 @@ export default function Editor({
     }
   };
 
-  if (!editor || !provider) {
+  if (collabError) {
+    return (
+      <div className="p-8 text-studio-muted flex items-center justify-center gap-3 bg-studio-panel/40 border border-studio-line/40 rounded-2xl backdrop-blur-xl min-h-[500px]">
+        <span>{collabError}</span>
+      </div>
+    );
+  }
+
+  if (!editor || (!provider && !disableCollab)) {
     return (
       <div className="p-8 text-studio-muted flex items-center justify-center gap-3 bg-studio-panel/40 border border-studio-line/40 rounded-2xl backdrop-blur-xl min-h-[500px]">
         <div className="animate-spin rounded-full h-5 w-5 border-2 border-studio-tag border-t-transparent" />
@@ -159,6 +204,21 @@ export default function Editor({
             <span>Tag Excerpt</span>
           </button>
 
+          {onSelectBreakdown && (
+            <button
+              onClick={() => {
+                const { from, to } = editor.state.selection;
+                const text = editor.state.doc.textBetween(from, to);
+                onSelectBreakdown(text);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[0.75rem] font-bold bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 transition-all"
+              type="button"
+            >
+              <Clapperboard size={13} />
+              <span>Tag Element</span>
+            </button>
+          )}
+
           <button
             onClick={() => {
               onSelectVideo?.();
@@ -169,6 +229,21 @@ export default function Editor({
             <Video size={13} />
             <span>Video Clip</span>
           </button>
+
+          {onSelectStoryboard && (
+            <button
+              onClick={() => {
+                const { from, to } = editor.state.selection;
+                const text = editor.state.doc.textBetween(from, to);
+                onSelectStoryboard(text);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[0.75rem] font-bold bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25 transition-all"
+              type="button"
+            >
+              <Clapperboard size={13} />
+              <span>Storyboard</span>
+            </button>
+          )}
         </BubbleMenu>
       )}
 

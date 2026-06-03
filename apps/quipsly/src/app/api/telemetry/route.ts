@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 
+type RetentionTelemetryRecord = {
+  segmentIndex: number;
+  timestamp: number;
+  retentionRate: number;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const videoId = searchParams.get('videoId') || "AI-Revolution-01";
@@ -54,7 +60,7 @@ export async function GET(request: Request) {
         severity: "high",
         message: "24% drop detected in the Leadership cohort."
       },
-      data: telemetryRecords.map(r => ({
+      data: telemetryRecords.map((r: RetentionTelemetryRecord) => ({
         segmentIndex: r.segmentIndex,
         timestamp: r.timestamp,
         retentionRate: r.retentionRate
@@ -91,4 +97,3 @@ export async function GET(request: Request) {
     });
   }
 }
-

@@ -11,7 +11,8 @@ import {
   ChevronLeft, 
   ChevronRight, 
   BookOpen, 
-  Tag 
+  Tag,
+  Clapperboard
 } from "lucide-react";
 import type {
   KnowledgeNode,
@@ -43,6 +44,7 @@ import {
   StudioChip,
   StudioGlyph,
 } from "./studio-ui";
+import { VideoSegmentDesk } from "./editor/VideoSegmentDesk";
 
 const excerptPresets = [
   {
@@ -95,6 +97,7 @@ type StudioWorkbenchClientProps = {
   };
   collabRoom: string;
   collabToken: string;
+  collabUrl: string;
 };
 
 function findBlock(blocks: StudioBlock[], blockId: string) {
@@ -170,6 +173,7 @@ export function StudioWorkbenchClient({
   actor,
   collabRoom,
   collabToken,
+  collabUrl,
 }: StudioWorkbenchClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -188,10 +192,20 @@ export function StudioWorkbenchClient({
   const [clipProgress, setClipProgress] = useState(0);
 
   const [leftPaneExpanded, setLeftPaneExpanded] = useState(true);
-  const [activeTool, setActiveTool] = useState<"tagging" | "video">("tagging");
+  const [activeTool, setActiveTool] = useState<"tagging" | "breakdown" | "video" | "segment">("tagging");
 
   const handleSelectTagging = (text: string) => {
     setActiveTool("tagging");
+    if (!text) return;
+    const index = selectedBlock.body.indexOf(text);
+    if (index >= 0) {
+      setStartOffset(index);
+      setEndOffset(index + text.length);
+    }
+  };
+
+  const handleSelectBreakdown = (text: string) => {
+    setActiveTool("breakdown");
     if (!text) return;
     const index = selectedBlock.body.indexOf(text);
     if (index >= 0) {
@@ -228,7 +242,15 @@ export function StudioWorkbenchClient({
   };
 
   const selectedBlock = findBlock(document.blocks, selectedBlockId);
-  const selectedTag = tags.find((tag) => tag.id === selectedTagId) ?? tags[0];
+
+  const visibleTags = useMemo(() => {
+    if (activeTool === "breakdown") {
+      return tags.filter(tag => tag.category === "production_breakdown");
+    }
+    return tags.filter(tag => tag.category !== "production_breakdown");
+  }, [tags, activeTool]);
+
+  const selectedTag = visibleTags.find((tag) => tag.id === selectedTagId) ?? visibleTags[0];
   const blockPresets = excerptPresets.filter(
     (preset) => preset.blockId === selectedBlock.id,
   );
@@ -429,8 +451,10 @@ export function StudioWorkbenchClient({
             <Editor 
               roomName={collabRoom}
               token={collabToken}
+              collabUrl={collabUrl}
               userName={actor.primaryEmail}
               onSelectTagging={handleSelectTagging}
+              onSelectBreakdown={handleSelectBreakdown}
               onSelectVideo={handleSelectVideo}
             />
           </div>
@@ -453,6 +477,19 @@ export function StudioWorkbenchClient({
                 <span>Tagging Desk</span>
               </button>
               <button
+                onClick={() => setActiveTool("breakdown")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[0.78rem] font-bold transition-all cursor-pointer",
+                  activeTool === "breakdown"
+                    ? "bg-purple-500/15 text-purple-400 border border-purple-500/20 shadow-md"
+                    : "text-studio-muted hover:text-studio-ink hover:bg-studio-ink/5"
+                )}
+                type="button"
+              >
+                <Clapperboard size={13} />
+                <span>Breakdown Engine</span>
+              </button>
+              <button
                 onClick={() => setActiveTool("video")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[0.78rem] font-bold transition-all cursor-pointer",
@@ -465,9 +502,24 @@ export function StudioWorkbenchClient({
                 <Video size={13} />
                 <span>Video Engine</span>
               </button>
+              <button
+                onClick={() => setActiveTool("segment")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[0.78rem] font-bold transition-all cursor-pointer",
+                  activeTool === "segment"
+                    ? "bg-purple-500/15 text-purple-400 border border-purple-500/20 shadow-md"
+                    : "text-studio-muted hover:text-studio-ink hover:bg-studio-ink/5"
+                )}
+                type="button"
+              >
+                <BookOpen size={13} />
+                <span>Segment Desk</span>
+              </button>
             </div>
 
-            {activeTool === "tagging" ? (
+            {activeTool === "segment" ? (
+              <VideoSegmentDesk />
+            ) : activeTool === "tagging" || activeTool === "breakdown" ? (
               <>
                 <section className={panelClassName} aria-label="Source document">
             <div className="mb-3.5 flex items-start justify-between gap-3">
@@ -537,19 +589,19 @@ export function StudioWorkbenchClient({
 
           <section className={panelClassName} aria-label="Tagging controls">
             <div className="mb-3.5 flex items-start justify-between gap-3">
-              <p className={labelClassName}>Tagging Controls</p>
+              <p className={labelClassName}>{activeTool === "breakdown" ? "Breakdown Controls" : "Tagging Controls"}</p>
               <StudioChip tone="tag">
                 {persistence.mode === "database" ? "Durable" : "Fixture"}
               </StudioChip>
             </div>
 
             <h2 className={panelTitleClassName}>
-              Block to span to semantic tag
+              {activeTool === "breakdown" ? "Block to span to production element" : "Block to span to semantic tag"}
             </h2>
             <p className={panelCopyClassName}>
-              Choose a stable block, select an excerpt or offset range, then
-              apply a meaning tag. Applying a tag writes a provenance-aware
-              tagged span and knowledge node when local persistence is enabled.
+              {activeTool === "breakdown" 
+                ? "Choose a stable block, select an excerpt or offset range, then apply a production tag. Applying a tag writes a provenance-aware production element."
+                : "Choose a stable block, select an excerpt or offset range, then apply a meaning tag. Applying a tag writes a provenance-aware tagged span and knowledge node when local persistence is enabled."}
             </p>
 
             <div
@@ -629,7 +681,12 @@ export function StudioWorkbenchClient({
             </div>
 
             <div className="mt-4 grid gap-2.5" aria-label="Semantic tag palette">
-              {tags.map((tag) => (
+              {visibleTags.length === 0 && activeTool === "breakdown" && (
+                <div className="text-[0.82rem] text-studio-muted p-4 border border-dashed border-studio-line rounded-lg text-center">
+                  No production tags found. You can add tags like "Cast" or "Prop" to this workspace.
+                </div>
+              )}
+              {visibleTags.map((tag) => (
                 <button
                   className={cn(
                     "grid gap-1 rounded-lg border border-studio-line bg-studio-ink/5 p-3 text-left text-studio-ink",
@@ -674,10 +731,10 @@ export function StudioWorkbenchClient({
             <button
               className={primaryButtonClassName}
               type="button"
-              disabled={!spanValidation.ok || !persistence.canWrite || isPending}
+              disabled={!spanValidation.ok || !persistence.canWrite || isPending || !selectedTag}
               onClick={applyTag}
             >
-              {isPending ? "Persisting..." : "Apply semantic tag"}
+              {isPending ? "Persisting..." : activeTool === "breakdown" ? "Apply production element" : "Apply semantic tag"}
             </button>
 
             {actionState ? (

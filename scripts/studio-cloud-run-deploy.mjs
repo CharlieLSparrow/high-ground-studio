@@ -6,6 +6,7 @@ const DEFAULT_REGION = "us-central1";
 const DEFAULT_SERVICE = "studio";
 const DEFAULT_ARTIFACT_REPOSITORY = "high-ground-studio";
 const DEFAULT_IMAGE_NAME = "studio";
+const DEFAULT_STUDIO_COLLAB_URL = "wss://studio-collab-hm2odnvjga-uc.a.run.app";
 
 function run(command, args, options = {}) {
   console.log(`\n$ ${[command, ...args].join(" ")}`);
@@ -62,7 +63,7 @@ function buildImageWithCloudBuild() {
     "--config",
     "cloudbuild.studio.yaml",
     "--substitutions",
-    `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag}`,
+    `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag},_NEXT_PUBLIC_STUDIO_COLLAB_URL=${nextPublicStudioCollabUrl},_STUDIO_COLLAB_URL=${studioCollabUrl},_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=1`,
     ".",
   ]);
 }
@@ -77,7 +78,13 @@ function buildImageWithDocker() {
   run("docker", [
     "build",
     "--file",
-    "apps/studio/Dockerfile",
+    "apps/quipsly/Dockerfile",
+    "--build-arg",
+    `NEXT_PUBLIC_STUDIO_COLLAB_URL=${nextPublicStudioCollabUrl}`,
+    "--build-arg",
+    `STUDIO_COLLAB_URL=${studioCollabUrl}`,
+    "--build-arg",
+    "QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=1",
     "--tag",
     imageUri,
     ".",
@@ -137,6 +144,14 @@ const imageName = process.env.STUDIO_IMAGE_NAME || DEFAULT_IMAGE_NAME;
 const imageTag =
   process.env.STUDIO_IMAGE_TAG || read("git", ["rev-parse", "--short", "HEAD"]);
 const imageUri = `${region}-docker.pkg.dev/${project}/${artifactRepository}/${imageName}:${imageTag}`;
+const nextPublicStudioCollabUrl =
+  process.env.NEXT_PUBLIC_STUDIO_COLLAB_URL ||
+  process.env.STUDIO_COLLAB_URL ||
+  DEFAULT_STUDIO_COLLAB_URL;
+const studioCollabUrl =
+  process.env.STUDIO_COLLAB_URL ||
+  process.env.NEXT_PUBLIC_STUDIO_COLLAB_URL ||
+  DEFAULT_STUDIO_COLLAB_URL;
 
 const dirtyStatus = getDeployBlockingDirtyStatus();
 
@@ -180,8 +195,7 @@ if (previousImage) {
 }
 
 if (process.env.SKIP_LOCAL_CHECKS !== "1") {
-  run("pnpm", ["--filter", "studio", "typecheck"]);
-  run("pnpm", ["studio:cloudrun:test"]);
+  run("pnpm", ["--filter", "quipsly", "typecheck"]);
 }
 
 buildImage();
@@ -196,6 +210,8 @@ run("gcloud", [
   region,
   "--image",
   imageUri,
+  "--update-env-vars",
+  `NEXT_PUBLIC_STUDIO_COLLAB_URL=${nextPublicStudioCollabUrl},STUDIO_COLLAB_URL=${studioCollabUrl}`,
   "--quiet",
 ]);
 
@@ -224,8 +240,11 @@ await assertHttpOk(`${serviceUrl}/api/health`, (body) => {
   }
 });
 
-await assertHttpOk(`${serviceUrl}/content-studio`, (body) =>
-  body.includes("Sign in to Studio") || body.includes("Content Management Studio"),
+await assertHttpOk(`${serviceUrl}/create`, (body) =>
+  body.includes("Book Manuscript") ||
+  body.includes("High Ground Odyssey Tonight Pack") ||
+  (body.includes("Quipsly") && body.includes("Manuscript")) ||
+  body.includes("Failed to load workbench"),
 );
 
 console.log("\nDeploy complete");

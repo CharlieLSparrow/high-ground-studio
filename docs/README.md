@@ -4,6 +4,10 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 
 ## Read First
 
+- `vision/quipsly-creative-os-north-star.md`
+- `architecture/quipsly-document-kernel.md`
+- `plans/quipsly-kernel-now-next-later.md`
+- `agents/quipsly-current-brief.md`
 - `project-context/current-state.md`
 - `architecture/system-overview.md`
 - `architecture/domain-model.md`
@@ -21,6 +25,8 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `sessions/`: short-lived but still useful session notes and stabilization logs
 - `workflows/`: reusable agent workflows
 - `agents/`: handoff notes for future Codex work
+- `vision/`: product north-star docs that should outlive one sprint
+- `archive/`: supersession indexes and historical-reference guidance
 
 ## Operating Docs
 
@@ -32,6 +38,11 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `architecture/quipsly-quiplore-foundation.md`: first-class Quipsly/QuipLore product, source, app-boundary, visual-language, and Google Cloud direction.
 - `architecture/quiplore-discovery-architecture.md`: QuipStream discovery, event, API, recommendation, and trust architecture inspired by short-form vertical feeds.
 - `plans/quipsly-quiplore-now-next-later.md`: staged Quipsly/QuipLore build sequence, stop conditions, and first useful demo scope.
+- `vision/quipsly-creative-os-north-star.md`: current Quipsly Creative OS product vision and workspace model.
+- `architecture/quipsly-document-kernel.md`: current decision to build a Quipsly-native document kernel as canonical brain.
+- `plans/quipsly-kernel-now-next-later.md`: active editor/kernel execution plan.
+- `agents/quipsly-current-brief.md`: startup brief for future Quipsly editor/kernel agents.
+- `archive/quipsly-guidance-supersession.md`: index of current authority vs historical Quipsly/Studio docs.
 - `agents/quipsly-quiplore-codex-brief.md`: startup brief for future Quipsly/QuipLore implementation agents.
 - `agents/quipsly-quiplore-implementation-result.md`: current implementation result for the first QuipLore app, Quipsly API, and shared domain package pass.
 - `analysis/studio-manuscript-writing-tool-competitive-research.md`: competitive research across Scrivener, Ulysses, Reedsy, Dabble, Atticus, Plottr, iA Writer, and Docs/Word for the next Manuscript Desk planning cycle.

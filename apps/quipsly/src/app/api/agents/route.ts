@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { getPrismaClient } from "@/lib/prisma";
 
 export async function GET(req: Request) {
+  const prisma = getPrismaClient();
+
   try {
     const agents = await prisma.agentNode.findMany({
       include: {
-        tasks: {
+        agentTasks: {
           orderBy: { createdAt: 'desc' },
           take: 5
         }
       },
-      orderBy: { lastActiveAt: 'desc' }
+      orderBy: { updatedAt: 'desc' }
     });
 
     return NextResponse.json({ success: true, agents });
@@ -21,6 +23,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const prisma = getPrismaClient();
+
   try {
     const body = await req.json();
     const { action, agentId, instruction, name, role } = body;
@@ -30,10 +34,11 @@ export async function POST(req: Request) {
       
       const newAgent = await prisma.agentNode.create({
         data: {
-          conversationId: `mock_conv_${Date.now()}`,
-          name,
-          role,
-          status: "IDLE"
+          hostName: `${name}-${Date.now()}`,
+          ipAddress: "manual",
+          capabilities: { name, role },
+          status: "IDLE",
+          lastHeartbeatAt: new Date()
         }
       });
       return NextResponse.json({ success: true, agent: newAgent });
@@ -53,7 +58,7 @@ export async function POST(req: Request) {
       // Update agent status
       await prisma.agentNode.update({
         where: { id: agentId },
-        data: { status: "RUNNING", lastActiveAt: new Date() }
+        data: { status: "RUNNING", lastHeartbeatAt: new Date() }
       });
 
       return NextResponse.json({ success: true, task });

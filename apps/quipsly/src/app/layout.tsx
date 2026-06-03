@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Merriweather } from "next/font/google";
 import "./globals.css";
+import { SidebarLayout } from "../components/SidebarLayout";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
@@ -21,7 +22,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
-      <body className="font-sans bg-[#050505] text-studio-ink antialiased">{children}</body>
+      <body className="font-sans bg-[#050505] text-studio-ink antialiased">
+        <SidebarLayout>
+          {children}
+        </SidebarLayout>
+      </body>
     </html>
   );
 }

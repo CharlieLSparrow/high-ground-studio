@@ -2,7 +2,6 @@
 
 import fs from "fs/promises";
 import path from "path";
-import os from "os";
 
 type MediaFile = {
   name: string;
@@ -12,9 +11,11 @@ type MediaFile = {
   proposedDestination: string;
 };
 
-// Default paths if user hasn't specified
-const DEFAULT_SOURCE = path.join(os.homedir(), "Ingest");
-const DEFAULT_DEST = path.join(os.homedir(), "MediaLibrary");
+// Default server-side prototype paths. Real desktop ingest should pass explicit
+// operator-selected paths instead of assuming the Cloud Run host filesystem is
+// the user's Mac.
+const DEFAULT_SOURCE = "/tmp/quipsly/ingest";
+const DEFAULT_DEST = "/tmp/quipsly/media-library";
 
 const EXT_MAP: Record<string, MediaFile["type"]> = {
   ".mp4": "video",

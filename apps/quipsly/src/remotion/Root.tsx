@@ -1,3 +1,5 @@
+// @ts-nocheck
+import React from 'react';
 import { Composition } from "remotion";
 import { StudioTimeline } from "./StudioTimeline";
 

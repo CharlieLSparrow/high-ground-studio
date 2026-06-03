@@ -1,5 +1,19 @@
 import Editor from "@/components/Editor";
 
+function getCollabUrl() {
+  const configured = (
+    process.env.NEXT_PUBLIC_STUDIO_COLLAB_URL ||
+    process.env.STUDIO_COLLAB_URL ||
+    ""
+  ).trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  return process.env.NODE_ENV === "production" ? "" : "ws://localhost:8789";
+}
+
 export default async function ManuscriptRoomPage({
   params,
 }: {
@@ -29,6 +43,7 @@ export default async function ManuscriptRoomPage({
           <Editor 
             roomName={roomName} 
             token={token} 
+            collabUrl={getCollabUrl()}
             userName={userName} 
             userColor={userColor} 
           />

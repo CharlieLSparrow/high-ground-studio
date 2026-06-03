@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { getPrismaClient } from "@/lib/prisma";
 
 export async function POST(req: Request) {
+  const prisma = getPrismaClient();
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (authHeader !== "Bearer hgs_dev_token") {
