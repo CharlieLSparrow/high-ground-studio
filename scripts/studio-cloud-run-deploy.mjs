@@ -1,12 +1,68 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 
 const DEFAULT_REGION = "us-central1";
 const DEFAULT_SERVICE = "studio";
 const DEFAULT_ARTIFACT_REPOSITORY = "high-ground-studio";
 const DEFAULT_IMAGE_NAME = "studio";
 const DEFAULT_STUDIO_COLLAB_URL = "wss://studio-collab-hm2odnvjga-uc.a.run.app";
+const DEFAULT_SECRET_ENV_FILES = [".env", "apps/quipsly/.env.local"];
+const STUDIO_OPTIONAL_SECRET_BINDINGS = [
+  ["GEMINI_API_KEY", "studio-gemini-api-key"],
+];
+
+function stripQuotes(value) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+}
+
+function parseEnvFile(path) {
+  if (!existsSync(path)) return {};
+
+  const values = {};
+  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed);
+    if (!match) continue;
+
+    const [, key, rawValue] = match;
+    values[key] = stripQuotes(rawValue.trim());
+  }
+
+  return values;
+}
+
+function loadEnvValues(paths) {
+  return paths.reduce(
+    (values, path) => ({
+      ...values,
+      ...parseEnvFile(path),
+    }),
+    {},
+  );
+}
+
+function runWithInput(command, args, input, options = {}) {
+  return execFileSync(command, args, {
+    encoding: "utf8",
+    stdio: options.capture
+      ? ["pipe", "pipe", "pipe"]
+      : ["pipe", "inherit", "inherit"],
+    input,
+  }).trim();
+}
 
 function run(command, args, options = {}) {
   console.log(`\n$ ${[command, ...args].join(" ")}`);
@@ -50,8 +106,105 @@ function getDeployBlockingDirtyStatus() {
   return read("git", ["status", "--short"])
     .split("\n")
     .filter(Boolean)
-    .filter((line) => !isIgnorableGitStatusLine(line))
-    .join("\n");
+  .filter((line) => !isIgnorableGitStatusLine(line))
+  .join("\n");
+}
+
+function secretExists(secretName) {
+  return Boolean(
+    readOptional("gcloud", [
+      "secrets",
+      "describe",
+      secretName,
+      "--project",
+      project,
+      "--format=value(name)",
+    ]),
+  );
+}
+
+function secretHasEnabledVersion(secretName) {
+  const raw = readOptional("gcloud", [
+    "secrets",
+    "versions",
+    "list",
+    secretName,
+    "--project",
+    project,
+    "--format=json",
+    "--limit=20",
+  ]);
+
+  if (!raw) return false;
+
+  try {
+    const versions = JSON.parse(raw);
+    return Array.isArray(versions) && versions.some((item) => item.state === "ENABLED");
+  } catch {
+    return false;
+  }
+}
+
+function ensureStudioSecret(secretName, value) {
+  if (!value) return false;
+
+  if (!secretExists(secretName)) {
+    run("gcloud", [
+      "secrets",
+      "create",
+      secretName,
+      "--project",
+      project,
+      "--replication-policy=automatic",
+    ]);
+    console.log(`Created Secret Manager secret ${secretName}.`);
+  }
+
+  if (secretHasEnabledVersion(secretName) && process.env.STUDIO_FORCE_SECRET_VERSION !== "1") {
+    return true;
+  }
+
+  runWithInput(
+    "gcloud",
+    [
+      "secrets",
+      "versions",
+      "add",
+      secretName,
+      "--project",
+      project,
+      "--data-file=-",
+    ],
+    value,
+  );
+  return true;
+}
+
+function buildSecretArg(bindings) {
+  return bindings
+    .map(([envName, secretName]) => `${envName}=${secretName}:latest`)
+    .join(",");
+}
+
+function buildStudioSecretBindings(envValues) {
+  const seeded = [];
+  for (const [envName, secretName] of STUDIO_OPTIONAL_SECRET_BINDINGS) {
+    const value = envValues[envName] || process.env[envName] || "";
+    const hasEnabledVersion = secretHasEnabledVersion(secretName);
+
+    if (!value && !hasEnabledVersion) {
+      console.log(`No source value for ${envName} and no enabled secret ${secretName}; skipping this binding.`);
+      continue;
+    }
+
+    if (value) {
+      ensureStudioSecret(secretName, value);
+    }
+
+    seeded.push([envName, secretName]);
+  }
+
+  return seeded;
 }
 
 function buildImageWithCloudBuild() {
@@ -137,6 +290,9 @@ const region =
   process.env.STUDIO_CLOUD_RUN_REGION ||
   getConfigValue("run/region") ||
   DEFAULT_REGION;
+const studioEnvFiles = process.env.STUDIO_SECRET_ENV_FILES
+  ? process.env.STUDIO_SECRET_ENV_FILES.split(",").map((value) => value.trim()).filter(Boolean)
+  : DEFAULT_SECRET_ENV_FILES;
 const service = process.env.STUDIO_CLOUD_RUN_SERVICE || DEFAULT_SERVICE;
 const artifactRepository =
   process.env.STUDIO_ARTIFACT_REPOSITORY || DEFAULT_ARTIFACT_REPOSITORY;
@@ -152,6 +308,9 @@ const studioCollabUrl =
   process.env.STUDIO_COLLAB_URL ||
   process.env.NEXT_PUBLIC_STUDIO_COLLAB_URL ||
   DEFAULT_STUDIO_COLLAB_URL;
+const studioEnvValues = loadEnvValues(studioEnvFiles);
+const studioSecretBindings = buildStudioSecretBindings(studioEnvValues);
+const studioSecretArg = buildSecretArg(studioSecretBindings);
 
 const dirtyStatus = getDeployBlockingDirtyStatus();
 
@@ -193,6 +352,12 @@ if (previousRevision) {
 if (previousImage) {
   console.log(`previous image: ${previousImage}`);
 }
+if (studioSecretArg) {
+  const readable = studioSecretBindings
+    .map(([envName, secretName]) => `${envName}=>${secretName}`)
+    .join(",");
+  console.log(`optional studio secret bindings: ${readable}`);
+}
 
 if (process.env.SKIP_LOCAL_CHECKS !== "1") {
   run("pnpm", ["--filter", "quipsly", "typecheck"]);
@@ -200,7 +365,7 @@ if (process.env.SKIP_LOCAL_CHECKS !== "1") {
 
 buildImage();
 
-run("gcloud", [
+const deployArgs = [
   "run",
   "deploy",
   service,
@@ -213,7 +378,17 @@ run("gcloud", [
   "--update-env-vars",
   `NEXT_PUBLIC_STUDIO_COLLAB_URL=${nextPublicStudioCollabUrl},STUDIO_COLLAB_URL=${studioCollabUrl}`,
   "--quiet",
-]);
+];
+
+if (studioSecretArg) {
+  if (serviceBefore) {
+    deployArgs.push("--update-secrets", studioSecretArg);
+  } else {
+    deployArgs.push("--set-secrets", studioSecretArg);
+  }
+}
+
+run("gcloud", deployArgs);
 
 const serviceUrl = read("gcloud", [
   "run",

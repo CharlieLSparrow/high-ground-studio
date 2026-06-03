@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Sparkles, AlertTriangle, CheckCircle, Info } from 'lucide-react';
-import { generateFunnelInsights } from '@/app/marketing/funnels/actions';
+import { generateFunnelInsights } from '@/app/(app)/marketing/funnels/actions';
 
 interface Insight {
   type: 'warning' | 'success' | 'info';

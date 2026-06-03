@@ -1,80 +1,152 @@
+import React from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { Play, Layers, Compass } from "lucide-react";
+import { BookOpen, Feather, Sparkles, Quote, MessageSquare, CheckCircle2 } from "lucide-react";
 import { getLorelistsHomeData } from "./actions/feed-actions";
 
-export default async function DiscoveryHubPage() {
+export default async function QuiploreLandingPage() {
   const lorelists = await getLorelistsHomeData();
 
   return (
-    <main className="w-full min-h-screen bg-black text-white overflow-y-auto pb-24">
-      {/* Hero Section */}
-      <div className="relative w-full h-[60vh] flex items-end pb-12 px-6 bg-gradient-to-t from-black via-black/80 to-transparent">
-        <div className="absolute inset-0 z-0 opacity-40 bg-[url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop')] bg-cover bg-center" />
-        <div className="relative z-10 max-w-2xl">
-          <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tight">
-            Quip<span className="text-amber-500">lore</span>
-          </h1>
-          <p className="text-xl text-white/80 mb-8 max-w-lg leading-relaxed">
-            Explore curated 360° lesson paths, interactive knowledge feeds, and immersive learning experiences.
-          </p>
-          <div className="flex gap-4">
-            <Link href="/video-stream" className="bg-white text-black px-8 py-4 rounded-full font-bold flex items-center gap-2 hover:scale-105 active:scale-95 transition-all">
-              <Compass size={20} />
-              Start Swiping Feed
+    <div className="min-h-screen bg-[#fdf1dc] text-[#4c331b] font-serif selection:bg-[#e2b17b]/50 overflow-x-hidden relative">
+      
+      {/* Soft paper texture overlay */}
+      <div className="fixed inset-0 pointer-events-none opacity-20 mix-blend-multiply" 
+           style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cream-paper.png")' }}></div>
+
+      {/* Navigation */}
+      <nav className="fixed top-0 w-full z-50 bg-[#fdf1dc]/80 backdrop-blur-md border-b border-[#e2b17b]/40">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between font-sans">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 flex items-center justify-center">
+              <Feather className="w-6 h-6 text-[#ad6b35]" />
+            </div>
+            <span className="font-black text-2xl tracking-tight text-[#4c331b] font-serif">QuipLore</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <Link 
+              href="/hub" 
+              className="text-sm font-bold text-[#ad6b35] hover:text-[#4c331b] transition-colors"
+            >
+              Explore Hub
+            </Link>
+            <Link 
+              href="https://quipsly.com" 
+              className="text-sm font-bold bg-[#ad6b35] hover:bg-[#4c331b] text-white px-5 py-2.5 rounded-xl transition-all shadow-md"
+            >
+              Meet the Quipslys
             </Link>
           </div>
         </div>
-      </div>
+      </nav>
 
-      {/* Rows */}
-      <div className="px-6 py-8 space-y-12 relative z-10 -mt-8">
-        <section>
-          <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-            <Layers size={24} className="text-amber-500" />
-            Curated Lorelists
-          </h2>
-          {lorelists.length === 0 ? (
-            <div className="w-full p-8 border border-white/10 rounded-2xl bg-white/5 text-center">
-              <p className="text-white/50">No Lorelists curated yet. Head to the Studio to create one!</p>
+      {/* Hero Section */}
+      <main className="pt-32 pb-24 px-6 relative z-10">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+          
+          <div className="space-y-8">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#f8d9b0] text-[#ad6b35] text-xs font-bold uppercase tracking-widest border border-[#e2b17b] font-sans">
+              <Sparkles className="w-3 h-3" />
+              The Public Archive
             </div>
-          ) : (
-            <div className="flex overflow-x-auto gap-4 pb-4 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {lorelists.map(list => (
-                <Link key={list.id} href={`/lorelist/${list.id}`} className="snap-start shrink-0 w-72 md:w-80 group">
-                  <div className="w-full h-44 bg-zinc-900 rounded-xl overflow-hidden relative mb-3 group-hover:ring-2 ring-amber-500 transition-all shadow-xl">
-                    <div className="absolute inset-0 bg-gradient-to-br from-amber-900/40 to-black/80 z-0" />
-                    
-                    {/* Abstract visual background to make it look premium */}
-                    <div className="absolute -right-8 -top-8 w-32 h-32 bg-amber-500/20 blur-3xl rounded-full" />
-                    <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-blue-500/20 blur-3xl rounded-full" />
 
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10">
-                      <div className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center mb-3 group-hover:bg-amber-500 group-hover:scale-110 transition-all">
-                        <Play size={20} className="text-white ml-1" fill="currentColor" />
-                      </div>
-                      <span className="text-xs font-bold text-white/70 uppercase tracking-widest">{list._count.items} Segments</span>
-                    </div>
-                  </div>
-                  <h3 className="font-bold text-lg leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">{list.title}</h3>
-                  <p className="text-sm text-white/50 line-clamp-2 mt-1">{list.description}</p>
-                </Link>
-              ))}
+            <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#4c331b] leading-[1.1]">
+              The literary archive for your best ideas.
+            </h1>
+            
+            <p className="text-lg md:text-xl text-[#ad6b35] leading-relaxed max-w-lg font-sans">
+              Gather your favorite quotes, notes, and sparks of inspiration. QuipLore helps you discover verified quotes in a warm, trustworthy storybook archive.
+            </p>
+
+            <div className="flex gap-4 pt-4 font-sans">
+               <Link href="/hub" className="bg-[#ad6b35] text-white px-8 py-4 rounded-xl font-bold hover:bg-[#4c331b] transition-colors shadow-sm text-lg flex items-center gap-2">
+                 <Quote className="w-5 h-5" />
+                 Start Reading
+               </Link>
             </div>
-          )}
-        </section>
-
-        {/* Future Rows Placeholder */}
-        <section>
-          <h2 className="text-2xl font-bold mb-6 text-white/80">Trending Concepts</h2>
-          <div className="flex overflow-x-auto gap-3 pb-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {["Computer Science", "Parkinson's Therapy", "Astrophysics", "UI Design", "Biomechanics"].map((concept, i) => (
-              <div key={i} className="shrink-0 px-6 py-3 rounded-full bg-zinc-900 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white cursor-pointer transition-colors font-medium">
-                {concept}
-              </div>
-            ))}
           </div>
-        </section>
-      </div>
-    </main>
+
+          <div className="relative animate-in fade-in slide-in-from-right-8 duration-1000">
+            {/* Soft backdrop */}
+            <div className="absolute inset-0 bg-[#f8d9b0] rounded-[2rem] blur-2xl transform rotate-3 scale-105" />
+            
+            <div className="relative bg-white p-4 rounded-[2rem] border border-[#e2b17b] shadow-xl rotate-1 hover:rotate-0 transition-transform duration-500">
+              <div className="bg-[#fdf1dc] rounded-xl overflow-hidden border border-[#e2b17b]/50 relative">
+                <Image 
+                  src="/images/examples/quipsly-home-introduction-page.png" 
+                  alt="QuipLore Interface" 
+                  width={800} 
+                  height={600} 
+                  className="w-full h-auto object-cover opacity-95 hover:opacity-100 transition-opacity mix-blend-multiply"
+                  priority
+                />
+              </div>
+            </div>
+            
+            {/* Little floating elements to add whimsy */}
+            <div className="absolute -bottom-6 -left-6 bg-white p-3 rounded-xl border border-[#e2b17b] shadow-lg rotate-[-5deg] animate-pulse">
+               <Quote className="w-6 h-6 text-[#ad6b35]" />
+            </div>
+            <div className="absolute -top-4 -right-4 bg-white p-3 rounded-xl border border-[#e2b17b] shadow-lg rotate-[10deg] animate-pulse delay-150">
+               <BookOpen className="w-6 h-6 text-[#ad6b35]" />
+            </div>
+          </div>
+        </div>
+
+        {/* Feature Grid */}
+        <div className="max-w-7xl mx-auto mt-32">
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-white border border-[#e2b17b] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#f8d9b0]/50 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+              <div className="w-14 h-14 rounded-2xl bg-[#fdf1dc] flex items-center justify-center mb-6 border border-[#e2b17b] relative z-10">
+                <BookOpen className="w-7 h-7 text-[#ad6b35]" />
+              </div>
+              <h3 className="text-2xl font-bold text-[#4c331b] mb-3 relative z-10">Verified Sources</h3>
+              <p className="text-[#ad6b35] leading-relaxed text-sm font-sans relative z-10">
+                Every quote is carefully traced back to its origin. No more misattributions or fake internet quotes.
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#e2b17b] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mb-6 border border-emerald-200 relative z-10">
+                <Quote className="w-7 h-7 text-emerald-600" />
+              </div>
+              <h3 className="text-2xl font-bold text-[#4c331b] mb-3 relative z-10">Curated Lorelists</h3>
+              <p className="text-[#ad6b35] leading-relaxed text-sm font-sans relative z-10">
+                Explore collections of quotes built around themes, books, movies, and historical figures.
+              </p>
+            </div>
+
+            <div className="bg-white border border-[#e2b17b] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-50 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+              <div className="w-14 h-14 rounded-2xl bg-sky-50 flex items-center justify-center mb-6 border border-sky-200 relative z-10">
+                <MessageSquare className="w-7 h-7 text-sky-600" />
+              </div>
+              <h3 className="text-2xl font-bold text-[#4c331b] mb-3 relative z-10">Share Safely</h3>
+              <p className="text-[#ad6b35] leading-relaxed text-sm font-sans relative z-10">
+                Turn your favorite quotes into beautiful, shareable cards with full attribution and provenance.
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+      
+      {/* Footer */}
+      <footer className="border-t border-[#e2b17b] py-12 mt-20 bg-white/50 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[#ad6b35] text-sm font-medium font-sans">
+          <div className="flex items-center gap-2">
+            <Feather className="w-4 h-4 text-[#ad6b35]" />
+            <span className="font-bold text-[#4c331b] font-serif text-lg tracking-wide">QuipLore</span>
+          </div>
+          <p>© 2026 High Ground Studio. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <a href="#" className="hover:text-[#4c331b] transition-colors">Privacy</a>
+            <a href="#" className="hover:text-[#4c331b] transition-colors">Terms</a>
+            <a href="https://quipsly.com" className="text-[#ad6b35] hover:text-[#4c331b] font-bold transition-colors">Powered by Quipsly</a>
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }

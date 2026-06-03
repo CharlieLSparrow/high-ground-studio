@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../create/projectConfig";
-import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../episode-production/episodeArtifact";
+import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../(app)/create/projectConfig";
+import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 

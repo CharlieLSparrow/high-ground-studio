@@ -6,6 +6,19 @@ checks, blockers, and next handoff.
 
 ## 2026-06-02
 
+## 2026-06-03
+
+### Codex / Episode 4 real editing hardening log
+
+- Added `docs/coordination/quipsly-episode-4-editing-hardening-log.md` as the
+  repo-local place to record what was scary, what failed, what was confusing,
+  and what to fix after the first real Episode 4 editing test.
+- Linked the log from `docs/coordination/agent-board.md` so future agents see
+  it during handoff/recon.
+- Current emphasis: keep Real Editing Session Mode panic-proof, hide lab
+  affordances from the actual Episode 4 workflow, preserve recoverability, and
+  make media health/sync/export readiness understandable without NLE expertise.
+
 ### Codex / Quipsly Creative OS canonical docs
 
 - Created the new current-authority Quipsly docs:

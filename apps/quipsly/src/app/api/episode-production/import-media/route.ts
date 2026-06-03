@@ -4,8 +4,8 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
-import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../../create/projectConfig";
-import type { EpisodeImportedMediaAsset } from "../../../episode-production/episodeArtifact";
+import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../../(app)/create/projectConfig";
+import type { EpisodeImportedMediaAsset } from "../../../(app)/episode-production/episodeArtifact";
 
 function asRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -379,6 +379,10 @@ export async function PATCH(request: Request) {
     const suggestionReason = String(body.suggestionReason ?? body.reason ?? "").trim() || undefined;
     const suggestionSource = String(body.suggestionSource ?? "ai-ingest").trim() || "ai-ingest";
     const suggestionConfidence = parseOptionalNumber(body.suggestionConfidence ?? body.confidence);
+    const spineAudioAssetId = String(body.spineAudioAssetId ?? "").trim() || undefined;
+    const spineAudioClipId = String(body.spineAudioClipId ?? "").trim() || undefined;
+    const spineAudioSource = String(body.spineAudioSource ?? "").trim() || undefined;
+    const spineAudioLabel = String(body.spineAudioLabel ?? "").trim() || undefined;
 
     const prisma = getPrismaClient();
     if (!(prisma as any).studioEpisodeProduction) {
@@ -391,6 +395,64 @@ export async function PATCH(request: Request) {
     const currentJson = asRecord(production.productionJson) ?? {};
     const importedMedia = Array.isArray(currentJson.importedMedia) ? currentJson.importedMedia : [];
     const syncedAt = new Date().toISOString();
+
+    if (action === "set-spine-audio") {
+      if (!spineAudioAssetId && !spineAudioClipId) {
+        return NextResponse.json({ ok: false, error: "spineAudioAssetId or spineAudioClipId is required" }, { status: 400 });
+      }
+
+      if (spineAudioAssetId) {
+        const matchedAsset = importedMedia
+          .map((item) => asRecord(item))
+          .find((asset) => asset.id === spineAudioAssetId || asset.sourceId === spineAudioAssetId);
+        const isAudioAsset = matchedAsset
+          && (matchedAsset.kind === "audio" || String(matchedAsset.contentType ?? "").startsWith("audio/"));
+        if (!isAudioAsset) {
+          return NextResponse.json({ ok: false, error: "Only imported audio assets can be set as spine audio." }, { status: 400 });
+        }
+      }
+
+      const previousSpine = {
+        spineAudioAssetId: currentJson.spineAudioAssetId,
+        spineAudioClipId: currentJson.spineAudioClipId,
+        spineAudioSource: currentJson.spineAudioSource,
+        spineAudioLabel: currentJson.spineAudioLabel,
+      };
+      const productionJson = {
+        ...currentJson,
+        spineAudioAssetId: spineAudioAssetId ?? null,
+        spineAudioClipId: spineAudioClipId ?? null,
+        spineAudioSource: spineAudioSource ?? null,
+        spineAudioLabel: spineAudioLabel ?? (spineAudioAssetId ?? spineAudioClipId),
+        spineAudioSetAt: syncedAt,
+        spineAudioSetBy: "editor",
+        syncHistory: appendSyncHistory(currentJson, {
+          type: "set-spine-audio",
+          assetId: spineAudioAssetId,
+          targetClipId: spineAudioClipId,
+          label: `Set spine audio: ${spineAudioLabel ?? spineAudioAssetId ?? spineAudioClipId}`,
+          beforeSync: previousSpine,
+          afterSync: {
+            spineAudioAssetId: spineAudioAssetId ?? null,
+            spineAudioClipId: spineAudioClipId ?? null,
+            spineAudioSource: spineAudioSource ?? null,
+            spineAudioLabel: spineAudioLabel ?? (spineAudioAssetId ?? spineAudioClipId),
+          },
+        }),
+        lastImportSyncUpdatedAt: syncedAt,
+      };
+
+      const updated = await prisma.studioEpisodeProduction.update({
+        where: { id: production.id },
+        data: { productionJson },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        productionJson,
+        updatedAt: updated.updatedAt?.toISOString?.() ?? syncedAt,
+      });
+    }
 
     if (action === "record-sync-snapshot") {
       const snapshot = asRecord(body.snapshot);

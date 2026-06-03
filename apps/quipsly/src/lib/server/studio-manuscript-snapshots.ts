@@ -14,7 +14,7 @@ import {
   safeManuscriptDraft,
   type ManuscriptDraft,
   type StudioManuscriptLibraryKind,
-} from "@/app/manuscript/manuscript-editor-model";
+} from "@/app/(app)/manuscript/manuscript-editor-model";
 import { getPrismaClient } from "@/lib/prisma";
 import { normalizeStudioAuthEmail } from "@/lib/server/studio-auth-mode";
 

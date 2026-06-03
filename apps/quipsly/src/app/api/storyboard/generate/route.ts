@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getPrismaClient } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
@@ -8,8 +9,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    // Combine prompt with cinematic keywords for better storyboard results
-    const fullPrompt = `${prompt}, cinematic shot, movie storyboard, dramatic lighting, high quality, highly detailed`;
+    // 1. Fetch character entities from Prisma to enrich the prompt
+    const prisma = await getPrismaClient();
+    const characters = await prisma.romanceCharacter.findMany();
+    
+    // 2. Identify if any characters are mentioned in the prompt
+    let entityContext = "";
+    for (const char of characters) {
+      if (prompt.toLowerCase().includes(char.name.toLowerCase()) || 
+          prompt.toLowerCase().includes(char.name.split(' ')[0].toLowerCase())) {
+        entityContext += `[${char.name} is a ${char.archetype || "character"}] `;
+      }
+    }
+
+    // Combine prompt with entity context and cinematic keywords for better storyboard results
+    const fullPrompt = `${prompt}. ${entityContext} cinematic shot, movie storyboard, dramatic lighting, high quality, highly detailed`;
     
     // Use Pollinations AI for rapid prototyping without API keys
     // We add a cache buster so regenerating the same prompt produces a new seed

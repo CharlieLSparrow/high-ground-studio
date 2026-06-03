@@ -31,10 +31,13 @@
     "@tiptap/extension-collaboration": "^3.23.5",
     "@tiptap/extension-collaboration-caret": "^3.23.5",
     "@tiptap/extension-floating-menu": "^3.23.6",
+    "@tiptap/extension-mention": "^3.25.0",
     "@tiptap/extension-unique-id": "^3.23.5",
     "@tiptap/react": "^3.23.5",
     "@tiptap/starter-kit": "^3.23.5",
+    "@tiptap/suggestion": "^3.25.0",
     "@types/three": "^0.183.1",
+    "@xyflow/react": "^12.11.0",
     "lucide-react": "^0.577.0",
     "mammoth": "^1.12.0",
     "next": "latest",
@@ -44,6 +47,7 @@
     "react-dom": "latest",
     "remotion": "^4.0.469",
     "three": "^0.165.0",
+    "tippy.js": "^6.3.7",
     "yjs": "^13.6.30"
   },
   "devDependencies": {

@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../../create/projectConfig";
+import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../../(app)/create/projectConfig";
 
 type ImportedAssetInput = {
   id?: string;

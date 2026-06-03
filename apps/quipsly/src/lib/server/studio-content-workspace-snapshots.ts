@@ -9,7 +9,7 @@ import {
   normalizeContentStudioWorkspace,
   parseContentStudioPacket,
   type ContentStudioWorkspace,
-} from "@/app/content-studio/content-studio-model";
+} from "@/app/(app)/content-studio/content-studio-model";
 import { getPrismaClient } from "@/lib/prisma";
 import { normalizeStudioAuthEmail } from "@/lib/server/studio-auth-mode";
 

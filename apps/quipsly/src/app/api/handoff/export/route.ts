@@ -3,30 +3,23 @@ import { getPrismaClient } from '@/lib/prisma';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const studioProjectId = searchParams.get('studioProjectId');
   const projectId = searchParams.get('projectId');
 
-  if (!studioProjectId || !projectId) {
-    return NextResponse.json({ error: 'Missing studioProjectId or projectId' }, { status: 400 });
+  if (!projectId) {
+    return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
   }
 
   const prisma = getPrismaClient();
 
   const studioProject = await prisma.studioProject.findUnique({
-    where: { id: studioProjectId },
+    where: { id: projectId },
     include: {
       tags: {
         where: { category: 'production_breakdown' },
         include: {
           knowledgeNodes: true
         }
-      }
-    }
-  });
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: {
+      },
       scenes: {
         orderBy: { sortOrder: 'asc' },
         include: {
@@ -38,14 +31,14 @@ export async function GET(request: Request) {
     }
   });
 
-  if (!studioProject || !project) {
-    return NextResponse.json({ error: 'Projects not found' }, { status: 404 });
+  if (!studioProject) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
   const packet = {
     metadata: {
       generatedAt: new Date().toISOString(),
-      title: project.title,
+      title: studioProject.name,
       breakdownSource: studioProject.name,
     },
     breakdown: studioProject.tags.map(tag => ({
@@ -55,7 +48,7 @@ export async function GET(request: Request) {
         notes: node.body
       }))
     })),
-    storyboards: project.scenes.map(scene => ({
+    storyboards: studioProject.scenes.map(scene => ({
       sceneNumber: scene.sceneNumber,
       title: scene.title,
       location: scene.location,

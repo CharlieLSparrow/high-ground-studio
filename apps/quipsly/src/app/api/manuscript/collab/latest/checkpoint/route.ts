@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { safeManuscriptDraft } from "@/app/manuscript/manuscript-editor-model";
+import { safeManuscriptDraft } from "@/app/(app)/manuscript/manuscript-editor-model";
 import { getStudioAccessState } from "@/lib/server/studio-access";
 import { markStudioManuscriptLiveRoomCheckpoint } from "@/lib/server/studio-manuscript-collab";
 import { getStudioDatabaseUrl } from "@/lib/server/studio-persistence-guard";

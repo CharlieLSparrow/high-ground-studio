@@ -8,7 +8,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { SnippetExtension } from "../lib/SnippetExtension";
-import { cn } from "../app/studio-ui";
+import { cn } from "@/app/(app)/studio-ui";
 import { 
   Bold, 
   Italic, 
@@ -32,6 +32,7 @@ interface EditorProps {
   onSelectVideo?: () => void;
   onSelectStoryboard?: (text: string) => void;
   disableCollab?: boolean;
+  additionalExtensions?: any[];
 }
 
 export default function Editor({ 
@@ -44,7 +45,8 @@ export default function Editor({
   onSelectBreakdown,
   onSelectVideo,
   onSelectStoryboard,
-  disableCollab = false
+  disableCollab = false,
+  additionalExtensions = []
 }: EditorProps) {
   const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
   const [collabError, setCollabError] = useState("");
@@ -111,6 +113,7 @@ export default function Editor({
         })
       ]),
       SnippetExtension,
+      ...additionalExtensions
     ],
     editorProps: {
       attributes: {

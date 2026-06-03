@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../create/projectConfig";
+import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../(app)/create/projectConfig";
 
 const MAX_SIGNAL_MESSAGES = 240;
 const STALE_PARTICIPANT_MS = 45_000;

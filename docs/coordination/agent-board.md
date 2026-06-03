@@ -21,6 +21,13 @@ For reboot/crash recovery and copy/paste worker packets, use:
 docs/agents/restart-playbook.md
 ```
 
+For the current Episode 4 real-editing test and panic-proof editor hardening,
+use:
+
+```text
+docs/coordination/quipsly-episode-4-editing-hardening-log.md
+```
+
 ## Current Snapshot
 
 ### Quipsly SaaS Transition (Build Our Own) Sprint
@@ -32,6 +39,8 @@ Current authority:
 
 Live app:
 - `https://nest.quipsly.com`
+- current Studio fallback/live editor:
+  `https://studio-hm2odnvjga-uc.a.run.app/editor?project=high-ground-odyssey-manuscript&episode=episode-4`
 - active package: `apps/quipsly`
 
 Current north star:

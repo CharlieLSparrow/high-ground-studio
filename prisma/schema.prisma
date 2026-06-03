@@ -241,21 +241,20 @@ model User {
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
   weeklyCommitmentsReviewed    WeeklyCommitment[]     @relation("WeeklyCommitmentReviewedBy")
 
-  collections        Collection[]
-  snippets           Snippet[]
-  bookmarks          Bookmark[]
-  quipStreamSessions QuipStreamSession[]
-  socialAccounts     SocialAccount[]
-  marketingFunnels   MarketingFunnel[]
-  marketingPersonas  MarketingPersona[]
-  projects           Project[]
-  landingPages       LandingPage[]
-  emailSequences     EmailSequence[]
-  marketingLeads     MarketingLead[]
-  marketingCampaigns MarketingCampaign[]
+  collections             Collection[]
+  snippets                Snippet[]
+  bookmarks               Bookmark[]
+  quipStreamSessions      QuipStreamSession[]
+  socialAccounts          SocialAccount[]
+  marketingFunnels        MarketingFunnel[]
+  marketingPersonas       MarketingPersona[]
+  landingPages            LandingPage[]
+  emailSequences          EmailSequence[]
+  marketingLeads          MarketingLead[]
+  marketingCampaigns      MarketingCampaign[]
   organizationMemberships OrganizationMember[]
-  feedbackTickets    FeedbackTicket[]
-  userEvents         UserEvent[]
+  feedbackTickets         FeedbackTicket[]
+  userEvents              UserEvent[]
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -863,14 +862,16 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace      StudioWorkspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents      StudioDocument[]
-  tags           StudioTag[]
-  knowledgeNodes StudioKnowledgeNode[]
-  manuscript     StudioManuscript?     @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
-  mediaAssets    StudioMediaAsset[]
-  mediaBins      MediaBin[]
+  workspace          StudioWorkspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents          StudioDocument[]
+  tags               StudioTag[]
+  knowledgeNodes     StudioKnowledgeNode[]
+  manuscript         StudioManuscript?         @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets        StudioMediaAsset[]
+  mediaBins          MediaBin[]
   episodeProductions StudioEpisodeProduction[]
+  scenes             Scene[]
+  shootDays          ShootDay[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -889,10 +890,10 @@ model StudioDocument {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  blocks         StudioDocumentBlock[]
-  taggedSpans    StudioTaggedSpan[]
-  knowledgeNodes StudioKnowledgeNode[]
+  project            StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blocks             StudioDocumentBlock[]
+  taggedSpans        StudioTaggedSpan[]
+  knowledgeNodes     StudioKnowledgeNode[]
   episodeProductions StudioEpisodeProduction[]
 
   @@index([projectId, stableId])
@@ -900,24 +901,24 @@ model StudioDocument {
 }
 
 model StudioEpisodeProduction {
-  id                    String   @id @default(cuid())
-  projectId             String
-  documentId            String
-  slug                  String
-  title                 String
-  boundaryLabel         String
-  boundaryKind          String   @default("episode")
-  boundaryStartBlockId  String?
-  boundaryEndBlockId    String?
-  boundaryStartOrder    Int?
-  boundaryEndOrder      Int?
-  status                String   @default("draft")
-  recordingRoomJson     Json?
-  timelineJson          Json?
-  transcriptJson        Json?
-  productionJson        Json?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  projectId            String
+  documentId           String
+  slug                 String
+  title                String
+  boundaryLabel        String
+  boundaryKind         String   @default("episode")
+  boundaryStartBlockId String?
+  boundaryEndBlockId   String?
+  boundaryStartOrder   Int?
+  boundaryEndOrder     Int?
+  status               String   @default("draft")
+  recordingRoomJson    Json?
+  timelineJson         Json?
+  transcriptJson       Json?
+  productionJson       Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   project  StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -926,6 +927,19 @@ model StudioEpisodeProduction {
   @@index([documentId])
   @@index([projectId, boundaryKind])
   @@index([projectId, status, updatedAt])
+}
+
+model StudioVideoSource {
+  id               String   @id @default(cuid())
+  provider         String
+  providerSourceId String?
+  url              String
+  title            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([provider])
+  @@index([providerSourceId])
 }
 
 model StudioManuscript {
@@ -1470,59 +1484,59 @@ model SocialPost {
 }
 
 model StudioMediaAsset {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   filename      String
   url           String
   mimeType      String?
   sizeBytes     BigInt?
-  isProxy       Boolean  @default(false)
+  isProxy       Boolean @default(false)
   rawAssetId    String? // If this is a proxy, points to the original raw StudioMediaAsset
-  cloudProvider String   @default("gcs")
-  
-  // New Video Metadata
-  duration      Float?
-  resolution    String?
-  fps           Float?
-  thumbnailUrl  String?
-  mediaBinId    String?
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  cloudProvider String  @default("gcs")
 
-  projects      StudioProject[]
-  mediaBin      MediaBin?   @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
-  clips         MediaClip[]
+  // New Video Metadata
+  duration     Float?
+  resolution   String?
+  fps          Float?
+  thumbnailUrl String?
+  mediaBinId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects StudioProject[]
+  mediaBin MediaBin?       @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips    MediaClip[]
 
   @@index([createdAt])
   @@index([mediaBinId])
 }
 
 model MediaBin {
-  id            String   @id @default(cuid())
-  projectId     String
-  name          String
-  description   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  project       StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  mediaAssets   StudioMediaAsset[]
+  project     StudioProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mediaAssets StudioMediaAsset[]
 
   @@index([projectId])
 }
 
 model MediaClip {
-  id            String   @id @default(cuid())
-  mediaAssetId  String
-  title         String
-  description   String?
-  inTimecode    Float
-  outTimecode   Float
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  mediaAssetId String
+  title        String
+  description  String?
+  inTimecode   Float
+  outTimecode  Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  mediaAsset    StudioMediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
-  tags          StudioTag[]
+  mediaAsset StudioMediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  tags       StudioTag[]
 
   @@index([mediaAssetId])
 }
@@ -1580,32 +1594,32 @@ model MarketingFunnel {
   name        String
   description String?
   goalType    String   @default("lead_generation") // e.g., lead_generation, sales, webinar_registration
-  targetValue Float?   // e.g., Revenue goal
+  targetValue Float? // e.g., Revenue goal
   status      String   @default("draft")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  steps       FunnelStep[]
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  steps FunnelStep[]
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
 }
 
 model FunnelStep {
-  id              String   @id @default(cuid())
-  funnelId        String
-  stepOrder       Int
-  stepType        String   // e.g., landing_page, email_sequence, checkout
-  name            String
-  expectedConvRate Float?  // AI predicted conversion rate
-  actualConvRate  Float?   // Real analytics data
-  views           Int      @default(0)
-  conversions     Int      @default(0)
-  metadataJson    Json     // Store URLs, email sequence IDs, etc.
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  funnelId         String
+  stepOrder        Int
+  stepType         String // e.g., landing_page, email_sequence, checkout
+  name             String
+  expectedConvRate Float? // AI predicted conversion rate
+  actualConvRate   Float? // Real analytics data
+  views            Int      @default(0)
+  conversions      Int      @default(0)
+  metadataJson     Json // Store URLs, email sequence IDs, etc.
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  funnel          MarketingFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  funnel MarketingFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 
   @@index([funnelId, stepOrder])
 }
@@ -1615,22 +1629,22 @@ model FunnelStep {
 // -----------------------------------------------------------------------------
 
 model MarketingPersona {
-  id              String   @id @default(cuid())
-  userId          String
-  name            String
-  avatarImageUrl  String?
-  demographics    String
-  psychographics  String
-  painPointsJson  Json
-  desiresJson     Json
-  objectionsJson  Json
+  id                 String   @id @default(cuid())
+  userId             String
+  name               String
+  avatarImageUrl     String?
+  demographics       String
+  psychographics     String
+  painPointsJson     Json
+  desiresJson        Json
+  objectionsJson     Json
   contentPillarsJson Json
-  sourceDataJson  Json
-  status          String   @default("active")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  sourceDataJson     Json
+  status             String   @default("active")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
 }
@@ -1638,22 +1652,7 @@ model MarketingPersona {
 // -----------------------------------------------------------------------------
 // STORYBOARD (PRE-PRODUCTION)
 // -----------------------------------------------------------------------------
-
-model Project {
-  id          String   @id @default(cuid())
-  userId      String
-  title       String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scenes      Scene[]
-  shootDays   ShootDay[]
-
-  @@index([userId, title])
-}
-
+// Project model removed and merged into StudioProject
 model Scene {
   id          String   @id @default(cuid())
   projectId   String
@@ -1667,43 +1666,43 @@ model Scene {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  shootDay    ShootDay? @relation(fields: [shootDayId], references: [id], onDelete: SetNull)
-  shots       StoryboardShot[]
+  project  StudioProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shootDay ShootDay?        @relation(fields: [shootDayId], references: [id], onDelete: SetNull)
+  shots    StoryboardShot[]
 
   @@index([projectId, sortOrder])
   @@index([projectId, stripOrder])
 }
 
 model ShootDay {
-  id          String   @id @default(cuid())
-  projectId   String
-  dayNumber   Int
-  date        DateTime?
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  projectId String
+  dayNumber Int
+  date      DateTime?
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  scenes      Scene[]
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes  Scene[]
 
   @@index([projectId, sortOrder])
 }
 
 model StoryboardShot {
-  id          String   @id @default(cuid())
-  sceneId     String
-  sortOrder   Int      @default(0)
-  shotNumber  String
-  imageUrl    String?
-  action      String
-  dialogue    String?
-  cameraInfo  String
-  vfxNotes    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  sceneId    String
+  sortOrder  Int      @default(0)
+  shotNumber String
+  imageUrl   String?
+  action     String
+  dialogue   String?
+  cameraInfo String
+  vfxNotes   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  scene       Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  scene Scene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
 
   @@index([sceneId, sortOrder])
 }
@@ -1713,47 +1712,47 @@ model StoryboardShot {
 // -----------------------------------------------------------------------------
 
 model LandingPage {
-  id              String   @id @default(cuid())
-  userId          String
-  personaId       String?  // The target avatar for this page
-  name            String
-  headline        String?
-  subheadline     String?
-  ctaText         String?
-  status          String   @default("draft") // draft, published
-  slug            String?  @unique
-  views           Int      @default(0)
-  conversions     Int      @default(0)
-  campaignId      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  personaId   String? // The target avatar for this page
+  name        String
+  headline    String?
+  subheadline String?
+  ctaText     String?
+  status      String   @default("draft") // draft, published
+  slug        String?  @unique
+  views       Int      @default(0)
+  conversions Int      @default(0)
+  campaignId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  organizationId  String?
+  organizationId String?
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaign        MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  leads           MarketingLead[]
-  
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  leads        MarketingLead[]
+
   @@index([userId, status])
   @@index([organizationId])
 }
 
 model MarketingLead {
-  id              String   @id @default(cuid())
-  userId          String
-  landingPageId   String?
-  email           String
-  name            String?
-  status          String   @default("subscribed") // subscribed, unsubscribed
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String
+  landingPageId String?
+  email         String
+  name          String?
+  status        String   @default("subscribed") // subscribed, unsubscribed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  organizationId  String?
+  organizationId String?
 
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  landingPage     LandingPage? @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  landingPage  LandingPage?  @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
 
   @@index([userId, email])
   @@index([landingPageId])
@@ -1765,21 +1764,21 @@ model MarketingLead {
 // -----------------------------------------------------------------------------
 
 model EmailSequence {
-  id              String   @id @default(cuid())
-  userId          String
-  personaId       String?
-  name            String
-  status          String   @default("draft") // draft, active
-  emailsJson      Json     // Array of email objects (subject, body, dayOffset)
-  campaignId      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  personaId  String?
+  name       String
+  status     String   @default("draft") // draft, active
+  emailsJson Json // Array of email objects (subject, body, dayOffset)
+  campaignId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  organizationId  String?
+  organizationId String?
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaign        MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
   @@index([organizationId])
@@ -1790,22 +1789,22 @@ model EmailSequence {
 // -----------------------------------------------------------------------------
 
 model MarketingCampaign {
-  id              String   @id @default(cuid())
-  userId          String
-  name            String
-  description     String?
-  status          String   @default("draft") // draft, active, completed
-  startDate       DateTime?
-  endDate         DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  status      String    @default("draft") // draft, active, completed
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  organizationId  String?
+  organizationId String?
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  landingPages    LandingPage[]
-  emailSequences  EmailSequence[]
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  landingPages   LandingPage[]
+  emailSequences EmailSequence[]
 
   @@index([userId, status])
   @@index([organizationId])
@@ -1848,8 +1847,8 @@ model OrganizationMember {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId])
   @@index([userId])
@@ -1879,8 +1878,8 @@ model FeedbackTicket {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([organizationId])
@@ -1888,15 +1887,15 @@ model FeedbackTicket {
 }
 
 model UserEvent {
-  id             String        @id @default(cuid())
+  id             String   @id @default(cuid())
   userId         String
   organizationId String?
   eventName      String
   payloadJson    Json
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime @default(now())
 
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([organizationId])
@@ -1920,13 +1919,13 @@ model SubscriptionPlan {
   id              String   @id @default(cuid())
   name            String
   stripeProductId String?  @unique
-  price           Int      
+  price           Int
   currency        String   @default("usd")
-  interval        String   @default("month") 
+  interval        String   @default("month")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  subscriptions   Subscription[]
+  subscriptions Subscription[]
 }
 
 model Subscription {
@@ -1940,13 +1939,111 @@ model Subscription {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan                 SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
 
   @@index([organizationId])
   @@index([planId])
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
+}
+
+// -----------------------------------------------------------------------------
+// ROMANCE LAB (PRIVATE WORKSPACE TOOLSET)
+// -----------------------------------------------------------------------------
+
+model RomanceUniverse {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  series     RomanceSeries[]
+  factions   RomanceFaction[]
+  characters RomanceCharacter[]
+}
+
+model RomanceSeries {
+  id          String   @id @default(cuid())
+  universeId  String
+  title       String
+  description String?
+  icon        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  universe RomanceUniverse @relation(fields: [universeId], references: [id], onDelete: Cascade)
+  books    RomanceBook[]
+
+  @@index([universeId])
+}
+
+model RomanceBook {
+  id         String   @id @default(cuid())
+  seriesId   String
+  title      String
+  bookNumber Int
+  tropesJson Json     @default("[]")
+  leadsJson  Json     @default("[]")
+  coverUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  series RomanceSeries  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  scenes RomanceScene[]
+
+  @@index([seriesId])
+}
+
+model RomanceFaction {
+  id          String   @id @default(cuid())
+  universeId  String
+  name        String
+  description String?
+  ideology    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  universe   RomanceUniverse    @relation(fields: [universeId], references: [id], onDelete: Cascade)
+  characters RomanceCharacter[]
+
+  @@index([universeId])
+}
+
+model RomanceCharacter {
+  id                  String   @id @default(cuid())
+  universeId          String
+  factionId           String?
+  name                String
+  aliasesJson         Json     @default("[]")
+  physicalDescription String?
+  personality         String?
+  backstory           String?
+  species             String?
+  archetype           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  universe RomanceUniverse @relation(fields: [universeId], references: [id], onDelete: Cascade)
+  faction  RomanceFaction? @relation(fields: [factionId], references: [id], onDelete: SetNull)
+
+  @@index([universeId])
+  @@index([factionId])
+}
+
+model RomanceScene {
+  id        String   @id @default(cuid())
+  bookId    String
+  title     String
+  summary   String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  book RomanceBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId])
 }
 
 // -----------------------------------------------------------------------------
@@ -1961,4 +2058,37 @@ model WaitlistSubscriber {
   updatedAt DateTime @updatedAt
 
   @@index([email])
+}
+
+// -----------------------------------------------------------------------------
+// SUPPORT CENTER (QUIPSLY SAAS)
+// -----------------------------------------------------------------------------
+
+model KnowledgeCategory {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  articles KnowledgeArticle[]
+}
+
+model KnowledgeArticle {
+  id          String   @id @default(cuid())
+  categoryId  String
+  title       String
+  slug        String   @unique
+  content     String // Stores Markdown or HTML content
+  isPublished Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([slug])
 }

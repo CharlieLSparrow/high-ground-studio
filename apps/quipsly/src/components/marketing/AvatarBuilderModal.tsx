@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, X, BrainCircuit, UploadCloud, FileText } from 'lucide-react';
-import { saveMarketingPersona } from '@/app/marketing/avatars/actions';
+import { saveMarketingPersona } from '@/app/(app)/marketing/avatars/actions';
 
 export function AvatarBuilderModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(1);
