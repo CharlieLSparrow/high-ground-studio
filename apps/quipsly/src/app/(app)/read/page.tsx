@@ -1,49 +1,70 @@
 import React from 'react';
 import { WakeLockManager } from './WakeLockManager';
 import { RecorderBottomBar } from './RecorderBottomBar';
-import { ReadModeManuscript, StudioDocumentBlock } from './ReadModeManuscript';
+import { ReadModeManuscript, StudioDocumentBlock as UIStudioDocumentBlock } from './ReadModeManuscript';
 import { notFound } from 'next/navigation';
+import { getPrismaClient } from '@/lib/prisma';
 
-// In a real implementation, we would import db/prisma here and fetch actual data.
-// For this passion run, we'll mock the data fetching to demonstrate the architecture 
-// cleanly without needing to seed a complex database state locally.
 async function fetchEpisodeContext(projectSlug: string, episodeSlug: string) {
-  // Mocking the database fetch delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
   if (!projectSlug || !episodeSlug) return null;
-  
+
+  let prisma;
+  try {
+    prisma = getPrismaClient();
+  } catch (err) {
+    console.error("Failed to initialize Prisma:", err);
+    return null;
+  }
+
+  const episode = await prisma.studioEpisodeProduction.findFirst({
+    where: {
+      slug: episodeSlug,
+      project: {
+        slug: projectSlug
+      }
+    },
+    include: {
+      project: true,
+      document: {
+        include: {
+          blocks: {
+            orderBy: {
+              order: 'asc'
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!episode || !episode.document) {
+    return null;
+  }
+
+  // Map to UI representation
+  const uiBlocks: UIStudioDocumentBlock[] = episode.document.blocks.map(b => ({
+    id: b.stableId,
+    type: b.title ? 'heading' : 'paragraph',
+    content: b.title || b.body,
+  }));
+
+  // Append a placeholder for bucket media just for the beta to demonstrate
+  // the inline clip capability since we aren't querying the timeline internals yet.
+  uiBlocks.push({
+    id: 'placeholder-inline-clip',
+    type: 'inline_clip',
+    content: '',
+    metadataJson: {
+      source: 'bucket',
+      title: 'Upload Media Placeholder',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+    }
+  });
+
   return {
-    projectTitle: projectSlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-    episodeTitle: episodeSlug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-    blocks: [
-      { id: 'b1', type: 'heading', content: 'Act 1: The Inciting Incident' },
-      { id: 'b2', type: 'paragraph', content: 'The scene opens on a bustling city street. The sounds of traffic and distant sirens set a tense atmosphere. Our protagonist is unaware of what is about to happen.' },
-      { id: 'b3', type: 'paragraph', content: 'We need to emphasize the sheer scale of the environment here. It is critical for the audience to feel small.' },
-      { 
-        id: 'b4', 
-        type: 'inline_clip', 
-        content: '', 
-        metadataJson: { 
-          source: 'youtube', 
-          title: 'Blade Runner 2049 Cityscape Reference', 
-          url: 'https://www.youtube.com/embed/gCcx85zbxz4' 
-        } 
-      },
-      { id: 'b5', type: 'heading', content: 'Act 2: The Confrontation' },
-      { id: 'b6', type: 'paragraph', content: 'The tension breaks. A sudden realization forces a change in direction. The pacing here must be rapid and relentless.' },
-      { 
-        id: 'b7', 
-        type: 'inline_clip', 
-        content: '', 
-        metadataJson: { 
-          source: 'bucket', 
-          title: 'Raw Take 3 - Foley Walk', 
-          url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' 
-        } 
-      },
-      { id: 'b8', type: 'paragraph', content: 'The echo of footsteps fades into the distance as the chapter closes.' }
-    ] as StudioDocumentBlock[]
+    projectTitle: episode.project.name,
+    episodeTitle: episode.title,
+    blocks: uiBlocks
   };
 }
 
@@ -55,7 +76,6 @@ export default async function ReadModePage({
   const { projectSlug, episodeSlug } = searchParams;
   
   if (!projectSlug || !episodeSlug) {
-    // If no context is provided, return a simple error or 404
     notFound();
   }
 
@@ -87,7 +107,7 @@ export default async function ReadModePage({
       </main>
 
       {/* Persistent Homer Control Deck */}
-      <RecorderBottomBar />
+      <RecorderBottomBar projectSlug={projectSlug} episodeSlug={episodeSlug} />
     </div>
   );
 }

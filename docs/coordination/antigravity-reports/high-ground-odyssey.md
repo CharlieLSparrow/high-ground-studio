@@ -87,6 +87,9 @@ All `/team/hgo-*` routes, including the publish queue, preflight actions, and dr
 ### 8.1 Changed Files
 - **[EpisodeVideoEmbed.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/hgo/public/EpisodeVideoEmbed.tsx):** Embedded a visible, stylized “Published from Quipsly/Nest” provenance badge featuring the cryptographic source artifact hash and compile date.
 - **[page.tsx (Home)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/page.tsx):** Integrated the `EpisodeAudioPlayer` on the homepage below the video hero, keeping the homepage layout parallel to individual episode pages.
+- **[page.tsx (Library)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/library/page.tsx):** Implemented the database-backed highlights library ledger for reviewing saved highlights and performing revalidating deletions.
+- **[actions.ts (Library)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/library/actions.ts):** Exposed a secure `deleteSnippetAction` server action to handle highlight deletions by verified owners.
+- **[page.tsx (Dashboard)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/dashboard/page.tsx):** Integrated the dynamic highlight overview card linking to the Interactive Reader and the full Study Library.
 
 ### 8.2 Public Route List to Smoke
 - **Home Feed (`/`):** View latest episode with video hero, audio player, show notes, quotes, transcript essay, and Patreon support CTA.
@@ -97,4 +100,23 @@ All `/team/hgo-*` routes, including the publish queue, preflight actions, and dr
 ### 8.3 Next Steps: What must be fed from Quipsly
 - **Staging Projections:** The publishing queue must output new public-safe `HgoPublicEpisodePacket` JSON packets to the `content/publish/hgo-episodes/` directory to automatically update the feed.
 - **Coaching Framework Packets:** Future public-facing coaching worksheets should be published using this exact same structured JSON packet serialization to guarantee safe CRM data boundaries.
+
+## 9. HGO Prompt 4 Polish & Beta-Ready Report (June 2026)
+
+### 9.1 Changed Files
+- **[EpisodeSupportCta.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/hgo/public/EpisodeSupportCta.tsx):** Enhanced to fetch user session dynamically via `auth()`. Provides customized text and dual action links (Open Interactive Reader and Go to Dashboard) if signed in; renders Patreon sign-up and sign-in links if anonymous.
+- **[EpisodeVideoEmbed.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/hgo/public/EpisodeVideoEmbed.tsx):** Refined the Quipsly/Nest provenance metadata badge to a premium pill layout with a pulsing status indicator dot.
+- **[EpisodeHero.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/hgo/public/EpisodeHero.tsx):** Standardized the Quipsly/Nest provenance metadata badge under the subtitle for non-video episodes.
+- **[BETA-MANIFEST.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/BETA-MANIFEST.md):** Updated HGO row to list Antigravity as owner, describe all public and internal routes, and mark deployment readiness as **Ready**.
+
+### 9.2 Public Route List to Smoke
+- **Home Feed (`/`):** Matches the layout of the latest episode, containing the full-width YouTube player hero, audio player, show notes, quotes, transcript essay, and dynamic support CTA.
+- **Episodes 1-3 Route & Title Verification:**
+  - Episode 1 title: "The Wednesday Rule" at `/episodes/episode-1-write-it-down`
+  - Episode 2 title: "Look for Lessons" at `/episodes/episode-2-look-for-lessons`
+  - Episode 3 title: "Know Where You Came From" at `/episodes/episode-3-chub-and-jack`
+- **Interactive Reader (`/episodes/[slug]/read`):** Available to logged-in Patreon members or simulated dev sessions.
+- **Personal Highlights Library (`/library`):** Displays a grid of user-saved highlights with deletion options.
+- **Member Dashboard (`/dashboard`):** Includes the latest highlights overview card.
+
 

@@ -1,11 +1,11 @@
 'use client';
 
 import { useNativeRecorderBridge } from './useNativeRecorderBridge';
-import { Mic, Square, Pause, Play, Flag } from 'lucide-react';
+import { Mic, Square, Pause, Play, Flag, UploadCloud, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 
-export function RecorderBottomBar() {
-  const bridge = useNativeRecorderBridge();
+export function RecorderBottomBar({ projectSlug, episodeSlug }: { projectSlug: string, episodeSlug: string }) {
+  const bridge = useNativeRecorderBridge(projectSlug, episodeSlug);
   
   // Use a ref for the UI duration so we don't trigger React renders 60 times a second
   const displayDurationRef = useRef(bridge.durationMs);
@@ -49,12 +49,19 @@ export function RecorderBottomBar() {
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 p-4 pb-safe flex flex-col gap-4 shadow-2xl"
+      className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 pb-safe flex flex-col shadow-2xl z-50"
       role="region"
       aria-label="Recording Controls"
     >
-      {/* Time & Status display */}
-      <div className="flex justify-between items-center px-4">
+      {!bridge.hasNativeBridge && (
+        <div className="bg-yellow-900/40 text-yellow-500/90 text-[10px] uppercase tracking-wider text-center py-1.5 px-4 font-semibold border-b border-yellow-900/30">
+          ⚠️ Beta: Keep screen awake. Do not lock phone. Use Wi-Fi for long takes.
+        </div>
+      )}
+      
+      <div className="p-4 flex flex-col gap-4">
+        {/* Time & Status display */}
+        <div className="flex justify-between items-center px-4">
         <div className="flex items-center gap-2">
           <div 
             className={`w-3 h-3 rounded-full ${bridge.recorderState === 'RECORDING' ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} 
@@ -70,15 +77,25 @@ export function RecorderBottomBar() {
           </span>
         </div>
         <div 
-          className="text-zinc-500 text-sm font-medium uppercase tracking-widest"
+          className="text-zinc-500 text-sm font-medium uppercase tracking-widest flex items-center gap-2"
           aria-live="polite"
         >
-          {bridge.recorderState}
+          {bridge.uploadState !== 'IDLE' ? (
+            <span className={
+              bridge.uploadState === 'FAILED' ? 'text-red-400' :
+              bridge.uploadState === 'UPLOADED' ? 'text-green-400' :
+              'text-blue-400 animate-pulse'
+            }>
+              {bridge.uploadState.replace('_', ' ')}
+            </span>
+          ) : (
+            bridge.recorderState
+          )}
         </div>
       </div>
 
       {/* Main Controls */}
-      <div className="flex justify-center items-center gap-6">
+      <div className="flex justify-center items-center gap-6 relative">
         
         {bridge.recorderState === 'RECORDING' && (
           <button 
@@ -123,6 +140,17 @@ export function RecorderBottomBar() {
             </button>
           </>
         )}
+
+        {bridge.uploadState === 'FAILED' && bridge.recorderState === 'STOPPED' && (
+          <button
+            onClick={bridge.retryUpload}
+            className="absolute right-4 w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-500 active:scale-95 transition-all shadow-lg"
+            aria-label="Retry Upload"
+            title="Retry Upload"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        )}
       </div>
       
       {bridge.error && (
@@ -130,9 +158,10 @@ export function RecorderBottomBar() {
           className="text-red-400 text-xs text-center font-medium px-4"
           role="alert"
         >
-          Error: {bridge.error}
+          {bridge.error}
         </div>
       )}
+      </div>
     </div>
   );
 }

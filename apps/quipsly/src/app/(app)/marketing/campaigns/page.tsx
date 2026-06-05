@@ -10,8 +10,15 @@ export const dynamic = "force-dynamic";
 
 export default async function CampaignsPage() {
   const session = await auth();
+  const isDev = process.env.NODE_ENV === "development";
+  const isOwner = Array.isArray(session?.user?.roles) && session.user.roles.includes("OWNER");
+  
   if (!session?.user?.id) {
     redirect("/");
+  }
+
+  if (!isDev && !isOwner) {
+    redirect("/content-studio");
   }
 
   // Get or bootstrap organization context

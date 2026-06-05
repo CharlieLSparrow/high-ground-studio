@@ -34,7 +34,7 @@ export async function requireProjectAccess(
   // from NextAuth/Clerk and query `StudioWorkspace` memberships.
   // For the current local Alpha, we simply validate the ID exists in the db.
   
-  // const prisma = await import("@/lib/prisma").then(m => m.getPrismaClient());
-  // const project = await prisma.studioProject.findUnique({ where: { id: projectId } });
-  // if (!project) throw new Error(`Authorization failed: Project not found.`);
+  const prisma = await import("@/lib/prisma").then(m => m.getPrismaClient());
+  const project = await prisma.studioProject.findUnique({ where: { id: projectId } });
+  if (!project) throw new Error(`Authorization failed: Project not found.`);
 }

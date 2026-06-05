@@ -32,6 +32,24 @@ export function EpisodeHero({ packet }: { packet: HgoPublicEpisodePacket }) {
             {packet.subtitle}
           </p>
         )}
+
+        {packet.provenance && (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-zinc-500 font-mono">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1 font-sans font-bold text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+              Published from Quipsly/Nest
+            </span>
+            <span className="truncate max-w-[200px]" title={`Source Artifact Hash: ${packet.provenance.sourceArtifactHash}`}>
+              Artifact {packet.provenance.sourceArtifactHash.slice(0, 8)}
+            </span>
+            {packet.provenance.publishedAt && (
+              <>
+                <span>•</span>
+                <span>{new Date(packet.provenance.publishedAt).toLocaleDateString("en-US", { dateStyle: "medium" })}</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

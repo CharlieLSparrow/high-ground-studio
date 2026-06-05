@@ -1,6 +1,7 @@
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
+import { requireProjectAccess } from "@/lib/server/access";
 
 type AssistantBlockContext = {
   id?: string;
@@ -62,10 +63,13 @@ const assistantResponseSchema: Schema = {
         properties: {
           kind: {
             type: Type.STRING,
-            description: "One of suggest-tags, suggest-outline-cleanup, find-related-blocks, create-research-packet-note, summarize-selected-block, find-examples, search-quotes.",
+            description: "One of suggest-tags, find-related-blocks, create-research-packet-note, summarize-selected-block, PROPOSE_ENTITY, PROPOSE_ENTITY_UPDATE.",
           },
           label: { type: Type.STRING },
-          explanation: { type: Type.STRING },
+          explanation: { 
+            type: Type.STRING,
+            description: "A clear 'why this suggestion?' explanation detailing the reasoning behind this proposed action.",
+          },
           riskLevel: {
             type: Type.STRING,
             description: "low, medium, or high. Use high for any proposed content mutation.",
@@ -85,12 +89,11 @@ const assistantResponseSchema: Schema = {
 
 const SAFE_TOOL_KINDS = new Set([
   "suggest-tags",
-  "suggest-outline-cleanup",
   "find-related-blocks",
   "create-research-packet-note",
   "summarize-selected-block",
-  "find-examples",
-  "search-quotes",
+  "PROPOSE_ENTITY",
+  "PROPOSE_ENTITY_UPDATE",
 ]);
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -169,7 +172,7 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
       {
         kind: "find-related-blocks",
         label: boundaryLabel ? `Find related material for ${boundaryLabel}` : "Find related manuscript material",
-        explanation: "Search the visible manuscript context for blocks that appear related to the current writing focus.",
+        explanation: "Why this suggestion? Searching the visible manuscript context for blocks that appear related to the current writing focus helps build consistent lore.",
         riskLevel: "low",
         payload: {
           projectSlug: context.projectSlug,
@@ -179,13 +182,12 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
         },
       },
       {
-        kind: "suggest-outline-cleanup",
-        label: "Review outline hygiene",
-        explanation: "Look for heading blocks that may need Chapter or Episode tags. This proposes cleanup only.",
+        kind: "suggest-tags",
+        label: "Suggest Chapter/Episode Tags",
+        explanation: "Why this suggestion? Tagging blocks with chapter or episode structures helps Quipsly accurately organize your manuscript.",
         riskLevel: "low",
         payload: {
           recentTags: context.recentTags,
-          activeViewName: context.activeViewName,
         },
       },
     ],
@@ -249,6 +251,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
     }
 
+    // Tenancy access check
+    try {
+      await requireProjectAccess(project.slug, "read");
+    } catch (accessErr: any) {
+      const message = accessErr.message || "Forbidden";
+      return NextResponse.json({ ok: false, error: message }, { status: message.startsWith("UNAUTHORIZED") ? 401 : 403 });
+    }
+
     const session = await (prisma as any).studioAssistantSession.findFirst({
       where: {
         projectId: project.id,
@@ -262,12 +272,29 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, session: null });
     }
 
-    // NOTE: Messages and actions are running in-memory right now as the schema models were dropped
+    let actions = [];
+    if (process.env.DATABASE_URL && session) {
+      const dbActions = await (prisma as any).studioAssistantAction.findMany({
+        where: { sessionId: session.id },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      actions = dbActions.map((dbAction: any) => ({
+        id: dbAction.id,
+        kind: dbAction.kind,
+        label: dbAction.label,
+        explanation: dbAction.explanation,
+        status: dbAction.status,
+        payload: dbAction.payloadJson,
+        createdAt: dbAction.createdAt,
+      }));
+    }
+
     return NextResponse.json({
       ok: true,
       sessionId: session.id,
       messages: [],
-      actions: []
+      actions,
     });
   } catch (error) {
     console.error("[quipsly-assistant-get] failed", error);
@@ -304,6 +331,14 @@ export async function POST(request: Request) {
         });
 
         if (project) {
+          // Tenancy access check
+          try {
+            await requireProjectAccess(project.slug, "read");
+          } catch (accessErr: any) {
+            const message = accessErr.message || "Forbidden";
+            return NextResponse.json({ ok: false, error: message }, { status: message.startsWith("UNAUTHORIZED") ? 401 : 403 });
+          }
+
           if (!sessionId) {
             const activeSession = await (prisma as any).studioAssistantSession.findFirst({
               where: { projectId: project.id, documentId: context.documentId || null, status: "ACTIVE" },
@@ -340,6 +375,7 @@ export async function POST(request: Request) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
+    const isScanRequest = context.message.startsWith("SCAN_SECTION_FOR_ENTITIES:");
     const prompt = [
       "You are a Quipsly: a tiny research and organization assistant for writers, authors, academics, podcasters, and creators.",
       "You are not a ghostwriter. Do not replace the human author's voice.",
@@ -348,17 +384,29 @@ export async function POST(request: Request) {
       "Never claim you changed the manuscript. You can only propose tool intents.",
       "",
       "Safe tool kinds:",
-      "- suggest-tags",
-      "- suggest-outline-cleanup",
-      "- find-related-blocks",
-      "- create-research-packet-note",
-      "- summarize-selected-block",
-      "- find-examples (payload keys: query, library)",
-      "- search-quotes (payload keys: query, library)",
+      "- suggest-tags (Only suggest Chapter/Episode tags to organize structure)",
+      "- summarize-selected-block (Summarize a selected block as a preview)",
+      "- find-related-blocks (Find related visible blocks)",
+      "- create-research-packet-note (Create a draft research packet preview)",
+      "- PROPOSE_ENTITY (Propose creating a new entity in the Story Bible/Study Corpus)",
+      "- PROPOSE_ENTITY_UPDATE (Propose updating an existing entity's attributes in the Story Bible/Study Corpus)",
+      "",
+      isScanRequest
+        ? "The user has explicitly requested to scan the current section and extract entities. You must analyze the visible text block context, identify characters, settings, scenes, themes, and motifs, and return them as PROPOSE_ENTITY or PROPOSE_ENTITY_UPDATE tool intents."
+        : "",
+      "CRITICAL PROVENANCE-FIRST RULE FOR ENTITIES:",
+      "Every PROPOSE_ENTITY and PROPOSE_ENTITY_UPDATE intent MUST follow a strict provenance-first policy:",
+      "1. The payload must have name, type, and an attributes object.",
+      "2. The type MUST be one of: CHARACTER, SETTING, SCENE, RELATIONSHIP, TIMELINE_EVENT, THEME_MOTIF.",
+      "3. The attributes object MUST contain a 'sourceExcerpt' field with the exact, literal quote from the text supporting the entity's existence.",
+      "4. The attributes object should also describe the entity's relevance (e.g. role, importance, or connection to themes).",
+      "5. Do not invent any facts. If the text does not mention an attribute, do not guess.",
+      "",
+      "For EVERY tool intent you propose, you MUST explain 'why this suggestion?' in the explanation field.",
       "",
       "Current context:",
       JSON.stringify(context, null, 2),
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 
     const response = await ai.models.generateContent({
       model: process.env.GEMINI_ASSISTANT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
@@ -382,7 +430,62 @@ export async function POST(request: Request) {
 
     const payload = normalizeAssistantPayload(JSON.parse(response.text));
 
-    // NOTE: Returning payload statelessly because StudioAssistantMessage model was removed.
+    if (process.env.DATABASE_URL && sessionId && payload.toolIntents.length > 0) {
+      try {
+        const prisma = getPrismaClient();
+        const actionsToSave = payload.toolIntents.filter(
+          (intent) =>
+            intent.kind === "PROPOSE_ENTITY" ||
+            intent.kind === "PROPOSE_ENTITY_UPDATE"
+        );
+
+        if (actionsToSave.length > 0) {
+          const savedActions = await Promise.all(
+            actionsToSave.map((action) =>
+              prisma.studioAssistantAction.create({
+                data: {
+                  sessionId: sessionId!,
+                  kind: action.kind,
+                  label: action.label,
+                  explanation: action.explanation,
+                  riskLevel: action.riskLevel.toUpperCase(),
+                  payloadJson: action.payload as any,
+                  status: "proposed",
+                },
+              })
+            )
+          );
+          
+          // Log each created action in the assistant ledger
+          await Promise.all(
+            savedActions.map((action) =>
+              prisma.studioAssistantLedger.create({
+                data: {
+                  actionId: action.id,
+                  previousStatus: null,
+                  newStatus: "proposed",
+                  notes: "AI suggested entity scan action created",
+                },
+              })
+            )
+          );
+
+          // Update payload to use real DB ids for these intents
+          payload.toolIntents = payload.toolIntents.map((intent) => {
+            const savedMatch = savedActions.find(
+              (sa) => sa.kind === intent.kind && sa.label === intent.label
+            );
+            if (savedMatch) {
+              return { ...intent, id: savedMatch.id } as any;
+            }
+            return intent;
+          });
+        }
+      } catch (dbError) {
+        console.error("[quipsly-assistant] Failed to persist proposed actions:", dbError);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       sessionId,
@@ -394,3 +497,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Quipsly assistant failed safely before changing anything." }, { status: 500 });
   }
 }
+

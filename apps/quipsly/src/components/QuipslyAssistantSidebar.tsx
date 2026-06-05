@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Check, ChevronRight, ClipboardList, Feather, HeartHandshake, Loader2, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import type { DocumentBoundary, ViewDefinition } from "@/app/(app)/create/types";
-import { searchExamplesAction, searchQuotesAction } from "@/app/(app)/create/actions";
+import { searchExamplesAction, searchQuotesAction, saveAssistantAction, undoSavedAssistantAction } from "@/app/(app)/create/actions";
+import { StoryBibleSidebar } from "./story-bible";
 
 type AssistantBlockContext = {
   id: string;
@@ -17,7 +18,7 @@ type AssistantSuggestion = {
   confidence: number;
 };
 
-type AssistantActionStatus = "proposed" | "approved" | "rejected" | "undone";
+type AssistantActionStatus = "proposed" | "approved" | "rejected" | "undone" | "saved";
 
 type AssistantAction = {
   id: string;
@@ -119,6 +120,7 @@ function summarizeText(value: string) {
 }
 
 export function QuipslyAssistantSidebar({
+  projectId,
   projectSlug,
   documentId,
   documentTitle,
@@ -127,6 +129,7 @@ export function QuipslyAssistantSidebar({
   visibleBlocks,
   patreonHref,
 }: {
+  projectId: string;
   projectSlug: string;
   documentId: string;
   documentTitle?: string;
@@ -135,6 +138,7 @@ export function QuipslyAssistantSidebar({
   visibleBlocks: AssistantBlockContext[];
   patreonHref?: string;
 }) {
+  const [activeTab, setActiveTab] = useState<"CHAT" | "STORY_BIBLE">("CHAT");
   const [isOpen, setIsOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("What should I notice in this section?");
@@ -188,9 +192,9 @@ export function QuipslyAssistantSidebar({
       if (data.sessionId) setSessionId(data.sessionId);
       
       const createdAt = new Date().toISOString();
-      const proposedActions = data.actions ?? (data.toolIntents ?? []).map((intent, index) => ({
+      const proposedActions = data.actions?.length ? data.actions : (data.toolIntents ?? []).map((intent: any, index: number) => ({
         ...intent,
-        id: `${Date.now().toString(36)}-${index}`,
+        id: intent.id || `${Date.now().toString(36)}-${index}`,
         status: "proposed" as const,
         createdAt,
       }));
@@ -301,6 +305,30 @@ export function QuipslyAssistantSidebar({
             label: suggestion.title,
             detail: suggestion.detail,
           })),
+        ],
+        createdAt,
+      };
+    }
+
+    if (action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE") {
+      const p = action.payload || {};
+      const entityName = String(p.name || "Unknown Entity");
+      const entityType = String(p.type || "Unknown Type");
+      const attributes = p.attributes as Record<string, any> || {};
+      const sourceExcerpt = String(attributes.sourceExcerpt || "No excerpt provided.");
+      const items = Object.entries(attributes)
+        .filter(([k]) => k !== "sourceExcerpt")
+        .map(([k, v]) => ({ label: k, detail: String(v) }));
+
+      return {
+        id: `preview-${Date.now().toString(36)}`,
+        actionId: action.id,
+        title: action.kind === "PROPOSE_ENTITY" ? `Proposed Entity: ${entityName}` : `Proposed Entity Update: ${entityName}`,
+        kind: action.kind,
+        detail: `Type: ${entityType}`,
+        items: [
+          { label: "Source Excerpt", detail: `"${sourceExcerpt}"` },
+          ...items,
         ],
         createdAt,
       };
@@ -609,6 +637,31 @@ export function QuipslyAssistantSidebar({
     syncLedger(action.id, "undone", "Undid approval");
   };
 
+  const saveAction = async (action: AssistantAction) => {
+    updateActionStatus(action.id, "saved");
+    logChange(action, "saved", "Saved as persistent research note in ledger.");
+    syncLedger(action.id, "saved", "Saved as Research Note");
+    
+    const p = action.payload || {};
+    const provenance = {
+      projectSlug,
+      documentId,
+      documentTitle,
+      blockId: visibleBlocks[0]?.id || null,
+      sourceExcerpt: (p as any).attributes?.sourceExcerpt || null,
+      assistantActionId: action.id,
+      createdBy: "Quipsly AI",
+    };
+    await saveAssistantAction(action.id, provenance);
+  };
+
+  const undoSaveAction = async (action: AssistantAction) => {
+    updateActionStatus(action.id, "undone");
+    logChange(action, "undone", "Archived saved note from persistent ledger.");
+    syncLedger(action.id, "undone", "Undid saved note");
+    await undoSavedAssistantAction(action.id);
+  };
+
   const exportLedger = () => {
     const payload = {
       exportedAt: new Date().toISOString(),
@@ -658,299 +711,363 @@ export function QuipslyAssistantSidebar({
         aria-label="Quipsly assistant"
       >
         <div className="flex h-full flex-col">
-          <div className="border-b border-[#e8dcc4] bg-white/80 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#a36f2e]">
-                  <Bot className="h-4 w-4" />
-                  Research assistant
-                </div>
-                <h2 className="mt-1 font-serif text-2xl font-black text-[#342618]">Talk to your Quipsly</h2>
-                <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
-                  It gathers, organizes, compares, and proposes. You write and approve.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="rounded-full border border-[#e8dcc4] bg-white p-2 text-[#6b5b45] hover:bg-[#f8f1e3]"
-                aria-label="Close Quipsly assistant"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900 flex items-center justify-between gap-2">
-              <span>Context: {contextSummary}</span>
-              {sessionId ? (
-                <span className="font-mono text-[9px] text-[#a36f2e] shrink-0" title={`Active Session ID: ${sessionId}`}>
-                  SESS: {sessionId.slice(0, 8)}
-                </span>
-              ) : (
-                <span className="font-mono text-[9px] text-slate-400 shrink-0">
-                  OFFLINE/LOCAL
-                </span>
-              )}
-            </div>
+          {/* Top level Tab Switcher */}
+          <div className="flex border-b border-[#e8dcc4] bg-white/95 shrink-0">
+            <button
+              onClick={() => setActiveTab("CHAT")}
+              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 flex justify-center items-center gap-2 ${
+                activeTab === "CHAT"
+                  ? "border-[#a36f2e] text-[#342618]"
+                  : "border-transparent text-[#6b5b45]/60 hover:text-[#6b5b45]"
+              }`}
+            >
+              <Bot className="h-4 w-4" />
+              Chat
+            </button>
+            <button
+              onClick={() => setActiveTab("STORY_BIBLE")}
+              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 flex justify-center items-center gap-2 ${
+                activeTab === "STORY_BIBLE"
+                  ? "border-[#a36f2e] text-[#342618]"
+                  : "border-transparent text-[#6b5b45]/60 hover:text-[#6b5b45]"
+              }`}
+            >
+              <ClipboardList className="h-4 w-4" />
+              Story Bible & Study
+            </button>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                <Sparkles className="h-4 w-4 text-[#a36f2e]" />
-                Ask for research help
-              </div>
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                className="mt-3 min-h-24 w-full resize-none rounded-xl border border-[#e1cfad] bg-[#fffaf1] p-3 text-sm leading-6 text-[#3d3122] outline-none focus:border-[#d3a24f] focus:ring-2 focus:ring-amber-100"
-                placeholder="Ask me to find related examples, suggest tags, summarize this section, or prepare a research packet..."
-              />
-              <button
-                type="button"
-                onClick={() => void askAssistant()}
-                disabled={status === "loading"}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8c6b4a] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#6f5237] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {status === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Feather className="h-4 w-4" />}
-                {status === "loading" ? "Quipsly is gathering..." : "Ask Quipsly"}
-              </button>
-              {warning ? (
-                <div className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-5 ${
-                  status === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"
-                }`}>
-                  {warning}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                <HeartHandshake className="h-4 w-4 text-emerald-700" />
-                Quipsly says
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[#5e4b33]">{assistantMessage}</p>
-            </section>
-
-            {suggestions.length > 0 ? (
-              <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                  <ClipboardList className="h-4 w-4 text-sky-700" />
-                  Suggestions
-                </div>
-                <div className="mt-3 space-y-2">
-                  {suggestions.map((suggestion, index) => (
-                    <div key={`${suggestion.title}-${index}`} className="rounded-xl border border-sky-100 bg-sky-50/70 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-sm font-bold text-sky-950">{suggestion.title}</div>
-                        <div className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-800">
-                          {Math.round(suggestion.confidence * 100)}%
-                        </div>
-                      </div>
-                      <p className="mt-1 text-xs leading-5 text-sky-900">{suggestion.detail}</p>
+          {activeTab === "CHAT" ? (
+            <>
+              <div className="border-b border-[#e8dcc4] bg-white/80 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#a36f2e]">
+                      <Bot className="h-4 w-4" />
+                      Research assistant
                     </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                  <ShieldCheck className="h-4 w-4 text-emerald-700" />
-                  Proposed actions
-                </div>
-                {lastApproved ? (
+                    <h2 className="mt-1 font-serif text-2xl font-black text-[#342618]">Talk to your Quipsly</h2>
+                    <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
+                      It gathers, organizes, compares, and proposes. You write and approve.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => undoAction(lastApproved)}
-                    className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-900 hover:bg-amber-100"
+                    onClick={() => setIsOpen(false)}
+                    className="rounded-full border border-[#e8dcc4] bg-white p-2 text-[#6b5b45] hover:bg-[#f8f1e3]"
+                    aria-label="Close Quipsly assistant"
                   >
-                    Undo last approval
+                    <ChevronRight className="h-4 w-4" />
                   </button>
-                ) : null}
-              </div>
-              <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                Approval is recorded locally in this first pass. Manuscript writes come later after project access and rollback are wired.
-              </p>
-              <div className="mt-3 space-y-3">
-                {actions.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[#d8c39f] bg-[#fffaf1] p-4 text-xs leading-5 text-[#8a7356]">
-                    No proposed actions yet. Ask Quipsly what to notice or organize.
-                  </div>
-                ) : (
-                  actions.map((action) => (
-                    <div
-                      key={action.id}
-                      className={`rounded-xl border p-3 transition-all ${
-                        action.status === "approved"
-                          ? action.kind === "find-examples" || action.kind === "search-quotes"
-                            ? "border-sky-200 bg-sky-50/30"
-                            : "border-emerald-200 bg-emerald-50/30"
-                          : action.status === "rejected"
-                            ? "border-slate-200 bg-slate-50/50 opacity-60"
-                            : action.status === "undone"
-                              ? "border-amber-200 bg-amber-50/30"
-                              : "border-[#e8dcc4] bg-[#fffaf1]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-bold text-[#342618]">{action.label}</div>
-                          {action.kind === "find-examples" || action.kind === "search-quotes" ? (
-                            <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">
-                              Research: {action.kind === "find-examples" ? "Examples" : "Quotes"} (Read-Only Search)
-                            </div>
-                          ) : (
-                            <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
-                              Proposed Action: {action.kind} ({summarizeRisk(action.riskLevel)})
-                            </div>
-                          )}
-                        </div>
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${actionStatusClass(action.status)}`}>
-                          {action.status}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs leading-5 text-[#6b5b45]">{action.explanation}</p>
-                      {action.status === "proposed" ? (
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => approveAction(action)}
-                            className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold text-white ${
-                              action.kind === "find-examples" || action.kind === "search-quotes"
-                                ? "bg-sky-700 hover:bg-sky-800"
-                                : "bg-emerald-700 hover:bg-emerald-800"
-                            }`}
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            {action.kind === "find-examples" || action.kind === "search-quotes" ? "Execute Search" : "Approve"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => rejectAction(action)}
-                            className="flex items-center gap-1 rounded-lg border border-[#d9c7a5] bg-white px-3 py-1.5 text-xs font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            {action.kind === "find-examples" || action.kind === "search-quotes" ? "Dismiss" : "Reject"}
-                          </button>
-                        </div>
-                      ) : action.status === "approved" ? (
-                        <button
-                          type="button"
-                          onClick={() => undoAction(action)}
-                          className="mt-3 flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          {action.kind === "find-examples" || action.kind === "search-quotes" ? "Hide Search Results" : "Undo approval"}
-                        </button>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            {previews.length > 0 ? (
-              <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
-                  <Sparkles className="h-4 w-4 text-[#a36f2e]" />
-                  Local previews
                 </div>
-                <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                  These are generated from loaded browser state. They are safe to inspect and are not persisted.
-                </p>
-                <div className="mt-3 space-y-3">
-                  {previews.map((preview) => {
-                    const isResearch = preview.kind === "find-examples" || preview.kind === "search-quotes";
-                    return (
-                      <div key={preview.id} className={`rounded-xl border p-3 ${isResearch ? 'border-sky-100 bg-sky-50/50' : 'border-amber-100 bg-amber-50/50'}`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-bold text-[#342618]">{preview.title}</div>
-                            <div className={`mt-1 text-[11px] font-bold uppercase tracking-[0.12em] ${isResearch ? 'text-sky-700' : 'text-[#a36f2e]'}`}>
-                              {isResearch ? "Research Result" : "Proposed Write Preview"} / {preview.kind}
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900 flex items-center justify-between gap-2">
+                  <span>Context: {contextSummary}</span>
+                  {sessionId ? (
+                    <span className="font-mono text-[9px] text-[#a36f2e] shrink-0" title={`Active Session ID: ${sessionId}`}>
+                      SESS: {sessionId.slice(0, 8)}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[9px] text-slate-400 shrink-0">
+                      OFFLINE/LOCAL
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
+                    <Sparkles className="h-4 w-4 text-[#a36f2e]" />
+                    Ask for research help
+                  </div>
+                  <textarea
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    className="mt-3 min-h-24 w-full resize-none rounded-xl border border-[#e1cfad] bg-[#fffaf1] p-3 text-sm leading-6 text-[#3d3122] outline-none focus:border-[#d3a24f] focus:ring-2 focus:ring-amber-100"
+                    placeholder="Ask me to find related examples, suggest tags, summarize this section, or prepare a research packet..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void askAssistant()}
+                    disabled={status === "loading"}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8c6b4a] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#6f5237] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {status === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Feather className="h-4 w-4" />}
+                    {status === "loading" ? "Quipsly is gathering..." : "Ask Quipsly"}
+                  </button>
+                  {warning ? (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-5 ${
+                      status === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"
+                    }`}>
+                      {warning}
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
+                    <HeartHandshake className="h-4 w-4 text-emerald-700" />
+                    Quipsly says
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-[#5e4b33]">{assistantMessage}</p>
+                </section>
+
+                {suggestions.length > 0 ? (
+                  <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
+                      <ClipboardList className="h-4 w-4 text-sky-700" />
+                      Suggestions
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {suggestions.map((suggestion, index) => (
+                        <div key={`${suggestion.title}-${index}`} className="rounded-xl border border-sky-100 bg-sky-50/70 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-sm font-bold text-sky-950">{suggestion.title}</div>
+                            <div className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-800">
+                              {Math.round(suggestion.confidence * 100)}%
                             </div>
                           </div>
+                          <p className="mt-1 text-xs leading-5 text-sky-900">{suggestion.detail}</p>
                         </div>
-                        <div className="mt-2 flex">
-                          {isResearch ? (
-                            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800 border border-sky-200">
-                              ℹ️ Research Result: No manuscript changes
-                            </span>
-                          ) : (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200 animate-pulse">
-                              ⚠️ Proposed Outline: Needs approval to write
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs leading-5 text-[#5e4b33]">{preview.detail}</p>
-                      {preview.items.length > 0 ? (
-                        <div className="mt-3 space-y-2">
-                          {preview.items.map((item, index) => (
-                            <div key={`${preview.id}-${index}`} className="rounded-lg border border-white bg-white/80 px-3 py-2">
-                              <div className="text-xs font-black text-[#342618]">{item.label}</div>
-                              {item.detail ? <div className="mt-1 text-[11px] leading-5 text-[#6b5b45]">{item.detail}</div> : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
+                      ))}
                     </div>
-                  );
-                })}
-                </div>
-              </section>
-            ) : null}
+                  </section>
+                ) : null}
 
-            <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-black text-[#342618]">Recent assistant changes</div>
+                <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
+                      <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                      Proposed actions
+                    </div>
+                    {lastApproved ? (
+                      <button
+                        type="button"
+                        onClick={() => undoAction(lastApproved)}
+                        className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-900 hover:bg-amber-100"
+                      >
+                        Undo last approval
+                      </button>
+                    ) : null}
+                  </div>
                   <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                    Local approvals, rejections, undos, and generated previews.
+                    Approval is recorded locally in this first pass. Manuscript writes come later after project access and rollback are wired.
                   </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={exportLedger}
-                  className="shrink-0 rounded-full border border-[#d9c7a5] bg-[#fffaf1] px-3 py-1.5 text-[11px] font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
-                >
-                  Export JSON
-                </button>
-              </div>
-              {exportStatus ? (
-                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-                  {exportStatus}
-                </div>
-              ) : null}
-              <div className="mt-3 space-y-2">
-                {recentChanges.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[#d8c39f] bg-[#fffaf1] p-3 text-xs leading-5 text-[#8a7356]">
-                    No assistant approvals or previews yet.
+                  <div className="mt-3 space-y-3">
+                    {actions.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#d8c39f] bg-[#fffaf1] p-4 text-xs leading-5 text-[#8a7356]">
+                        No proposed actions yet. Ask Quipsly what to notice or organize.
+                      </div>
+                    ) : (
+                      actions.map((action) => (
+                        <div
+                          key={action.id}
+                          className={`rounded-xl border p-3 transition-all ${
+                            action.status === "approved"
+                              ? action.kind === "find-examples" || action.kind === "search-quotes"
+                                ? "border-sky-200 bg-sky-50/30"
+                                : "border-emerald-200 bg-emerald-50/30"
+                              : action.status === "rejected"
+                                ? "border-slate-200 bg-slate-50/50 opacity-60"
+                                : action.status === "undone"
+                                  ? "border-amber-200 bg-amber-50/30"
+                                  : "border-[#e8dcc4] bg-[#fffaf1]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-bold text-[#342618]">{action.label}</div>
+                              {action.kind === "find-examples" || action.kind === "search-quotes" ? (
+                                <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">
+                                  Research: {action.kind === "find-examples" ? "Examples" : "Quotes"} (Read-Only Search)
+                                </div>
+                              ) : (
+                                <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                                  Proposed Action: {action.kind} ({summarizeRisk(action.riskLevel)})
+                                </div>
+                              )}
+                            </div>
+                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${actionStatusClass(action.status)}`}>
+                              {action.status}
+                            </span>
+                          </div>
+                          <div className="mt-2 rounded-lg bg-white/50 p-2">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-[#a36f2e]">Why this suggestion?</div>
+                            <p className="mt-1 text-xs leading-5 text-[#6b5b45]">{action.explanation.replace(/^Why this suggestion\?\s*/i, "")}</p>
+                          </div>
+                          {action.status === "proposed" ? (
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => approveAction(action)}
+                                className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold text-white ${
+                                  action.kind === "find-examples" || action.kind === "search-quotes"
+                                    ? "bg-sky-700 hover:bg-sky-800"
+                                    : "bg-emerald-700 hover:bg-emerald-800"
+                                }`}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                {action.kind === "find-examples" || action.kind === "search-quotes" ? "Execute Search" : "Approve"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => rejectAction(action)}
+                                className="flex items-center gap-1 rounded-lg border border-[#d9c7a5] bg-white px-3 py-1.5 text-xs font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                {action.kind === "find-examples" || action.kind === "search-quotes" ? "Dismiss" : "Reject"}
+                              </button>
+                            </div>
+                          ) : action.status === "approved" ? (
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => saveAction(action)}
+                                className="flex items-center gap-1 rounded-lg bg-[#a36f2e] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#8b5e27]"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                Save as Research Note
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => undoAction(action)}
+                                className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                {action.kind === "find-examples" || action.kind === "search-quotes" ? "Hide Search Results" : "Undo approval"}
+                              </button>
+                            </div>
+                          ) : action.status === "saved" ? (
+                            <button
+                              type="button"
+                              onClick={() => undoSaveAction(action)}
+                              className="mt-3 flex items-center gap-1 rounded-lg border border-[#d9c7a5] bg-white px-3 py-1.5 text-xs font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Undo saved note
+                            </button>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
                   </div>
-                ) : recentChanges.map((change) => (
-                  <div key={change.id} className={`rounded-xl border px-3 py-2 text-xs ${actionStatusClass(change.status)}`}>
-                    <div className="font-black">{change.label}</div>
-                    <div className="mt-1 leading-5">{change.note}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
+                </section>
 
-            <section className="rounded-2xl border border-[#e8dcc4] bg-[#3d3122] p-4 text-white shadow-sm">
-              <div className="text-sm font-black">Help keep the flock fed</div>
-              <p className="mt-2 text-xs leading-5 text-amber-100">
-                Temporary support rail: donations stay external for now. Later, Patreon events can reconcile into app-owned memberships.
-              </p>
-              <a
-                href={patreonHref || "https://www.patreon.com/"}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex rounded-xl bg-amber-200 px-3 py-2 text-xs font-black text-[#342618] hover:bg-amber-100"
-              >
-                Open support page
-              </a>
-            </section>
-          </div>
+                {previews.length > 0 ? (
+                  <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-black text-[#342618]">
+                      <Sparkles className="h-4 w-4 text-[#a36f2e]" />
+                      Local previews
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[#8a7356]">
+                      These are generated from loaded browser state. They are safe to inspect and are not persisted.
+                    </p>
+                    <div className="mt-3 space-y-3">
+                      {previews.map((preview) => {
+                        const isResearch = preview.kind === "find-examples" || preview.kind === "search-quotes";
+                        return (
+                          <div key={preview.id} className={`rounded-xl border p-3 ${isResearch ? 'border-sky-100 bg-sky-50/50' : 'border-amber-100 bg-amber-50/50'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-bold text-[#342618]">{preview.title}</div>
+                                <div className={`mt-1 text-[11px] font-bold uppercase tracking-[0.12em] ${isResearch ? 'text-sky-700' : 'text-[#a36f2e]'}`}>
+                                  {isResearch ? "Research Result" : "Proposed Write Preview"} / {preview.kind}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex">
+                              {isResearch ? (
+                                <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800 border border-sky-200">
+                                  ℹ️ Research Result: No manuscript changes
+                                </span>
+                              ) : (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200 animate-pulse">
+                                  ⚠️ Proposed Outline: Needs approval to write
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-[#5e4b33]">{preview.detail}</p>
+                            {preview.items.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {preview.items.map((item, index) => (
+                                  <div key={`${preview.id}-${index}`} className="rounded-lg border border-white bg-white/80 px-3 py-2">
+                                    <div className="text-xs font-black text-[#342618]">{item.label}</div>
+                                    {item.detail ? <div className="mt-1 text-[11px] leading-5 text-[#6b5b45]">{item.detail}</div> : null}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black text-[#342618]">Recent assistant changes</div>
+                      <p className="mt-1 text-xs leading-5 text-[#8a7356]">
+                        Local approvals, rejections, undos, and generated previews.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={exportLedger}
+                      className="shrink-0 rounded-full border border-[#d9c7a5] bg-[#fffaf1] px-3 py-1.5 text-[11px] font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
+                    >
+                      Export JSON
+                    </button>
+                  </div>
+                  {exportStatus ? (
+                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                      {exportStatus}
+                    </div>
+                  ) : null}
+                  <div className="mt-3 space-y-2">
+                    {recentChanges.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#d8c39f] bg-[#fffaf1] p-3 text-xs leading-5 text-[#8a7356]">
+                        No assistant approvals or previews yet.
+                      </div>
+                    ) : recentChanges.map((change) => (
+                      <div key={change.id} className={`rounded-xl border px-3 py-2 text-xs ${actionStatusClass(change.status)}`}>
+                        <div className="font-black">{change.label}</div>
+                        <div className="mt-1 leading-5">{change.note}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-[#e8dcc4] bg-[#3d3122] p-4 text-white shadow-sm">
+                  <div className="text-sm font-black">Help keep the flock fed</div>
+                  <p className="mt-2 text-xs leading-5 text-amber-100">
+                    Temporary support rail: donations stay external for now. Later, Patreon events can reconcile into app-owned memberships.
+                  </p>
+                  <a
+                    href={patreonHref || "https://www.patreon.com/"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex rounded-xl bg-amber-200 px-3 py-2 text-xs font-black text-[#342618] hover:bg-amber-100"
+                  >
+                    Open support page
+                  </a>
+                </section>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 overflow-hidden">
+              <StoryBibleSidebar
+                projectId={projectId}
+                projectSlug={projectSlug}
+                documentId={documentId}
+                documentTitle={documentTitle}
+                activeBoundary={activeBoundary}
+                activeView={activeView}
+                visibleBlocks={visibleBlocks}
+              />
+            </div>
+          )}
         </div>
       </aside>
     </>

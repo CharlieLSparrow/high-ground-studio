@@ -1,5 +1,5 @@
-import React, { Fragment, useRef, useState, memo } from "react";
-import { X, Tag } from "lucide-react";
+import React, { Fragment, useRef, useState, memo, useLayoutEffect } from "react";
+import { Trash2, X, Tag } from "lucide-react";
 import { Block, uniqueTagIds, canonicalBoundarySuggestion } from "./Tagger";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import CommandPalette from "./CommandPalette";
@@ -9,7 +9,8 @@ const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 interface BlockItemProps {
   block: Block;
   blockIndex: number;
-  outlineFocusedBlockId: string | null;
+  boundaryId?: string;
+  isOutlineFocused: boolean;
   isSaving: boolean;
   onTextChange: (id: string, text: string) => void;
   onTextBlur: (id: string, text: string) => void;
@@ -20,6 +21,7 @@ interface BlockItemProps {
   onNavigatePrevious: (id: string) => void;
   onNavigateNext: (id: string) => void;
   onClearTags: (block: Block) => void;
+  onDeleteBlock: (block: Block) => void;
   onNormalizeHeading: (block: Block) => void;
   onSelectionChange: (id: string, el: HTMLTextAreaElement) => void;
   registerTextareaRef: (id: string, el: HTMLTextAreaElement | null) => void;
@@ -33,7 +35,8 @@ interface BlockItemProps {
 function BlockItemComponent({
   block,
   blockIndex,
-  outlineFocusedBlockId,
+  boundaryId,
+  isOutlineFocused,
   isSaving,
   onTextChange,
   onTextBlur,
@@ -44,6 +47,7 @@ function BlockItemComponent({
   onNavigatePrevious,
   onNavigateNext,
   onClearTags,
+  onDeleteBlock,
   onNormalizeHeading,
   onSelectionChange,
   registerTextareaRef,
@@ -51,33 +55,55 @@ function BlockItemComponent({
 }: BlockItemProps) {
   const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = internalTextareaRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+  }, [block.text]);
   
   const getTagDef = (tagId: string) => tagDefinitions.find(t => t.id === tagId);
   const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
 
   const blockTagIds = uniqueTagIds(block);
   const activeStructureTag = blockTagIds.find((tagId) => STRUCTURE_TAG_IDS.has(tagId));
+  const isFullBlockSpan = (span: { startOffset: number; endOffset: number }) => {
+    return span.startOffset <= 0 && span.endOffset >= block.text.length;
+  };
+  const displayedBlockTagIds = blockTagIds.filter((tagId) => {
+    if (STRUCTURE_TAG_IDS.has(tagId)) return true;
+    const spansForTag = (block.spans ?? []).filter((span) => span.tagSlug === tagId);
+    if (spansForTag.length === 0) return true;
+    return spansForTag.some(isFullBlockSpan);
+  });
+  const displayedRangeSpans = (block.spans ?? []).filter((span) => {
+    if (STRUCTURE_TAG_IDS.has(span.tagSlug)) return false;
+    return !isFullBlockSpan(span);
+  });
   
   const structureGlow = activeStructureTag === "chapter"
     ? "ring-1 ring-cyan-200 bg-cyan-50/20"
     : activeStructureTag === "episode"
       ? "ring-1 ring-rose-200 bg-rose-50/20"
       : "";
-  const outlineGlow = outlineFocusedBlockId === block.id ? "ring-2 ring-amber-300 bg-amber-50/50" : "";
+  const outlineGlow = isOutlineFocused ? "ring-2 ring-amber-300 bg-amber-50/50" : "";
   
   const blockAccent = blockAccents.find(a => a.shouldApply(block, blockTagIds))?.className || "border-l-4 border-l-transparent";
 
   return (
     <div 
       ref={(el) => registerWrapperRef(block.id, el)}
-      data-is-boundary={activeStructureTag ? "true" : "false"}
-      data-boundary-id={block.id}
+      data-is-boundary={activeStructureTag && boundaryId ? "true" : "false"}
+      data-boundary-id={boundaryId ?? ""}
       className={`relative group px-4 py-3 -mx-4 rounded-lg hover:bg-[#fdfaf6] transition-colors ${blockAccent} ${structureGlow} ${outlineGlow}`}
     >
       {/* Render applied tags above the block */}
-      {blockTagIds.length > 0 && (
+      {displayedBlockTagIds.length > 0 && (
         <div className="mb-1 flex flex-wrap items-center gap-1.5">
-          {blockTagIds.map(t => {
+          {displayedBlockTagIds.map(t => {
             const definition = getTagDef(t);
             if (!definition) return null;
             const Icon = definition.icon;
@@ -99,9 +125,9 @@ function BlockItemComponent({
         </div>
       )}
 
-      {(block.spans ?? []).length > 0 && (
+      {displayedRangeSpans.length > 0 && (
         <div className="mb-1 flex flex-wrap items-center gap-1.5">
-          {(block.spans ?? []).slice(0, 6).map((span) => {
+          {displayedRangeSpans.slice(0, 6).map((span) => {
             const definition = getTagDef(span.tagSlug);
             const Icon = definition?.icon ?? Tag;
             const selectedText = (span.selectedText || block.text.slice(span.startOffset, span.endOffset)).trim();
@@ -125,9 +151,9 @@ function BlockItemComponent({
               </button>
             );
           })}
-          {(block.spans ?? []).length > 6 && (
+          {displayedRangeSpans.length > 6 && (
             <span className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-md border border-[#d4c1a0] bg-white text-[#8c6b4a]">
-              +{(block.spans ?? []).length - 6} more
+              +{displayedRangeSpans.length - 6} more
             </span>
           )}
         </div>
@@ -148,9 +174,6 @@ function BlockItemComponent({
         value={block.text}
         placeholder="Type # for Chapter, Ep for Episode, or just write..."
         onChange={(e) => {
-          e.target.style.height = 'auto';
-          e.target.style.height = e.target.scrollHeight + 'px';
-          
           let nextValue = e.target.value;
           const trimmed = nextValue.toLowerCase();
           
@@ -209,11 +232,8 @@ function BlockItemComponent({
         onSelect={(e) => onSelectionChange(block.id, e.currentTarget)}
         rows={1}
         ref={(el) => {
+          internalTextareaRef.current = el;
           registerTextareaRef(block.id, el);
-          if (el) {
-            el.style.height = 'auto';
-            el.style.height = el.scrollHeight + 'px';
-          }
         }}
       />
       
@@ -260,11 +280,11 @@ function BlockItemComponent({
                   ? 'border-[#d3a24f] bg-amber-100 text-amber-900'
                   : 'border-[#e8dcc4] bg-[#f8f1e3] text-[#8c6b4a] hover:bg-[#ebdcc8] hover:text-[#3d3122]'
               }`}
-              title={isSelected ? `Remove ${tag.label}` : `Mark as ${tag.label}`}
-              aria-label={isSelected ? `Remove ${tag.label} tag` : `Add ${tag.label} tag`}
+              title={isSelected ? `Remove ${tag.label} from outline` : `Add ${tag.label} to outline`}
+              aria-label={isSelected ? `Remove ${tag.label} from outline` : `Add ${tag.label} to outline`}
             >
               <Icon size={10} />
-              {isSelected ? `${tag.label} ✓` : tag.label}
+              {isSelected ? `${tag.label} (In outline)` : `Make ${tag.label}`}
             </button>
           );
         })}
@@ -292,6 +312,18 @@ function BlockItemComponent({
             Clear tags
           </button>
         ) : null}
+
+        <button
+          type="button"
+          onClick={() => onDeleteBlock(block)}
+          onMouseDown={(event) => event.preventDefault()}
+          aria-label="Delete this block"
+          title="Deletes this block from the manuscript. Undo is available immediately."
+          className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-800 transition-colors hover:bg-rose-100"
+        >
+          <Trash2 size={10} />
+          Delete block
+        </button>
       </div>
     </div>
   );
@@ -310,7 +342,8 @@ export const BlockItem = memo(BlockItemComponent, (prev, next) => {
     prev.block.tags === next.block.tags &&
     prev.block.spans === next.block.spans &&
     prev.blockIndex === next.blockIndex &&
-    prev.outlineFocusedBlockId === next.outlineFocusedBlockId &&
+    prev.boundaryId === next.boundaryId &&
+    prev.isOutlineFocused === next.isOutlineFocused &&
     prev.isSaving === next.isSaving
   );
 });

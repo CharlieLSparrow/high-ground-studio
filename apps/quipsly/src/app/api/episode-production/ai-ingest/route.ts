@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
+import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 
 type ImportedAssetInput = {
   id?: string;
@@ -176,7 +176,7 @@ function localFallbackReport(importedMedia: ImportedAssetInput[], warning?: stri
 }
 
 async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string, episodeSlug: string) {
-  const { project, document } = await ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
+  const { project, document } = await lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 
   const title = episodeSlug
     .replace(/[-_]+/g, " ")
@@ -210,7 +210,12 @@ async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaCli
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const projectSlug = sanitizeSegment(String(body.projectSlug ?? DEFAULT_PROJECT_SLUG));
+    const rawProjectSlug = String(body.projectSlug ?? "").trim();
+    if (!rawProjectSlug) {
+      return NextResponse.json({ ok: false, error: "projectSlug is required. Choose a Nest before running AI ingest." }, { status: 400 });
+    }
+
+    const projectSlug = sanitizeSegment(rawProjectSlug);
     const episodeSlug = sanitizeSegment(String(body.episodeSlug ?? "current-episode"));
     let prisma: ReturnType<typeof getPrismaClient> | null = null;
     let production: any = null;

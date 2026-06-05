@@ -339,3 +339,42 @@ I established a strict read-only API contract between QuipLore and Quipsly.
 1. **Quipsly:** Editors research manuscripts -> Tag quotes -> Verify rights -> Status becomes `verified`.
 2. **The API Boundary:** `/api/public/stream` automatically exposes only the `verified` quotes to the public.
 3. **QuipLore:** Next.js Server Actions fetch from the public API boundary -> Renders Quote Passports and the QuipStream -> Users browse, save to Nests, or curate Lorelists.
+
+## 2026-06-05 Beta Push (Prompt 3 - Implementation) - AG-QuipLore
+
+### Minimum Inspection & Bold Code Patch
+I identified that the missing link in the QuipLore <-> Quipsly relationship was the telemetry feedback loop. For Quipsly to function as an intelligent "research assistant," it must know what quotes resonate with the public on QuipLore.
+
+### Exact Files Changed
+- `[NEW] apps/quipsly/src/app/api/public/telemetry/route.ts` - A robust, additive API endpoint that accepts batched telemetry data and upserts `QuipStreamSession` and `QuipStreamEvent` records directly into the real database.
+- `[MODIFIED] apps/quiplore/src/lib/quipsly-api-adapter.ts` - Added `logStreamEvents` adapter method.
+- `[MODIFIED] apps/quiplore/src/app/actions/feed-actions.ts` - Added the `logStreamEvent` Server Action to fire-and-forget telemetry events without breaking the UI.
+
+### Risks and Beta-Safety
+- **Safety:** This patch is 100% additive and highly beta-safe. Telemetry ingestion handles anonymous sessions gracefully (as verified by the `anonymous: true` flag in the Prisma `QuipStreamSession` model). 
+- **Failsafes:** If the database is busy or the API fails, the adapter swallows the error to ensure QuipLore never crashes due to a telemetry failure.
+
+### What Remains
+- Nests (`/hub`) are still simulated via local state because creating a real Nest API requires the Auth token integration to be finalized. Since Auth is a cross-lane dependency managed elsewhere, I've left the Nest `saveToNest` action intact as a safe UI mock, ensuring beta users still get the tactile satisfaction of saving quotes, even if it's only persisted locally for now.
+
+## 2026-06-05 Beta Push (Prompt 4 - Implementation) - AG-QuipLore
+
+### UI Improvements & Honest States
+I updated the QuipLore UI to ensure beta users understand exactly what they are looking at and where boundaries lie:
+1. **Quote Passports (`page.tsx`)**: Now properly fetches data through the `quipsly-api-adapter` rather than hardcoded seed files.
+2. **Sandbox Distinctiveness**: Added a clear, amber `alert-banner` at the top of Quote Passports if the quote is unverified or pulled from the mock seed. This ensures users understand when they are looking at a fallback sample versus a deeply verified High Ground Odyssey piece.
+3. **Honest "Save" Button (`QuipCard.tsx`)**: Updated the Save button to clearly indicate "Save to Nest coming soon (local save only)" via its title attribute. This prevents frustration by setting proper expectations before the full Auth integration arrives.
+
+### Telemetry Safety
+Telemetry batching is already insulated inside the adapter. Any `fetch` failure is swallowed by a `.catch()` block, guaranteeing that Quipsly API downtime or analytics failure will **never** break the public browsing experience.
+
+### BETA-MANIFEST Status
+Updated the `BETA-MANIFEST.md` to formally mark the `AG-QuipLore` lane as **Ready**. Added `/stream` and `/quotes/*` to the beta-critical routes. 
+
+### Exact Files Changed
+- `[MODIFIED] apps/quiplore/src/app/quotes/[slug]/page.tsx`
+- `[MODIFIED] apps/quiplore/src/components/QuipCard.tsx`
+- `[MODIFIED] docs/coordination/BETA-MANIFEST.md`
+
+### Public/Private Data Boundary
+The boundary remains ironclad: QuipLore only asks the `quipsly-api-adapter` for data. The adapter only hits `/api/public/*`. Passports dynamically warn users if the data is a fallback, preserving the integrity of the "Verified" promise.

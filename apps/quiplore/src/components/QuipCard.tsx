@@ -37,7 +37,11 @@ export function QuipCard({
           <ExternalLink size={15} aria-hidden="true" />
           Passport
         </Link>
-        <button className="button" type="button">
+        <button 
+          className="button" 
+          type="button" 
+          title="Save to Nest coming soon (local save only)"
+        >
           <Bookmark size={15} aria-hidden="true" />
           Save
         </button>

@@ -287,3 +287,56 @@ Risks:
 
 Recommended next handoff:
 - Codex to dispatch Beta Prompt 2 to all other lanes, instructing them to execute their beta passes and update their rows in `BETA-MANIFEST.md` upon completion.
+
+---
+
+## 2026-06-05 15:36 local - AG-Agent-Coordination (Beta Prompt 3: Execution)
+
+Prompt summary:
+Execute the strongest safe code/docs patch for the coordination lane to enforce beta-readiness.
+
+**Goals Achieved:**
+1. **Automated the Beta Process**: Created a Node script (`scripts/scan-beta-blockers.mjs`) that parses the `BETA-MANIFEST.md` table and the global blockers list. This gives the Release Captain a concrete executable to run before deployment, ensuring no lane is "Blocked" and providing clear warnings for any lanes still "Pending".
+2. **Updated Beta Manifest**: Synced the `BETA-MANIFEST.md` to correctly reflect the "Ready" status and the newly exposed beta-critical routes for `AG-Scroll-Experiences` (`/review/[storyboardId]`) and `AG-Fiction-Analysis` (`/api/story-bible/*`).
+
+**Exact Changed Files:**
+- `[NEW] scripts/scan-beta-blockers.mjs`: The pre-deploy scanner tool.
+- `[MODIFY] docs/coordination/BETA-MANIFEST.md`: Updated execution results for the two completed lanes.
+
+**Risks:**
+- The scan script is lightweight string matching and depends on the exact formatting of the markdown table (`| **AG-LaneName** |`). If an agent severely breaks the table formatting, the script might fail to parse a blocker.
+
+**What Remains:**
+- The other 12 "Pending" lanes must execute their Beta Prompt 3 implementation passes and update their `BETA-MANIFEST.md` rows.
+- AG-Release-Captain must resolve the active IAM permissions blocker (`run.services.get`).
+
+---
+
+## 2026-06-05 15:45 local - AG-Agent-Coordination (Implementation Sprint 4)
+
+Prompt summary:
+Act as the manifest janitor. Read all active lane reports, update the BETA-MANIFEST to accurately reflect deploy readiness across all executing lanes, and add a Codex inspection list for high-risk files.
+
+**Goals Achieved:**
+1. **Accurate Readiness Truth**: Updated the `BETA-MANIFEST.md` to reflect the completed execution passes for `AG-HighGroundOdyssey`, `AG-Publishing-Integrations`, `AG-Fiction-Analysis`, and `AG-Scroll-Experiences`. 
+2. **Codex Inspection Targets**: Added Section 3 to the manifest explicitly listing 6 high-risk files/routes that handle server actions, mutations, and public route exposure. These must be inspected by Codex before the `DEPLOY GO`.
+3. **Scan Script Validated**: The `scripts/scan-beta-blockers.mjs` script was verified; it already successfully flags any "Pending" or "Blocked" row, providing strict warnings and blocking exits where appropriate.
+
+**Exact Changed Files:**
+- `[MODIFY] docs/coordination/BETA-MANIFEST.md` (Updated 4 lane statuses and added the inspection section).
+- `[MODIFY] docs/coordination/antigravity-reports/agent-coordination.md` (This report).
+
+**Top Codex Inspection Targets Before Deploy:**
+1. `apps/quipsly/src/app/api/quipsly-assistant/route.ts` (LLM tooling/tenancy)
+2. `apps/quipsly/src/app/api/story-bible/actions/route.ts` (Transactions)
+3. `apps/web/src/app/library/actions.ts` (Deletions)
+4. `apps/web/src/app/review/actions.ts` (Client-side writes)
+5. `apps/quipsly/src/app/api/episode-production/route.ts` (Publishing pipeline)
+6. `apps/quipsly/src/app/api/public/podcast/rss/[projectSlug]/route.ts` (RSS exposure)
+
+**Risks:**
+- We have multiple lanes still showing "Pending" that may or may not have work needed for the beta. If they are intended to be omitted, they should explicitly set their status to "Ready (No Beta Work Required)".
+
+**What Remains:**
+- Codex to review the high-risk inspection targets.
+- Codex to issue the `DEPLOY GO` to `AG-Release-Captain`.

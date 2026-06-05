@@ -29,6 +29,7 @@ type StudioManuscriptRecord = StudioManuscript & {
     snapshots: number;
   };
   snapshots?: StudioManuscriptSnapshotRecord[];
+  project?: { id: string } | null;
 };
 type StudioManuscriptSnapshotRecord = StudioManuscriptSnapshot;
 export type StudioManuscriptSnapshotType = "manual";
@@ -43,6 +44,7 @@ export type StudioManuscriptSummary = {
   snapshotCount: number;
   latestSnapshot: StudioManuscriptSnapshotSummary | null;
   lastSnapshotAt: string | null;
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -159,6 +161,7 @@ function mapManuscriptSummary(
     sourceFileName: manuscript.sourceFileName,
     kind: manuscript.kind,
     snapshotCount: manuscript._count?.snapshots ?? 0,
+    projectId: manuscript.project?.id ?? null,
     latestSnapshot: latestSnapshot ? mapSnapshotSummary(latestSnapshot) : null,
     lastSnapshotAt: manuscript.lastSnapshotAt?.toISOString() ?? null,
     createdAt: manuscript.createdAt.toISOString(),
@@ -215,6 +218,9 @@ export async function listStudioManuscripts(input: {
         orderBy: { updatedAt: "desc" },
         take: 1,
       },
+      project: {
+        select: { id: true },
+      },
     },
   });
 
@@ -246,6 +252,9 @@ export async function createStudioManuscript(input: {
       snapshots: {
         orderBy: { updatedAt: "desc" },
         take: 1,
+      },
+      project: {
+        select: { id: true },
       },
     },
   });

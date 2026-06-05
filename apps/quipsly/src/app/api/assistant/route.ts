@@ -1,7 +1,7 @@
-import { executeExampleSearchAction, executeQuoteSearchAction } from "../../actions/research-actions";
+import { executeExampleSearchAction, executeQuoteSearchAction, executeContextSearchAction } from "../../actions/research-actions";
 import type { ManuscriptResearchPacket, RetrievalResult } from "@high-ground/quipsly-domain/retrieval";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 type AssistantMessage = {
   role?: string;
@@ -19,9 +19,19 @@ function getLatestUserMessage(messages: unknown): string {
 }
 
 function resultLine(result: RetrievalResult, index: number) {
-  const citation = result.citation ? ` (${result.citation})` : "";
+  const prov = result.provenance;
+  let sourceMeta = "";
+  if (prov.origin === "studio-span") {
+    sourceMeta = `[Document: ${prov.documentTitle} | Block: ${prov.blockStableId}]`;
+  } else if (prov.origin === "studio-knowledge") {
+    sourceMeta = `[Knowledge Node: ${prov.nodeType}]`;
+  } else if (prov.origin === "quipsly-lore") {
+    sourceMeta = `[Lore: ${prov.nodeSlug}]`;
+  }
+
+  const citation = result.citation ? ` (Reasoning: ${result.citation})` : "";
   const content = result.content.replace(/\s+/g, " ").trim();
-  return `${index + 1}. ${result.title}: ${content}${citation}`;
+  return `${index + 1}. ${result.title} ${sourceMeta}: ${content}${citation}`;
 }
 
 function packetSection(label: string, packet: ManuscriptResearchPacket) {
@@ -40,6 +50,8 @@ function errorSection(label: string, error: unknown) {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const projectId = typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : "";
+  const documentId = typeof body.documentId === "string" && body.documentId.trim() ? body.documentId.trim() : "";
+  const cursorNodeId = typeof body.cursorNodeId === "string" && body.cursorNodeId.trim() ? body.cursorNodeId.trim() : "";
   const query = getLatestUserMessage(body.messages);
 
   if (!projectId) {
@@ -50,9 +62,14 @@ export async function POST(req: Request) {
     return new Response("Ask Quipsly what to find in the manuscript or source library.", { status: 400 });
   }
 
-  const [examplesResult, quotesResult] = await Promise.allSettled([
+  const contextSearchPromise = (documentId && cursorNodeId)
+    ? executeContextSearchAction(documentId, cursorNodeId, projectId, query)
+    : Promise.resolve(null);
+
+  const [examplesResult, quotesResult, contextResult] = await Promise.allSettled([
     executeExampleSearchAction(query, projectId),
     executeQuoteSearchAction(query, projectId),
+    contextSearchPromise,
   ]);
 
   const sections = [
@@ -61,6 +78,10 @@ export async function POST(req: Request) {
     examplesResult.status === "fulfilled"
       ? packetSection("Examples", examplesResult.value)
       : errorSection("Examples", examplesResult.reason),
+    "",
+    (contextResult.status === "fulfilled" && contextResult.value)
+      ? packetSection("Active Document Context", contextResult.value)
+      : (contextResult.status === "rejected" ? errorSection("Active Document Context", contextResult.reason) : ""),
     "",
     quotesResult.status === "fulfilled"
       ? packetSection("Quotes", quotesResult.value)

@@ -565,3 +565,55 @@ Prompt summary: Beta push: make the Quipsly assistant useful, safe, and visibly 
 ### 3. Remaining Risks for Beta
 - **Transient Approval State:** Because `create-research-packet-note` currently only creates a local *preview* of the research packet, beta users might click "Approve", see the preview, and assume the note is permanently saved to their Story Bible/Nest. If they refresh the page, the generated preview remains transient unless they manually export the JSON ledger.
 - **Next Safe Write Step (Post-Beta):** To resolve this, the next iteration must wire the "Approve" button to a true server action (`createResearchPacketNoteAction`) that commits a `StudioKnowledgeNode` to the database while wrapping the creation in a Prisma `$transaction` for easy undo.
+
+## 2026-06-05 Beta Push 3 - AG-Assistant (Implementation Sprint)
+
+Timestamp: 2026-06-05 local
+Agent lane: AG-Assistant
+Prompt summary: This is an IMPLEMENTATION sprint... Proceed with implementation now.
+
+### 1. Delivery: Exact Changed Files
+- `apps/quipsly/src/app/api/quipsly-assistant/route.ts`
+  - Fixed `GET` endpoint to properly retrieve the `StudioAssistantAction` history from the database instead of always returning an empty array.
+  - Fixed `POST` endpoint to extract the real database `id` of newly created actions and attach them to the returned `toolIntents` payload. This guarantees the frontend uses true database IDs instead of generating client-side mock IDs.
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`
+  - Added new `buildPreviewForAction` branches to beautifully render the `PROPOSE_ENTITY` and `PROPOSE_ENTITY_UPDATE` proposals inside the sidebar, showing the entity Type, Source Excerpt, and Attributes in a structured card.
+  - Fixed a critical UI bug where `data.actions ?? ...` incorrectly evaluated to `[]` and swallowed all proposed actions if the backend returned an empty actions array.
+  - Ensured that `intent.id` is respected when creating `proposedActions` state so that "Approve" button clicks successfully map to the real database records.
+
+### 2. Implementation Approach
+- **Provenance-First Preview:** The `PROPOSE_ENTITY` previews directly highlight the `sourceExcerpt` to show the human author exactly where the AI derived the entity logic, keeping the AI fully non-black-box.
+- **Safe State Transitions:** Clicking "Approve" triggers `POST /api/quipsly-assistant/ledger` using the real database `id`, successfully persisting the transition to `approved` in both the action and ledger tables.
+
+### 3. Remaining Risks & What Remains
+- **Database Write Gap:** Currently, approving an entity transitions the `StudioAssistantAction` status to `approved`, but does not yet create a `StudioKnowledgeNode` or `StudioTaggedSpan`. Because creating these models strictly requires exact `startOffset`/`endOffset` and `blockId`, we cannot safely map a generic visible block scan to a precise tagged span without risk of breaking document integrity.
+- **Next Step:** We need a robust matching function (or a dedicated schema change like an optional `taggedSpanId`) to allow entities to exist as document-level or project-level `StudioKnowledgeNode` objects without strictly requiring a character-perfect `StudioTaggedSpan` anchor. For this beta push, leaving them persisted as approved `StudioAssistantAction` records is the safest option.
+
+## 2026-06-05 Beta Push 4 - AG-Assistant (Implementation Sprint 4)
+
+Timestamp: 2026-06-05 local
+Agent lane: AG-Assistant
+Prompt summary: Implement approved “Save as Research Note” for assistant actions without requiring exact text-span anchoring.
+
+### 1. Delivery: Exact Changed Files
+- `apps/quipsly/src/app/(app)/create/actions.ts`
+  - Added `saveAssistantAction`: Server action that updates the `StudioAssistantAction` status to `"saved"` and creates a `StudioAssistantLedger` record containing the JSON provenance data (project slug, document ID, block ID, source excerpt).
+  - Added `undoSavedAssistantAction`: Server action that archives a saved note by updating the `StudioAssistantAction` status to `"undone"` and logging it to the ledger.
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`
+  - Added `saveAction` and `undoSaveAction` handlers that optimisticly update the UI and trigger the new server actions.
+  - Upgraded the UI rendering logic so that `proposed` actions can be `approved`, and `approved` actions now expose a primary "Save as Research Note" button alongside "Undo approval". 
+  - Rendered a new `saved` state, which replaces the action buttons with an "Undo saved note" option for full lifecycle management.
+
+### 2. Persistence Model Used
+Due to the strict schema requirements of `StudioKnowledgeNode` (which mandates a unique, exact-character-offset `StudioTaggedSpan`), we bypassed `StudioKnowledgeNode` for this sprint to avoid destructive document mutations or unauthorized schema changes.
+
+Instead, we persisted the approved notes as **ledger-derived saved notes** using the existing `StudioAssistantAction` and `StudioAssistantLedger` tables. The provenance JSON (including `sourceExcerpt` and optional `blockId`) is serialized safely into the `notes` field of the ledger. This guarantees that user-approved notes are durable without risking manuscript corruption.
+
+### 3. Undo Behavior
+The "Undo saved note" button hits the `undoSavedAssistantAction` route. This wraps a Prisma `$transaction` that reverts the action status to `"undone"` and appends a new ledger event indicating the note was archived/deleted. Because the note lives entirely in the assistant ledger, undoing it has zero risk of touching or breaking manuscript text blocks.
+
+### 4. Schema Gap for Post-Beta
+To properly integrate these document-level entities into the core Story Bible without needing character-perfect selections, we need to alter the `StudioKnowledgeNode` schema:
+1. Make `taggedSpanId` optional (`String?`).
+2. Add a direct, nullable `documentId` or `blockId` reference to allow nodes that "float" near a section of text (or apply to the whole document) without being anchored to exact `startOffset`/`endOffset` text ranges.
+Until then, querying the `StudioAssistantLedger` for `"saved"` statuses will serve as our durable entity storage for the beta.

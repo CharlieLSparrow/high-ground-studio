@@ -374,5 +374,22 @@ Completed the storyboard hardening and quarantine pass:
 - **Redirects & Compatibility**: `/storyboard` singular redirects seamlessly with preservation of search parameters.
 - **Beta Readiness**: High. Build verified successfully.
 
+## 2026-06-05 15:52 local - Storyboard Beta Hardening & Integration Done (AG-Storyboard Prompt 4)
+
+Completed the Sprint 4 beta hardening and integration:
+- **Files changed**:
+  - [page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/page.tsx) (Added API key & GCS bucket configuration checks to pass `aiConfigStatus` to client)
+  - [StoryboardClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx) (Propagated `aiConfigStatus` to renderer, and conditionally rendered the "Review Mode ↗" link only when frames are present)
+  - [StoryboardGridRenderer.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardGridRenderer.tsx) (Implemented "AI Sandbox Mode" and "Sandbox Sketch" fallback UI badges/labels, and added the 3-step Quick Start Workflow component for empty storyboards)
+  - [BETA-MANIFEST.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/BETA-MANIFEST.md) (Updated AG-Storyboard route exposure and marked the lane as **Ready**)
+
+- **Tenancy Scoping Verification**:
+  - Confirmed all db reads and writes are fully scoped to the user's active studio workspace (via `ensureStudioWorkspace(prisma)`) or derived from active parent records. No orphaned projects can be created.
+- **Route Exposure Verdict**:
+  - `/storyboards/builder` is exposed as the primary beta-critical workspace page.
+  - `/storyboard` (legacy singular path) redirects to the builder page, preserving parameters.
+  - Both routes are secured by ownership/development flags, maintaining private beta posture.
+
+
 
 

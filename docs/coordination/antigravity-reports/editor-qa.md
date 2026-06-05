@@ -294,3 +294,37 @@ Recommended Prompt 2 for my lane:
 
 **Remaining Author-Flow Risks**:
 None identified for this specific workflow. Tag toggling correctly pushes undo states, the scrolling is intercepted properly by `requestAnimationFrame`, and the outline is stable.
+
+## 2026-06-05 Beta Prompt 3 - Implementation Sprint (Live Packet Export)
+
+**Goal**: Implement the Live Packet Export from Studio to Artifact, ensuring private notes are excluded and the preview is visible, while gating the final push to HGO.
+
+**Files Changed**:
+- `apps/quipsly/src/app/(app)/create/actions.ts`
+- `apps/quipsly/src/app/(app)/create/PublisherModePanel.tsx`
+
+**What was delivered**:
+1. **Private Note Stripping**: Modified the `compileActiveProjectPackages` server action. When building the body text for a distribution package, it now explicitly scans the spans of each block and filters out any block tagged with `internal_note` or `private`.
+2. **Packet Payload Preview**: Added an interactive "Preview Packet Payload" `<details>` block to each generated candidate card in `PublisherModePanel.tsx`. Beta users can click this to view the raw JSON payload and visually verify that their private notes and internal tags were safely excluded.
+3. **Owner-Gated Publishing**: Updated `getEpisodeCandidatesAction` to return an `isOwner` boolean (checking for `@highgroundodyssey.com` emails or development mode). The final "Publish to HGO" button is now fully disabled with a tooltip explaining that publishing requires owner permissions during the Beta phase.
+
+**Remaining Author-Flow Risks**:
+The compiler currently filters entire blocks if they contain a private span. If an author writes a long block of text and highlights just one sentence as an `internal_note`, the *entire block* is excluded from the public packet. This is the safest default for privacy, but could surprise authors who expect only the highlighted sentence to be removed.
+
+## 2026-06-05 Beta Prompt 4 - Implementation Sprint (Preview Polish & Span-Level Filtering)
+
+**Goal**: Implement a stronger, author-facing public packet preview and improve filtering to support span-level private text removal.
+
+**Files Changed**:
+- `apps/quipsly/src/app/(app)/create/actions.ts`
+- `apps/quipsly/src/app/(app)/create/PublisherModePanel.tsx`
+
+**What was delivered**:
+1. **Span-Level Private Filtering**: Upgraded the compiler in `actions.ts` to perform surgical string slicing. If an author tags only a single sentence as `internal_note` or `private`, the compiler safely slices out only that span and preserves the rest of the public paragraph. If the entire block is tagged private, it continues to drop the whole block.
+2. **Exclusion Tracking**: The compiler now tracks what text was stripped (with a truncated preview) and why ("Entire block marked private" vs "Contains private text spans"), and passes this securely via the `metadata.excludedBlocks` packet array.
+3. **Human-Readable Public Preview**: Overhauled the preview `<details>` block in `PublisherModePanel.tsx`. Instead of a raw JSON dump, it now explicitly renders the generated HTML `body` text exactly as it will appear on the public HGO site. 
+4. **Author-Facing Audit Section**: Added a prominent "Excluded from public packet" red section that lists exactly which blocks/sentences were stripped for privacy reasons, allowing the author to verify what was hidden. The raw JSON payload is now tucked away in a sub-accordion for developers.
+5. **No Schema Changes**: Used the existing `metadata` free-form JSON field in the packet shape to pass exclusion reports to the UI, strictly maintaining the AG-Publishing-Integrations packet contract.
+
+**Remaining Author-Flow Risks**:
+The span slicing logic (`substring` operations) assumes that the text has not been fundamentally altered between tag creation and compilation. If span offsets drift, the slice might clip adjacent words. However, `Tagger.tsx` automatically invalidates and removes tags if block text is heavily mutated over them, meaning the tags should be clean at the time of compilation. No critical risks remain for the Beta launch.

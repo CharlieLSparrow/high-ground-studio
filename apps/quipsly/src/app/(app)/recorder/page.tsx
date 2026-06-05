@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 type RecordingEventKind = "session" | "marker" | "clip" | "retake" | "note";
 
@@ -807,7 +806,7 @@ export default function RecorderDashboard() {
   const { project: routeProject, episode: routeEpisode, seed: routeSeedDemo } = getRecorderRouteParams();
 
   const [hydrated, setHydrated] = useState(false);
-  const [projectSlug, setProjectSlug] = useState(DEFAULT_PROJECT_SLUG);
+  const [projectSlug, setProjectSlug] = useState("");
   const [episodeSlug, setEpisodeSlug] = useState("current-episode");
   const [roomName, setRoomName] = useState(defaultRoom().roomName);
   const [script, setScript] = useState(defaultRoom().script);
@@ -904,8 +903,15 @@ export default function RecorderDashboard() {
     setLastSavedAt(null);
     roomAutosaveHashRef.current = "";
 
-    const slug = routeProject ?? window.localStorage.getItem("quipsly.last-recording-project") ?? DEFAULT_PROJECT_SLUG;
+    const slug = routeProject ?? window.localStorage.getItem("quipsly.last-recording-project") ?? "";
     const episode = routeEpisode ?? "current-episode";
+    if (!slug) {
+      setProjectSlug("");
+      setEpisodeSlug(episode);
+      setHydrated(true);
+      return;
+    }
+
     setProjectSlug(slug);
     setEpisodeSlug(episode);
     activeHydrationRouteRef.current = `${slug}::${episode}`;
@@ -1770,6 +1776,38 @@ export default function RecorderDashboard() {
       console.warn("Could not save recorder room manually.", error);
     }
   };
+
+  if (hydrated && !projectSlug) {
+    return (
+      <main className="min-h-screen bg-[#0b0d12] px-5 py-10 text-slate-100">
+        <section className="mx-auto flex min-h-[70vh] max-w-3xl flex-col justify-center rounded-[32px] border border-amber-300/25 bg-slate-950/80 p-8 shadow-2xl shadow-black/30">
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-amber-300">
+            Recording needs a Nest
+          </p>
+          <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
+            Choose where this session belongs before recording.
+          </h1>
+          <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-300">
+            Recorder rooms now require a project/Nest so audio, clips, transcripts, and timelines stay attached to the right work. No more sneaky dev-lab fallbacks.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/projects"
+              className="rounded-full bg-amber-300 px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-slate-950 shadow-lg shadow-amber-950/30"
+            >
+              Open Nests
+            </Link>
+            <Link
+              href="/create"
+              className="rounded-full border border-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-slate-100"
+            >
+              Back to Studio
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f7efe0] text-[#312619]">

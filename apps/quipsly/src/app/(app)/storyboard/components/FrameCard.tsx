@@ -19,36 +19,23 @@ export interface StoryboardFrameType {
 }
 
 /**
- * A rich, interactive storyboard frame component supporting inline editing, 
- * drag-and-drop reordering, and optimistic UI updates.
- * 
+ * A rich, interactive storyboard frame component supporting inline editing,
+ * drag-and-drop reordering via dnd-kit, and optimistic UI updates.
+ *
  * @param frame - The storyboard frame data object.
- * @param onUpdate - Callback fired when a frame is modified.
- * @param onDelete - Callback fired when a frame is deleted.
- * @param isDragging - Boolean indicating if the frame is currently being dragged (dnd-kit).
- * @param onOpenInspector - Callback to open the detailed metadata inspector panel.
+ * @param isSelected - Whether this frame is currently selected in the UI.
+ * @param onSelect - Callback fired when the frame is clicked or its inspector opened.
  */
 export interface FrameCardProps {
   frame: StoryboardFrameType;
   isSelected: boolean;
   onSelect: (frame: StoryboardFrameType) => void;
-  isDragging?: boolean;
 }
 
-/**
- * A rich, interactive storyboard frame component supporting inline editing, 
- * drag-and-drop reordering, and optimistic UI updates.
- * 
- * @param frame - The storyboard frame data object.
- * @param isSelected - Boolean indicating if the frame is currently selected in the UI.
- * @param onSelect - Callback fired when a frame is clicked.
- * @param isDragging - Boolean indicating if the frame is currently being dragged (dnd-kit).
- */
 export function FrameCard({
   frame,
   isSelected,
   onSelect,
-  isDragging: _isDragging
 }: FrameCardProps) {
   const {
     attributes,

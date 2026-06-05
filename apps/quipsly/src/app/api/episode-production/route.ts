@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
+import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
@@ -51,15 +51,19 @@ function fallback(projectSlug: string, episodeSlug: string, title: string, messa
 }
 
 async function ensureProjectAndDocument(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string) {
-  return ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
+  return lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 }
 
 async function ensureProduction(body: any) {
-  const projectSlug = body.projectSlug ?? DEFAULT_PROJECT_SLUG;
+  const projectSlug = typeof body.projectSlug === "string" ? body.projectSlug.trim() : "";
   const episodeSlug = body.episodeSlug ?? "current-episode";
   const title = body.title ?? body.boundaryLabel ?? humanizeSlug(episodeSlug);
   const boundaryLabel = body.boundaryLabel ?? title;
   const action = body.action ?? "ensure";
+
+  if (!projectSlug) {
+    return fallback("missing-project", episodeSlug, title, "Choose a Nest/project before using episode production.");
+  }
 
   let prisma: ReturnType<typeof getPrismaClient>;
   try {

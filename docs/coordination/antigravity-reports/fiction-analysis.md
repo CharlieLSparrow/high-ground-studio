@@ -13,10 +13,10 @@ We updated both frontend UI panels and backend endpoints to fully implement proj
 - **[route.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/quipsly-assistant/route.ts)**: Registered `PROPOSE_ENTITY` and `PROPOSE_ENTITY_UPDATE` as safe tool intents, enforced active tenancy validation, aligned LLM prompt generation for provenance-first entity scans, and enabled database persistence for proposed actions.
 
 ### Frontend Components
-- **[CreateEntityModal.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/CreateEntityModal.tsx)**: Expanded drop-down categories to support both fiction writing and book analysis (Character, Setting, Scene, Theme, Relationship, Timeline Event).
-- **[EntityCard.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/EntityCard.tsx)**: Formatted display types using dual creative/analytical taxonomy labels.
-- **[EntityDirectory.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/EntityDirectory.tsx)**: Updated search input description to include themes and concepts.
-- **[AssistantInbox.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/AssistantInbox.tsx)**: Integrated UI props for the manual scan trigger and added a prominent visual box highlighting the `sourceExcerpt` provenance quote for suggestions.
+- **[CreateEntityModal.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/CreateEntityModal.tsx)**: Expanded drop-down categories to support both fiction writing and book analysis.
+- **[EntityCard.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/EntityCard.tsx)**: [UPDATED IN SPRINT] Overhauled to include a tabbed interface ("Overview" and "Living Notes"), supporting rich editable attributes that sync dynamically to the backend. Added deep provenance tracking event dispatchers for manuscript highlighting.
+- **[EntityDirectory.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/EntityDirectory.tsx)**: [UPDATED IN SPRINT] Rewritten as a premium masonry/grid dashboard featuring entity-type pill filters, glassmorphism hovers, and color-coded tag badges.
+- **[AssistantInbox.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/AssistantInbox.tsx)**: [UPDATED IN SPRINT] Upgraded to an "Intelligence Inbox" with dynamic high-risk alert styling, an expandable developer payload view, and glowing provenance excerpt boxes.
 - **[StoryBibleSidebar.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/story-bible/StoryBibleSidebar.tsx)**: Configured props to receive active document and visible block data, and implemented the scan execution request handler.
 - **[QuipslyAssistantSidebar.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/QuipslyAssistantSidebar.tsx)**: Rebranded the panel tab to `"Story Bible & Study"` and passed active workspace details down to the nested sidebar.
 
@@ -35,9 +35,14 @@ To ensure high-fidelity containment of fiction and book analysis details, we est
 
 ## 3. Next Proposed Fiction/Book Analysis Feature
 
-### Provenance-Linked Mentions Highlight
+### Provenance-Linked Mentions Highlight (Completed in Sprint 4)
 
-We propose adding interactive inline hover cards in the document workspace. When a user writes or selects a term matching a Story Bible entity (e.g. character name, location, or theme):
-1. A subtle overlay appears offering an inspection preview.
-2. The preview displays the key attributes and the exact quoted source excerpts showing where the entity was originally defined.
-3. This allows authors and researchers to verify historical consistency and thematic continuity in place, without leaving their current editing context.
+We successfully implemented interactive inline provenance highlights in the document workspace safely and without mutating the Yjs manuscript. 
+1. The Story Bible dispatches a global `quipsly:highlight-mention` event when a user hovers over an entity's extracted quote.
+2. The `Editor.tsx` component actively listens for this event.
+3. The editor resolves the TipTap virtual DOM node that contains the snippet using `editor.state.doc.descendants` and `editor.view.nodeDOM()`.
+4. It visually highlights the physical DOM block by temporarily injecting `bg-flare/10` and `ring-flare` CSS classes.
+5. It smoothly scrolls the manuscript block into view if it is off-screen.
+6. A safety timeout (3 seconds) and a dedicated `quipsly:clear-highlight` listener ensure the highlights automatically vanish and never get stuck.
+
+This gives authors an immediate, high-fidelity visualization of thematic continuity in place, without risking any automated text mutation.

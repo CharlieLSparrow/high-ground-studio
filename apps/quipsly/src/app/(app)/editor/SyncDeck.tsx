@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 type TimelineClip = {
   id: string;
@@ -131,11 +130,11 @@ function unwrapJsonPayload(value: unknown): Record<string, unknown> {
 
 function getRouteParams() {
   if (typeof window === "undefined") {
-    return { projectSlug: DEFAULT_PROJECT_SLUG, episodeSlug: DEFAULT_EPISODE_SLUG };
+    return { projectSlug: "", episodeSlug: DEFAULT_EPISODE_SLUG };
   }
   const params = new URLSearchParams(window.location.search);
   return {
-    projectSlug: params.get("project") || params.get("projectSlug") || DEFAULT_PROJECT_SLUG,
+    projectSlug: params.get("project") || params.get("projectSlug") || "",
     episodeSlug: params.get("episode") || params.get("episodeSlug") || params.get("boundary") || DEFAULT_EPISODE_SLUG,
   };
 }
@@ -468,6 +467,12 @@ export function SyncDeck() {
   }, []);
 
   useEffect(() => {
+    if (!projectSlug) {
+      setStatus("error");
+      setError("Choose a Nest/project before opening the sync deck.");
+      return;
+    }
+
     const controller = new AbortController();
     setStatus("loading");
     setError(null);

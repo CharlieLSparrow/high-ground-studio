@@ -122,6 +122,72 @@ export default function Editor({
     },
   });
 
+  // Highlight Mentions Listener
+  useEffect(() => {
+    if (!editor) return;
+
+    let activeHighlightDom: HTMLElement | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    const clearHighlight = () => {
+      if (activeHighlightDom) {
+        activeHighlightDom.classList.remove("ring-2", "ring-flare", "bg-flare/10", "transition-all", "duration-500", "rounded-md");
+        activeHighlightDom = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const handleHighlight = (e: Event) => {
+      clearHighlight();
+      
+      const customEvent = e as CustomEvent;
+      const snippet = customEvent.detail?.snippet;
+      if (!snippet) return;
+
+      let foundNode: any = null;
+      let foundNodePos: number | null = null;
+      
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isTextblock && node.textContent.includes(snippet)) {
+          foundNodePos = pos;
+          return false;
+        }
+      });
+
+      if (foundNodePos !== null) {
+        try {
+          const domNode = editor.view.nodeDOM(foundNodePos);
+          if (domNode && domNode instanceof HTMLElement) {
+            activeHighlightDom = domNode;
+            domNode.classList.add("ring-2", "ring-flare", "bg-flare/10", "transition-all", "duration-500", "rounded-md");
+            
+            // Only scroll into view if it's far out of viewport to avoid jarring jumps
+            const rect = domNode.getBoundingClientRect();
+            if (rect.top < 0 || rect.bottom > window.innerHeight) {
+              domNode.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+
+            timeoutId = setTimeout(clearHighlight, 3000);
+          }
+        } catch (err) {
+          console.warn("[Editor] Could not highlight DOM node", err);
+        }
+      }
+    };
+
+    window.addEventListener("quipsly:highlight-mention", handleHighlight);
+    window.addEventListener("quipsly:clear-highlight", clearHighlight);
+
+    return () => {
+      clearHighlight();
+      window.removeEventListener("quipsly:highlight-mention", handleHighlight);
+      window.removeEventListener("quipsly:clear-highlight", clearHighlight);
+    };
+  }, [editor]);
+
   const handleEditorClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     const videoBlock = target.closest("[data-video-embed]");

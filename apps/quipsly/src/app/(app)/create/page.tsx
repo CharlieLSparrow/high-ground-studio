@@ -1,7 +1,8 @@
 import Workspace from "./Workspace";
 import { loadWorkbenchState, seedTonightPack } from "./actions";
-import { DEFAULT_PROJECT_SLUG, listStudioProjectOptions } from "./projectConfig";
+import { listStudioProjectOptions } from "./projectConfig";
 import { getPrismaClient } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +13,18 @@ export default async function CreatePage({
 } = {}) {
   const params = await searchParams;
   const isDefaultFallback = typeof params?.project !== "string";
-  const projectSlug = isDefaultFallback ? DEFAULT_PROJECT_SLUG : params.project!;
+  
+  if (isDefaultFallback) {
+    redirect("/projects?fallback=true");
+  }
+
+  const projectSlug = params.project!;
   await seedTonightPack(projectSlug);
   const state = await loadWorkbenchState(projectSlug);
 
   if (!state) return <div>Failed to load workbench.</div>;
 
-  let availableProjects: { slug: string; name: string }[] = [];
+  let availableProjects: { slug: string; name: string; nestKind?: string }[] = [];
   try {
     const prisma = getPrismaClient();
     availableProjects = await listStudioProjectOptions(prisma);

@@ -11,6 +11,7 @@ declare module "next-auth" {
       primaryEmail: string;
       roles: AppRole[];
       isStaff: boolean;
+      hasBetaAccess: boolean;
     };
   }
 }
@@ -21,5 +22,6 @@ declare module "next-auth/jwt" {
     primaryEmail?: string;
     roles?: AppRole[];
     isStaff?: boolean;
+    hasBetaAccess?: boolean;
   }
 }

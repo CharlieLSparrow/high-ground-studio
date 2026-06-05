@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { createStripeCheckoutSession } from "@/lib/server/stripe";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -13,6 +12,11 @@ export async function GET(request: Request) {
   if (!offerId) {
     return new NextResponse("Missing offerId", { status: 400 });
   }
+
+  const [{ auth }, { createStripeCheckoutSession }] = await Promise.all([
+    import("@/auth"),
+    import("@/lib/server/stripe"),
+  ]);
 
   const session = await auth();
   const userEmail = session?.user?.primaryEmail || null;

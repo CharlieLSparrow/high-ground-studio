@@ -2356,3 +2356,20 @@ model StudioAssistantAction {
 
   @@index([sessionId, createdAt])
 }
+
+// -----------------------------------------------------------------------------
+// SCROLL-NATIVE EXPERIENCES (BETA)
+// -----------------------------------------------------------------------------
+
+model ScrollInteraction {
+  id               String   @id @default(cuid())
+  experienceId     String   // Maps to StudioStoryboard.id or StudioDocument.id
+  panelId          String?  // Maps to StudioStoryboardFrame.id or StudioDocumentBlock.id
+  userId           String?  // Nullable for guest/client review links
+  interactionType  String   // 'COMMENT', 'RATING', 'FAVORITE', 'SELECTION', 'COMPLETION'
+  payloadJson      Json     // e.g. { rating: 5 }, { text: "Fix this color" }
+  createdAt        DateTime @default(now())
+  
+  @@index([experienceId, panelId])
+  @@index([interactionType])
+}

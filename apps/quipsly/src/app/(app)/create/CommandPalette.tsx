@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PlayCircle, MessageSquare, List, Tag, Mic } from "lucide-react";
-import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
+import { PlayCircle, Tag } from "lucide-react";
 
 type CommandOption = {
   id: string;
@@ -21,7 +20,6 @@ export default function CommandPalette({
   position: { top: number; left: number };
   onSelectStructure: (tagId: string) => void;
 }) {
-  const { tagDefinitions } = useEditorExtensions();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const options: CommandOption[] = [
@@ -38,27 +36,6 @@ export default function CommandPalette({
       icon: PlayCircle,
       shortcut: "Ep",
       action: () => onSelectStructure("episode"),
-    },
-    {
-      id: "quote",
-      label: "Quote",
-      icon: MessageSquare,
-      shortcut: "Qu",
-      action: () => onSelectStructure("quote"),
-    },
-    {
-      id: "show-note",
-      label: "Show Note",
-      icon: List,
-      shortcut: "No",
-      action: () => onSelectStructure("show-note"),
-    },
-    {
-      id: "voice-homer",
-      label: "Homer Voice",
-      icon: Mic,
-      shortcut: "Ho",
-      action: () => onSelectStructure("voice-homer"),
     },
   ];
 
@@ -97,7 +74,7 @@ export default function CommandPalette({
       }}
     >
       <div className="mb-2 px-2 pb-1 pt-1 text-[10px] font-black uppercase tracking-widest text-amber-600/70">
-        Insert Element
+        Mark structure
       </div>
       <div className="flex flex-col gap-1">
         {options.map((option, index) => {

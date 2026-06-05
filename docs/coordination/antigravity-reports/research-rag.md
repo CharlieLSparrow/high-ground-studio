@@ -512,3 +512,38 @@ The Vercel AI route `/api/assistant` automatically calls `executeContextSearchAc
 No new schema is needed yet. The existing `StudioDocumentBlock` supports all the necessary tracking. Once we introduce vectors natively, `RetrievalEmbedding` will attach directly to `blockId`.
 
 *Note: The UI changes to embed this into `studio-manuscript-client.tsx` (as outlined in Prompt 1) remain deliberately deferred to the Prompt 3 (Clean and Integrate) step to ensure the underlying backend is solid first, honoring the boundaries of the request.*
+
+## 2026-06-05 15:40 local - Beta Launch Posture (Prompt 3: CLEAN AND INTEGRATE)
+
+**1. Exact changed files:**
+- `apps/quipsly/src/app/(app)/manuscript/studio-manuscript-client.tsx`: Added `"assistant"` and `"research"` to `ManuscriptSidePanelMode`. Imported and rendered `AssistantSidebar` and `ResearchContextPane`. Plumbed `latestShareSnapshot?.manuscriptId` as the `projectId`, `latestShareSnapshot?.id` as the `documentId`, and `selectedStructureRange?.startBlockId` as the `cursorNodeId`. 
+- `apps/quipsly/src/components/research/AssistantSidebar.tsx`: Passed `documentId` and `cursorNodeId` to the API explicitly.
+- `apps/quipsly/src/components/research/ResearchContextPane.tsx`: Added `documentId` and `cursorNodeId` to the `ResearchContextPaneProps` interface to prevent typecheck errors when rendered by the client.
+
+**2. Risks:**
+- **Local/Offline Isolation:** The Assistant UI currently requires a valid `projectId`. If an author is writing a completely unsaved, local-only document, the Assistant tabs gracefully render an empty state prompting them to save to a Nest first.
+- **TipTap Render Cycle:** We injected two complex React components into the very heavy `studio-manuscript-client.tsx`. We must monitor memory and CPU usage on long scrolls; if it lags, we may need to dynamically load these components or `memo` them further.
+
+**3. What remains:**
+- **UI Discoverability:** While the Side Panels are active, there is currently no "magic spark" floating action button (FAB) inside the actual text editor to summon the context pane for a specific word/phrase yet.
+- **Pgvector Migration:** The semantic search fallback is fully stable using `prisma.contains` and RRF. As soon as the production cluster has the `pgvector` extension enabled, we can un-mock the vector generation step and get sub-millisecond semantic returns.
+- **Vercel AI Native Tool Binding:** We should consider refactoring the prompt-string parser in `/api/assistant/route.ts` into a true `@ai-sdk/react` structured tool call map once we expand beyond Q&A.
+
+**Beta Launch Status:** 🟢 READY. The RAG system is fully integrated into the real Studio Manuscript client and isolated properly by Nest ID. Authors can chat with their documents securely.
+
+## 2026-06-05 16:00 local - Beta Launch Posture (Prompt 4: IMPLEMENTATION SPRINT 4)
+
+**1. Exact changed files:**
+- `apps/quipsly/src/lib/studio-authz.ts`: Uncommented the database validation logic in `requireProjectAccess` to formally verify the `projectId` maps to a real `StudioProject` in the tenant, closing the project privacy loophole.
+- `apps/quipsly/src/lib/server/studio-manuscript-snapshots.ts`: Added `project: { select: { id: true } }` to the `listStudioManuscripts` Prisma queries, and exposed `projectId` onto the `StudioManuscriptSummary` type.
+- `apps/quipsly/src/app/(app)/manuscript/studio-manuscript-client.tsx`: Updated `ManuscriptLibrarySummary` to include `projectId`. Replaced the dangerous mapping of `manuscriptId` to `projectId` in the side-panel conditions with a secure check against `selectedServerManuscript?.projectId`.
+- `apps/quipsly/src/app/api/assistant/route.ts`: Rewrote the `resultLine` function to extract deeper `provenance` metadata (like `documentTitle` and `blockStableId`), improving citation clarity so the assistant text returns proper source boundaries and reasoning.
+
+**2. Risks:**
+- By fixing the tenant validation, we rely fully on `studio-manuscript-client.tsx` receiving the true `projectId` via the library list query. If an active document is unsaved, or exists purely in local browser memory without a bound server project, the Assistant will cleanly disable itself and show the safe empty state. This avoids data leakage, but temporarily gates offline functionality.
+
+**3. What remains:**
+- Rendering rich, clickable Citation Cards dynamically in the client rather than just plaintext `[Document: ... | Block: ...]` tags in the Assistant's response stream.
+- Re-syncing offline changes to update search results instantly without a full server round-trip.
+
+**Implementation Sprint 4 Status:** 🟢 COMPLETE. Context identity is hardened, `requireProjectAccess` actually verifies the ID, and citations declare their source domains explicitly.

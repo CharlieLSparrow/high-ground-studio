@@ -5,7 +5,10 @@ import MarketingScripts from "@/components/analytics/MarketingScripts";
 import Providers from "@/components/providers/Providers";
 import { CartProvider } from "@/components/cart/CartContext";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "http://localhost:3000";
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+  process.env.HGO_SITE_URL?.trim() ||
+  "https://highgroundodyssey.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

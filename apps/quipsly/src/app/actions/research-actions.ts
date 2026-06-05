@@ -1,6 +1,6 @@
 "use server";
 
-import { searchQuotes, searchExamples } from "../../lib/retrieval";
+import { searchQuotes, searchExamples, buildContextPacket } from "../../lib/retrieval";
 import { ManuscriptResearchPacket } from "@high-ground/quipsly-domain/retrieval";
 import { requireProjectAccess } from "../../lib/studio-authz";
 
@@ -44,6 +44,31 @@ export async function executeExampleSearchAction(
 
   const packet = await searchExamples(
     { query, library: librarySlug },
+    { activeProjectId: projectId }
+  );
+
+  return packet;
+}
+
+/**
+ * Executes a read-only context search to fetch document-specific surrounding content
+ * and related blocks for a specific cursor/node.
+ */
+export async function executeContextSearchAction(
+  documentId: string,
+  cursorNodeId: string,
+  projectId: string,
+  additionalQuery?: string,
+  librarySlug?: string
+): Promise<ManuscriptResearchPacket> {
+  await requireProjectAccess(projectId, "read");
+
+  if (!projectId || !documentId || !cursorNodeId) {
+    throw new Error("projectId, documentId, and cursorNodeId are required to establish context.");
+  }
+
+  const packet = await buildContextPacket(
+    { documentId, cursorNodeId, additionalQuery, library: librarySlug },
     { activeProjectId: projectId }
   );
 

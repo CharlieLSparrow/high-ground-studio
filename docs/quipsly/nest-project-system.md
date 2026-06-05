@@ -1,41 +1,63 @@
-# Quipsly Nest Project System
+# Quipsly Nest project system
 
-## Product language
+Last updated: 2026-06-05
 
-Use **Nest** in the UI for the user-facing project container.
+## Product rule
 
-The backing Prisma model can remain `StudioProject` for now. That lets us ship the product language without forcing a schema migration every time the product metaphor gets clearer.
+A Nest is the beta-user-facing project boundary.
 
-## Current model
+Documents are work surfaces inside a Nest. Media, recorder rooms, editor timelines, assistant sessions, research packets, publishing packets, and analytics must attach to the Nest instead of drifting into hardcoded defaults.
 
-- A **Nest** is the container for one body of work: a book, course, study library, fiction world, podcast season, media production, gallery, or research packet.
-- A **writing document** is for original authoring: books, articles, talks, scripts, show manuscripts, and other work the human is writing.
-- A **study document** is source-first: imported books, course pages, research pages, highlights, notes, and analysis layered over original source text.
-- A **public packet** is the safe projection sent to a public destination like HighGroundOdyssey.com. Public packets must not contain private operator notes, messy drafts, or backstage metadata.
+## Beta default
 
-## Current implementation
+Do not silently route users into a shared manuscript or dev lab when a route is missing `project`.
 
-- UI route: `/projects` is the Nest hub.
-- Compatibility route: `/nests` renders the same hub.
-- Existing create route: `/create?project=<nest-slug>` opens the living document for a Nest.
-- Backing model: `StudioProject`.
-- Temporary type carrier: `StudioProject.sourceLabel = nest-kind:<kind>`.
-- Document title carries the first-document shape until we add first-class document metadata.
+Safe fallback behavior:
 
-## Important publishing distinction
+- `/create` without `project` should route to `/projects?fallback=true`.
+- recorder/call/editor/media APIs should ask for a Nest or return a clear missing-project state.
+- owner-only shortcuts may link to the High Ground Odyssey manuscript, but they should be explicit.
 
-The document outline count is generated from tagged Chapter/Episode heading blocks in the current Nest.
+## Document kinds
 
-The HighGroundOdyssey publisher panel can show more published episodes than the outline because Episodes 1-3 currently come from safe starter public packets. The next bridge should generate those packets from tagged Chapter/Episode boundaries with a preview diff before public publish.
+Quipsly needs at least two first-class document experiences:
 
-## Future schema pass
+- `Writing document`: original authoring. Books, articles, talks, scripts, episodes, coaching content, and publishable source material.
+- `Study document`: source-aware reading and analysis. Imported books, course pages, PDFs, web pages, quotes, highlights, annotations, and notes layered on top of source material.
 
-When the workflow proves itself, add first-class fields instead of encoding in `sourceLabel`:
+Both should use the same living-document spine where possible:
 
-- `StudioProject.nestKind`
-- `StudioDocument.documentKind`
-- `StudioDocument.sourceIngestMode`
-- `StudioDocument.originalSourceJson`
-- `StudioPublicProjectionDestination`
+- text remains editable,
+- structure is represented by Chapter and Episode heading tags,
+- lenses hide or focus content without copying it,
+- publishing and media tools pull from tagged boundaries.
 
-Do this as an additive migration with runtime fallback for old records.
+## Starter document rule
+
+New Nests should seed a real editable welcome/how-to document inside the editor.
+
+This is intentional. Users should learn Quipsly by editing the same type of document they will use for real work, not by reading a detached tutorial page.
+
+Current starter seeds live in:
+
+- `apps/quipsly/src/app/(app)/create/starterDocuments.ts`
+
+Each Nest kind gets a starter document shaped for the work:
+
+- `writing`: one living document, Chapter/Episode headings, show notes, quotes.
+- `study`: source notes, questions, highlights, research packets.
+- `production`: episode control room, clip cues, media, sync safety.
+- `research`: evidence packets, quotes, sources, examples.
+- `fiction`: story bible, scenes, continuity notes.
+- `course`: lessons, checks, SCORM/mobile learning flow.
+- `gallery`: client review, selections, media grouping.
+- `mixed`: flexible start-anywhere workspace.
+
+## Anti-regression checks for agents
+
+- Do not add new route-level defaults that silently use `quipsly-dev-lab`.
+- Do not hardcode the High Ground Odyssey manuscript as the fallback for beta users.
+- Do not create project/document records from access-check helpers.
+- Do not make Study documents a separate app if the tagged living-document spine can support them.
+- Do not let media import, recorder, or publishing writes proceed without an explicit `projectSlug`.
+

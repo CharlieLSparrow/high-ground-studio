@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Action not found" }, { status: 404 });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       const updatedAction = await tx.studioAssistantAction.update({
         where: { id: actionId },
         data: { status: status as string },

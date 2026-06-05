@@ -3,36 +3,17 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import { Feather, Leaf, BookOpen, Heart, Sparkles, Wand2, TreePine, FileText, Send, HelpCircle, Map, Lock, Star, ChevronDown, Check, Video, Mic, Shield, Share2, Gift, Bookmark, Film, MessageSquare, ImageIcon } from "lucide-react";
+import { signIn } from "next-auth/react";
 
 export default function QuipslyLandingPage() {
-  const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [message, setMessage] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-
+  const handlePatreonSignIn = async () => {
     setStatus("loading");
     try {
-      const res = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      const data = await res.json();
-      
-      if (res.ok) {
-        setStatus("success");
-        setMessage(data.message || "We tucked your name safely in our nest!");
-        setEmail("");
-      } else {
-        setStatus("error");
-        setMessage(data.error || "A gust of wind blew the letter away. Try again?");
-      }
+      await signIn("patreon", { callbackUrl: "/dashboard" });
     } catch (err) {
       setStatus("error");
-      setMessage("A gust of wind blew the letter away. Try again?");
     }
   };
 
@@ -86,43 +67,30 @@ export default function QuipslyLandingPage() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#3d2618] leading-[1.1]">
-              Meet your AI research assistants. <br/><span className="text-3xl md:text-5xl text-[#a96735] font-serif block mt-4">(We do the digging. You do the dreaming.)</span>
+              The Engine Behind<br/><span className="text-3xl md:text-5xl text-[#a96735] font-serif block mt-4">High Ground Odyssey.</span>
             </h1>
             
             <p className="text-lg md:text-xl text-[#8c552e] leading-relaxed max-w-lg font-sans">
-              We are the Quipslys—a flock of curious, loyal little birds built for authors, podcasters, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your desk. We are happy to draft examples or format notes, but we will never black-box write your content. We gather the knowledge so you can create the wisdom.
+              Quipsly is a living manuscript and research assistant built for authors, podcasters, and creators. We use it to connect concepts, outline episodes, and organize our desk. Now, we're opening the doors. Get exclusive Beta Access bundled directly into our High Ground Odyssey supporter tiers so you can start building your own nests today.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4 font-sans" id="waitlist">
-              {status === "success" ? (
-                <div className="bg-[#fdf5eb] border border-[#c98b52] rounded-2xl p-4 flex items-center gap-4 animate-in fade-in zoom-in duration-300 w-full max-w-md shadow-sm">
-                  <div className="w-10 h-10 rounded-full bg-[#fae0b8] flex items-center justify-center text-[#8c552e] shrink-0">
-                    <Heart className="w-5 h-5 fill-current" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#3d2618]">We kept your name safe!</h3>
-                    <p className="text-[#8c552e] text-xs">A Quipsly will visit with your invite soon.</p>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="flex w-full max-w-md gap-2 p-1.5 bg-white border border-[#e8d0b5] rounded-2xl focus-within:border-[#c98b52] focus-within:ring-2 focus-within:ring-[#fdf5eb] transition-all shadow-sm">
-                  <input 
-                    type="email" 
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Where should we send our letters?..." 
-                    className="flex-1 bg-transparent border-none text-[#4a2e1c] px-4 py-3 focus:outline-none focus:ring-0 placeholder:text-[#c98b52]/60 text-sm"
-                  />
-                  <button 
-                    disabled={status === "loading"}
-                    type="submit"
-                    className="bg-[#a96735] text-[#fdf5eb] px-6 py-3 rounded-xl font-bold hover:bg-[#8c552e] transition-colors disabled:opacity-50 flex items-center gap-2 whitespace-nowrap text-sm shadow-sm"
-                  >
-                    {status === "loading" ? "Flying..." : "Invite us over"}
-                  </button>
-                </form>
-              )}
+              <button 
+                onClick={handlePatreonSignIn}
+                disabled={status === "loading"}
+                className="bg-[#a96735] text-[#fdf5eb] px-8 py-4 rounded-xl font-bold hover:bg-[#8c552e] transition-colors disabled:opacity-50 flex items-center gap-3 whitespace-nowrap shadow-sm text-lg"
+              >
+                <Lock className="w-5 h-5 fill-current opacity-70" />
+                {status === "loading" ? "Authenticating..." : "Sign in with Patreon"}
+              </button>
+              <a 
+                href="https://patreon.com/HighGroundOdyssey" 
+                target="_blank"
+                rel="noreferrer"
+                className="bg-transparent border border-[#a96735] text-[#a96735] px-6 py-4 rounded-xl font-bold hover:bg-[#fae0b8] transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm text-lg"
+              >
+                Join the $10 Tier
+              </a>
             </div>
             <p className="text-xs text-[#a96735] font-medium font-sans italic">"Every quote has a home. Every story has a keeper."</p>
           </div>
@@ -188,9 +156,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-[#fdf5eb] flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Video className="w-7 h-7 text-[#a96735]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll prep your video edits.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">YouTube & Video Prep.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Import your raw clips, and we'll help you find the best moments. We'll sync them with your episode manuscript and help you map out edit markers so you can cut faster.
+                Import your raw clips, and we'll help you find the best moments. We'll sync them with your episode manuscript and help you map out edit markers so you can cut faster in Premiere or Final Cut.
               </p>
             </div>
 
@@ -199,9 +167,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Mic className="w-7 h-7 text-[#617c4d]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll structure your podcast.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Publishing Packets.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Write your show notes in one living manuscript. We'll help tag chapters, organize audio clips, and keep your recording sessions perfectly on track.
+                Write your show notes in one living manuscript. We'll help tag chapters, organize audio clips, and prepare the text metadata you need for a smooth publishing session.
               </p>
             </div>
 
@@ -210,9 +178,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <BookOpen className="w-7 h-7 text-[#dc982f]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll dig up the receipts.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Enthusiastic Researchers.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Need a historical quote or a specific stat? We'll scour the archives to find perfect examples and context, always returning with verified sources and exact citations.
+                Need a historical quote or a specific stat? We'll scour your archives and imported sources to find perfect examples and context, always returning with verified sources and exact citations.
               </p>
             </div>
 
@@ -223,18 +191,18 @@ export default function QuipslyLandingPage() {
               </div>
               <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">You always hold the pen.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                We might draft examples or format references, but we never black-box write your content. Every suggestion is fully inspectable, approvable, and completely reversible.
+                We are librarians, not black-box ghostwriters. We might draft examples or format references, but we never write your final content. Every suggestion is fully inspectable, approvable, and reversible.
               </p>
             </div>
 
             <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#7d5b86]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <Share2 className="w-7 h-7 text-[#7d5b86]" />
+                <FileText className="w-7 h-7 text-[#7d5b86]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll pack for publishing.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Study Documents.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                When your masterpiece is ready, we'll help you organize the metadata and copy you'll need for your YouTube descriptions, podcast show notes, and social media clips.
+                Create source-first study documents by importing books, course pages, and articles. Layer your own highlights, notes, and analysis over the source material without destroying the original text.
               </p>
             </div>
 
@@ -243,9 +211,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Map className="w-7 h-7 text-[#c96b1c]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll organize your Lore.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Living Manuscripts.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Build sequences of quotes around a theme, mood, or book. We'll weave them into beautiful "Nests" or "Lorelists" that feel like a curated playlist of human wisdom.
+                Whether you're writing a book, an article, or a script, work in a living manuscript. Tag chapters, filter by lenses, and prepare your work for publishing—all within a unified, beautiful document.
               </p>
             </div>
           </div>
@@ -259,7 +227,7 @@ export default function QuipslyLandingPage() {
           <div className="relative z-10 max-w-3xl mx-auto text-center mb-16 space-y-6">
             <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-[#fdf5eb]">One source. Many outputs.</h2>
             <p className="text-lg md:text-xl text-[#e8d0b5] font-sans leading-relaxed">
-              Tired of copying your manuscript into five different tools just to publish an episode? Write, research, and organize your core ideas once in your Nest. Your Quipsly will then help you map that single source of truth into native formats across all your channels.
+              Tired of copying your manuscript into five different tools just to publish an episode? Write, research, and organize your core ideas once in your Nest. Your Quipsly will then help you prepare that single source of truth into native formats across all your channels.
             </p>
           </div>
 
@@ -350,64 +318,81 @@ export default function QuipslyLandingPage() {
         {/* Playful Pricing / Adoption Section */}
         <div id="pricing" className="max-w-5xl mx-auto mt-32 text-center relative z-10">
           <div className="mb-16 space-y-4">
-             <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight">Hire your own flock.</h2>
+             <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight">Beta Access via Patreon.</h2>
              <p className="text-lg text-[#8c552e] max-w-2xl mx-auto font-sans">
-               Whether you're a solo writer building your first nest, or an entire studio that needs a massive flock of researchers, we have a plan for you. (Seed and twigs not included).
+               Quipsly is currently in a private Beta. Rather than standard software subscriptions, we bundle full access as a perk for our High Ground Odyssey Patreon supporters so we can build alongside our community.
+             </p>
+             <p className="text-sm font-bold text-[#a96735] max-w-xl mx-auto bg-[#fdf5eb] p-4 rounded-xl border border-[#e8d0b5] shadow-sm font-sans">
+               <strong>Note:</strong> Beta access requires a brief manual reconciliation. You won't be charged separately for Quipsly, but it may take a few hours for your Patreon status to sync and unlock your workspace after you sign in.
              </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 text-left">
              <div className="bg-white border border-[#e8d0b5] rounded-[2rem] p-8 shadow-sm flex flex-col">
-                <h3 className="font-bold text-[#3d2618] text-xl">A Single Quipsly</h3>
+                <h3 className="font-bold text-[#3d2618] text-xl">The Reader</h3>
                 <div className="my-4">
                   <span className="text-4xl font-bold text-[#3d2618]">Free</span>
                 </div>
-                <p className="text-sm text-[#8c552e] font-sans mb-6">Perfect for curious readers who want to save quotes to their personal nest.</p>
+                <p className="text-sm text-[#8c552e] font-sans mb-6">For listeners and readers who want to save quotes from our episodes into their personal nest.</p>
                 <ul className="space-y-3 text-sm text-[#8c552e] font-sans flex-1">
                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Access to QuipLore</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Build up to 5 Nests</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Basic Quip Cards</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Build up to 3 Nests</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Basic Study Documents</li>
                 </ul>
-                <button className="w-full mt-8 bg-[#fdf5eb] text-[#a96735] border border-[#e8d0b5] py-3 rounded-xl font-bold hover:bg-[#fae0b8] transition-colors font-sans">
-                  Start Reading
+                <button 
+                  onClick={handlePatreonSignIn}
+                  disabled={status === "loading"}
+                  className="w-full mt-8 bg-[#fdf5eb] text-[#a96735] border border-[#e8d0b5] py-3 rounded-xl font-bold hover:bg-[#fae0b8] transition-colors font-sans flex items-center justify-center gap-2"
+                >
+                  <Lock className="w-4 h-4 fill-current opacity-70" /> Sign In
                 </button>
              </div>
 
              <div className="bg-[#fffaf1] border-2 border-[#a96735] rounded-[2rem] p-8 shadow-xl flex flex-col relative transform md:-translate-y-4">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#a96735] text-white text-xs font-bold px-4 py-1 rounded-full uppercase tracking-wider font-sans">
-                  Most Popular
+                  Full Beta Access
                 </div>
-                <h3 className="font-bold text-[#3d2618] text-xl">A Small Flock</h3>
+                <h3 className="font-bold text-[#3d2618] text-xl">The Creator Flock</h3>
                 <div className="my-4">
-                  <span className="text-4xl font-bold text-[#3d2618]">$12</span><span className="text-[#8c552e] font-sans">/mo</span>
+                  <span className="text-4xl font-bold text-[#3d2618]">$10</span><span className="text-[#8c552e] font-sans">/mo</span>
                 </div>
-                <p className="text-sm text-[#8c552e] font-sans mb-6">For writers, creators, and marketers who need active AI agent assistance.</p>
+                <p className="text-sm text-[#8c552e] font-sans mb-6">For writers, creators, and students who need active AI agent assistance.</p>
                 <ul className="space-y-3 text-sm text-[#8c552e] font-sans flex-1">
                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> The Manuscript Desk</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Unlimited Nests</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Basic AI Storyboarding</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Campaign Sandbox</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Unlimited Nests & Imports</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> AI Research Assistants</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> HGO Publishing Integration</li>
                 </ul>
-                <button className="w-full mt-8 bg-[#a96735] text-white py-3 rounded-xl font-bold hover:bg-[#8c552e] transition-colors font-sans">
-                  Hire the Flock
-                </button>
+                <a 
+                  href="https://patreon.com/HighGroundOdyssey" 
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full mt-8 bg-[#a96735] text-white py-3 rounded-xl font-bold hover:bg-[#8c552e] transition-colors font-sans flex items-center justify-center text-center"
+                >
+                  Join the $10 Tier
+                </a>
              </div>
 
              <div className="bg-white border border-[#e8d0b5] rounded-[2rem] p-8 shadow-sm flex flex-col">
                 <h3 className="font-bold text-[#3d2618] text-xl">The Entire Aviary</h3>
                 <div className="my-4">
-                  <span className="text-4xl font-bold text-[#3d2618]">$49</span><span className="text-[#8c552e] font-sans">/mo</span>
+                  <span className="text-4xl font-bold text-[#3d2618]">$50</span><span className="text-[#8c552e] font-sans">/mo</span>
                 </div>
-                <p className="text-sm text-[#8c552e] font-sans mb-6">For media empires and studios that require heavy compute and deep lore logic.</p>
+                <p className="text-sm text-[#8c552e] font-sans mb-6">For studios and frequent publishers that require deep lore logic and heavier compute.</p>
                 <ul className="space-y-3 text-sm text-[#8c552e] font-sans flex-1">
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Advanced AI Storyboarding</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Uncapped Agent Workflows</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Private Knowledge Graphs</li>
-                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Priority Support</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> All Creator Flock Features</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Video Edit Prep Assistant</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Early Access to New Agents</li>
+                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-[#617c4d]" /> Advanced Storyboarding</li>
                 </ul>
-                <button className="w-full mt-8 bg-[#fdf5eb] text-[#a96735] border border-[#e8d0b5] py-3 rounded-xl font-bold hover:bg-[#fae0b8] transition-colors font-sans">
-                  Go Enterprise
-                </button>
+                <a 
+                  href="https://patreon.com/HighGroundOdyssey" 
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full mt-8 bg-[#fdf5eb] text-[#a96735] border border-[#e8d0b5] py-3 rounded-xl font-bold hover:bg-[#fae0b8] transition-colors font-sans flex items-center justify-center text-center"
+                >
+                  Join the $50 Tier
+                </a>
              </div>
           </div>
         </div>
@@ -467,12 +452,15 @@ export default function QuipslyLandingPage() {
                 You do the dreaming, and we'll do the organizing. Quipsly gives you the warm, friendly tools used by industry professionals to build robust media empires, powered by little keepers who genuinely care about your work.
               </p>
               <p className="text-sm font-bold text-[#a96735] uppercase tracking-wider font-sans">
-                Currently in Private Alpha
+                Included in High Ground Odyssey's $10+ Tiers
               </p>
-              <div className="mt-8 font-sans">
-                <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="bg-[#a96735] text-[#fdf5eb] px-8 py-4 rounded-xl font-bold hover:bg-[#8c552e] transition-colors shadow-sm flex items-center gap-2">
-                  <Heart className="w-4 h-4 fill-current" /> Join the waitlist
+              <div className="mt-8 font-sans flex flex-wrap gap-4">
+                <button onClick={handlePatreonSignIn} className="bg-[#a96735] text-[#fdf5eb] px-8 py-4 rounded-xl font-bold hover:bg-[#8c552e] transition-colors shadow-sm flex items-center gap-2">
+                  <Lock className="w-4 h-4 fill-current opacity-70" /> Sign in with Patreon
                 </button>
+                <a href="https://patreon.com/HighGroundOdyssey" target="_blank" rel="noreferrer" className="bg-transparent text-[#a96735] border border-[#a96735] px-8 py-4 rounded-xl font-bold hover:bg-[#fae0b8] transition-colors shadow-sm flex items-center gap-2">
+                  Upgrade Tier
+                </a>
               </div>
            </div>
            <div className="md:w-1/2 relative z-10 flex justify-center">

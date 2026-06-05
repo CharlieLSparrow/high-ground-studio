@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Patreon from "next-auth/providers/patreon";
 
 import {
   createStudioAllowlistIdentity,
@@ -10,6 +11,7 @@ import {
   ensureStudioUserFromGoogle,
   getStudioUserIdentityByEmail,
 } from "@/lib/server/studio-user-identity";
+import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
 
 type GoogleProfile = {
   email?: string;
@@ -29,6 +31,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
+    Patreon({
+      clientId: process.env.PATREON_CLIENT_ID,
+      clientSecret: process.env.PATREON_CLIENT_SECRET,
+    }),
   ],
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   trustHost: true,
@@ -37,61 +43,64 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async signIn({ account, profile }) {
-      if (account?.provider !== "google") {
+      if (account?.provider !== "google" && account?.provider !== "patreon") {
         return false;
       }
 
-      const googleProfile = profile as GoogleProfile | undefined;
-      const email = googleProfile?.email;
-      const emailVerified = Boolean(googleProfile?.email_verified);
+      // Patreon doesn't always guarantee verified emails in the same way, but we need email for checking access.
+      const email = profile?.email;
 
-      if (!email || !emailVerified) {
+      if (!email) {
         return false;
       }
 
       if (isStudioAllowlistAuthMode()) {
-        return isStudioEmailAllowed(email);
+        return isStudioEmailAllowed(email as string);
       }
 
-      try {
-        await ensureStudioUserFromGoogle({
-          email,
-          name: googleProfile?.name ?? null,
-          image: googleProfile?.picture ?? null,
-        });
-      } catch (error) {
-        console.error("Studio identity provisioning failed.", error);
-        return false;
+      if (account?.provider === "google") {
+        try {
+          await ensureStudioUserFromGoogle({
+            email: email as string,
+            name: profile?.name ?? null,
+            image: profile?.picture ?? null,
+          });
+        } catch (error) {
+          console.error("Studio identity provisioning failed.", error);
+          return false;
+        }
       }
 
       return true;
     },
 
     async jwt({ token, account, profile }) {
-      const googleProfile = profile as GoogleProfile | undefined;
       const email =
         (typeof token.email === "string" && token.email) ||
-        googleProfile?.email ||
+        profile?.email ||
         null;
 
       if (!email) {
         return token;
       }
 
+      // Set Beta Access Flag for Patreon Gating
+      token.hasBetaAccess = await hasQuipslyBetaAccess(email as string);
+
       try {
         const identity = isStudioAllowlistAuthMode()
           ? createStudioAllowlistIdentity({
-              email,
-              name: googleProfile?.name ?? null,
-              image: googleProfile?.picture ?? null,
+              email: email as string,
+              name: profile?.name ?? null,
+              image: profile?.picture ?? null,
             })
-          : account?.provider === "google" || profile
+          : account?.provider === "google"
             ? await ensureStudioUserFromGoogle({
-                email,
-                name: googleProfile?.name ?? null,
-                image: googleProfile?.picture ?? null,
+                email: email as string,
+                name: profile?.name ?? null,
+                image: profile?.picture ?? null,
               })
-            : await getStudioUserIdentityByEmail(email);
+            : await getStudioUserIdentityByEmail(email as string);
 
         if (!identity) {
           return token;
@@ -134,9 +143,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               : "",
         roles: Array.isArray(token.roles) ? token.roles : [],
         isStaff: Boolean(token.isStaff),
+        hasBetaAccess: Boolean(token.hasBetaAccess),
       };
 
       return session;
     },
   },
 });
+

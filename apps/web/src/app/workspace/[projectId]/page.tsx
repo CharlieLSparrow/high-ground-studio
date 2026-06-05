@@ -1,7 +1,9 @@
 import React from "react";
 import { StoryBibleSidebar } from "@/components/story-bible";
 
-export default function WorkspacePage({ params }: { params: { projectId: string } }) {
+export default async function WorkspacePage({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+
   return (
     <div className="flex h-screen w-full bg-void-light text-subject overflow-hidden">
       {/* Mock Editor Area */}
@@ -16,22 +18,22 @@ export default function WorkspacePage({ params }: { params: { projectId: string 
             <p>
               The wind howled through the narrow streets of Oakhaven. 
               <span className="bg-flare/20 text-flare-glow px-1 rounded cursor-pointer border border-flare/30">Elara</span> 
-              pulled her cloak tighter, her eyes scanning the shadows for any sign of the Queen's guard.
+              pulled her cloak tighter, her eyes scanning the shadows for any sign of the Queen&apos;s guard.
             </p>
             <p>
-              "They know we're here," whispered <span className="bg-flare/20 text-flare-glow px-1 rounded cursor-pointer border border-flare/30">Kael</span>, emerging from the alleyway. 
+              &quot;They know we&apos;re here,&quot; whispered <span className="bg-flare/20 text-flare-glow px-1 rounded cursor-pointer border border-flare/30">Kael</span>, emerging from the alleyway. 
               His hand rested firmly on the hilt of his sword.
             </p>
             <p>
               She nodded, glancing toward the <span className="bg-flare/20 text-flare-glow px-1 rounded cursor-pointer border border-flare/30">Obsidian Tower</span> looming in the distance. 
-              "Then we move now. Before the storm breaks."
+              &quot;Then we move now. Before the storm breaks.&quot;
             </p>
           </div>
         </main>
       </div>
 
       {/* StoryBible Side Panel MVP */}
-      <StoryBibleSidebar projectId={params.projectId} />
+      <StoryBibleSidebar projectId={projectId} />
     </div>
   );
 }

@@ -49,6 +49,7 @@ type EpisodeProductionState = {
   transcriptJson?: unknown;
   productionJson?: unknown;
   updatedAt?: string;
+  boundaryStartBlockId?: string;
 };
 
 type ImportedMediaAsset = {
@@ -414,6 +415,84 @@ function coerceString(value: unknown, fallback = "") {
 function coerceOptionalString(value: unknown, fallback?: string) {
   return typeof value === "string" ? value : fallback ?? "";
 }
+
+const STARTER_KIT_ASSETS: ImportedMediaAsset[] = [
+  {
+    id: "starter-audio-1",
+    sourceId: "starter-audio-1",
+    projectSlug: "starter",
+    episodeSlug: "starter",
+    originalName: "Episode 4 Intro Audio",
+    contentType: "audio/mp3",
+    size: 1000000,
+    kind: "audio",
+    gcsUri: "gs://quipsly-starter/audio-1.mp3",
+    playbackUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    importedAt: new Date().toISOString(),
+    importRole: "spine",
+    sync: { status: "synced" }
+  },
+  {
+    id: "starter-video-1",
+    sourceId: "starter-video-1",
+    projectSlug: "starter",
+    episodeSlug: "starter",
+    originalName: "B-Roll: Coffee Pour",
+    contentType: "video/mp4",
+    size: 5000000,
+    kind: "video",
+    gcsUri: "gs://quipsly-starter/video-1.mp4",
+    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    importedAt: new Date().toISOString(),
+    importRole: "b-roll",
+    sync: { status: "ready-to-sync" }
+  },
+  {
+    id: "starter-video-2",
+    sourceId: "starter-video-2",
+    projectSlug: "starter",
+    episodeSlug: "starter",
+    originalName: "B-Roll: Typing on Keyboard",
+    contentType: "video/mp4",
+    size: 5000000,
+    kind: "video",
+    gcsUri: "gs://quipsly-starter/video-2.mp4",
+    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    importedAt: new Date().toISOString(),
+    importRole: "b-roll",
+    sync: { status: "ready-to-sync" }
+  },
+  {
+    id: "starter-video-3",
+    sourceId: "starter-video-3",
+    projectSlug: "starter",
+    episodeSlug: "starter",
+    originalName: "B-Roll: Scenic Mountains",
+    contentType: "video/mp4",
+    size: 5000000,
+    kind: "video",
+    gcsUri: "gs://quipsly-starter/video-3.mp4",
+    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    importedAt: new Date().toISOString(),
+    importRole: "b-roll",
+    sync: { status: "ready-to-sync" }
+  },
+  {
+    id: "starter-video-4",
+    sourceId: "starter-video-4",
+    projectSlug: "starter",
+    episodeSlug: "starter",
+    originalName: "B-Roll: City Traffic",
+    contentType: "video/mp4",
+    size: 5000000,
+    kind: "video",
+    gcsUri: "gs://quipsly-starter/video-4.mp4",
+    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    importedAt: new Date().toISOString(),
+    importRole: "b-roll",
+    sync: { status: "ready-to-sync" }
+  }
+];
 
 function normalizeImportedMediaAssets(value: unknown): ImportedMediaAsset[] {
   const record = asObject(value);
@@ -2056,6 +2135,7 @@ function CloudEditorContent() {
   const [productionState, setProductionState] = useState<EpisodeProductionState | null>(null);
   const [isImportingMedia, setIsImportingMedia] = useState(false);
   const [isAiOrganizingMedia, setIsAiOrganizingMedia] = useState(false);
+  const [isAdvancedToolsVisible, setIsAdvancedToolsVisible] = useState(false);
   const [applyingAiSuggestionIds, setApplyingAiSuggestionIds] = useState<Set<string>>(() => new Set());
   const [transcriptAssistingAssetIds, setTranscriptAssistingAssetIds] = useState<Set<string>>(() => new Set());
   const [queueingMediaJobKeys, setQueueingMediaJobKeys] = useState<Set<string>>(() => new Set());
@@ -2278,7 +2358,10 @@ function CloudEditorContent() {
 
   const handleExportToQueue = async () => {
     setIsExporting(true);
-    await submitRenderJob("The AI Revolution (Final Cut)", timelineState);
+    await submitRenderJob("The AI Revolution (Final Cut)", {
+      ...timelineState,
+      manuscriptBlockId: productionState?.boundaryStartBlockId || undefined
+    });
     setIsExporting(false);
     router.push("/render-queue");
   };
@@ -2431,7 +2514,8 @@ function CloudEditorContent() {
   }, [selectedClipId, timelineState.clips]);
 
   const importedMediaAssets = useMemo(() => {
-    return normalizeImportedMediaAssets(productionState?.productionJson);
+    const parsed = normalizeImportedMediaAssets(productionState?.productionJson);
+    return parsed.length > 0 ? parsed : STARTER_KIT_ASSETS;
   }, [productionState?.productionJson]);
 
   const aiIngestReport = useMemo(() => {
@@ -4348,6 +4432,14 @@ function CloudEditorContent() {
           <div className="flex items-center gap-2">
             {!timelineSaved && <span className="flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]" title="Unsaved changes" />}
             <button
+              onClick={() => setIsAdvancedToolsVisible(!isAdvancedToolsVisible)}
+              className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-colors ${
+                isAdvancedToolsVisible ? "bg-[#3d3122] text-white" : "border border-[#e8dcc4] bg-white text-[#8c6b4a] hover:bg-[#fffaf0]"
+              }`}
+            >
+              Advanced Tools {isAdvancedToolsVisible ? "ON" : "OFF"}
+            </button>
+            <button
               onClick={handleSaveEpisodeTimeline}
               disabled={timelineSaveState === "saving"}
               className="px-4 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm rounded-md transition-colors disabled:opacity-50"
@@ -4366,7 +4458,7 @@ function CloudEditorContent() {
             onClick={handleExportToQueue}
             disabled={isExporting || !productionDiagnostics.readyForRender}
             title={productionDiagnostics.readyForRender ? "Send this render-ready episode to the queue." : productionDiagnostics.readinessDetail}
-            className={`px-4 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm rounded-md transition-colors disabled:opacity-50 ${realEditingMode ? "hidden" : ""}`}
+            className={`px-4 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm rounded-md transition-colors disabled:opacity-50 ${realEditingMode || !isAdvancedToolsVisible ? "hidden" : ""}`}
           >
             {isExporting ? "Sending..." : productionDiagnostics.readyForRender ? "Export to Queue" : "Fix Sources Before Export"}
           </button>
@@ -5780,7 +5872,11 @@ function CloudEditorContent() {
                       startSec: selectedClip.sourceStart,
                       endSec: selectedClip.sourceEnd || (selectedClip.sourceStart + selectedClip.duration),
                       title: `${selectedClip.name} Loop`,
-                      exportability: isYouTube ? "playable" : "exportable"
+                      exportability: isYouTube ? "playable" : "exportable",
+                      manuscriptBlockId: productionState?.boundaryStartBlockId || undefined,
+                      projectSlug: resolvedProjectSlug,
+                      episodeSlug: episodeSlug,
+                      createdAt: new Date().toISOString()
                     });
                   }}
                 >
@@ -5854,7 +5950,7 @@ function CloudEditorContent() {
                   Copy clip JSON
                 </button>
               </div>
-              <div className="mt-2 rounded-lg border border-[#e8dcc4] bg-white p-2">
+              <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-white p-2 ${!isAdvancedToolsVisible ? "hidden" : ""}`}>
                 <div className="mb-2 font-black uppercase tracking-[0.14em] text-[#9a641e]">Exact timing</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -5911,7 +6007,7 @@ function CloudEditorContent() {
                   if (!nextAssetId?.trim()) return;
                   updateClipSource(selectedClip.id, nextAssetId.trim());
                 }}
-                className="mt-2 w-full rounded-lg border border-[#3d3122] bg-white px-2 py-2 font-black text-[#3d3122] hover:bg-[#fffaf0]"
+                className={`mt-2 w-full rounded-lg border border-[#3d3122] bg-white px-2 py-2 font-black text-[#3d3122] hover:bg-[#fffaf0] ${!isAdvancedToolsVisible ? "hidden" : ""}`}
               >
                 Relink or replace this clip source
               </button>
@@ -5922,11 +6018,11 @@ function CloudEditorContent() {
                   if (!nextName?.trim()) return;
                   renameClip(selectedClip.id, nextName.trim());
                 }}
-                className="mt-2 w-full rounded-lg border border-[#d7bd8f] bg-white px-2 py-2 font-black text-[#5d4528] hover:bg-[#fffaf0]"
+                className={`mt-2 w-full rounded-lg border border-[#d7bd8f] bg-white px-2 py-2 font-black text-[#5d4528] hover:bg-[#fffaf0] ${!isAdvancedToolsVisible ? "hidden" : ""}`}
               >
                 Rename clip
               </button>
-              <div className="mt-2 rounded-lg border border-[#e8dcc4] bg-white p-2">
+              <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-white p-2 ${!isAdvancedToolsVisible ? "hidden" : ""}`}>
                 <div className="mb-2 font-black uppercase tracking-[0.14em] text-[#9a641e]">Move to track</div>
                 <div className="grid grid-cols-4 gap-1">
                   {["V1", "V2", "A1", "A2"].map((trackId) => (
@@ -6239,6 +6335,12 @@ function CloudEditorContent() {
                         <div className="text-slate-500 mt-1 uppercase tracking-wider font-bold">
                           {loop.exportability === "playable" ? "Playable Loop (YouTube)" : "Exportable Loop (Bucket)"}
                         </div>
+                        {loop.manuscriptBlockId && (
+                          <div className="mt-1.5 flex items-center gap-1 text-emerald-600 font-bold text-[9px] uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.8)]"></span>
+                            Attached to manuscript block
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

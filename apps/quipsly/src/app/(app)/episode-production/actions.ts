@@ -1,7 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../create/projectConfig";
+import { lookupStudioProjectDocument, projectConfig } from "../create/projectConfig";
 import type { EpisodeArtifact } from "./episodeArtifact";
 
 export type EpisodeProductionState = {
@@ -24,7 +24,7 @@ function humanizeSlug(value: string) {
 }
 
 function fallbackEpisodeProduction(
-  projectSlug = DEFAULT_PROJECT_SLUG,
+  projectSlug = "missing-project",
   episodeSlug = "current-episode",
   title = humanizeSlug(episodeSlug),
   message = "Episode production is running from URL state until the database model is available.",
@@ -43,7 +43,7 @@ function fallbackEpisodeProduction(
 }
 
 async function findProjectAndDocument(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string) {
-  return ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
+  return lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 }
 
 export async function ensureEpisodeProduction(input: {
@@ -58,10 +58,19 @@ export async function ensureEpisodeProduction(input: {
   boundaryEndOrder?: number | null;
   productionJson?: Record<string, unknown>;
 }): Promise<EpisodeProductionState> {
-  const projectSlug = input.projectSlug ?? DEFAULT_PROJECT_SLUG;
+  const projectSlug = input.projectSlug?.trim();
   const episodeSlug = input.episodeSlug ?? "current-episode";
   const title = input.title ?? input.boundaryLabel ?? humanizeSlug(episodeSlug);
   const boundaryLabel = input.boundaryLabel ?? title;
+
+  if (!projectSlug) {
+    return Promise.resolve(fallbackEpisodeProduction(
+      "missing-project",
+      episodeSlug,
+      title,
+      "Choose a Nest/project before creating an episode production room.",
+    ));
+  }
 
   let prisma: ReturnType<typeof getPrismaClient>;
   try {
@@ -92,7 +101,7 @@ export async function ensureEpisodeProduction(input: {
           episodeSlug,
           title,
           source: "quipsly-episode-production.ensure",
-        },
+        } as any,
       },
       create: {
         projectId: project.id,
@@ -111,7 +120,7 @@ export async function ensureEpisodeProduction(input: {
           episodeSlug,
           title,
           source: "quipsly-episode-production.create",
-        },
+        } as any,
       },
     });
 
@@ -195,13 +204,13 @@ export async function saveEpisodeTimeline(input: {
     const production = await prisma.studioEpisodeProduction.update({
       where: { id: ensured.id },
       data: {
-        timelineJson: input.timelineJson,
-        transcriptJson: input.transcriptJson,
+        timelineJson: input.timelineJson as any,
+        transcriptJson: input.transcriptJson as any,
         productionJson: {
           lastTimelineSaveAt: new Date().toISOString(),
           projectSlug: ensured.projectSlug,
           episodeSlug: ensured.slug,
-        },
+        } as any,
       },
     });
 

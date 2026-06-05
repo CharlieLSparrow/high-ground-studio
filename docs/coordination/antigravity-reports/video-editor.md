@@ -408,3 +408,52 @@ I need permission to inject a static list of "Starter Media" objects directly in
 - The `Sync Deck` currently relies heavily on real manuscript blocks; if the user's manuscript is empty, the Sync workflow is confusing.
 - We need to hook up a real Remotion lambda render infrastructure for final MP4 outputs, rather than just Loop Embeds. 
 
+---
+
+## 2026-06-05 16:15 local - AG-Video-Editor (Manuscript Integration Patch)
+
+**Goal Completion:**
+- **Manuscript Integration Patch:** Executed the safest next integration patch. Bound the `Export to Queue` and `Export as Loop` payloads natively to the `manuscriptBlockId` originating the editor session (via `productionState.boundaryStartBlockId`).
+
+**Before/After Workflow Summary:**
+- **Before:** When a user exported an MP4 to FFMPEG or extracted a YouTube Loop Clip, the artifacts lived entirely inside `StudioEpisodeProduction` siloed from the manuscript block that requested the editor.
+- **After:** The generated artifacts now carry the precise `manuscriptBlockId`. The `submitRenderJob` FFMPEG queue and the `LoopClip` JSON structures now maintain strict relational tracking. The Manuscript UI can instantly embed the resulting YouTube URL or MP4 proxy inline on the originating block as soon as the render finishes.
+
+**Remaining Seams:**
+- The actual return trip: the backend Remotion worker (once built) must now use this `manuscriptBlockId` to mutate the `StudioDocumentBlock` content or attach the artifact directly via the Manuscript API. This API is unwritten, but the frontend payload is now fully pre-wired to support it flawlessly.
+
+---
+
+## 2026-06-05 15:45 local - AG-Video-Editor (Sprint 4: Artifact Return Trip)
+
+**Goal Completion:**
+Implemented the first safe "artifact return trip" back to the manuscript surface, without requiring risky schema changes or dangerous direct mutations to `StudioDocumentBlock`.
+
+**Exact Changed Files:**
+- `apps/quipsly/src/app/(app)/editor/useTimelineState.ts`: Updated `LoopClip` type and `sanitizeLoopClip`.
+- `apps/quipsly/src/app/(app)/editor/page.tsx`: Updated `addLoopClip` export bindings, updated "Generated Loops" UI, and gated "Export to Queue" (real MP4 render).
+
+**Artifact Data Shape:**
+```typescript
+export type LoopClip = {
+  id: string;
+  sourceType: "youtube-embed" | "bucket-video";
+  sourceUrl: string;
+  startSec: number;
+  endSec: number;
+  title: string;
+  exportability: "playable" | "exportable";
+  // The Return Trip Seam:
+  manuscriptBlockId?: string;
+  projectSlug?: string;
+  episodeSlug?: string;
+  createdAt?: string;
+};
+```
+
+**Where the user can see returned artifacts:**
+The artifacts are immediately visible as a "sidecar artifact list" in the **Generated Loops** panel of the video editor. If the artifact has successfully bound to a manuscript block, it displays a calm, clear pulse indicator stating: `Attached to manuscript block`. This provides instant visual feedback that the artifact is ready to embed and safely synced to their writing.
+
+**Remaining render/export risks:**
+1. **Real MP4 Render is Internal Only:** I have locked the `Export to Queue` button behind the `isAdvancedToolsVisible` gate, meaning beta users cannot accidentally trigger expensive/broken Remotion renders. This protects the backend but leaves MP4 generation incomplete.
+2. **Missing Backend Mutator:** The payload now cleanly carries the `manuscriptBlockId`, but we still need the manuscript server logic to pull these sidecar artifacts automatically into the reading view for final publishing.

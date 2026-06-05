@@ -232,6 +232,10 @@ export default async function DashboardPage({
         orderBy: [{ weekStartsAt: "desc" }],
         take: 6,
       },
+      snippets: {
+        orderBy: [{ createdAt: "desc" }],
+        take: 5,
+      },
     },
   });
 
@@ -1055,6 +1059,65 @@ export default async function DashboardPage({
               )}
             </GlassPanel>
           </section>
+
+          <GlassPanel className="p-6 text-[var(--text-light)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <PageEyebrow>Study Library</PageEyebrow>
+                <h2 className="m-0 mt-3 text-[1.8rem] leading-tight tracking-[-0.03em] text-[var(--text-light)]">
+                  Your Saved Highlights
+                </h2>
+                <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.9)]">
+                  Passages and quotes you curated while reading HGO transcripts in the Interactive Reader.
+                </p>
+              </div>
+              <Link
+                href="/library"
+                className="inline-flex rounded-full border border-white/12 bg-white/8 px-5 py-3 text-sm font-bold uppercase tracking-[0.08em] text-[var(--text-light)] no-underline transition hover:border-flare/30 hover:text-[var(--accent)]"
+              >
+                View Full Library
+              </Link>
+            </div>
+
+            {user.snippets.length === 0 ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-white/4 px-5 py-8 text-[0.98rem] leading-7 text-[rgba(245,239,230,0.82)]">
+                No highlights saved yet. Open any episode, switch to the <strong>Interactive Reader</strong>, and select text to save it to your library.
+              </div>
+            ) : (
+              <div className="mt-6 space-y-4">
+                {user.snippets.map((snippet) => (
+                  <div
+                    key={snippet.id}
+                    className="rounded-2xl border border-white/10 bg-white/6 p-5"
+                  >
+                    <blockquote className="border-l-2 border-amber-400 pl-4 text-sm italic text-zinc-200">
+                      "{snippet.highlightedText}"
+                    </blockquote>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400">
+                      <div>
+                        Saved from{" "}
+                        {snippet.sourceUrl ? (
+                          <Link href={snippet.sourceUrl} className="font-semibold text-amber-400 hover:underline">
+                            {snippet.sourceTitle || "Episode"}
+                          </Link>
+                        ) : (
+                          <span className="font-semibold text-zinc-300">{snippet.sourceTitle || "Episode"}</span>
+                        )}
+                      </div>
+                      <div className="font-mono text-zinc-500">
+                        {new Date(snippet.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    {snippet.note && (
+                      <div className="mt-3 text-xs text-zinc-400 bg-black/20 px-3 py-2 rounded-lg">
+                        <strong>Note:</strong> {snippet.note}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassPanel>
         </div>
       </PageContainer>
     </main>

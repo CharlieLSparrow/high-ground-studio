@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { AppRole } from "@prisma/client";
+
+const NETWORK_PASS_ROLE = "NETWORK_PASS";
 
 // This webhook handles Patreon events (members:pledge:create, members:pledge:update, members:pledge:delete)
 // It verifies the signature and syncs the NETWORK_PASS role to the user based on their Patreon status.
@@ -75,13 +76,13 @@ export async function POST(req: Request) {
           where: {
             userId_role: {
               userId: user.id,
-              role: AppRole.NETWORK_PASS,
+              role: NETWORK_PASS_ROLE,
             },
           },
           update: {},
           create: {
             userId: user.id,
-            role: AppRole.NETWORK_PASS,
+            role: NETWORK_PASS_ROLE,
           },
         });
         console.log(`[Patreon Webhook] Granted NETWORK_PASS to ${email}`);
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
         await prisma.userRole.deleteMany({
           where: {
             userId: user.id,
-            role: AppRole.NETWORK_PASS,
+            role: NETWORK_PASS_ROLE,
           },
         });
         console.log(`[Patreon Webhook] Revoked NETWORK_PASS for ${email} (status: ${status})`);
@@ -100,7 +101,7 @@ export async function POST(req: Request) {
       await prisma.userRole.deleteMany({
         where: {
           userId: user.id,
-          role: AppRole.NETWORK_PASS,
+          role: NETWORK_PASS_ROLE,
         },
       });
       console.log(`[Patreon Webhook] Revoked NETWORK_PASS for ${email} (pledge deleted)`);

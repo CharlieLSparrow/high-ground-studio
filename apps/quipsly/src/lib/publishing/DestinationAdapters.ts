@@ -37,8 +37,101 @@ export interface QuipslyPublicPackage {
     publishedAt?: string;
     embargoUntil?: string;
     author: string;
+    status?: PublicationStatus;
+    destinations?: Record<PublishingDestination, PublicationStatus>;
   };
 }
+
+export interface HgoPublicEpisodePacket {
+  packetKind: "hgo-public-episode-packet-v1";
+  id: string;
+  slug: string;
+  title: string;
+  subtitle?: string;
+  episodeNumber: string;
+  summary: string;
+  publishStatus: "live" | "archived";
+  hero: {
+    eyebrow: string;
+    colorMood: string;
+    assetUrl?: string;
+  };
+  media: {
+    heroImageUrl?: string;
+    audioUrl?: string;
+    youtubeId?: string;
+  };
+  showNotes: {
+    beats: Array<{ title: string; summary: string; timingHint?: string; }>;
+    voiceCards: Array<{ speaker: "Charlie" | "Homer"; summary: string; }>;
+  };
+  quotes: Array<{
+    text: string;
+    attribution: string;
+    context?: string;
+  }>;
+  essayVersion: string;
+  provenance: {
+    sourceArtifactHash: string;
+    publishedAt: string;
+  };
+}
+
+export function mapQuipslyPackageToHgoPacket(
+  pkg: QuipslyPublicPackage,
+  slug: string,
+  episodeNumber: string,
+  sourceArtifactHash?: string
+): HgoPublicEpisodePacket {
+  const youtubeId = pkg.media.videoUrl
+    ? pkg.media.videoUrl.split("v=")[1]?.split("&")[0] || undefined
+    : undefined;
+
+  return {
+    packetKind: "hgo-public-episode-packet-v1",
+    id: pkg.id,
+    slug: slug || pkg.id.replace("compiled-", ""),
+    title: pkg.title,
+    subtitle: pkg.overrides?.patreon?.teaser || pkg.summary || undefined,
+    episodeNumber: episodeNumber || "4",
+    summary: pkg.summary,
+    publishStatus: "live",
+    hero: {
+      eyebrow: "High Ground Odyssey",
+      colorMood: "amber window light / farm table",
+    },
+    media: {
+      heroImageUrl: pkg.media.thumbnailUrl || undefined,
+      audioUrl: pkg.media.audioUrl || undefined,
+      youtubeId,
+    },
+    showNotes: {
+      beats: pkg.beats.map((b) => ({
+        title: b.title,
+        summary: b.summary,
+        timingHint: b.timestamp
+          ? `${Math.floor(b.timestamp / 60)}:${String(b.timestamp % 60).padStart(2, "0")}`
+          : undefined,
+      })),
+      voiceCards: [
+        { speaker: "Homer", summary: pkg.summary },
+      ],
+    },
+    quotes: pkg.verifiedQuotes.map((q) => ({
+      text: q.text,
+      attribution: q.attribution || "Homer",
+    })),
+    essayVersion: pkg.body,
+    provenance: {
+      sourceArtifactHash: sourceArtifactHash || "quipsly-nest",
+      publishedAt: pkg.metadata.publishedAt || new Date().toISOString(),
+    },
+  };
+}
+
+export type PublicationStatus = "draft" | "staged" | "published" | "needs review" | "failed";
+
+export type PublishingDestination = "high_ground_odyssey" | "youtube" | "patreon" | "podcast_rss";
 
 export interface AdapterValidationResult {
   isValid: boolean;
@@ -237,12 +330,22 @@ export class YouTubeAdapter extends DestinationAdapter {
   }
 }
 
+import { PatreonApiClient } from "../patreon/client";
+import { PatreonPostCreateRequest } from "../patreon/types";
+
 /**
- * MOCK IMPLEMENTATION: Patreon Adapter
+ * IMPLEMENTATION: Patreon Adapter
  */
 export class PatreonAdapter extends DestinationAdapter {
+  private client: PatreonApiClient | null = null;
+
   constructor(connectionKey: string) {
     super("patreon_v2", connectionKey);
+    try {
+      this.client = new PatreonApiClient();
+    } catch (e) {
+      this.log("warn", "PatreonApiClient could not be initialized. Missing tokens?");
+    }
   }
 
   supports(kind: string): boolean {
@@ -264,28 +367,68 @@ export class PatreonAdapter extends DestinationAdapter {
     return { isValid: errors.length === 0, errors, warnings };
   }
 
-  async prepare(pkg: QuipslyPublicPackage): Promise<unknown> {
+  async prepare(pkg: QuipslyPublicPackage): Promise<PatreonPostCreateRequest> {
+    const isPublic = !pkg.overrides?.patreon?.isMembersOnly;
+    const teaser = pkg.overrides?.patreon?.teaser || pkg.summary;
+    
+    // Patreon expects HTML for content. If the body is markdown, it might look slightly plain, 
+    // but Patreon's editor parses basic formatting. For strict compliance, a markdown-to-html 
+    // converter should be used here if needed.
+    const contentHtml = pkg.body.includes("<p>") ? pkg.body : `<p>${pkg.body.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>")}</p>`;
+
+    const campaignId = this.client ? await this.client.getCurrentCampaignId() : "";
+
     return {
-      title: pkg.title,
-      content: pkg.body,
-      is_public: !pkg.overrides?.patreon?.isMembersOnly,
-      teaser_text: pkg.overrides?.patreon?.teaser || pkg.summary,
-      tags: {
-        add: ["quipsly-generated", pkg.kind],
+      data: {
+        type: "post",
+        attributes: {
+          title: pkg.title,
+          content: isPublic ? contentHtml : `${teaser}<br/><br/><em>Log in or upgrade to view the full content.</em><br/><br/>${contentHtml}`,
+          is_public: isPublic,
+          teaser_text: teaser,
+          tags: ["quipsly-generated", pkg.kind]
+        },
+        relationships: {
+          campaign: {
+            data: { id: campaignId, type: "campaign" }
+          }
+        }
       }
     };
   }
 
   async publish(pkg: QuipslyPublicPackage): Promise<PublishResult> {
-    this.log("info", "Drafting Patreon Post...", { packageId: pkg.id });
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    if (!this.client) {
+      return { success: false, error: "Patreon Client not initialized", timestamp: new Date().toISOString() };
+    }
 
-    return {
-      success: true,
-      externalRefId: `patreon_post_${Date.now()}`,
-      url: `https://patreon.com/posts/mock-post`,
-      timestamp: new Date().toISOString(),
-    };
+    this.log("info", "Drafting Patreon Post...", { packageId: pkg.id });
+    
+    try {
+      const requestPayload = await this.prepare(pkg);
+      
+      // Get the campaign ID from the prepared payload
+      const campaignId = requestPayload.data.relationships?.campaign.data.id;
+      if (!campaignId) {
+        throw new Error("Failed to resolve campaign ID.");
+      }
+
+      const response = await this.client.createPost(campaignId, requestPayload);
+
+      return {
+        success: true,
+        externalRefId: response.data?.id || `patreon_post_${Date.now()}`,
+        url: response.data?.attributes?.url || `https://patreon.com/posts/${response.data?.id}`,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      this.log("error", "Patreon Publish Failed", { error: error.message });
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      };
+    }
   }
 
   async syncMetrics(externalRefId: string): Promise<MetricSnapshot> {

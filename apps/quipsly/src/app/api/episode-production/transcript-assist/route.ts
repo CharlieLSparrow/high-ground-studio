@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
+import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 
 const MAX_INLINE_MEDIA_BYTES = 18 * 1024 * 1024;
 
@@ -102,7 +102,7 @@ function localFallbackReport(asset: Record<string, unknown>, warning: string) {
 }
 
 async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string, episodeSlug: string) {
-  const { project, document } = await ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
+  const { project, document } = await lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 
   const title = episodeSlug
     .replace(/[-_]+/g, " ")
@@ -170,7 +170,12 @@ async function loadInlineMedia(asset: Record<string, unknown>) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const projectSlug = sanitizeSegment(String(body.projectSlug ?? DEFAULT_PROJECT_SLUG));
+    const rawProjectSlug = String(body.projectSlug ?? "").trim();
+    if (!rawProjectSlug) {
+      return NextResponse.json({ ok: false, error: "projectSlug is required. Choose a Nest before running transcript assist." }, { status: 400 });
+    }
+
+    const projectSlug = sanitizeSegment(rawProjectSlug);
     const episodeSlug = sanitizeSegment(String(body.episodeSlug ?? "current-episode"));
     const assetId = String(body.assetId ?? "").trim();
     if (!assetId) {

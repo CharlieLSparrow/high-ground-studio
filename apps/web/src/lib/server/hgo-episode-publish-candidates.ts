@@ -358,7 +358,7 @@ export async function executeHgoEpisodePublishCandidate({
   };
 
   // Determine the file path for the new episode packet
-  const contentDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "content", "publish", "hgo-episodes");
+  const contentDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "content/publish/hgo-episodes");
   const filePath = path.join(contentDir, `${candidate.projectionSlug}.json`);
   const indexPath = path.join(contentDir, `episodes-index.json`);
 

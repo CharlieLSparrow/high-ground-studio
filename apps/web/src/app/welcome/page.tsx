@@ -38,15 +38,23 @@ export default async function WelcomePage({
             <PageEyebrow>First Sign-In</PageEyebrow>
           </div>
 
-          <h1 className="m-0 text-[clamp(2.2rem,5vw,4rem)] leading-[0.98] tracking-[-0.04em] text-[var(--text-light)]">
-            One quick preference check, then you are in.
+          <h1 className="m-0 text-[clamp(2.2rem,5vw,4rem)] font-black leading-[0.98] tracking-[-0.04em] text-[var(--text-light)] drop-shadow-lg">
+            Welcome to the Odyssey.
           </h1>
 
-          <p className="mb-0 mt-5 max-w-[640px] text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
-            This first step just tells us what kinds of updates you want from
-            High Ground Odyssey. It saves directly to your user record and
-            keeps the rest of the app from guessing.
-          </p>
+          <div className="mb-0 mt-6 max-w-[640px] space-y-5 text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
+            <p>
+              We are so glad you are here. If you just linked your Patreon account, your access will automatically sync as we release new episodes, reflections, and coaching materials.
+            </p>
+            <p className="text-flare font-semibold text-lg">
+              Awesomeness is being built for you right now, and it will be here very soon.
+            </p>
+            <p>
+              Before you step inside, this quick step tells us what kinds of updates you want from
+              High Ground Odyssey. It saves directly to your user record and
+              keeps the rest of the app from guessing.
+            </p>
+          </div>
 
           <form action={completeWelcomeAction} className="mt-8 space-y-5">
             <input type="hidden" name="next" value={nextPath} />

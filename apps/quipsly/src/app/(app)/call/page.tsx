@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 type CallRole = "host" | "guest";
 type ConnectionStatus = "idle" | "joining" | "calling" | "connected" | "ended" | "error";
@@ -130,7 +129,7 @@ function getIceServers() {
 function getRouteParams() {
   if (typeof window === "undefined") {
     return {
-      projectSlug: DEFAULT_PROJECT_SLUG,
+      projectSlug: "",
       episodeSlug: DEFAULT_EPISODE_SLUG,
       roomId: "main",
       role: "guest" as CallRole,
@@ -140,7 +139,7 @@ function getRouteParams() {
   const params = new URLSearchParams(window.location.search);
   const role: CallRole = params.get("role") === "host" ? "host" : "guest";
   return {
-    projectSlug: params.get("project") || params.get("projectSlug") || DEFAULT_PROJECT_SLUG,
+    projectSlug: params.get("project") || params.get("projectSlug") || "",
     episodeSlug: params.get("episode") || params.get("episodeSlug") || params.get("boundary") || DEFAULT_EPISODE_SLUG,
     roomId: params.get("room") || "main",
     role,
@@ -748,6 +747,16 @@ export default function CallRoomPage() {
             </div>
           </div>
         </header>
+
+        {!projectSlug ? (
+          <div className="mt-5 rounded-[1.5rem] border border-amber-400/40 bg-amber-200/10 p-5 text-sm leading-6 text-[#ffe2a8]">
+            <strong className="block text-xs font-black uppercase tracking-[0.18em] text-[#f2b35b]">Choose a Nest first</strong>
+            This call room needs an explicit project in the URL so recordings, signaling, and uploads attach to the right workspace.
+            <Link className="ml-2 font-black underline decoration-[#f2b35b]/60 underline-offset-4" href="/projects">
+              Open Nests
+            </Link>
+          </div>
+        ) : null}
 
         <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.8fr]">
           <div className="rounded-[2rem] border border-[#d7c3a1]/30 bg-[#fff4db] p-5 text-[#2b2117] shadow-xl">

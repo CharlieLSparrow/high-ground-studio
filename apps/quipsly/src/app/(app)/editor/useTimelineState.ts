@@ -154,6 +154,10 @@ export type LoopClip = {
   endSec: number;
   title: string;
   exportability: "playable" | "exportable";
+  manuscriptBlockId?: string;
+  projectSlug?: string;
+  episodeSlug?: string;
+  createdAt?: string;
 };
 
 export type TimelineState = {
@@ -200,6 +204,10 @@ function sanitizeLoopClip(loop: any): LoopClip {
     endSec: Math.max(0, toFiniteNumber(loop.endSec, 0)),
     title: (typeof loop.title === "string" ? loop.title : "").trim() || "Untitled Loop",
     exportability: loop.exportability === "exportable" ? "exportable" : "playable",
+    manuscriptBlockId: loop.manuscriptBlockId ? String(loop.manuscriptBlockId) : undefined,
+    projectSlug: loop.projectSlug ? String(loop.projectSlug) : undefined,
+    episodeSlug: loop.episodeSlug ? String(loop.episodeSlug) : undefined,
+    createdAt: loop.createdAt ? String(loop.createdAt) : undefined,
   };
 }
 

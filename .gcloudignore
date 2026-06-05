@@ -30,3 +30,5 @@ apps/mobile-capture
 apps/local-engine
 apps/web/content/_inbox
 apps/web/content/_staging
+!apps/web/src/components/docs/
+!apps/web/src/components/docs/**

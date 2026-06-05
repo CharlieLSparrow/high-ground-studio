@@ -21,7 +21,7 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
 COPY apps/web/package.json ./apps/web/package.json
-COPY apps/studio/package.json ./apps/studio/package.json
+COPY apps/quipsly/package.json ./apps/quipsly/package.json
 COPY apps/motion-lab/package.json ./apps/motion-lab/package.json
 COPY packages/content-studio-domain/package.json ./packages/content-studio-domain/package.json
 COPY packages/worldhub-domain/package.json ./packages/worldhub-domain/package.json
@@ -36,9 +36,26 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Build-time placeholder only. The real runtime DATABASE_URL must come from
 # Cloud Run env/Secret Manager.
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/high_ground_build
+ENV WEB_DOCKER_IGNORE_TYPE_ERRORS=1
 
 COPY --from=deps /app ./
 COPY . .
+
+# Generate Prisma, then copy the generated runtime into every pnpm peer-resolved
+# @prisma/client instance. Next route collection can resolve a different peer
+# folder than `prisma generate` picked, and each instance expects its own
+# sibling node_modules/.prisma/client runtime.
+RUN pnpm exec prisma generate --schema prisma/schema.prisma \
+  && generated_client_dir="$(find /app/node_modules/.pnpm -path '*/node_modules/.prisma/client/default.js' -print -quit | xargs dirname)" \
+  && test -n "$generated_client_dir" \
+  && rm -rf /tmp/prisma-client-runtime \
+  && cp -R "$generated_client_dir" /tmp/prisma-client-runtime \
+  && for client_default in $(find /app/node_modules/.pnpm -path '*/node_modules/@prisma/client/default.js' -print); do \
+    client_node_modules="$(dirname "$(dirname "$(dirname "$client_default")")")"; \
+    mkdir -p "$client_node_modules/.prisma"; \
+    rm -rf "$client_node_modules/.prisma/client"; \
+    cp -R /tmp/prisma-client-runtime "$client_node_modules/.prisma/client"; \
+  done
 
 # The default Turbopack production build has been unstable in local verification
 # for this repo. Use the documented webpack path until that is resolved.

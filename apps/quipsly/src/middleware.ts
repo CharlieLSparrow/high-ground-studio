@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+const marketingPathPrefixes = ['/waitlist', '/philosophy']
+
+function isMarketingPath(pathname: string) {
+  return pathname === '/' || marketingPathPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+}
+
 export function middleware(request: NextRequest) {
   const url = request.nextUrl
   const hostname = request.headers.get('host')
@@ -13,11 +19,9 @@ export function middleware(request: NextRequest) {
   }
 
   // Enforce strict boundaries for quipsly.com
-  // Only allow marketing paths (just '/' for now). Everything else goes to nest.
+  // Only allow marketing paths. Everything app/workbench-shaped goes to nest.
   if (hostname === 'quipsly.com' || hostname === 'www.quipsly.com') {
-    const isMarketingPath = url.pathname === '/' || url.pathname.startsWith('/waitlist')
-
-    if (!isMarketingPath) {
+    if (!isMarketingPath(url.pathname)) {
       return NextResponse.redirect(new URL(`${url.pathname}${url.search}`, 'https://nest.quipsly.com'))
     }
   }
@@ -27,6 +31,12 @@ export function middleware(request: NextRequest) {
   if (hostname === 'nest.quipsly.com') {
     if (url.pathname === '/') {
       return NextResponse.rewrite(new URL('/create', request.url))
+    }
+
+    if (isMarketingPath(url.pathname)) {
+      const marketingUrl = new URL(request.url)
+      marketingUrl.hostname = 'quipsly.com'
+      return NextResponse.redirect(marketingUrl)
     }
 
     return NextResponse.next()

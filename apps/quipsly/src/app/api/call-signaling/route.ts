@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
+import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 
 const MAX_SIGNAL_MESSAGES = 240;
 const STALE_PARTICIPANT_MS = 45_000;
@@ -55,13 +55,16 @@ async function parseRequestBody(request: Request) {
 }
 
 async function ensureProjectAndDocument(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string) {
-  return ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
+  return lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 }
 
 async function ensureProduction(prisma: ReturnType<typeof getPrismaClient>, body: Record<string, unknown>) {
-  const projectSlug = safeString(body.projectSlug, DEFAULT_PROJECT_SLUG);
+  const projectSlug = safeString(body.projectSlug);
   const episodeSlug = safeString(body.episodeSlug, "current-episode");
   const title = safeString(body.title, humanizeSlug(episodeSlug));
+  if (!projectSlug) {
+    throw new Error("projectSlug is required to create or join a call room.");
+  }
   const { project, document } = await ensureProjectAndDocument(prisma, projectSlug);
   const where = { projectId_slug: { projectId: project.id, slug: episodeSlug } };
 
@@ -172,14 +175,15 @@ function leaveRoom(room: CallRoom, body: Record<string, unknown>): CallRoom {
 }
 
 export async function POST(request: Request) {
-  const body = await parseRequestBody(request);
-  const action = safeString(body.action, "poll");
-  const roomId = normalizeRoomId(body.roomId);
-  const prisma = getPrismaClient();
-  const { production, projectSlug, episodeSlug } = await ensureProduction(prisma, body);
-  const productionJson = asRecord(production.productionJson);
-  const callRooms = asRecord(productionJson.callRooms);
-  const existingRoom = cleanupRoom(asRecord(callRooms[roomId]));
+  try {
+    const body = await parseRequestBody(request);
+    const action = safeString(body.action, "poll");
+    const roomId = normalizeRoomId(body.roomId);
+    const prisma = getPrismaClient();
+    const { production, projectSlug, episodeSlug } = await ensureProduction(prisma, body);
+    const productionJson = asRecord(production.productionJson);
+    const callRooms = asRecord(productionJson.callRooms);
+    const existingRoom = cleanupRoom(asRecord(callRooms[roomId]));
 
   let room: CallRoom = {
     roomId,
@@ -252,4 +256,8 @@ export async function POST(request: Request) {
     messages: visibleMessages,
     serverTime: nowIso(),
   });
+  } catch (error) {
+    console.error("[call-signaling] POST failed", error);
+    return NextResponse.json({ ok: false, error: "Call signaling failed, likely due to missing project." }, { status: 500 });
+  }
 }

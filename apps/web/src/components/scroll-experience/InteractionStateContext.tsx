@@ -41,13 +41,14 @@ export function InteractionStateProvider({ children, experienceId }: { children:
     }));
   }, []);
 
-  const addInteraction = useCallback((interactionData: Omit<ScrollInteraction, 'id' | 'createdAt'>) => {
+  const addInteraction = useCallback(async (interactionData: Omit<ScrollInteraction, 'id' | 'createdAt'>) => {
     const newInteraction: ScrollInteraction = {
       ...interactionData,
       id: `int_local_${Math.random().toString(36).substring(7)}`,
       createdAt: new Date().toISOString(),
     };
     
+    // Optimistic UI update
     if (interactionData.panelId) {
       setLocalInteractions(prev => {
         const existing = prev[interactionData.panelId!] || [];
@@ -57,9 +58,23 @@ export function InteractionStateProvider({ children, experienceId }: { children:
         };
       });
     }
+
+    // Background persist to database (fails silently if unauthenticated/offline)
+    try {
+      const { addScrollInteractionAction } = await import('@/app/review/actions');
+      await addScrollInteractionAction(
+        interactionData.experienceId,
+        interactionData.panelId || null,
+        interactionData.interactionType,
+        interactionData.payload
+      );
+    } catch (e) {
+      console.warn("Could not save interaction to database", e);
+    }
   }, []);
 
-  const toggleFavorite = useCallback((panelId: string, userId: string) => {
+  const toggleFavorite = useCallback(async (panelId: string, userId: string) => {
+    // Optimistic UI update
     setLocalInteractions(prev => {
       const existing = prev[panelId] || [];
       const isFav = existing.find(i => i.interactionType === 'FAVORITE' && i.userId === userId);
@@ -79,6 +94,14 @@ export function InteractionStateProvider({ children, experienceId }: { children:
         return { ...prev, [panelId]: [...existing, fav] };
       }
     });
+
+    // Background persist to database
+    try {
+      const { toggleFavoriteAction } = await import('@/app/review/actions');
+      await toggleFavoriteAction(experienceId, panelId);
+    } catch (e) {
+      console.warn("Could not save favorite to database", e);
+    }
   }, [experienceId]);
 
   const value = useMemo(() => ({

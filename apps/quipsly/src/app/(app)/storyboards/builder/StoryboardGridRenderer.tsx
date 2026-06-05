@@ -18,14 +18,18 @@ const CAMERA_MOVEMENTS = ['Static', 'Pan', 'Tilt', 'Dolly', 'Tracking', 'Steadic
 
 export function StoryboardGridRenderer({ 
   storyboard, 
+  mediaAssets = [],
   generatingFrames, 
   onGenerateFrame,
-  onAddFrame
+  onAddFrame,
+  aiConfigStatus = 'ready'
 }: { 
   storyboard: any; 
+  mediaAssets?: any[];
   generatingFrames: Record<string, boolean>;
   onGenerateFrame: (frameId: string, storyboardId: string) => void;
   onAddFrame: () => void;
+  aiConfigStatus?: string;
 }) {
   const [activePickerFrameId, setActivePickerFrameId] = useState<string | null>(null);
 
@@ -82,9 +86,21 @@ export function StoryboardGridRenderer({
               {generatingFrames[frame.id] && (
                 <div className="absolute inset-0 bg-indigo-500/10 z-20 animate-pulse pointer-events-none" />
               )}
+              {aiConfigStatus !== 'ready' && !frame.imageUrl && (
+                <div className="absolute top-2 left-2 z-10 bg-amber-500/90 dark:bg-amber-600/90 text-[9px] font-black text-white px-2 py-0.5 rounded-full shadow-sm">
+                  AI Sandbox Mode
+                </div>
+              )}
               <div className={`${ratioClass} bg-zinc-100 dark:bg-zinc-900 flex flex-col items-center justify-center relative overflow-hidden`}>
                 {frame.imageUrl ? (
-                  <Image src={frame.imageUrl} alt={`Frame ${frame.frameNumber}`} fill className="object-cover" />
+                  <>
+                    <Image src={frame.imageUrl} alt={`Frame ${frame.frameNumber}`} fill className="object-cover" />
+                    {frame.imageUrl.startsWith('data:image/svg+xml') && (
+                      <div className="absolute bottom-2 right-2 z-10 bg-zinc-800/85 backdrop-blur-sm text-[9px] font-bold text-zinc-300 px-2 py-0.5 rounded border border-zinc-700/50">
+                        Sandbox Sketch
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <ImageIcon className="w-8 h-8 text-zinc-300 dark:text-zinc-700 mb-2" />
@@ -94,8 +110,13 @@ export function StoryboardGridRenderer({
                       disabled={generatingFrames[frame.id]}
                       aria-label="Generate Frame Image"
                       className="mt-3 text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-semibold px-3 py-1.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50 flex items-center gap-1 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                      {generatingFrames[frame.id] ? <><Loader2 className="w-3 h-3 animate-spin" /> Generating...</> : "Generate Frame"}
+                      {generatingFrames[frame.id] ? <><Loader2 className="w-3 h-3 animate-spin" /> Generating...</> : (aiConfigStatus === 'ready' ? "Generate Frame" : "Generate Sandbox Sketch")}
                     </button>
+                    {aiConfigStatus !== 'ready' && (
+                      <p className="text-[9px] text-amber-600 dark:text-amber-500 mt-2 text-center max-w-[160px] leading-tight">
+                        Missing {aiConfigStatus === 'missing_both' ? 'API key & GCS bucket' : aiConfigStatus === 'missing_keys' ? 'Gemini API key' : 'GCS bucket'}. Falls back to SVG sketch.
+                      </p>
+                    )}
                   </>
                 )}
                 {/* Overlay generating state if it already has an image but is re-generating */}
@@ -108,37 +129,41 @@ export function StoryboardGridRenderer({
               
               {/* Editor Media Handoff Area */}
               <div className="flex-1 bg-zinc-50 dark:bg-zinc-900/50 p-3 border-t border-zinc-200 dark:border-zinc-800 flex flex-col justify-center items-center">
-                {frame.mediaClipId ? (
-                  <div className="w-full flex items-center gap-3 bg-white dark:bg-zinc-800 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm relative group">
-                    <div className="w-12 h-8 bg-zinc-200 dark:bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center overflow-hidden">
-                      <Film className="w-4 h-4 text-zinc-400" />
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">Linked Media</p>
-                        <span className="text-[8px] uppercase tracking-wider font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500 px-1.5 py-0.5 rounded">Preview Missing</span>
+                {frame.mediaClipId ? (() => {
+                  const linkedAsset = mediaAssets.find((a: any) => a.id === frame.mediaClipId);
+                  const displayName = linkedAsset ? linkedAsset.filename : frame.mediaClipId;
+                  return (
+                    <div className="w-full flex items-center gap-3 bg-white dark:bg-zinc-800 p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm relative group">
+                      <div className="w-12 h-8 bg-zinc-200 dark:bg-zinc-900 rounded flex-shrink-0 flex items-center justify-center overflow-hidden">
+                        <Film className="w-4 h-4 text-zinc-400" />
                       </div>
-                      <p className="text-[10px] text-zinc-500 truncate font-mono">{frame.mediaClipId}</p>
-                      <p className="text-[9px] text-zinc-400 mt-0.5">Awaiting Video Editor preview component.</p>
+                      <div className="flex-1 overflow-hidden">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">Linked Media</p>
+                          <span className="text-[8px] uppercase tracking-wider font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500 px-1.5 py-0.5 rounded">Preview Missing</span>
+                        </div>
+                        <p className="text-[10px] text-zinc-500 truncate font-mono">{displayName}</p>
+                        <p className="text-[9px] text-zinc-400 mt-0.5">Awaiting Video Editor preview component.</p>
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => setActivePickerFrameId(frame.id)}
+                          aria-label="Replace Media"
+                          className="text-[10px] text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-semibold px-2 focus:ring-2 focus:ring-indigo-500 rounded outline-none"
+                        >
+                          Replace
+                        </button>
+                        <button 
+                          onClick={() => updateStoryboardFrame(frame.id, { mediaClipId: null })}
+                          aria-label="Remove Media"
+                          className="text-[10px] text-red-600 hover:text-red-700 font-semibold px-2 focus:ring-2 focus:ring-red-500 rounded outline-none"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                      <button 
-                        onClick={() => setActivePickerFrameId(frame.id)}
-                        aria-label="Replace Media"
-                        className="text-[10px] text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 font-semibold px-2 focus:ring-2 focus:ring-indigo-500 rounded outline-none"
-                      >
-                        Replace
-                      </button>
-                      <button 
-                        onClick={() => updateStoryboardFrame(frame.id, { mediaClipId: null })}
-                        aria-label="Remove Media"
-                        className="text-[10px] text-red-600 hover:text-red-700 font-semibold px-2 focus:ring-2 focus:ring-red-500 rounded outline-none"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-2 text-center border border-dashed border-zinc-200 dark:border-zinc-700 rounded-lg bg-white/50 dark:bg-zinc-800/20 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
                     <button 
                       onClick={() => setActivePickerFrameId(frame.id)}
@@ -166,7 +191,15 @@ export function StoryboardGridRenderer({
                     </div>
                     <div className="flex-1 overflow-y-auto">
                       <MediaAssetPicker 
-                        assets={[]} 
+                        assets={mediaAssets.map((asset: any) => ({
+                          id: asset.id,
+                          name: asset.filename,
+                          kind: asset.mimeType?.startsWith('audio/') ? 'audio'
+                                : asset.mimeType?.startsWith('video/') ? 'video'
+                                : asset.mimeType?.startsWith('image/') ? 'image'
+                                : 'unknown',
+                          tags: []
+                        }))} 
                         selectedId={frame.mediaClipId || undefined}
                         onSelect={(assetId) => {
                           updateStoryboardFrame(frame.id, { mediaClipId: assetId });
@@ -226,6 +259,47 @@ export function StoryboardGridRenderer({
       );
     })}
       
+      {(!storyboard.frames || storyboard.frames.length === 0) && (
+        <div className="col-span-full bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl p-6 border border-zinc-200 dark:border-zinc-800/80 flex flex-col gap-4 mb-2">
+          <h4 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+            Storyboard Builder Workflow
+          </h4>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xl">
+            Welcome to the storyboard planner. Follow these simple steps to build your visual pre-visualization sequence and share it for review:
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-1">
+            <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200/60 dark:border-zinc-800 shadow-sm flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-[10px]">1</span>
+                Create First Frame
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Click the dashed card below to initialize your first frame. Set camera angles, shot size, and actions.
+              </p>
+            </div>
+            <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200/60 dark:border-zinc-800 shadow-sm flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-700 dark:text-zinc-300">
+                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px]">2</span>
+                Attach Media & Sketch
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Generate a pre-vis sketch using AI, or link an uploaded media asset from your Nest library to the frame.
+              </p>
+            </div>
+            <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200/60 dark:border-zinc-800 shadow-sm flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-zinc-700 dark:text-zinc-300">
+                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px]">3</span>
+                Open Review Mode
+              </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Once frames are created, click the "Review Mode" link to launch the swipeable scrollytelling deck.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Frame Button Card */}
       <button 
         onClick={onAddFrame}

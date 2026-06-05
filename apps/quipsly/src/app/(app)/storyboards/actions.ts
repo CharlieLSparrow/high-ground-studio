@@ -7,7 +7,7 @@ import { Storage } from "@google-cloud/storage";
 import { createStudioProject } from "@/lib/studio/project-registry";
 
 const storage = new Storage();
-const bucketName = process.env.STORYBOARD_GCS_BUCKET || process.env.GCS_BUCKET || "high-ground-odyssey-media";
+const bucketName = process.env.STORYBOARD_GCS_BUCKET || process.env.GCS_BUCKET || "quipsly-storyboard-dev-assets";
 const shouldMakeStoryboardImagesPublic = process.env.STORYBOARD_MAKE_PUBLIC === "1";
 
 export async function createProject(formData: FormData) {
@@ -128,7 +128,12 @@ Dialogue context: ${frame.dialogue || 'None'}.
 Style: Cinematic black and white rough storyboard pencil sketch, high contrast, dynamic composition, dramatic lighting, movie pre-production art style.`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY });
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error("Missing GEMINI_API_KEY or GOOGLE_API_KEY");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateImages({
       model: 'imagen-3.0-generate-002',
       prompt: prompt,
@@ -176,7 +181,79 @@ Style: Cinematic black and white rough storyboard pencil sketch, high contrast, 
     revalidatePath("/storyboards/builder");
     return { success: true, frame: updatedFrame };
   } catch (error: any) {
-    console.error("Error generating frame:", error);
+    console.warn("Error generating frame image, falling back to SVG storyboard sketch:", error.message);
+    try {
+      const fallbackSvg = `data:image/svg+xml;utf8,${encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="100%" height="100%">
+          <rect width="100%" height="100%" fill="#1f1f23"/>
+          <line x1="50" y1="50" x2="1550" y2="50" stroke="#3f3f46" stroke-width="4" stroke-dasharray="10 10"/>
+          <line x1="50" y1="850" x2="1550" y2="850" stroke="#3f3f46" stroke-width="4" stroke-dasharray="10 10"/>
+          <line x1="50" y1="50" x2="50" y2="850" stroke="#3f3f46" stroke-width="4" stroke-dasharray="10 10"/>
+          <line x1="1550" y1="50" x2="1550" y2="850" stroke="#3f3f46" stroke-width="4" stroke-dasharray="10 10"/>
+          <circle cx="800" cy="450" r="150" fill="none" stroke="#6366f1" stroke-width="6" opacity="0.4"/>
+          <path d="M 650 450 L 950 450 M 800 300 L 800 600" stroke="#6366f1" stroke-width="4" opacity="0.3"/>
+          <text x="800" y="470" font-family="monospace" font-size="28" font-weight="bold" fill="#a1a1aa" text-anchor="middle">
+            [ STORYBOARD SKETCH ]
+          </text>
+          <text x="800" y="520" font-family="sans-serif" font-size="20" fill="#71717a" text-anchor="middle">
+            ${(frame.action || "No action described").replace(/[<>&"]/g, "").slice(0, 80)}
+          </text>
+          <text x="800" y="555" font-family="sans-serif" font-style="italic" font-size="18" fill="#a1a1aa" text-anchor="middle">
+            ${(frame.shotSize || "Medium Shot").replace(/[<>&"]/g, "")} - ${(frame.cameraInfo || "Wide Angle").replace(/[<>&"]/g, "")}
+          </text>
+        </svg>
+      `.trim())}`;
+
+      const updatedFrame = await (prisma as any).studioStoryboardFrame.update({
+        where: { id: frameId },
+        data: { imageUrl: fallbackSvg }
+      });
+
+      revalidatePath("/storyboards/builder");
+      return { success: true, frame: updatedFrame, fallbackUsed: true };
+    } catch (dbError: any) {
+      console.error("DB error during fallback save:", dbError);
+      return { error: error.message };
+    }
+  }
+}
+
+export async function approveLedgerSuggestions(storyboardId: string, frames: any[]) {
+  const prisma = getPrismaClient();
+  try {
+    // Get current frames count to set sortOrder and frameNumber
+    const existingFrames = await (prisma as any).studioStoryboardFrame.findMany({
+      where: { storyboardId },
+      orderBy: { sortOrder: 'asc' }
+    });
+    
+    let nextSortOrder = existingFrames.length;
+    
+    const createdFrames = [];
+    for (const suggestedFrame of frames) {
+      const frameNumber = `1.${nextSortOrder + 1}`;
+      const frame = await (prisma as any).studioStoryboardFrame.create({
+        data: {
+          storyboardId,
+          sortOrder: nextSortOrder,
+          frameNumber,
+          action: suggestedFrame.action || "Describe the action happening in this shot...",
+          dialogue: suggestedFrame.dialogue || null,
+          shotSize: suggestedFrame.shotSize || "Medium Shot",
+          lens: suggestedFrame.lens || null,
+          cameraMovement: suggestedFrame.cameraMovement || "Static",
+          estimatedDuration: suggestedFrame.estimatedDuration || null,
+        }
+      });
+      createdFrames.push(frame);
+      nextSortOrder++;
+    }
+    
+    revalidatePath("/storyboards/builder");
+    return { success: true, frames: createdFrames };
+  } catch (error: any) {
+    console.error("Error approving ledger suggestions:", error);
     return { error: error.message };
   }
 }
+

@@ -1,14 +1,26 @@
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
-import { ensureWorldHubProviderConnection } from "@/lib/server/worldhub-integrations";
 
-// We use an empty string fallback so it doesn't crash at build time if env is missing
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-05-27.dahlia" as any,
-  appInfo: {
-    name: "High Ground Odyssey WorldHub",
-  },
-});
+let stripeClient: Stripe | null = null;
+
+export function getStripeClient() {
+  if (stripeClient) return stripeClient;
+
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+
+  if (!secretKey) {
+    throw new Error("Stripe is not configured for this High Ground Odyssey deployment.");
+  }
+
+  stripeClient = new Stripe(secretKey, {
+    apiVersion: "2026-05-27.dahlia" as any,
+    appInfo: {
+      name: "High Ground Odyssey WorldHub",
+    },
+  });
+
+  return stripeClient;
+}
 
 export async function createStripeCheckoutSession({
   offerId,
@@ -41,7 +53,7 @@ export async function createStripeCheckoutSession({
     throw new Error("Offer does not have a configured Stripe price ID.");
   }
 
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripeClient().checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
     customer_email: userEmail || undefined,

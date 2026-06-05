@@ -4,6 +4,8 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 
 interface AssistantSidebarProps {
   projectId: string;
+  documentId?: string;
+  cursorNodeId?: string;
 }
 
 type ChatMessage = {
@@ -20,7 +22,7 @@ function makeMessage(role: ChatMessage["role"], content: string): ChatMessage {
   };
 }
 
-export function AssistantSidebar({ projectId }: AssistantSidebarProps) {
+export function AssistantSidebar({ projectId, documentId, cursorNodeId }: AssistantSidebarProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -47,6 +49,8 @@ export function AssistantSidebar({ projectId }: AssistantSidebarProps) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           projectId,
+          documentId,
+          cursorNodeId,
           messages: nextMessages.map((message) => ({
             role: message.role,
             content: message.content,

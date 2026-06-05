@@ -202,3 +202,74 @@ Implement end-to-end database-backed package compilation, review, and publishing
 * Codex/Owner to approve the new dynamic `/api/public/podcast/rss/[projectSlug]` route.
 * No schema changes required.
 
+---
+
+## 2026-06-05 15:45 local - AG-Publishing-Integrations (Beta Pipeline Implementation)
+
+### 1. Changed Files
+- **[DestinationAdapters.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/DestinationAdapters.ts):** Refined the server-side publication packet contract (`QuipslyPublicPackage`), explicitly typed the status lifecycle (`PublicationStatus` covering `draft`, `staged`, `published`, `needs review`, `failed`) and the supported targets (`PublishingDestination`).
+- **[route.ts (import-media)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/episode-production/import-media/route.ts):** Replaced legacy `ensureStudioProjectDocument` with `lookupStudioProjectDocument` in imports and calls to match the project configuration registry refactor.
+- **[route.ts (ai-ingest)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/episode-production/ai-ingest/route.ts):** Refactored project lookups to use `lookupStudioProjectDocument`.
+- **[route.ts (transcript-assist)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/episode-production/transcript-assist/route.ts):** Upgraded database lookups to use the new project lookup function.
+- **[route.ts (episode-production)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/episode-production/route.ts):** Refactored to import and execute `lookupStudioProjectDocument`.
+- **[route.ts (media-analysis-jobs)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/episode-production/media-analysis-jobs/route.ts):** Unified project lookup logic with the registry refactor.
+- **[studio-manuscript-client.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/manuscript/studio-manuscript-client.tsx):** Fixed invalid relative imports for `AssistantSidebar` and `ResearchContextPane` by leveraging the absolute alias `@/components/research/...`.
+
+### 2. Publication Packet Contract
+The publishing contract acts as a strict firewall preventing unapproved editor notes or private drafts from leaking:
+- **Core Package (`QuipslyPublicPackage` / `HgoPublicEpisodePacket`):**
+  - Consumed from the Editor-Spine's active-boundary document models.
+  - Formats title, summary, body (MDX/HTML), beats, and verified pull quotes.
+  - Leverages platform-specific overrides (e.g., tags and chapters for YouTube; tierId and teaser text for Patreon).
+  - Enforces a deterministic, public-safe JSON output shape validated at the boundary before writing files or database updates.
+
+### 3. Destination & Status Map
+The Transmitter dashboard tracks and schedules releases across four channels:
+- **HighGroundOdyssey.com:** Receives approved public episode packets to the shared database tables.
+- **YouTube:** Tracks and links to video sources via overrides (`youtubeId`, tag lists, and chapter markers).
+- **Patreon:** Integrates membership gates, tier IDs, and CTAs (`isMembersOnly` teaser text).
+- **Podcast RSS:** Dynamically exposes iTunes and Spotify compliant feeds at `/api/public/podcast/rss/[projectSlug]`.
+
+#### Status Lifecycle
+- `draft`: Initial tag boundaries scanned and compiled into public-safe outlines.
+- `staged`: Staging projection active and locked in the private review gate.
+- `published`: Approved by the operator and active in public feeds.
+- `needs review`: Blockers detected or returned to the writer for fixes.
+- `failed`: Extraction or publishing execution failure.
+
+### 4. Episode Status (Episodes 1-3 vs. Episode 4)
+- **Episodes 1-3:** Fully published live and indexed in `apps/web/content/publish/hgo-episodes/episodes-index.json`:
+  1. *Episode 1: The Wednesday Rule* (slug: `episode-1-write-it-down`)
+  2. *Episode 2: Look for Lessons* (slug: `episode-2-look-for-lessons`)
+  3. *Episode 3: Know Where You Came From* (slug: `episode-3-chub-and-jack`)
+- **Episode 4:** Currently lives as a manuscript-bound block in the writer's Nest (`high-ground-odyssey-manuscript`). When compiled, it stages a new candidate packet ready for operator review before moving to `published` in the shared database and RSS feed.
+
+### 5. Verification Run
+- Ran typechecks successfully on `quipsly`: `pnpm --filter quipsly typecheck` compiles clean.
+- Ran tests successfully on publish candidates: `pnpm hgo:publish-candidate:test` passes all 11 test cases.
+
+---
+
+## 2026-06-05 16:00 local - AG-Publishing-Integrations (Implementation Sprint 4 - Unified Seam)
+
+### 1. Changed Files
+- **[DestinationAdapters.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/DestinationAdapters.ts):** Declared the canonical `HgoPublicEpisodePacket` contract type and added the mapping helper `mapQuipslyPackageToHgoPacket`.
+- **[actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/create/actions.ts):** Updated `approveEpisodeCandidateAction` to map compiled output to the canonical HGO packet, save it to the candidate's JSON fields, write the JSON file to `web/content/publish/hgo-episodes/[slug].json`, and update the published episodes index.
+- **[route.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/api/public/podcast/rss/[projectSlug]/route.ts):** Refactored the dynamic podcast RSS route to be format-agnostic (supporting both package schemas) and strict about public-safe boundaries (filtering to only `published` status and stripping backstage metadata).
+- **[page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx):** Added a visual "Distribution Pipeline Status Panel" showing dynamic live/staged indicators and external preview links for HGO, YouTube, Patreon, and Podcast RSS.
+- **[BETA-MANIFEST.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/BETA-MANIFEST.md):** Registered Antigravity ownership and declared the critical/hidden routes.
+- **[QuipslyAssistantSidebar.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/QuipslyAssistantSidebar.tsx) / [Editor.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/Editor.tsx):** Fixed pre-existing TypeScript warnings to ensure a completely clean compile build.
+
+### 2. Canonical Packet Type Location
+- The canonical public packet is `HgoPublicEpisodePacket` defined in [public-episode-packet.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/lib/hgo/public-episode-packet.ts) and shared locally in [DestinationAdapters.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/DestinationAdapters.ts).
+
+### 3. Destination Status Map
+- **HighGroundOdyssey.com:** Status is `published` (Live) when approved in the Package Builder. The page is rendered dynamically from the database candidate or fallback JSON file.
+- **YouTube:** Checks video override metadata. Integrates watch links when `videoUrl` is present.
+- **Patreon:** Simulates membership gates, connected accounts, and campaign redirections.
+- **Podcast RSS:** Active dynamic feed exposed publicly, served via `/api/public/podcast/rss/[projectSlug]`.
+
+### 4. Remaining Publishing Blockers
+- **OAuth Credentials:** Real posting to Patreon and YouTube requires final creator tokens, which are currently running in a safe simulated state to prevent pre-launch leaks.
+
+

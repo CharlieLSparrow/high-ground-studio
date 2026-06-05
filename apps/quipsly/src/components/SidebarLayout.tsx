@@ -14,7 +14,7 @@ import {
 import { cn } from "@/app/(app)/studio-ui";
 
 const navItems = [
-  { name: "The Nest", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Nests", href: "/projects", icon: LayoutDashboard },
   { name: "Research", href: "/research", icon: Search },
   { name: "Studio", href: "/create", icon: PenTool },
   { name: "Publishing", href: "/publishing", icon: Rocket },

@@ -254,3 +254,41 @@ Recommended Prompt 2 for my lane:
 
 **How this abstraction maps to future content outputs:**
 The `apps/web/src/components/scroll-experience/types.ts` exposes an `ExperienceType` ('STORYBOARD' | 'COURSE' | 'PHOTOGRAPHY' | 'LORELIST' | 'COMIC'). To support a mobile SCORM course, we simply create a Next.js route that queries a Quipsly Document, chunks it by headings (Groups) and paragraphs/quizzes (Panels), and passes it to the exact same `<ScrollExperienceEngine>`. The engine's geometry and gesture recognition remains identical, while the newly registered `CourseAdapter` handles the visual display.
+
+---
+
+## Beta Launch Posture: Prompt 3 - IMPLEMENTATION REPORT
+
+Per the "code boldly" directive, I have converted the mock local interaction engine into a fully live, database-backed system for the beta push!
+
+**Exact Files Changed:**
+- `[MODIFY] prisma/schema.prisma`: Safely appended the `ScrollInteraction` model. It is fully decoupled from core tables, relying only on string ID mapping (`experienceId`, `panelId`), ensuring zero risk to existing relationships.
+- `[NEW] apps/web/src/app/review/actions.ts`: Created Next.js Server Actions (`addScrollInteractionAction`, `toggleFavoriteAction`) to persist interactions.
+- `[MODIFY] apps/web/src/components/scroll-experience/InteractionStateContext.tsx`: Wired up the client-side context to optimistically update the UI and asynchronously fire the new server actions.
+- `[MODIFY] apps/web/src/app/review/[storyboardId]/page.tsx`: Hydrated the initial SSR payload by fetching all `ScrollInteraction`s for the storyboard and distributing them correctly into the `ScrollPanel` JSON array.
+
+**Risks:**
+- **Minimal Risk:** The schema addition is strictly additive. If the interactions table fails, the optimistic UI falls back gracefully. The route remains beta-auth protected.
+
+**What Remains:**
+- **Notification Routing:** Comments left by a client in the Scroll Engine currently only live in the `ScrollInteraction` table. They do not yet ping the Quipsly author's dashboard or inbox.
+- **Migration Pipeline:** If a `StudioStoryboard` is eventually deleted, we may want to clean up its orphaned `ScrollInteraction` rows (currently no cascade constraint exists to maintain decoupling safety).
+
+---
+
+## Beta Launch Posture: Prompt 4 - IMPLEMENTATION REPORT
+
+Per the Sprint 4 directive, I have closed the loop on review feedback visibility by surfacing `ScrollInteraction` data directly to creators inside the Quipsly editor.
+
+**Exact Files Changed:**
+- `[MODIFY] apps/quipsly/src/app/(app)/storyboards/builder/page.tsx`: Added server-side data fetching to query `ScrollInteraction` counts grouped by `storyboardId` and attached them to the `projects` payload before rendering the client component.
+- `[MODIFY] apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx`: Added a new lightweight, real-time UI badge cluster positioned neatly next to the "Review Mode ↗" link.
+- `[MODIFY] docs/coordination/BETA-MANIFEST.md`: Updated the AG-Scroll-Experiences row to flag the Storyboard Builder modifications as part of beta-readiness.
+
+**How Creator Sees Review Feedback:**
+- When inside the `StoryboardBuilder`, creators will now see a dynamic feedback badge right below their Storyboard title.
+- **Empty State:** If no comments/favorites exist, it displays a subtle grey "No feedback yet" pill.
+- **Active State:** As feedback rolls in, it becomes a bright emerald indicator showing exactly how many comments (bubble icon) and favorites (heart icon) exist on that specific storyboard. 
+
+**Remaining Interaction Cleanup Risks:**
+- **Drill-down UI:** We now show *how many* comments exist, but clicking the badge currently does not open a full "Feedback List" drawer inside the editor. The creator still has to click "Review Mode ↗" and swipe through the storyboard to find *which* specific frames have the comments. This is acceptable for a lightweight beta implementation but requires a centralized dashboard feed in the future.

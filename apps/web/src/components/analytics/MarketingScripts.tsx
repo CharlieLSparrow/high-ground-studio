@@ -1,18 +1,13 @@
 import Script from "next/script";
-import { auth } from "@/auth";
 
 function isEnabled(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
 }
 
-export default async function MarketingScripts() {
+export default function MarketingScripts() {
   const gaMeasurementId = process.env.HGO_GA_MEASUREMENT_ID?.trim();
   const adsenseClient = process.env.GOOGLE_ADSENSE_CLIENT?.trim();
   const adsenseEnabled = isEnabled(process.env.HGO_ADSENSE_AUTO_ADS_ENABLED);
-
-  const session = await auth();
-  const roles = Array.isArray(session?.user?.roles) ? session.user.roles : [];
-  const hasNetworkPass = roles.includes("NETWORK_PASS");
 
   return (
     <>
@@ -35,7 +30,7 @@ export default async function MarketingScripts() {
         </>
       ) : null}
 
-      {adsenseClient && adsenseEnabled && !hasNetworkPass ? (
+      {adsenseClient && adsenseEnabled ? (
         <Script
           async
           crossOrigin="anonymous"

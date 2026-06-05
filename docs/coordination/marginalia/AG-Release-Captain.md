@@ -59,4 +59,37 @@ Recommended next handoff: DevOps / Codex to fix `run.services.get` (Cloud Run Ad
 **8. Dependencies to approve**: Codex MUST manually run a `gcloud` command to unblock the Cloud Run deployment. Codex MUST approve generating the initial Prisma migration baseline.
 
 Recommended Prompt 2 for my lane:
-Execute the Production Deployment Hardening & IAM Fix pass. Refactor the deployment pipeline to use `prisma migrate deploy` instead of `db push` to ensure zero data loss for beta users. Update the deployment scripts and documentation accordingly. Provide me the exact `gcloud` IAM command I need to run to unblock Cloud Run deployments before you proceed.
+## 2026-06-05 21:47 local - AG-Release-Captain (RELEASE PREP ONLY)
+
+**Deploy Readiness Audit**
+
+1. **Current Assumed Blocker List**:
+   - Missing Cloud Run Admin IAM permissions on the compute service account.
+   - Missing Database Migration: The schema was updated with the `ScrollInteraction` model, but no Prisma migration file was generated. Because we switched to `prisma migrate deploy` for safety, this migration *must* be generated locally via Docker before we can deploy to production.
+
+2. **Exact Changed Files (High Risk)**:
+   - `prisma/schema.prisma` (Added `ScrollInteraction` model)
+   - `apps/quipsly/src/app/api/assistant/route.ts`
+   - `apps/quipsly/src/app/api/quipsly-assistant/route.ts`
+   - `apps/quipsly/src/app/api/episode-production/route.ts`
+   - `apps/web/src/app/api/auth/[...nextauth]/route.ts`
+   - `apps/web/src/app/api/webhooks/patreon/route.ts`
+
+3. **Proposed Validation Command Sequence**:
+   - `pnpm -r typecheck`
+   - `pnpm dlx prisma format`
+   - (Start local Docker) -> `pnpm prisma migrate dev --name beta_scroll_interactions`
+   - `NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://mock STUDIO_COLLAB_URL=wss://mock pnpm -r build`
+
+4. **Smoke Expectations**:
+   - `/create` without a project parameter will intentionally fail/redirect.
+   - Core routes (`/`, `/library`, `/dashboard`) should load without 500 errors.
+
+5. **DEPLOY GO Checklist**:
+   - Run `gcloud projects add-iam-policy-binding high-ground-odyssey --member="serviceAccount:659427658635-compute@developer.gserviceaccount.com" --role="roles/run.admin"`
+   - Ensure `prisma/migrations` contains the new schema delta.
+   - Run `./scripts/release-quipsly.sh`
+
+6. **Rollback Commands**:
+   - App Revert: `gcloud run services update-traffic studio --to-revisions=studio-PREVIOUS-REVISION-ID=100 --region=us-central1`
+   - Data Revert: Restore from Cloud SQL automated snapshot.

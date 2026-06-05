@@ -2,8 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getPrismaClient } from "@/lib/prisma";
-
-const WORKSPACE_SLUG = "tonight-pack";
+import { createStudioProject } from "@/lib/studio/project-registry";
 
 const DEFAULT_TAGS = [
   { slug: "chapter", label: "Chapter", category: "chapter" },
@@ -14,55 +13,23 @@ const DEFAULT_TAGS = [
   { slug: "draft", label: "Draft", category: "workflow_status" },
 ];
 
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 64) || "untitled";
-}
-
 export async function createNotebook(formData: FormData) {
   const prisma = getPrismaClient();
   const title = String(formData.get("title") || "Untitled Notebook").trim() || "Untitled Notebook";
   const kind = String(formData.get("kind") || "Book").trim() || "Book";
-  const baseSlug = slugify(title);
-
-  const workspace = await prisma.studioWorkspace.upsert({
-    where: { slug: WORKSPACE_SLUG },
-    update: {},
-    create: { slug: WORKSPACE_SLUG, name: "Tonight Pack Workspace" },
-  });
-
-  let slug = baseSlug;
-  let suffix = 2;
-  while (await prisma.studioProject.findUnique({ where: { workspaceId_slug: { workspaceId: workspace.id, slug } } })) {
-    slug = `${baseSlug}-${suffix}`;
-    suffix += 1;
-  }
-
-  const project = await prisma.studioProject.create({
-    data: {
-      workspaceId: workspace.id,
-      slug,
-      name: title,
-    },
-  });
-
-  const document = await prisma.studioDocument.create({
-    data: {
-      projectId: project.id,
-      stableId: `doc-${slug}`,
-      title,
-    },
+  const nestKind = kind.toLowerCase().includes("study") || kind.toLowerCase().includes("research")
+    ? "study"
+    : "writing";
+  const { project, document } = await createStudioProject(prisma, {
+    name: title,
+    nestKind,
+    documentTitle: title,
   });
 
   await prisma.studioDocumentBlock.create({
     data: {
       documentId: document.id,
-      stableId: `opening-${slug}`,
+      stableId: `opening-${project.slug}`,
       order: 0,
       body: `${title}\n\nStart this ${kind.toLowerCase()} here. Keep writing in one document, then tag passages as chapters, quotes, clips, sources, questions, or episode material.`,
     },
@@ -79,5 +46,5 @@ export async function createNotebook(formData: FormData) {
     });
   }
 
-  redirect(`/?project=${encodeURIComponent(slug)}`);
+  redirect(`/create?project=${encodeURIComponent(project.slug)}`);
 }

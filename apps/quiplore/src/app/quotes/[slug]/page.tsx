@@ -13,12 +13,11 @@ import AdSenseBannerSlot from "@/components/monetization/AdSenseBannerSlot";
 import AffiliateBookCard from "@/components/monetization/AffiliateBookCard";
 import PatreonPledgeBanner from "@/components/monetization/PatreonPledgeBanner";
 import {
-  getQuotePassportBySlug,
   getQuoteStoryBySlug,
   getMerchConceptByQuoteSlug,
   quotes,
-  getAllQuipCards,
 } from "@high-ground/quipsly-domain/seed";
+import { fetchQuotePassportMock, fetchAllQuotesMock } from "@/app/actions/quote-actions";
 
 function formatLabel(value: string): string {
   return value
@@ -37,7 +36,7 @@ export async function generateMetadata({
   readonly params: Promise<{ readonly slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const passport = getQuotePassportBySlug(slug);
+  const passport = await fetchQuotePassportMock(slug);
 
   return {
     title: passport ? `Quote Passport: ${passport.person.displayName}` : "Quote Passport",
@@ -51,13 +50,13 @@ export default async function QuotePassportPage({
   readonly params: Promise<{ readonly slug: string }>;
 }) {
   const { slug } = await params;
-  const passport = getQuotePassportBySlug(slug);
+  const passport = await fetchQuotePassportMock(slug);
 
   if (!passport) {
     notFound();
   }
 
-  const allCards = getAllQuipCards();
+  const allCards = await fetchAllQuotesMock();
   const story = getQuoteStoryBySlug(slug);
   const merch = getMerchConceptByQuoteSlug(slug);
   const relatedCards = passport.relatedQuotes
@@ -76,6 +75,11 @@ export default async function QuotePassportPage({
           This page treats the quote as a projection over wording, attribution,
           source work, evidence, variants, review state, and useful context.
         </p>
+        {passport.quote.verificationStatus !== "verified" && (
+          <div className="alert-banner" style={{ background: "#fef3c7", color: "#92400e", padding: "1rem", borderRadius: "8px", marginTop: "1rem" }}>
+            <strong>Internal Sandbox Note:</strong> This quote is currently unverified or pulled from the mock seed. Provenance may be incomplete.
+          </div>
+        )}
       </div>
 
       <div className="detail-grid">

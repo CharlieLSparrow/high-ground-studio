@@ -17,10 +17,17 @@ import { CitationCard } from "./CitationCard";
 
 interface ResearchContextPaneProps {
   projectId: string;
+  documentId?: string;
+  cursorNodeId?: string;
   onNavigateToBlock?: (blockStableId: string) => void;
 }
 
-export function ResearchContextPane({ projectId, onNavigateToBlock }: ResearchContextPaneProps) {
+export function ResearchContextPane({
+  projectId,
+  documentId,
+  cursorNodeId,
+  onNavigateToBlock,
+}: ResearchContextPaneProps) {
   const [query, setQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"examples" | "quotes">("examples");
   const [isPending, startTransition] = useTransition();

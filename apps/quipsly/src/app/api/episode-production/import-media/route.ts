@@ -3,7 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
-import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
+import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 import type { EpisodeImportedMediaAsset } from "../../../(app)/episode-production/episodeArtifact";
 
 function asRecord(value: unknown) {
@@ -96,7 +96,7 @@ function appendSyncHistory(productionJson: Record<string, unknown>, snapshot: Re
 }
 
 async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string, episodeSlug: string) {
-  const { project, document } = await ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
+  const { project, document } = await lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 
   const title = episodeSlug
     .replace(/[-_]+/g, " ")
@@ -144,7 +144,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "No media file provided." }, { status: 400 });
     }
 
-    const projectSlug = sanitizeSegment(String((isJsonRequest ? body.projectSlug : formData?.get("projectSlug")) ?? DEFAULT_PROJECT_SLUG));
+    const rawProjectSlug = String((isJsonRequest ? body.projectSlug : formData?.get("projectSlug")) ?? "").trim();
+    if (!rawProjectSlug) {
+      return NextResponse.json({ ok: false, error: "projectSlug is required. Choose a Nest before importing media." }, { status: 400 });
+    }
+
+    const projectSlug = sanitizeSegment(rawProjectSlug);
     const episodeSlug = sanitizeSegment(String((isJsonRequest ? body.episodeSlug : formData?.get("episodeSlug")) ?? "current-episode"));
     const selectedClipId = typeof (isJsonRequest ? body.selectedClipId : formData?.get("selectedClipId")) === "string"
       ? String(isJsonRequest ? body.selectedClipId : formData?.get("selectedClipId"))
@@ -348,7 +353,12 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const projectSlug = sanitizeSegment(String(body.projectSlug ?? DEFAULT_PROJECT_SLUG));
+    const rawProjectSlug = String(body.projectSlug ?? "").trim();
+    if (!rawProjectSlug) {
+      return NextResponse.json({ ok: false, error: "projectSlug is required. Choose a Nest before updating media sync." }, { status: 400 });
+    }
+
+    const projectSlug = sanitizeSegment(rawProjectSlug);
     const episodeSlug = sanitizeSegment(String(body.episodeSlug ?? "current-episode"));
     const action = String(body.action ?? "update-sync").trim();
     const assetId = String(body.assetId ?? "").trim();

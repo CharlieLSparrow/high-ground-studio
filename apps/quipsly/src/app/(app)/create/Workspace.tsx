@@ -8,7 +8,6 @@ import { EditorExtensionProvider } from "./registry/EditorExtensionRegistry";
 import { coreBlockCards } from "./registry/coreBlockCards";
 import ViewFilter from "./ViewFilter";
 import { DocumentBoundary, ViewDefinition } from "./types";
-import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { QuipslyAssistantSidebar } from "@/components/QuipslyAssistantSidebar";
 
 export const DEFAULT_VIEW: ViewDefinition = {
@@ -129,7 +128,7 @@ export default function Workspace({
   documentId: string,
   documentTitle?: string,
   persistenceMode?: "database" | "offline",
-  availableProjects?: { slug: string; name: string }[],
+  availableProjects?: { slug: string; name: string; nestKind?: string }[],
   isDefaultFallback?: boolean
 }) {
   const [activeView, setActiveView] = useState<ViewDefinition>(DEFAULT_VIEW);
@@ -156,12 +155,12 @@ export default function Workspace({
   }, [activeBoundary, documentBlocks]);
   const [publisherMode, setPublisherMode] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
-  // Optional ad-hoc tag filters applied on top of the active view
-  const [adHocTags, setAdHocTags] = useState<string[]>([]);
-  const [createEpisodeError, setCreateEpisodeError] = useState<string | null>(null);
+  // Optional ad-hoc tag filters still exist as data plumbing, but the author-facing
+  // sidebar now treats Chapter/Episode heading tags as the primary navigation model.
+  const [adHocTags] = useState<string[]>([]);
   const [views, setViews] = useState<ViewDefinition[]>(initialViews);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const activeProjectSlug = projectSlug ?? DEFAULT_PROJECT_SLUG;
+  const activeProjectSlug = projectSlug ?? "";
   const manuscriptHref = `/create?project=${encodeURIComponent(activeProjectSlug)}${publisherMode ? "&publisher=1" : ""}`;
 
   useEffect(() => {
@@ -250,60 +249,6 @@ export default function Workspace({
     }
   };
 
-  const handleReorderBoundary = (activeId: string, overId: string) => {
-    const oldIndex = documentBoundaries.findIndex(b => b.id === activeId);
-    const newIndex = documentBoundaries.findIndex(b => b.id === overId);
-
-    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
-
-    // 1. Extract the blocks for each boundary precisely using the CURRENT boundary indices
-    const boundaryChunks = documentBoundaries.map(boundary => {
-      const start = Math.max(0, boundary.startIndex);
-      const end = Math.min(documentBlocks.length - 1, boundary.endIndex);
-      return documentBlocks.slice(start, end + 1);
-    });
-
-    // 2. Reorder the chunks identically to how the boundaries moved
-    const newChunks = [...boundaryChunks];
-    const [movedChunk] = newChunks.splice(oldIndex, 1);
-    newChunks.splice(newIndex, 0, movedChunk);
-
-    // 3. Extract the prelude (blocks before the first boundary)
-    const firstBoundary = documentBoundaries[0];
-    const preludeBlocks = firstBoundary && firstBoundary.startIndex > 0 
-      ? documentBlocks.slice(0, firstBoundary.startIndex) 
-      : [];
-      
-    // 4. Extract any trailing blocks that might be after the last boundary's endIndex
-    const lastBoundary = documentBoundaries[documentBoundaries.length - 1];
-    const trailingBlocks = lastBoundary && lastBoundary.endIndex < documentBlocks.length - 1
-      ? documentBlocks.slice(lastBoundary.endIndex + 1)
-      : [];
-
-    // 5. Combine everything securely
-    const newDocumentBlocks = [
-      ...preludeBlocks, 
-      ...newChunks.flat(),
-      ...trailingBlocks
-    ];
-    
-    setDocumentBlocks(newDocumentBlocks);
-  };
-
-  const handleCreateEpisode = async () => {
-    setCreateEpisodeError("Create a heading block, then tag it Episode. The outline will generate from the manuscript.");
-    return false;
-  };
-
-  const handleBulkNormalizeBoundaries = async () => {
-    return {
-      updatedCount: 0,
-      skippedCount: documentBlocks.length,
-      source: "local" as const,
-      message: "Bulk cleanup is paused for release safety. Tag Chapter and Episode heading blocks manually for now.",
-    };
-  };
-
   const togglePublisherMode = () => {
     const nextValue = !publisherMode;
     setPublisherMode(nextValue);
@@ -321,16 +266,10 @@ export default function Workspace({
          activeView={activeView} 
          setActiveView={handleActiveViewChange}
          views={views}
-         adHocTags={adHocTags}
-         setAdHocTags={setAdHocTags}
          documentBoundaries={documentBoundaries}
          activeBoundaryId={activeBoundaryId}
          setActiveBoundaryId={handleActiveBoundaryChange}
          scrolledBoundaryId={scrolledBoundaryId}
-         onReorderBoundary={handleReorderBoundary}
-         onCreateEpisode={handleCreateEpisode}
-         onCreateEpisodeError={createEpisodeError}
-         onBulkNormalizeBoundaries={handleBulkNormalizeBoundaries}
       />
       {/* Main editor area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 relative">
@@ -341,13 +280,13 @@ export default function Workspace({
                 <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#a36f2e] flex items-center gap-2">
                   <span title="This workspace is private to your organization" className="flex items-center gap-1"><span className="text-[10px]">🔒</span> Private</span>
                   <span className="opacity-50">•</span>
-                  <span>{projectName ?? "Quipsly Live"} / Living Document</span>
+                  <span>{projectName ?? "Quipsly Live"} / Living Document Nest</span>
                 </div>
                 <h1 className="mt-1 text-2xl md:text-3xl font-bold font-serif text-[#342618]">
                   {documentTitle ?? "High Ground Odyssey Tonight Pack"}
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6b5b45]">
-                  Write in one continuous living document. Make a heading block, tag it Chapter or Episode, and the outline becomes your navigation from that point until the next heading.
+                Write in one continuous original content document. Make a heading block, tag it Chapter or Episode, and the outline becomes your navigation from that point until the next heading.
                   <br />
                   <span className="font-medium text-[#8c6b4a] opacity-90 mt-1 inline-block">💡 <strong>Pro tip:</strong> Press Enter to split blocks. Backspace at the start of a block merges it up.</span>
                 </p>
@@ -393,7 +332,7 @@ export default function Workspace({
             </div>
             <div className="flex flex-nowrap overflow-x-auto hide-scrollbar items-center gap-2 pb-1">
               <div className="mr-2 shrink-0 flex flex-nowrap items-center gap-1 rounded-full border border-[#e6d7bc] bg-[#f8f1e3] p-1">
-                <span className="pl-3 pr-1 text-[10px] font-bold uppercase tracking-wider text-[#a36f2e]">Project:</span>
+                <span className="pl-3 pr-1 text-[10px] font-bold uppercase tracking-wider text-[#a36f2e]">Nest:</span>
                 {(availableProjects || []).map((project) => (
                   <Link
                     key={project.slug}
@@ -409,16 +348,16 @@ export default function Workspace({
                 ))}
               </div>
               <Link
+                href="/projects"
+                className="shrink-0 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-bold text-[#5e4b33] shadow-sm transition-colors hover:bg-[#f8f3e6]"
+              >
+                Manage Nests
+              </Link>
+              <Link
                 href={manuscriptHref}
                 className="shrink-0 rounded-full border border-[#c8a66b] bg-[#3d3122] px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#59442d]"
               >
                 Manuscript
-              </Link>
-              <Link
-                href="/notebooks"
-                className="shrink-0 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-bold text-[#5e4b33] shadow-sm transition-colors hover:bg-[#f8f3e6]"
-              >
-                Notebooks
               </Link>
               <Link
                 href={`/recorder?project=${encodeURIComponent(activeProjectSlug)}${activeEpisodeQuery}`}
@@ -461,7 +400,7 @@ export default function Workspace({
           </div>
 
           {publisherMode ? (
-            <PublisherModePanel activeView={activeView} documentTitle={documentTitle} />
+            <PublisherModePanel activeView={activeView} documentTitle={documentTitle} projectSlug={activeProjectSlug} projectId={projectId} />
           ) : null}
 
           {persistenceMode === "offline" ? (
@@ -474,10 +413,10 @@ export default function Workspace({
             <div className="mb-6 rounded-2xl border border-[#d3a24f] bg-[#fff5df] px-5 py-4 text-sm leading-6 text-[#9a5f13] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <strong className="font-bold uppercase tracking-wider text-[11px] block mb-1">Implicit Project Scope</strong>
-                No explicit project was selected, so you have been routed to the default global manuscript.
+                No explicit Nest was selected, so you have been routed to the default High Ground Odyssey manuscript.
               </div>
               <Link href="/projects" className="shrink-0 rounded-full border border-[#c8a66b] bg-[#3d3122] px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#59442d]">
-                Go to the Nest
+                Choose a Nest
               </Link>
             </div>
           ) : null}
@@ -502,6 +441,7 @@ export default function Workspace({
         </div>
       </div>
       <QuipslyAssistantSidebar
+        projectId={projectId}
         projectSlug={activeProjectSlug}
         documentId={documentId}
         documentTitle={documentTitle}

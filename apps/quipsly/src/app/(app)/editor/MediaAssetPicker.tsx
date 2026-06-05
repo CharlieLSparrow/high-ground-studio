@@ -61,8 +61,8 @@ export function MediaAssetPicker({
             <div className="flex w-full items-start justify-between gap-2">
               <span className="truncate font-black text-[#3d3122]">{displayName}</span>
               {isSpine && (
-                <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-indigo-800">
-                  Spine
+                <span className="shrink-0 rounded-full bg-emerald-500 shadow-sm px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-white">
+                  ★ Spine Audio
                 </span>
               )}
             </div>
@@ -76,7 +76,15 @@ export function MediaAssetPicker({
                 </span>
               ))}
               {healthLabel ? (
-                <span className={`rounded-full border px-2 py-0.5 ${healthTone ?? "border-slate-200 bg-slate-50 text-slate-700"}`}>
+                <span className={`rounded-full border px-2 py-0.5 ${
+                  healthLabel.toLowerCase().includes("ready") || healthLabel.toLowerCase().includes("synced") 
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700" 
+                    : healthLabel.toLowerCase().includes("needs sync") || healthLabel.toLowerCase().includes("held")
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : healthLabel.toLowerCase().includes("broken") || healthLabel.toLowerCase().includes("error")
+                    ? "border-red-300 bg-red-50 text-red-700"
+                    : healthTone ?? "border-slate-200 bg-slate-50 text-slate-700"
+                }`}>
                   {healthLabel}
                 </span>
               ) : null}

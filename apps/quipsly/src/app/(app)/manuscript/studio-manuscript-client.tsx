@@ -32,6 +32,8 @@ import {
   type ManuscriptHelpNoteId,
 } from "./manuscript-help-notes";
 import { ManuscriptHelpTip } from "./manuscript-help-tip";
+import { AssistantSidebar } from "@/components/research/AssistantSidebar";
+import { ResearchContextPane } from "@/components/research/ResearchContextPane";
 import {
   collectBlockSummaries,
   collectCitedQuotationHighlights,
@@ -172,6 +174,7 @@ type ManuscriptLibrarySummary = {
   snapshotCount: number;
   latestSnapshot: ManuscriptServerSnapshotSummary | null;
   lastSnapshotAt: string | null;
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -248,7 +251,9 @@ type ManuscriptSidePanelMode =
   | "quotes"
   | "focus-list"
   | "backup"
-  | "publish";
+  | "publish"
+  | "assistant"
+  | "research";
 
 type RecordingOutlineKind = ManuscriptStructureKind | "all";
 
@@ -284,6 +289,8 @@ const everydayManuscriptSidePanelModes = [
   { id: "find", label: "Find" },
   { id: "focus-list", label: "Focus list" },
   { id: "quotes", label: "Quotes" },
+  { id: "assistant", label: "Assistant (Beta)" },
+  { id: "research", label: "Research (Beta)" },
 ] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
 const devManuscriptSidePanelModes = [
@@ -595,6 +602,14 @@ function getSidePanelModeHelpNoteId(
 
   if (mode === "publish") {
     return "publish-mode";
+  }
+
+  if (mode === "assistant") {
+    return "assistant-mode" as ManuscriptHelpNoteId;
+  }
+
+  if (mode === "research") {
+    return "research-mode" as ManuscriptHelpNoteId;
   }
 
   return "structure-region";
@@ -7121,6 +7136,38 @@ export function StudioManuscriptClient({
                   readOnly
                   value={exportCitedQuotationMarkdown}
                 />
+              </section>
+            ) : null}
+
+            {sidePanelMode === "assistant" ? (
+              <section className={cn("mt-3.5 flex flex-col h-full min-h-[500px]")}>
+                {selectedServerManuscript?.projectId ? (
+                  <AssistantSidebar 
+                    projectId={selectedServerManuscript.projectId} 
+                    documentId={latestShareSnapshot?.id}
+                    cursorNodeId={selectedStructureRange?.startBlockId}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center space-y-4 p-8 text-center text-studio-muted">
+                    <p>Save this draft to a Nest to enable the Quipsly Assistant.</p>
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {sidePanelMode === "research" ? (
+              <section className={cn("mt-3.5 flex flex-col h-full min-h-[500px]")}>
+                {selectedServerManuscript?.projectId ? (
+                  <ResearchContextPane 
+                    projectId={selectedServerManuscript.projectId} 
+                    documentId={latestShareSnapshot?.id}
+                    cursorNodeId={selectedStructureRange?.startBlockId}
+                  />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center space-y-4 p-8 text-center text-studio-muted">
+                    <p>Save this draft to a Nest to enable Research Context.</p>
+                  </div>
+                )}
               </section>
             ) : null}
 

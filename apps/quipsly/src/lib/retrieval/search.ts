@@ -289,3 +289,144 @@ export async function searchExamples(
     },
   };
 }
+
+/**
+ * Builds a contextual research packet based on the active document and cursor position.
+ * Queries `StudioDocumentBlock` and `StudioTaggedSpan` for related content.
+ */
+export async function buildContextPacket(
+  input: {
+    readonly documentId: string;
+    readonly cursorNodeId: string;
+    readonly cursorOffset?: number;
+    readonly additionalQuery?: string;
+    readonly library?: string;
+    readonly limit?: number;
+  },
+  context: { activeProjectId: string }
+): Promise<ManuscriptResearchPacket> {
+  const startTime = Date.now();
+  const prisma = getPrismaClient();
+
+  const limit = input.limit || 15;
+  const librarySlug = input.library || "active-manuscript";
+
+  const results: RetrievalResult[] = [];
+
+  // 1. Fetch nearby blocks for structural context
+  const targetBlock = await prisma.studioDocumentBlock.findFirst({
+    where: {
+      documentId: input.documentId,
+      document: { projectId: context.activeProjectId },
+      stableId: input.cursorNodeId,
+    },
+  });
+
+  if (targetBlock) {
+    // Get surround blocks (a crude chunking context)
+    const contextBlocks = await prisma.studioDocumentBlock.findMany({
+      where: {
+        documentId: input.documentId,
+        order: {
+          gte: targetBlock.order - 2,
+          lte: targetBlock.order + 2,
+        },
+      },
+      orderBy: { order: 'asc' },
+    });
+
+    const combinedText = contextBlocks.map(b => b.body).join('\n\n');
+    
+    results.push({
+      resultId: createRetrievalResultId(),
+      content: combinedText,
+      title: `Surrounding Context (Block ${targetBlock.stableId})`,
+      relevanceScore: 1.0,
+      citation: targetBlock.sourceLabel || "Active Document",
+      verificationStatus: "verified",
+      provenance: {
+        origin: "studio-span",
+        projectId: context.activeProjectId,
+        documentId: targetBlock.documentId,
+        documentStableId: input.documentId, // Fallback, would prefer true stableId
+        documentTitle: "Active Document Context",
+        blockId: targetBlock.id,
+        blockStableId: targetBlock.stableId,
+      },
+    });
+  }
+
+  // 2. Fetch specific tagged spans or highlighted notes in this document
+  // Prioritize if an additionalQuery is provided
+  const whereClause: any = {
+    documentId: input.documentId,
+  };
+  
+  if (input.additionalQuery) {
+    whereClause.body = { contains: input.additionalQuery, mode: "insensitive" };
+  }
+
+  const relatedBlocks = await prisma.studioDocumentBlock.findMany({
+    where: whereClause,
+    take: limit,
+    include: {
+      document: { select: { stableId: true, title: true } },
+    },
+  });
+
+  for (const block of relatedBlocks) {
+    // Avoid duplicating the target block context
+    if (targetBlock && block.id === targetBlock.id) continue;
+
+    results.push({
+      resultId: createRetrievalResultId(),
+      content: block.body,
+      title: block.title || `Block from ${block.document.title || 'Untitled'}`,
+      relevanceScore: 0.8,
+      citation: block.sourceLabel || "Active Document",
+      verificationStatus: "needs-review",
+      provenance: {
+        origin: "studio-span",
+        projectId: context.activeProjectId,
+        documentId: block.documentId,
+        documentStableId: block.document.stableId,
+        documentTitle: block.document.title || "Untitled Document",
+        blockId: block.id,
+        blockStableId: block.stableId,
+      },
+    });
+  }
+
+  const limitedResults = results.slice(0, limit);
+
+  if (limitedResults.length === 0) {
+    return createEmptyPacket({
+      query: input.additionalQuery || `Cursor Context: ${input.cursorNodeId}`,
+      intent: "thematic-context",
+      librarySlug,
+      startTime,
+    });
+  }
+
+  const sourcesCovered = new Set(
+    limitedResults.map((r) => {
+      if (r.provenance.origin === "studio-span") return r.provenance.documentStableId;
+      return r.resultId;
+    })
+  ).size;
+
+  return {
+    packetId: createPacketId(),
+    query: input.additionalQuery || `Cursor Context: ${input.cursorNodeId}`,
+    intent: "thematic-context",
+    librarySlug,
+    results: limitedResults,
+    meta: {
+      retrievedAt: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+      resultCount: limitedResults.length,
+      sourcesCovered,
+      truncated: results.length > limit,
+    },
+  };
+}

@@ -8,7 +8,13 @@ import {
   createManuscriptDraftPlainText,
   safeManuscriptDraft,
 } from "../manuscript/manuscript-editor-model";
-import { DEFAULT_PROJECT_SLUG, DEV_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "./projectConfig";
+import {
+  DEFAULT_PROJECT_SLUG,
+  DEV_PROJECT_SLUG,
+  lookupStudioProjectDocument,
+  nestKindFromSourceLabel,
+  projectConfig,
+} from "./projectConfig";
 import { createStarterBlocks } from "./starterDocuments";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 
@@ -353,7 +359,8 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
     return { projectId: OFFLINE_PROJECT_ID, documentId: OFFLINE_DOCUMENT_ID };
   }
   
-  const { project, document } = await ensureStudioProjectDocument(prisma, config.slug);
+  const { project, document } = await lookupStudioProjectDocument(prisma, config.slug);
+  const seedNestKind = nestKindFromSourceLabel(project.sourceLabel) || config.nestKind;
 
   // Seed Tags
   for (const t of SEED_TAGS) {
@@ -411,7 +418,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
       });
     }
 
-    const blocksData = latestSnapshotSeed?.blocks ?? createStarterBlocks(config.slug);
+    const blocksData = latestSnapshotSeed?.blocks ?? createStarterBlocks(config.slug, seedNestKind);
 
     for (let i = 0; i < blocksData.length; i++) {
       const b = blocksData[i];
@@ -458,11 +465,10 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
   }
   
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const prismaAny2 = prisma as any;
-  let project: any = null;
+  // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
+  let project = null;
   try {
-    project = await (prisma.studioProject as any).findFirst({
+    project = await prisma.studioProject.findFirst({
       where: { slug: projectConfig(projectSlug).slug },
       include: {
         tags: true,
@@ -470,6 +476,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
         documents: {
           include: {
             blocks: {
+              where: { archivedAt: null },
               include: {
                 taggedSpans: {
                   include: { tag: true }
@@ -490,6 +497,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
         documents: {
           include: {
             blocks: {
+              where: { archivedAt: null },
               include: {
                 taggedSpans: {
                   include: { tag: true }
@@ -513,11 +521,11 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     return loadWorkbenchState(projectSlug);
   }
 
-  const blocks = document.blocks.map((b: any) => ({
+  const blocks = document.blocks.map((b) => ({
     id: b.id,
     text: b.body,
-    tags: Array.from(new Set((b.taggedSpans as any[]).map((ts: any) => ts.tag.slug))),
-    spans: (b.taggedSpans as any[]).map((ts: any) => ({
+    tags: Array.from(new Set(b.taggedSpans.map((ts) => ts.tag.slug))),
+    spans: b.taggedSpans.map((ts) => ({
       id: ts.id,
       tagSlug: ts.tag.slug,
       label: ts.tag.label,
@@ -528,7 +536,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     }))
   }));
 
-  const views = ((project.viewDefinitions as any[] | undefined) || []).map((v: any) => ({
+  const views = ((project as any).viewDefinitions || []).map((v: any) => ({
     id: v.id,
     name: v.name,
     type: v.type,
@@ -565,6 +573,52 @@ export async function saveBlockContent(blockId: string, newText: string) {
     where: { id: blockId },
     data: { body: newText }
   });
+  revalidatePath('/');
+  revalidatePath('/create');
+}
+
+export async function archiveBlock(blockId: string) {
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+  } catch (error) {
+    console.warn("DATABASE_URL is not set; skipping offline archiveBlock.", error);
+    return;
+  }
+
+  if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
+
+  await prisma.studioDocumentBlock.update({
+    where: { id: blockId },
+    data: {
+      archivedAt: new Date(),
+      archivedByLabel: "quipsly-editor"
+    }
+  });
+
+  revalidatePath('/');
+  revalidatePath('/create');
+}
+
+export async function unarchiveBlock(blockId: string) {
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+  } catch (error) {
+    console.warn("DATABASE_URL is not set; skipping offline unarchiveBlock.", error);
+    return;
+  }
+
+  if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
+
+  await prisma.studioDocumentBlock.update({
+    where: { id: blockId },
+    data: {
+      archivedAt: null,
+      archivedByLabel: null
+    }
+  });
+
   revalidatePath('/');
   revalidatePath('/create');
 }
@@ -650,20 +704,7 @@ export async function restoreBlockState(
       where: { blockId: block.id }
     });
 
-    const createPayload: {
-      documentId: string;
-      blockId: string;
-      tagId: string;
-      startOffset: number;
-      endOffset: number;
-      selectedText: string;
-      documentStableId: string;
-      documentTitleSnapshot: string;
-      blockStableId: string;
-      blockTitleSnapshot: string | null;
-      projectionStatus: StudioProjectionStatus;
-      isPrivate: boolean;
-    }[] = [];
+    const createPayload: import('@prisma/client').Prisma.StudioTaggedSpanCreateManyInput[] = [];
 
     for (const span of uniqueSpans.values()) {
       let tagId = tagIdBySlug.get(span.tagSlug);
@@ -1275,5 +1316,615 @@ export async function searchExamplesAction(query: string, projectSlug: string, l
   } catch (error) {
     console.error("searchExamplesAction failed", error);
     return { ok: false, error: "Retrieval engine is temporarily unavailable." };
+  }
+}
+
+
+export async function compileActiveProjectPackages(projectId: string) {
+  try {
+    const prisma = getPrismaClient();
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    const ownerEmail = session?.user?.email || "quipsly-publisher@highgroundodyssey.com";
+
+    const project = await prisma.studioProject.findUnique({
+      where: { id: projectId },
+      include: {
+        documents: {
+          include: {
+            blocks: {
+              include: {
+                taggedSpans: {
+                  include: { tag: true }
+                }
+              },
+              orderBy: { order: "asc" }
+            }
+          }
+        }
+      }
+    });
+
+    if (!project || !project.documents[0]) {
+      return { ok: false, error: "Project or document not found." };
+    }
+
+    const document = project.documents[0];
+    const blocks = document.blocks;
+
+    // Segment document by boundaries (blocks tagged "episode" or "chapter")
+    const segments: Array<{
+      boundaryBlockId: string;
+      label: string;
+      kind: "episode" | "chapter";
+      startIndex: number;
+      endIndex: number;
+    }> = [];
+
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      const tags = Array.from(new Set([
+        ...(b.taggedSpans?.map(ts => ts.tag.slug) || [])
+      ])).map(t => t.toLowerCase());
+
+      const isEpisode = tags.includes("episode");
+      const isChapter = tags.includes("chapter");
+
+      if (isEpisode || isChapter) {
+        const firstLine = b.body.split("\n")[0].trim();
+        const label = firstLine || (isEpisode ? "Episode" : "Chapter");
+        segments.push({
+          boundaryBlockId: b.id,
+          label,
+          kind: isEpisode ? "episode" : "chapter",
+          startIndex: i,
+          endIndex: blocks.length - 1
+        });
+      }
+    }
+
+    // Set end indexes for segments
+    for (let i = 0; i < segments.length; i++) {
+      segments[i].endIndex = (segments[i + 1]?.startIndex ?? blocks.length) - 1;
+    }
+
+    if (segments.length === 0) {
+      return { ok: false, error: "No episode or chapter tags found in document to compile." };
+    }
+
+    const compiledCount = segments.length;
+
+    for (const segment of segments) {
+      const bodyBlocks = blocks.slice(segment.startIndex + 1, segment.endIndex + 1);
+      
+      const excludedBlocks: Array<{ blockId: string; preview: string; reason: string }> = [];
+      const bodyTextParts: string[] = [];
+
+      for (const b of bodyBlocks) {
+        const spans = b.taggedSpans || [];
+        const privateSpans = spans.filter(ts => 
+          ts.tag.slug.toLowerCase() === "internal_note" || 
+          ts.tag.slug.toLowerCase() === "private" ||
+          ts.tag.slug.toLowerCase() === "private_note"
+        );
+        
+        if (privateSpans.length === 0) {
+          bodyTextParts.push(b.body);
+          continue;
+        }
+
+        const isWholeBlockPrivate = privateSpans.some(ts => 
+          ts.startOffset == null || ts.endOffset == null || 
+          (ts.startOffset === 0 && ts.endOffset >= b.body.length - 1)
+        );
+
+        if (isWholeBlockPrivate) {
+          excludedBlocks.push({ blockId: b.id, preview: b.body.substring(0, 80) + "...", reason: "Entire block marked private" });
+          continue;
+        }
+
+        let cleanText = "";
+        let currentIndex = 0;
+        const sortedPrivate = [...privateSpans].sort((a, b) => (a.startOffset || 0) - (b.startOffset || 0));
+        
+        let strippedAny = false;
+        for (const span of sortedPrivate) {
+          if (span.startOffset != null && span.startOffset > currentIndex) {
+            cleanText += b.body.substring(currentIndex, span.startOffset);
+          }
+          if (span.endOffset != null) {
+            currentIndex = Math.max(currentIndex, span.endOffset);
+            strippedAny = true;
+          }
+        }
+        if (currentIndex < b.body.length) {
+          cleanText += b.body.substring(currentIndex);
+        }
+
+        if (strippedAny) {
+          excludedBlocks.push({ blockId: b.id, preview: `(Span Removed) ${b.body.substring(0, 80)}...`, reason: "Contains private text spans" });
+        }
+
+        if (cleanText.trim().length > 0) {
+          bodyTextParts.push(cleanText.trim());
+        }
+      }
+      
+      const bodyText = bodyTextParts.join("\n\n");
+      const summary = bodyText.substring(0, 160).trim() + (bodyText.length > 160 ? "..." : "");
+
+      // Extract verified quotes within this segment
+      const verifiedQuotes: Array<{ text: string; attribution: string; principleId?: string }> = [];
+      for (let idx = segment.startIndex; idx <= segment.endIndex; idx++) {
+        const b = blocks[idx];
+        if (b.taggedSpans) {
+          for (const ts of b.taggedSpans) {
+            if (ts.tag.slug.toLowerCase() === "quote") {
+              verifiedQuotes.push({
+                text: ts.selectedText,
+                attribution: "Unknown", // Default attribution
+                principleId: undefined
+              });
+            }
+          }
+        }
+      }
+
+      const cleanSlug = segment.label
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/[\s_]+/g, "-")
+        .trim();
+
+      const recordId = `quipsly-hgo-public-${cleanSlug}`;
+      const candidateId = `candidate-${cleanSlug}`;
+      const proposedRoute = `/episodes/${cleanSlug}`;
+      const siteUrl = (process.env.HGO_SITE_URL || "https://highgroundodyssey.com").replace(/\/$/, "");
+      const publicUrl = `${siteUrl}${proposedRoute}`;
+
+      // Construct QuipslyPublicPackage shape
+      const packet = {
+        id: `compiled-${segment.boundaryBlockId}`,
+        projectId: project.id,
+        kind: segment.kind,
+        title: segment.label,
+        summary,
+        body: bodyText || `<p>Draft content for ${segment.label}.</p>`,
+        media: {
+          audioUrl: "", // blank initially for user to fill/edit
+          videoUrl: "",
+          thumbnailUrl: ""
+        },
+        beats: [
+          { title: "Introduction", summary: `Start of ${segment.label}`, timestamp: 0 }
+        ],
+        verifiedQuotes,
+        overrides: {
+          youtube: {
+            tags: ["quipsly", segment.kind],
+            chapterMarkers: ["0:00 Intro"],
+            isShort: false
+          },
+          patreon: {
+            isMembersOnly: false,
+            teaser: `New public ${segment.kind}: ${segment.label}`
+          }
+        },
+        metadata: {
+          publishedAt: new Date().toUTCString(),
+          author: project.sourceLabel || "High Ground Studio",
+          excludedBlocks // Passed so Publisher Panel can display audit warnings
+        }
+      };
+
+      const frontmatter = {
+        title: packet.title,
+        subtitle: null,
+        episodeNumber: String(segment.startIndex + 1), // Default episode order
+        summary: packet.summary,
+        slug: cleanSlug,
+        youtubeId: null,
+        projectSlug: project.slug,
+        source: "quipsly-nest-hgo-public-episodes-v1",
+      };
+
+      const reviewBrief = {
+        status: "private-review",
+        source: "quipsly-nest-hgo-public-episodes-v1",
+        checked: [
+          "public packet has no private operator notes",
+          "episode page route is deterministic",
+        ],
+      };
+
+      // Stage Artifact
+      const stagedArtifact = await prisma.hgoStagedProjectionArtifact.upsert({
+        where: {
+          ownerEmail_recordId: {
+            ownerEmail,
+            recordId,
+          },
+        },
+        update: {
+          artifactVersion: "episode-v1",
+          artifactId: packet.id,
+          projectionId: packet.id,
+          projectionSlug: cleanSlug,
+          projectionTitle: packet.title,
+          projectionStatus: "private-review",
+          projectionVisibility: "public",
+          sourceBridgeVersion: "quipsly-nest-hgo-public-episodes-v1",
+          artifactStatus: "draft",
+          recommendedNextAction: "live-on-highgroundodyssey",
+          reviewStatus: "draft",
+          promotionReadiness: "draft",
+          artifactHash: `hash-${cleanSlug}-${Date.now()}`,
+          artifactJson: JSON.parse(JSON.stringify(packet)),
+          artifactSummaryJson: JSON.parse(JSON.stringify(frontmatter)),
+          eventLogJson: JSON.parse(JSON.stringify([
+            {
+              type: "compiled-from-quipsly-nest",
+              at: new Date().toISOString(),
+              route: proposedRoute,
+              projectSlug: project.slug,
+            },
+          ])),
+          blockerCount: 0,
+          warningCount: 0,
+          containsRealContent: "true",
+          note: "Public episode page compiled from Quipsly Nest.",
+          reviewedAt: null,
+          reviewedByEmail: null,
+          archivedAt: null,
+        },
+        create: {
+          ownerEmail,
+          recordId,
+          artifactVersion: "episode-v1",
+          artifactId: packet.id,
+          projectionId: packet.id,
+          projectionSlug: cleanSlug,
+          projectionTitle: packet.title,
+          projectionStatus: "private-review",
+          projectionVisibility: "public",
+          sourceBridgeVersion: "quipsly-nest-hgo-public-episodes-v1",
+          artifactStatus: "draft",
+          recommendedNextAction: "live-on-highgroundodyssey",
+          reviewStatus: "draft",
+          promotionReadiness: "draft",
+          artifactHash: `hash-${cleanSlug}-${Date.now()}`,
+          artifactJson: JSON.parse(JSON.stringify(packet)),
+          artifactSummaryJson: JSON.parse(JSON.stringify(frontmatter)),
+          eventLogJson: JSON.parse(JSON.stringify([
+            {
+              type: "compiled-from-quipsly-nest",
+              at: new Date().toISOString(),
+              route: proposedRoute,
+              projectSlug: project.slug,
+            },
+          ])),
+          blockerCount: 0,
+          warningCount: 0,
+          containsRealContent: "true",
+          note: "Public episode page compiled from Quipsly Nest.",
+        },
+      });
+
+      // Upsert candidate
+      await prisma.hgoEpisodePublishCandidate.upsert({
+        where: {
+          ownerEmail_sourceRecordId: {
+            ownerEmail,
+            sourceRecordId: recordId,
+          },
+        },
+        update: {
+          candidateId,
+          sourceStagedArtifact: { connect: { id: stagedArtifact.id } },
+          sourceArtifactId: packet.id,
+          sourceArtifactHash: stagedArtifact.artifactHash,
+          projectionId: packet.id,
+          projectionSlug: cleanSlug,
+          projectionTitle: packet.title,
+          proposedRoute,
+          readinessState: "ready",
+          candidateStatus: "private-review",
+          packetJson: JSON.parse(JSON.stringify(packet)),
+          reviewBriefJson: JSON.parse(JSON.stringify(reviewBrief)),
+          draftPacketJson: JSON.parse(JSON.stringify(packet)),
+          frontmatterJson: JSON.parse(JSON.stringify(frontmatter)),
+          mdxDraft: bodyText,
+          blockerCount: 0,
+          warningCount: 0,
+          containsRealContent: "true",
+          note: "Compiled from Quipsly Nest manuscript.",
+          createdByEmail: ownerEmail,
+          approvedAt: null,
+          approvedByEmail: null,
+          archivedAt: null,
+        },
+        create: {
+          ownerEmail,
+          candidateId,
+          sourceStagedArtifact: { connect: { id: stagedArtifact.id } },
+          sourceRecordId: recordId,
+          sourceArtifactId: packet.id,
+          sourceArtifactHash: stagedArtifact.artifactHash,
+          projectionId: packet.id,
+          projectionSlug: cleanSlug,
+          projectionTitle: packet.title,
+          proposedRoute,
+          readinessState: "ready",
+          candidateStatus: "private-review",
+          packetJson: JSON.parse(JSON.stringify(packet)),
+          reviewBriefJson: JSON.parse(JSON.stringify(reviewBrief)),
+          draftPacketJson: JSON.parse(JSON.stringify(packet)),
+          frontmatterJson: JSON.parse(JSON.stringify(frontmatter)),
+          mdxDraft: bodyText,
+          blockerCount: 0,
+          warningCount: 0,
+          containsRealContent: "true",
+          note: "Compiled from Quipsly Nest manuscript.",
+          createdByEmail: ownerEmail,
+        },
+      });
+    }
+
+    revalidatePath("/publishing-suite");
+    revalidatePath("/publishing-suite/package-builder");
+    revalidatePath("/create");
+
+    return { ok: true, message: `Successfully compiled ${compiledCount} packages from document.` };
+  } catch (error: any) {
+    console.error("compileActiveProjectPackages failed", error);
+    return { ok: false, error: error.message || "Failed to compile document outline." };
+  }
+}
+
+export async function getEpisodeCandidatesAction(projectId: string) {
+  try {
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    const isOwner = session?.user?.email?.endsWith("@highgroundodyssey.com") || process.env.NODE_ENV === "development";
+
+    const prisma = getPrismaClient();
+    const candidates = await prisma.hgoEpisodePublishCandidate.findMany({
+      where: { archivedAt: null },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    // Filter project candidates in-memory to prevent complex JSON queries
+    const projectCandidates = candidates.filter((c: any) => {
+      const packet = c.draftPacketJson as any;
+      return packet && packet.projectId === projectId;
+    }).map((c: any) => ({
+      id: c.id,
+      candidateId: c.candidateId,
+      sourceRecordId: c.sourceRecordId,
+      projectionSlug: c.projectionSlug,
+      projectionTitle: c.projectionTitle,
+      proposedRoute: c.proposedRoute,
+      candidateStatus: c.candidateStatus,
+      packet: c.draftPacketJson,
+      updatedAt: c.updatedAt.toISOString()
+    }));
+
+    return { ok: true, candidates: projectCandidates, isOwner };
+  } catch (error: any) {
+    console.error("getEpisodeCandidatesAction failed", error);
+    return { ok: false, error: error.message || "Failed to query episode candidates." };
+  }
+}
+
+export async function approveEpisodeCandidateAction(candidateId: string) {
+  try {
+    const prisma = getPrismaClient();
+    const { auth } = await import("@/auth");
+    const session = await auth();
+    const ownerEmail = session?.user?.email || "quipsly-publisher@highgroundodyssey.com";
+
+    const candidate = await prisma.hgoEpisodePublishCandidate.findUnique({
+      where: { id: candidateId },
+      include: { sourceStagedArtifact: true }
+    });
+
+    if (!candidate) {
+      return { ok: false, error: "Candidate not found." };
+    }
+
+    const quipslyPkg = (candidate.draftPacketJson || candidate.packetJson) as any;
+    const { mapQuipslyPackageToHgoPacket } = await import("@/lib/publishing/DestinationAdapters");
+    const hgoPublicPacket = mapQuipslyPackageToHgoPacket(
+      quipslyPkg,
+      candidate.projectionSlug,
+      "4",
+      candidate.sourceArtifactHash
+    );
+
+    // Write packet to apps/web filesystem so the web app can read it
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const contentDir = path.join(process.cwd(), "../web/content/publish/hgo-episodes");
+    const filePath = path.join(contentDir, `${candidate.projectionSlug}.json`);
+    const indexPath = path.join(contentDir, `episodes-index.json`);
+
+    try {
+      await fs.mkdir(contentDir, { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify(hgoPublicPacket, null, 2), "utf8");
+
+      let index: Record<string, any> = {};
+      try {
+        const indexContent = await fs.readFile(indexPath, "utf8");
+        index = JSON.parse(indexContent);
+      } catch (e) {
+        // Ignore if file doesn't exist
+      }
+
+      index[hgoPublicPacket.slug] = {
+        id: hgoPublicPacket.id,
+        slug: hgoPublicPacket.slug,
+        title: hgoPublicPacket.title,
+        episodeNumber: hgoPublicPacket.episodeNumber,
+        summary: hgoPublicPacket.summary,
+        publishedAt: hgoPublicPacket.provenance.publishedAt,
+      };
+
+      await fs.writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+    } catch (fsError) {
+      console.error("Failed to write package to disk during approval:", fsError);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.hgoEpisodePublishCandidate.update({
+        where: { id: candidate.id },
+        data: {
+          candidateStatus: "published",
+          approvedAt: new Date(),
+          approvedByEmail: ownerEmail,
+          packetJson: hgoPublicPacket as any,
+          draftPacketJson: hgoPublicPacket as any,
+        }
+      });
+
+      if (candidate.sourceStagedArtifact) {
+        await tx.hgoStagedProjectionArtifact.update({
+          where: { id: candidate.sourceStagedArtifact.id },
+          data: {
+            projectionStatus: "published",
+            reviewStatus: "published",
+            promotionReadiness: "published",
+            artifactStatus: "published",
+            reviewedAt: new Date(),
+            reviewedByEmail: ownerEmail
+          }
+        });
+      }
+    });
+
+    revalidatePath("/publishing-suite");
+    revalidatePath("/publishing-suite/package-builder");
+    revalidatePath("/create");
+
+    return { ok: true, message: "Successfully published package to HighGroundOdyssey.com!" };
+  } catch (error: any) {
+    console.error("approveEpisodeCandidateAction failed", error);
+    return { ok: false, error: error.message || "Failed to publish package." };
+  }
+}
+
+export async function getEpisodeCandidatesBySlugAction(projectSlug: string) {
+  try {
+    const prisma = getPrismaClient();
+    const project = await prisma.studioProject.findFirst({
+      where: { slug: projectSlug }
+    });
+    if (!project) {
+      // Fallback: get the first project in database if not found by slug
+      const fallbackProject = await prisma.studioProject.findFirst();
+      if (!fallbackProject) {
+        return { ok: false, error: "No projects found." };
+      }
+      return getEpisodeCandidatesAction(fallbackProject.id);
+    }
+    return getEpisodeCandidatesAction(project.id);
+  } catch (error: any) {
+    console.error("getEpisodeCandidatesBySlugAction failed", error);
+    return { ok: false, error: error.message || "Failed to query." };
+  }
+}
+
+export async function getPublishingSuiteStatsAction(projectSlug: string) {
+  try {
+    const prisma = getPrismaClient();
+    const project = await prisma.studioProject.findFirst({
+      where: { slug: projectSlug }
+    });
+    if (!project) {
+      return { ok: true, drafted: 0, published: 0 };
+    }
+    const candidates = await prisma.hgoEpisodePublishCandidate.findMany({
+      where: { archivedAt: null }
+    });
+
+    const projectCandidates = candidates.filter((c: any) => {
+      const packet = c.draftPacketJson as any;
+      return packet && packet.projectId === project.id;
+    });
+
+    const drafted = projectCandidates.filter((c: any) => c.candidateStatus !== "published").length;
+    const published = projectCandidates.filter((c: any) => c.candidateStatus === "published").length;
+
+    return { ok: true, drafted, published };
+  } catch (error) {
+    console.error("getPublishingSuiteStatsAction failed", error);
+    return { ok: false, drafted: 0, published: 0 };
+  }
+}
+
+export async function saveAssistantAction(actionId: string, provenance: Record<string, any>) {
+  try {
+    if (!process.env.DATABASE_URL) return { ok: true, fallback: true };
+    const prisma = getPrismaClient();
+
+    await prisma.$transaction(async (tx) => {
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+      });
+      if (!action) throw new Error("Action not found");
+
+      await tx.studioAssistantAction.update({
+        where: { id: actionId },
+        data: { status: "saved" },
+      });
+
+      // @ts-ignore
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId,
+          previousStatus: action.status,
+          newStatus: "saved",
+          notes: JSON.stringify(provenance),
+        },
+      });
+    });
+
+    return { ok: true };
+  } catch (error: any) {
+    console.error("saveAssistantAction failed", error);
+    return { ok: false, error: error.message };
+  }
+}
+
+export async function undoSavedAssistantAction(actionId: string) {
+  try {
+    if (!process.env.DATABASE_URL) return { ok: true, fallback: true };
+    const prisma = getPrismaClient();
+
+    await prisma.$transaction(async (tx) => {
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+      });
+      if (!action) throw new Error("Action not found");
+
+      await tx.studioAssistantAction.update({
+        where: { id: actionId },
+        data: { status: "undone" },
+      });
+
+      // @ts-ignore
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId,
+          previousStatus: action.status,
+          newStatus: "undone",
+          notes: "Archived/deleted saved note",
+        },
+      });
+    });
+
+    return { ok: true };
+  } catch (error: any) {
+    console.error("undoSavedAssistantAction failed", error);
+    return { ok: false, error: error.message };
   }
 }

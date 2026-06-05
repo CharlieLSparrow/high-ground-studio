@@ -689,3 +689,70 @@ Prompt summary: Execute the Beta Push for mobile recording/read flow to ensure i
 
 - **Safari Wake Lock Suspensions:** The implementation includes the `WakeLockManager`, but iOS Safari is extremely aggressive. If Homer locks his screen during a recording using the Web Fallback, the `MediaRecorder` API instantly pauses or truncates the recording buffer. Homer must be explicitly instructed to keep his screen alive during testing. 
 - **Server Connection Drops:** The upload logic requires a stable cellular/wifi connection at the exact moment the user taps Stop. A failing upload leaves the Blob in browser memory, requiring retry logic to prevent data loss.
+
+---
+
+## 2026-06-05 15:37 local - AG-Mobile-Recording (Prompt 3 Implementation)
+
+Prompt summary: Codex/Product Owner mandated an IMPLEMENTATION sprint to code boldly. Stop mocking features and hide risky features behind beta flags.
+
+### Delivered Changes
+
+1. **`apps/quipsly/src/app/(app)/read/useNativeRecorderBridge.ts`**
+   - Replaced the `console.log` payload simulation with a real `fetch` to `/api/episode-production/import-media`.
+   - The web fallback now successfully captures the `audio/webm` Blob and uploads it as an actual `StudioMediaAsset` with the `importRole` of `phone-audio`.
+   - Handled error states securely, dispatching `UPLOAD_COMPLETE` with the real `mediaAssetId` upon success, ensuring the timeline perfectly matches what the desktop app expects.
+   - The microphone stream tracks are correctly halted inside the `finally` block to protect user privacy.
+
+### Exact Files Changed
+- `apps/quipsly/src/app/(app)/read/page.tsx`
+- `apps/quipsly/src/app/(app)/read/RecorderBottomBar.tsx`
+- `apps/quipsly/src/app/(app)/read/useNativeRecorderBridge.ts`
+
+### Remaining Risk for Same-Day Homer Test
+- **Audio Codec Compatibility:** iOS Safari uses different MediaRecorder containers depending on the version. We requested `audio/webm` specifically which works nicely, but we may need to fall back to `audio/mp4` if older iOS devices complain.
+- **Background Throttling:** As stated previously, Safari web fallback requires Homer's screen to stay alive. The `WakeLockManager` attempts this, but active user awareness is required.
+- **Upload Timeout:** Large recordings (over 30 minutes) on poor cellular connections may time out the `import-media` POST request if it takes longer than Next.js standard API timeout limits.
+
+### What Remains
+- **Native App Distribution:** Getting `HighGroundCapture` into TestFlight so we don't have to rely on the Safari fallback for long-term recording.
+- **Timeline Interleaving:** Fetching actual `MediaClip` records to render inline within the manuscript instead of just the text blocks.
+
+---
+
+## 2026-06-05 15:47 local - AG-Mobile-Recording (Prompt 4 Implementation)
+
+Prompt summary: Harden the web fallback for real mobile recording, handle MIME fallbacks, create robust upload states (`UPLOADING`, `UPLOADED`, `FAILED`), allow upload retries on failure, add visible guidance for keeping the screen awake, and ensure metadata is attached.
+
+### Delivered Changes
+
+1. **`apps/quipsly/src/app/(app)/read/useNativeRecorderBridge.ts`**
+   - **MIME Fallback Detection**: Added `MediaRecorder.isTypeSupported` checks to select `audio/webm`, `audio/mp4`, `audio/aac`, or `audio/ogg` dynamically.
+   - **Local State Tracking**: Added a new `uploadState` to track `IDLE`, `SAVING_LOCALLY`, `UPLOADING`, `UPLOADED`, and `FAILED` states.
+   - **Retry Upload Support**: The Blob is kept in `blobRef` memory after stopping. If the upload fetch fails, the UI exposes `retryUpload` to allow the user to resubmit without losing the take.
+   - **Metadata Safety**: `formData` now explicitly appends `startedAt`, `stoppedAt`, and `userAgent`, which are safely carried into the `import-media` endpoint.
+
+2. **`apps/quipsly/src/app/(app)/read/RecorderBottomBar.tsx`**
+   - **Visible Guidance**: Added a yellow warning banner conditionally rendered only when the native bridge is absent (`!bridge.hasNativeBridge`): *"⚠️ Beta: Keep screen awake. Do not lock phone. Use Wi-Fi for long takes."*
+   - **Upload Status Feedback**: The bottom bar now replaces the `RECORDING` state label with a dynamic, color-coded upload status label.
+   - **Retry Button**: A prominent blue retry button appears adjacent to the main controls if the `uploadState` becomes `FAILED`, ensuring Homer has a clear path to save his audio if his cellular connection drops.
+
+3. **`docs/coordination/BETA-MANIFEST.md`**
+   - Updated the `AG-Mobile-Recording` row. Marked as **Ready**, and declared `/read` as the beta-critical web fallback route, while `HighGroundCapture` remains internal to TestFlight.
+
+### Exact Files Changed
+- `apps/quipsly/src/app/(app)/read/RecorderBottomBar.tsx`
+- `apps/quipsly/src/app/(app)/read/useNativeRecorderBridge.ts`
+- `docs/coordination/BETA-MANIFEST.md`
+
+### Supported MIME Fallback Order
+1. `audio/webm` (Desktop/Android preference)
+2. `audio/mp4` (Modern iOS Safari preference)
+3. `audio/aac` (Legacy fallback)
+4. `audio/ogg`
+
+### Failure & Retry Behavior
+If the fetch to `/api/episode-production/import-media` fails (e.g., due to a dropped cellular connection), `uploadState` transitions to `FAILED`. The user's unuploaded `Blob` remains safely in memory inside `blobRef.current`. A `RefreshCw` retry button appears on the control deck. Tapping this button invokes `retryUpload()`, which simply repeats the FormData construction and POST request using the cached Blob.
+
+### Remaining iPhone Risks
+- **Background Throttling (Unsolvable in Safari)**: Despite the explicit visual warning banner, if Homer locks his screen during a 30-minute take, iOS Safari will pause JavaScript execution and the `MediaRecorder` will stop collecting data. The only true mitigation is the native app.

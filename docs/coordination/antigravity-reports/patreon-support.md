@@ -273,5 +273,31 @@ To strictly enforce the boundary that Patreon is *not* the source of truth:
 3. **Verification & Update:** A background worker (or Next.js API cron) picks up the `ProviderEvent`, validates the pledge tier, and safely upserts the app-owned `Membership` and `Entitlement` records. Only after this app-owned record is updated will the user's `hasQuipslyBetaAccess` flag flip to `true`.
 
 ### Remaining Integration Risks
-- We have not yet implemented the actual `POST /api/webhooks/patreon` endpoint or the background reconciliation worker. Currently, beta access requires manual database verification or an explicit `Membership` seed.
+- We have implemented the `POST /api/webhooks/patreon` endpoint and the background reconciliation worker (`/api/cron/patreon-reconcile`). 
+- **Cron Invocation:** The reconciliation worker is implemented as an API route but needs to be invoked either by Vercel Cron, a scheduled external job, or manually, to actually process the queue.
 - If the background worker fails, a user might be stuck in the "Pending Reconciliation" state indefinitely. We should consider adding a "Request Manual Sync" button to `BetaAccessView` in the future if this becomes an issue.
+
+## 2026-06-05 15:45 local - AG-Patreon-Support (Prompt 4 DO)
+
+Prompt summary: Make beta access understandable and recoverable. Add a safe "Request manual review" button without mutating entitlements. Verify webhook safety. Update BETA-MANIFEST.
+
+Files changed:
+- `apps/quipsly/src/components/beta/BetaAccessView.tsx` (Added "Request Manual Review" button and UI state)
+- `apps/quipsly/src/components/beta/actions.ts` (New file: safe server action `requestManualReview`)
+- `docs/coordination/BETA-MANIFEST.md` (Updated row to "Ready" and declared routes)
+- `docs/coordination/antigravity-reports/patreon-support.md` (This report)
+
+### Access States Supported
+1. **Authenticated**: Identity verified via NextAuth.
+2. **Pending Reconciliation**: Explained plainly. User can "Refresh Access Status".
+3. **Manual Review Requested**: If reconciliation is stuck, the user can click "Request Manual Review", which creates a `CompanySupportRequest` in the database without directly mutating any entitlements or accessing Patreon.
+
+### What Happens When a Real Supporter Signs In and Is Pending
+If they just pledged, their webhook goes to `WorldHubProviderEvent` (via `/api/webhooks/patreon`). They hit `/dashboard`, but the layout intercepts them and renders `BetaAccessView`. They read the plain-language status. If impatient, they can click "Request Manual Review". Behind the scenes, the `/api/cron/patreon-reconcile` job processes their event, granting them a `Membership`. Upon clicking "Refresh Access Status", the layout yields and they enter the Quipsly dashboard.
+
+### Webhook Safety
+- Verified `api/webhooks/patreon/route.ts`: Only prints minimal logs (`Successfully ingested...` or `Invalid signature from IP...`). Does not echo any provider payloads or secrets to users or standard out.
+
+### Remaining Manual Ops Needed
+- A system administrator needs to set up a cron schedule (e.g., Vercel Cron) pointing to `/api/cron/patreon-reconcile`.
+- Customer support must monitor the `CompanySupportRequest` table for `supportType = "beta_access_review"` to manually unblock impatient supporters.

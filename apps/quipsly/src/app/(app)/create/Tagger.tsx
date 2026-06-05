@@ -1,14 +1,15 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, useCallback, type RefObject } from "react";
-import { Tag, MessageSquare, Mic, List, PlayCircle, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { DocumentBoundary, ViewDefinition } from "./types";
 import {
+  archiveBlock,
   mergeBlockWithPrevious,
   restoreBlockState,
   saveBlockContent,
   splitBlockAtOffset,
   toggleBlockTag,
+  unarchiveBlock,
 } from "./actions";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import { BlockItem } from "./BlockItem";
@@ -196,6 +197,19 @@ export default function Tagger({
     spans: normalizeTaggedSpansForSnapshot(block.spans)
   });
 
+  const blockFromSnapshot = (snapshot: BlockSnapshot): Block => ({
+    id: snapshot.id,
+    text: snapshot.text,
+    tags: [...snapshot.tags],
+    spans: snapshot.spans.map((span, index) => ({
+      id: span.id ?? `${snapshot.id}-restore-${index}`,
+      tagSlug: span.tagSlug,
+      startOffset: span.startOffset,
+      endOffset: span.endOffset,
+      selectedText: span.selectedText
+    }))
+  });
+
   const getCurrentBlock = (blockId: string) => blocksRef.current.find((block) => block.id === blockId);
 
   const ensureCommittedSnapshot = (block: Block) => {
@@ -248,6 +262,29 @@ export default function Tagger({
 
       if (!didChange) return current;
 
+      return next;
+    });
+    setDirtyBlocks((prev) => {
+      const next = { ...prev };
+      delete next[snapshot.id];
+      return next;
+    });
+    setSavingBlocks((prev) => {
+      const next = { ...prev };
+      delete next[snapshot.id];
+      return next;
+    });
+  };
+
+  const restoreDeletedBlockLocally = (snapshot: BlockSnapshot, preferredIndex: number) => {
+    setBlocks((current) => {
+      if (current.some((block) => block.id === snapshot.id)) {
+        return current.map((block) => block.id === snapshot.id ? blockFromSnapshot(snapshot) : block);
+      }
+
+      const next = [...current];
+      const insertIndex = Math.max(0, Math.min(preferredIndex, next.length));
+      next.splice(insertIndex, 0, blockFromSnapshot(snapshot));
       return next;
     });
     setDirtyBlocks((prev) => {
@@ -341,14 +378,22 @@ export default function Tagger({
     window.scrollTo({ top: state.y });
   };
 
-  // Sync state if initialBlocks changes (e.g. Server Action revalidation)
+  const prevViewKeyRef = useRef<string | null>(null);
+
+  // Sync state ONLY when the document or view filter actually changes.
+  // We explicitly ignore `initialBlocks` updates caused by Next.js Server Action revalidations 
+  // because the server's state is always stale relative to the user's active un-saved keystrokes.
   useEffect(() => {
-    blocksRef.current = initialBlocks;
-    for (const block of initialBlocks) {
-      ensureCommittedSnapshot(block);
+    const currentViewKey = `${documentId}-${activeView?.id}-${adHocTags?.join(',')}`;
+    if (prevViewKeyRef.current !== currentViewKey) {
+      blocksRef.current = initialBlocks;
+      for (const block of initialBlocks) {
+        ensureCommittedSnapshot(block);
+      }
+      setBlocks(initialBlocks);
+      prevViewKeyRef.current = currentViewKey;
     }
-    setBlocks(initialBlocks);
-  }, [initialBlocks]);
+  }, [initialBlocks, documentId, activeView?.id, adHocTags]);
 
   useEffect(() => {
     blocksRef.current = blocks;
@@ -530,6 +575,61 @@ export default function Tagger({
     requestAnimationFrame(() => restoreScrollState(previousScroll));
     const latest = getCurrentBlock(block.id);
     if (latest) ensureCommittedSnapshot(latest);
+  };
+
+  const handleDeleteBlock = async (block: Block) => {
+    if (blocksRef.current.length <= 1) return;
+
+    const previousScroll = captureScrollState();
+    const blockIndex = blocksRef.current.findIndex((item) => item.id === block.id);
+    if (blockIndex === -1) return;
+
+    const beforeSnapshot = snapshotFromBlock(block);
+    const nextFocusId = blocksRef.current[blockIndex + 1]?.id ?? blocksRef.current[blockIndex - 1]?.id ?? null;
+
+    setBlocks((current) => current.filter((item) => item.id !== block.id));
+    setDirtyBlocks((prev) => {
+      const next = { ...prev };
+      delete next[block.id];
+      return next;
+    });
+
+    pushUndo({
+      label: `Restore deleted block: ${labelForBlock(beforeSnapshot)}`,
+      createdAtLabel: "delete",
+      undo: async () => {
+        restoreDeletedBlockLocally(beforeSnapshot, blockIndex);
+        await unarchiveBlock(beforeSnapshot.id);
+        ensureCommittedSnapshot(beforeSnapshot);
+        window.setTimeout(() => {
+          const textarea = textareaRefs.current[beforeSnapshot.id];
+          if (textarea) {
+            textarea.focus();
+            textarea.selectionStart = 0;
+            textarea.selectionEnd = 0;
+          }
+        }, 0);
+      }
+    });
+
+    requestAnimationFrame(() => restoreScrollState(previousScroll));
+    window.setTimeout(() => {
+      if (!nextFocusId) return;
+      const nextTextarea = textareaRefs.current[nextFocusId];
+      if (nextTextarea) {
+        nextTextarea.focus();
+        nextTextarea.selectionStart = 0;
+        nextTextarea.selectionEnd = 0;
+      }
+    }, 0);
+
+    try {
+      await archiveBlock(block.id);
+    } catch (error) {
+      console.error("Block delete failed.", error);
+      restoreDeletedBlockLocally(beforeSnapshot, blockIndex);
+      requestAnimationFrame(() => restoreScrollState(previousScroll));
+    }
   };
 
   const handleTextChange = (blockId: string, newText: string) => {
@@ -803,7 +903,6 @@ export default function Tagger({
       textareaRefs.current[result.newBlock.id]?.focus();
     }, 0);
     
-    const previousScrollAfterSplit = captureScrollState();
   };
 
   /**
@@ -992,6 +1091,12 @@ export default function Tagger({
 
   // Filter blocks based on ViewDefinition and Ad-Hoc tags
   const activeBoundary = documentBoundaries?.find((boundary) => boundary.id === activeBoundaryId) ?? null;
+  const boundaryIdByBlockId = useMemo(() => {
+    return new Map(documentBoundaries.map((boundary) => [boundary.blockId, boundary.id]));
+  }, [documentBoundaries]);
+  const blockIndexById = useMemo(() => {
+    return new Map(blocks.map((block, index) => [block.id, index]));
+  }, [blocks]);
   const visibleBlocks = blocks.filter((b, index) => {
     if (activeBoundary && (index < activeBoundary.startIndex || index > activeBoundary.endIndex)) {
       return false;
@@ -1044,7 +1149,7 @@ export default function Tagger({
         }
       },
       {
-        root: null,
+        root: scrollContainerRef?.current ?? null,
         rootMargin: "-20% 0px -60% 0px", // focus on top-middle
         threshold: [0, 0.25, 0.5, 0.75, 1],
       }
@@ -1138,8 +1243,9 @@ export default function Tagger({
         <BlockItem
           key={block.id}
           block={block}
-          blockIndex={index}
-          outlineFocusedBlockId={outlineFocusedBlockId}
+          blockIndex={blockIndexById.get(block.id) ?? index}
+          boundaryId={boundaryIdByBlockId.get(block.id)}
+          isOutlineFocused={outlineFocusedBlockId === block.id}
           isSaving={!!savingBlocks[block.id]}
           onTextChange={handleTextChange}
           onTextBlur={handleTextBlur}
@@ -1150,6 +1256,7 @@ export default function Tagger({
           onNavigatePrevious={handleNavigatePrevious}
           onNavigateNext={handleNavigateNext}
           onClearTags={handleClearBlockTags}
+          onDeleteBlock={handleDeleteBlock}
           onNormalizeHeading={handleNormalizeHeading}
           onSelectionChange={handleSelectionChange}
           registerTextareaRef={(id, el) => {

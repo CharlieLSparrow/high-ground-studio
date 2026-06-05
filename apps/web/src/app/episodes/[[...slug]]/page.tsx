@@ -1,38 +1,27 @@
 import { notFound } from "next/navigation";
-import { Metadata, ResolvingMetadata } from "next";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { parseHgoPublicEpisodePacket, HgoPublicEpisodePacket } from "@/lib/hgo/public-episode-packet";
+import type { Metadata, ResolvingMetadata } from "next";
 
-import { EpisodeHero } from "@/components/hgo/public/EpisodeHero";
-import { EpisodeShowNotes } from "@/components/hgo/public/EpisodeShowNotes";
-import { EpisodeQuotes } from "@/components/hgo/public/EpisodeQuotes";
-import { EpisodeEssay } from "@/components/hgo/public/EpisodeEssay";
 import { EpisodeAudioPlayer } from "@/components/hgo/public/EpisodeAudioPlayer";
+import { EpisodeEssay } from "@/components/hgo/public/EpisodeEssay";
+import { EpisodeHero } from "@/components/hgo/public/EpisodeHero";
+import { EpisodeQuotes } from "@/components/hgo/public/EpisodeQuotes";
+import { EpisodeShowNotes } from "@/components/hgo/public/EpisodeShowNotes";
+import { EpisodeSupportCta } from "@/components/hgo/public/EpisodeSupportCta";
+import { EpisodeVideoEmbed } from "@/components/hgo/public/EpisodeVideoEmbed";
+import { readHgoPublicEpisodePacket } from "@/lib/hgo/public-episode-store";
 
-const EPISODES_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), "content", "publish", "hgo-episodes");
-
-async function fetchEpisodePacket(slug: string): Promise<HgoPublicEpisodePacket | null> {
-  const filePath = path.join(EPISODES_DIR, `${slug}.json`);
-  try {
-    const fileContent = await fs.readFile(filePath, "utf8");
-    const parsed = parseHgoPublicEpisodePacket(fileContent);
-    return parsed.ok ? parsed.packet : null;
-  } catch (err) {
-    return null;
-  }
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata(
   props: { params: Promise<{ slug?: string[] }> },
-  parent: ResolvingMetadata
+  _parent: ResolvingMetadata,
 ): Promise<Metadata> {
   const params = await props.params;
   const slug = (params.slug || []).join("/");
-  
+
   if (!slug) return { title: "Episode Not Found" };
 
-  const packet = await fetchEpisodePacket(slug);
+  const packet = await readHgoPublicEpisodePacket(slug);
   if (!packet) return { title: "Episode Not Found" };
 
   return {
@@ -49,7 +38,7 @@ export async function generateMetadata(
       title: packet.title,
       description: packet.summary,
       images: packet.media.heroImageUrl ? [packet.media.heroImageUrl] : [],
-    }
+    },
   };
 }
 
@@ -58,20 +47,21 @@ export default async function EpisodePage(props: { params: Promise<{ slug?: stri
   const slugArray = params.slug || [];
   const slug = slugArray.join("/");
 
-  if (!slug) {
-    notFound();
-  }
+  if (!slug) notFound();
 
-  const packet = await fetchEpisodePacket(slug);
-  if (!packet) {
-    notFound();
-  }
+  const packet = await readHgoPublicEpisodePacket(slug);
+  if (!packet) notFound();
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+    <main className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+      {packet.media.youtubeId ? (
+        <EpisodeVideoEmbed packet={packet} />
+      ) : (
+        <EpisodeHero packet={packet} />
+      )}
       <EpisodeAudioPlayer packet={packet} />
-      <EpisodeHero packet={packet} />
-      
+      <EpisodeSupportCta packet={packet} compact />
+
       <div className="w-full bg-zinc-950">
         <EpisodeShowNotes packet={packet} />
       </div>
@@ -80,9 +70,10 @@ export default async function EpisodePage(props: { params: Promise<{ slug?: stri
         <EpisodeQuotes packet={packet} />
       </div>
 
-      <div className="w-full bg-zinc-950 border-t border-zinc-900 mt-12">
+      <div className="mt-12 w-full border-t border-zinc-900 bg-zinc-950">
         <EpisodeEssay packet={packet} />
       </div>
+      <EpisodeSupportCta packet={packet} />
     </main>
   );
 }

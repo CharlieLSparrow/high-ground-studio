@@ -406,3 +406,42 @@ Risky claims avoided:
 
 Recommended next handoff:
 - This completes the marketing copy beta push. Ready for the final 'Clean and integrate' prompt for this lane.
+
+## 2026-06-05 15:37 local - Marketing positioning
+
+Prompt summary: Implement Beta-safe feature flags for unfinished/risky marketing features (Campaign Sandbox, Storyboard Builder) to ensure clean onboarding for Patreon users.
+
+Files changed:
+- `apps/quipsly/src/app/(app)/marketing/campaigns/page.tsx`
+- `apps/quipsly/src/app/(app)/storyboards/builder/page.tsx`
+
+Exact code changes:
+- Implemented `session.user.roles.includes("OWNER")` gates on both routes.
+- Added a redirect back to `/content-studio` for non-owner, non-dev users.
+
+Risks mitigated:
+- Prevents beta users (Patrons on the $10 or $50 tier) from discovering the "Campaigns" or "Storyboards" paths and seeing unfinished generation features that might undermine the "we don't ghostwrite for you" core premise.
+
+What remains in this lane:
+- Nothing. The marketing positioning copy is live, and the beta feature flags are strictly enforced. The lane is ready for the beta launch.
+
+## 2026-06-05 15:45 local - Marketing positioning
+
+Prompt summary: Implement Sprint 4 polishing for public beta trust and conversion. Update hero copy to clarify what Quipsly is and who it's for, add manual Patreon reconciliation warning, map features perfectly to the requested list, and soften any remaining autonomous publishing claims. Update BETA-MANIFEST.
+
+Files changed:
+- `apps/quipsly/src/app/(marketing)/page.tsx`
+- `docs/coordination/BETA-MANIFEST.md`
+
+Exact copy changes:
+- **Hero:** Clarified that Quipsly is a "living manuscript and research assistant built for authors, podcasters, and creators. We use it to connect concepts, outline episodes, and organize our desk."
+- **Patreon Beta Pricing:** Added an explicit warning: "Note: Beta access requires a brief manual reconciliation. You won't be charged separately for Quipsly, but it may take a few hours for your Patreon status to sync and unlock your workspace after you sign in."
+- **Feature Cards:** Renamed "Episode Publishing." to "Publishing Packets." to perfectly match the target workflow list (living documents, research assistant, study documents, video/podcast prep, publishing packets).
+- **Unified Platform Pitch:** Softened the claim "Your Quipsly will then help you map that single source of truth..." to "help you prepare that single source of truth...", explicitly avoiding the implication of automated API rendering/syndication.
+- **BETA-MANIFEST:** Marked AG-Marketing as **Ready**, listing `/` as the beta-critical route, and `/marketing/campaigns`, `/storyboards/builder` as hidden/internal-only routes.
+
+Claims Codex should verify:
+- Ensure the Patreon reconciliation webhook or cronjob is actually functioning, as the copy now explicitly states it requires manual reconciliation and might take a few hours.
+
+What remains in this lane:
+- None. Fully beta-ready.
