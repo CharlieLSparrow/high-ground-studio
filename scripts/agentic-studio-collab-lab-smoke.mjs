@@ -7,14 +7,14 @@ import {
   importCollaborationCheckpointToClient,
   summarizeCollaborationCheckpoint,
   validateCollaborationCheckpoint,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 import {
   compareCollaborationCheckpointToManuscriptDraft,
   createCollaborationCheckpointFromSyntheticManuscriptDraft,
   createSyntheticManuscriptDraftFromCollaborationCheckpoint,
   summarizeSyntheticManuscriptDraftAdapterPayload,
   validateSyntheticManuscriptDraftAdapterPayload,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
 import {
   applySyntheticTag,
   applySyntheticTextEdit,
@@ -26,19 +26,19 @@ import {
   importCollaborationSnapshot,
   summarizeCollaborationDocument,
   syncCollaborationClients,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   applySyntheticSpanTag,
   listSyntheticSpanTags,
   summarizeSyntheticSpanTags,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
 import {
   createSyntheticPresenceState,
   markSyntheticPresenceForBlock,
   markSyntheticPresenceForSpan,
   summarizeSyntheticPresence,
   validateSyntheticPresenceState,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
 import {
   addSyntheticReviewNote,
   createSyntheticReviewNote,
@@ -46,11 +46,11 @@ import {
   summarizeSyntheticReviewNotes,
   updateSyntheticReviewNoteStatus,
   validateSyntheticReviewNoteState,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-review-note-model.ts";
 import {
   createAnnotationDurabilityDecisionRecord,
   validateAnnotationDurabilityDecisionRecord,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
 import {
   appendAnnotationEvent,
   createAnnotationEventLogReference,
@@ -59,13 +59,13 @@ import {
   createReviewNoteCreatedEvent,
   createReviewNoteStatusChangedEvent,
   replayAnnotationEventLog,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
 import {
   compareMaterializedAnnotationStateToEventLog,
   createMaterializedAnnotationStateFromEventLog,
   createMaterializedAnnotationStateReference,
   validateMaterializedAnnotationState,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts";
 
 const reportPath = path.resolve(
   "artifacts/agentic-smoke/studio-collab-lab-report.json",

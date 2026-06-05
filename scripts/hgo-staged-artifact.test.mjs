@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createContentStudioProductionPacket } from "../apps/studio/src/app/content-studio/content-studio-model.ts";
+import { createContentStudioProductionPacket } from "../apps/quipsly/src/app/(app)/content-studio/content-studio-model.ts";
 import { extractHgoProjectionInputFromContentStudioPacket } from "../apps/web/src/lib/hgo/content-studio-production-packet.ts";
 import { createHgoProjectionReviewGate } from "../apps/web/src/lib/hgo/projection-review-gate.ts";
 import { syntheticEpisodeProjection } from "../apps/web/src/lib/hgo/synthetic-episode-projection.ts";

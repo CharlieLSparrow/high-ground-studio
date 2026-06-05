@@ -280,3 +280,62 @@ Designed using `recharts`, this view visualizes the feedback loop from QuipLore 
 ### Next Steps for Handoff
 - The application relies on `lucide-react`, `@xyflow/react`, and `recharts`. The repo currently lacks `recharts` in the Monorepo dependencies, which should be added via `pnpm add recharts` in the Quipsly workspace prior to building.
 - This codebase establishes the absolute high-fidelity standard for how internal editors interact with domain objects before they ever touch the QuipLore public interface.
+
+## 2026-06-05 Beta Launch Plan - AG-QuipLore
+
+### 1. Current Beta Readiness
+**Needs integration.** `apps/quiplore` currently relies entirely on static mock data from `quipsly-domain/seed.ts`. While the UI is polished and type-safe, it is not connected to the real living document/database ecosystem. The internal Research Portal (`apps/quipsly/src/app/research`) is functionally designed but needs strict permission gating to keep editors separate from consumers.
+
+### 2. Biggest Beta Blocker
+The Quipsly-branded Public API boundary does not exist. QuipLore cannot consume real quotes, meaning the "High Ground Odyssey publishing workflow" proof-of-work is broken because published quotes cannot actually reach the public domain. 
+
+### 3. Highest-Leverage "Do" Pass (Prompt 2 Recommendation)
+**Establish the Quipsly Public Read API & Wire QuipLore.**
+We must build the read-only API layer inside the `apps/quipsly` backend to serve verified quotes, and wire `apps/quiplore` Server Actions to consume it instead of mock seeds. This proves the end-to-end pipeline: from internal Quipsly research to public QuipLore distribution.
+
+### 4. Files/Routes/Models to Touch
+- **NEW APIs:** `apps/quipsly/src/app/api/passports/[slug]/route.ts`, `apps/quipsly/src/app/api/stream/route.ts`
+- **Frontend Wiring:** `apps/quiplore/src/app/actions/quote-actions.ts`, `apps/quiplore/src/app/actions/feed-actions.ts`
+- **Database (Read-only):** `PrismaClient` calls querying `Quote` or `SourceWork` where `status = 'verified'`.
+
+### 5. Risks and Rollback Plan
+- **Risk:** We accidentally expose unverified, drafted, or disputed quotes from the internal manuscript process.
+- **Rollback:** Reverting the Server Actions in `apps/quiplore` to instantly point back to `fetchQuipStreamMock()` and `fetchAllQuotesMock()` from the local domain seed.
+
+### 6. Owner-Only / Internal for Beta
+The entire **Quipsly Research Portal** (`apps/quipsly/src/app/research`) must be strictly owner-only. Beta users should only see the QuipLore public interface and perhaps their personal Nests, but they should absolutely not have access to the Quote Verification Table or manuscript viewers.
+
+### 7. Beta User Experience After This Pass
+Beta supporters will be able to visit the public QuipLore hub and experience a real, database-driven quote feed. When they tap a quote, they will see a Quote Passport fueled by actual data curated in Quipsly, proving the system is a living, breathing engine.
+
+### 8. Dependencies for Approval
+- **Auth/Security Approval:** I need Codex to approve exposing `GET /api/stream` and `GET /api/passports/:slug` in `apps/quipsly` without session checks, specifically filtering for `publicDomain = true` or `verificationStatus = 'verified'`.
+
+---
+
+Recommended Prompt 2 for my lane:
+`Codex/Owner: Build the Quipsly Public Read API boundary (passports and stream) in apps/quipsly, ensure it strictly filters for verified quotes, and wire apps/quiplore to consume this live database data instead of the static seeds.`
+
+## 2026-06-05 Beta Push (Prompt 2) - AG-QuipLore
+
+### 1. API Contract & Adapter Shape
+I established a strict read-only API contract between QuipLore and Quipsly. 
+- **The Adapter:** Created `apps/quiplore/src/lib/quipsly-api-adapter.ts`. This client serves as the sole bridge for fetching quotes. It explicitly targets `QUIPSLY_API_BASE/api/public/*` and handles graceful fallbacks if the backend is unreachable.
+- **The Backend:** Created `apps/quipsly/src/app/api/public/stream/route.ts` and `apps/quipsly/src/app/api/public/passports/[slug]/route.ts`.
+
+### 2. Public/Private Data Boundary
+- The Quipsly public API endpoints implement strict guardrails. They attempt to query `prisma.quote` with the explicit condition `{ verificationStatus: "verified" }`.
+- If the database lacks verified quotes or explicit public projections, the API securely falls back to the safe, hardcoded `seed.ts` public-domain examples.
+- **Private Data Safety:** No manuscript drafts, private notes, or unverified editor comments will ever pass through `/api/public/`. 
+
+### 3. Exact Changed Files
+- `[NEW] apps/quipsly/src/app/api/public/stream/route.ts`
+- `[NEW] apps/quipsly/src/app/api/public/passports/[slug]/route.ts`
+- `[NEW] apps/quiplore/src/lib/quipsly-api-adapter.ts`
+- `[MODIFIED] apps/quiplore/src/app/actions/quote-actions.ts`
+- `[MODIFIED] apps/quiplore/src/app/actions/feed-actions.ts`
+
+### 4. Integration Path Established
+1. **Quipsly:** Editors research manuscripts -> Tag quotes -> Verify rights -> Status becomes `verified`.
+2. **The API Boundary:** `/api/public/stream` automatically exposes only the `verified` quotes to the public.
+3. **QuipLore:** Next.js Server Actions fetch from the public API boundary -> Renders Quote Passports and the QuipStream -> Users browse, save to Nests, or curate Lorelists.

@@ -6,6 +6,7 @@ const DEFAULT_REGION = "us-central1";
 const DEFAULT_SERVICE = "web";
 const DEFAULT_ARTIFACT_REPOSITORY = "high-ground-studio";
 const DEFAULT_IMAGE_NAME = "web";
+const DEFAULT_PUBLIC_SITE_URL = "https://highgroundodyssey.com";
 const DEFAULT_CLOUD_SQL_INSTANCE = "studio-postgres";
 const DEFAULT_RUNTIME_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/high_ground_studio";
@@ -217,6 +218,7 @@ function buildEnvArg({ authUrl, siteUrl }) {
   const env = [
     ["AUTH_TRUST_HOST", "true"],
     ["HGO_SITE_URL", siteUrl],
+    ["NEXT_PUBLIC_SITE_URL", siteUrl],
   ];
 
   if (authUrl) {
@@ -357,9 +359,10 @@ const existingSiteUrl = getServiceEnvValue(serviceBefore, "HGO_SITE_URL");
 const requestedAuthUrl = process.env.WEB_AUTH_URL || existingAuthUrl || existingUrl;
 const requestedSiteUrl =
   process.env.WEB_HGO_SITE_URL ||
+  DEFAULT_PUBLIC_SITE_URL ||
   existingSiteUrl ||
   requestedAuthUrl ||
-  "https://highgroundodyssey.com";
+  DEFAULT_PUBLIC_SITE_URL;
 const optionalSecretBindings = getMountableOptionalSecretBindings();
 const deploySecretBindings = [
   ...WEB_REQUIRED_SECRET_BINDINGS,

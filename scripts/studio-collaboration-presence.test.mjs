@@ -3,19 +3,19 @@ import { test } from "node:test";
 
 import {
   createCollaborationCheckpointFromClient,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 import {
   createSyntheticManuscriptDraftFromCollaborationCheckpoint,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
 import {
   createCollaborationClients,
   createSyntheticCollaborationDocument,
   exportCollaborationSnapshot,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   applySyntheticSpanTag,
   listSyntheticSpanTags,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
 import {
   createSyntheticPresenceState,
   isSyntheticPresenceStale,
@@ -26,7 +26,7 @@ import {
   summarizeSyntheticPresence,
   updateSyntheticPresenceActor,
   validateSyntheticPresenceState,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-presence-model.ts";
 
 const firstBlockId = "synthetic-collab-block-1";
 

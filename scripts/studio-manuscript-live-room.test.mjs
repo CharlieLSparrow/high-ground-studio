@@ -27,7 +27,7 @@ import {
   STUDIO_MANUSCRIPT_LIVE_YTEXT_NAME,
   updateLiveRoomNotebookBlockKind,
   updateLiveRoomNotebookBlockText,
-} from "../apps/studio/src/app/manuscript/live/studio-manuscript-live-room-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/live/studio-manuscript-live-room-model.ts";
 
 test("live room yjs updates preserve concurrent edits", () => {
   const baseUpdate = createLiveRoomStateUpdateFromText("Alpha\n\nBravo");

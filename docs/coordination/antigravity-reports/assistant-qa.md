@@ -503,3 +503,65 @@ Audit Findings:
 
 Next Safest Step:
 - Hand off to coordinators to resolve the `StudioStoryboardFrame` and `RetrievalEmbedding` schema mismatches, or proceed with implementing the `create-research-packet-note` server action.
+
+## 2026-06-05 Beta Launch Plan - AG-Assistant
+
+Timestamp: 2026-06-05 local
+Agent lane: AG-Assistant
+Prompt summary: Beta Launch Posture - Prompt 1 (PLAN ONLY). Assessing the highest-leverage safe beta pass for the Quipsly Assistant.
+
+### 1. Current Beta Readiness
+The assistant currently functions as a highly safe, read-only research companion (RAG). It has a polished sidebar UI on `/create`, robust database persistence for sessions/ledgers, and clear visual differentiation between read-only actions and proposed write actions. It is fundamentally safe for beta users as it cannot mutate the manuscript.
+
+### 2. Biggest Beta Blocker
+While Quipslys are intended to be "research assistants, librarians, organizers, example finders," their actual findings currently disappear into the chat log or transient preview cards. If a user asks Quipsly to find examples of a core motivation, they receive a great result but have no way to permanently save that research into their project structure (e.g., a "Study" document or a persistent note).
+
+### 3. Highest-Leverage "Do Pass" Recommended
+**Implement the `create-research-packet-note` execution pipeline.**
+Instead of just showing research results in a transient preview, allow users to click "Approve & Save" on the research packet. This will execute a server action to create a permanent `StudioKnowledgeNode` (type: `source_note`) linked to the current document. This proves Quipsly’s value as an organizer that builds the user’s "Study" material, distinct from their authored manuscript, and adheres to the "human approval and provenance" requirement.
+
+### 4. Files/Routes/Models to Touch
+- `apps/quipsly/src/app/(app)/create/actions.ts`: Add `createResearchPacketNote` and `undoResearchPacketNote` server actions.
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx` (or `AssistantSidebar.tsx`): Wire the "Execute Write" button to these actions when the `action.kind` is `create-research-packet-note`.
+- **Prisma Models**: Uses existing `StudioKnowledgeNode` and `StudioTaggedSpan`.
+
+### 5. Risks and Rollback Plan
+- **Risk**: Creating dangling `StudioTaggedSpan` records if `StudioKnowledgeNode` creation fails during the transaction.
+- **Rollback Plan**: Use Prisma `$transaction` to ensure atomic creation. The assistant UI will feature an "Undo" button that instantly executes a hard-delete/archive on the generated node and span if the user changes their mind.
+
+### 6. Owner-Only/Internal Features
+The `suggest-outline-cleanup` tool (which proposes heading tag mutations) should either remain as a *preview-only* feature for the beta (demonstrating capabilities without the risk of mutating their text) or be hidden entirely until we add full snapshot-based manuscript rollback capabilities.
+
+### 7. Beta User Success Criteria
+A Patreon beta user asks Quipsly to "Find examples of the protagonist hesitating." Quipsly returns a research packet. The user clicks "Save as Note." A new `StudioKnowledgeNode` appears in their Nest, forever accessible in their Study library, proving Quipsly accelerates organization.
+
+### 8. Approvals Needed
+Approval for the server action architecture and the decision to leave `suggest-outline-cleanup` as preview-only for beta.
+
+Recommended Prompt 2 for my lane:
+**Implement the `create-research-packet-note` server action pipeline. Add the server actions to create and undo a `StudioKnowledgeNode` based on an assistant action payload. Wire the sidebar "Execute" button to this new capability, ensuring it runs inside a Prisma transaction, while leaving manuscript-mutating actions like outline cleanup strictly in preview mode.**
+
+## 2026-06-05 Beta Push 2 - AG-Assistant
+
+Timestamp: 2026-06-05 local
+Agent lane: AG-Assistant
+Prompt summary: Beta push: make the Quipsly assistant useful, safe, and visibly non-black-box.
+
+### 1. Delivery: Exact Changed Files
+- `apps/quipsly/src/app/api/quipsly-assistant/route.ts`
+  - Reduced `SAFE_TOOL_KINDS` strictly to: `suggest-tags`, `summarize-selected-block`, `find-related-blocks`, and `create-research-packet-note`.
+  - Removed `suggest-outline-cleanup`, `find-examples`, and `search-quotes` to strictly enforce the safe beta parameters.
+  - Updated prompt system instructions so the assistant enforces adding "Why this suggestion?" rationale directly into its `explanation` payload.
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`
+  - Upgraded the proposed action card UI to explicitly parse out and render a clearly labeled "WHY THIS SUGGESTION?" reasoning block beneath the action title, making the AI’s logic fully transparent and non-black-box.
+
+### 2. Screenshot-Ready Description of the Assistant Flow
+**The "Librarian First" Beta Experience:**
+1. **Context Awareness:** The user opens the Quipsly tab in a document. The sidebar header proudly displays the current Project and Document boundaries it is looking at. 
+2. **Asking for Help:** The user types "I need to tie in themes of legacy here."
+3. **Transparent Reasoning:** Quipsly responds warmly and proposes a "Create research packet note" action. Underneath the title, a distinct highlighted block reads **WHY THIS SUGGESTION?** explaining exactly *why* tracking legacy themes is helpful for this section.
+4. **Human Authorship Gate:** The user clicks "Approve." The action turns green, a safe local preview card is generated showing exactly what the research packet looks like, and the change is logged safely to the local undo ledger without touching the manuscript. The user retains full control.
+
+### 3. Remaining Risks for Beta
+- **Transient Approval State:** Because `create-research-packet-note` currently only creates a local *preview* of the research packet, beta users might click "Approve", see the preview, and assume the note is permanently saved to their Story Bible/Nest. If they refresh the page, the generated preview remains transient unless they manually export the JSON ledger.
+- **Next Safe Write Step (Post-Beta):** To resolve this, the next iteration must wire the "Approve" button to a true server action (`createResearchPacketNoteAction`) that commits a `StudioKnowledgeNode` to the database while wrapping the creation in a Prisma `$transaction` for easy undo.

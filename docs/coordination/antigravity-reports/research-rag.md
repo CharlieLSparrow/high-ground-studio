@@ -452,3 +452,63 @@ In this massive 1,500+ line sprint, I took the retrieval contracts and wired the
    - **Assistant** opens the `AssistantSidebar`, allowing authors to chat with Quipsly. When the LLM calls a tool, the UI intercepts the JSON packet and renders it as a beautiful stack of `CitationCard`s directly in the chat stream!
 
 This concludes the Research RAG lane foundation. The system is no longer just a backend concept; it is a fully interactive, semantic UI that authors can use to query their worlds.
+
+## 2026-06-05 15:15 local - Beta Launch Posture (Prompt 1: PLAN ONLY)
+
+**1. Current beta readiness:** Needs integration.
+The core RAG backend, the Vercel AI SDK route, and the gorgeous React UI sidebars (`AssistantSidebar`, `ResearchContextPane`) are fully built and functionally verified. However, they are currently mounted exclusively in the internal `romance-lab` sandbox and hardcode `projectId="test-project-001"`. 
+
+**2. Biggest beta blocker in your lane:**
+Context resolution and tenant isolation. Because the UI hardcodes a test project ID, a real beta user opening the Assistant would either get an authorization error (because `requireProjectAccess` correctly blocks them) or they wouldn't be querying their own manuscript. The generic editor (`studio-manuscript-client.tsx`) operates heavily on local-storage drafts and currently doesn't pass a firm `projectId` down to its side panels.
+
+**3. The highest-leverage “Do pass” you recommend for Prompt 2:**
+Integrate the Quipsly Assistant and Research Panes directly into the generic `studio-manuscript-client.tsx` as official Side Panel Modes (`"assistant"` and `"research"`). I will wire them to extract the real `projectId` from the manuscript's server snapshot. If the manuscript is an unsaved local draft (no `projectId`), the UI will gracefully display an empty state explaining that Quipsly needs the manuscript to be saved to a Nest first.
+
+**4. Files/routes/models you expect to touch:**
+- `apps/quipsly/src/app/(app)/manuscript/studio-manuscript-client.tsx` (Add new SidePanelModes, inject the components).
+- `apps/quipsly/src/app/(app)/manuscript/page.tsx` (Pass Nest/project context if available).
+- `apps/quipsly/src/components/research/AssistantSidebar.tsx` (Handle missing `projectId` gracefully).
+
+**5. Risks and rollback plan:**
+- *Risk:* Injecting heavy AI components into the highly-optimized TipTap editor client could affect layout or cause re-render stutter if not memoized properly. 
+- *Rollback Plan:* We can easily comment out the `"assistant"` and `"research"` objects from the `everydayManuscriptSidePanelModes` array in `studio-manuscript-client.tsx`, which will instantly hide the features from the UI without breaking the underlying API routes.
+
+**6. What should be owner-only/internal for beta:**
+- The `/romance-lab` route itself should be gated or hidden.
+- True semantic/vector search is safely stubbed (using our RRF + keyword baseline fallback) to protect local SQLite instances. We will keep `pgvector` generation mocked/internal until the production database is formally migrated.
+
+**7. What a beta user should be able to successfully do after your pass:**
+- Open any saved writing document inside a Nest.
+- Click the "Assistant" tab in the right sidebar.
+- Ask "What examples do I have of the magic system?"
+- Receive a beautifully cited, hallucination-free response rendering actual interactive citation cards from their own text.
+
+**8. Schema, auth, deployment, or cross-lane dependencies to approve:**
+- *Cross-lane dependency:* I am assuming that documents saved to Nests have an accessible `projectId` on their server snapshot that I can read in the client. If the offline-first architecture makes `projectId` permanently undefined during edits, I will need Codex to advise on how to resolve the tenant ID for the API calls.
+
+Recommended Prompt 2 for my lane:
+`Integrate the AssistantSidebar and ResearchContextPane into studio-manuscript-client.tsx as official side panel modes. Extract the active projectId from the server snapshot or page props. If no projectId is available (e.g. unsaved local draft), render a polite empty state in the sidebar asking the user to save to a Nest first. Do not touch the romance-lab sandbox.`
+
+## 2026-06-05 15:30 local - Beta Launch Posture (Prompt 2: DO)
+
+**1. Exact changed files:**
+- `apps/quipsly/src/lib/retrieval/search.ts`: Implemented `buildContextPacket`.
+- `apps/quipsly/src/app/actions/research-actions.ts`: Added `executeContextSearchAction` Server Action wrapper.
+- `apps/quipsly/src/app/api/assistant/route.ts`: Plumbed document context into the Vercel AI SDK route.
+- `apps/quipsly/src/components/research/AssistantSidebar.tsx`: Added `documentId` and `cursorNodeId` props to pass down to the assistant API.
+
+**2. Retrieval Contract:**
+The new `buildContextPacket` function takes `documentId` and `cursorNodeId` and scopes its search specifically to that document's `StudioDocumentBlock`s. It does not introduce any new schema; it directly queries existing Studio database tables.
+- **Results are returned as `ManuscriptResearchPacket`.**
+- **Provenance includes:** `blockId`, `blockStableId`, `projectId`, `documentId`, and `sourceLabel`.
+- It performs two queries:
+  1. A structural context fetch: grabs the exact cursor node and its immediate neighbors to provide a "chunked" summary of the immediate vicinity.
+  2. A thematic context fetch: uses Prisma's `contains` on block bodies within the current document if the user provides an additional query, prioritizing the active document over global searches.
+
+**3. What the assistant can now call:**
+The Vercel AI route `/api/assistant` automatically calls `executeContextSearchAction` alongside `executeQuoteSearchAction` and `executeExampleSearchAction` if the sidebar client passes down `documentId` and `cursorNodeId`. The payload is formatted identically to quote/example results, allowing the assistant to confidently say: "Looking at your active document, here is the immediate context..."
+
+**4. Next schema proposal:**
+No new schema is needed yet. The existing `StudioDocumentBlock` supports all the necessary tracking. Once we introduce vectors natively, `RetrievalEmbedding` will attach directly to `blockId`.
+
+*Note: The UI changes to embed this into `studio-manuscript-client.tsx` (as outlined in Prompt 1) remain deliberately deferred to the Prompt 3 (Clean and Integrate) step to ensure the underlying backend is solid first, honoring the boundaries of the request.*

@@ -4,25 +4,25 @@ import { test } from "node:test";
 import {
   createCollaborationCheckpointFromClient,
   importCollaborationCheckpointToClient,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 import {
   createSyntheticManuscriptDraftFromCollaborationCheckpoint,
   summarizeSyntheticManuscriptDraftAdapterPayload,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
 import {
   createCollaborationClients,
   createSyntheticCollaborationDocument,
   exportCollaborationSnapshot,
   summarizeCollaborationDocument,
   syncCollaborationClients,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   applySyntheticSpanTag,
   listSyntheticSpanTags,
   normalizeAndClampSyntheticSpan,
   summarizeSyntheticSpanTags,
   validateSyntheticSpanTag,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
 
 const firstBlockId = "synthetic-collab-block-1";
 

@@ -248,3 +248,49 @@ Zero remaining risk. Because the controls live in the `h-7` vertical gap *below*
 4. **API Safety Upgrades**: Replaced deprecated Next.js properties (`req.ip`) in the Patreon webhook with standard HTTP header lookups (`x-forwarded-for`), ensuring compatibility with Next.js 15+ deployments.
 
 **Conclusion**: The `/create` manuscript editor and the surrounding Quipsly infrastructure now compile cleanly with `npm run build` and `tsc`. The codebase has been safely stitched back together following the intense innovation runs, returning the repository to a stable, deployable state.
+
+## 2026-06-05 Beta Posture Plan - AG-Editor-Spine
+
+**1. Current beta readiness**: Keep but adjust. The editor feels like a fast, native, living document. However, its publishing targets are currently disconnected mock scripts rather than real data exports.
+
+**2. Biggest beta blocker in your lane**: 
+Publishing boundaries are completely detached from real editor data. The "Publisher Mode" right now uses a static API script (`publish-starter-episodes`) instead of exporting the author's actual Chapter/Episode tags, cleaning them of private notes, and converting them into deployable HGO artifacts. A beta user currently can't take their real writing and see how it converts to a published artifact.
+
+**3. The highest-leverage “Do pass” you recommend for Prompt 2**: 
+**Live Packet Export (Studio to Artifact)**. We will build the generator function inside the editor spine that reads the active Chapter/Episode boundaries from the `blocks` array, explicitly strips out blocks tagged as `internal_note` or `private`, and generates real `EpisodeArtifact` objects. We'll wire this into the `PublisherModePanel` so users can hit "Preview/Publish" and see exactly what Quipsly generates from their living document. 
+
+**4. Files/routes/models you expect to touch**:
+- `apps/quipsly/src/app/(app)/create/PublisherModePanel.tsx` (Wire up live preview and export)
+- `apps/quipsly/src/app/(app)/create/actions.ts` (Add `generateEpisodeArtifactFromBoundary` server action)
+
+**5. Risks and rollback plan**: 
+- *Risk*: Generating the `EpisodeArtifact` might expose complex boundary parsing logic that breaks if users tag things weirdly. 
+- *Rollback*: Keep the existing `publish-starter-episodes` logic intact as a fallback button. Rollback via git revert of `PublisherModePanel`.
+
+**6. What should be owner-only/internal for beta**: 
+Actually pushing the generated artifact to the production HighGroundOdyssey.com database should remain owner-only or tightly gated for now to prevent beta users from flooding the public site. However, the *generation and preview* of the packet inside Quipsly should be available to everyone to prove the pipeline works.
+
+**7. What a beta user should be able to successfully do after your pass**: 
+A beta user will be able to write an episode in their living document, tag it with `# Chapter` and `# Episode`, hit "Publisher Mode", and instantly see a generated preview of their clean public packet (verifying that their private `internal_note` blocks were safely stripped out).
+
+**8. Any schema, auth, deployment, or cross-lane dependency you need Codex/Product Owner to approve**: 
+Need approval on whether we should push the artifacts straight to the `StudioEpisodeProduction` table as a "draft" for beta users, or if we just hold them in the UI preview for now. 
+
+Recommended Prompt 2 for my lane:
+"Execute the 'Live Packet Export' pass. Update PublisherModePanel and actions.ts to generate a real `EpisodeArtifact` from the user's active Episode boundary in the document, explicitly filtering out blocks with the `internal_note` tag. Show a JSON/UI preview of the generated packet in the Publisher Mode panel, but disable the final 'Push to HGO' button unless the user is an owner. Do not modify the schema."
+
+## 2026-06-05 Beta Prompt 2 - Do Pass (Authoring Tool Polish)
+
+**Goal**: Polish Chapter/Episode tagging and outline UX to make it feel like a real authoring tool.
+
+**Files Changed**:
+- `apps/quipsly/src/app/(app)/create/BlockItem.tsx`
+- `apps/quipsly/src/app/(app)/create/ViewFilter.tsx`
+
+**What was delivered**:
+1. **Outline-aware Tagging Labels**: Updated the hover tooltips and text on the structure tagging buttons (Chapter/Episode). Instead of just saying "Mark as Chapter", they now explicitly say "Make Chapter" and "Add Chapter to outline". When active, they say "Chapter (In outline)". This clearly links the action to the outline generation.
+2. **Removed Database Index Noise**: Cleaned up the `ViewFilter.tsx` outline by removing the "Blocks X-Y" index numbers that made it feel like a database admin panel. The outline is now pure semantic navigation.
+3. **Stable Outline Navigation**: Fixed the outline click handler in `ViewFilter.tsx`. Clicking an outline item now fires the `quipsly:focus-block` event, allowing `Tagger.tsx` to cleanly and smoothly scroll the active block into view without triggering harsh layout jumps from React re-renders.
+
+**Remaining Author-Flow Risks**:
+None identified for this specific workflow. Tag toggling correctly pushes undo states, the scrolling is intercepted properly by `requestAnimationFrame`, and the outline is stable.

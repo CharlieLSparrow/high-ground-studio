@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import {
   manuscriptHelpNotes,
-} from "../apps/studio/src/app/manuscript/manuscript-help-notes.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/manuscript-help-notes.ts";
 import {
   collectBlockSummaries,
   collectCitedQuotationHighlights,
@@ -73,7 +73,7 @@ import {
   updateManuscriptQuoteReview,
   updateManuscriptStructureRegion,
   validateEditorJsonShape,
-} from "../apps/studio/src/app/manuscript/manuscript-editor-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/manuscript-editor-model.ts";
 import {
   validateHgoEpisodeProjection,
 } from "../apps/web/src/lib/hgo/projection-validation.ts";

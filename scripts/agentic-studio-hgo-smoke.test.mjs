@@ -9,7 +9,7 @@ import {
   createSyntheticManuscriptSmokeDraft,
   isSyntheticManuscriptSmokeDraft,
   safeManuscriptDraft,
-} from "../apps/studio/src/app/manuscript/manuscript-editor-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/manuscript-editor-model.ts";
 import { validateHgoEpisodeProjection } from "../apps/web/src/lib/hgo/projection-validation.ts";
 
 const reportPath = path.resolve(

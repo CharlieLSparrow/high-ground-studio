@@ -226,3 +226,52 @@ Validation run: N/A (Audit only).
 Risks: Minimal. This audit finalizes the conceptual model, ensuring we avoid tight coupling when we begin implementing the webhook routes.
 
 Recommended next handoff: Hand off to the user to review the final integration audit in `implementation_plan.md`. Once the architectural audit is fully approved, we can safely lift the implementation gate to begin writing the `WorldHubProviderEvent` webhook ingestion routes.
+
+## 2026-06-05 15:15 local - AG-Patreon-Support
+
+Prompt summary: Prompt 1: PLAN ONLY. Assess beta readiness for the Patreon / Support lane and propose the highest-leverage "Do pass" to make Quipsly genuinely beta-worthy for Patreon supporters.
+
+1. **Current beta readiness**: Needs integration. (We have the gate/auth active, but zero post-login onboarding).
+2. **Biggest beta blocker in your lane**: New Patreon supporters authenticate successfully but drop into a blank state. Without an automated "Starter Nest" or onboarding document, they have no context for what Quipsly is or how to use the assistant.
+3. **The highest-leverage “Do pass” you recommend for Prompt 2**: Implement "Zero-State Starter Nest Provisioning". When a user authenticates via Patreon (or logs in for the first time) and has 0 active projects, we will intercept them and automatically generate a "Welcome to Quipsly Beta" Nest (a `writing` kind project) pre-populated with an onboarding document that teaches them how to use Quipsly.
+4. **Files/routes/models you expect to touch**:
+   - `apps/quipsly/src/app/(app)/projects/page.tsx` or a new `/onboarding` intercept route.
+   - `apps/quipsly/src/lib/studio/project-registry.ts` (to inject the welcome document content).
+5. **Risks and rollback plan**:
+   - Risk: Generating too much default data might annoy power users.
+   - Rollback: We can toggle the auto-provisioning off and rely entirely on the manual "Create a Nest" UI in `/projects`.
+6. **What should be owner-only/internal for beta**:
+   - Automated Patreon webhook reconciliation (the `MembershipReconciliation` syncing) can remain internal/owner-only for now, since our `hasQuipslyBetaAccess` auth check manually verifies active memberships anyway. We don't need to risk webhook misfires in front of beta users yet.
+7. **What a beta user should be able to successfully do after your pass**:
+   - A beta user logs in via Patreon, is instantly dropped into a beautifully formatted "Welcome" manuscript, and can immediately start tagging, reading, and interacting with the Quipsly assistant without having to create their first project manually.
+8. **Dependencies for Codex/Product Owner**:
+   - Need approval on the exact "Welcome" copy to seed into the document. 
+
+Recommended Prompt 2 for my lane:
+"Execute the Zero-State Starter Nest Provisioning. Intercept new users who have 0 projects and automatically create a 'Welcome to Quipsly Beta' project. Seed the first document with a brief tutorial on Nests, tagging, and invoking the Assistant. Ensure they are cleanly redirected into this new document upon creation."
+
+## 2026-06-05 15:31 local - AG-Patreon-Support (Prompt 2 DO)
+
+Prompt summary: Beta push: prepare Patreon supporter access without making Patreon the source of truth. Add user-friendly beta access states (signed out, connected, pending, enabled), and document the safe webhook flow.
+
+Files changed:
+- `apps/quipsly/src/app/(app)/layout.tsx` (Replaced silent redirect with pending access component render)
+- `apps/quipsly/src/components/beta/BetaAccessView.tsx` (Created new component for pending beta state)
+- `docs/coordination/antigravity-reports/patreon-support.md` (This report)
+
+### Current Support/Beta Access Flow
+1. **Signed out:** User sees the Quipsly.com marketing page with the "Sign in with Patreon" CTA.
+2. **Supporter Connected (Auth'd but no Beta):** User signs in. `auth.ts` verifies their identity. If `hasQuipslyBetaAccess` returns false, the `(app)/layout.tsx` intercepts the render and displays the `BetaAccessView`.
+   - The view clearly explains the state: "Supporter Connected", and "Pending Reconciliation".
+   - It explicitly tells the user that Quipsly checks its own app-owned membership records, and if they just pledged, they must wait for the webhook to reconcile.
+3. **Beta Enabled:** If `hasQuipslyBetaAccess` returns true (either via `isStaff` or a reconciled `Membership` record), the layout yields to the standard Quipsly Dashboard/Workbench.
+
+### Webhook Flow (Reconciliation-First)
+To strictly enforce the boundary that Patreon is *not* the source of truth:
+1. **Provider Event Received:** Patreon sends a `members:create` or `members:update` webhook.
+2. **Pending Reconciliation:** We log the raw payload into a `ProviderEvent` inbox table as `UNPROCESSED`. No immediate destructive mutation occurs.
+3. **Verification & Update:** A background worker (or Next.js API cron) picks up the `ProviderEvent`, validates the pledge tier, and safely upserts the app-owned `Membership` and `Entitlement` records. Only after this app-owned record is updated will the user's `hasQuipslyBetaAccess` flag flip to `true`.
+
+### Remaining Integration Risks
+- We have not yet implemented the actual `POST /api/webhooks/patreon` endpoint or the background reconciliation worker. Currently, beta access requires manual database verification or an explicit `Membership` seed.
+- If the background worker fails, a user might be stuck in the "Pending Reconciliation" state indefinitely. We should consider adding a "Request Manual Sync" button to `BetaAccessView` in the future if this becomes an issue.

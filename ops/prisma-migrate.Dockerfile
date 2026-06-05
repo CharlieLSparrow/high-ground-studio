@@ -18,6 +18,7 @@ RUN corepack enable \
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY prisma/migrations ./prisma/migrations
 COPY ops/episode-production-db-push.sql ./ops/episode-production-db-push.sql
 COPY ops/quipsly-foundation-additive.sql ./ops/quipsly-foundation-additive.sql
 COPY apps/quipsly/package.json ./apps/quipsly/package.json
@@ -32,4 +33,4 @@ COPY packages/motion-engine/package.json ./packages/motion-engine/package.json
 
 RUN pnpm install --frozen-lockfile
 
-CMD ["pnpm", "db:push"]
+CMD ["pnpm", "prisma", "migrate", "deploy"]

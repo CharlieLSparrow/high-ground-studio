@@ -155,3 +155,50 @@ We will self-host the RSS feed to bypass third-party OAuth complexities for Phas
 ### 4. First Implementation Step
 **Build the XML Generator & Route:**
 Create `apps/quipsly/src/app/api/public/podcast/rss/route.ts` that mocks a static list of 1-2 `QuipslyPublicPackage` objects and renders valid XML. We will validate this XML against a podcast validator tool before wiring it to actual database/GCS sources.
+
+---
+
+## 2026-06-05 15:15 local - AG-Publishing-Integrations (Beta Launch Plan)
+
+### 1. Current Beta Readiness
+* **Publisher Mode Panel (`PublisherModePanel.tsx`):** *Needs integration*. Currently only triggers a script that writes static starter episodes to the database. Needs to compile the user's actual document.
+* **Transmitter Suite (`/publishing-suite`):** *Needs integration*. Currently purely visual mock data. Needs to query live database candidates.
+* **Podcast RSS Feed:** *Needs integration*. Not yet implemented.
+* **YouTube/Patreon API Uploads:** *Keep but adjust*. Keep in "Simulated / Draft" mode or gate as owner-only to avoid credential risks during beta launch.
+
+### 2. Biggest Beta Blocker in Our Lane
+The lack of a data bridge between the Tagger's document segments (tagged episodes/chapters) and the database's `HgoEpisodePublishCandidate` and `HgoStagedProjectionArtifact` tables. Supporters can't compile their own manuscripts into real public-facing packages.
+
+### 3. Proposed High-Leverage "Do Pass"
+Implement end-to-end database-backed package compilation, review, and publishing:
+1. **Compilation Action:** Parse the living document blocks by `#episode` boundaries and save public-safe JSON packets to `HgoEpisodePublishCandidate`.
+2. **Review & Approve:** Update the Package Builder to display real database candidates and make "Approve" write the status as `published` in the database.
+3. **Live HGO Handoff:** Ensure approved candidates are immediately available to the public `HighGroundOdyssey.com` website by writing to the shared `HgoEpisodePublishCandidate` table.
+4. **Podcast RSS Feed:** Expose `/api/public/podcast/rss/[projectSlug]` serving dynamically generated RSS XML.
+
+### 4. Files/Routes/Models Expected to Touch
+* `apps/quipsly/src/app/(app)/create/actions.ts`
+* `apps/quipsly/src/app/(app)/create/PublisherModePanel.tsx`
+* `apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx`
+* `apps/quipsly/src/app/(app)/publishing-suite/page.tsx`
+* `apps/quipsly/src/app/api/public/podcast/rss/[projectSlug]/route.ts` (NEW)
+* Models: `HgoEpisodePublishCandidate`, `HgoStagedProjectionArtifact` (Prisma schema remains unchanged).
+
+### 5. Risks & Rollback Plan
+* **Risk:** Mismatches in JSON schema causing `apps/web` (High Ground Odyssey) to fail parsing or crash.
+* **Rollback:** We will use strict runtime type parsing (`validateHgoPublicEpisodePacket` from `web` workspace) before upserting candidate records. If a crash occurs, we can rollback candidate status in the DB.
+
+### 6. Owner-Only / Gated Features
+* Direct publishing to YouTube and creator Patreon campaigns will remain simulated or owner-only to prevent token exposure.
+
+### 7. Beta User Capabilities Post-Pass
+* Supporters can tag writing documents with `#episode` or `#chapter`.
+* Compile these sections into public-safe JSON packages.
+* Review, adjust overrides, and approve them in the Transmitter.
+* View them live on HighGroundOdyssey.com.
+* Feed the feed URL `/api/public/podcast/rss/[projectSlug]` to players.
+
+### 8. Schema & Handoff Approvals Required
+* Codex/Owner to approve the new dynamic `/api/public/podcast/rss/[projectSlug]` route.
+* No schema changes required.
+

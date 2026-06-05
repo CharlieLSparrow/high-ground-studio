@@ -8,14 +8,14 @@ import {
   createSyntheticCollaborationDocument,
   summarizeCollaborationDocument,
   syncCollaborationClients,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   createCollaborationCheckpointFromClient,
   createCollaborationCheckpointFromSnapshot,
   importCollaborationCheckpointToClient,
   summarizeCollaborationCheckpoint,
   validateCollaborationCheckpoint,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 
 const firstBlockId = "synthetic-collab-block-1";
 const secondBlockId = "synthetic-collab-block-2";

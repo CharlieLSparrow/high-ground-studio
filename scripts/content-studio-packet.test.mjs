@@ -11,7 +11,7 @@ import {
   getContentStudioProjectProgress,
   normalizeContentStudioWorkspace,
   parseContentStudioPacket,
-} from "../apps/studio/src/app/content-studio/content-studio-model.ts";
+} from "../apps/quipsly/src/app/(app)/content-studio/content-studio-model.ts";
 import { validateHgoEpisodeProjection } from "../apps/web/src/lib/hgo/projection-validation.ts";
 
 const createdAt = "2026-05-24T01:00:00.000Z";

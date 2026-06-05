@@ -7,7 +7,7 @@ import {
   safeStructureDraft,
   STARTER_SAMPLE_TEXT,
   starterSampleCards,
-} from "../apps/studio/src/app/structure/structure-mode-model.ts";
+} from "../apps/quipsly/src/app/(app)/structure/structure-mode-model.ts";
 
 const createdAt = "2026-05-19T12:00:00.000Z";
 

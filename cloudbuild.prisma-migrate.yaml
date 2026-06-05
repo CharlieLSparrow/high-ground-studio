@@ -1,0 +1,21 @@
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: high-ground-studio
+  _IMAGE_NAME: prisma-migrate
+  _IMAGE_TAG: latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - ops/prisma-migrate.Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+
+options:
+  logging: CLOUD_LOGGING_ONLY

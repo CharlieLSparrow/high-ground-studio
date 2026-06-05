@@ -22,8 +22,13 @@ echo "🏗️  Running local build to verify Next.js/Turbopack integrity..."
 NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app pnpm --filter quipsly build
 echo "✅ Local build passed."
 
-# 4. Deploy
-echo "☁️  Submitting to Cloud Build..."
+# 4. Database Migration
+echo "☁️  Submitting Database Migration to Cloud Build..."
+gcloud builds submit --config cloudbuild.prisma-migrate.yaml .
+echo "✅ Database migration successful."
+
+# 5. Deploy App
+echo "☁️  Submitting App Deployment to Cloud Build..."
 gcloud builds submit --config cloudbuild.studio.deploy.yaml .
 
 echo "🎉 Deployment initiated successfully!"

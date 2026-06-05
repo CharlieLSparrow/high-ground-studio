@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 
-import { getPrismaClient } from "../apps/studio/src/lib/prisma.ts";
+import { getPrismaClient } from "../apps/quipsly/src/lib/prisma.ts";
 
 const LOCAL_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 

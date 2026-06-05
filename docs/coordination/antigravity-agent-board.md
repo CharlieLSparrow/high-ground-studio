@@ -4,6 +4,8 @@ Date: 2026-06-04
 
 Purpose: keep parallel Gemini/Antigravity work useful without letting agents collide with the manuscript spine.
 
+Current editor-spine lesson doc: `docs/quipsly/editor-spine-lessons-learned.md`. Read this before changing `/create`; Chapter/Episode heading tags are the source of truth for outline navigation.
+
 ## Workflow
 
 Codex is mission control for now.
@@ -75,14 +77,17 @@ Every active lane has exactly one report file. Do not create new report files or
 ## Collision rules
 
 - Do not mutate real manuscript content without explicit user approval.
-- Schema edits require Codex/user approval before implementation unless the prompt explicitly grants schema ownership for that lane.
-- Route deletions, route renames, or compatibility-breaking navigation changes require Codex/user approval before implementation.
+- Schema edits, route deletions, access changes, and deploy pipeline changes require Codex/user approval before implementation.
 - Do not change `/create` assistant files unless the assigned lane is assistant QA or Codex asks for a targeted patch.
 - Do not hardcode project slugs beyond the shared project registry.
 - Keep media/video work connected through `projectSlug` and `episodeSlug`.
 - Keep Patreon/provider work as provider-event or documentation work unless Codex/user explicitly approves provider mutation.
 - Keep route/auth work compatible with owner local development so the user does not get locked out.
 - **Instructional Phrasing**: Normal product direction should use additive language where possible, while safety instructions and security boundaries may still use hard brakes.
+
+## Bold proposals welcome
+
+Do not let these rules make you timid! If a bold architecture or feature change is the right move for the product, propose it. Classify the proposal clearly and ask for approval, rather than avoiding big ideas.
 
 ## Report template
 
@@ -105,3 +110,27 @@ Recommended next handoff:
 ```
 
 **AG-Release-Captain:** Initialized, standing by for explicit DEPLOY GO.
+
+## 2026-06-04 20:06 local - AG-Release-Captain
+
+Prompt summary: Deploy go!
+
+Files changed:
+- `apps/quipsly/src/app/(app)/editor/RemotionComposition.tsx` (patched deploy blocker)
+- `.gitignore` (ignored dev files)
+- `cloudbuild.studio.yaml`, `cloudbuild.studio.deploy.yaml` (enforced type errors)
+- `scripts/release-quipsly.sh` (new deploy script)
+
+Files intentionally avoided:
+- `apps/mobile-capture/` (submodule ignored during dirty-check)
+
+Validation run:
+- Local `pnpm typecheck` passed.
+- Local `pnpm build` passed.
+- Cloud Build Docker image built successfully.
+- **FAILED**: Cloud Run deployment.
+
+Risks:
+- Deployment blocked by missing IAM permissions.
+
+Recommended next handoff: DevOps / Codex to fix `run.services.get` (Cloud Run Admin) permissions on `659427658635-compute@developer.gserviceaccount.com`.

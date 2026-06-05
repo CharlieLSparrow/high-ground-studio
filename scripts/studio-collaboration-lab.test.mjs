@@ -13,7 +13,7 @@ import {
   importCollaborationSnapshot,
   summarizeCollaborationDocument,
   syncCollaborationClients,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 
 const firstBlockId = "synthetic-collab-block-1";
 const secondBlockId = "synthetic-collab-block-2";

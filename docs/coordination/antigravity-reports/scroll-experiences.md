@@ -212,3 +212,45 @@ Following the audit, a massive self-directed passion project was executed to bui
 5. **Simulator Route:** Mapped the entire suite to a Next.js route at `apps/web/src/app/review/mock/page.tsx` featuring a dev-mode "Simulator Switcher" to hop between formats instantly.
 
 This completely proves the abstraction without requiring any backend schema changes. The prototype is ready for physical mobile device testing.
+
+---
+
+## Beta Launch Posture: Prompt 1 - PLAN ONLY
+
+**1. Current beta readiness:** Needs integration. The UI/UX engine is SAAS-quality and highly polished, but currently isolated in a mock data simulator.
+**2. Biggest beta blocker:** No connection to real user data. A beta user cannot currently view their own Quipsly content in the scroll-native engine.
+**3. Highest-leverage "Do pass":** The Storyboard "Share to Review" Integration. We will dynamically map the existing `StudioStoryboard` database model into the `ScrollExperienceEngine` format on the server. No new database schema needed.
+**4. Files/routes/models to touch:**
+- `apps/web/src/app/review/[storyboardId]/page.tsx` (New Route)
+- `apps/web/src/server/api/routers/` (Add/update tRPC route to fetch and adapt the storyboard)
+- Add a "Review Mode" link/button to the existing Storyboard editor UI.
+**5. Risks and rollback plan:** Extremely low risk. This is a read-only projection of existing data. Rollback is as simple as removing the "Share" button and the `/review/` route. The core editor spine remains untouched.
+**6. Owner-only/internal for beta:** We will keep the full `ScrollExperience` standalone database schema (proposed earlier) strictly internal/delayed. We will only use dynamic on-the-fly hydration for now to avoid destructive database migrations before beta.
+**7. Beta user success:** A beta user can create a Storyboard in their Nest, click "Review", and immediately swipe through their frames on their mobile device using the new native scroll engine.
+**8. Dependencies:** Need Product Owner approval to create the `/review/[id]` route and decide if it should be strictly Patreon auth or an open share link.
+
+Recommended Prompt 2 for my lane:
+`Execute the "Storyboard Share to Review" integration. Create the /review/[storyboardId] route in Next.js. Write a server-side adapter that fetches a StudioStoryboard (and its frames/assets) and transforms it into the ScrollExperience JSON format expected by ScrollExperienceEngine. Wire up the StoryboardAdapter to render the real proxy images. Ensure the route is protected by standard Beta Auth. Add a simple "Open in Review Mode" link to the existing Storyboard editor UI.`
+
+---
+
+## Beta Launch Posture: Prompt 2 - EXECUTION REPORT
+
+**Goals Achieved:**
+1. **Polished Reusable Surface:** The `ScrollExperienceEngine` is now fully operational and rendering live `StudioStoryboard` data via the `StoryboardAdapter`.
+2. **Shared Abstraction Proven:** The JSON payload (`ScrollExperience`) is abstracted from the database model. This exact same engine will render stories, courses, comics, and photo galleries simply by changing the `type` in the JSON and registering a new adapter.
+3. **Vertical/Horizontal Matrix:** The engine correctly handles Storyboards as a single Vertical Group, with each frame acting as a Horizontal Panel.
+4. **Lightweight Affordances:** The engine includes the `InteractionOverlay` which supports optimistic Favorites and Comments natively on the client side (ready to be hooked up to the backend in Prompt 3).
+5. **Beta-Gated Safety:** The feature requires standard Patreon Beta authentication and relies entirely on existing `StudioStoryboard` schemas, bypassing the need for heavy migrations or HGO publishing integrations.
+
+**Exact Changed Files:**
+- `[NEW] apps/web/src/app/review/[storyboardId]/page.tsx`: The dynamic route that adapts `StudioStoryboard` to the `ScrollExperience` JSON structure.
+- `[MODIFY] apps/web/src/components/scroll-experience/adapters/StoryboardAdapter.tsx`: Updated to beautifully render the proxy image, shot metadata, and action/dialogue text.
+- `[MODIFY] apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx`: Added an "Open in Review Mode" anchor link next to the Aspect Ratio dropdown.
+- `[MODIFY] apps/quipsly/src/app/(app)/create/actions.ts`: Cleaned up a rogue syntax error blocking the Quipsly workspace build.
+
+**Demo Route:**
+- `/review/[storyboardId]`
+
+**How this abstraction maps to future content outputs:**
+The `apps/web/src/components/scroll-experience/types.ts` exposes an `ExperienceType` ('STORYBOARD' | 'COURSE' | 'PHOTOGRAPHY' | 'LORELIST' | 'COMIC'). To support a mobile SCORM course, we simply create a Next.js route that queries a Quipsly Document, chunks it by headings (Groups) and paragraphs/quizzes (Panels), and passes it to the exact same `<ScrollExperienceEngine>`. The engine's geometry and gesture recognition remains identical, while the newly registered `CourseAdapter` handles the visual display.

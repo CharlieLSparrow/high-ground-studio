@@ -12,20 +12,20 @@ import {
   summarizeAnnotationEventLog,
   validateAnnotationEvent,
   validateAnnotationEventLog,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
 import {
   createCollaborationCheckpointFromClient,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 import {
   createCollaborationClients,
   createSyntheticCollaborationDocument,
   exportCollaborationSnapshot,
   summarizeCollaborationDocument,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   applySyntheticSpanTag,
   listSyntheticSpanTags,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
 
 const firstBlockId = "synthetic-collab-block-1";
 

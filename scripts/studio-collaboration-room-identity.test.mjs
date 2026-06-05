@@ -6,11 +6,11 @@ import {
   createEmptyAnnotationEventLog,
   createReviewNoteCreatedEvent,
   createReviewNoteStatusChangedEvent,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-event-log.ts";
 import {
   createMaterializedAnnotationStateFromEventLog,
   createMaterializedAnnotationStateReference,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-state.ts";
 import {
   attachAnnotationStreamToRoom,
   canParticipantCreateCheckpoint,
@@ -20,15 +20,15 @@ import {
   createSyntheticCollaborationRoomIdentity,
   summarizeCollaborationRoomIdentity,
   validateCollaborationRoomIdentity,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-room-identity.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-room-identity.ts";
 import {
   createCollaborationClients,
   createSyntheticCollaborationDocument,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   applySyntheticSpanTag,
   listSyntheticSpanTags,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-span-model.ts";
 
 function createMaterializedReference() {
   const [charlie] = createCollaborationClients(

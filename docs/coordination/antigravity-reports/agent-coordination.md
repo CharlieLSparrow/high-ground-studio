@@ -248,3 +248,42 @@ Risks:
 
 Recommended next handoff:
 - Codex/release captain to run the recommended `ripgrep` pre-deploy report scan command to check for active blockers.
+
+## 2026-06-05 15:15 local - AG-Agent-Coordination (Beta Prompt 1: Plan)
+
+Prompt summary:
+Evaluate lane beta-readiness and propose the highest-leverage Prompt 2 "Do" pass for the AG-Agent-Coordination lane.
+
+1. **Current beta readiness**: Keep. The coordination process itself is internal but essential for the beta launch.
+2. **Biggest beta blocker in your lane**: Verbose, non-standardized reports from 14 sibling lanes that make it difficult for the Release Captain (Codex) to safely know what routes/features to hide or deploy.
+3. **The highest-leverage “Do pass” you recommend for Prompt 2**: Create a `BETA-MANIFEST.md` generation process. I will do a pass over all 14 sibling reports to normalize their beta plans, extract their "Hide/Keep" decisions, and produce a single master Beta Manifest checklist that Codex can use for the final deploy round without missing any hidden routes.
+4. **Files/routes/models you expect to touch**: `docs/coordination/BETA-MANIFEST.md`, and potentially formatting headers in `docs/coordination/antigravity-reports/*.md`.
+5. **Risks and rollback plan**: Risk is low as it's documentation-only. Rollback is deleting the manifest.
+6. **What should be owner-only/internal for beta**: All coordination documentation (the entire `docs/coordination` folder) must remain out of the public repo or publishing packets.
+7. **What a beta user should be able to successfully do after your pass**: They won't see this directly, but this pass guarantees they won't stumble into unsafe, unfinished features because Codex will have a rigorous map of exactly what to hide.
+8. **Any schema, auth, deployment, or cross-lane dependency you need Codex/Product Owner to approve**: I need approval to be the designated parser of the other 14 lanes' Prompt 1 outputs.
+
+Recommended Prompt 2 for my lane:
+"Read the beta plans from all 14 sibling lane reports. Synthesize their 'hide/keep' route decisions, schema changes, and dependencies into a single, highly readable `docs/coordination/BETA-MANIFEST.md` checklist. Ensure every unfinished feature has a concrete action item for the Release Captain to hide it safely."
+
+## 2026-06-05 15:31 local - AG-Agent-Coordination (Beta Prompt 2: Do)
+
+Prompt summary:
+Make the Marginalia coordination system boringly reliable for the Beta push by creating the Beta Manifest, ensuring consistent lane names, updating rules for schema/route changes, and explicitly welcoming bold proposals.
+
+Files changed:
+- [NEW] [BETA-MANIFEST.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/BETA-MANIFEST.md)
+- [MODIFY] [antigravity-agent-board.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/antigravity-agent-board.md)
+- [MODIFY] [agent-coordination.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/antigravity-reports/agent-coordination.md)
+
+Files intentionally avoided:
+- Sibling reports (lanes will update their own rows in the manifest).
+
+Validation run:
+- N/A (Documentation updates).
+
+Risks:
+- Integration risk: Sibling lanes might forget to update `BETA-MANIFEST.md` or might invent new lane names. The board strictly instructs them to use the table and the exact 15 lane names.
+
+Recommended next handoff:
+- Codex to dispatch Beta Prompt 2 to all other lanes, instructing them to execute their beta passes and update their rows in `BETA-MANIFEST.md` upon completion.

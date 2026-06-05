@@ -103,10 +103,10 @@ console.log(
   "It does not run Cloud Build, deploy Cloud Run, create resources, change IAM, change DNS, mutate secrets, or touch databases.",
 );
 
-checkFile("apps/studio/Dockerfile");
+checkFile("apps/quipsly/Dockerfile");
 checkFile("cloudbuild.studio.yaml");
 checkFile(".dockerignore");
-checkFile("apps/studio/src/app/api/health/route.ts");
+checkFile("apps/quipsly/src/app/api/health/route.ts");
 checkFile("docs/runbooks/studio-cloud-run.md");
 checkFile("docs/architecture/platform-service-boundaries.md");
 checkFileContains(".env.example", [

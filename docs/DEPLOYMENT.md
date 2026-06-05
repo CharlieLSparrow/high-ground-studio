@@ -18,10 +18,17 @@ We ran `tsc --noEmit` across all workspace projects to detect and fix any unhand
 - **QuipLore Public MVP**: The Next.js landing pages (`page.tsx`) and the 3D-ready video feed (`VideoSwipeFeed.tsx`) are now type-safe, properly utilizing the mocked APIs (`fetchAllQuotesMock`, `fetchQuipStream`) pending the final live backend deployment.
 
 ## Next Steps for Skippy
-The monorepo is now deployable. We can confidently push this to Vercel/production:
+The monorepo is now deployable. We can confidently push this to Vercel/Cloud Run:
 1. Run `pnpm install` in the CI pipeline.
-2. Ensure database migrations are current (`pnpm dlx prisma generate`).
+2. Ensure database migrations are current by running `pnpm prisma migrate deploy` and `pnpm dlx prisma generate`.
 3. Run `pnpm -r build`.
 4. Deploy `apps/quipsly` and `apps/quiplore`!
+
+## Database Deployment Pipeline (Beta Posture)
+We have fully transitioned from `prisma db push` to `prisma migrate deploy` to ensure **zero data loss** during beta.
+- Never use `prisma db push` on the production database.
+- Schema changes should generate a migration via `pnpm prisma migrate dev --name <migration_name>` locally.
+- Cloud Build automatically applies migrations before deploying the Next.js apps using the `cloudbuild.prisma-migrate.yaml` pipeline.
+- **Rollback**: In the event of a catastrophic failure or bad migration, restore from the latest automated database snapshot before deploying a fix.
 
 Welcome to the future of Quipsly.

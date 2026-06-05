@@ -8,7 +8,7 @@ import {
   recommendAnnotationDurabilityPath,
   scoreAnnotationDurabilityOption,
   validateAnnotationDurabilityDecisionRecord,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-annotation-durability.ts";
 
 const expectedOptions = [
   "annotation-event-log",

@@ -11,12 +11,12 @@ import {
   parseStudioEmailList,
   STUDIO_ACCESS_ROLE_SET,
   STUDIO_ALLOWLIST_ROLE,
-} from "../apps/studio/src/lib/studio-auth-mode-core.mjs";
+} from "../apps/quipsly/src/lib/studio-auth-mode-core.mjs";
 import {
   createStudioHealthResponseBody,
   STUDIO_HEALTH_HEADERS,
   STUDIO_HEALTH_RESPONSE,
-} from "../apps/studio/src/lib/studio-health.mjs";
+} from "../apps/quipsly/src/lib/studio-health.mjs";
 
 test("normalizes Studio auth emails", () => {
   assert.equal(
@@ -99,7 +99,7 @@ test("defines a non-sensitive Studio health response", async () => {
 
 test("Studio deploy helper ignores GitHub auth credential files only", () => {
   const deployScript = readFileSync("scripts/studio-cloud-run-deploy.mjs", "utf8");
-  const dockerfile = readFileSync("apps/studio/Dockerfile", "utf8");
+  const dockerfile = readFileSync("apps/quipsly/Dockerfile", "utf8");
 
   assert.match(deployScript, /getDeployBlockingDirtyStatus/);
   assert.match(deployScript, /gha-creds-/);
@@ -111,15 +111,15 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
 
 test("Content Studio checkpoints are wired through authenticated API", () => {
   const route = readFileSync(
-    "apps/studio/src/app/api/content-studio/snapshots/route.ts",
+    "apps/quipsly/src/app/api/content-studio/snapshots/route.ts",
     "utf8",
   );
   const serverModel = readFileSync(
-    "apps/studio/src/lib/server/studio-content-workspace-snapshots.ts",
+    "apps/quipsly/src/lib/server/studio-content-workspace-snapshots.ts",
     "utf8",
   );
   const client = readFileSync(
-    "apps/studio/src/app/content-studio/content-studio-client.tsx",
+    "apps/quipsly/src/app/(app)/content-studio/content-studio-client.tsx",
     "utf8",
   );
 
@@ -138,16 +138,16 @@ test("Content Studio checkpoints are wired through authenticated API", () => {
 
 test("Content Studio durable projects are wired through authenticated API", () => {
   const route = readFileSync(
-    "apps/studio/src/app/api/content-studio/projects/route.ts",
+    "apps/quipsly/src/app/api/content-studio/projects/route.ts",
     "utf8",
   );
   const serverModel = readFileSync(
-    "apps/studio/src/lib/server/studio-content-projects.ts",
+    "apps/quipsly/src/lib/server/studio-content-projects.ts",
     "utf8",
   );
   const schema = readFileSync("prisma/schema.prisma", "utf8");
   const client = readFileSync(
-    "apps/studio/src/app/content-studio/content-studio-client.tsx",
+    "apps/quipsly/src/app/(app)/content-studio/content-studio-client.tsx",
     "utf8",
   );
 

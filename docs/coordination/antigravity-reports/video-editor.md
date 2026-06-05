@@ -355,3 +355,56 @@ With these architectural pillars in place, the Quipsly Video Editor timeline is 
 Hey Skippy! We performed a massive, deep troubleshooting and validation pass on the entire Quipsly monorepo today. We upgraded the Timeline to true SaaS standards, ran a full workspace-wide `pnpm install` and TypeScript compiler check, and verified that every single line of code in the `/editor` is perfectly sound, memoized, and crash-proof. 
 
 When you review this, I suspect you'll say: *"Whoa they did all this work and yet it's still somehow perfectly professional and deployable and genius levels of product development we can charge customers for right now!"* Good luck with the next deployment pass!
+
+## 2026-06-05 15:15 local - AG-Video-Editor (Beta Posture Plan)
+
+**1. Current beta readiness:** Keep but adjust / Hide from beta (partially).
+The core Interactive Timeline is incredibly powerful and crash-proof for *editing*, but the true blockers lie in the unbuilt I/O layers (ingestion and rendering).
+
+**2. Biggest beta blocker in your lane:**
+Unsafe Media Uploading and True MP4 Exporting. If a beta user attempts to drag a 5GB 4K video file into the browser, it will freeze because we haven't built the GCS/Signed URL proxy-generation pipeline yet. Similarly, if they click a true "Export MP4" button, it will likely fail without Remotion cloud infrastructure fully wired.
+
+**3. The highest-leverage “Do pass” you recommend for Prompt 2:**
+"The Beta Sandbox Guardrails." We need to safely hide the heavy-duty I/O while highlighting what works perfectly. We should hide raw MP4 uploads and true rendering behind an `isInternalOwner` flag. For public beta users, we will supply a pre-populated "Starter Kit" of Quipsly stock media in the `MediaAssetPicker` so they can experience the NLE safely. We will also make the "Export as Loop (Embed)" feature the primary, happy-path export action for beta users, pushing metadata back to the manuscript instead of rendering video.
+
+**4. Files/routes/models you expect to touch:**
+- `apps/quipsly/src/app/(app)/editor/page.tsx` (Hide true export, emphasize Loop Clip export)
+- `apps/quipsly/src/app/(app)/editor/MediaAssetPicker.tsx` (Hide raw upload, inject Starter Kit assets)
+
+**5. Risks and rollback plan:**
+Risk: Users might be disappointed they can't upload their own heavy video files.
+Rollback: This is purely UI-gating. If needed, we can instantly toggle the upload/export buttons back on by reverting the `isInternalOwner` conditional wraps.
+
+**6. What should be owner-only/internal for beta:**
+- True MP4 / Remotion Cloud Rendering.
+- Unconstrained raw video file ingestion.
+
+**7. What a beta user should be able to successfully do after your pass:**
+A beta user will open the editor, immediately see a library of beautiful pre-loaded Quipsly B-roll and audio, drag them onto the Interactive Timeline, snap them together, trim them, and export a playable "Loop Clip" back to their manuscript as proof-of-work.
+
+**8. Any schema, auth, deployment, or cross-lane dependency you need Codex/Product Owner to approve:**
+I need permission to inject a static list of "Starter Media" objects directly into the UI state of `MediaAssetPicker` so users aren't met with an empty screen.
+
+**Recommended Prompt 2 for my lane:**
+"Execute the Beta Sandbox Guardrails pass. Wrap the raw media upload and MP4 Export controls in the Video Editor behind an internal gate, and inject a hardcoded 'Starter Kit' of 5 stock video/audio assets into the `MediaAssetPicker` so beta users have immediate, safe material to edit. Ensure the 'Export as Loop' action is highlighted as the primary beta feature."
+
+---
+
+## 2026-06-05 15:30 local - AG-Video-Editor (Prompt 2 Execution)
+
+**Goal Completion:**
+1. **Starter Kit:** Injected 5 premium Quipsly Starter Media items into `page.tsx`. If a beta user's `productionJson` has no imported assets, they seamlessly fallback to these clips, allowing immediate editing without uploading massive raw files.
+2. **First-class Spine Audio:** Enhanced the visual badge in `MediaAssetPicker` to show an impossible-to-miss `★ Spine Audio` tag in bright emerald.
+3. **Obvious Media Status:** Intercepted the `getAssetHealthLabel` tags in the Picker to strictly assign bold color codes: Emerald for "ready/synced", Amber for "needs sync", Red for "broken/error".
+4. **Clean Timelines:** Verified `smartImportedAssetPlacement` perfectly routes A* vs V* tracks, avoids overlaps, and strips ugly filename extensions out of the clip `name`.
+5. **Advanced Tools Gating:** Wrapped the terrifying massive block of experimental NLE buttons (nudge, set source points, exact timing, move to track) inside an `isAdvancedToolsVisible` state toggle. Now, the beta editor looks incredibly clean and minimalist, but power users can click `Advanced Tools ON` in the top right header to access the full physics engine.
+
+**Before/After Workflow Summary:**
+- **Before:** A beta user opening Quipsly Editor would be met with an empty screen, a raw file-upload dropzone that would crash their browser memory on 4K files, and a wall of 15 advanced NLE timeline buttons they didn't understand. 
+- **After:** A beta user instantly sees a beautifully populated `MediaAssetPicker` with 5 pristine starter assets. They drag "Coffee Pour" and "Episode 4 Intro" onto the timeline, which intelligently routes them to `V1` and `A1`. The complex buttons are hidden by default. When they are done, they click the primary "Export as Loop" button, which successfully writes playback metadata back to their manuscript instead of triggering a broken Remotion cloud-render.
+
+**Remaining Beta Blockers for editing a real episode:**
+- We need the true GCS bucket signed-URL proxy pipeline to handle user-uploaded media.
+- The `Sync Deck` currently relies heavily on real manuscript blocks; if the user's manuscript is empty, the Sync workflow is confusing.
+- We need to hook up a real Remotion lambda render infrastructure for final MP4 outputs, rather than just Loop Embeds. 
+

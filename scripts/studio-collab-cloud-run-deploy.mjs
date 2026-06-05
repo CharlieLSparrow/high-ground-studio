@@ -82,7 +82,7 @@ function buildImageWithDocker() {
   run("docker", [
     "build",
     "--file",
-    "apps/studio-collab/Dockerfile",
+    "apps/quipsly-collab/Dockerfile",
     "--tag",
     imageUri,
     ".",
@@ -220,7 +220,7 @@ if (previousImage) {
 }
 
 if (process.env.SKIP_LOCAL_CHECKS !== "1") {
-  run("node", ["--check", "apps/studio-collab/server.mjs"]);
+  run("node", ["--check", "apps/quipsly-collab/server.mjs"]);
   run("pnpm", ["studio:cloudrun:test"]);
 }
 

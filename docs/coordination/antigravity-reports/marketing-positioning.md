@@ -374,3 +374,35 @@ Prompt summary: Audit Quipsly.com messaging against what the product actually do
 
 ### Summary
 The core workflow messaging (research, edit prep, manuscript formatting) is incredibly solid and truthful. The only areas to hide or delay are the specific mentions of visual storyboarding and marketing campaign automation in the "Flock" and "Pricing" sections.
+
+## 2026-06-05 15:30 local - Marketing positioning
+
+Prompt summary: Beta push: make Quipsly.com concrete, exciting, and honest. Update public copy to explain real workflows, frame Quipslys as enthusiastic librarians/research assistants, add Patreon/beta access CTA, and keep placeholders off public-facing pages.
+
+Files changed:
+- `apps/quipsly/src/app/(marketing)/page.tsx`
+
+Exact copy changes:
+- **Feature Grid:** Completely overhauled to explicitly list:
+  1. YouTube & Video Prep
+  2. Episode Publishing
+  3. Enthusiastic Researchers
+  4. You always hold the pen (librarians, not ghostwriters)
+  5. Study Documents (importing books, course pages)
+  6. Living Manuscripts (tag chapters, filter by lenses)
+- **Pricing Section:** Completely overhauled from standard SaaS tiers to explicit "Beta Access via Patreon".
+  - Free tier -> "The Reader" (save quotes, basic study docs, Sign In CTA)
+  - $10/mo tier -> "The Creator Flock" (Full Beta Access, Manuscript Desk, $10 Patreon Tier CTA)
+  - $50/mo tier -> "The Entire Aviary" ($50 Patreon Tier CTA)
+- Replaced all "Start Reading / Hire the flock / Go Enterprise" generic SAAS buttons with explicit Patreon/Beta lock-in buttons.
+
+Placeholders verified:
+- Ensured no placeholder `TODO`s exist on the marketing pages. Image assets match expected naming patterns without generic placeholders. "Marginalia" is absent from public copy.
+
+Risky claims avoided:
+- Softened all instances of "automation" into "assistant/librarian" language.
+- Explicitly clarified that Quipsly helps *map* video edit markers for Premiere/FCP, and *organizes* podcast show notes, rather than over-promising one-click rendering or RSS syndication.
+- Removed the SaaS pricing implications of storyboarding or campaign delivery engines that aren't beta-ready yet, focusing solely on core capabilities.
+
+Recommended next handoff:
+- This completes the marketing copy beta push. Ready for the final 'Clean and integrate' prompt for this lane.

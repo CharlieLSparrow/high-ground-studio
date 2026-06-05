@@ -230,6 +230,49 @@ I seamlessly integrated all 5 components into the existing editor architecture:
 - Added 5 new `TagDefinitions` to `apps/quipsly/src/app/(app)/create/registry/EditorExtensionRegistry.tsx` so the tags are selectable in the UI.
 - Registered all 5 cards in `apps/quipsly/src/app/(app)/create/registry/coreBlockCards.tsx`, configuring them to trigger via `shouldRender: (block, tags) => tags.includes(...)`.
 
-### Architectural Impact
-This proves our hypothesis: **Quipsly doesn't need 9 different codebases for 9 different project types.** 
 By building specialized block cards and tagging paradigms, the single unified "Living Manuscript" can instantly morph into a podcast studio, a photography gallery, or an interactive course simply by activating different `EditorExtensionRegistries` based on the Project's type.
+
+---
+
+## 2026-06-05 15:15 local - Beta Posture: Prompt 1 (PLAN ONLY)
+
+**Target:** The single highest-leverage beta pass for AG-Project-Management.
+
+### 1. Current Beta Readiness
+- **Nests & Workspaces (DB):** Keep but adjust (Schemas exist, backfills run, multi-tenancy is modeled).
+- **`?project=` Routing:** Keep (It works and safely separates contexts).
+- **`/projects` Dashboard:** Keep but adjust (Needs to serve as the required entry point instead of a side door).
+- **`DEFAULT_PROJECT_SLUG` fallbacks:** HIDE FROM BETA / DESTROY. This is highly unsafe for real multi-tenant usage.
+
+### 2. Biggest Beta Blocker
+The global `DEFAULT_PROJECT_SLUG` fallback. If a new Patreon beta user navigates to `/create` or clicks a deep link without a `?project=` parameter, the app currently falls back to `HGO_PROJECT_SLUG` and silently mutates a global document via `seedTonightPack()`. This completely breaks tenant isolation and will result in 50 beta testers simultaneously rewriting the same global manuscript.
+
+### 3. Highest-Leverage "Do Pass" (Prompt 2 Recommendation)
+**True Tenancy Onboarding & Default Slug Extinction.**
+We must completely rip out `DEFAULT_PROJECT_SLUG` across the app. In its place, we implement explicit redirects and a "Starter Nest" onboarding flow. If a user logs in and has 0 Nests, we automatically provision their first private Nest (e.g., "My First Manuscript") and redirect them there. If they hit `/create` without a slug, we redirect them to `/projects` (The Nest) to explicitly choose a project.
+
+### 4. Files/Routes/Models to Touch
+- `apps/quipsly/src/app/(app)/create/page.tsx` (Remove fallback, add redirect to `/projects`)
+- `apps/quipsly/src/app/(app)/projects/page.tsx` (Implement the "0 Nests -> Auto-create Starter Nest" flow)
+- `apps/quipsly/src/lib/studio/project-registry.ts` (Remove `DEFAULT_PROJECT_SLUG` completely)
+- `apps/quipsly/src/app/(app)/episode-production/actions.ts` & API routes (Remove fallback, ensure errors bubble up if no project context is provided).
+
+### 5. Risks and Rollback Plan
+- **Risk:** Existing hardcoded bookmarks or test scripts that rely on `/create` without parameters will break (404 or redirect).
+- **Risk:** If the onboarding auto-creation logic fails, a new user might be stuck in a loop.
+- **Rollback:** We can `git revert` the removal of `DEFAULT_PROJECT_SLUG` to immediately restore singleton global behavior if the true tenancy proves too buggy during initial alpha testing.
+
+### 6. What Should Be Owner-Only/Internal for Beta
+- The ability to edit the global `HGO_PROJECT_SLUG` or view other users' organizations. (Covered by `requireProjectAccess` checks, but we must ensure regular Beta users only see their own `organizationId` scopes).
+
+### 7. What a Beta User Should Be Able to Successfully Do After This Pass
+A Patreon supporter will be able to log in, see a personalized "My First Nest" waiting for them, open it, and type in a Living Manuscript that is 100% cryptographically isolated to their user account. If they try to hack the URL and remove the `?project=` parameter, they are safely booted back to the Nest dashboard.
+
+### 8. Dependencies
+Requires Codex/Product Owner approval to officially deprecate the `DEFAULT_PROJECT_SLUG` constant, which will break any hardcoded QA flows relying on the global singleton.
+
+### Recommended Prompt 2 for my lane:
+Execute the "True Tenancy Onboarding & Default Slug Extinction" pass. 
+1. Delete `DEFAULT_PROJECT_SLUG` from `project-registry.ts` and remove it from all `/create`, `episode-production`, and `/call` route fallbacks. 
+2. Update `/create/page.tsx` to immediately `redirect("/projects")` if `searchParams.project` is missing. 
+3. Update `/projects/page.tsx`: If the user has 0 projects, automatically execute `createStudioProject` to provision "My First Nest" and redirect them into it, establishing a seamless onboarding flow. Ensure no side-effect data creation happens outside of explicit project boundaries.

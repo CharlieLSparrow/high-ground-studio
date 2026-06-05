@@ -2242,11 +2242,12 @@ model MembershipReconciliation {
 
 model RetrievalEmbedding {
   id              String   @id @default(cuid())
-  sourceOrigin    String   // "studio-span" | "studio-knowledge" | "quipsly-lore"
-  sourceId        String   // The ID of the block/node
+  sourceOrigin    String // "studio-span" | "studio-knowledge" | "quipsly-lore"
+  sourceId        String // The ID of the block/node
   projectId       String
-  contentSnapshot String   // The text that was embedded
+  contentSnapshot String // The text that was embedded
   createdAt       DateTime @default(now())
+
   @@index([projectId])
 }
 
@@ -2263,8 +2264,8 @@ model StudioStoryboard {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project     StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  frames      StudioStoryboardFrame[]
+  project StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  frames  StudioStoryboardFrame[]
 
   @@index([projectId])
 }
@@ -2287,7 +2288,7 @@ model StudioStoryboardFrame {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  storyboard        StudioStoryboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+  storyboard StudioStoryboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
 
   @@index([storyboardId, sortOrder])
 }
@@ -2350,7 +2351,7 @@ model StudioAssistantAction {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  session StudioAssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session StudioAssistantSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   ledgers StudioAssistantLedger[]
 
   @@index([sessionId, createdAt])

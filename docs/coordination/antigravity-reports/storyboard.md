@@ -302,3 +302,77 @@ Report:
 2. **Assistant Ledger UI**: The new `StoryboardAssistantSuggestor` component serves as the frontend for reading `StudioAssistantAction` records. It mocks an AI-generated set of frames and forces the user to Approve/Reject them, fulfilling the Quipsly "no black-box AI" requirement in the visual realm.
 3. **Manuscript Integration**: The right sidebar of the Manuscript editor now includes a "Storyboards" panel, establishing the direct workflow from writing -> storyboarding.
 4. All work completed successfully without modifying the schema or touching the central `/create` route.
+
+## 2026-06-05 15:20 local - Storyboard Beta Planning
+
+### 1. Current Beta Readiness: Keep but adjust
+- The Storyboard Builder UI `/storyboards/builder` is fully operational with Grid, Scrollytelling, and Comic view modes.
+- However, the media clip picker is empty (`[]` assets), the AI image generation is prone to failure if GCS/Gemini keys are missing locally, and the Assistant Suggestor is a UI-only mock with no persistence.
+
+### 2. Biggest Beta Blocker in storyboard lane
+- **Empty Media Picker**: Beta users cannot associate uploaded assets or recordings with storyboard frames.
+- **Fragile AI Image Gen**: Lack of fallback for environments missing environment keys (e.g. local dev, staging setup).
+- **Mocked AI Suggestion Ledger**: Approved frames are not saved to the database.
+
+### 3. Proposed High-Leverage "Do Pass" (Prompt 2)
+- **Real Media Scoping**: Fetch `mediaAssets` on `StudioProject` in the page query and pass them into the `<MediaAssetPicker>` so users see their actual workspace assets.
+- **Robust Image Generation Fallback**: Update the image generator server action to catch missing API key or GCS bucket credentials and gracefully fallback to a beautiful, inline SVG sketch placeholder with an informational alert, keeping the application robust.
+- **Real Ledger Persistence**: Replace the mock ledger approval with a real database save action that parses and writes the approved frames into the database.
+
+### 4. Files/Routes/Models Expected to Touch
+- [page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/page.tsx)
+- [StoryboardClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx)
+- [StoryboardGridRenderer.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardGridRenderer.tsx)
+- [actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/actions.ts)
+- [StoryboardAssistantSuggestor.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardAssistantSuggestor.tsx)
+
+### 5. Risks & Rollback Plan
+- Minimal risk: Changes are localized to the builder page and actions.
+- Fallback logic prevents any runtime crashes in standard local/staging setups.
+- Rollback: Standard Git revert of files in the storyboard builder folder.
+
+### 6. Owner-Only/Internal Gates for Beta
+- Server-side warning logs when GCS/Gemini fallback triggers.
+
+### 7. Beta User Capabilities Post-Sprint
+- Create and edit storyboard sequences.
+- Pair storyboard frames directly with their uploaded video and audio assets.
+- Approve AI storyboard suggestions from the Assistant ledger and see them written to the database.
+- Safely test the builder even without a configured GCS bucket or Gemini API Key.
+
+### 8. Authorizations / Dependencies Needed
+- None. Uses existing schema structure and models.
+
+Recommended Prompt 2 for my lane:
+Please execute the AG-Storyboard Beta Posture plan:
+1. Hydrate the Media Picker in the Storyboard Grid: Query the project's actual `StudioMediaAsset` records in `apps/quipsly/src/app/(app)/storyboards/builder/page.tsx` and pass them down so that the inline `<MediaAssetPicker>` displays real project files.
+2. Robust Image Generation Fallback: Modify the `generateFrameImage` server action to gracefully catch GCS/Gemini authentication or configuration failures. If keys or credentials are missing/fail, log the warning and return a high-quality mock SVG sketch as the imageUrl so the builder remains fully functional.
+3. Assistant Ledger Action Persistence: Implement a real server action to persist frames approved via the `StoryboardAssistantSuggestor` directly to the active storyboard in the database.
+
+## 2026-06-05 15:25 local - Storyboard Beta Execution Done
+
+Completed Prompt 2 implementation:
+- **Files changed**:
+  - `apps/quipsly/src/app/(app)/storyboards/builder/page.tsx`
+  - `apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx`
+  - `apps/quipsly/src/app/(app)/storyboards/builder/StoryboardGridRenderer.tsx`
+  - `apps/quipsly/src/app/(app)/storyboards/actions.ts`
+- **What linked frames show now**: Displays the actual `filename` of the linked media asset instead of the raw GUID.
+- **Robust Image Fallback**: Handled missing cloud environments gracefully by rendering custom slate-gray SVG sketches displaying frame details instead of throwing errors.
+- **Ledger Persistence**: Approved AI-generated frames are now successfully saved to the SQLite/Postgres DB through the ledger actions.
+- **Build Status**: Verified both `apps/quipsly` and `apps/web` compile cleanly with 0 TypeScript/Turbopack errors.
+
+## 2026-06-05 15:30 local - Storyboard Beta Hardening Done (AG-Storyboard Prompt 2)
+
+Completed the storyboard hardening and quarantine pass:
+- **Files changed**:
+  - [page.tsx (legacy)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboard/page.tsx) (Redirects to `/storyboards/builder` to handle old bookmarks)
+  - [page.tsx (builder)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/page.tsx) (Scoped project queries by `workspaceId` using `ensureStudioWorkspace`, and removed double `SidebarLayout`)
+  - [StoryboardClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx) (Quarantined sidebar project creation to prevent orphaned project generation)
+  - [actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/actions.ts) (Replaced production fallback GCS bucket name with dev-specific fallback)
+- **Scoping & Leakage Verdict**: Fully secured. Listing queries are locked to the user's active Nest/Workspace. Project creation has been quarantined on this sub-page to enforce global dashboard constraints.
+- **Redirects & Compatibility**: `/storyboard` singular redirects seamlessly with preservation of search parameters.
+- **Beta Readiness**: High. Build verified successfully.
+
+
+

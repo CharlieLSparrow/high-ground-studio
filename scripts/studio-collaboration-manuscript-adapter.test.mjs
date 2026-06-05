@@ -8,22 +8,22 @@ import {
   createSyntheticCollaborationDocument,
   summarizeCollaborationDocument,
   syncCollaborationClients,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-lab-model.ts";
 import {
   createCollaborationCheckpointFromClient,
   importCollaborationCheckpointToClient,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-checkpoint-bridge.ts";
 import {
   compareCollaborationCheckpointToManuscriptDraft,
   createCollaborationCheckpointFromSyntheticManuscriptDraft,
   createSyntheticManuscriptDraftFromCollaborationCheckpoint,
   summarizeSyntheticManuscriptDraftAdapterPayload,
   validateSyntheticManuscriptDraftAdapterPayload,
-} from "../apps/studio/src/app/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/collaboration-lab/studio-collaboration-manuscript-adapter.ts";
 import {
   collectBlockSummaries,
   safeManuscriptDraft,
-} from "../apps/studio/src/app/manuscript/manuscript-editor-model.ts";
+} from "../apps/quipsly/src/app/(app)/manuscript/manuscript-editor-model.ts";
 
 const firstBlockId = "synthetic-collab-block-1";
 const secondBlockId = "synthetic-collab-block-2";
