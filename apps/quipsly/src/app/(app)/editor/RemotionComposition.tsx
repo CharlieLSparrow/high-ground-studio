@@ -80,7 +80,7 @@ function sortComposureClips(clips: TimelineClip[]) {
   });
 }
 
-export const RemotionComposition = ({ timeline }: RemotionCompositionProps): JSX.Element => {
+export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
   const orderedClips = sortComposureClips(timeline.clips);
 
   return (
