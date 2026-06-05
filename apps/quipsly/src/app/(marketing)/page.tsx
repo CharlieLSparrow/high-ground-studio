@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { Feather, Leaf, BookOpen, Heart, Sparkles, Wand2, TreePine, FileText, Send, HelpCircle, Map, Lock, Star, ChevronDown, Check } from "lucide-react";
+import { Feather, Leaf, BookOpen, Heart, Sparkles, Wand2, TreePine, FileText, Send, HelpCircle, Map, Lock, Star, ChevronDown, Check, Video, Mic, Shield, Share2, Gift, Bookmark, Film, MessageSquare, ImageIcon } from "lucide-react";
 
 export default function QuipslyLandingPage() {
   const [email, setEmail] = useState("");
@@ -86,11 +86,11 @@ export default function QuipslyLandingPage() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#3d2618] leading-[1.1]">
-              Hello there! <br/>We're here to help you build your nest.
+              Meet your AI research assistants. <br/><span className="text-3xl md:text-5xl text-[#a96735] font-serif block mt-4">(We do the digging. You do the dreaming.)</span>
             </h1>
             
             <p className="text-lg md:text-xl text-[#8c552e] leading-relaxed max-w-lg font-sans">
-              We are the Quipslys—a flock of curious, loyal little birds. We know you have so many wonderful ideas, stories, and words worth keeping. We'd love to organize them for you and help bring your creative projects to life!
+              We are the Quipslys—a flock of curious, loyal little birds built for authors, podcasters, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your desk. We are happy to draft examples or format notes, but we will never black-box write your content. We gather the knowledge so you can create the wisdom.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4 font-sans" id="waitlist">
@@ -159,13 +159,18 @@ export default function QuipslyLandingPage() {
           <div className="inline-block p-4 bg-white rounded-full mb-4 border border-[#e8d0b5] shadow-sm rotate-3">
              <Heart className="w-8 h-8 text-[#a96735] fill-[#a96735]/20" />
           </div>
-          <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight">We believe in a meaning layer.</h2>
+          <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight">Curing Systems Anxiety.</h2>
           <p className="text-xl text-[#8c552e] leading-relaxed font-sans">
-            The internet is loud. It's full of neon dopamine cannons and aggressive gamification that makes you feel bad if you miss a day. <strong>We don't like that.</strong>
+            Most Generative AI wants to do the human part of creativity—like writing your novel or designing your art—while leaving you to do all the tedious admin work. <strong>We think that's exactly backwards.</strong>
           </p>
           <p className="text-xl text-[#8c552e] leading-relaxed font-sans">
-            We built Quipsly to be a quiet, cozy place. A living archive of human wisdom where words are treated with respect, sources are rigorously verified, and your private creativity is treated like a fragile egg in a safe nest. We are your golden-retriever librarians—here to help, never to push.
+            Quipslys are built to cure <em>Systems Anxiety</em>. We love doing the heavy lifting, the deep digging, and the administrative organizing. We gather and organize the knowledge so you can create the wisdom. We are your golden-retriever research assistants—here to handle the citations, the lore bibles, and the tedious busywork so you can do what humans do best: write, dream, and create.
           </p>
+          <div className="pt-4 font-sans">
+            <a href="/philosophy/systems-anxiety" className="inline-flex items-center justify-center font-bold text-[#a96735] hover:text-[#8c552e] underline underline-offset-4 transition-colors">
+              Read our full thesis on Systems Anxiety &rarr;
+            </a>
+          </div>
         </div>
 
         {/* Feature Narrative Grid */}
@@ -173,7 +178,7 @@ export default function QuipslyLandingPage() {
           <div className="text-center mb-16 space-y-4">
              <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight">How can we help today?</h2>
              <p className="text-lg text-[#8c552e] max-w-2xl mx-auto font-sans">
-               Instead of wrestling with complicated software, just tell us what you're working on. We'll scurry around the margins gathering references, drawing pictures, and organizing your thoughts into a beautiful nest.
+               Instead of wrestling with complicated software, just tell us what you're researching. We'll scurry around the margins of your manuscript gathering references, drawing pictures, and organizing your thoughts into a beautiful nest.
              </p>
           </div>
 
@@ -181,67 +186,119 @@ export default function QuipslyLandingPage() {
             <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#fae0b8]/30 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
               <div className="w-14 h-14 rounded-full bg-[#fdf5eb] flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <Wand2 className="w-7 h-7 text-[#a96735]" />
+                <Video className="w-7 h-7 text-[#a96735]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll sketch your storyboards.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll prep your video edits.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Give us your script, and we'll happily draw up vivid shot lists and cinematic frame previews. We love imagining the pictures that go with your words before you even pick up a camera.
-              </p>
-            </div>
-
-            <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#617c4d]/5 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
-              <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <TreePine className="w-7 h-7 text-[#617c4d]" />
-              </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll tend your Manuscript Desk.</h3>
-              <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Write seamlessly while we sit on the edge of your desk, holding your character bibles and world lore. We'll make sure every reference is exactly where you need it, when you need it.
-              </p>
-            </div>
-
-            <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#dc982f]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
-              <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <Send className="w-7 h-7 text-[#dc982f]" />
-              </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll deliver your messages.</h3>
-              <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Let us fly your marketing campaigns to the world. We can simulate audience personas, design custom funnels, and test your email sequences so your message always lands safely.
+                Import your raw clips, and we'll help you find the best moments. We'll sync them with your episode manuscript and help you map out edit markers so you can cut faster.
               </p>
             </div>
 
             <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#617c4d]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <Map className="w-7 h-7 text-[#617c4d]" />
+                <Mic className="w-7 h-7 text-[#617c4d]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll organize your Lorelists.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll structure your podcast.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                You can build sequences of quotes around a theme, mood, or book. We'll weave them into beautiful "Nests" or "Lorelists" that feel like a curated playlist of human wisdom.
+                Write your show notes in one living manuscript. We'll help tag chapters, organize audio clips, and keep your recording sessions perfectly on track.
+              </p>
+            </div>
+
+            <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#dc982f]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+              <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
+                <BookOpen className="w-7 h-7 text-[#dc982f]" />
+              </div>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll dig up the receipts.</h3>
+              <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
+                Need a historical quote or a specific stat? We'll scour the archives to find perfect examples and context, always returning with verified sources and exact citations.
+              </p>
+            </div>
+
+            <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#617c4d]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
+              <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
+                <Shield className="w-7 h-7 text-[#617c4d]" />
+              </div>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">You always hold the pen.</h3>
+              <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
+                We might draft examples or format references, but we never black-box write your content. Every suggestion is fully inspectable, approvable, and completely reversible.
               </p>
             </div>
 
             <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#7d5b86]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <Lock className="w-7 h-7 text-[#7d5b86]" />
+                <Share2 className="w-7 h-7 text-[#7d5b86]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll verify your sources.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll pack for publishing.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                We despise fake internet quotes! Before we add a quote to the public QuipLore archive, we rigorously track down the exact page, episode, and speaker so you can trust every word.
+                When your masterpiece is ready, we'll help you organize the metadata and copy you'll need for your YouTube descriptions, podcast show notes, and social media clips.
               </p>
             </div>
 
             <div className="bg-[#fffaf1] border border-[#e8d0b5] p-8 rounded-[2rem] hover:shadow-xl hover:-translate-y-2 transition-all duration-300 group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#c96b1c]/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-110" />
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
-                <Star className="w-7 h-7 text-[#c96b1c]" />
+                <Map className="w-7 h-7 text-[#c96b1c]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll craft your Quip Cards.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">We'll organize your Lore.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Want to share a favorite sentence on social media? We'll hand-press beautiful shareable cards with full attribution, making sure the author's legacy is respected.
+                Build sequences of quotes around a theme, mood, or book. We'll weave them into beautiful "Nests" or "Lorelists" that feel like a curated playlist of human wisdom.
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Unified Platform Pitch */}
+        <div className="max-w-7xl mx-auto mt-32 bg-[#3d2618] text-[#fdf5eb] rounded-[3rem] p-12 lg:p-16 relative overflow-hidden shadow-2xl">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-[#a96735]/20 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#c96b1c]/20 rounded-full blur-3xl -ml-10 -mb-10 pointer-events-none" />
+          
+          <div className="relative z-10 max-w-3xl mx-auto text-center mb-16 space-y-6">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-[#fdf5eb]">One source. Many outputs.</h2>
+            <p className="text-lg md:text-xl text-[#e8d0b5] font-sans leading-relaxed">
+              Tired of copying your manuscript into five different tools just to publish an episode? Write, research, and organize your core ideas once in your Nest. Your Quipsly will then help you map that single source of truth into native formats across all your channels.
+            </p>
+          </div>
+
+          <div className="relative z-10 grid grid-cols-2 md:grid-cols-3 gap-6 font-sans">
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <Mic className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Podcast Episode Pages</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <Video className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">YouTube, Reels & Shorts</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <Film className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Social Clips & GIFs</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <MessageSquare className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Quote Cards & Feeds</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <FileText className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Articles & Blog Posts</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <BookOpen className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Courses & Mobile Lessons</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <Bookmark className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Books & Kindle Prep</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <Gift className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Patreon Packages</span>
+            </div>
+            <div className="bg-[#4a2e1c]/50 border border-[#a96735]/30 p-6 rounded-2xl flex flex-col items-center text-center gap-3 hover:bg-[#a96735]/20 transition-colors">
+              <ImageIcon className="w-8 h-8 text-[#f4dab0]" />
+              <span className="font-bold text-sm">Scroll Stories & Comics</span>
             </div>
           </div>
         </div>
@@ -361,26 +418,42 @@ export default function QuipslyLandingPage() {
            <div className="space-y-4">
               <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">
                  <h4 className="font-bold text-[#3d2618] flex items-center gap-3">
-                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> What exactly is a Quipsly?
+                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> Does Quipsly write for me?
                  </h4>
                  <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
-                   We are a species of helpful little keeper-birds! We collect tiny fragments of human wisdom, verified quotes, and big ideas, and organize them so they're never lost. Sometimes we also help you write scripts and draw storyboards!
+                   No. We do the digging, but you do the dreaming. A Quipsly may happily draft a formatting example or pull a quote, but we will never black-box generate your content. We believe AI should cure administrative anxiety, not replace human creativity.
                  </p>
               </div>
               <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">
                  <h4 className="font-bold text-[#3d2618] flex items-center gap-3">
-                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> What's the difference between Quipsly and QuipLore?
+                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> How does the video editor workflow help?
                  </h4>
                  <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
-                   <strong>QuipLore</strong> is our massive public library—the verified quote archive where we store the best words in the world for everyone to read. <strong>Quipsly.com</strong> (here!) is where you hire us to be your private AI Agents to work on your own secret projects in your Nest.
+                   While we don't render the final video for you, we help you prepare for the cut. You can import raw clips, and your Quipsly will help you track the best moments, sync them to your script, and outline edit markers to speed up your process in Premiere or Final Cut.
                  </p>
               </div>
               <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">
                  <h4 className="font-bold text-[#3d2618] flex items-center gap-3">
-                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> Are my private Nests safe?
+                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> Can I use it for podcasts?
                  </h4>
                  <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
-                   Absolutely! We guard private nests with our lives. We will never share your private stories, marketing funnels, or secret storyboards with the public QuipLore archive without your explicit permission.
+                   Absolutely! You can write your show notes in one living manuscript. A Quipsly can help tag chapters, organize audio clip markers, and keep your recording sessions perfectly on track before you move to final editing.
+                 </p>
+              </div>
+              <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">
+                 <h4 className="font-bold text-[#3d2618] flex items-center gap-3">
+                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> Can I use it for academic or research projects?
+                 </h4>
+                 <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
+                   Yes, that's what we do best! If you need a historical quote or a specific stat, we'll scour the archives to find perfect examples. We always return with verified sources and exact citations—we despise fake internet quotes!
+                 </p>
+              </div>
+              <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">
+                 <h4 className="font-bold text-[#3d2618] flex items-center gap-3">
+                   <HelpCircle className="w-5 h-5 text-[#a96735]" /> What does "Human Approval" mean?
+                 </h4>
+                 <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
+                   It means you are completely in control. Every suggestion, quote retrieval, or format change a Quipsly makes is fully inspectable, approvable, and completely reversible. Nothing goes into your manuscript without you saying yes.
                  </p>
               </div>
            </div>
@@ -393,9 +466,12 @@ export default function QuipslyLandingPage() {
               <p className="text-lg text-[#8c552e] font-sans">
                 You do the dreaming, and we'll do the organizing. Quipsly gives you the warm, friendly tools used by industry professionals to build robust media empires, powered by little keepers who genuinely care about your work.
               </p>
+              <p className="text-sm font-bold text-[#a96735] uppercase tracking-wider font-sans">
+                Currently in Private Alpha
+              </p>
               <div className="mt-8 font-sans">
                 <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="bg-[#a96735] text-[#fdf5eb] px-8 py-4 rounded-xl font-bold hover:bg-[#8c552e] transition-colors shadow-sm flex items-center gap-2">
-                  <Heart className="w-4 h-4 fill-current" /> Let's build something together
+                  <Heart className="w-4 h-4 fill-current" /> Join the waitlist
                 </button>
               </div>
            </div>

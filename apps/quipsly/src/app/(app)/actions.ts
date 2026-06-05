@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
+import { getPrismaClient } from "@/lib/prisma";
 import {
   createStudioTaggedSpanWithNode,
   getStudioRoute,
   type StudioActionResult,
 } from "@/lib/server/studio-data";
+import { requireProjectAccess } from "@/lib/server/access";
 import { canAccessStudio } from "@/lib/studio-authz";
 
 type CreateTaggedSpanActionInput = {
@@ -39,6 +41,28 @@ export async function createStudioTaggedSpanAction(
     return {
       ok: false,
       message: "This account does not have Studio access.",
+    };
+  }
+
+  const prisma = getPrismaClient();
+  const document = await prisma.studioDocument.findUnique({
+    where: { stableId: input.documentStableId },
+    include: { project: true },
+  });
+
+  if (!document?.project) {
+    return {
+      ok: false,
+      message: "Studio project/document not found.",
+    };
+  }
+
+  try {
+    await requireProjectAccess(document.project.slug, "write");
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: err.message,
     };
   }
 

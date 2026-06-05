@@ -33,7 +33,7 @@ function labelFromEpisodeTagId(tagSlug: string) {
   return tagSlug
     .replace(/^episode-/i, "Episode ")
     .replace(/[-_]+/g, " ")
-    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+    .replace(/[a-z]/g, (letter) => letter.toUpperCase());
 }
 
 export default function ViewFilter({ 
@@ -45,6 +45,8 @@ export default function ViewFilter({
   documentBoundaries,
   activeBoundaryId,
   setActiveBoundaryId,
+  scrolledBoundaryId,
+  onReorderBoundary,
   onCreateEpisode,
   onCreateEpisodeError,
   onBulkNormalizeBoundaries
@@ -57,6 +59,8 @@ export default function ViewFilter({
   documentBoundaries: DocumentBoundary[],
   activeBoundaryId: string | null,
   setActiveBoundaryId: (boundaryId: string | null) => void,
+  scrolledBoundaryId?: string | null,
+  onReorderBoundary?: (activeId: string, overId: string) => void,
   onCreateEpisode: (episodeLabel: string) => Promise<boolean>,
   onCreateEpisodeError?: string | null,
   onBulkNormalizeBoundaries: () => Promise<{ updatedCount: number; source: "local" | "gemini" | "hybrid"; message: string; skippedCount?: number }>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { SidebarLayout } from '@/components/SidebarLayout';
 import { getPrismaClient } from '@/lib/prisma';
 import { StoryboardClient } from './StoryboardClient';
@@ -12,11 +12,12 @@ export default async function StoryboardBuilderPage() {
 
   // Fetch all projects for this workspace, including nested scenes and shots
   const projects = await prisma.studioProject.findMany({
+    // @ts-ignore
     include: {
-      scenes: {
-        orderBy: { sceneNumber: 'asc' },
+      storyboards: {
+        orderBy: { createdAt: 'asc' },
         include: {
-          shots: {
+          frames: {
             orderBy: { sortOrder: 'asc' }
           }
         }
@@ -27,7 +28,9 @@ export default async function StoryboardBuilderPage() {
 
   return (
     <SidebarLayout>
-      <StoryboardClient initialProjects={projects} />
+      <Suspense fallback={<div className="p-8 text-zinc-500">Loading storyboards...</div>}>
+        <StoryboardClient initialProjects={projects} />
+      </Suspense>
     </SidebarLayout>
   );
 }

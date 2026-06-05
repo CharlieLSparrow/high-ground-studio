@@ -4,65 +4,28 @@ import Link from "next/link";
 import { Plus, Folder, Clock } from "lucide-react";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createStudioProject, listStudioProjectOptions } from "@/lib/studio/project-registry";
 
 export const dynamic = 'force-dynamic';
 
 async function createProject(formData: FormData) {
   "use server";
   const name = formData.get("name") as string;
+  const template = formData.get("template") as string;
   if (!name) return;
 
   const prisma = getPrismaClient();
-  
-  // Find or create default workspace for now
-  const WORKSPACE_SLUG = "tonight-pack";
-  let workspace = await prisma.studioWorkspace.findUnique({
-    where: { slug: WORKSPACE_SLUG }
-  });
-
-  if (!workspace) {
-    workspace = await prisma.studioWorkspace.create({
-      data: { slug: WORKSPACE_SLUG, name: "Tonight Pack Workspace" }
-    });
-  }
-
-  function slugify(input: string) {
-    return input
-      .toLowerCase()
-      .trim()
-      .replace(/['"]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 64) || "untitled";
-  }
-
-  const baseSlug = slugify(name);
-  let slug = baseSlug;
-  let suffix = 2;
-  while (await prisma.studioProject.findUnique({ where: { workspaceId_slug: { workspaceId: workspace.id, slug } } })) {
-    slug = `${baseSlug}-${suffix}`;
-    suffix += 1;
-  }
-
-  await prisma.studioProject.create({
-    data: {
-      workspaceId: workspace.id,
-      slug,
-      name,
-    }
-  });
+  const { project } = await createStudioProject(prisma, { name });
 
   revalidatePath("/projects");
-  redirect(`/create?project=${slug}`);
+  const templateParam = template && template !== "blank" ? `&template=${template}` : "";
+  redirect(`/create?project=${project.slug}${templateParam}`);
 }
 
 export default async function ProjectsHub() {
   const prisma = getPrismaClient();
 
-  const projects = await prisma.studioProject.findMany({
-    include: { workspace: true, scenes: true },
-    orderBy: { updatedAt: "desc" }
-  });
+  const projects = await listStudioProjectOptions(prisma);
 
   return (
     <SidebarLayout>
@@ -94,10 +57,10 @@ export default async function ProjectsHub() {
                   <div className="flex items-center gap-4 text-xs font-medium text-zinc-500 mt-4">
                     <span className="flex items-center gap-1">
                       <Clock size={14} />
-                      {new Date(project.updatedAt).toLocaleDateString()}
+                      {project.updatedAt ? new Date(project.updatedAt).toLocaleDateString() : "Unknown"}
                     </span>
                     <span className="bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded-md">
-                      {project.scenes.length} Scenes
+                      {project.documentTitle ?? "Living document ready"}
                     </span>
                   </div>
                 </Link>
@@ -127,6 +90,26 @@ export default async function ProjectsHub() {
                     placeholder="E.g., Scene 4: The Showdown"
                     className="w-full px-4 py-2 border border-zinc-300 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-transparent dark:text-white outline-none transition-all"
                   />
+                </div>
+                <div>
+                  <label htmlFor="template" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1 mt-4">
+                    Project Template
+                  </label>
+                  <select
+                    id="template"
+                    name="template"
+                    className="w-full px-4 py-2 border border-zinc-300 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-zinc-800 dark:text-white outline-none transition-all"
+                  >
+                    <option value="blank">Manuscript / Blank Book</option>
+                    <option value="podcast">Podcast / Episode Production</option>
+                    <option value="fiction">Fiction World</option>
+                    <option value="gallery">Photo Client Gallery</option>
+                    <option value="course">Course / Lesson Package</option>
+                    <option value="quiplore">Quote Collection / QuipLore</option>
+                    <option value="coaching">Coaching Program</option>
+                    <option value="research">Research Library</option>
+                    <option value="mixed">Mixed Media Production</option>
+                  </select>
                 </div>
                 <button
                   type="submit"

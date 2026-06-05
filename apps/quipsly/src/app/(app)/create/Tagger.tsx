@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Plus, Tag, MessageSquare, Mic, List, PlayCircle } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, useCallback, type RefObject } from "react";
+import { Tag, MessageSquare, Mic, List, PlayCircle, X } from "lucide-react";
 import { DocumentBoundary, ViewDefinition } from "./types";
 import {
   mergeBlockWithPrevious,
@@ -10,16 +10,17 @@ import {
   splitBlockAtOffset,
   toggleBlockTag,
 } from "./actions";
-import ClipCueCard, { hasYouTubeClipCue } from "./ClipCueCard";
+import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
+import { BlockItem } from "./BlockItem";
 
-type Block = {
+export type Block = {
   id: string;
   text: string;
   tags: string[];
   spans?: TaggedSpan[];
 };
 
-type TaggedSpan = {
+export type TaggedSpan = {
   id?: string;
   tagSlug: string;
   label?: string;
@@ -29,97 +30,16 @@ type TaggedSpan = {
   selectedText: string;
 };
 
-type TagDefinition = {
-  id: string;
-  label: string;
-  category: string;
-  icon: typeof Tag;
-  color: string;
-  mark: string;
-};
-
-const AVAILABLE_TAGS: TagDefinition[] = [
-  { id: "quote", label: "Quote", category: "quote", icon: MessageSquare, color: "bg-blue-100 text-blue-800 border-blue-200", mark: "bg-blue-100 text-blue-950 ring-blue-200" },
-  { id: "social-clip", label: "Social Clip", category: "media", icon: Mic, color: "bg-purple-100 text-purple-800 border-purple-200", mark: "bg-purple-100 text-purple-950 ring-purple-200" },
-  { id: "educational", label: "Educational", category: "educational", icon: List, color: "bg-green-100 text-green-800 border-green-200", mark: "bg-green-100 text-green-950 ring-green-200" },
-  { id: "internal_note", label: "Internal Note", category: "internal_note", icon: Tag, color: "bg-gray-100 text-gray-800 border-gray-200", mark: "bg-gray-100 text-gray-950 ring-gray-200" },
-  { id: "chapter", label: "Chapter", category: "structure", icon: PlayCircle, color: "bg-cyan-100 text-cyan-900 border-cyan-200", mark: "bg-cyan-100 text-cyan-950 ring-cyan-200" },
-  { id: "episode", label: "Episode", category: "structure", icon: PlayCircle, color: "bg-rose-100 text-rose-900 border-rose-200", mark: "bg-rose-100 text-rose-950 ring-rose-200" },
-  { id: "media", label: "Media", category: "media", icon: PlayCircle, color: "bg-orange-100 text-orange-900 border-orange-200", mark: "bg-orange-100 text-orange-950 ring-orange-200" },
-  { id: "episode-1", label: "Episode 1", category: "episode", icon: PlayCircle, color: "bg-red-100 text-red-800 border-red-200", mark: "bg-red-100 text-red-950 ring-red-200" },
-  { id: "episode-4", label: "Episode 4", category: "episode", icon: PlayCircle, color: "bg-red-100 text-red-800 border-red-200", mark: "bg-red-100 text-red-950 ring-red-200" },
-  { id: "episode-8", label: "Episode 8", category: "episode", icon: PlayCircle, color: "bg-red-100 text-red-800 border-red-200", mark: "bg-red-100 text-red-950 ring-red-200" },
-  { id: "episode-9", label: "Episode 9", category: "episode", icon: PlayCircle, color: "bg-red-100 text-red-800 border-red-200", mark: "bg-red-100 text-red-950 ring-red-200" },
-  { id: "voice-homer", label: "Homer", category: "content_role", icon: Mic, color: "bg-emerald-100 text-emerald-900 border-emerald-200", mark: "bg-emerald-100 text-emerald-950 ring-emerald-200" },
-  { id: "voice-charlie", label: "Charlie", category: "content_role", icon: MessageSquare, color: "bg-sky-100 text-sky-900 border-sky-200", mark: "bg-sky-100 text-sky-950 ring-sky-200" },
-  { id: "show-note", label: "Show Note", category: "workflow_status", icon: List, color: "bg-yellow-100 text-yellow-900 border-yellow-200", mark: "bg-yellow-100 text-yellow-950 ring-yellow-200" },
-  { id: "clip-cue", label: "Clip Cue", category: "media", icon: PlayCircle, color: "bg-orange-100 text-orange-900 border-orange-200", mark: "bg-orange-100 text-orange-950 ring-orange-200" },
-  { id: "published-episode", label: "Published Episode", category: "media", icon: PlayCircle, color: "bg-indigo-100 text-indigo-900 border-indigo-200", mark: "bg-indigo-100 text-indigo-950 ring-indigo-200" },
-  { id: "youtube-clip", label: "YouTube Clip", category: "media", icon: PlayCircle, color: "bg-rose-100 text-rose-900 border-rose-200", mark: "bg-rose-100 text-rose-950 ring-rose-200" }
-];
-
-function tagDef(tagId: string, extraTagDefs: TagDefinition[] = []) {
-  return [...AVAILABLE_TAGS, ...extraTagDefs].find(tag => tag.id === tagId);
-}
-
-function uniqueTagIds(block: Block) {
+export function uniqueTagIds(block: Block) {
   return Array.from(new Set([
     ...block.tags,
     ...(block.spans ?? []).map(span => span.tagSlug)
   ]));
 }
 
-function blockAccentClass(block: Block) {
-  const tagIds = uniqueTagIds(block);
-  if (tagIds.includes("voice-homer")) return "border-l-4 border-l-emerald-400 bg-emerald-50/30";
-  if (tagIds.includes("voice-charlie")) return "border-l-4 border-l-sky-400 bg-sky-50/30";
-  if (tagIds.includes("show-note")) return "border-l-4 border-l-yellow-400 bg-yellow-50/40";
-  if (tagIds.includes("clip-cue") || tagIds.includes("youtube-clip")) return "border-l-4 border-l-orange-400 bg-orange-50/40";
-  return "border-l-4 border-l-transparent";
-}
-
-function shouldShowClipCueCard(block: Block) {
-  const tagIds = uniqueTagIds(block);
-  return tagIds.includes("clip-cue") || tagIds.includes("youtube-clip") || hasYouTubeClipCue(block.text);
-}
-
-function extractLinks(text: string) {
-  return Array.from(text.matchAll(/https?:\/\/[^\s<>"')]+/gi))
-    .map((match) => match[0].replace(/[.,;:!?]+$/, ""));
-}
-
-function isYouTubeLink(url: string) {
-  return /(^https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(url);
-}
-
-function youtubeVideoId(url: string) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes("youtu.be")) return parsed.pathname.replace(/^\//, "") || null;
-    if (parsed.hostname.includes("youtube.com")) return parsed.searchParams.get("v");
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function episodeTagLabels(block: Block) {
-  return uniqueTagIds(block)
-    .filter((tagId) => /^episode-[a-z0-9-]+$/i.test(tagId))
-    .map((tagId) => tagDef(tagId)?.label ?? tagId);
-}
-
-function publishedEpisodeLinks(block: Block) {
-  return extractLinks(block.text).filter(isYouTubeLink);
-}
-
-function shouldShowPublishedEpisodeCard(block: Block) {
-  const tagIds = uniqueTagIds(block);
-  return tagIds.includes("published-episode") && publishedEpisodeLinks(block).length > 0;
-}
-
 const UNDO_GROUP_WINDOW_MS = 1400;
 const MAX_UNDO_HISTORY = 40;
+const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 
 type PersistedTagSpan = {
   id?: string;
@@ -203,100 +123,48 @@ export function canonicalBoundarySuggestion(blockText: string): string | null {
   return suggestion;
 }
 
-function PublishedEpisodeCard({ block }: { block: Block }) {
-  const links = publishedEpisodeLinks(block);
-  const labels = episodeTagLabels(block);
-
-  if (links.length === 0) return null;
-
-  return (
-    <div className="mb-3 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-3 text-sm text-indigo-950 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-indigo-800">
-            <PlayCircle size={14} />
-            Published episode link
-          </div>
-          <div className="mt-1 font-bold leading-5">
-            Existing public artifact. Keep it represented here until we re-import and re-edit it inside Quipsly.
-          </div>
-        </div>
-        {labels.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {labels.map((label) => (
-              <span key={label} className="rounded-full border border-indigo-200 bg-white px-2 py-1 text-[11px] font-black text-indigo-800">
-                {label}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
-      <div className="mt-3 grid gap-2">
-        {links.map((url) => {
-          const videoId = youtubeVideoId(url);
-          return (
-            <a
-              key={url}
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl border border-indigo-200 bg-white px-3 py-2 font-mono text-xs font-bold text-indigo-900 shadow-sm transition-colors hover:bg-indigo-100"
-            >
-              {videoId ? `YouTube ${videoId}` : url}
-            </a>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
+/**
+ * The core rich-text orchestrator of Quipsly.
+ * It strictly manages the text blocks array, tracking active focus, 
+ * pushing undo/redo states, and orchestrating interactions with 
+ * downstream tools via EditorExtensions. 
+ *
+ * Performance guarantee: Modifying text localized to a block will NOT re-render 
+ * siblings thanks to stable refs and strict `BlockItem` memoization.
+ */
 export default function Tagger({ 
   activeView, 
   activeBoundaryId,
   documentBoundaries,
-  adHocTags,
+  adHocTags = [],
   initialBlocks,
   projectId,
   documentId,
   scrollContainerRef,
-  availableEpisodeTags = [],
-  onBlocksChange
+  onBlocksChange,
+  onActiveScrollBoundaryChange
 }: { 
   activeView: ViewDefinition, 
-  activeBoundaryId?: string | null,
-  documentBoundaries?: DocumentBoundary[],
-  adHocTags: string[],
+  activeBoundaryId: string | null,
+  documentBoundaries: DocumentBoundary[],
+  adHocTags?: string[],
   initialBlocks: Block[],
   projectId: string,
   documentId: string,
   scrollContainerRef?: RefObject<HTMLDivElement | null>,
-  availableEpisodeTags?: { id: string; label: string }[],
-  onBlocksChange?: (blocks: Block[]) => void
+  onBlocksChange?: (blocks: Block[]) => void,
+  onActiveScrollBoundaryChange?: (boundaryId: string | null) => void,
 }) {
-  const customTagDefs = useMemo<TagDefinition[]>(() => {
-    const map = new Map<string, TagDefinition>(AVAILABLE_TAGS.map((tag) => [tag.id, tag]));
-    for (const tag of availableEpisodeTags) {
-      if (map.has(tag.id)) continue;
-      map.set(tag.id, {
-        id: tag.id,
-        label: tag.label,
-        category: "episode",
-        icon: PlayCircle,
-        color: "bg-red-100 text-red-800 border-red-200",
-        mark: "bg-red-100 text-red-950 ring-red-200"
-      });
-    }
-    return [...map.values()];
-  }, [availableEpisodeTags]);
-
-  const getTagDef = (tagId: string) => tagDef(tagId, customTagDefs);
-  const taggingTagOptions = useMemo(() => [...customTagDefs], [customTagDefs]);
+  const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
+  const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
+  const getTagDef = (tagId: string) => tagDefinitions.find(t => t.id === tagId);
 
   const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
-  const [activeMenuBlock, setActiveMenuBlock] = useState<string | null>(null);
   const [selectedRanges, setSelectedRanges] = useState<Record<string, { startOffset: number; endOffset: number; selectedText: string }>>({});
+  
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState<string | null>(null);
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const blockWrapperRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blocksRef = useRef<Block[]>(initialBlocks);
   const committedSnapshotsRef = useRef<Record<string, BlockSnapshot>>({});
   const lastUndoActionTimeRef = useRef<number>(0);
@@ -307,6 +175,7 @@ export default function Tagger({
   const [dirtyBlocks, setDirtyBlocks] = useState<Record<string, boolean>>({});
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
   const [showUndoHistory, setShowUndoHistory] = useState(false);
+  const [outlineFocusedBlockId, setOutlineFocusedBlockId] = useState<string | null>(null);
 
   const normalizeTaggedSpansForSnapshot = (spans: TaggedSpan[] | undefined): PersistedTagSpan[] => {
     return spans
@@ -446,6 +315,17 @@ export default function Tagger({
     return trimmed.length <= 42 ? trimmed : `${trimmed.slice(0, 42)}...`;
   };
 
+  const firstLineForBlock = (block: Block) => {
+    const firstLine = block.text.split("\n")[0].trim();
+    return firstLine.length <= 52 ? firstLine : `${firstLine.slice(0, 52)}...`;
+  };
+
+  /**
+   * Prevents UI layout shifting during React state transitions.
+   * By capturing the exact scroll container offsets before a block 
+   * splits, merges, or toggles height-altering tags, we can seamlessly
+   * restore it on the next repaint via `requestAnimationFrame`.
+   */
   const captureScrollState = () => {
     if (scrollContainerRef?.current) {
       return { y: scrollContainerRef.current.scrollTop };
@@ -490,6 +370,25 @@ export default function Tagger({
   }, [dirtyBlocks, savingBlocks]);
 
   useEffect(() => {
+    const handleFocusBlock = (event: Event) => {
+      const blockId = (event as CustomEvent<{ blockId?: string }>).detail?.blockId;
+      if (!blockId) return;
+
+      window.setTimeout(() => {
+        const textarea = textareaRefs.current[blockId];
+        textarea?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setOutlineFocusedBlockId(blockId);
+        window.setTimeout(() => {
+          setOutlineFocusedBlockId((current) => current === blockId ? null : current);
+        }, 1800);
+      }, 80);
+    };
+
+    window.addEventListener("quipsly:focus-block", handleFocusBlock);
+    return () => window.removeEventListener("quipsly:focus-block", handleFocusBlock);
+  }, []);
+
+  useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
       return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
@@ -518,7 +417,8 @@ export default function Tagger({
     const block = blocks.find(b => b.id === blockId);
     if (!block) return;
     const beforeSnapshot = snapshotFromBlock(block);
-    const selection = selectedRanges[blockId];
+    const isStructureTag = STRUCTURE_TAG_IDS.has(tagId);
+    const selection = isStructureTag ? undefined : selectedRanges[blockId];
     
     setBlocks((currentBlocks) => currentBlocks.map(b => {
       if (b.id !== blockId) return b;
@@ -555,10 +455,20 @@ export default function Tagger({
           tags: b.tags.filter(t => t !== tagId),
           spans: (b.spans ?? []).filter(span => span.tagSlug !== tagId)
         };
-      } else {
-        return { ...b, tags: [...b.tags, tagId] };
       }
+
+      if (isStructureTag) {
+        return {
+          ...b,
+          tags: [...b.tags.filter(t => !STRUCTURE_TAG_IDS.has(t)), tagId],
+          spans: (b.spans ?? []).filter(span => !STRUCTURE_TAG_IDS.has(span.tagSlug))
+        };
+      }
+
+      return { ...b, tags: [...b.tags, tagId] };
     }));
+
+    requestAnimationFrame(() => restoreScrollState(previousScroll));
 
     // Server Action
     await toggleBlockTag(blockId, documentId, projectId, tagId, block.text, selection);
@@ -589,6 +499,39 @@ export default function Tagger({
     }
   };
 
+  const handleClearBlockTags = async (block: Block) => {
+    if (uniqueTagIds(block).length === 0) return;
+
+    const previousScroll = captureScrollState();
+    const beforeSnapshot = snapshotFromBlock(block);
+
+    setBlocks((current) => current.map((item) => {
+      if (item.id !== block.id) return item;
+      return {
+        ...item,
+        tags: [],
+        spans: []
+      };
+    }));
+
+    pushUndo({
+      label: `Restore tags on ${labelForBlock(beforeSnapshot)}`,
+      createdAtLabel: "tags",
+      undo: async () => {
+        restoreBlockLocally(beforeSnapshot);
+        await restoreBlockState(block.id, beforeSnapshot.text, beforeSnapshot.spans);
+        const currentBlock = getCurrentBlock(block.id);
+        if (currentBlock) ensureCommittedSnapshot(currentBlock);
+      }
+    });
+
+    requestAnimationFrame(() => restoreScrollState(previousScroll));
+    await restoreBlockState(block.id, block.text, []);
+    requestAnimationFrame(() => restoreScrollState(previousScroll));
+    const latest = getCurrentBlock(block.id);
+    if (latest) ensureCommittedSnapshot(latest);
+  };
+
   const handleTextChange = (blockId: string, newText: string) => {
     // Optimistic UI update
     setBlocks((currentBlocks) => currentBlocks.map(b => {
@@ -599,6 +542,7 @@ export default function Tagger({
   };
 
   const handleTextBlur = async (blockId: string, newText: string) => {
+    const previousScroll = captureScrollState();
     const currentBlock = getCurrentBlock(blockId);
     const committed = committedSnapshotsRef.current[blockId] ?? (currentBlock ? snapshotFromBlock(currentBlock) : null);
     const beforeText = committed?.text ?? currentBlock?.text ?? newText;
@@ -641,8 +585,90 @@ export default function Tagger({
       setDirtyBlocks(prev => ({ ...prev, [blockId]: true }));
     } finally {
       setSavingBlocks(prev => ({ ...prev, [blockId]: false }));
+      requestAnimationFrame(() => restoreScrollState(previousScroll));
     }
   };
+
+  const handleNavigatePrevious = useCallback((blockId: string) => {
+    const index = blocksRef.current.findIndex(b => b.id === blockId);
+    if (index > 0) {
+      const previousBlock = blocksRef.current[index - 1];
+      const previous = textareaRefs.current[previousBlock.id];
+      if (previous) {
+        previous.focus();
+        const length = previous.value.length;
+        previous.selectionStart = length;
+        previous.selectionEnd = length;
+      }
+    }
+  }, []);
+
+  const handleNavigateNext = useCallback((blockId: string) => {
+    const index = blocksRef.current.findIndex(b => b.id === blockId);
+    if (index !== -1 && index < blocksRef.current.length - 1) {
+      const nextBlock = blocksRef.current[index + 1];
+      const next = textareaRefs.current[nextBlock.id];
+      if (next) {
+        next.focus();
+        next.selectionStart = 0;
+        next.selectionEnd = 0;
+      }
+    }
+  }, []);
+
+  const handlePasteBlocks = useCallback(async (blockId: string, chunks: string[], selectionStart: number, selectionEnd: number) => {
+    if (chunks.length <= 1) return;
+    
+    const index = blocksRef.current.findIndex(b => b.id === blockId);
+    if (index === -1) return;
+    
+    const currentBlock = blocksRef.current[index];
+    const firstChunk = chunks[0];
+    const remainingChunks = chunks.slice(1);
+    
+    const beforeText = currentBlock.text.slice(0, selectionStart);
+    const afterText = currentBlock.text.slice(selectionEnd);
+    const newCurrentText = `${beforeText}${firstChunk}`;
+    
+    const newBlocks: Block[] = remainingChunks.map((chunk, i) => {
+      const isLast = i === remainingChunks.length - 1;
+      return {
+        id: `pending-paste-${Date.now()}-${i}`,
+        text: isLast ? `${chunk}${afterText}` : chunk,
+        tags: [],
+        spans: []
+      };
+    });
+    
+    setBlocks(current => {
+      const next = [...current];
+      const idx = next.findIndex(b => b.id === blockId);
+      if (idx !== -1) {
+        next[idx] = { ...next[idx], text: newCurrentText };
+        next.splice(idx + 1, 0, ...newBlocks);
+      }
+      return next;
+    });
+    
+    window.setTimeout(() => {
+      const lastBlockId = newBlocks[newBlocks.length - 1].id;
+      const el = textareaRefs.current[lastBlockId];
+      if (el) {
+        el.focus();
+        const endPos = remainingChunks[remainingChunks.length - 1].length;
+        el.selectionStart = endPos;
+        el.selectionEnd = endPos;
+      }
+    }, 0);
+    
+    try {
+      if (onBlocksChange) {
+        onBlocksChange(blocksRef.current);
+      }
+    } catch (e) {
+      console.error("Failed to save pasted blocks", e);
+    }
+  }, [onBlocksChange]);
 
   const handleNormalizeHeading = async (block: Block) => {
     const suggestion = canonicalBoundarySuggestion(block.text);
@@ -656,6 +682,11 @@ export default function Tagger({
     await handleTextBlur(block.id, nextText);
   };
 
+  /**
+   * Safely splits a block at the given offsets, preserving the original text in the 
+   * first block and spinning up a new sibling block for the remainder.
+   * Pushes a deep undo state allowing instantaneous reversal of the split.
+   */
   const handleSplitBlock = async (
     block: Block,
     startOffset: number,
@@ -676,7 +707,13 @@ export default function Tagger({
       return next;
     });
 
-    window.setTimeout(() => textareaRefs.current[pendingId]?.focus(), 0);
+    window.setTimeout(() => {
+      const el = textareaRefs.current[pendingId];
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 0);
 
     const result = await splitBlockAtOffset(block.id, startOffset, endOffset);
     if (!result) {
@@ -761,12 +798,18 @@ export default function Tagger({
       }
     });
 
+    // Focus immediately before server action
     window.setTimeout(() => {
-      restoreScrollState(previousScroll);
       textareaRefs.current[result.newBlock.id]?.focus();
     }, 0);
+    
+    const previousScrollAfterSplit = captureScrollState();
   };
 
+  /**
+   * Merges the current block into the block immediately preceding it, snapping the
+   * cursor focus strictly to the exact "stitch point" where the texts combine.
+   */
   const handleMergeWithPrevious = async (blockId: string) => {
     const index = blocks.findIndex((b) => b.id === blockId);
     if (index <= 0) return;
@@ -820,6 +863,16 @@ export default function Tagger({
       next.splice(index, 1);
       return next;
     });
+
+    // Focus immediately before server action
+    window.setTimeout(() => {
+      const previous = textareaRefs.current[previousBlock.id];
+      if (previous) {
+        previous.focus();
+        previous.selectionStart = cursorOffset;
+        previous.selectionEnd = cursorOffset;
+      }
+    }, 0);
 
     const previousScroll = captureScrollState();
     const mergeResult = await mergeBlockWithPrevious(blockId);
@@ -973,8 +1026,41 @@ export default function Tagger({
     return isVisibleInView;
   });
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let bestBoundaryId: string | null = null;
+        let bestRatio = 0;
+        
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
+            bestRatio = entry.intersectionRatio;
+            bestBoundaryId = entry.target.getAttribute("data-boundary-id");
+          }
+        });
+        
+        if (bestBoundaryId && onActiveScrollBoundaryChange) {
+          onActiveScrollBoundaryChange(bestBoundaryId);
+        }
+      },
+      {
+        root: null,
+        rootMargin: "-20% 0px -60% 0px", // focus on top-middle
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      }
+    );
+
+    Object.values(blockWrapperRefs.current).forEach((el) => {
+      if (el && el.getAttribute("data-is-boundary") === "true") {
+        observer.observe(el);
+      }
+    });
+
+    return () => observer.disconnect();
+  }, [visibleBlocks, onActiveScrollBoundaryChange]);
+
   return (
-    <div className="space-y-3">
+    <div className="mx-auto w-full max-w-[680px] pb-96">
       {undoStack.length > 0 ? (
         <div className="rounded-xl border border-[#eadfca] bg-white/90 p-2 text-sm text-[#5e4b33] shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
@@ -1048,173 +1134,31 @@ export default function Tagger({
           No content matches the current view filters.
         </div>
       )}
-
-      {visibleBlocks.map(block => (
-        <div 
-          key={block.id} 
-          className={`relative group px-4 py-3 -mx-4 rounded-lg hover:bg-[#fdfaf6] transition-colors ${blockAccentClass(block)}`}
-        >
-          {/* Render applied tags above the block */}
-          {uniqueTagIds(block).length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {uniqueTagIds(block).map(t => {
-                const definition = getTagDef(t);
-                if (!definition) return null;
-                const Icon = definition.icon;
-                return (
-                  <span key={t} className={`flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-md border ${definition.color}`}>
-                    <Icon size={10} />
-                    {definition.label}
-                  </span>
-                )
-              })}
-            </div>
-          )}
-
-          {(block.spans ?? []).length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2 rounded-xl border border-[#eadfca] bg-[#fffaf0] px-3 py-2 text-xs text-[#5e4b33]">
-              {(block.spans ?? []).slice(0, 6).map((span) => {
-                const definition = getTagDef(span.tagSlug);
-                const Icon = definition?.icon ?? Tag;
-                const selectedText = (span.selectedText || block.text.slice(span.startOffset, span.endOffset)).trim();
-                return (
-                  <span
-                    key={span.id ?? `${block.id}-${span.startOffset}-${span.endOffset}-${span.tagSlug}`}
-                    className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-1 font-bold ${definition?.color ?? "border-[#d4c1a0] bg-white text-[#5e4b33]"}`}
-                    title={selectedText}
-                  >
-                    <Icon size={11} />
-                    <span className="shrink-0">{definition?.label ?? span.tagSlug}</span>
-                    {selectedText ? (
-                      <span className="min-w-0 max-w-[18rem] truncate font-medium normal-case tracking-normal opacity-80">
-                        {selectedText}
-                      </span>
-                    ) : null}
-                  </span>
-                );
-              })}
-              {(block.spans ?? []).length > 6 && (
-                <span className="rounded-full border border-[#d4c1a0] bg-white px-2 py-1 font-bold text-[#8c6b4a]">
-                  +{(block.spans ?? []).length - 6} more marks
-                </span>
-              )}
-            </div>
-          )}
-
-          {shouldShowPublishedEpisodeCard(block) ? (
-            <PublishedEpisodeCard block={block} />
-          ) : null}
-
-          {shouldShowClipCueCard(block) ? (
-            <ClipCueCard
-              text={block.text}
-              onChange={(nextText) => handleTextChange(block.id, nextText)}
-              onCommit={(nextText) => handleTextBlur(block.id, nextText)}
-            />
-          ) : null}
-
-          {canonicalBoundarySuggestion(block.text) ? (
-            <button
-              type="button"
-              onClick={() => void handleNormalizeHeading(block)}
-              className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-900 transition-colors hover:bg-emerald-100"
-            >
-              Normalize heading: {canonicalBoundarySuggestion(block.text)}
-            </button>
-          ) : null}
-
-          {/* Auto-resizing textarea for editing text */}
-          <textarea
-            className="w-full resize-none overflow-hidden rounded-xl border border-[#eadfca] bg-white/80 px-4 py-3 font-serif text-xl leading-relaxed text-[#3d3122] shadow-inner outline-none transition-colors focus:border-[#d8b777] focus:bg-white focus:ring-2 focus:ring-amber-100"
-            value={block.text}
-            onChange={(e) => {
-              e.target.style.height = 'auto';
-              e.target.style.height = e.target.scrollHeight + 'px';
-              handleTextChange(block.id, e.target.value);
-            }}
-            onBlur={(e) => handleTextBlur(block.id, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Backspace" && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
-                e.preventDefault();
-                void handleMergeWithPrevious(block.id);
-                return;
-              }
-
-              if (e.key !== "Enter" || e.shiftKey) return;
-              e.preventDefault();
-              handleSplitBlock(block, e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
-            }}
-            onSelect={(e) => handleSelectionChange(block.id, e.currentTarget)}
-            rows={1}
-            ref={(el) => {
-              textareaRefs.current[block.id] = el;
-              if (el) {
-                el.style.height = 'auto';
-                el.style.height = el.scrollHeight + 'px';
-              }
-            }}
-          />
-          {savingBlocks[block.id] && <span className="absolute top-2 right-2 text-[10px] text-amber-500 animate-pulse">Saving...</span>}
-
-          {selectedRanges[block.id] && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#e8dcc4] bg-white/95 p-2 shadow-sm">
-              <span className="px-2 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a]">
-                Tag selection
-              </span>
-              {taggingTagOptions.map(tag => {
-                const Icon = tag.icon;
-                return (
-                <button
-                  key={tag.id}
-                  onClick={() => handleToggleTag(block.id, tag.id)}
-                    onMouseDown={(event) => event.preventDefault()}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[#d4c1a0] bg-[#fdfaf6] px-2 py-1 text-xs font-bold text-[#5e4b33] transition-colors hover:bg-amber-100"
-                >
-                    <Icon size={12} />
-                    {tag.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Tagging Menu Button (appears on hover) */}
-          <div className="flex justify-end mt-2 md:mt-0 relative">
-            <button 
-              onClick={() => setActiveMenuBlock(activeMenuBlock === block.id ? null : block.id)}
-              onMouseDown={(event) => event.preventDefault()}
-              className="md:absolute md:right-3 md:top-3 p-2 md:p-2 py-1.5 px-3 rounded-full md:bg-white shadow-sm border border-[#e8dcc4] text-[#8c6b4a] hover:text-[#3d3122] md:hover:bg-amber-50 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center gap-2 bg-[#f8f1e3] hover:bg-[#ebdcc8]"
-            >
-              <Plus size={16} /> <span className="md:hidden text-[10px] uppercase font-bold tracking-wider text-[#5e4b33]">Tag</span>
-            </button>
-
-            {/* Floating Tag Menu */}
-            {activeMenuBlock === block.id && (
-              <div className="absolute bottom-12 right-0 md:top-12 md:bottom-auto md:right-3 w-48 md:w-56 bg-white rounded-xl shadow-xl border border-[#e8dcc4] p-2 z-20 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-[#8c6b4a] px-2 py-1 mb-1 border-b border-[#e8dcc4]">
-                  Apply Tags
-                </div>
-                {taggingTagOptions.map(tag => {
-                  const isSelected = block.tags.includes(tag.id);
-                  return (
-                    <button
-                      key={tag.id}
-                      onClick={() => handleToggleTag(block.id, tag.id)}
-                      onMouseDown={(event) => event.preventDefault()}
-                      className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-sm transition-colors ${isSelected ? 'bg-amber-100 text-amber-900 font-medium' : 'hover:bg-gray-50 text-gray-700'}`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <tag.icon size={14} className={isSelected ? 'text-amber-600' : 'text-gray-400'} />
-                        {tag.label}
-                      </span>
-                      {isSelected && <div className="w-2 h-2 rounded-full bg-amber-500" />}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+      {visibleBlocks.map((block, index) => (
+        <BlockItem
+          key={block.id}
+          block={block}
+          blockIndex={index}
+          outlineFocusedBlockId={outlineFocusedBlockId}
+          isSaving={!!savingBlocks[block.id]}
+          onTextChange={handleTextChange}
+          onTextBlur={handleTextBlur}
+          onToggleTag={handleToggleTag}
+          onSplitBlock={handleSplitBlock}
+          onMergeWithPrevious={handleMergeWithPrevious}
+          onPasteBlocks={handlePasteBlocks}
+          onNavigatePrevious={handleNavigatePrevious}
+          onNavigateNext={handleNavigateNext}
+          onClearTags={handleClearBlockTags}
+          onNormalizeHeading={handleNormalizeHeading}
+          onSelectionChange={handleSelectionChange}
+          registerTextareaRef={(id, el) => {
+            textareaRefs.current[id] = el;
+          }}
+          registerWrapperRef={(id, el) => {
+            blockWrapperRefs.current[id] = el;
+          }}
+        />
       ))}
     </div>
   );

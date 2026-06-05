@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";

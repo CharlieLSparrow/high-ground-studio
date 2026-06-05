@@ -1,8 +1,7 @@
-// @ts-nocheck
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, projectConfig } from "../create/projectConfig";
+import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../create/projectConfig";
 import type { EpisodeArtifact } from "./episodeArtifact";
 
 export type EpisodeProductionState = {
@@ -44,21 +43,7 @@ function fallbackEpisodeProduction(
 }
 
 async function findProjectAndDocument(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string) {
-  const config = projectConfig(projectSlug);
-  const project = await prisma.studioProject.findFirst({
-    where: { slug: config.slug },
-    include: {
-      documents: {
-        where: { stableId: config.documentStableId },
-        take: 1,
-      },
-    },
-  });
-
-  const document = project?.documents?.[0] ??
-    (project ? await prisma.studioDocument.findFirst({ where: { projectId: project.id }, orderBy: { updatedAt: "desc" } }) : null);
-
-  return { config, project, document };
+  return ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 }
 
 export async function ensureEpisodeProduction(input: {
@@ -166,12 +151,12 @@ export async function saveEpisodeRecordingRoom(input: {
     const production = await prisma.studioEpisodeProduction.update({
       where: { id: ensured.id },
       data: {
-        recordingRoomJson: input.packageJson,
+        recordingRoomJson: input.packageJson as any,
         productionJson: {
           lastRecordingPackageAt: new Date().toISOString(),
           projectSlug: ensured.projectSlug,
           episodeSlug: ensured.slug,
-        },
+        } as any,
       },
     });
 

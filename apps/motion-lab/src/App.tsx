@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useRef, useState, useEffect } from "react";
 
 // Mock Timeline Data (Hormozi style fast captions)
@@ -158,8 +159,8 @@ export default function App() {
                       key={block.id}
                       className="absolute top-2 bottom-2 bg-blue-600 rounded flex items-center px-2 text-xs font-bold truncate border border-blue-400 shadow-lg cursor-pointer hover:bg-blue-500 transition-colors"
                       style={{ 
-                        left: \`\${100 + (block.startTime * 100)}px\`, 
-                        width: \`\${(block.endTime - block.startTime) * 100}px\` 
+                        left: (100 + (block.startTime * 100)) + "px", 
+                        width: ((block.endTime - block.startTime) * 100) + "px" 
                       }}
                     >
                       {block.content}
@@ -170,7 +171,7 @@ export default function App() {
                 {/* Playhead indicator */}
                 <div 
                   className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none transition-all duration-75"
-                  style={{ left: \`\${100 + (currentTime * 100)}px\` }}
+                  style={{ left: (100 + (currentTime * 100)) + "px" }}
                 >
                   <div className="absolute -top-2 -left-1.5 w-3.5 h-3.5 bg-red-500 rotate-45"></div>
                 </div>

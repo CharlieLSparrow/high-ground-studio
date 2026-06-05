@@ -1,57 +1,25 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
+import { getQuipStreamCards, starterNest } from "@high-ground/quipsly-domain/seed";
+import type { StreamMode, QuipStreamCardProjection } from "@high-ground/quipsly-domain";
 
-const prisma = new PrismaClient();
-
-export async function getConsumerVideoFeed() {
-  const segments = await prisma.studioVideoSegment.findMany({
-    include: {
-      source: true
-    },
-    orderBy: {
-      createdAt: 'desc'
-    },
-    take: 20
-  });
-
-  return segments;
+// Mock API: Fetch stream cards
+export async function fetchQuipStream(mode: StreamMode = "for-you"): Promise<readonly QuipStreamCardProjection[]> {
+  // Simulate network delay for API realism
+  await new Promise(resolve => setTimeout(resolve, 300));
+  return getQuipStreamCards(mode);
 }
 
-export async function getConsumerLorelist(listId: string) {
-  const listItems = await prisma.studioSegmentListItem.findMany({
-    where: { listId },
-    orderBy: { position: 'asc' },
-    include: {
-      segment: {
-        include: { source: true }
-      }
-    }
-  });
-
-  // Extract the ordered segments from the items
-  const segments = listItems.map(item => item.segment);
-  return segments;
+// Mock API: Save quote to nest
+export async function saveToNest(quoteId: string): Promise<boolean> {
+  await new Promise(resolve => setTimeout(resolve, 150));
+  // In a real app, this would POST to /api/nests
+  return true;
 }
 
-export async function getLorelistsHomeData() {
-  const lists = await prisma.studioSegmentList.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      items: {
-        orderBy: { position: 'asc' },
-        take: 1, // just get the first item for thumbnail/preview
-        include: {
-          segment: {
-            include: { source: true }
-          }
-        }
-      },
-      _count: {
-        select: { items: true }
-      }
-    }
-  });
-
-  return lists;
+// Mock API: Add to Lorelist
+export async function addToLorelist(quoteId: string): Promise<boolean> {
+  await new Promise(resolve => setTimeout(resolve, 150));
+  // In a real app, this would POST to /api/lorelists
+  return true;
 }

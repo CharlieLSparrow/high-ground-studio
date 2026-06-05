@@ -1,9 +1,21 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { ChevronUp, ChevronDown, Heart, MessageCircle, Share2, Bookmark } from "lucide-react";
-import { getConsumerVideoFeed, getConsumerLorelist } from "../app/actions/feed-actions";
-import { ConsumerViewer360 } from "./ConsumerViewer360";
+import { fetchQuipStream } from "../app/actions/feed-actions";
+
+const ConsumerViewer360 = dynamic(
+  () => import("./ConsumerViewer360").then((module) => module.ConsumerViewer360),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="absolute inset-0 flex items-center justify-center bg-black text-xs uppercase tracking-widest text-white/50">
+        Initializing 3D...
+      </div>
+    ),
+  },
+);
 
 export function VideoSwipeFeed({ listId }: { listId?: string }) {
   const [segments, setSegments] = useState<any[]>([]);
@@ -15,8 +27,9 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
   useEffect(() => {
     async function loadFeed() {
       try {
-        const data = listId ? await getConsumerLorelist(listId) : await getConsumerVideoFeed();
-        setSegments(data);
+        const data = await fetchQuipStream();
+        // Fallback for Lorelist parsing in MVP
+        setSegments(data as any[]);
       } catch (err) {
         console.error("Failed to load feed", err);
       } finally {
@@ -87,39 +100,42 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
         className="h-full w-full transition-transform duration-500 ease-out flex flex-col"
         style={{ transform: `translateY(-${currentIndex * 100}vh)` }}
       >
-        {segments.map((seg, idx) => {
-          const isYouTube = seg.source.provider === "youtube";
-          const is360 = seg.source.provider === "internal" && seg.cameraJson;
-          const isActive = idx === currentIndex;
-          
-          return (
+	        {segments.map((seg, idx) => {
+	          const source = seg.source ?? {};
+	          const startSeconds = typeof seg.startSeconds === "number" ? seg.startSeconds : 0;
+	          const endSeconds = typeof seg.endSeconds === "number" && seg.endSeconds > startSeconds ? seg.endSeconds : startSeconds + 30;
+	          const isYouTube = source.provider === "youtube" && source.providerSourceId;
+	          const is360 = source.provider === "internal" && seg.cameraJson && source.url;
+	          const isActive = idx === currentIndex;
+	          
+	          return (
             <div key={seg.id} className="h-screen w-full flex-shrink-0 relative">
               {/* Video Player layer */}
               <div className="absolute inset-0 bg-black flex items-center justify-center z-0">
-                {isYouTube ? (
-                   // MVP YouTube Player
-                   <iframe 
-                      className="w-full h-full scale-[1.3] pointer-events-none"
-                      src={`https://www.youtube.com/embed/${seg.source.providerSourceId}?autoplay=${isActive ? 1 : 0}&start=${Math.floor(seg.startSeconds)}&end=${Math.floor(seg.endSeconds)}&controls=0&mute=0&loop=1&playsinline=1`} 
-                      frameBorder="0" 
-                      allow="autoplay"
-                   ></iframe>
-                ) : is360 ? (
-                  isActive && (
-                    <ConsumerViewer360 
-                      videoUrl={seg.source.url}
-                      startSeconds={seg.startSeconds}
-                      endSeconds={seg.endSeconds}
-                      initialCameraAngles={seg.cameraJson}
-                    />
-                  )
-                ) : (
-                  // Native HTML5 Player (Fallback for 2D internal)
-                  <video 
-                    ref={el => { videoRefs.current[idx] = el; }}
-                    src={seg.source.url} 
-                    className="w-full h-full object-cover"
-                    playsInline
+	                {isYouTube ? (
+	                   // MVP YouTube Player
+	                   <iframe 
+	                      className="w-full h-full scale-[1.3] pointer-events-none"
+	                      src={`https://www.youtube.com/embed/${source.providerSourceId}?autoplay=${isActive ? 1 : 0}&start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&controls=0&mute=0&loop=1&playsinline=1`} 
+	                      frameBorder="0" 
+	                      allow="autoplay"
+	                   ></iframe>
+	                ) : is360 ? (
+	                  isActive && (
+	                    <ConsumerViewer360 
+	                      videoUrl={source.url}
+	                      startSeconds={startSeconds}
+	                      endSeconds={endSeconds}
+	                      initialCameraAngles={seg.cameraJson}
+	                    />
+	                  )
+	                ) : (
+	                  // Native HTML5 Player (Fallback for 2D internal)
+	                  <video 
+	                    ref={el => { videoRefs.current[idx] = el; }}
+	                    src={source.url ?? ""} 
+	                    className="w-full h-full object-cover"
+	                    playsInline
                     loop
                     muted={false}
                   />
@@ -138,9 +154,9 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
                       {seg.concept || "Concept"}
                     </span>
                     <h2 className="text-white text-2xl font-bold leading-tight">{seg.title}</h2>
-                    <span className="text-white/50 text-xs flex items-center gap-2 mt-1">
-                      {seg.difficulty} • {Math.floor(seg.endSeconds - seg.startSeconds)}s
-                    </span>
+	                    <span className="text-white/50 text-xs flex items-center gap-2 mt-1">
+	                      {seg.difficulty || "Ready"} • {Math.floor(endSeconds - startSeconds)}s
+	                    </span>
                   </div>
 
                   {/* Right action column */}

@@ -18,25 +18,18 @@ export function middleware(request: NextRequest) {
     const isMarketingPath = url.pathname === '/' || url.pathname.startsWith('/waitlist')
 
     if (!isMarketingPath) {
-      // Strip out '/create' if they typed it on the root domain, otherwise pass path exactly
-      const newPath = url.pathname.startsWith('/create') 
-        ? url.pathname.replace('/create', '') || '/'
-        : url.pathname
-        
-      return NextResponse.redirect(new URL(newPath, 'https://nest.quipsly.com'))
+      return NextResponse.redirect(new URL(`${url.pathname}${url.search}`, 'https://nest.quipsly.com'))
     }
   }
 
-  // Map everything on nest.quipsly.com to the /create folder
+  // Make the app subdomain land directly in the manuscript workbench, but keep
+  // real app routes addressable. /editor must stay /editor, not /create/editor.
   if (hostname === 'nest.quipsly.com') {
-    // If they explicitly hit /create, remove it from the URL
-    if (url.pathname.startsWith('/create')) {
-      const newPath = url.pathname.replace('/create', '') || '/'
-      return NextResponse.redirect(new URL(newPath, request.url))
+    if (url.pathname === '/') {
+      return NextResponse.rewrite(new URL('/create', request.url))
     }
-    
-    const rewritePath = url.pathname === '/' ? '/create' : `/create${url.pathname}`
-    return NextResponse.rewrite(new URL(rewritePath, request.url))
+
+    return NextResponse.next()
   }
 
   return NextResponse.next()

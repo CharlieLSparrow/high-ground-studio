@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { DEFAULT_PROJECT_SLUG, projectConfig } from "../../(app)/create/projectConfig";
+import { DEFAULT_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
@@ -52,26 +51,7 @@ function fallback(projectSlug: string, episodeSlug: string, title: string, messa
 }
 
 async function ensureProjectAndDocument(prisma: ReturnType<typeof getPrismaClient>, projectSlug: string) {
-  const config = projectConfig(projectSlug);
-  const workspace = await prisma.studioWorkspace.upsert({
-    where: { slug: "tonight-pack" },
-    update: {},
-    create: { slug: "tonight-pack", name: "Tonight Pack Workspace" },
-  });
-
-  const project = await prisma.studioProject.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug: config.slug } },
-  }) ?? await prisma.studioProject.create({
-    data: { workspaceId: workspace.id, slug: config.slug, name: config.name },
-  });
-
-  const document = await prisma.studioDocument.findUnique({
-    where: { stableId: config.documentStableId },
-  }) ?? await prisma.studioDocument.create({
-    data: { projectId: project.id, stableId: config.documentStableId, title: config.documentTitle },
-  });
-
-  return { config, project, document };
+  return ensureStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 }
 
 async function ensureProduction(body: any) {

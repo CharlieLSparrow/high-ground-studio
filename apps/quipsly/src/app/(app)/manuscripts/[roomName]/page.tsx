@@ -1,4 +1,5 @@
 import Editor from "@/components/Editor";
+import Link from "next/link";
 
 function getCollabUrl() {
   const configured = (
@@ -59,6 +60,21 @@ export default async function ManuscriptRoomPage({
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Storyboards */}
+          <section>
+            <h3 className="text-xs font-semibold text-neutral-400 mb-3 flex justify-between items-center">
+              Storyboards
+              <Link href={`/storyboards/builder?project=${roomName}`} className="text-blue-500 hover:text-blue-600">+</Link>
+            </h3>
+            <ul className="space-y-2">
+              <Link href={`/storyboards/builder?project=${roomName}`}>
+                <li className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/50 px-3 py-2 rounded-md cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm">
+                  <span className="text-indigo-500">🎞️</span> Generate Storyboard...
+                </li>
+              </Link>
+            </ul>
+          </section>
+
           {/* Active Collections */}
           <section>
             <h3 className="text-xs font-semibold text-neutral-400 mb-3 flex justify-between items-center">

@@ -5,6 +5,10 @@ import { OrbitControls, Sphere } from '@react-three/drei'
 import * as THREE from 'three'
 import { useState, useEffect } from 'react'
 
+const AmbientLight = "ambientLight" as any;
+const MeshBasicMaterial = "meshBasicMaterial" as any;
+const VideoTexture = "videoTexture" as any;
+
 interface ConsumerViewer360Props {
   videoUrl: string;
   startSeconds: number;
@@ -42,13 +46,13 @@ export function ConsumerViewer360({ videoUrl, startSeconds, endSeconds, initialC
       vid.removeAttribute('src');
       vid.load();
     };
-  }, [videoUrl, startMs, endMs]);
+  }, [videoUrl, startSeconds, endSeconds]);
 
   if (!video) return <div className="absolute inset-0 bg-black flex items-center justify-center text-white/50 text-xs tracking-widest uppercase">Initializing 3D...</div>;
 
   return (
     <Canvas camera={{ position: [0, 0, 0.1], zoom: initialCameraAngles?.zoom || 1 }} className="absolute inset-0 cursor-move">
-      <ambientLight intensity={1} />
+      <AmbientLight intensity={1} />
       <OrbitControls 
         enableZoom={false} // Disable zoom in consumer feed
         enablePan={false} 
@@ -58,9 +62,9 @@ export function ConsumerViewer360({ videoUrl, startSeconds, endSeconds, initialC
         target={[0, 0, 0]}
       />
       <Sphere args={[500, 60, 40]} rotation={initialCameraAngles ? [(initialCameraAngles.tilt * Math.PI) / 180, (initialCameraAngles.pan * Math.PI) / -180, 0] : [0, 0, 0]}>
-        <meshBasicMaterial side={THREE.BackSide}>
-          <videoTexture attach="map" args={[video]} />
-        </meshBasicMaterial>
+        <MeshBasicMaterial side={THREE.BackSide}>
+          <VideoTexture attach="map" args={[video]} />
+        </MeshBasicMaterial>
       </Sphere>
     </Canvas>
   );

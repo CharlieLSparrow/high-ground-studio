@@ -9,13 +9,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.67",
+    "@ai-sdk/react": "^3.0.198",
     "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^2.7.0",
     "@high-ground/content-studio-domain": "workspace:*",
     "@high-ground/quipsly-document-kernel": "workspace:*",
+    "@high-ground/quipsly-domain": "workspace:*",
     "@high-ground/studio-domain": "workspace:*",
     "@hocuspocus/provider": "^4.1.0",
     "@prisma/adapter-pg": "^7.7.0",
@@ -26,6 +30,7 @@
     "@remotion/cli": "^4.0.469",
     "@remotion/player": "^4.0.469",
     "@remotion/renderer": "^4.0.469",
+    "@tanstack/react-table": "^8.21.3",
     "@tiptap/core": "^3.23.5",
     "@tiptap/extension-bubble-menu": "^3.23.6",
     "@tiptap/extension-collaboration": "^3.23.5",
@@ -38,6 +43,8 @@
     "@tiptap/suggestion": "^3.25.0",
     "@types/three": "^0.183.1",
     "@xyflow/react": "^12.11.0",
+    "ai": "^6.0.196",
+    "date-fns": "^4.4.0",
     "lucide-react": "^0.577.0",
     "mammoth": "^1.12.0",
     "next": "latest",
@@ -45,10 +52,12 @@
     "pg": "^8.20.0",
     "react": "latest",
     "react-dom": "latest",
+    "recharts": "^2.15.4",
     "remotion": "^4.0.469",
     "three": "^0.165.0",
     "tippy.js": "^6.3.7",
-    "yjs": "^13.6.30"
+    "yjs": "^13.6.30",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",

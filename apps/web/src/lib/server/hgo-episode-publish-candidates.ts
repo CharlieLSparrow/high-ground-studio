@@ -9,6 +9,7 @@ import {
 } from "@/lib/hgo/publish-candidate-store-record";
 import { validateHgoStagedProjectionArtifact } from "@/lib/hgo/staged-projection-artifact";
 import { prisma } from "@/lib/prisma";
+import { HgoPublicEpisodePacket, HGO_PUBLIC_EPISODE_PACKET_KIND, HgoPublicEpisodeIndexEntry } from "@/lib/hgo/public-episode-packet";
 
 export type HgoEpisodePublishCandidateDto = {
   id: string;
@@ -299,20 +300,99 @@ export async function executeHgoEpisodePublishCandidate({
     return { ok: false, error: "Archived candidates cannot be published." };
   }
 
-  // Determine the file path for the new episode
-  const contentDir = path.join(process.cwd(), "content", "publish", "episodes");
-  const filePath = path.join(contentDir, `${candidate.projectionSlug}.mdx`);
+  const stagedArtifactRecord = await prisma.hgoStagedProjectionArtifact.findUnique({
+    where: { id: candidate.sourceStagedArtifactId },
+  });
+
+  if (!stagedArtifactRecord) {
+    return { ok: false, error: "Source staged artifact not found." };
+  }
+
+  const parsedArtifact = validateHgoStagedProjectionArtifact(stagedArtifactRecord.artifactJson);
+  if (!parsedArtifact.ok || !parsedArtifact.artifact) {
+    return { ok: false, error: "Source staged artifact JSON is invalid." };
+  }
+
+  const projection = parsedArtifact.artifact.projection;
+
+  // Build the public-safe packet
+  const publicPacket: HgoPublicEpisodePacket = {
+    packetKind: HGO_PUBLIC_EPISODE_PACKET_KIND,
+    id: candidate.id,
+    slug: candidate.projectionSlug,
+    title: projection.title,
+    subtitle: projection.hero.eyebrow, // Using eyebrow as subtitle if any
+    episodeNumber: projection.episodeNumber,
+    summary: projection.summary,
+    publishStatus: "live",
+    hero: {
+      eyebrow: projection.hero.eyebrow,
+      colorMood: projection.hero.colorMood,
+    },
+    media: {
+      heroImageUrl: (projection.hero as any).assetUrl || undefined, // Note: assuming assetUrl might be added to hero
+      audioUrl: projection.audio.state === "published" ? projection.audio.url : undefined,
+    },
+    showNotes: {
+      beats: projection.beats.map(b => ({
+        title: b.title,
+        summary: b.summary,
+        timingHint: b.timingHint,
+      })),
+      voiceCards: projection.voiceCards.map(vc => ({
+        speaker: vc.speaker,
+        summary: vc.summary,
+      })),
+    },
+    quotes: projection.pullQuotes
+      .filter(q => q.citationState === "verified")
+      .map(q => ({
+        text: q.text,
+        attribution: q.attribution,
+      })),
+    essayVersion: candidate.mdxDraft,
+    provenance: {
+      sourceArtifactHash: candidate.sourceArtifactHash,
+      publishedAt: new Date().toISOString(),
+    }
+  };
+
+  // Determine the file path for the new episode packet
+  const contentDir = path.join(/*turbopackIgnore: true*/ process.cwd(), "content", "publish", "hgo-episodes");
+  const filePath = path.join(contentDir, `${candidate.projectionSlug}.json`);
+  const indexPath = path.join(contentDir, `episodes-index.json`);
 
   try {
     // Ensure the episodes directory exists
     await fs.mkdir(contentDir, { recursive: true });
 
-    // Write the MDX content directly to disk
-    await fs.writeFile(filePath, candidate.mdxDraft, "utf8");
+    // Write the JSON packet directly to disk
+    await fs.writeFile(filePath, JSON.stringify(publicPacket, null, 2), "utf8");
+
+    // Maintain the index
+    let index: Record<string, HgoPublicEpisodeIndexEntry> = {};
+    try {
+      const indexContent = await fs.readFile(indexPath, "utf8");
+      index = JSON.parse(indexContent);
+    } catch (e) {
+      // Index might not exist yet, that's fine
+    }
+
+    index[publicPacket.slug] = {
+      id: publicPacket.id,
+      slug: publicPacket.slug,
+      title: publicPacket.title,
+      episodeNumber: publicPacket.episodeNumber,
+      summary: publicPacket.summary,
+      publishedAt: publicPacket.provenance.publishedAt,
+    };
+
+    await fs.writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+
   } catch (error) {
     return { 
       ok: false, 
-      error: `Failed to write MDX file to disk: ${error instanceof Error ? error.message : String(error)}` 
+      error: `Failed to write JSON packet or index to disk: ${error instanceof Error ? error.message : String(error)}` 
     };
   }
 
@@ -321,7 +401,7 @@ export async function executeHgoEpisodePublishCandidate({
     where: { id: candidate.id },
     data: {
       candidateStatus: "published",
-      note: `Published to ${filePath} by ${executedByEmail}.`,
+      note: `Published JSON packet to ${filePath} by ${executedByEmail}.`,
     },
   });
 

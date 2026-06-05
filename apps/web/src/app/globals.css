@@ -150,3 +150,62 @@ a {
   /* 20 seconds for a full cycle makes it feel cinematic, not dizzying */
   animation: slow-pan 20s ease-in-out infinite;
 }
+
+
+/* * 🎬 SAAS UI: Top-layer animations */
+dialog[open],
+[popover]:popover-open {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.95) translateX(10px);
+  }
+}
+
+dialog,
+[popover] {
+  opacity: 0;
+  transform: scale(0.95) translateX(10px);
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.25s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+dialog::backdrop,
+[popover]::backdrop {
+  background-color: rgba(5, 16, 20, 0);
+  backdrop-filter: blur(0px);
+  transition:
+    display 0.25s allow-discrete,
+    overlay 0.25s allow-discrete,
+    background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    backdrop-filter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+dialog[open]::backdrop,
+[popover]:popover-open::backdrop {
+  background-color: rgba(5, 16, 20, 0.6);
+  backdrop-filter: blur(4px);
+
+  @starting-style {
+    background-color: rgba(5, 16, 20, 0);
+    backdrop-filter: blur(0px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog,
+  [popover] {
+    transform: none;
+    transition-duration: 0.1s;
+  }
+  @starting-style {
+    dialog[open],
+    [popover]:popover-open {
+      transform: none;
+    }
+  }
+}

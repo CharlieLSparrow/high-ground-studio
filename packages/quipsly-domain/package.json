@@ -15,6 +15,10 @@
     "./openapi": {
       "types": "./src/openapi.ts",
       "import": "./src/openapi.ts"
+    },
+    "./retrieval": {
+      "types": "./src/retrieval.ts",
+      "import": "./src/retrieval.ts"
     }
   },
   "scripts": {

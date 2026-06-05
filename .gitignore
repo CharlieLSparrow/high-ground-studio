@@ -67,3 +67,10 @@ gcs-key.json
 *.json.key
 credentials.json
 
+# Cleanup scripts and temp directories
+dev.db
+*.db
+scratch/
+*.py
+fix_*.js
+content/

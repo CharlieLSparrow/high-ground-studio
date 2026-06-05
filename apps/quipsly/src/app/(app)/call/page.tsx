@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 type CallRole = "host" | "guest";
 type ConnectionStatus = "idle" | "joining" | "calling" | "connected" | "ended" | "error";
@@ -67,7 +68,6 @@ type RoomPayload = {
   tracks: PersistedTrack[];
 };
 
-const DEFAULT_PROJECT_SLUG = "quipsly-dev-lab";
 const DEFAULT_EPISODE_SLUG = "episode-8";
 const SIGNAL_POLL_MS = 1200;
 const MIME_CANDIDATES = [

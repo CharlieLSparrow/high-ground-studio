@@ -38,7 +38,7 @@ export default function AudioDeck({ title, episodeNumber, season, audioUrl, dura
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().catch(e => console.log("Play failed", e));
+      audioRef.current.play().catch(e => console.warn("[AudioDeck] Autoplay was prevented by the browser:", e));
       setIsPlaying(true);
     }
   };

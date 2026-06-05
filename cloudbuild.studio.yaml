@@ -5,7 +5,7 @@ substitutions:
   _IMAGE_TAG: manual
   _NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
   _STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
-  _QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS: "1"
+  _QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS: "0"
 
 steps:
   - id: build-studio-image

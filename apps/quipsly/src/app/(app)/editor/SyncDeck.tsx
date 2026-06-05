@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 type TimelineClip = {
   id: string;
@@ -68,7 +69,6 @@ type MediaPreviewProps = {
   title: string;
 };
 
-const DEFAULT_PROJECT_SLUG = "quipsly-dev-lab";
 const DEFAULT_EPISODE_SLUG = "episode-8";
 const DEFAULT_SYNC_DURATION_SECONDS = 90;
 const MIN_SYNC_DURATION_SECONDS = 0.25;

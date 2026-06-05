@@ -1,4 +1,5 @@
 import { useReducer } from "react";
+import { resolveTrackCollisions } from "./timeline/timelineMath";
 
 export const TRACK_PREFIX_VIDEO = "V" as const;
 export const TRACK_PREFIX_AUDIO = "A" as const;
@@ -145,10 +146,21 @@ export type PaperEditSnapshot = {
   label?: string;
 };
 
+export type LoopClip = {
+  id: string;
+  sourceType: "youtube-embed" | "bucket-video";
+  sourceUrl: string;
+  startSec: number;
+  endSec: number;
+  title: string;
+  exportability: "playable" | "exportable";
+};
+
 export type TimelineState = {
   clips: TimelineClip[];
   transcript: TranscriptBlock[];
   paperEditSnapshots?: Record<string, PaperEditSnapshot>;
+  loopClips?: LoopClip[];
 };
 
 function sanitizePaperEditSnapshots(value: TimelineState["paperEditSnapshots"]) {
@@ -178,11 +190,32 @@ function sanitizePaperEditSnapshots(value: TimelineState["paperEditSnapshots"]) 
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
-function sanitizeTimelineState(nextState: TimelineState): TimelineState {
+function sanitizeLoopClip(loop: any): LoopClip {
+  return {
+    ...loop,
+    id: loop.id || `loop-${Math.floor(Math.random() * 1_000_000)}`,
+    sourceType: loop.sourceType === "youtube-embed" ? "youtube-embed" : "bucket-video",
+    sourceUrl: (typeof loop.sourceUrl === "string" ? loop.sourceUrl : "").trim(),
+    startSec: Math.max(0, toFiniteNumber(loop.startSec, 0)),
+    endSec: Math.max(0, toFiniteNumber(loop.endSec, 0)),
+    title: (typeof loop.title === "string" ? loop.title : "").trim() || "Untitled Loop",
+    exportability: loop.exportability === "exportable" ? "exportable" : "playable",
+  };
+}
+
+function sanitizeTimelineState(nextState: TimelineState | null | undefined): TimelineState {
+  if (!nextState || typeof nextState !== "object") {
+    return { clips: [], transcript: [], loopClips: [] };
+  }
   const paperEditSnapshots = sanitizePaperEditSnapshots(nextState.paperEditSnapshots);
+  const rawClips = Array.isArray(nextState.clips) ? nextState.clips : [];
+  const rawTranscript = Array.isArray(nextState.transcript) ? nextState.transcript : [];
+  const rawLoopClips = Array.isArray(nextState.loopClips) ? nextState.loopClips : [];
+  
   const sanitized = {
-    clips: nextState.clips.map((clip) => sanitizeTimelineClip(clip, DEFAULT_VIDEO_TRACK)),
-    transcript: nextState.transcript.map(sanitizeTranscriptBlock),
+    clips: rawClips.map((clip) => sanitizeTimelineClip(clip, DEFAULT_VIDEO_TRACK)),
+    transcript: rawTranscript.map(sanitizeTranscriptBlock),
+    loopClips: rawLoopClips.map(sanitizeLoopClip),
   };
 
   return paperEditSnapshots ? { ...sanitized, paperEditSnapshots } : sanitized;
@@ -207,7 +240,9 @@ type Action =
   | { type: "SNAP_CLIP_TO_NEXT"; payload: { clipId: string } }
   | { type: "UPDATE_CLIP_TIMING"; payload: { clipId: string; startIn?: number; duration?: number; sourceStart?: number; sourceEnd?: number } }
   | { type: "COMPACT_TRACK_FROM_CLIP"; payload: { clipId: string } }
-  | { type: "PUSH_TRACK_OVERLAPS_FROM_CLIP"; payload: { clipId: string } };
+  | { type: "PUSH_TRACK_OVERLAPS_FROM_CLIP"; payload: { clipId: string } }
+  | { type: "ADD_LOOP_CLIP"; payload: { loop: LoopClip } }
+  | { type: "DELETE_LOOP_CLIP"; payload: { loopId: string } };
 
 function timelineReducer(state: TimelineState, action: Action): TimelineState {
   switch (action.type) {
@@ -373,35 +408,37 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       };
     }
     case "TRIM_CLIP": {
-      return {
-        ...state,
-        clips: state.clips.map((clip) => {
-          if (clip.id !== action.payload.clipId) return clip;
+      const updatedClips = state.clips.map((clip) => {
+        if (clip.id !== action.payload.clipId) return clip;
 
-          const delta = toFiniteNumber(action.payload.deltaSeconds, 0);
-          if (!delta) return clip;
+        const delta = toFiniteNumber(action.payload.deltaSeconds, 0);
+        if (!delta) return clip;
 
-          if (action.payload.edge === "start") {
-            const clipEnd = clip.startIn + clip.duration;
-            const requestedStart = clip.startIn + delta;
-            const nextStart = Math.max(0, Math.min(requestedStart, clipEnd - MIN_TIMELINE_CLIP_SECONDS));
-            const appliedDelta = nextStart - clip.startIn;
-            const nextSourceStart = Math.max(0, clip.sourceStart + appliedDelta);
-            return {
-              ...clip,
-              startIn: nextStart,
-              sourceStart: nextSourceStart,
-              duration: clampDuration(clipEnd - nextStart),
-            };
-          }
-
-          const nextDuration = clampDuration(clip.duration + delta);
+        if (action.payload.edge === "start") {
+          const clipEnd = clip.startIn + clip.duration;
+          const requestedStart = clip.startIn + delta;
+          const nextStart = Math.max(0, Math.min(requestedStart, clipEnd - MIN_TIMELINE_CLIP_SECONDS));
+          const appliedDelta = nextStart - clip.startIn;
+          const nextSourceStart = Math.max(0, clip.sourceStart + appliedDelta);
           return {
             ...clip,
-            duration: nextDuration,
-            sourceEnd: Math.max(clip.sourceStart + nextDuration, clip.sourceStart + MIN_TIMELINE_CLIP_SECONDS),
+            startIn: nextStart,
+            sourceStart: nextSourceStart,
+            duration: clampDuration(clipEnd - nextStart),
           };
-        }),
+        }
+
+        const nextDuration = clampDuration(clip.duration + delta);
+        return {
+          ...clip,
+          duration: nextDuration,
+          sourceEnd: Math.max(clip.sourceStart + nextDuration, clip.sourceStart + MIN_TIMELINE_CLIP_SECONDS),
+        };
+      }).sort((a, b) => a.startIn - b.startIn);
+
+      return {
+        ...state,
+        clips: resolveTrackCollisions(action.payload.clipId, updatedClips as any) as any,
       };
     }
     case "UPDATE_CLIP_SOURCE": {
@@ -483,15 +520,17 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
     case "MOVE_CLIP_TO": {
       const startIn = Math.max(0, toFiniteNumber(action.payload.startIn, 0));
 
+      const updatedClips = state.clips
+        .map((clip) =>
+          clip.id === action.payload.clipId
+            ? { ...clip, startIn }
+            : clip
+        )
+        .sort((a, b) => a.startIn - b.startIn);
+
       return {
         ...state,
-        clips: state.clips
-          .map((clip) =>
-            clip.id === action.payload.clipId
-              ? { ...clip, startIn }
-              : clip
-          )
-          .sort((a, b) => a.startIn - b.startIn),
+        clips: resolveTrackCollisions(action.payload.clipId, updatedClips as any) as any,
       };
     }
     case "MOVE_CLIP_TO_TRACK": {
@@ -635,6 +674,19 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
           .sort((a, b) => a.startIn - b.startIn),
       };
     }
+    case "ADD_LOOP_CLIP": {
+      const loopClips = state.loopClips ?? [];
+      return {
+        ...state,
+        loopClips: [...loopClips, sanitizeLoopClip(action.payload.loop)],
+      };
+    }
+    case "DELETE_LOOP_CLIP": {
+      return {
+        ...state,
+        loopClips: (state.loopClips ?? []).filter((l) => l.id !== action.payload.loopId),
+      };
+    }
     default:
       return state;
   }
@@ -681,5 +733,9 @@ export function useTimelineState(initialState: TimelineState) {
       dispatch({ type: "COMPACT_TRACK_FROM_CLIP", payload: { clipId } }),
     pushTrackOverlapsFromClip: (clipId: string) =>
       dispatch({ type: "PUSH_TRACK_OVERLAPS_FROM_CLIP", payload: { clipId } }),
+    addLoopClip: (loop: LoopClip) =>
+      dispatch({ type: "ADD_LOOP_CLIP", payload: { loop } }),
+    deleteLoopClip: (loopId: string) =>
+      dispatch({ type: "DELETE_LOOP_CLIP", payload: { loopId } }),
   };
 }

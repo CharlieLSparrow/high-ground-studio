@@ -19,10 +19,12 @@ RUN corepack enable \
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
 COPY ops/episode-production-db-push.sql ./ops/episode-production-db-push.sql
+COPY ops/quipsly-foundation-additive.sql ./ops/quipsly-foundation-additive.sql
 COPY apps/quipsly/package.json ./apps/quipsly/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/motion-lab/package.json ./apps/motion-lab/package.json
 COPY packages/content-studio-domain/package.json ./packages/content-studio-domain/package.json
+COPY packages/quipsly-domain/package.json ./packages/quipsly-domain/package.json
 COPY packages/quipsly-document-kernel/package.json ./packages/quipsly-document-kernel/package.json
 COPY packages/worldhub-domain/package.json ./packages/worldhub-domain/package.json
 COPY packages/studio-domain/package.json ./packages/studio-domain/package.json

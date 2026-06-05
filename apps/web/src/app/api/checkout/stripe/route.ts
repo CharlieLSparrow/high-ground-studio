@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPrismaClient } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Mocking Stripe SDK for now to prevent build errors
 // In the future, install `stripe` via pnpm and import:
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing email or itemSlug" }, { status: 400 });
     }
 
-    const prisma = getPrismaClient();
+    // Use the globally imported prisma client
 
     // 1. Fetch the item from our catalog
     const catalogItem = await prisma.worldHubCatalogItem.findUnique({

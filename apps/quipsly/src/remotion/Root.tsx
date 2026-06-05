@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React from 'react';
 import { Composition } from "remotion";
 import { StudioTimeline } from "./StudioTimeline";
@@ -11,7 +10,7 @@ export const RemotionRoot: React.FC = () => {
     <>
       <Composition
         id="HighGroundFinalCut"
-        component={StudioTimeline}
+        component={StudioTimeline as any}
         durationInFrames={1500} // This is dynamically overridden by the EDL
         fps={30}
         width={1920}

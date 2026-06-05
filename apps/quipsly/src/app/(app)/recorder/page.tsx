@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 type RecordingEventKind = "session" | "marker" | "clip" | "retake" | "note";
 
@@ -90,8 +91,6 @@ type RecorderRoomSnapshot = {
   events: RecordingEvent[];
   tracks: PersistedTrack[];
 };
-
-const DEFAULT_PROJECT_SLUG = "quipsly-dev-lab";
 
 const DEFAULT_SCRIPT = `Cold open
 

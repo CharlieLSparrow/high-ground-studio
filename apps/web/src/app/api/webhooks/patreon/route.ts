@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { getPrismaClient } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { AppRole } from "@prisma/client";
 
 // This webhook handles Patreon events (members:pledge:create, members:pledge:update, members:pledge:delete)
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No email in payload" }, { status: 400 });
     }
 
-    const prisma = getPrismaClient();
+    // Use the globally imported prisma client
 
     // 1. Ensure the user exists in our DB (by email)
     // If they don't exist yet, we create a stub user.

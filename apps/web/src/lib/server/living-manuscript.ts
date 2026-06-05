@@ -390,8 +390,8 @@ function parseBlocks(body: string) {
 async function resolveRepoRelativePath(
   relativePath: readonly string[],
 ): Promise<string | null> {
-  const directPath = path.join(process.cwd(), ...relativePath);
-  const repoPath = path.join(process.cwd(), "apps", "web", ...relativePath);
+  const directPath = path.join(/*turbopackIgnore: true*/ process.cwd(), ...relativePath);
+  const repoPath = path.join(/*turbopackIgnore: true*/ process.cwd(), "apps", "web", ...relativePath);
 
   for (const candidate of [directPath, repoPath]) {
     try {

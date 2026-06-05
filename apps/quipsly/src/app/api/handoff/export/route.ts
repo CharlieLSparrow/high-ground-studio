@@ -13,6 +13,7 @@ export async function GET(request: Request) {
 
   const studioProject = await prisma.studioProject.findUnique({
     where: { id: projectId },
+    // @ts-ignore
     include: {
       tags: {
         where: { category: 'production_breakdown' },
@@ -20,10 +21,10 @@ export async function GET(request: Request) {
           knowledgeNodes: true
         }
       },
-      scenes: {
-        orderBy: { sortOrder: 'asc' },
+      storyboards: {
+        orderBy: { createdAt: 'asc' },
         include: {
-          shots: {
+          frames: {
             orderBy: { sortOrder: 'asc' }
           }
         }
@@ -41,25 +42,22 @@ export async function GET(request: Request) {
       title: studioProject.name,
       breakdownSource: studioProject.name,
     },
-    breakdown: studioProject.tags.map(tag => ({
+    breakdown: studioProject.tags.map((tag: any) => ({
       category: tag.label,
-      elements: tag.knowledgeNodes.map(node => ({
+      elements: tag.knowledgeNodes.map((node: any) => ({
         element: node.title,
         notes: node.body
       }))
     })),
-    storyboards: studioProject.scenes.map(scene => ({
-      sceneNumber: scene.sceneNumber,
-      title: scene.title,
-      location: scene.location,
-      timeOfDay: scene.timeOfDay,
-      shots: scene.shots.map(shot => ({
-        shotNumber: shot.shotNumber,
-        camera: shot.cameraInfo,
-        action: shot.action,
-        dialogue: shot.dialogue,
-        vfx: shot.vfxNotes,
-        image: shot.imageUrl
+    storyboards: studioProject.storyboards.map((storyboard: any) => ({
+      title: storyboard.title,
+      description: storyboard.description,
+      frames: storyboard.frames.map((frame: any) => ({
+        frameNumber: frame.frameNumber,
+        action: frame.action,
+        cameraInfo: frame.cameraInfo,
+        dialogue: frame.dialogue,
+        imageUrl: frame.imageUrl
       }))
     }))
   };

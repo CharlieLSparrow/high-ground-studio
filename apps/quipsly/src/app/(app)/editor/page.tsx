@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Player } from "@remotion/player";
 import { submitRenderJob } from "../render-queue/actions";
 import { VisualTimeline } from "./VisualTimeline";
+import { InteractiveTimeline } from "./timeline/InteractiveTimeline";
+import { MediaAssetPicker } from "./MediaAssetPicker";
 import {
   makeTrackId,
   normalizeTrackId,
@@ -25,10 +27,10 @@ import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineState, TranscriptBlock } from "./useTimelineState";
+import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 const EDITOR_LEGACY_VERSION = 0;
-const DEFAULT_EDITOR_PROJECT_SLUG = "quipsly-dev-lab";
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
 type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "default timeline" | "error";
 
@@ -1456,23 +1458,23 @@ function healthStatusLabel(status: MediaSourceHealthStatus) {
 }
 
 function healthSafetyTitle(health: MediaSourceHealth | null | undefined, missing = false) {
-  if (missing) return "Not safe yet";
+  if (missing) return "Source unavailable";
   if (!health) return "Checking safety";
   if (health.status === "checking") return "Checking safety";
-  if (health.status === "error") return "Not safe yet";
+  if (health.status === "error") return "Source unavailable";
   if (health.renderUsable) return "Safe for export";
   if (health.previewUsable) return "Safe to edit";
   if (health.reachable) return "Needs review";
-  return "Not safe yet";
+  return "Unknown safety";
 }
 
 function healthNextAction(health: MediaSourceHealth | null | undefined, missing = false) {
-  if (missing) return "Attach or replace the source before previewing or exporting.";
+  if (missing) return "The file is unreachable or missing. Your timeline is safe, but this clip won't play until replaced.";
   if (!health || health.status === "checking") return "Keep working. Quipsly is checking this source in the background.";
   if (health.renderUsable) return "You can edit and export with this source.";
   if (health.previewUsable) return "You can keep editing. Before final export, replace this with a renderable file.";
-  if (health.reachable) return "The file responds, but Quipsly cannot use it confidently yet. Recheck or replace it.";
-  return "Relink, replace, or park this file so it stops blocking the edit.";
+  if (health.reachable) return "The file responds, but Quipsly cannot use it confidently yet. Your timeline is safe, but replace it before exporting.";
+  return "Relink or replace this file. Your edits are safe, but it needs attention before export.";
 }
 
 function assetSyncTargetSummary(asset: ImportedMediaAsset, selectedClip: TimelineClip | null, spine: EpisodeSpineAudio | null) {
@@ -1721,14 +1723,14 @@ async function postEpisodeProduction(payload: Record<string, unknown>, options: 
 }
 
 function transcriptWordTimings(block: TranscriptBlock) {
-  const tokens = block.text.match(/\S+\s*/g) ?? [block.text];
+  const tokens = block.text.match(/\S+|\s+/g) ?? [block.text];
   const wordCount = Math.max(1, tokens.filter((token) => token.trim()).length);
   const secondsPerWord = block.duration / wordCount;
   let spokenWordIndex = 0;
 
   return tokens.map((token, index) => {
-    const text = token.trim();
-    if (!text) {
+    const isSpace = !token.trim();
+    if (isSpace) {
       return {
         id: `${block.id}-space-${index}`,
         text: token,
@@ -2103,7 +2105,9 @@ function CloudEditorContent() {
   const episodeSlug = searchParams.get("episode") ?? searchParams.get("boundary") ?? "current-episode";
   const resolvedProjectSlug = projectId ?? DEFAULT_EDITOR_PROJECT_SLUG;
   const episodeLabel = humanizeSlug(episodeSlug);
-  const [realEditingMode, setRealEditingMode] = useState(episodeSlug === "episode-4");
+  const [realEditingMode, setRealEditingMode] = useState(false);
+  const [isAddAtPlayheadPickerOpen, setIsAddAtPlayheadPickerOpen] = useState(false);
+  const [isReplaceSourcePickerOpen, setIsReplaceSourcePickerOpen] = useState(false);
 
   // The new NLE timeline reducer
   const {
@@ -2126,6 +2130,8 @@ function CloudEditorContent() {
     updateClipTiming,
     compactTrackFromClip,
     pushTrackOverlapsFromClip,
+    addLoopClip,
+    deleteLoopClip,
   } = useTimelineState(INITIAL_STATE);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const timelineFingerprint = useMemo(() => timelineContentFingerprint(timelineState), [timelineState]);
@@ -2158,6 +2164,18 @@ function CloudEditorContent() {
       setViewMode("timeline");
     }
   }, [realEditingMode, viewMode]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasUnsavedChanges = timelineFingerprint !== timelineSavedFingerprintRef.current;
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "You have unsaved changes to your timeline. Are you sure you want to leave?";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [timelineFingerprint]);
 
   useEffect(() => {
     const requestId = ++timelineHydrationRequestRef.current;
@@ -2214,6 +2232,7 @@ function CloudEditorContent() {
         setSessionSummary(`Loaded ${state.title} from ${persistedTimelineEntry.label}`);
         setViewMode("timeline");
       } else {
+        replaceTimeline(INITIAL_STATE);
         timelineSavedFingerprintRef.current = timelineContentFingerprint(INITIAL_STATE);
         setTimelineLastSavedAt(null);
         setTimelineHydrationSource("default timeline");
@@ -2228,6 +2247,7 @@ function CloudEditorContent() {
       setTimelineSaveStateSafe("error");
       setTimelineHydrationSource("error");
       setSessionSummary("Failed to hydrate timeline from server.");
+      replaceTimeline(INITIAL_STATE);
       setIsTimelineHydrated(true);
     });
 
@@ -2358,7 +2378,14 @@ function CloudEditorContent() {
   };
 
   useEffect(() => {
-    if (!isTimelineHydrated) return;
+    if (!isTimelineHydrated || !hasHydratedProductionTimeline.current) return;
+    const productionJsonSize = productionState?.productionJson
+      ? JSON.stringify(productionState.productionJson).length
+      : 0;
+    if (timelineState.clips.length === 0 && productionJsonSize > 50) {
+      console.error("Hydration safety lock prevented empty timeline from overwriting cloud state.");
+      return;
+    }
     if (!productionState) {
       setTimelineSaveStateSafe("idle");
       return;
@@ -2569,11 +2596,15 @@ function CloudEditorContent() {
       setMediaHealthCheckedAt(coerceString(payload.checkedAt, new Date().toISOString()));
     } catch (error) {
       console.warn("Could not check media source health.", error);
-      setMediaHealthById(Object.fromEntries(
-        mediaHealthProbeItems.map((item) => [
-          item.id,
-          mediaHealthFallback(item, "error", error instanceof Error ? error.message : "Media health check failed."),
-        ]),
+      setMediaHealthById((previous) => Object.fromEntries(
+        mediaHealthProbeItems.map((item) => {
+          const prev = previous[item.id];
+          const hasValidPrev = prev && prev.status !== "checking" && prev.status !== "error";
+          return [
+            item.id,
+            hasValidPrev ? prev : mediaHealthFallback(item, "error", error instanceof Error ? error.message : "Media health check failed."),
+          ];
+        }),
       ));
       setMediaHealthCheckedAt(new Date().toISOString());
     } finally {
@@ -2756,6 +2787,17 @@ function CloudEditorContent() {
 
     const label = asset?.originalName ?? clip?.name ?? "Spine audio";
     const source = asset?.playbackUrl ?? clip?.assetId ?? "";
+    
+    if (persistedSpineAudio && (persistedSpineAudio.assetId || persistedSpineAudio.clipId)) {
+      if ((asset && persistedSpineAudio.assetId !== (asset.id || asset.sourceId)) || 
+          (clip && persistedSpineAudio.clipId !== clip.id)) {
+        if (!window.confirm("This episode already has an audio spine. Changing it may misalign existing clips. Are you sure you want to replace the spine?")) {
+          setMediaImportStatus("");
+          return;
+        }
+      }
+    }
+
     setMediaImportStatus(`Setting spine audio: ${label}...`);
 
     try {
@@ -3922,20 +3964,20 @@ function CloudEditorContent() {
   }, [currentTime, timelineState.transcript]);
 
   const timelineSaveStatusLabel = useMemo(() => {
-    if (timelineSaveState === "queued") return "Queued";
-    if (timelineSaveState === "saving") return "Saving";
+    if (timelineSaveState === "queued") return "Saving next...";
+    if (timelineSaveState === "saving") return "Saving...";
     if (timelineSaveState === "saved") {
       return `Saved ${timelineLastSavedAt ? `@ ${new Date(timelineLastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "just now"}`;
     }
-    if (timelineSaveState === "error") return "Error";
+    if (timelineSaveState === "error") return "Save Error";
     if (timelineSaveState === "conflict") return "Conflict";
-    if (timelineSaveState === "fallback") return "Local";
-    return "Idle";
-  }, [timelineLastSavedAt, timelineSaveState]);
+    if (timelineSaveState === "fallback") return "Saved Locally";
+    return timelineFingerprint === timelineSavedFingerprintRef.current ? "Up to date" : "Unsaved changes";
+  }, [timelineLastSavedAt, timelineSaveState, timelineFingerprint]);
 
-  const timelineSaveStatusStyles = timelineSaveState === "saved"
+  const timelineSaveStatusStyles = timelineSaveState === "saved" || (timelineSaveState === "idle" && timelineFingerprint === timelineSavedFingerprintRef.current)
     ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-    : timelineSaveState === "queued" || timelineSaveState === "saving"
+    : timelineSaveState === "queued" || timelineSaveState === "saving" || (timelineSaveState === "idle" && timelineFingerprint !== timelineSavedFingerprintRef.current)
       ? "border-amber-200 bg-amber-50 text-amber-800"
       : timelineSaveState === "error" || timelineSaveState === "conflict"
         ? "border-red-200 bg-red-50 text-red-800"
@@ -4182,7 +4224,11 @@ function CloudEditorContent() {
 
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
-        if (!window.confirm(`Delete "${selectedClip.name}" from this timeline?`)) return;
+        const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
+        const msg = isSpine 
+          ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure?`
+          : `Delete "${selectedClip.name}" from this timeline?`;
+        if (!window.confirm(msg)) return;
         deleteClip(selectedClip.id);
       }
     };
@@ -4219,12 +4265,34 @@ function CloudEditorContent() {
     return () => window.clearInterval(interval);
   }, [isPreviewPlaying, totalDuration]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__QUIPSLY_EDITOR_STATE__ = {
+        timelineState,
+        productionState,
+        importedMediaAssets,
+        episodeSlug,
+        resolvedProjectSlug
+      };
+    }
+  }, [timelineState, productionState, importedMediaAssets, episodeSlug, resolvedProjectSlug]);
+
+  const timelineSaved = timelineSaveState === "saved" || timelineFingerprint === timelineSavedFingerprintRef.current;
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <header className="flex justify-between items-center p-4 border-b border-[#e8dcc4] bg-[#fdfaf6]">
-        <h1 className="text-xl font-black tracking-tight text-[#3d3122]">
-          NLE // Editor {projectId && <span className="text-[#8c6b4a] font-medium text-sm ml-2">Project: {projectId}</span>}
-        </h1>
+        <div className="flex flex-col">
+          <h1 className="text-xl font-black tracking-tight text-[#3d3122] flex items-center gap-3">
+            NLE // Editor {projectId && <span className="text-[#8c6b4a] font-medium text-sm">Project: {projectId}</span>}
+          </h1>
+          {activeSpineAudioLabel && (
+            <div className="mt-1 flex items-center gap-2 text-xs font-bold text-[#8c6b4a]">
+              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[9px] uppercase tracking-widest text-indigo-800">Spine</span>
+              <span className="truncate max-w-[400px]" title={activeSpineAudioLabel}>{activeSpineAudioLabel}</span>
+            </div>
+          )}
+        </div>
         {realEditingMode ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-900">
             Real editing session
@@ -4277,13 +4345,16 @@ function CloudEditorContent() {
           >
             {isPreviewPlaying ? "Pause Read-Along" : "Play Read-Along"}
           </button>
-          <button
-            onClick={handleSaveEpisodeTimeline}
-            disabled={timelineSaveState === "saving"}
-            className="px-4 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm rounded-md transition-colors disabled:opacity-50"
-          >
-            {timelineSaveState === "saving" ? "Saving..." : timelineSaveState === "saved" ? "Timeline Saved" : "Save Episode Timeline"}
-          </button>
+          <div className="flex items-center gap-2">
+            {!timelineSaved && <span className="flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]" title="Unsaved changes" />}
+            <button
+              onClick={handleSaveEpisodeTimeline}
+              disabled={timelineSaveState === "saving"}
+              className="px-4 py-1.5 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm rounded-md transition-colors disabled:opacity-50"
+            >
+              {timelineSaveState === "saving" ? "Saving..." : timelineSaveState === "saved" ? "Timeline Saved" : "Save Episode Timeline"}
+            </button>
+          </div>
           <button
             onClick={handleRefreshProductionState}
             disabled={!isTimelineHydrated || timelineSaveState === "saving"}
@@ -4624,19 +4695,19 @@ function CloudEditorContent() {
             </div>
             <div className="mt-3 grid gap-2">
               <Link
-                href={`/create?project=${encodeURIComponent(projectId ?? "quipsly-dev-lab")}&publisher=1&boundary=${encodeURIComponent(episodeSlug)}&view=${encodeURIComponent(`${episodeSlug}-view`)}`}
+                href={`/create?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&publisher=1&boundary=${encodeURIComponent(episodeSlug)}&view=${encodeURIComponent(`${episodeSlug}-view`)}`}
                 className="rounded-lg border border-[#d7bd8f] bg-white px-3 py-2 font-black text-[#5d4528] hover:bg-[#fffaf0]"
               >
                 Open {episodeLabel} manuscript
               </Link>
               <Link
-                href={`/recorder?project=${encodeURIComponent(projectId ?? "quipsly-dev-lab")}&episode=${encodeURIComponent(episodeSlug)}`}
+                href={`/recorder?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&episode=${encodeURIComponent(episodeSlug)}`}
                 className="rounded-lg border border-[#d7bd8f] bg-white px-3 py-2 font-black text-[#5d4528] hover:bg-[#fffaf0]"
               >
                 Record this episode
               </Link>
               <Link
-                href={`/call?project=${encodeURIComponent(projectId ?? "quipsly-dev-lab")}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
+                href={`/call?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
                 className="rounded-lg border border-[#3d3122] bg-[#3d3122] px-3 py-2 font-black text-white hover:bg-[#59442d]"
               >
                 Live call for this episode
@@ -4644,13 +4715,13 @@ function CloudEditorContent() {
             </div>
           </div>
           <Link
-            href={`/recorder?project=${encodeURIComponent(projectId ?? "quipsly-dev-lab")}&episode=${encodeURIComponent(episodeSlug)}`}
+            href={`/recorder?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&episode=${encodeURIComponent(episodeSlug)}`}
             className={`bg-[#3d3122] text-white border border-[#3d3122] px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-[#59442d] ${realEditingMode ? "hidden" : ""}`}
           >
             Open Recording Room
           </Link>
           <Link
-            href={`/call?project=${encodeURIComponent(projectId ?? "quipsly-dev-lab")}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
+            href={`/call?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
             className={`bg-[#7b4f1f] text-white border border-[#7b4f1f] px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-[#9a662c] ${realEditingMode ? "hidden" : ""}`}
           >
             Open Live Call
@@ -4923,18 +4994,20 @@ function CloudEditorContent() {
               <div className="mt-3 grid gap-3">
                 <label className="block">
                   <span className="font-black text-[#3d3122]">1. Pick spine audio</span>
-                  <select
-                    value={syncWizardSpineAssetId}
-                    onChange={(event) => setSyncWizardSpineAssetId(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#d8b777] bg-white px-3 py-2 font-bold text-[#3d3122]"
-                  >
-                    <option value="">No spine audio selected yet</option>
-                    {importedAudioAssets.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.originalName} ({formatBytes(asset.size)})
-                      </option>
-                    ))}
-                  </select>
+                  <MediaAssetPicker
+                    assets={importedAudioAssets as any}
+                    selectedId={syncWizardSpineAssetId}
+                    spineAssetId={persistedSpineAudio?.assetId ?? undefined}
+                    onSelect={(id) => setSyncWizardSpineAssetId(id)}
+                    getAssetHealthLabel={(asset) => {
+                      const health = importedAssetHealth(asset as any);
+                      return health ? healthStatusLabel(health.status) : "Unchecked";
+                    }}
+                    getAssetHealthTone={(asset) => {
+                      const health = importedAssetHealth(asset as any);
+                      return healthStatusStyles(health?.status ?? "unchecked");
+                    }}
+                  />
                   <button
                     type="button"
                     onClick={() => syncWizardSpineAsset && void setEpisodeSpineAudio({ asset: syncWizardSpineAsset })}
@@ -5616,10 +5689,10 @@ function CloudEditorContent() {
                 </div>
                 );
               }) : (
-                <div className="rounded-lg border border-dashed border-[#e8dcc4] bg-white p-3 font-bold leading-5 text-[#8c6b4a]">
-                  <div className="font-black text-[#3d3122]">No episode media imported yet.</div>
-                  <div className="mt-1">
-                    Start with the least scary file: import the main phone/audio recording first, then make it the spine audio. Camera video and reference clips can come later.
+                <div className="rounded-xl border-2 border-dashed border-[#e8dcc4] bg-[#fffaf0] p-6 text-center font-bold leading-6 text-[#8c6b4a]">
+                  <div className="text-lg font-black text-[#3d3122] mb-2">No episode media imported yet.</div>
+                  <div>
+                    Start with the least scary file: import the main phone or audio recording first.<br/>Then, make it the <strong className="text-indigo-800">spine audio</strong>. Camera video and reference clips can come later.
                   </div>
                 </div>
               )}
@@ -5638,6 +5711,41 @@ function CloudEditorContent() {
                   <div>
                     <div className="font-black">{healthSafetyTitle(selectedHealth, isMissingProductionSource(selectedClip))}</div>
                     <div className="mt-1">{healthNextAction(selectedHealth, isMissingProductionSource(selectedClip))}</div>
+                    {(isMissingProductionSource(selectedClip) || selectedHealth?.status === "error") && (
+                      <div className="mt-2 relative">
+                        <button
+                          onClick={() => setIsReplaceSourcePickerOpen(v => !v)}
+                          className="rounded-md border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-900 hover:bg-amber-200"
+                        >
+                          {isReplaceSourcePickerOpen ? "Cancel" : "Replace Source Media"}
+                        </button>
+                        {isReplaceSourcePickerOpen && (
+                          <div className="absolute top-full left-0 mt-2 w-80 z-50 shadow-xl">
+                            <MediaAssetPicker
+                              assets={importedMediaAssets.map(asset => {
+                                const health = importedAssetHealth(asset);
+                                return {
+                                  id: asset.id,
+                                  name: asset.originalName,
+                                  kind: asset.kind,
+                                  isSpine: asset.id === persistedSpineAudio?.assetId,
+                                  tags: [
+                                    { label: health ? healthStatusLabel(health.status) : "Unchecked", tone: healthStatusStyles(health?.status ?? "unchecked") },
+                                    ...(asset.sync?.status === "synced" ? [{ label: "Synced", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" }] : []),
+                                    ...(asset.sync?.status === "held" ? [{ label: "Held", tone: "border-slate-200 bg-slate-50 text-slate-700" }] : []),
+                                  ]
+                                };
+                              })}
+                              onSelect={(id) => {
+                                const asset = importedMediaAssets.find(a => a.id === id);
+                                if (asset) updateClipSource(selectedClip.id, asset.id, asset.originalName);
+                                setIsReplaceSourcePickerOpen(false);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <span className="shrink-0 rounded-full bg-white/70 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
                     {selectedClip.trackId}
@@ -5647,7 +5755,39 @@ function CloudEditorContent() {
                   This clip uses: {selectedClip.assetId ? describeClipSource(selectedClip) : "no source yet"}
                 </div>
               </div>
-              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 leading-5">
+              <div className="mt-3 flex flex-col gap-2">
+                <button
+                  className="rounded-md border border-[#d8b777] bg-[#fff8ec] px-3 py-1.5 text-xs font-black text-[#7b4f1f] hover:bg-[#f3e4c7] transition-colors self-start"
+                  onClick={() => {
+                    const asset = importedMediaAssets.find(a => a.id === selectedClip.assetId);
+                    const url = asset?.playbackUrl || asset?.sourceId || selectedClip.assetId;
+                    const isYouTube = /youtube\.com|youtu\.be/i.test(url);
+                    
+                    let sourceUrl = url;
+                    if (isYouTube) {
+                      const match = url.match(/[?&]v=([^&]+)/);
+                      if (match) sourceUrl = match[1];
+                      else {
+                        const shortMatch = url.match(/youtu\.be\/([^?]+)/);
+                        if (shortMatch) sourceUrl = shortMatch[1];
+                      }
+                    }
+
+                    addLoopClip({
+                      id: `loop-${Date.now()}`,
+                      sourceType: isYouTube ? "youtube-embed" : "bucket-video",
+                      sourceUrl: sourceUrl,
+                      startSec: selectedClip.sourceStart,
+                      endSec: selectedClip.sourceEnd || (selectedClip.sourceStart + selectedClip.duration),
+                      title: `${selectedClip.name} Loop`,
+                      exportability: isYouTube ? "playable" : "exportable"
+                    });
+                  }}
+                >
+                  Export as Loop
+                </button>
+              </div>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 leading-5">
                 <dt className="font-black text-[#8c6b4a]">Track</dt>
                 <dd className="text-right font-mono">{selectedClip.trackId}</dd>
                 <dt className="font-black text-[#8c6b4a]">Timeline</dt>
@@ -5816,7 +5956,11 @@ function CloudEditorContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!window.confirm(`Delete "${selectedClip.name}" from this timeline?`)) return;
+                    const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
+                    const msg = isSpine 
+                      ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure?`
+                      : `Delete "${selectedClip.name}" from this timeline?`;
+                    if (!window.confirm(msg)) return;
                     deleteClip(selectedClip.id);
                   }}
                   className="rounded-lg border border-red-200 bg-red-50 px-2 py-2 font-black text-red-800 hover:bg-red-100"
@@ -5826,7 +5970,11 @@ function CloudEditorContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!window.confirm(`Delete "${selectedClip.name}" and close the gap on ${selectedClip.trackId}?`)) return;
+                    const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
+                    const msg = isSpine 
+                      ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure you want to delete it and close the gap?`
+                      : `Delete "${selectedClip.name}" and close the gap on ${selectedClip.trackId}?`;
+                    if (!window.confirm(msg)) return;
                     deleteClipAndCloseGap(selectedClip.id);
                   }}
                   className="col-span-2 rounded-lg border border-red-200 bg-white px-2 py-2 font-black text-red-800 hover:bg-red-50"
@@ -6034,7 +6182,7 @@ function CloudEditorContent() {
                       return (
                         <span
                           key={word.id}
-                          className={isActive ? "rounded-md bg-amber-300 px-1 text-[#2f2418] shadow-sm ring-2 ring-amber-400" : undefined}
+                          className={isActive ? "rounded border border-amber-300 bg-amber-100 px-1 text-amber-900 shadow-sm" : undefined}
                         >
                           {word.text}
                         </span>
@@ -6054,26 +6202,92 @@ function CloudEditorContent() {
 
           {viewMode === "timeline" && (
             <div className="w-full flex-1 flex flex-col justify-end mt-auto border border-[#e8dcc4] bg-white rounded-2xl overflow-hidden shadow-sm p-4 relative">
-              <h2 className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider mb-4 absolute top-4 left-4 z-10">EDL Visualizer</h2>
+              
+              {(timelineState.loopClips?.length ?? 0) > 0 && (
+                <div className="absolute top-16 right-4 z-10 w-64 max-h-[40vh] overflow-y-auto bg-white border border-[#e8dcc4] rounded-lg shadow-lg flex flex-col p-3 gap-3">
+                  <h3 className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider flex justify-between">
+                    Generated Loops
+                  </h3>
+                  {timelineState.loopClips!.map(loop => (
+                    <div key={loop.id} className="relative rounded bg-slate-50 border border-slate-200 overflow-hidden flex flex-col group">
+                      <button 
+                        onClick={() => deleteLoopClip(loop.id)}
+                        className="absolute top-1 right-1 z-20 bg-white/80 hover:bg-white rounded-full w-5 h-5 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete loop"
+                      >
+                        ✕
+                      </button>
+                      <div className="aspect-video w-full bg-black relative">
+                        {loop.sourceType === "youtube-embed" ? (
+                          <iframe 
+                            className="w-full h-full"
+                            src={`https://www.youtube.com/embed/${loop.sourceUrl}?start=${Math.floor(loop.startSec)}&end=${Math.ceil(loop.endSec)}&loop=1&playlist=${loop.sourceUrl}&autoplay=1&mute=1`}
+                            allow="autoplay"
+                          />
+                        ) : (
+                          <video 
+                            className="w-full h-full object-cover"
+                            src={loop.sourceUrl}
+                            autoPlay
+                            loop
+                            muted
+                          />
+                        )}
+                      </div>
+                      <div className="p-2 text-[10px]">
+                        <div className="font-bold text-slate-800 truncate">{loop.title}</div>
+                        <div className="text-slate-500 mt-1 uppercase tracking-wider font-bold">
+                          {loop.exportability === "playable" ? "Playable Loop (YouTube)" : "Exportable Loop (Bucket)"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
+                <h2 className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider">EDL Visualizer</h2>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsAddAtPlayheadPickerOpen((v) => !v)}
+                    className="rounded-md border border-[#d8b777] bg-[#fff8ec] px-2 py-1 text-[10px] font-black text-[#7b4f1f] hover:bg-[#f3e4c7]"
+                  >
+                    {isAddAtPlayheadPickerOpen ? "Cancel" : "Add media at playhead"}
+                  </button>
+                  {isAddAtPlayheadPickerOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-80 z-50 shadow-xl">
+                      <MediaAssetPicker
+                        assets={importedMediaAssets as any}
+                        onSelect={(id) => {
+                          const asset = importedMediaAssets.find(a => a.id === id);
+                          if (asset) addImportedAssetToTimeline(asset as any);
+                          setIsAddAtPlayheadPickerOpen(false);
+                        }}
+                        getAssetHealthLabel={(asset) => {
+                          const health = importedAssetHealth(asset as any);
+                          return health ? healthStatusLabel(health.status) : "Unchecked";
+                        }}
+                        getAssetHealthTone={(asset) => {
+                          const health = importedAssetHealth(asset as any);
+                          return healthStatusStyles(health?.status ?? "unchecked");
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="pt-8 flex-1 w-full">
           <SyncDeck />
 
-          <VisualTimeline
-                  clips={timelineState.clips.map((c) => ({
-                    id: c.id,
-                    type: c.trackId && c.trackId.toString().startsWith("A") ? "audio" : c.kind,
-                    src: c.assetId,
-                    startIn: c.startIn,
-                    duration: c.duration,
-                    track: c.trackId,
-                    label: c.name,
-                    color: c.color,
-                  }))}
-	                  currentTime={currentTime}
-	                  selectedClipId={selectedClip?.id}
-	                  onTimeScrub={setCurrentTime}
-	                  onClipSelect={setSelectedClipId}
-	                />
+	          <InteractiveTimeline
+            timelineState={timelineState}
+            currentTime={currentTime}
+            onSeek={setCurrentTime}
+            onMoveClip={moveClipTo}
+            onTrimClip={trimClip}
+            onSelectClip={setSelectedClipId}
+            selectedClipId={selectedClip?.id}
+          />
               </div>
             </div>
           )}

@@ -24,10 +24,10 @@ export default async function HandoffPrintView({ searchParams }: { searchParams:
           }
         }
       },
-      scenes: {
-        orderBy: { sortOrder: 'asc' },
+      storyboards: {
+        orderBy: { createdAt: 'asc' },
         include: {
-          shots: {
+          frames: {
             orderBy: { sortOrder: 'asc' }
           }
         }
@@ -65,14 +65,14 @@ export default async function HandoffPrintView({ searchParams }: { searchParams:
         {studioProject.tags.length === 0 && (
           <p className="text-gray-500 italic">No production breakdowns found in this project.</p>
         )}
-        {studioProject.tags.map(tag => (
+        {studioProject.tags.map((tag: any) => (
           <div key={tag.id} className="mb-8 print-break-inside-avoid">
             <h3 className="text-xl font-bold mb-4 bg-gray-100 p-2 inline-block uppercase text-sm tracking-wider">{tag.label}</h3>
             {tag.knowledgeNodes.length === 0 ? (
               <p className="text-sm text-gray-500 italic pl-4">No elements tagged.</p>
             ) : (
               <ul className="list-disc pl-8 space-y-2">
-                {tag.knowledgeNodes.map(node => (
+                {tag.knowledgeNodes.map((node: any) => (
                   <li key={node.id} className="text-sm">
                     <span className="font-medium">"{node.title}"</span> 
                     {node.body && <span className="text-gray-600"> - {node.body}</span>}
@@ -87,35 +87,34 @@ export default async function HandoffPrintView({ searchParams }: { searchParams:
       {/* Storyboards Section */}
       <div className="print-page-break-before px-10 print:px-0 mt-20 print:mt-0">
         <h2 className="text-3xl font-bold mb-8 pb-2 border-b-2 border-black">Storyboards</h2>
-        {studioProject.scenes.length === 0 && (
-          <p className="text-gray-500 italic">No storyboard scenes found in this project.</p>
+        {studioProject.storyboards.length === 0 && (
+          <p className="text-gray-500 italic">No storyboards found in this project.</p>
         )}
-        {studioProject.scenes.map(scene => (
-          <div key={scene.id} className="mb-12">
+        {studioProject.storyboards.map((storyboard: any) => (
+          <div key={storyboard.id} className="mb-12">
             <div className="bg-black text-white p-3 mb-6 print-break-inside-avoid flex justify-between items-center rounded">
-              <h3 className="text-xl font-bold">SCENE {scene.sceneNumber}: {scene.title || 'Untitled'}</h3>
-              <span className="text-sm uppercase tracking-wide text-gray-300">{scene.location} {scene.timeOfDay ? `• ${scene.timeOfDay}` : ''}</span>
+              <h3 className="text-xl font-bold">{storyboard.title || 'Untitled'}</h3>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {scene.shots.map(shot => (
-                <div key={shot.id} className="border-2 border-gray-200 rounded-lg overflow-hidden print-break-inside-avoid bg-white">
+              {storyboard.frames.map((frame: any) => (
+                <div key={frame.id} className="border-2 border-gray-200 rounded-lg overflow-hidden print-break-inside-avoid bg-white">
                   <div className="aspect-video bg-gray-100 relative border-b-2 border-gray-200">
-                    {shot.imageUrl ? (
-                      <img src={shot.imageUrl} alt={shot.action || 'Storyboard frame'} className="w-full h-full object-cover" />
+                    {frame.imageUrl ? (
+                      <img src={frame.imageUrl} alt={frame.action || 'Storyboard frame'} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm italic">No Image</div>
                     )}
                   </div>
                   <div className="p-3">
-                    <div className="font-bold text-lg mb-2">Shot {shot.shotNumber}</div>
-                    {shot.cameraInfo && <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Camera: {shot.cameraInfo}</div>}
-                    <div className="text-sm leading-snug">{shot.action || 'No action notes.'}</div>
-                    {shot.dialogue && (
-                      <div className="mt-2 text-xs italic text-gray-600 border-l-2 border-gray-300 pl-2">"{shot.dialogue}"</div>
+                    <div className="font-bold text-lg mb-2">Frame {frame.frameNumber}</div>
+                    {frame.cameraInfo && <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Camera: {frame.cameraInfo}</div>}
+                    <div className="text-sm leading-snug">{frame.action || 'No action notes.'}</div>
+                    {frame.dialogue && (
+                      <div className="mt-2 text-xs italic text-gray-600 border-l-2 border-gray-300 pl-2">"{frame.dialogue}"</div>
                     )}
-                    {shot.vfxNotes && (
-                      <div className="mt-2 text-xs font-medium text-amber-600">VFX: {shot.vfxNotes}</div>
+                    {frame.vfxNotes && (
+                      <div className="mt-2 text-xs font-medium text-amber-600">VFX: {frame.vfxNotes}</div>
                     )}
                   </div>
                 </div>

@@ -354,9 +354,10 @@ model Membership {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  user      User           @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
-  plan      MembershipPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
-  grantedBy User?          @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+  user            User                       @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  plan            MembershipPlan             @relation(fields: [planId], references: [id], onDelete: Restrict)
+  grantedBy       User?                      @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+  reconciliations MembershipReconciliation[]
 
   @@index([userId, status])
   @@index([planId])
@@ -561,10 +562,12 @@ model WorldHubProviderEvent {
   occurredAt         DateTime?
   receivedAt         DateTime  @default(now())
   processedAt        DateTime?
+  retryCount         Int       @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  connection WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection      WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  reconciliations MembershipReconciliation[]
 
   @@unique([connectionId, idempotencyKey])
   @@index([connectionId, receivedAt])
@@ -865,6 +868,7 @@ model StudioProject {
   workspace          StudioWorkspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   documents          StudioDocument[]
   tags               StudioTag[]
+  viewDefinitions    StudioViewDefinition[]
   knowledgeNodes     StudioKnowledgeNode[]
   manuscript         StudioManuscript?         @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
   mediaAssets        StudioMediaAsset[]
@@ -872,6 +876,9 @@ model StudioProject {
   episodeProductions StudioEpisodeProduction[]
   scenes             Scene[]
   shootDays          ShootDay[]
+  storyEntities      StoryEntity[]
+  storyBibleActions  StoryBibleAction[]
+  storyboards        StudioStoryboard[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1161,6 +1168,29 @@ model StudioDocumentBlock {
   @@index([documentId, order])
   @@index([documentId, archivedAt, order])
   @@index([externalId])
+}
+
+// ---------------------------------------------------------------------------
+// StudioViewDefinition — persisted named views for a project workspace.
+// Stores tag/category filters and display settings so users can save custom
+// lens configurations (Book Mode, Show Mode, Quote Database, etc.) that
+// survive across sessions without being embedded in client state.
+// ---------------------------------------------------------------------------
+model StudioViewDefinition {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  type            String   @default("review")
+  filters         Json     @default("{}")
+  displaySettings Json     @default("{}")
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+  @@index([projectId])
 }
 
 model StudioTag {
@@ -2091,4 +2121,237 @@ model KnowledgeArticle {
 
   @@index([categoryId])
   @@index([slug])
+}
+
+// -----------------------------------------------------------------------------
+// STORY BIBLE
+// -----------------------------------------------------------------------------
+
+enum StoryEntityType {
+  CHARACTER
+  SETTING
+  SCENE
+  RELATIONSHIP
+  TIMELINE_EVENT
+  THEME_MOTIF
+}
+
+enum StoryBibleActionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  UNDONE
+}
+
+enum StoryBibleActionType {
+  PROPOSE_ENTITY
+  PROPOSE_ENTITY_UPDATE
+  PROPOSE_RELATIONSHIP
+}
+
+model StoryEntity {
+  id         String          @id @default(cuid())
+  projectId  String
+  type       StoryEntityType
+  name       String
+  aliases    String[]        @default([])
+  attributes Json            @default("{}")
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  mentions StoryEntityMention[]
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, type])
+}
+
+model StoryEntityMention {
+  id         String   @id @default(cuid())
+  entityId   String
+  documentId String
+  blockId    String
+  snippet    String
+  createdAt  DateTime @default(now())
+
+  entity StoryEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@index([entityId])
+  @@index([documentId, blockId])
+}
+
+model StoryBibleAction {
+  id          String                 @id @default(cuid())
+  projectId   String
+  documentId  String?
+  type        StoryBibleActionType
+  status      StoryBibleActionStatus @default(PENDING)
+  payloadJson Json                   @default("{}")
+  explanation String?
+  riskLevel   String                 @default("LOW")
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  project StudioProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ledgers StoryBibleLedger[]
+
+  @@index([projectId, status])
+}
+
+model StoryBibleLedger {
+  id        String                  @id @default(cuid())
+  actionId  String
+  oldStatus StoryBibleActionStatus?
+  newStatus StoryBibleActionStatus
+  comments  String?
+  changedBy String? // userId
+  createdAt DateTime                @default(now())
+
+  action StoryBibleAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// PATREON & PROVIDER RECONCILIATION
+// -----------------------------------------------------------------------------
+
+model MembershipReconciliation {
+  id             String   @id @default(cuid())
+  provider       String
+  providerEmail  String
+  proposedTier   String
+  action         String
+  status         String   @default("pending")
+  providerStatus String?
+  eventId        String
+  membershipId   String?
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  event      WorldHubProviderEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  membership Membership?           @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// RESEARCH RAG
+// -----------------------------------------------------------------------------
+
+model RetrievalEmbedding {
+  id              String   @id @default(cuid())
+  sourceOrigin    String   // "studio-span" | "studio-knowledge" | "quipsly-lore"
+  sourceId        String   // The ID of the block/node
+  projectId       String
+  contentSnapshot String   // The text that was embedded
+  createdAt       DateTime @default(now())
+  @@index([projectId])
+}
+
+// -----------------------------------------------------------------------------
+// STORYBOARD
+// -----------------------------------------------------------------------------
+
+model StudioStoryboard {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  description String?
+  aspectRatio String   @default("16:9")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  frames      StudioStoryboardFrame[]
+
+  @@index([projectId])
+}
+
+model StudioStoryboardFrame {
+  id                String   @id @default(cuid())
+  storyboardId      String
+  sortOrder         Int      @default(0)
+  frameNumber       String
+  imageUrl          String?
+  action            String   @db.Text
+  dialogue          String?  @db.Text
+  cameraInfo        String   @default("Static")
+  shotSize          String   @default("Medium Shot")
+  lens              String?
+  cameraMovement    String?
+  mediaClipId       String?
+  estimatedDuration Int?
+  vfxNotes          String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  storyboard        StudioStoryboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+
+  @@index([storyboardId, sortOrder])
+}
+
+// -----------------------------------------------------------------------------
+// QUIPSLY ASSISTANT
+// -----------------------------------------------------------------------------
+
+model StudioAssistantSession {
+  id         String   @id @default(cuid())
+  projectId  String
+  documentId String?
+  title      String?
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  messages StudioAssistantMessage[]
+  actions  StudioAssistantAction[]
+
+  @@index([projectId, status])
+}
+
+model StudioAssistantMessage {
+  id          String   @id @default(cuid())
+  sessionId   String
+  role        String
+  content     String
+  contextJson Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  session StudioAssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model StudioAssistantLedger {
+  id             String   @id @default(cuid())
+  actionId       String
+  previousStatus String?
+  newStatus      String
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  action StudioAssistantAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId])
+}
+
+model StudioAssistantAction {
+  id          String   @id @default(cuid())
+  sessionId   String
+  kind        String
+  label       String
+  explanation String?
+  riskLevel   String
+  payloadJson Json
+  status      String   @default("proposed")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  session StudioAssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ledgers StudioAssistantLedger[]
+
+  @@index([sessionId, createdAt])
 }

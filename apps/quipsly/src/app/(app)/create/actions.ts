@@ -1,52 +1,20 @@
-// @ts-nocheck
 "use server";
 
 import { getPrismaClient } from "@/lib/prisma";
+import type { StudioProjectionStatus } from "@prisma/client";
 import { ViewDefinition } from "./types";
 import { revalidatePath } from "next/cache";
 import {
   createManuscriptDraftPlainText,
   safeManuscriptDraft,
 } from "../manuscript/manuscript-editor-model";
-import { DEFAULT_PROJECT_SLUG, DEV_PROJECT_SLUG, projectConfig } from "./projectConfig";
+import { DEFAULT_PROJECT_SLUG, DEV_PROJECT_SLUG, ensureStudioProjectDocument, projectConfig } from "./projectConfig";
 import { createStarterBlocks } from "./starterDocuments";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 
-export type CreateEpisodeResult = {
-  ok: boolean;
-  error?: string;
-  view?: ViewDefinition;
-};
-
-const EPISODE_VIEW_DEFINITION = {
-  type: "episode" as const,
-  displayMode: "focus" as const,
-  showContext: true,
-  collapseUnmatched: true,
-  includeCategories: ["episode", "chapter", "structure"] as const
-};
-
-function slugifyEpisodeLabel(label: string) {
-  const normalized = label.trim().replace(/^episode\s+/i, "").replace(/\s+view$/i, "").trim();
-  const slug = normalized
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-+/g, "-");
-
-  return { normalized, slug };
-}
-
-function displayCaseEpisodeLabel(normalized: string) {
-  return normalized
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/(?:^|\s)([a-z])/g, (_, letter: string) => letter.toUpperCase());
-}
-
-const TONIGHT_WORKSPACE_SLUG = "tonight-pack";
 const OFFLINE_PROJECT_ID = "offline-quipsly-live";
 const OFFLINE_DOCUMENT_ID = "offline-doc-live";
+const STRUCTURE_TAG_SLUGS = ["chapter", "episode"];
 
 // Make sure these match AVAILABLE_TAGS in ViewFilter/Tagger
 const SEED_TAGS = [
@@ -235,10 +203,6 @@ function studioDbCategoryForQuipslyCategory(category: string) {
 
 const DEFAULT_VIEW_DEFINITIONS = [
   { name: "Book Mode", type: "review", tagSlugs: [], excludeTagSlugs: ["show-note", "clip-cue", "youtube-clip", "published-episode", "internal_note", "social-clip", "media"], includeCategories: [], displayMode: "standard", showContext: true, collapseUnmatched: false },
-  { name: "Episode 1 View", type: "episode", tagSlugs: ["episode-1"], includeCategories: ["episode", "chapter", "structure"], displayMode: "focus", showContext: true, collapseUnmatched: true },
-  { name: "Episode 4 View", type: "episode", tagSlugs: ["episode-4"], includeCategories: ["episode", "chapter", "structure"], displayMode: "focus", showContext: true, collapseUnmatched: true },
-  { name: "Episode 8 View", type: "episode", tagSlugs: ["episode-8"], includeCategories: ["episode", "chapter", "structure"], displayMode: "focus", showContext: true, collapseUnmatched: true },
-  { name: "Episode 9 View", type: "episode", tagSlugs: ["episode-9"], includeCategories: ["episode", "chapter", "structure"], displayMode: "focus", showContext: true, collapseUnmatched: true },
   { name: "Show Mode", type: "review", tagSlugs: ["voice-homer", "voice-charlie", "show-note", "clip-cue", "youtube-clip", "published-episode"], includeCategories: ["content_role", "workflow_status", "media"], displayMode: "focus", showContext: true, collapseUnmatched: true },
   { name: "Published Episodes", type: "database", tagSlugs: ["published-episode"], includeCategories: ["media"], displayMode: "focus", showContext: true, collapseUnmatched: true },
   { name: "Quote Database", type: "database", tagSlugs: ["quote"], includeCategories: [], displayMode: "focus", showContext: false, collapseUnmatched: true }
@@ -257,13 +221,13 @@ function createDefaultViews(idPrefix = "default-view") {
 function createOfflineWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
   const config = projectConfig(projectSlug);
   const blocks = [
-    { id: "offline-preface", text: "Preface", tags: ["chapter", "voice-homer"] },
-    { id: "offline-episode-4", text: "Episode 4 scratchpad. Paste tonight's edit here, highlight important ranges, and use the sidebar lenses to focus.", tags: ["episode-4", "voice-homer"] },
-    { id: "offline-episode-8-heading", text: "Episode 8", tags: ["episode-8"] },
-    { id: "offline-episode-8", text: "Episode 8 writing lane. This fallback proves the workbench can load without a database, but it will not persist changes.", tags: ["episode-8", "voice-charlie", "show-note"] },
-    { id: "offline-episode-9-heading", text: "Episode 9", tags: ["episode-9"] },
-    { id: "offline-episode-9", text: "Episode 9 writing lane. In production this same screen should use StudioDocumentBlock and StudioTaggedSpan records.", tags: ["episode-9"] },
-    { id: "offline-quote", text: "A tagged quote can be a tiny range inside the manuscript, not a separate destructive document.", tags: ["quote", "clip-cue"] }
+    { id: "offline-preface", text: "Preface", tags: ["chapter"] },
+    { id: "offline-episode-4-heading", text: "Episode 4", tags: ["episode"] },
+    { id: "offline-episode-4", text: "Episode 4 scratchpad. Paste tonight's edit here and use Chapter/Episode heading blocks as the navigation spine.", tags: [] },
+    { id: "offline-episode-8-heading", text: "Episode 8", tags: ["episode"] },
+    { id: "offline-episode-8", text: "Episode 8 writing lane. This fallback proves the workbench can load without a database, but it will not persist changes.", tags: [] },
+    { id: "offline-episode-9-heading", text: "Episode 9", tags: ["episode"] },
+    { id: "offline-episode-9", text: "Episode 9 writing lane. In production this same screen should use StudioDocumentBlock and StudioTaggedSpan records.", tags: [] }
   ];
 
   return {
@@ -325,6 +289,7 @@ async function ensureDevLabShowTags(
     const dbCategory = studioDbCategoryForQuipslyCategory(tagSeed.category);
     await prisma.studioTag.upsert({
       where: { projectId_slug: { projectId: project.id, slug: tagSeed.slug } },
+      // @ts-ignore
       update: { label: tagSeed.label, category: dbCategory },
       create: {
         projectId: project.id,
@@ -388,23 +353,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
     return { projectId: OFFLINE_PROJECT_ID, documentId: OFFLINE_DOCUMENT_ID };
   }
   
-  const workspace = await prisma.studioWorkspace.upsert({
-    where: { slug: TONIGHT_WORKSPACE_SLUG },
-    update: {},
-    create: { slug: TONIGHT_WORKSPACE_SLUG, name: "Tonight Pack Workspace" }
-  });
-
-  const project = await prisma.studioProject.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug: config.slug } },
-  }) ?? await prisma.studioProject.create({
-    data: { workspaceId: workspace.id, slug: config.slug, name: config.name }
-  });
-
-  const document = await prisma.studioDocument.findUnique({
-    where: { stableId: config.documentStableId },
-  }) ?? await prisma.studioDocument.create({
-    data: { projectId: project.id, stableId: config.documentStableId, title: config.documentTitle }
-  });
+  const { project, document } = await ensureStudioProjectDocument(prisma, config.slug);
 
   // Seed Tags
   for (const t of SEED_TAGS) {
@@ -413,6 +362,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
       where: { projectId_slug: { projectId: project.id, slug: t.slug } },
       update: {
         label: t.label,
+        // @ts-ignore
         category: dbCategory
       },
       create: { 
@@ -425,10 +375,12 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
     });
   }
 
-  // Seed Views
+  // Seed Views — StudioViewDefinition is schema-optional; the try/catch handles missing model at runtime.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prismaAny = prisma as any;
   for (const v of DEFAULT_VIEW_DEFINITIONS) {
     try {
-      await prisma.studioViewDefinition.upsert({
+      await prismaAny.studioViewDefinition.upsert({
         where: { projectId_name: { projectId: project.id, name: v.name } },
         update: {
           type: v.type,
@@ -505,11 +457,13 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     return createOfflineWorkbenchState(projectSlug);
   }
   
-  // Try to load with viewDefinitions, fallback to without if schema not applied yet
-  let project = null;
+  // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prismaAny2 = prisma as any;
+  let project: any = null;
   try {
-    project = await prisma.studioProject.findFirst({
-      where: { slug: projectSlug },
+    project = await (prisma.studioProject as any).findFirst({
+      where: { slug: projectConfig(projectSlug).slug },
       include: {
         tags: true,
         viewDefinitions: true,
@@ -530,7 +484,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
   } catch (e) {
     console.warn("Falling back to query without viewDefinitions. Is schema pushed?");
     project = await prisma.studioProject.findFirst({
-      where: { slug: projectSlug },
+      where: { slug: projectConfig(projectSlug).slug },
       include: {
         tags: true,
         documents: {
@@ -559,11 +513,11 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     return loadWorkbenchState(projectSlug);
   }
 
-  const blocks = document.blocks.map(b => ({
-    id: b.id, // Use actual DB UUID
+  const blocks = document.blocks.map((b: any) => ({
+    id: b.id,
     text: b.body,
-    tags: Array.from(new Set(b.taggedSpans.map(ts => ts.tag.slug))),
-    spans: b.taggedSpans.map(ts => ({
+    tags: Array.from(new Set((b.taggedSpans as any[]).map((ts: any) => ts.tag.slug))),
+    spans: (b.taggedSpans as any[]).map((ts: any) => ({
       id: ts.id,
       tagSlug: ts.tag.slug,
       label: ts.tag.label,
@@ -574,14 +528,15 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     }))
   }));
 
-  const views = (project.viewDefinitions || []).map(v => ({
+  const views = ((project.viewDefinitions as any[] | undefined) || []).map((v: any) => ({
     id: v.id,
     name: v.name,
     type: v.type,
     filters: v.filters as any,
     display: v.displaySettings as any
   })) as ViewDefinition[];
-  const effectiveViews = views.length > 0 ? views : createDefaultViews("fallback-view");
+  const effectiveViews = (views.length > 0 ? views : createDefaultViews("fallback-view"))
+    .filter((view) => view.type !== "episode");
 
   return {
     blocks,
@@ -706,7 +661,7 @@ export async function restoreBlockState(
       documentTitleSnapshot: string;
       blockStableId: string;
       blockTitleSnapshot: string | null;
-      projectionStatus: string;
+      projectionStatus: StudioProjectionStatus;
       isPrivate: boolean;
     }[] = [];
 
@@ -737,7 +692,7 @@ export async function restoreBlockState(
         documentTitleSnapshot: block.document.title,
         blockStableId: block.stableId,
         blockTitleSnapshot: block.title ?? null,
-        projectionStatus: block.document.projectionStatus,
+        projectionStatus: block.document.projectionStatus as StudioProjectionStatus,
         isPrivate: true
       });
     }
@@ -1069,17 +1024,16 @@ export async function toggleBlockTag(
     });
   }
 
-  const startOffset = selection?.startOffset ?? 0;
-  const endOffset = selection?.endOffset ?? text.length;
-  const selectedText = selection?.selectedText ?? text;
+  const isStructureTag = STRUCTURE_TAG_SLUGS.includes(tagSlug);
+  const effectiveSelection = isStructureTag ? undefined : selection;
+  const startOffset = effectiveSelection?.startOffset ?? 0;
+  const endOffset = effectiveSelection?.endOffset ?? text.length;
+  const selectedText = effectiveSelection?.selectedText ?? text;
 
   const existingSpans = await prisma.studioTaggedSpan.findMany({
-    where: {
-      blockId,
-      tagId: tag.id,
-      startOffset,
-      endOffset
-    }
+    where: isStructureTag
+      ? { blockId, tagId: tag.id }
+      : { blockId, tagId: tag.id, startOffset, endOffset }
   });
 
   if (existingSpans.length > 0) {
@@ -1091,6 +1045,26 @@ export async function toggleBlockTag(
     // Create span
     const doc = await prisma.studioDocument.findUnique({ where: { id: documentId } });
     const block = await prisma.studioDocumentBlock.findUnique({ where: { id: blockId } });
+    if (!doc || !block) return;
+
+    if (isStructureTag) {
+      const competingTags = await prisma.studioTag.findMany({
+        where: {
+          projectId,
+          slug: {
+            in: STRUCTURE_TAG_SLUGS.filter((slug) => slug !== tagSlug)
+          }
+        },
+        select: { id: true }
+      });
+
+      await prisma.studioTaggedSpan.deleteMany({
+        where: {
+          blockId,
+          tagId: { in: competingTags.map((competingTag) => competingTag.id) }
+        }
+      });
+    }
     
     await prisma.studioTaggedSpan.create({
       data: {
@@ -1100,108 +1074,15 @@ export async function toggleBlockTag(
         startOffset,
         endOffset,
         selectedText,
-        documentStableId: doc!.stableId,
-        documentTitleSnapshot: doc!.title,
-        blockStableId: block!.stableId
+        documentStableId: doc.stableId,
+        documentTitleSnapshot: doc.title,
+        blockStableId: block.stableId
       }
     });
   }
   
   revalidatePath('/');
   revalidatePath('/create');
-}
-
-export async function createEpisodeView(
-  projectId: string,
-  episodeLabelInput: string
-): Promise<CreateEpisodeResult> {
-  let prisma: ReturnType<typeof getPrismaClient>;
-  try {
-    prisma = getPrismaClient();
-  } catch (error) {
-    return { ok: false, error: "DATABASE_URL is not set." };
-  }
-
-  if (projectId === OFFLINE_PROJECT_ID) {
-    return { ok: false, error: "Offline mode does not support creating new episodes." };
-  }
-
-  const { normalized, slug } = slugifyEpisodeLabel(episodeLabelInput);
-  if (!slug) {
-    return { ok: false, error: "Episode name cannot be empty." };
-  }
-
-  const project = await prisma.studioProject.findUnique({
-    where: { id: projectId },
-    select: { id: true }
-  });
-  if (!project) {
-    return { ok: false, error: "Project not found." };
-  }
-
-  const episodeTagSlug = `episode-${slug}`;
-  const tagLabel = displayCaseEpisodeLabel(normalized);
-  const viewName = `Episode ${tagLabel} View`;
-  const normalizedTagLabel = tagLabel.length > 0 ? tagLabel : "Untitled";
-
-  await prisma.studioTag.upsert({
-    where: { projectId_slug: { projectId, slug: episodeTagSlug } },
-    update: { label: normalizedTagLabel, category: "structure" },
-    create: {
-      projectId,
-      slug: episodeTagSlug,
-      label: normalizedTagLabel,
-      // @ts-ignore
-      category: "structure"
-    }
-  });
-
-  const view = await prisma.studioViewDefinition.upsert({
-    where: { projectId_name: { projectId, name: viewName } },
-    update: {
-      // @ts-ignore
-      type: EPISODE_VIEW_DEFINITION.type,
-      filters: {
-        tagSlugs: [episodeTagSlug],
-        excludeTagSlugs: [],
-        includeCategories: [...EPISODE_VIEW_DEFINITION.includeCategories]
-      },
-      displaySettings: {
-        mode: EPISODE_VIEW_DEFINITION.displayMode,
-        showContext: EPISODE_VIEW_DEFINITION.showContext,
-        collapseUnmatched: EPISODE_VIEW_DEFINITION.collapseUnmatched
-      }
-    },
-    create: {
-      projectId,
-      name: viewName,
-      // @ts-ignore
-      type: EPISODE_VIEW_DEFINITION.type,
-      filters: {
-        tagSlugs: [episodeTagSlug],
-        excludeTagSlugs: [],
-        includeCategories: [...EPISODE_VIEW_DEFINITION.includeCategories]
-      },
-      displaySettings: {
-        mode: EPISODE_VIEW_DEFINITION.displayMode,
-        showContext: EPISODE_VIEW_DEFINITION.showContext,
-        collapseUnmatched: EPISODE_VIEW_DEFINITION.collapseUnmatched
-      }
-    }
-  });
-
-  revalidatePath("/create");
-
-  return {
-    ok: true,
-    view: {
-      id: view.id,
-      name: view.name,
-      type: view.type,
-      filters: view.filters as ViewDefinition["filters"],
-      display: view.displaySettings as ViewDefinition["display"]
-    }
-  };
 }
 
 export async function bulkNormalizeHeadings(documentId: string): Promise<HeadingBulkNormalizeResult> {
@@ -1357,4 +1238,42 @@ export async function bulkNormalizeHeadings(documentId: string): Promise<Heading
           : "Bulk cleanup applied deterministic chapter/episode normalization."
         : "No heading blocks required normalization."
   };
+}
+
+export async function searchQuotesAction(query: string, projectSlug: string, librarySlug = "active-manuscript") {
+  try {
+    const prisma = getPrismaClient();
+    const project = await prisma.studioProject.findFirst({
+      where: { slug: projectSlug }
+    });
+    if (!project) {
+      return { ok: false, error: "Project not found" };
+    }
+
+    const { searchQuotes } = await import("@/lib/retrieval");
+    const packet = await searchQuotes({ query, library: librarySlug }, { activeProjectId: project.id });
+    return { ok: true, packet };
+  } catch (error) {
+    console.error("searchQuotesAction failed", error);
+    return { ok: false, error: "Retrieval engine is temporarily unavailable." };
+  }
+}
+
+export async function searchExamplesAction(query: string, projectSlug: string, librarySlug = "active-manuscript") {
+  try {
+    const prisma = getPrismaClient();
+    const project = await prisma.studioProject.findFirst({
+      where: { slug: projectSlug }
+    });
+    if (!project) {
+      return { ok: false, error: "Project not found" };
+    }
+
+    const { searchExamples } = await import("@/lib/retrieval");
+    const packet = await searchExamples({ query, library: librarySlug }, { activeProjectId: project.id });
+    return { ok: true, packet };
+  } catch (error) {
+    console.error("searchExamplesAction failed", error);
+    return { ok: false, error: "Retrieval engine is temporarily unavailable." };
+  }
 }

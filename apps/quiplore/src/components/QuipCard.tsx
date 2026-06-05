@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { Bookmark, ExternalLink, ListPlus } from "lucide-react";
+import { Bookmark, ExternalLink, ListPlus, Share2 } from "lucide-react";
 import type { QuipCardProjection } from "@high-ground/quipsly-domain";
 import { QuipVisual } from "./QuipVisual";
 import { SourceBadge } from "./SourceBadge";
@@ -42,6 +44,18 @@ export function QuipCard({
         <button className="button" type="button">
           <ListPlus size={15} aria-hidden="true" />
           Add
+        </button>
+        <button 
+          className="button" 
+          type="button" 
+          onClick={() => {
+            if (typeof navigator !== "undefined" && navigator.clipboard) {
+              navigator.clipboard.writeText(`"${card.quote.text}" - ${card.person.displayName}`);
+            }
+          }}
+        >
+          <Share2 size={15} aria-hidden="true" />
+          Share
         </button>
       </div>
     </article>

@@ -6,31 +6,26 @@ export type StarterBlock = {
   tags: string[];
 };
 
-const LEGACY_STARTER_BLOCKS: StarterBlock[] = [
+const BLANK_MANUSCRIPT_BLOCKS: StarterBlock[] = [
   {
-    id: "b1",
-    text: "Welcome to the future of content creation. For decades, we've treated content as a final destination-a file you save, a post you publish, a video you render. But this is a fundamental misunderstanding of what content actually is.",
-    tags: ["chapter", "educational"],
+    id: "blank-chapter",
+    text: "Chapter 1",
+    tags: ["chapter"],
   },
   {
-    id: "b2",
-    text: "Content is not a destination. It is a raw material. It's time to rethink the studio.",
-    tags: ["quote", "social-clip", "episode-4"],
+    id: "blank-opening",
+    text: "Start writing here.",
+    tags: [],
   },
   {
-    id: "b3",
-    text: "When you record a one-hour podcast, you haven't just created an audio file. You have created a dataset containing insights, jokes, stories, frameworks, and data points. The old way is to chop it up destructively.",
-    tags: ["educational", "internal_note", "episode-8"],
+    id: "blank-episode",
+    text: "Episode 1",
+    tags: ["episode"],
   },
   {
-    id: "b4",
-    text: "Imagine a world where your manuscript knows what parts of it are meant for a Twitter thread, what parts are meant for the private community, and what parts are just notes to your co-author. That is the promise of the Tag-Powered OS.",
-    tags: ["episode-9", "media", "episode"],
-  },
-  {
-    id: "b5",
-    text: "This architecture enables true 'Create Once, Publish Everywhere' without the copy-paste nightmare. We just query the graph for the pieces we need.",
-    tags: ["episode-4", "quote"],
+    id: "blank-episode-body",
+    text: "Add the episode script, show notes, and clip reminders under this heading.",
+    tags: [],
   },
 ];
 
@@ -94,5 +89,5 @@ export const QUIPSLY_STARTER_BLOCKS: StarterBlock[] = [
 
 export function createStarterBlocks(projectSlug: string): StarterBlock[] {
   if (projectSlug === DEV_PROJECT_SLUG || projectSlug === STARTER_DEMO_PROJECT_SLUG) return QUIPSLY_STARTER_BLOCKS;
-  return LEGACY_STARTER_BLOCKS;
+  return BLANK_MANUSCRIPT_BLOCKS;
 }

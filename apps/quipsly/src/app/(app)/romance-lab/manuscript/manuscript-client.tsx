@@ -5,11 +5,15 @@ import Editor from "@/components/Editor";
 import Mention from "@tiptap/extension-mention";
 import { getSuggestionConfig } from "./suggestion";
 import { StudioNav } from "../../studio-nav";
-import { Scroll, Users2, Shield, Info } from "lucide-react";
+import { Scroll, Users2, Shield, Info, Bot, Search } from "lucide-react";
 import { cn, panelClassName, labelClassName, StudioChip } from "../../studio-ui";
+import { AssistantSidebar } from "@/components/research/AssistantSidebar";
+import { ResearchContextPane } from "@/components/research/ResearchContextPane";
 
 export function ManuscriptClient({ initialCharacters }: { initialCharacters: any[] }) {
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
+  const [showAssistant, setShowAssistant] = useState(false);
+  const [showResearch, setShowResearch] = useState(false);
 
   const activeCharacter = activeCharacterId 
     ? initialCharacters.find(c => c.id === activeCharacterId)
@@ -62,6 +66,19 @@ export function ManuscriptClient({ initialCharacters }: { initialCharacters: any
         </div>
 
         <div className="flex flex-wrap justify-start gap-2 lg:justify-end items-center">
+          <button 
+            onClick={() => { setShowResearch(!showResearch); setShowAssistant(false); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${showResearch ? 'bg-[#8c6b4a] text-white border-[#8c6b4a]' : 'bg-white text-[#8c6b4a] border-[#e8dcc4] hover:bg-[#8c6b4a]/10'}`}
+          >
+            <Search size={16} /> Research
+          </button>
+          <button 
+            onClick={() => { setShowAssistant(!showAssistant); setShowResearch(false); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${showAssistant ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-600 border-[#e8dcc4] hover:bg-purple-50'}`}
+          >
+            <Bot size={16} /> Assistant
+          </button>
+          <div className="w-px h-6 bg-[#e8dcc4] mx-2" />
           <StudioNav />
           <StudioChip tone="source">Romance Lab</StudioChip>
         </div>
@@ -82,60 +99,75 @@ export function ManuscriptClient({ initialCharacters }: { initialCharacters: any
           />
         </div>
 
-        {/* Context Pane Sidebar */}
-        <aside className={cn(panelClassName, "hidden lg:flex flex-col w-80 shrink-0 overflow-y-auto")}>
-          <div className="p-4 border-b border-[#e8dcc4] bg-[#f8f3e6] sticky top-0 z-10 flex items-center justify-between">
-            <span className={labelClassName}>Context Pane</span>
-            <Info size={16} className="text-[#8c6b4a]" />
-          </div>
+        {/* Right Pane Context Area (Dynamic) */}
+        {showAssistant && (
+           <div className="shrink-0 h-full overflow-hidden rounded-2xl">
+             <AssistantSidebar projectId="test-project-001" />
+           </div>
+        )}
 
-          <div className="p-4 flex flex-col gap-4">
-            {!activeCharacter ? (
-              <div className="text-center py-12 px-4 flex flex-col items-center gap-3">
-                <Users2 size={32} className="text-[#d4c1a0]" />
-                <p className="text-sm text-[#8c6b4a]">
-                  Click on an @mentioned character in the manuscript to view their profile here.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                
-                {/* Character Header */}
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-[#fdfaf6] border border-[#e8dcc4] flex items-center justify-center font-black text-[#8c6b4a] text-2xl shadow-inner">
-                    {activeCharacter.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black text-[#3d3122]">{activeCharacter.name}</h2>
-                    <span className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider">{activeCharacter.archetype || "Unknown Role"}</span>
-                  </div>
+        {showResearch && (
+           <div className="shrink-0 h-full overflow-hidden rounded-2xl">
+             <ResearchContextPane projectId="test-project-001" />
+           </div>
+        )}
+
+        {/* Default Lore Context Pane */}
+        {!showAssistant && !showResearch && (
+          <aside className={cn(panelClassName, "hidden lg:flex flex-col w-80 shrink-0 overflow-y-auto")}>
+            <div className="p-4 border-b border-[#e8dcc4] bg-[#f8f3e6] sticky top-0 z-10 flex items-center justify-between">
+              <span className={labelClassName}>Context Pane</span>
+              <Info size={16} className="text-[#8c6b4a]" />
+            </div>
+
+            <div className="p-4 flex flex-col gap-4">
+              {!activeCharacter ? (
+                <div className="text-center py-12 px-4 flex flex-col items-center gap-3">
+                  <Users2 size={32} className="text-[#d4c1a0]" />
+                  <p className="text-sm text-[#8c6b4a]">
+                    Click on an @mentioned character in the manuscript to view their profile here.
+                  </p>
                 </div>
-
-                {/* Character Details */}
-                <div className="flex flex-col gap-3 mt-2">
-                  <div className="bg-white border border-[#e8dcc4] rounded-xl p-3 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-[#d4c1a0] tracking-wider mb-1 block">Faction</span>
-                    <div className="flex items-center gap-2 text-sm font-medium text-[#3d3122]">
-                      <Shield size={14} className="text-[#8c6b4a]" />
-                      {activeCharacter.faction?.name || "No Faction"}
+              ) : (
+                <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  
+                  {/* Character Header */}
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-[#fdfaf6] border border-[#e8dcc4] flex items-center justify-center font-black text-[#8c6b4a] text-2xl shadow-inner">
+                      {activeCharacter.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-[#3d3122]">{activeCharacter.name}</h2>
+                      <span className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider">{activeCharacter.archetype || "Unknown Role"}</span>
                     </div>
                   </div>
 
-                  <div className="bg-white border border-[#e8dcc4] rounded-xl p-3 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-[#d4c1a0] tracking-wider mb-1 block">Kernel Status</span>
-                    <div className="flex items-center gap-2">
-                      <StudioChip tone="node">Canonical Entity Linked</StudioChip>
+                  {/* Character Details */}
+                  <div className="flex flex-col gap-3 mt-2">
+                    <div className="bg-white border border-[#e8dcc4] rounded-xl p-3 shadow-sm">
+                      <span className="text-[10px] uppercase font-bold text-[#d4c1a0] tracking-wider mb-1 block">Faction</span>
+                      <div className="flex items-center gap-2 text-sm font-medium text-[#3d3122]">
+                        <Shield size={14} className="text-[#8c6b4a]" />
+                        {activeCharacter.faction?.name || "No Faction"}
+                      </div>
                     </div>
-                    <p className="text-xs text-[#8c6b4a] mt-2 leading-relaxed">
-                      This anchor is verified by the Document Kernel. Renaming the entity in the Forge will automatically update this reference.
-                    </p>
-                  </div>
-                </div>
 
-              </div>
-            )}
-          </div>
-        </aside>
+                    <div className="bg-white border border-[#e8dcc4] rounded-xl p-3 shadow-sm">
+                      <span className="text-[10px] uppercase font-bold text-[#d4c1a0] tracking-wider mb-1 block">Kernel Status</span>
+                      <div className="flex items-center gap-2">
+                        <StudioChip tone="node">Canonical Entity Linked</StudioChip>
+                      </div>
+                      <p className="text-xs text-[#8c6b4a] mt-2 leading-relaxed">
+                        This anchor is verified by the Document Kernel. Renaming the entity in the Forge will automatically update this reference.
+                      </p>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
 
       </div>
     </div>

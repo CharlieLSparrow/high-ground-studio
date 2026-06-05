@@ -4,50 +4,29 @@ import { getPrismaClient } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
+import { createStudioProject } from "@/lib/studio/project-registry";
 
 const storage = new Storage();
-const bucketName = "high-ground-odyssey-media";
+const bucketName = process.env.STORYBOARD_GCS_BUCKET || process.env.GCS_BUCKET || "high-ground-odyssey-media";
+const shouldMakeStoryboardImagesPublic = process.env.STORYBOARD_MAKE_PUBLIC === "1";
 
 export async function createProject(formData: FormData) {
   const title = formData.get("title") as string;
   if (!title) return { error: "Title is required" };
   const prisma = getPrismaClient();
-  const WORKSPACE_SLUG = "tonight-pack";
-  
-  function slugify(input: string) {
-    return input
-      .toLowerCase()
-      .trim()
-      .replace(/['"]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 64) || "untitled";
-  }
-
-  const baseSlug = slugify(title);
-
-  const workspace = await prisma.studioWorkspace.upsert({
-    where: { slug: WORKSPACE_SLUG },
-    update: {},
-    create: { slug: WORKSPACE_SLUG, name: "Tonight Pack Workspace" },
-  });
-
-  let slug = baseSlug;
-  let suffix = 2;
-  while (await prisma.studioProject.findUnique({ where: { workspaceId_slug: { workspaceId: workspace.id, slug } } })) {
-    slug = `${baseSlug}-${suffix}`;
-    suffix += 1;
-  }
 
   try {
-    const project = await prisma.studioProject.create({
-      data: {
-        workspaceId: workspace.id,
-        slug,
-        name: title,
-        description: formData.get("description") as string | null,
-      }
+    const { project } = await createStudioProject(prisma, {
+      name: title,
+      documentTitle: `${title} Storyboard Notes`,
     });
+    const description = formData.get("description") as string | null;
+    if (description) {
+      await prisma.studioProject.update({
+        where: { id: project.id },
+        data: { description },
+      });
+    }
     revalidatePath("/storyboards/builder");
     return { success: true, project };
   } catch (error: any) {
@@ -55,69 +34,97 @@ export async function createProject(formData: FormData) {
   }
 }
 
-export async function createScene(projectId: string, sceneNumber: string) {
+export async function createStoryboard(projectId: string, title: string) {
   const prisma = getPrismaClient();
   try {
-    const scene = await prisma.scene.create({
+    const storyboard = await (prisma as any).studioStoryboard.create({
       data: {
         projectId,
-        sceneNumber,
-        title: `Scene ${sceneNumber}`,
+        title,
       }
     });
     revalidatePath("/storyboards/builder");
-    return { success: true, scene };
+    return { success: true, storyboard };
   } catch (error: any) {
     return { error: error.message };
   }
 }
 
-export async function createShot(sceneId: string, shotNumber: string) {
+export async function updateStoryboard(
+  storyboardId: string,
+  data: {
+    title?: string;
+    aspectRatio?: string;
+  }
+) {
+  const prisma = await getPrismaClient();
+  const storyboard = await (prisma as any).studioStoryboard.update({
+    where: { id: storyboardId },
+    data,
+  });
+  
+  revalidatePath('/storyboards/builder');
+  return { success: true, storyboard };
+}
+
+export async function createStoryboardFrame(storyboardId: string, frameNumber: string) {
   const prisma = getPrismaClient();
   try {
-    const shot = await prisma.storyboardShot.create({
+    const frame = await (prisma as any).studioStoryboardFrame.create({
       data: {
-        sceneId,
-        shotNumber,
+        storyboardId,
+        frameNumber,
         action: "Describe the action happening in this shot...",
         cameraInfo: "Wide Angle",
       }
     });
     revalidatePath("/storyboards/builder");
-    return { success: true, shot };
+    return { success: true, frame };
   } catch (error: any) {
     return { error: error.message };
   }
 }
 
-export async function updateShot(shotId: string, data: { action?: string; dialogue?: string; cameraInfo?: string }) {
-  const prisma = getPrismaClient();
-  try {
-    const shot = await prisma.storyboardShot.update({
-      where: { id: shotId },
-      data
-    });
-    revalidatePath("/storyboards/builder");
-    return { success: true, shot };
-  } catch (error: any) {
-    return { error: error.message };
+export async function updateStoryboardFrame(
+  frameId: string,
+  data: {
+    action?: string;
+    dialogue?: string;
+    cameraInfo?: string;
+    imageUrl?: string;
+    shotSize?: string;
+    lens?: string;
+    cameraMovement?: string;
+    estimatedDuration?: number;
+    vfxNotes?: string;
+    mediaClipId?: string | null;
   }
-}
-
-export async function generateShotImage(shotId: string) {
-  const prisma = getPrismaClient();
-  const shot = await prisma.storyboardShot.findUnique({
-    where: { id: shotId },
-    include: { scene: true }
+) {
+  const prisma = await getPrismaClient();
+  
+  const frame = await (prisma as any).studioStoryboardFrame.update({
+    where: { id: frameId },
+    data,
   });
 
-  if (!shot) return { error: "Shot not found" };
+  revalidatePath('/storyboards/builder');
+  return { success: true, frame };
+}
+
+export async function generateFrameImage(frameId: string) {
+  const prisma = getPrismaClient();
+  const frame = await (prisma as any).studioStoryboardFrame.findUnique({
+    where: { id: frameId },
+    include: { storyboard: true }
+  });
+
+  if (!frame) return { error: "Frame not found" };
 
   const prompt = `A cinematic storyboard panel. 
-Location: ${shot.scene.location || 'Unknown location'} - Time of Day: ${shot.scene.timeOfDay || 'Unknown time'}.
-Camera Angle/Shot Type: ${shot.cameraInfo || 'Standard Wide'}.
-Action: ${shot.action || 'Characters in a scene'}.
-Dialogue context: ${shot.dialogue || 'None'}.
+Sequence: ${frame.storyboard.title || 'Unknown'}.
+Camera Angle/Shot Type: ${frame.cameraInfo || 'Standard Wide'}.
+Action: ${frame.action || 'Characters in a scene'}.
+Dialogue context: ${frame.dialogue || 'None'}.
 Style: Cinematic black and white rough storyboard pencil sketch, high contrast, dynamic composition, dramatic lighting, movie pre-production art style.`;
 
   try {
@@ -143,7 +150,7 @@ Style: Cinematic black and white rough storyboard pencil sketch, high contrast, 
     
     // Upload to GCS
     const bucket = storage.bucket(bucketName);
-    const fileName = `storyboards/shots/shot-${shotId}-${Date.now()}.jpg`;
+    const fileName = `storyboards/frames/frame-${frameId}-${Date.now()}.jpg`;
     const file = bucket.file(fileName);
     
     const buffer = Buffer.from(base64Image, 'base64');
@@ -154,20 +161,22 @@ Style: Cinematic black and white rough storyboard pencil sketch, high contrast, 
       }
     });
     
-    // Make public
-    await file.makePublic();
+    if (shouldMakeStoryboardImagesPublic) {
+      await file.makePublic();
+    }
     
-    const imageUrl = `https://storage.googleapis.com/${bucketName}/${fileName}`;
+    const publicBaseUrl = process.env.STORYBOARD_PUBLIC_BASE_URL || `https://storage.googleapis.com/${bucketName}`;
+    const imageUrl = `${publicBaseUrl.replace(/\/$/, "")}/${fileName}`;
     
-    const updatedShot = await prisma.storyboardShot.update({
-      where: { id: shotId },
+    const updatedFrame = await (prisma as any).studioStoryboardFrame.update({
+      where: { id: frameId },
       data: { imageUrl }
     });
     
     revalidatePath("/storyboards/builder");
-    return { success: true, shot: updatedShot };
+    return { success: true, frame: updatedFrame };
   } catch (error: any) {
-    console.error("Error generating shot:", error);
+    console.error("Error generating frame:", error);
     return { error: error.message };
   }
 }

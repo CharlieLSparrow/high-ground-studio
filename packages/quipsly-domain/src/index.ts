@@ -154,6 +154,7 @@ export interface PersonProjection {
   readonly quipslyState: QuipslyState;
   readonly themeIds: readonly QuipslyId[];
   readonly relatedPersonIds: readonly QuipslyId[];
+  readonly imageUrl?: string;
 }
 
 export interface SourceWorkProjection {

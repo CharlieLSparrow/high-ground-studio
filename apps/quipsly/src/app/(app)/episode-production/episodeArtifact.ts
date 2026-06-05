@@ -42,20 +42,29 @@ export type EpisodeImportedMediaAsset = {
   playbackUrl: string;
   importedAt: string;
   source: "editor-import" | "recorder-upload" | "field-kit" | (string & {});
+  importRole?: string;
   sync: {
     status: "ready-to-sync" | "synced" | "held";
     anchorTimelineSeconds?: number;
     targetClipId?: string;
+    suggestedRole?: string;
+    suggestedTrackId?: string;
+    suggestionReason?: string;
+    suggestionConfidence?: number;
+    suggestionAppliedAt?: string;
+    suggestionSource?: string;
     note?: string;
     source?: string;
     syncedAt?: string;
   };
   proxy: {
-    status: "queued" | "ready" | "not-required" | "failed";
+    status: "queued" | "ready" | "not-required" | "failed" | "external-preview";
     proxyUrl?: string;
     note?: string;
   };
 };
+
+import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 export const EPISODE_ARTIFACT_CURRENT_VERSION = 2;
 export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 1;
@@ -138,7 +147,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
 
   return {
     payloadVersion,
-    projectSlug: toString(record.projectSlug, toString(record.project, "")) || "quipsly-dev-lab",
+    projectSlug: toString(record.projectSlug, toString(record.project, "")) || DEFAULT_PROJECT_SLUG,
     episodeSlug: toString(record.episodeSlug, toString(record.episode, "current-episode")),
     source: toString(record.source, "unknown"),
     timelineClips,
