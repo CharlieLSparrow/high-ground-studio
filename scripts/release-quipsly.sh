@@ -4,7 +4,7 @@ set -e
 echo "🚀 Starting AG-Release-Captain Deployment Pre-flight Checks..."
 
 # 1. Enforce clean working directory
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain --ignore-submodules)" ]; then
   echo "❌ ERROR: Working directory is dirty! Uncommitted changes detected."
   echo "Please commit or stash your changes before releasing to avoid deploying a broken state."
   git status --short
