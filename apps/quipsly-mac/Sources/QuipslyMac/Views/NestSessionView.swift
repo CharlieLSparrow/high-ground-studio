@@ -341,6 +341,7 @@ struct NestSessionView: View {
 
     private func signInWithBrowser() {
         isBrowserSignInPending = true
+        let switching = !appState.lastNestSessionEmail.isEmpty
         let state = appState.beginNestNativeAuthState()
         let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
 
@@ -351,7 +352,8 @@ struct NestSessionView: View {
             guard let result = await nativeAuthSession.signIn(
                 nestBaseURL: appState.nestURL,
                 state: state,
-                deviceLabel: deviceLabel
+                deviceLabel: deviceLabel,
+                forceAccountSwitch: switching
             ) else {
                 sessionStatus = nativeAuthSession.lastError
                     ?? "Nest sign-in was canceled. Use the recovery fallback if macOS browser sign-in refuses to complete."
