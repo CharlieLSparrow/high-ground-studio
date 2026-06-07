@@ -22,6 +22,7 @@ function statusClass(status: string) {
 export default async function BetaReadinessPage() {
   const productionCore = await getProductionCoreReadinessSafe();
   const readiness = createBetaReadinessResponseBody({ productionCore });
+  const operatorPlan = readiness.operatorPlan;
   const liveOutputs = QUIPSLY_OUTPUT_CATALOG.filter((output) => output.status === "live").length;
   const nowOutputs = QUIPSLY_OUTPUT_CATALOG.filter((output) => output.priority === "now").length;
 
@@ -110,6 +111,98 @@ export default async function BetaReadinessPage() {
               ))}
             </div>
           ) : null}
+        </section>
+
+        <section className="mt-8 rounded-[2rem] border border-[#e8dcc4] bg-white p-5 shadow-sm md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-[#8c6b4a]">
+                Release cockpit
+              </div>
+              <h2 className="mt-2 font-serif text-3xl font-black">
+                {operatorPlan.deployable ? "Deploy path is clear" : "Deploy path has gates"}
+              </h2>
+              <p className="mt-3 max-w-4xl text-sm font-bold leading-6 text-[#6b5b45]">
+                This is the operator-facing path from this build to a safe beta release: refresh Cloud auth if needed, sync schema, deploy a no-traffic preview, smoke it, then promote only after the preview is green.
+              </p>
+            </div>
+            <span className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${operatorPlan.deployable ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+              {operatorPlan.deployable ? "No app blockers" : `${operatorPlan.blockers.length} gate${operatorPlan.blockers.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+
+          {operatorPlan.blockers.length || operatorPlan.warnings.length ? (
+            <div className="mt-5 grid gap-3 lg:grid-cols-2">
+              {operatorPlan.blockers.length ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-950">
+                  <div className="text-xs font-black uppercase tracking-[0.16em]">
+                    Must resolve before promotion
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {operatorPlan.blockers.map((blocker) => (
+                      <p key={blocker} className="text-sm font-bold leading-6">
+                        {blocker}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {operatorPlan.warnings.length ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                  <div className="text-xs font-black uppercase tracking-[0.16em]">
+                    Allowed with visible fallback
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {operatorPlan.warnings.map((warning) => (
+                      <p key={warning} className="text-sm font-bold leading-6">
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid gap-3">
+            {operatorPlan.nextActions.map((action, index) => (
+              <article key={action.id} className="rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-[#a96735]">
+                      Step {index + 1}
+                    </div>
+                    <h3 className="mt-1 font-serif text-xl font-black">
+                      {action.label}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-[#6b5b45]">
+                      {action.detail}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-[#ead8ba] bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#7b512d]">
+                    {action.required ? "Required" : "Optional"}
+                  </span>
+                </div>
+                <code className="mt-3 block overflow-x-auto rounded-2xl border border-[#ead8ba] bg-[#23180f] px-4 py-3 text-xs font-bold leading-6 text-[#fff8ec]">
+                  {action.command}
+                </code>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-950">
+            <div className="text-xs font-black uppercase tracking-[0.16em]">
+              Non-destructive smoke route set
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {operatorPlan.smokeRoutes.map((route) => (
+                <span key={route} className="rounded-full border border-cyan-200 bg-white/70 px-3 py-1 text-xs font-bold">
+                  {route}
+                </span>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
