@@ -30,8 +30,8 @@ gcloud run jobs deploy "${JOB_NAME}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --set-cloudsql-instances="${SQL_INSTANCE}" \
   --set-secrets="DATABASE_URL=studio-database-url:latest" \
-  --command="pnpm" \
-  --args="prisma,migrate,deploy" \
+  --command="bash" \
+  --args="-lc,pnpm prisma migrate deploy && node scripts/quipsly-nest-chat-schema-push.mjs && node scripts/quipsly-production-core-schema-sync.mjs" \
   --tasks=1 \
   --max-retries=0 \
   --quiet
@@ -39,4 +39,4 @@ gcloud run jobs deploy "${JOB_NAME}" \
 echo "Executing Cloud Run Job ${JOB_NAME}..."
 gcloud run jobs execute "${JOB_NAME}" --region="${REGION}" --wait
 
-echo "Database migrations applied successfully."
+echo "Database migrations and Quipsly additive schema syncs applied successfully."
