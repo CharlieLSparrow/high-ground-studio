@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NestSessionView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var nativeAuthSession = NestNativeAuthSession()
     @State private var sessionStatus = "Not connected yet."
     @State private var isCheckingSession = false
     @State private var isBrowserSignInPending = false
@@ -105,7 +106,7 @@ struct NestSessionView: View {
                 Label(primarySignInLabel, systemImage: "safari")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isBrowserSignInPending || isCheckingSession)
+            .disabled(nativeAuthSession.isSigningIn || isBrowserSignInPending || isCheckingSession)
 
             Button {
                 Task {
@@ -340,22 +341,30 @@ struct NestSessionView: View {
 
     private func signInWithBrowser() {
         isBrowserSignInPending = true
-        let switching = !appState.lastNestSessionEmail.isEmpty
         let state = appState.beginNestNativeAuthState()
         let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
-        sessionStatus = switching
-            ? "Opening Nest account switcher in your browser..."
-            : "Opening Nest sign-in in your browser..."
-        let url = switching
-            ? NestSessionActions.accountSwitchURL(nestBaseURL: appState.nestURL, state: state, deviceLabel: deviceLabel)
-            : NestSessionActions.nativeHandoffURL(nestBaseURL: appState.nestURL, state: state, deviceLabel: deviceLabel)
-        NSWorkspace.shared.open(url)
 
         Task {
-            try? await Task.sleep(for: .seconds(20))
-            guard isBrowserSignInPending else { return }
             isBrowserSignInPending = false
-            sessionStatus = "Browser sign-in is still waiting. If the browser is open, finish sign-in there. If it already finished, click Check connection."
+            sessionStatus = "Opening secure macOS Nest sign-in..."
+
+            guard let result = await nativeAuthSession.signIn(
+                nestBaseURL: appState.nestURL,
+                state: state,
+                deviceLabel: deviceLabel
+            ) else {
+                sessionStatus = nativeAuthSession.lastError
+                    ?? "Nest sign-in was canceled. Use the recovery fallback if macOS browser sign-in refuses to complete."
+                return
+            }
+
+            sessionStatus = "Nest returned a one-time code. Creating the Mac device session..."
+            if await appState.handleNativeAuthResult(result) {
+                sessionStatus = "Mac device session saved. Verifying connection now..."
+                await checkSession()
+            } else {
+                sessionStatus = appState.lastNestSessionCheckLabel
+            }
         }
     }
 

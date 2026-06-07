@@ -10,8 +10,13 @@ final class NestNativeAuthSession: NSObject, ObservableObject, ASWebAuthenticati
     private var session: ASWebAuthenticationSession?
     private let callbackScheme = "quipslymac"
 
-    func signIn(nestBaseURL: String) async -> NestNativeAuthResult? {
-        let url = NestSessionActions.nativeHandoffURL(nestBaseURL: nestBaseURL, callbackScheme: callbackScheme)
+    func signIn(nestBaseURL: String, state: String, deviceLabel: String) async -> NestNativeAuthResult? {
+        let url = NestSessionActions.nativeHandoffURL(
+            nestBaseURL: nestBaseURL,
+            callbackScheme: callbackScheme,
+            state: state,
+            deviceLabel: deviceLabel
+        )
         isSigningIn = true
         lastError = nil
 

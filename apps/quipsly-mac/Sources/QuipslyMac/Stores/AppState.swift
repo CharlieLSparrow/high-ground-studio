@@ -45,7 +45,7 @@ final class AppState: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.engineURL = defaults.string(forKey: Keys.engineURL) ?? "ws://localhost:4000"
-        self.nestURL = defaults.string(forKey: Keys.nestURL) ?? "https://nest.quipsly.com/projects"
+        self.nestURL = AppState.normalizedNestBaseURL(defaults.string(forKey: Keys.nestURL) ?? "https://nest.quipsly.com")
         self.nestChatProjectSlug = defaults.string(forKey: Keys.nestChatProjectSlug) ?? "high-ground-odyssey-manuscript"
         self.editorProjectSlug = defaults.string(forKey: Keys.editorProjectSlug) ?? "high-ground-odyssey-manuscript"
         self.editorEpisodeSlug = defaults.string(forKey: Keys.editorEpisodeSlug) ?? "episode-4"
@@ -72,10 +72,14 @@ final class AppState: ObservableObject {
         }
 
         selectedSection = .nestSession
+        return await handleNativeAuthResult(result)
+    }
 
+    @discardableResult
+    func handleNativeAuthResult(_ result: NestNativeAuthResult) async -> Bool {
         guard !pendingNestNativeAuthState.isEmpty, result.state == pendingNestNativeAuthState else {
             lastNestSessionCheckLabel = "Rejected callback \(Date.now.formatted(date: .abbreviated, time: .shortened))"
-            return true
+            return false
         }
 
         pendingNestNativeAuthState = ""
@@ -88,12 +92,12 @@ final class AppState: ObservableObject {
             )
             saveNestSession(credentials: credentials)
             lastNestSessionCheckLabel = "Connected \(Date.now.formatted(date: .abbreviated, time: .shortened))"
+            return true
         } catch {
             lastNestSessionEmail = result.email
             lastNestSessionCheckLabel = "Exchange failed \(Date.now.formatted(date: .abbreviated, time: .shortened)): \(error.localizedDescription)"
+            return false
         }
-
-        return true
     }
 
     func saveNestSession(credentials: NestSessionCredentials) {
@@ -225,6 +229,19 @@ final class AppState: ObservableObject {
 
     private var deviceLabel: String {
         Host.current().localizedName ?? "Quipsly Mac"
+    }
+
+    private static func normalizedNestBaseURL(_ value: String) -> String {
+        let fallback = "https://nest.quipsly.com"
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed.isEmpty ? fallback : trimmed) else {
+            return fallback
+        }
+
+        components.path = ""
+        components.queryItems = nil
+        components.fragment = nil
+        return components.url?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? fallback
     }
 }
 
