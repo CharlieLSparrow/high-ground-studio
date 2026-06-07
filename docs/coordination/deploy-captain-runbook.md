@@ -194,7 +194,7 @@ Expected:
 
 ## Quipsly production-core schema sync
 
-The production-core pass added first-class tables for Nest invites, asset attachments, source units, document operations, production rooms, timeline versions, output packets, publish attempts, published artifacts, and workflow jobs.
+The production-core pass added first-class tables for Nest invites, asset attachments, source units, document operations, production rooms, timeline versions, output packets, publish attempts, published artifacts, workflow jobs, and native Mac auth/session handoff. A green readiness response is therefore also the preflight check for `/api/mac/session-exchange`, `/api/mac/session-refresh`, and `/api/mac/session-check`.
 
 Do not deploy app code that depends on these tables until the live database passes:
 
@@ -248,6 +248,7 @@ The schema script applies only `ops/quipsly-production-core-additive.sql`. It do
 Run these after deploy:
 
 ```bash
+PREVIEW_URL=<preview-or-live-url> HOST_HEADER=nest.quipsly.com bash scripts/release/quipsly-smoke-preview.sh
 curl -I -L -s -o /dev/null -w '%{url_effective} %{http_code}\n' https://nest.quipsly.com
 curl -I -L -s -o /dev/null -w '%{url_effective} %{http_code}\n' https://quipsly.com/quipsly-app-icon.png
 curl -I -L -s -o /dev/null -w '%{url_effective} %{http_code}\n' https://studio-hm2odnvjga-uc.a.run.app/projects
@@ -258,6 +259,7 @@ Expected:
 - `https://nest.quipsly.com/projects 200`
 - Quipsly static assets return `200`
 - Studio fallback `/projects` returns a non-500 status.
+- `quipsly-smoke-preview.sh` passes `/api/production-core/readiness` and confirms `/api/mac/session-check` returns an expected unauthenticated `401`, not a `500`.
 
 Then run a Chrome smoke for anything auth, admin, invite, editor, or chat related. Curl cannot prove those flows.
 

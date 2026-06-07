@@ -33,7 +33,12 @@ pnpm-store/
 **/test-results/
 **/.nyc_output/
 **/.vitest/
+**/.test-dist/
 **/*.tsbuildinfo
+*.bak
+*.save
+*.orig
+*.rej
 
 # Environment, credentials, logs, and local databases
 .env

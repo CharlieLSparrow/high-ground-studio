@@ -24,8 +24,10 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 curl_args=(-fsS --max-time 20)
+status_curl_args=(-sS --max-time 20)
 if [[ -n "${HOST_HEADER}" ]]; then
   curl_args+=(-H "Host: ${HOST_HEADER}")
+  status_curl_args+=(-H "Host: ${HOST_HEADER}")
 fi
 
 check_json_endpoint() {
@@ -59,9 +61,27 @@ check_html_route() {
   fi
 }
 
+check_status_endpoint() {
+  local path="$1"
+  local expected_status="$2"
+  local out="${TMP_DIR}/$(echo "${path}" | tr '/?' '__').txt"
+  local status
+
+  echo "Checking ${TARGET_URL}${path} expects HTTP ${expected_status}"
+  status="$(curl "${status_curl_args[@]}" "${TARGET_URL}${path}" -o "${out}" -w "%{http_code}")"
+
+  if [[ "${status}" != "${expected_status}" ]]; then
+    echo "Route ${path} returned HTTP ${status}, expected ${expected_status}." >&2
+    cat "${out}" >&2 || true
+    exit 1
+  fi
+}
+
 check_json_endpoint "/api/health"
 check_json_endpoint "/api/healthz"
 check_json_endpoint "/api/beta-readiness"
+check_json_endpoint "/api/production-core/readiness"
+check_status_endpoint "/api/mac/session-check" "401"
 check_json_endpoint "/api/output-catalog"
 check_json_endpoint "/api/output-catalog/hgo-episode-page"
 check_json_endpoint "/api/output-catalog/nest-kind/writing"
