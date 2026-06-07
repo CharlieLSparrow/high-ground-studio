@@ -97,6 +97,8 @@ REGION=us-central1 PROJECT_ID=high-ground-odyssey scripts/release/quipsly-releas
 
 This catches expired `gcloud` auth, missing Cloud Run access, dirty working trees, release script syntax errors, and missing service visibility before a long deploy starts.
 
+Do not use `local-engine-uploader@high-ground-odyssey.iam.gserviceaccount.com` as the deploy account. It can authenticate to the project for local/media workflows, but it does not have Cloud Run or Cloud Build deploy visibility. A real deploy captain account must at minimum pass `scripts/release/quipsly-release-preflight.sh`, including `run.services.get` on the `studio` Cloud Run service and Cloud Build access.
+
 ```bash
 TAG="quipsly-live-$(date +%Y%m%d-%H%M%S)"
 IMAGE_TAG="$TAG" scripts/quipsly-web-deploy.sh
