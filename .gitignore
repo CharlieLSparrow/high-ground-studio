@@ -83,3 +83,7 @@ scratch/
 *.py
 fix_*.js
 content/
+!apps/web/content/
+!apps/web/content/publish/
+!apps/web/content/publish/hgo-episodes/
+!apps/web/content/publish/hgo-episodes/*.json

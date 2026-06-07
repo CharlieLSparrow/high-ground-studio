@@ -1,0 +1,26 @@
+[
+  {
+    "id": "hgo-public-episode-1",
+    "slug": "episode-1-write-it-down",
+    "title": "The Wednesday Rule",
+    "episodeNumber": "1",
+    "summary": "Scott and Charlie open High Ground Odyssey with the invitation at the center of the whole project: write the story down, learn from it, and leave something useful behind.",
+    "publishedAt": "2026-06-05T00:00:00.000Z"
+  },
+  {
+    "id": "hgo-public-episode-2",
+    "slug": "episode-2-look-for-lessons",
+    "title": "Look for Lessons",
+    "episodeNumber": "2",
+    "summary": "The introduction turns ordinary life into a leadership laboratory: birds, stained glass, family dinners, and the discipline of making better meaning from everyday things.",
+    "publishedAt": "2026-06-05T00:00:00.000Z"
+  },
+  {
+    "id": "hgo-public-episode-3",
+    "slug": "episode-3-chub-and-jack",
+    "title": "Know Where You Came From",
+    "episodeNumber": "3",
+    "summary": "Chapter Zero follows family memory from Australia to Idaho, from war service to farm work, and from Chub and Jack's legend to the leadership power of knowing where you came from.",
+    "publishedAt": "2026-06-05T00:00:00.000Z"
+  }
+]
