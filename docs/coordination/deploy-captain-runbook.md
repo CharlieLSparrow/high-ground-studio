@@ -89,6 +89,14 @@ Tonight's release failures were mostly release-mechanics failures, not product f
 
 Preferred path: use the Quipsly web deploy script. It stages a complete web-only context and deploys the new image without rewriting Cloud Run env/secrets.
 
+Before spending time on Cloud Build, run the local release preflight:
+
+```bash
+REGION=us-central1 PROJECT_ID=high-ground-odyssey scripts/release/quipsly-release-preflight.sh
+```
+
+This catches expired `gcloud` auth, missing Cloud Run access, dirty working trees, release script syntax errors, and missing service visibility before a long deploy starts.
+
 ```bash
 TAG="quipsly-live-$(date +%Y%m%d-%H%M%S)"
 IMAGE_TAG="$TAG" scripts/quipsly-web-deploy.sh
