@@ -343,7 +343,7 @@ struct NestSessionView: View {
         if isBrowserSignInPending {
             return "Waiting for browser..."
         }
-        return appState.lastNestSessionEmail.isEmpty ? "Sign in with browser" : "Switch account"
+        return appState.lastNestSessionEmail.isEmpty ? "Sign in with browser" : "Refresh Mac session"
     }
 
     private func signInWithBrowser() {
