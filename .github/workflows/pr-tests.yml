@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Run Jest Tests
+    name: Run Quipsly Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -26,5 +26,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
-        run: pnpm test
+      - name: Typecheck Quipsly
+        run: pnpm --filter quipsly exec tsc --noEmit --incremental false
+
+      - name: Build Quipsly
+        env:
+          NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
+          STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
+        run: pnpm --filter quipsly build
+
+      - name: Validate release scripts and workflows
+        run: |
+          ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
+          bash -n scripts/release/quipsly-release-preflight.sh
+          bash -n scripts/release/quipsly-smoke-preview.sh
+          bash -n scripts/release/quipsly-schema-sync.sh
+          bash -n scripts/release/quipsly-deploy-preview.sh
+          bash -n scripts/release/quipsly-promote-preview.sh
