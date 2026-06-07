@@ -1,0 +1,59 @@
+# macOS / Xcode local state
+.DS_Store
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Agent and local scratch
+.agents/
+.codex/
+.tmp/
+*.log
+*.profraw
+TestResults/
+
+# SwiftPM/build output
+.build/
+**/.build/
+my_pbx_script/
+
+# Local media/test fixtures; keep real project assets in cloud/storage, not git
+*.mp4
+*.mov
+*.m4v
+*.m4a
+*.wav
+*.aac
+*.bin
+*.hex
+*.b64
+
+# One-off generated patch/test runners from rapid prototyping
+*.orig
+*.diff
+patch_*.py
+patch_*.swift
+patch_*.diff
+unpatch.py
+add_ui_target.rb
+enable_catalyst.rb
+enable_mac.rb
+fix_pbxproj.swift
+generate_swift.sh
+run_build.sh
+test_*
+dummy*
+current*
+valid*
+my_test*
+main_empirical.swift
+app_output.txt
+base64.txt
+current_base64.txt
+dummy_func.txt
+string.txt
+output.log
+
+# Additional local patch scratch
+patch*.swift
+main.swift
