@@ -77,6 +77,13 @@ export function createReleaseOperatorPlan(options: {
     warnings,
     nextActions: [
       {
+        id: "run-release-preflight",
+        label: "Run release preflight",
+        command: "REGION=us-central1 PROJECT_ID=high-ground-odyssey scripts/release/quipsly-release-preflight.sh",
+        detail: "Checks local gcloud auth, Cloud Run visibility, git state, and release script syntax before spending time on Cloud Build.",
+        required: true,
+      },
+      {
         id: "refresh-cloud-auth",
         label: "Refresh Cloud auth if needed",
         command: "gcloud auth login",
