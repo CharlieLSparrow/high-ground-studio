@@ -85,7 +85,7 @@ jobs:
               fi
 
               changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
-              web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|scripts/release/quipsly-|\.github/workflows/deploy-cloud-run\.yml$|\.dockerignore$)'
+              web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|\.dockerignore$)'
               studio_re='^(apps/quipsly/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|scripts/release/quipsly-|\.github/workflows/deploy-cloud-run\.yml$|\.dockerignore$)'
               schema_re='^(prisma/|ops/|scripts/quipsly-nest-chat-schema-push\.mjs$|scripts/quipsly-production-core-schema-sync\.mjs$|scripts/release/quipsly-schema-sync\.sh$|scripts/release/quipsly-deploy-preview\.sh$|\.github/workflows/deploy-cloud-run\.yml$|cloudbuild\.prisma-migrate\.yaml$|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$)'
               schema=false
@@ -247,6 +247,11 @@ jobs:
       - name: Resolve Preview URL
         run: |
           PREVIEW_URL=$(gcloud run services describe studio --region ${{ env.GCP_REGION }} --format='value(status.traffic[?(@.tag=="quipsly-preview")].url)')
+          if [[ -z "$PREVIEW_URL" ]]; then
+            SERVICE_URL=$(gcloud run services describe studio --region ${{ env.GCP_REGION }} --format='value(status.url)')
+            SERVICE_HOST="${SERVICE_URL#https://}"
+            PREVIEW_URL="https://quipsly-preview---${SERVICE_HOST}"
+          fi
           echo "Resolved PREVIEW_URL: $PREVIEW_URL"
           echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
 
