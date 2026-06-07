@@ -134,6 +134,13 @@ struct NestSessionView: View {
                 Label("Open Nest projects", systemImage: "square.and.arrow.up")
             }
 
+            Button {
+                openAccountSwitcher()
+            } label: {
+                Label("Switch browser account", systemImage: "person.2.badge.gearshape")
+            }
+            .disabled(nativeAuthSession.isSigningIn || isBrowserSignInPending || isCheckingSession)
+
             Button(role: .destructive) {
                 isBrowserSignInPending = false
                 pastedCode = ""
@@ -341,7 +348,6 @@ struct NestSessionView: View {
 
     private func signInWithBrowser() {
         isBrowserSignInPending = true
-        let switching = !appState.lastNestSessionEmail.isEmpty
         let state = appState.beginNestNativeAuthState()
         let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
 
@@ -352,8 +358,7 @@ struct NestSessionView: View {
             guard let result = await nativeAuthSession.signIn(
                 nestBaseURL: appState.nestURL,
                 state: state,
-                deviceLabel: deviceLabel,
-                forceAccountSwitch: switching
+                deviceLabel: deviceLabel
             ) else {
                 sessionStatus = nativeAuthSession.lastError
                     ?? "Nest sign-in was canceled. Use the recovery fallback if macOS browser sign-in refuses to complete."
@@ -377,6 +382,19 @@ struct NestSessionView: View {
         if let url = components.url {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func openAccountSwitcher() {
+        let state = appState.beginNestNativeAuthState()
+        let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
+        sessionStatus = "Opening account switcher in your browser. After choosing an account, continue back to Quipsly Mac."
+        NSWorkspace.shared.open(
+            NestSessionActions.accountSwitchURL(
+                nestBaseURL: appState.nestURL,
+                state: state,
+                deviceLabel: deviceLabel
+            )
+        )
     }
 
     private func checkSession() async {
