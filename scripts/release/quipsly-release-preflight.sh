@@ -5,6 +5,7 @@ REGION="${REGION:-us-central1}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 HOST_HEADER="${HOST_HEADER:-nest.quipsly.com}"
+CONTEXT_WARN_MIB="${CONTEXT_WARN_MIB:-150}"
 
 failures=0
 
@@ -85,6 +86,59 @@ do
     fail "Missing release script: ${script}"
   fi
 done
+
+print_step "Cloud Build context"
+
+context_list="$(mktemp)"
+trap 'rm -f "${context_list}"' EXIT
+
+if gcloud meta list-files-for-upload . >"${context_list}" 2>/dev/null; then
+  context_summary="$(
+    python3 - "${context_list}" <<'PY'
+import os
+import sys
+
+count = 0
+total = 0
+largest = []
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    for raw in handle:
+        path = raw.strip()
+        if not path or not os.path.isfile(path):
+            continue
+        size = os.path.getsize(path)
+        count += 1
+        total += size
+        largest.append((size, path))
+
+largest.sort(reverse=True)
+print(f"{count}\t{total}\t{total / 1024 / 1024:.1f}")
+for size, path in largest[:8]:
+    print(f"{size / 1024 / 1024:.1f}\t{path}")
+PY
+  )"
+  context_files="$(printf "%s\n" "${context_summary}" | sed -n '1p' | awk -F '\t' '{print $1}')"
+  context_bytes="$(printf "%s\n" "${context_summary}" | sed -n '1p' | awk -F '\t' '{print $2}')"
+  context_mib="$(printf "%s\n" "${context_summary}" | sed -n '1p' | awk -F '\t' '{print $3}')"
+
+  pass "Upload context: ${context_files} files, ${context_mib} MiB."
+
+  if python3 - "${context_bytes}" "${CONTEXT_WARN_MIB}" <<'PY'
+import sys
+total = int(sys.argv[1])
+warn_mib = float(sys.argv[2])
+sys.exit(0 if total <= warn_mib * 1024 * 1024 else 1)
+PY
+  then
+    :
+  else
+    warn "Upload context is larger than ${CONTEXT_WARN_MIB} MiB. Largest included files:"
+    printf "%s\n" "${context_summary}" | sed -n '2,9p' >&2
+  fi
+else
+  warn "Could not measure Cloud Build upload context with gcloud meta list-files-for-upload."
+fi
 
 print_step "Cloud Run service"
 
