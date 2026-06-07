@@ -86,7 +86,7 @@ jobs:
               changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
               web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|\.dockerignore$)'
               studio_re='^(apps/quipsly/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|\.dockerignore$)'
-              schema_re='^(prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$)'
+              schema_re='^(prisma/|ops/|scripts/quipsly-nest-chat-schema-push\.mjs$|scripts/quipsly-production-core-schema-sync\.mjs$|scripts/release/quipsly-schema-sync\.sh$|cloudbuild\.prisma-migrate\.yaml$|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$)'
               schema=false
 
               if grep -Eq "$schema_re" <<< "$changed"; then
@@ -186,6 +186,12 @@ jobs:
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run Release Preflight
+        env:
+          PROJECT_ID: ${{ env.GCP_PROJECT }}
+          REGION: ${{ env.GCP_REGION }}
+        run: bash scripts/release/quipsly-release-preflight.sh
 
       - name: Run Schema Sync (DB Migrations)
         if: needs.plan.outputs.schema == 'true'
