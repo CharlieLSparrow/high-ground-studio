@@ -5,7 +5,7 @@ Append reports below this line. Do not overwrite prior reports.
 
 ## 2026-06-04 08:20 local - Marketing positioning
 
-Prompt summary: Review Quipsly marketing copy for the Homer-approved positioning: Quipslys are research assistants, not substitute writers. Authors, writers, academics, and research-heavy creators are the first wedge. Suggest copy updates for landing page and philosophy page.
+Prompt summary: Review Quipsly marketing copy for the Homer-approved positioning: Quipslys are research assistants and co-drafters. Authors, writers, academics, and research-heavy creators are the first wedge. Suggest copy updates for landing page and philosophy page.
 
 Files changed:
 - `apps/quipsly/src/app/(marketing)/page.tsx`
@@ -25,7 +25,7 @@ Recommended next handoff:
 
 ## 2026-06-04 08:24 local - Marketing positioning
 
-Prompt summary: Review Quipsly marketing copy (research assistants, not substitute writers) for authors, writers, academics. Suggest copy changes only.
+Prompt summary: Review Quipsly marketing copy (research assistants and co-drafters) for authors, writers, academics. Suggest copy changes only.
 
 Files changed:
 - None (changes were already implemented in the prior cycle).
@@ -65,7 +65,7 @@ Recommended next handoff:
 ### Copy Proposal: A Cleaner SaaS Wedge
 
 **Assessment of Current Copy:**
-The "research assistants, not substitute writers" message is very strong and clearly differentiates Quipsly. However, to maintain the "warm, playful, confident" tone without sounding anti-AI, we should pivot from criticizing generative AI to celebrating the human joy of creation.
+The "research assistants and co-drafters" message is stronger and avoids sounding anti-AI. The differentiator is not banning AI writing; it is giving creators structure, source awareness, and publishing workflows around the writing.
 
 **Landing Page Hero Alternatives:**
 *Current:* "Meet your new AI research assistants. (They refuse to write for you.)"
@@ -112,7 +112,7 @@ Recommended next handoff:
 
 **Landing Page Subhero:**
 *Current:* "We are the Quipslys—a flock of curious, loyal little birds built for authors, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your manuscript desk. But we will never try to write your book for you."
-*Proposed:* "We are the Quipslys—a flock of curious, loyal little birds built for authors, podcasters, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your desk. We are happy to draft examples or format notes, but we will never black-box write your content. We gather the knowledge so you can create the wisdom."
+*Proposed:* "We are the Quipslys—a flock of curious, loyal little birds built for authors, podcasters, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your desk. We can draft examples, rough copy, rewrites, and formatted notes. We gather knowledge, keep receipts when they matter, and help you turn drafts into something you understand and own."
 
 **Systems Anxiety Philosophy Paragraph:**
 *Current:* "...The machine will gladly write your screenplay, generate your painting, and compose your sonnet in three seconds flat—which is incredibly insulting to anyone who actually likes writing."
@@ -132,7 +132,7 @@ Exact copy changes:
 *Added:* "Meet your AI research assistants. (We do the digging. You do the dreaming.)"
 
 *Removed:* "...built for authors, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your manuscript desk. But we will never try to write your book for you."
-*Added:* "...built for authors, podcasters, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your desk. We are happy to draft examples or format notes, but we will never black-box write your content. We gather the knowledge so you can create the wisdom."
+*Added:* "...built for authors, podcasters, academics, and research-heavy creators. We will eagerly hunt down references, verify sources, and organize your desk. We can draft examples, rough copy, rewrites, and formatted notes. We gather knowledge, keep receipts when they matter, and help you turn drafts into something you understand and own."
 
 **2. Systems Anxiety Philosophy Page**
 *Removed:* "...which is incredibly insulting to anyone who actually likes writing. Meanwhile, the human author..."
@@ -220,7 +220,7 @@ Replaced the generic 6-card feature grid with the new specific workflows:
 1. **Video Edits**: "Import your raw clips, and we'll help you find the best moments. We'll sync them with your episode manuscript and prepare usable edit markers so you can cut faster."
 2. **Podcast Structure**: "Write your show notes in one living manuscript. We'll help tag chapters, organize audio clips, and keep your recording sessions perfectly on track."
 3. **Research Receipts**: "Need a historical quote or a specific stat? We'll scour the archives to find perfect examples and context, always returning with verified sources and exact citations."
-4. **Human in Control**: "We might draft examples or format references, but we never black-box write your content. Every suggestion is fully inspectable, approvable, and completely reversible."
+4. **Human in Control**: "We can draft options, rewrite passages, and format references. Important changes are inspectable, approvable, and reversible."
 5. **Publishing**: "When your masterpiece is ready, we'll help you prepare the final assets for YouTube descriptions, podcast RSS feeds, and social media clips."
 6. **Lorelists**: "Build sequences of quotes around a theme, mood, or book. We'll weave them into beautiful Nests or Lorelists that feel like a curated playlist of human wisdom."
 
@@ -242,7 +242,7 @@ Files changed:
 
 Exact copy changes:
 **1. FAQ Expansion:**
-- "Does Quipsly write for me?" (Answer: No black-box generation. Cures administrative anxiety, doesn't replace human creativity.)
+- "Does Quipsly write for me?" (Answer: Yes, if you want it to. Quipsly also adds structure, sources, review, outputs, and recovery around the draft.)
 - "How does the video editor workflow help?" (Answer: Import clips, sync to script, build usable edit markers for Premiere/Final Cut.)
 - "Can I use it for podcasts?" (Answer: Living manuscript, tag chapters, organize audio markers.)
 - "Can I use it for academic or research projects?" (Answer: Verified sources, exact citations, no fake quotes.)
@@ -351,20 +351,20 @@ Prompt summary: Audit Quipsly.com messaging against what the product actually do
 ### Audit Findings:
 
 **1. Write once in the living manuscript / Repurpose into many formats**
-- **Unified Platform Pitch & Feature Grid:** The new "One source. Many outputs." section and the specific feature cards beautifully handle this. The language correctly promises that Quipslys will *help prepare and map* content into native formats, not magically automate direct publishing. 
+- **Unified Platform Pitch & Feature Grid:** The new "One source. Many outputs." section and the specific feature cards beautifully handle this. The language correctly promises that Quipslys will *help prepare and map* content into native formats, not magically automate direct publishing.
 - **Verdict:** Keep public. It accurately reflects the core workflow value proposition.
 
 **2. Use Quipslys as research assistants and librarians**
-- **Hero & Problem Manifesto:** The "golden retriever" positioning and "We do the digging. You do the dreaming." copy is strong and concrete. 
+- **Hero & Problem Manifesto:** The "golden retriever" positioning and "We do the digging. You do the dreaming." copy is strong and concrete.
 - **Verdict:** Keep public. However, the manifesto still slightly leans into anti-AI philosophy ("Most Generative AI wants to do the human part..."). This is okay for now, but we should continue finding ways to frame our AI as "Yes, and" rather than "Us vs Them".
 
 **3. Record/edit/publish podcast and YouTube content**
-- **Video/Podcast FAQ & Feature Cards:** Carefully uses verbs like "sync", "organize markers", and "tag chapters". 
+- **Video/Podcast FAQ & Feature Cards:** Carefully uses verbs like "sync", "organize markers", and "tag chapters".
 - **Verdict:** Keep public. We successfully avoided overpromising automated rendering or direct Apple/Spotify syndication.
 
 **4. Storyboarding & Campaign Delivery (Risk Areas)**
 - **Meet the Flock:** We introduce "The Artist" (translates scripts into vivid visual frames) and "The Messenger" (delivers marketing campaigns).
-- **Verdict:** These claims might be overstepping if our visual generation (storyboarding) and automated email/campaign sending tools are not yet live. 
+- **Verdict:** These claims might be overstepping if our visual generation (storyboarding) and automated email/campaign sending tools are not yet live.
 - **Recommendation:** Keep internal/private alpha for now. We should wait until the image generation pipeline and campaign sandbox are fully robust before leaving this on the public un-gated site.
 
 **5. Pricing & Enterprise Features (Risk Areas)**
@@ -387,7 +387,7 @@ Exact copy changes:
   1. YouTube & Video Prep
   2. Episode Publishing
   3. Enthusiastic Researchers
-  4. You always hold the pen (librarians, not ghostwriters)
+  4. You can draft with magic and still hold the map
   5. Study Documents (importing books, course pages)
   6. Living Manuscripts (tag chapters, filter by lenses)
 - **Pricing Section:** Completely overhauled from standard SaaS tiers to explicit "Beta Access via Patreon".
@@ -420,7 +420,7 @@ Exact code changes:
 - Added a redirect back to `/content-studio` for non-owner, non-dev users.
 
 Risks mitigated:
-- Prevents beta users (Patrons on the $10 or $50 tier) from discovering the "Campaigns" or "Storyboards" paths and seeing unfinished generation features that might undermine the "we don't ghostwrite for you" core premise.
+- Prevents beta users (Patrons on the $10 or $50 tier) from discovering the "Campaigns" or "Storyboards" paths and seeing unfinished generation features that might undermine the "we do not silently mutate or hide unfinished generation" trust premise.
 
 What remains in this lane:
 - Nothing. The marketing positioning copy is live, and the beta feature flags are strictly enforced. The lane is ready for the beta launch.
@@ -445,3 +445,67 @@ Claims Codex should verify:
 
 What remains in this lane:
 - None. Fully beta-ready.
+
+## 2026-06-05 Research Proposal - AG-Marketing
+
+**Research sources/examples reviewed:**
+- **Notion & Obsidian:** We share Notion's "all-in-one workspace" ambition and Obsidian's "knowledge graph" linking, but differentiate by offering *active, opinionated assistants* rather than passive block-editors.
+- **NotebookLM:** The closest analog for source-grounded research. Their framing of "never hallucinate outside your sources" is excellent. Quipsly adds *personality* and *creator-specific publishing workflows* (video/podcast prep) to this base.
+- **Scrivener:** The industry standard for complex manuscripts. We must position Quipsly as "Scrivener for the AI era"—retaining the power of non-linear writing (binders/index cards) but curing the overwhelming UI/UX complexity (Systems Anxiety).
+- **Descript:** Revolutionized "paper editing" for video/audio. Our positioning for video prep should echo this: we handle the tedious logging and marker-mapping so you can edit faster in your NLE.
+- **Perplexity:** Sets the standard for citations. Quipsly must match this expectation for internal research ("we despise fake internet quotes!").
+
+**Messaging insights:**
+- The differentiator is not "never use black-box writing." Freeform AI drafting is useful and allowed. The stronger position is that Quipsly is *more than a blank AI text box*: it gives creators librarians, loggers, source receipts, structure maps, format-fitters, drafts, rewrites, and publishing workflows so AI-written material can become understandable and ownable.
+- SaaS positioning for creators requires "Show, Don't Tell." Descript and Notion excel because their landing pages are filled with micro-interactions, GIFs, and actual UI. We are currently relying heavily on philosophical copy and lore illustrations.
+- "Curing Systems Anxiety" is a strong manifesto hook, but it needs immediate concrete payoff.
+
+**Current Quipsly.com gaps:**
+1. **Visual Proof:** The homepage uses beautiful character art (flock of Quipslys) but lacks actual UI screenshots, GIFs, or walkthrough videos proving the software exists and functions.
+2. **Workflow Deep-Dives:** The feature cards on the homepage are good, but we lack dedicated `/workflows/living-manuscript` or `/workflows/video-prep` sub-pages to explain *how* it actually works step-by-step.
+3. **The Manifesto:** The homepage links to `/philosophy/systems-anxiety`, but we need to ensure this manifesto is a compelling, highly shareable long-form essay (a la Basecamp's or Linear's philosophies).
+4. **Beta Onboarding:** We lack a dedicated `/welcome-beta` page that manages the emotional transition from Patreon signup -> Manual Reconciliation Wait -> First Nest Creation.
+
+**Proposed next implementation pass:**
+1. **Create the Beta Onboarding Hub:** Build `/beta-welcome` specifically for Patreon supporters to set expectations regarding bugs, manual reconciliation times, and providing a quick-start guide.
+2. **Draft the Manifesto:** Complete the `/philosophy/systems-anxiety` page as a beautifully typographed, shareable essay.
+3. **UI/UX Evidence Injection:** Add placeholder sections or actual UI screenshots/videos to the homepage to prove the app's tangibility.
+4. **Patreon Announcement Copy:** Draft the exact Patreon post markdown that the Codex will use to announce the beta, ensuring it perfectly threads the needle of excitement vs. beta reality.
+
+**Pages/files likely touched:**
+- `apps/quipsly/src/app/(marketing)/philosophy/systems-anxiety/page.tsx`
+- `apps/quipsly/src/app/(marketing)/beta-welcome/page.tsx`
+- `apps/quipsly/src/app/(marketing)/page.tsx` (to add UI evidence)
+- `docs/announcements/patreon-beta-announcement.md` (new)
+
+**Claims to avoid:**
+- "Automated publishing" or "Autonomous campaign generation" (these are currently hidden/internal-only per the BETA-MANIFEST).
+- "Instant Access" (we must explicitly state manual reconciliation is required).
+- "Video Editing" (we do *video prep*, logging, and markers; we do not render final cuts).
+- "We'll write it for you" (always emphasize the human holds the pen).
+
+**Questions for Codex/Product Owner:**
+1. Do we have actual high-fidelity UI screenshots or short video loops of the Nest/Manuscript interface that I can embed in the homepage for the next pass?
+2. Are we comfortable releasing the `/philosophy/systems-anxiety` manifesto on the same day as the beta, or should that trail the launch?
+3. Should the Patreon announcement post be drafted now, or after the beta-welcome page is built?
+
+## 2026-06-05 20:10 local - Marginalia beta sprint
+
+Prompt summary: Read new foundations and implement one concrete beta-readiness improvement in the AG-Marketing lane. Keep changes additive, preserve the Quipsly core model, and ensure beta users never hit confusing dead ends.
+
+What I changed:
+- Built the **Beta Onboarding Hub (`/welcome`)** as a new marketing route to manage the emotional transition from Patreon signup to Nest creation.
+- Updated the Patreon `signIn` callback in `page.tsx` from `/dashboard` (which could result in a confusing dead end if reconciliation hasn't run yet) to `/welcome`.
+- The new `/welcome` page sets clear expectations: it warns that Patreon reconciliation may take a few hours, explicitly frames Quipslys as prep assistants for Publishing Packets (not writers), and notes that recording breaks are safe sync data, addressing the new foundational models.
+- Registered `/welcome` in `middleware.ts` so it routes correctly as a marketing page and is safe for `quipsly.com`.
+
+Files touched:
+- `apps/quipsly/src/app/(marketing)/welcome/page.tsx` (New)
+- `apps/quipsly/src/app/(marketing)/page.tsx`
+- `apps/quipsly/src/middleware.ts`
+
+Risks or follow-up needed:
+- If a user clicks "Enter Your Nest" before their Patreon account has been fully reconciled by `AG-Patreon-Support`, they might still hit an unauthenticated/denied state at `/create`. It relies on the user reading the "may take a few hours" warning. A potential follow-up is having `nest.quipsly.com` bounce un-reconciled users back to `/welcome` gracefully.
+
+Whether Codex should keep, adjust, quarantine, or validate your work:
+- **Keep.** The change is entirely additive, prevents a severe UX failure post-signup, and integrates seamlessly with the existing middleware rules. Codex should validate the visual styling of `/welcome` matches expectations.

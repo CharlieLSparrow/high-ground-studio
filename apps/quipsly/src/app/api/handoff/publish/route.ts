@@ -1,17 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PublishingDispatcher, QuipslyPublicPackage } from "@/lib/publishing/DestinationAdapters";
+import { PublishingDispatcher, QuipslyPublicPackage, mapDomainPacketToQuipslyPackage } from "@/lib/publishing/DestinationAdapters";
+import type { PublicPublishPacket } from "@high-ground/quipsly-domain";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
     const { package: pkg, destinations } = body as {
-      package: QuipslyPublicPackage;
+      package: QuipslyPublicPackage | PublicPublishPacket;
       destinations: string[];
     };
 
-    if (!pkg || !pkg.id || !pkg.title || !pkg.body) {
-      return NextResponse.json({ error: "Invalid QuipslyPublicPackage payload" }, { status: 400 });
+    if (!pkg || !pkg.id || !pkg.title) {
+      return NextResponse.json({ error: "Invalid package payload: missing id or title" }, { status: 400 });
+    }
+
+    // Adapt if it's a domain packet
+    const isDomainPacket = "packetVersion" in pkg && pkg.packetVersion === 1;
+    const localPkg = isDomainPacket
+      ? mapDomainPacketToQuipslyPackage(pkg as PublicPublishPacket)
+      : pkg as QuipslyPublicPackage;
+
+    if (!localPkg.body && !isDomainPacket) {
+      return NextResponse.json({ error: "Invalid QuipslyPublicPackage payload: missing body" }, { status: 400 });
     }
 
     if (!destinations || !Array.isArray(destinations) || destinations.length === 0) {
@@ -19,10 +30,10 @@ export async function POST(req: NextRequest) {
     }
 
     const dispatcher = new PublishingDispatcher();
-    
+
     // Validate first
-    const validationResults = await dispatcher.validateForDestinations(pkg, destinations);
-    
+    const validationResults = await dispatcher.validateForDestinations(localPkg, destinations);
+
     // Check if there are critical validation errors
     const errors: Record<string, string[]> = {};
     let hasCriticalErrors = false;
@@ -38,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Execute dispatch
-    const publishResults = await dispatcher.dispatch(pkg, destinations);
+    const publishResults = await dispatcher.dispatch(localPkg, destinations);
 
     return NextResponse.json({
       success: true,

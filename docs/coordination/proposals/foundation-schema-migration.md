@@ -17,7 +17,7 @@ This proposal documents the first wave of database schema changes to transform Q
 **Why now:** This paves the way for the access helper (`project -> workspace -> organization -> members`) without instantly breaking legacy local development (fields are optional).
 
 ## 2. Assistant Persistence Models
-**Problem:** The Quipsly assistant requires auditable boundaries to prevent "black-box writing." We need durable models to store session contexts and human-in-the-loop review actions.
+**Problem:** The Quipsly assistant requires auditable boundaries so drafting and rewriting can be powerful without becoming invisible or deceptive. We need durable models to store session contexts and human-in-the-loop review actions.
 **Changes made (Confirmed in schema):**
 - `StudioAssistantSession` (maps to `projectId` and `documentId`)
 - `StudioAssistantMessage` (persists conversation flow and context)

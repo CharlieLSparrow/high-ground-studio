@@ -25,12 +25,14 @@ export type StudioProjectOption = {
   id: string;
   slug: string;
   name: string;
+  description?: string | null;
   documentTitle?: string | null;
   nestKind: StudioNestKind;
   updatedAt?: Date | string | null;
 };
 
 export type StudioNestKind =
+  | "home"
   | "writing"
   | "study"
   | "production"
@@ -39,6 +41,50 @@ export type StudioNestKind =
   | "gallery"
   | "fiction"
   | "mixed";
+
+export type QuipslyWorkflowSystem =
+  | "data-ingestion"
+  | "knowledge-processing"
+  | "content-creation"
+  | "content-publishing";
+
+export const WORKFLOW_SYSTEM_LABELS: Record<QuipslyWorkflowSystem, string> = {
+  "data-ingestion": "Data Ingestion",
+  "knowledge-processing": "Knowledge Processing",
+  "content-creation": "Content Creation",
+  "content-publishing": "Content Publishing",
+};
+
+export const WORKFLOW_SYSTEM_SEQUENCE: QuipslyWorkflowSystem[] = [
+  "data-ingestion",
+  "knowledge-processing",
+  "content-creation",
+  "content-publishing",
+];
+
+export const WORKFLOW_SYSTEM_DESCRIPTIONS: Record<QuipslyWorkflowSystem, string> = {
+  "data-ingestion": "Bring in source material: files, notes, transcripts, links, and imports.",
+  "knowledge-processing": "Sort, annotate, tag, and research without losing source context.",
+  "content-creation": "Draft, revise, outline, and craft manuscripts, scripts, stories, or lessons.",
+  "content-publishing": "Prepare synced media, timelines, clips, and packets for distribution.",
+};
+
+export const WORKFLOW_SYSTEM_FOR_NEST_KIND: Record<StudioNestKind, QuipslyWorkflowSystem> = {
+  home: "data-ingestion",
+  writing: "content-creation",
+  study: "data-ingestion",
+  production: "content-publishing",
+  research: "knowledge-processing",
+  course: "content-creation",
+  gallery: "content-publishing",
+  fiction: "content-creation",
+  mixed: "knowledge-processing",
+};
+
+export function workflowSystemForNestKind(input?: string | null): QuipslyWorkflowSystem {
+  const kind = normalizeNestKind(input);
+  return WORKFLOW_SYSTEM_FOR_NEST_KIND[kind];
+}
 
 type StudioPrismaClient = {
   studioWorkspace: {
@@ -56,6 +102,15 @@ type StudioPrismaClient = {
     create: (args: any) => Promise<any>;
     findFirst: (args: any) => Promise<any>;
     findUnique: (args: any) => Promise<any>;
+  };
+  studioDocumentBlock: {
+    create: (args: any) => Promise<any>;
+  };
+  studioTag: {
+    upsert: (args: any) => Promise<any>;
+  };
+  studioTaggedSpan: {
+    create: (args: any) => Promise<any>;
   };
 };
 
@@ -91,6 +146,7 @@ const PROJECT_TEMPLATES: Record<string, Omit<StudioProjectConfig, "slug">> = {
 };
 
 export const NEST_KIND_LABELS: Record<StudioNestKind, string> = {
+  home: "Home Nest",
   writing: "Writing Nest",
   study: "Study Nest",
   production: "Production Nest",
@@ -107,8 +163,9 @@ export function normalizeNestKind(input?: string | null): StudioNestKind {
   if (value === "study-notes" || value === "study notes" || value === "source-library" || value === "source library") return "study";
   if (value === "media" || value === "episode-production" || value === "episode production") return "production";
   if (value === "research-packet" || value === "research packet") return "research";
+  if (value === "home" || value === "vault" || value === "personal-vault") return "home";
   if (value === "blank") return "writing";
-  if (["writing", "study", "production", "research", "course", "gallery", "fiction", "mixed"].includes(value)) {
+  if (["home", "writing", "study", "production", "research", "course", "gallery", "fiction", "mixed"].includes(value)) {
     return value as StudioNestKind;
   }
   return "writing";
@@ -124,6 +181,7 @@ export function nestKindFromSourceLabel(sourceLabel?: string | null): StudioNest
 }
 
 export function defaultDocumentTitleForNest(name: string, kind: StudioNestKind) {
+  if (kind === "home") return `${name} Home Vault`;
   if (kind === "study") return `${name} Study Document`;
   if (kind === "production") return `${name} Production Document`;
   if (kind === "research") return `${name} Research Packet`;
@@ -239,6 +297,7 @@ export async function createStudioProject(
     name: string;
     documentTitle?: string;
     nestKind?: StudioNestKind | string;
+    seedStarter?: boolean;
   },
 ) {
   const workspace = await ensureStudioWorkspace(prisma);
@@ -268,7 +327,56 @@ export async function createStudioProject(
     include: { documents: true },
   });
 
-  return { workspace, project, document: project.documents[0] };
+  const document = project.documents[0];
+
+  // Beta Readiness: Prevent Blank Slate Syndrome by seeding the starter document immediately.
+  if (input.seedStarter !== false) try {
+    const { createStarterBlocks } = await import("@/app/(app)/create/starterDocuments");
+    const blocksData = createStarterBlocks(slug, nestKind);
+
+    for (let i = 0; i < blocksData.length; i++) {
+      const b = blocksData[i];
+      const block = await prisma.studioDocumentBlock.create({
+        data: {
+          documentId: document.id,
+          stableId: `${document.stableId}-b${i}`,
+          order: i,
+          body: b.text,
+        },
+      });
+
+      for (const tSlug of b.tags) {
+        const tag = await prisma.studioTag.upsert({
+          where: { projectId_slug: { projectId: project.id, slug: tSlug } },
+          update: {},
+          create: {
+            projectId: project.id,
+            slug: tSlug,
+            label: tSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            category: "meaning",
+          },
+        });
+
+        await prisma.studioTaggedSpan.create({
+          data: {
+            documentId: document.id,
+            blockId: block.id,
+            tagId: tag.id,
+            startOffset: 0,
+            endOffset: b.text.length,
+            selectedText: b.text,
+            documentStableId: document.stableId,
+            documentTitleSnapshot: document.title,
+            blockStableId: block.stableId,
+          },
+        });
+      }
+    }
+  } catch (seedError) {
+    console.error(`Failed to seed starter blocks for project ${slug}:`, seedError);
+  }
+
+  return { workspace, project, document };
 }
 
 export async function listStudioProjectOptions(prisma: StudioPrismaClient): Promise<StudioProjectOption[]> {
@@ -277,6 +385,7 @@ export async function listStudioProjectOptions(prisma: StudioPrismaClient): Prom
       id: true,
       slug: true,
       name: true,
+      description: true,
       sourceLabel: true,
       updatedAt: true,
       documents: {
@@ -295,6 +404,7 @@ export async function listStudioProjectOptions(prisma: StudioPrismaClient): Prom
     id: project.id,
     slug: project.slug,
     name: project.name,
+    description: project.description,
     documentTitle: project.documents?.[0]?.title ?? null,
     nestKind: nestKindFromSourceLabel(project.sourceLabel),
     updatedAt: project.updatedAt,

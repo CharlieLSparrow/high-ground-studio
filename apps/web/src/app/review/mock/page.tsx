@@ -27,7 +27,7 @@ export default function MockReviewPage() {
       {/* Dev Tool Switcher (Hidden in prod) */}
       <div className="absolute top-16 right-4 z-50 flex flex-col gap-2 bg-black/80 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-2xl">
         <h3 className="text-white text-xs font-bold uppercase tracking-wider mb-2 opacity-50">Simulator Mode</h3>
-        {(['STORYBOARD', 'COURSE', 'PHOTOGRAPHY', 'LORELIST'] as ExperienceType[]).map(type => (
+        {(['STORYBOARD', 'COURSE', 'PHOTOGRAPHY', 'LORELIST', 'COMIC'] as ExperienceType[]).map(type => (
           <button
             key={type}
             onClick={() => handleModeSwitch(type)}

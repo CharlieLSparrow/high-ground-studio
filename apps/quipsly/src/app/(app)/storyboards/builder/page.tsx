@@ -4,6 +4,10 @@ import { ensureStudioWorkspace } from '@/lib/studio/project-registry';
 import { StoryboardClient } from './StoryboardClient';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
+import {
+  canAccessPrivateFictionNest,
+  PRIVATE_FICTION_PROJECT_SLUG,
+} from '@/lib/fiction/private-fiction-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +15,10 @@ export default async function StoryboardBuilderPage() {
   const session = await auth();
   const isDev = process.env.NODE_ENV === "development";
   const isOwner = Array.isArray(session?.user?.roles) && session.user.roles.includes("OWNER");
-  
-  if (!isDev && !isOwner) {
+  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
+  const canUsePrivateFictionTools = await canAccessPrivateFictionNest(actorEmail);
+
+  if (!isDev && !isOwner && !canUsePrivateFictionTools) {
     redirect("/content-studio");
   }
 
@@ -21,7 +27,9 @@ export default async function StoryboardBuilderPage() {
 
   // Fetch all projects for this workspace, including nested scenes and shots
   const projects = await prisma.studioProject.findMany({
-    where: { workspaceId: workspace.id },
+    where: canUsePrivateFictionTools
+      ? { OR: [{ workspaceId: workspace.id }, { slug: PRIVATE_FICTION_PROJECT_SLUG }] }
+      : { workspaceId: workspace.id },
     // @ts-ignore
     include: {
       storyboards: {
@@ -41,7 +49,7 @@ export default async function StoryboardBuilderPage() {
 
   // Extract all storyboard IDs to fetch interactions
   const storyboardIds = projects.flatMap(p => (p as any).storyboards?.map((s: any) => s.id) || []);
-  
+
   // Fetch interactions for these storyboards
   const interactions = await prisma.scrollInteraction.findMany({
     where: { experienceId: { in: storyboardIds } },
@@ -85,4 +93,3 @@ export default async function StoryboardBuilderPage() {
     </Suspense>
   );
 }
-

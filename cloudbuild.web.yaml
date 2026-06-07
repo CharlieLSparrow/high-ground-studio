@@ -6,14 +6,13 @@ substitutions:
 
 steps:
   - id: build-web-image
-    name: gcr.io/cloud-builders/docker
+    name: gcr.io/kaniko-project/executor:latest
     args:
-      - build
-      - --file
-      - apps/web/Dockerfile
-      - --tag
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
-      - .
+      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:latest
+      - --cache=true
+      - --cache-ttl=168h
+      - --dockerfile=apps/web/Dockerfile
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}

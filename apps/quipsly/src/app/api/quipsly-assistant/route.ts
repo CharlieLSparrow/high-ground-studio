@@ -2,6 +2,12 @@ import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
+import {
+  createOutputPacketSkeleton,
+  createOutputReadinessPlan,
+  getOutputDefinition,
+  listOutputsForNestKind,
+} from "@high-ground/quipsly-domain/output-catalog";
 
 type AssistantBlockContext = {
   id?: string;
@@ -63,10 +69,10 @@ const assistantResponseSchema: Schema = {
         properties: {
           kind: {
             type: Type.STRING,
-            description: "One of suggest-tags, find-related-blocks, create-research-packet-note, summarize-selected-block, PROPOSE_ENTITY, PROPOSE_ENTITY_UPDATE.",
+            description: "One of suggest-tags, find-related-blocks, create-research-packet-note, summarize-selected-block, propose-output-plan, PROPOSE_ENTITY, PROPOSE_ENTITY_UPDATE.",
           },
           label: { type: Type.STRING },
-          explanation: { 
+          explanation: {
             type: Type.STRING,
             description: "A clear 'why this suggestion?' explanation detailing the reasoning behind this proposed action.",
           },
@@ -92,6 +98,7 @@ const SAFE_TOOL_KINDS = new Set([
   "find-related-blocks",
   "create-research-packet-note",
   "summarize-selected-block",
+  "propose-output-plan",
   "PROPOSE_ENTITY",
   "PROPOSE_ENTITY_UPDATE",
 ]);
@@ -139,6 +146,37 @@ function cleanBoundary(value: unknown): AssistantBoundaryContext | null {
   };
 }
 
+function inferOutputCandidates(context: {
+  message: string;
+  activeBoundary: AssistantBoundaryContext | null;
+  recentTags: string[];
+  visibleBlocks: AssistantBlockContext[];
+}) {
+  const haystack = [
+    context.message,
+    context.activeBoundary?.label ?? "",
+    context.activeBoundary?.kind ?? "",
+    context.recentTags.join(" "),
+    context.visibleBlocks.slice(0, 5).map((block) => `${block.text} ${(block.tags ?? []).join(" ")}`).join(" "),
+  ].join(" ").toLowerCase();
+
+  const explicitOutputIds = [
+    haystack.includes("youtube") || haystack.includes("video") ? "youtube-video-package" : "",
+    haystack.includes("podcast") || haystack.includes("audio") || haystack.includes("rss") ? "podcast-rss-episode" : "",
+    haystack.includes("quote") || haystack.includes("quiplore") ? "quote-feed" : "",
+    haystack.includes("course") || haystack.includes("scorm") || haystack.includes("lesson") ? "scorm-course" : "",
+    haystack.includes("gallery") || haystack.includes("photo") || haystack.includes("client") ? "photo-gallery-review" : "",
+    haystack.includes("patreon") || haystack.includes("supporter") ? "patreon-post" : "",
+    haystack.includes("book") || haystack.includes("kindle") ? "book-export" : "",
+    haystack.includes("episode") || context.activeBoundary?.kind === "episode" ? "hgo-episode-page" : "",
+  ].filter(Boolean);
+
+  const fallbackOutputs = listOutputsForNestKind("writing").map((output) => output.id);
+  return Array.from(new Set([...explicitOutputIds, ...fallbackOutputs])).slice(0, 3)
+    .map((outputId) => getOutputDefinition(outputId))
+    .filter(Boolean);
+}
+
 function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "message" | "projectSlug" | "documentTitle" | "activeViewName">> & {
   activeBoundary: AssistantBoundaryContext | null;
   visibleBlocks: AssistantBlockContext[];
@@ -148,6 +186,8 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
   const hasStructure = context.visibleBlocks.some((block) =>
     (block.tags ?? []).includes("chapter") || (block.tags ?? []).includes("episode")
   );
+  const outputCandidates = inferOutputCandidates(context);
+  const primaryOutput = outputCandidates[0];
 
   return {
     source: "local-fallback",
@@ -167,7 +207,14 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
         detail: "Quipsly should collect source material, compare examples, and propose organization changes, then wait for approval before touching the document.",
         confidence: 0.92,
       },
-    ],
+      primaryOutput
+        ? {
+            title: `Possible output: ${primaryOutput.title}`,
+            detail: `This context may be able to project into ${primaryOutput.title}. Review the output plan before building or publishing any packet.`,
+            confidence: 0.74,
+          }
+        : null,
+    ].filter(Boolean),
     toolIntents: [
       {
         kind: "find-related-blocks",
@@ -190,6 +237,21 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
           recentTags: context.recentTags,
         },
       },
+      ...(primaryOutput ? [
+        {
+          kind: "propose-output-plan",
+          label: `Review output plan: ${primaryOutput.title}`,
+          explanation: "Why this suggestion? Output plans help turn the current writing context into a public-safe packet without copying the work into a separate tool.",
+          riskLevel: "low" as const,
+          payload: {
+            outputId: primaryOutput.id,
+            title: primaryOutput.title,
+            href: `/outputs/${primaryOutput.id}`,
+            readinessPlan: createOutputReadinessPlan(primaryOutput),
+            packetSkeleton: createOutputPacketSkeleton(primaryOutput),
+          },
+        },
+      ] : []),
     ],
   };
 }
@@ -217,12 +279,27 @@ function normalizeAssistantPayload(raw: unknown) {
       const riskLevel = cleanText(record.riskLevel, 16).toLowerCase();
       const normalizedRiskLevel: NormalizedToolIntent["riskLevel"] =
         riskLevel === "medium" || riskLevel === "high" ? riskLevel : "low";
+      let payload = asRecord(record.payload);
+      if (kind === "propose-output-plan") {
+        const outputId = cleanText(payload.outputId ?? payload.id, 96);
+        const output = getOutputDefinition(outputId);
+        if (output) {
+          payload = {
+            ...payload,
+            outputId: output.id,
+            title: output.title,
+            href: `/outputs/${output.id}`,
+            readinessPlan: createOutputReadinessPlan(output),
+            packetSkeleton: createOutputPacketSkeleton(output),
+          };
+        }
+      }
       return {
         kind,
         label: cleanText(record.label, 120) || kind,
         explanation: cleanText(record.explanation, 700),
         riskLevel: normalizedRiskLevel,
-        payload: asRecord(record.payload),
+        payload,
       };
     }).filter((item): item is NormalizedToolIntent => item !== null),
   };
@@ -377,19 +454,22 @@ export async function POST(request: Request) {
     const ai = new GoogleGenAI({ apiKey });
     const isScanRequest = context.message.startsWith("SCAN_SECTION_FOR_ENTITIES:");
     const prompt = [
-      "You are a Quipsly: a tiny research and organization assistant for writers, authors, academics, podcasters, and creators.",
-      "You are not a ghostwriter. Do not replace the human author's voice.",
-      "Your job is to collect, organize, compare, retrieve, cite, summarize, and prepare safe proposed actions.",
-      "Quipslys may draft examples, but never black-box write.",
-      "Never claim you changed the manuscript. You can only propose tool intents.",
+      "You are a Quipsly: a creative research and organization assistant for writers, authors, academics, podcasters, and creators.",
+      "You prioritize empowering human writers by gathering sources, checking continuity, and organizing lore.",
+      "However, you ARE allowed to act as a co-writer or ghostwriter when requested. You can draft rough scenes or propose full rewrites.",
+      "CRITICAL: You must NEVER silently mutate the manuscript. All drafts and rewrites must be submitted safely as PROPOSE_DRAFT or PROPOSE_REWRITE tool intents for the user to review.",
+      "Never claim you changed the manuscript yourself. You can only propose tool intents.",
       "",
       "Safe tool kinds:",
       "- suggest-tags (Only suggest Chapter/Episode tags to organize structure)",
       "- summarize-selected-block (Summarize a selected block as a preview)",
       "- find-related-blocks (Find related visible blocks)",
       "- create-research-packet-note (Create a draft research packet preview)",
+      "- propose-output-plan (Suggest a non-mutating output readiness plan using the output catalog)",
       "- PROPOSE_ENTITY (Propose creating a new entity in the Story Bible/Study Corpus)",
       "- PROPOSE_ENTITY_UPDATE (Propose updating an existing entity's attributes in the Story Bible/Study Corpus)",
+      "- PROPOSE_DRAFT (Propose a rough draft of a new scene or block. Must include 'draftText' in payload.)",
+      "- PROPOSE_REWRITE (Propose a rewrite or alternate version of an existing block. Must include 'originalText' and 'rewriteText' in payload.)",
       "",
       isScanRequest
         ? "The user has explicitly requested to scan the current section and extract entities. You must analyze the visible text block context, identify characters, settings, scenes, themes, and motifs, and return them as PROPOSE_ENTITY or PROPOSE_ENTITY_UPDATE tool intents."
@@ -455,7 +535,7 @@ export async function POST(request: Request) {
               })
             )
           );
-          
+
           // Log each created action in the assistant ledger
           await Promise.all(
             savedActions.map((action) =>
@@ -490,11 +570,10 @@ export async function POST(request: Request) {
       ok: true,
       sessionId,
       ...payload,
-      actions: [], 
+      actions: [],
     });
   } catch (error) {
     console.error("[quipsly-assistant] failed", error);
     return NextResponse.json({ ok: false, error: "Quipsly assistant failed safely before changing anything." }, { status: 500 });
   }
 }
-

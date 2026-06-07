@@ -53,7 +53,7 @@ export function BetaAccessView({ email }: { email: string }) {
               <div>
                 <p className="text-sm font-bold text-[#342618]">2. Pending Reconciliation</p>
                 <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
-                  We are checking our app-owned membership records. If you just pledged on Patreon, our webhooks might take a few minutes to process your event and grant beta access.
+                  Any active paid Patreon tier qualifies for Quipsly beta. If you just pledged, our webhooks may need a few minutes to verify the paid supporter record and unlock your workspace.
                 </p>
               </div>
             </div>
@@ -61,12 +61,12 @@ export function BetaAccessView({ email }: { email: string }) {
 
           <div className="text-center">
             <p className="text-xs text-[#8a7659] leading-relaxed">
-              Quipsly manages access via internal Entitlements, not directly through Patreon. This protects your data if provider connections ever drop.
+              Quipsly grants access from app-owned membership records, not directly from Patreon page loads. Ambiguous, gifted, trial, or unpaid states go to manual review so your workspace stays safe.
             </p>
           </div>
 
           <div className="pt-4 flex flex-col gap-3">
-            <button 
+            <button
               onClick={() => window.location.reload()}
               className="w-full py-3 rounded-xl bg-[#3d3122] hover:bg-[#2a2218] text-white font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2"
             >
@@ -74,7 +74,7 @@ export function BetaAccessView({ email }: { email: string }) {
             </button>
 
             {reviewStatus !== "success" ? (
-              <button 
+              <button
                 onClick={handleManualReview}
                 disabled={reviewStatus === "loading"}
                 className="w-full py-3 rounded-xl bg-[#fdfaf6] hover:bg-[#f5ebd9] border border-[#e8dcc4] text-[#8a7659] font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2"
@@ -90,7 +90,14 @@ export function BetaAccessView({ email }: { email: string }) {
               <p className="text-xs text-red-500 text-center">{reviewMessage}</p>
             )}
 
-            <Link 
+            <a
+              href="https://quipsly.com/support"
+              className="w-full py-3 rounded-xl bg-[#fff1f2] hover:bg-[#ffe4e6] border border-[#ffc0c5] text-[#a32631] font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2"
+            >
+              Join or review Patreon beta access
+            </a>
+
+            <Link
               href="/api/auth/signout"
               className="w-full py-3 rounded-xl bg-white hover:bg-slate-50 border border-[#e8dcc4] text-[#6b5b45] font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2"
             >

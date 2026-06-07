@@ -21,6 +21,9 @@ COPY prisma/schema.prisma ./prisma/schema.prisma
 COPY prisma/migrations ./prisma/migrations
 COPY ops/episode-production-db-push.sql ./ops/episode-production-db-push.sql
 COPY ops/quipsly-foundation-additive.sql ./ops/quipsly-foundation-additive.sql
+COPY ops/quipsly-production-core-additive.sql ./ops/quipsly-production-core-additive.sql
+COPY scripts/quipsly-nest-chat-schema-push.mjs ./scripts/quipsly-nest-chat-schema-push.mjs
+COPY scripts/quipsly-production-core-schema-sync.mjs ./scripts/quipsly-production-core-schema-sync.mjs
 COPY apps/quipsly/package.json ./apps/quipsly/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/motion-lab/package.json ./apps/motion-lab/package.json

@@ -39,6 +39,7 @@ jobs:
     outputs:
       web: ${{ steps.plan.outputs.web }}
       studio: ${{ steps.plan.outputs.studio }}
+      schema: ${{ steps.plan.outputs.schema }}
       summary: ${{ steps.plan.outputs.summary }}
     steps:
       - name: Checkout
@@ -82,6 +83,12 @@ jobs:
               changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
               web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|\.dockerignore$)'
               studio_re='^(apps/quipsly/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|\.dockerignore$)'
+              schema_re='^(prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$)'
+              schema=false
+
+              if grep -Eq "$schema_re" <<< "$changed"; then
+                schema=true
+              fi
 
               if grep -Eq "$web_re" <<< "$changed"; then
                 web=true
@@ -103,10 +110,12 @@ jobs:
 
           echo "web=$web" >> "$GITHUB_OUTPUT"
           echo "studio=$studio" >> "$GITHUB_OUTPUT"
+          echo "schema=$schema" >> "$GITHUB_OUTPUT"
           echo "summary=$summary" >> "$GITHUB_OUTPUT"
           echo "$summary"
           echo "web=$web"
           echo "studio=$studio"
+          echo "schema=$schema"
 
   deploy-web:
     name: Deploy web
@@ -122,6 +131,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: 'pnpm'
 
       - name: Install pnpm
         shell: bash
@@ -165,15 +175,6 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install pnpm
-        shell: bash
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.30.3 --activate
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -183,11 +184,33 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy Studio Cloud Run
+      - name: Run Schema Sync (DB Migrations)
+        if: needs.plan.outputs.schema == 'true'
         env:
-          GCLOUD_PROJECT: ${{ env.GCP_PROJECT }}
-          STUDIO_CLOUD_RUN_PROJECT: ${{ env.GCP_PROJECT }}
-          STUDIO_CLOUD_RUN_REGION: ${{ env.GCP_REGION }}
-          STUDIO_IMAGE_TAG: ${{ github.sha }}
-          STUDIO_IMAGE_BUILD_STRATEGY: docker
-        run: pnpm studio:cloudrun:deploy
+          PROJECT_ID: ${{ env.GCP_PROJECT }}
+          REGION: ${{ env.GCP_REGION }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: bash scripts/release/quipsly-schema-sync.sh
+
+      - name: Deploy Studio Preview Revision
+        env:
+          PROJECT_ID: ${{ env.GCP_PROJECT }}
+          REGION: ${{ env.GCP_REGION }}
+          IMAGE_TAG: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.sha }}
+          DEPLOYED_BY: "GitHub Actions"
+        run: bash scripts/release/quipsly-deploy-preview.sh
+
+      - name: Resolve Preview URL
+        run: |
+          PREVIEW_URL=$(gcloud run services describe studio --region ${{ env.GCP_REGION }} --format='value(status.traffic[?(@.tag=="quipsly-preview")].url)')
+          echo "Resolved PREVIEW_URL: $PREVIEW_URL"
+          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+
+      - name: Smoke Test Preview
+        run: bash scripts/release/quipsly-smoke-preview.sh
+
+      - name: Promote Preview to Production
+        env:
+          REGION: ${{ env.GCP_REGION }}
+        run: bash scripts/release/quipsly-promote-preview.sh

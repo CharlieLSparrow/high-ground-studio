@@ -4,7 +4,7 @@ Append reports below this line. Do not overwrite prior reports.
 
 ## Architecture Proposal: Homer-Style Mobile Recording
 
-**1. Problem:** 
+**1. Problem:**
 Mobile recording needs to feel like reading a manuscript (Homer-style), not operating a complex DAW software. We need to seamlessly display the manuscript alongside inline clips, record high-quality local audio, preserve precise start/stop timestamps, and prepare for future live WebRTC calls, all without being interrupted by mobile OS background execution limits.
 
 **2. Proposed schema/infrastructure change:**
@@ -16,7 +16,7 @@ Mobile recording needs to feel like reading a manuscript (Homer-style), not oper
 Determining the owner of the capture layer early prevents wasting effort building a purely web-based mobile recording flow that will ultimately fail in real-world conditions due to iOS memory and background constraints. It also prevents blocking the existing desktop web recording flow.
 
 **4. Migration/data survival path:**
-- Existing web recording flows and models remain untouched. 
+- Existing web recording flows and models remain untouched.
 - Recorded audio files will be persisted locally on the iPhone first, then uploaded to the existing media backend endpoints when complete or network allows.
 
 **5. Compatibility plan:**
@@ -35,21 +35,21 @@ Determining the owner of the capture layer early prevents wasting effort buildin
 
 Prompt summary: Plan the mobile recording experience for Homer-style use. Ensure it feels like reading, supports high-quality local recording, preserves timestamps, and prepares for WebRTC. Identify whether web or iPhone app should own the workflow.
 
-Files changed: 
+Files changed:
 - `docs/coordination/antigravity-reports/mobile-recording.md` (Created new report file)
 
-Files intentionally avoided: 
+Files intentionally avoided:
 - Call signaling
 - Recorder persistence logic
 - Existing manuscript editor components
 
-Validation run: 
+Validation run:
 - Documentation / Proposal only.
 
-Risks: 
+Risks:
 - Syncing timestamps between the native audio engine and the web-based manuscript view requires careful bridge design to prevent drift or race conditions.
 
-Recommended next handoff: 
+Recommended next handoff:
 - Codex/User to review and approve the Hybrid Architecture (iPhone App recorder + WebView manuscript).
 - UI/UX lane to design and safely implement the isolated "Read Mode" layout in the web app.
 
@@ -57,7 +57,7 @@ Recommended next handoff:
 
 ## 2026-06-04 09:21 local - Mobile recording
 
-Prompt summary: Turn the mobile recording proposal into a first implementation plan focusing on Native-owned recording, WebView read-mode, JS bridge contract, upload/sync path, and keeping the web recorder usable. 
+Prompt summary: Turn the mobile recording proposal into a first implementation plan focusing on Native-owned recording, WebView read-mode, JS bridge contract, upload/sync path, and keeping the web recorder usable.
 
 Files changed:
 - `docs/coordination/antigravity-reports/mobile-recording.md` (Appended bridge contract and smoke path)
@@ -173,7 +173,7 @@ To achieve real reliability on iOS, the following must strictly belong to the na
 
 ## 2026-06-04 09:59 local - AG-Mobile-Recording
 
-Prompt summary: Routing correction confirmation. Acknowledge stable lane assignment as `AG-Mobile-Recording`. 
+Prompt summary: Routing correction confirmation. Acknowledge stable lane assignment as `AG-Mobile-Recording`.
 
 Files changed:
 - `docs/coordination/antigravity-reports/mobile-recording.md`
@@ -185,7 +185,7 @@ Validation run:
 - Acknowledged lane assignment.
 
 Risks:
-- None. 
+- None.
 
 Mismatch Report:
 - Going forward, I will strictly reject prompts outside of `AG-Mobile-Recording` and report them here.
@@ -214,7 +214,7 @@ Risks:
 
 #### 1. Where the iPhone App Lives
 The iOS code is located at: `apps/mobile-capture/HighGroundCapture`
-It is a purely native **Swift / SwiftUI** application. 
+It is a purely native **Swift / SwiftUI** application.
 
 #### 2. Current App Architecture
 Currently, the app builds the entire UI natively:
@@ -244,30 +244,30 @@ import WebKit
 
 struct HybridWebView: UIViewRepresentable {
     let url: URL
-    
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let userContentController = WKUserContentController()
         // Prepare to receive bridge events from the web
         userContentController.add(context.coordinator, name: "recorderControl")
         config.userContentController = userContentController
-        
+
         let webView = WKWebView(frame: .zero, configuration: config)
         return webView
     }
-    
+
     func updateUIView(_ uiView: WKWebView, context: Context) {
         uiView.load(URLRequest(url: url))
     }
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     class Coordinator: NSObject, WKScriptMessageHandler {
         var parent: HybridWebView
         init(_ parent: HybridWebView) { self.parent = parent }
-        
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "recorderControl" {
                 print("Received from web: \(message.body)")
@@ -280,7 +280,7 @@ struct HybridWebView: UIViewRepresentable {
 struct ContentView: View {
     // Hardcoded for the smoke test initially
     let webUrl = URL(string: "https://nest.quipsly.com/read/quipsly-dev-lab/episode-8")!
-    
+
     var body: some View {
         HybridWebView(url: webUrl)
             .ignoresSafeArea()
@@ -327,7 +327,7 @@ Based on the actual routing convention of the existing `apps/quipsly/src/app/(ap
 
 #### 5. Mobile Browser Fallback Risks
 - If a user opens `/read` directly in mobile Safari (without the native wrapper), they will rely on `MediaRecorder` for audio capture.
-- **The Risk:** Safari strictly suspends JS execution when the browser is backgrounded or the screen turns off. The recording *will* fail or drop audio if the user locks their phone. 
+- **The Risk:** Safari strictly suspends JS execution when the browser is backgrounded or the screen turns off. The recording *will* fail or drop audio if the user locks their phone.
 - **Mitigation:** The web route must be explicit and honest. If `window.webkit.messageHandlers.recorderControl` is undefined, the UI must show a persistent banner: "Web Fallback: Keep screen on and browser open. Recording will stop in the background." and utilize the Screen Wake Lock API.
 
 ---
@@ -440,7 +440,7 @@ Risks:
 1. Run the Next.js dev server.
 2. Build and run the `HighGroundCapture` app on an iOS Simulator or physical iPhone.
 3. Tap the "RECORD" button in the web UI displayed inside the iOS app.
-4. **Expected Output:** 
+4. **Expected Output:**
    - The Xcode debug console must log: `Received message from web: {"action": "START"}`.
    - The Web UI should log to browser console (if inspected): `Sent START to native bridge`.
 
@@ -461,7 +461,7 @@ Validation run:
 ### Product Framing & Workflows
 
 #### Inline Media Loops & Episode Production Connection
-- **YouTube & Bucket Media:** The read-mode route (`/read/page.tsx`) fetches the `StudioEpisodeProduction` data, which contains all `StudioMediaAsset` records attached as inline clips. It will render these as native `<video>` tags or `<iframe>` YouTube embeds inline with the manuscript text. Because it's read-only, we can enable looping playback natively in the browser without worrying about DAW timeline synchronization. 
+- **YouTube & Bucket Media:** The read-mode route (`/read/page.tsx`) fetches the `StudioEpisodeProduction` data, which contains all `StudioMediaAsset` records attached as inline clips. It will render these as native `<video>` tags or `<iframe>` YouTube embeds inline with the manuscript text. Because it's read-only, we can enable looping playback natively in the browser without worrying about DAW timeline synchronization.
 - **Publishing Outputs:** Once the iOS app finishes recording and background uploads the `.m4a` file to GCS, it calls `/api/episode-production/import-media`. This links the high-quality recording directly to the episode production record, making it immediately available for the web editor to process, segment, or push to the final publishing pipeline.
 
 ### Required Reporting Elements
@@ -529,7 +529,7 @@ Validation run:
 4. **Validation:** Xcode console logs the command, AND the web UI instantly updates its state from "READY" to "RECORDING" based on the mock native response.
 
 #### 4. Mobile Safari Fallback Risk
-- If accessed directly in a browser without the native bridge wrapper, iOS Safari will ruthlessly pause the `MediaRecorder` API whenever the screen turns off or the user switches tabs. 
+- If accessed directly in a browser without the native bridge wrapper, iOS Safari will ruthlessly pause the `MediaRecorder` API whenever the screen turns off or the user switches tabs.
 - **Mitigation:** The web route must detect the missing bridge, enforce the `Screen Wake Lock API`, and display a permanent warning banner that the app must remain open and unlocked.
 
 ---
@@ -555,12 +555,12 @@ This audit verifies that the hybrid Homer-style mobile recorder acts as a seamle
 #### 2. Context Retrieval (Manuscript & Episode State)
 - The read-mode web route (`apps/quipsly/src/app/(app)/read/page.tsx`) queries the database using `projectSlug` and `episodeSlug` provided in the URL.
 - It fetches the `StudioDocument` (the unified manuscript) and the `StudioEpisodeProduction` record.
-- Because the WebView uses standard cookie/session auth, `requireProjectAccess()` naturally secures the data without complex native OAuth implementations. 
+- Because the WebView uses standard cookie/session auth, `requireProjectAccess()` naturally secures the data without complex native OAuth implementations.
 
 #### 3. Attaching Local Recordings to the Episode
 - When the user taps "STOP", the web bridge commands the native layer to finalize the `.m4a` buffer on the iPhone's local disk.
 - The native layer requests a signed URL from `/api/upload/presigned` (passing the `projectSlug`/`episodeSlug` context it holds).
-- The raw, high-quality audio is uploaded directly to GCS via a background URLSession. 
+- The raw, high-quality audio is uploaded directly to GCS via a background URLSession.
 
 #### 4. From Upload to Editor Timeline Assets
 - Upon successful GCS upload, the native iOS app triggers `/api/episode-production/import-media`.
@@ -613,7 +613,7 @@ This architecture is verified as a highly professional, deployable product. It s
 Prompt summary: Plan the single highest-leverage pass to make the Mobile Recording / Read Mode workflow beta-worthy for paying Patreon supporters, without making immediate code changes.
 
 ### 1. Current Beta Readiness
-**Needs integration.** The architecture is rock solid, but currently, the Read Mode route (`/read/page.tsx`) uses a hardcoded mock JSON manuscript, and the web fallback in `useNativeRecorderBridge.ts` mocks the recording state instead of capturing real audio. 
+**Needs integration.** The architecture is rock solid, but currently, the Read Mode route (`/read/page.tsx`) uses a hardcoded mock JSON manuscript, and the web fallback in `useNativeRecorderBridge.ts` mocks the recording state instead of capturing real audio.
 
 ### 2. Biggest Beta Blocker
 Patreon supporters opening Quipsly on their mobile devices (via Safari) will see a fake manuscript and a record button that does not actually save any audio. Because the native Swift app will not be in the App Store for the beta, the web fallback is the *only* way beta users will experience Homer-style recording.
@@ -627,8 +627,8 @@ Connect the Read Mode to the actual database using the existing Prisma schema, a
 - `apps/quipsly/src/app/(app)/read/ReadModeManuscript.tsx`: Adjust if the DB block schema differs slightly from the current mock interface.
 
 ### 5. Risks and Rollback Plan
-- **Risk:** Safari forcefully killing `MediaRecorder` if the user locks their screen. 
-  - *Mitigation:* We already have `WakeLockManager.tsx` deployed which boldly warns them. 
+- **Risk:** Safari forcefully killing `MediaRecorder` if the user locks their screen.
+  - *Mitigation:* We already have `WakeLockManager.tsx` deployed which boldly warns them.
 - **Risk:** The upload payload taking too long on cellular data and failing before the clip is attached.
 - **Rollback Plan:** `git checkout` the read-mode directory back to the current mocked state if the real integration causes layout crashes.
 
@@ -653,7 +653,7 @@ After this pass, a beta user can:
 
 ## 2026-06-05 15:35 local - AG-Mobile-Recording (Prompt 2 Execution)
 
-Prompt summary: Execute the Beta Push for mobile recording/read flow to ensure it is simple enough for Homer. 
+Prompt summary: Execute the Beta Push for mobile recording/read flow to ensure it is simple enough for Homer.
 
 ### Delivered Changes
 
@@ -687,7 +687,7 @@ Prompt summary: Execute the Beta Push for mobile recording/read flow to ensure i
 
 ### Remaining Risk for Same-Day Homer Test
 
-- **Safari Wake Lock Suspensions:** The implementation includes the `WakeLockManager`, but iOS Safari is extremely aggressive. If Homer locks his screen during a recording using the Web Fallback, the `MediaRecorder` API instantly pauses or truncates the recording buffer. Homer must be explicitly instructed to keep his screen alive during testing. 
+- **Safari Wake Lock Suspensions:** The implementation includes the `WakeLockManager`, but iOS Safari is extremely aggressive. If Homer locks his screen during a recording using the Web Fallback, the `MediaRecorder` API instantly pauses or truncates the recording buffer. Homer must be explicitly instructed to keep his screen alive during testing.
 - **Server Connection Drops:** The upload logic requires a stable cellular/wifi connection at the exact moment the user taps Stop. A failing upload leaves the Blob in browser memory, requiring retry logic to prevent data loss.
 
 ---
@@ -756,3 +756,89 @@ If the fetch to `/api/episode-production/import-media` fails (e.g., due to a dro
 
 ### Remaining iPhone Risks
 - **Background Throttling (Unsolvable in Safari)**: Despite the explicit visual warning banner, if Homer locks his screen during a 30-minute take, iOS Safari will pause JavaScript execution and the `MediaRecorder` will stop collecting data. The only true mitigation is the native app.
+
+---
+
+## 2026-06-05 Research Proposal - AG-Mobile-Recording
+
+### Research Sources & Examples Reviewed
+- **Riverside.fm & SquadCast:** Utilize progressive, chunk-based uploading during recording. For mobile, they push users aggressively to their native iOS apps because Safari's WebRTC/MediaRecorder background limitations cause severe data loss during long sessions.
+- **Descript Rooms / Zoom:** Record separate tracks locally. While they have web clients, they rely heavily on native desktop/mobile apps for stable file I/O and background persistence.
+- **Voice Memos, Ferrite, GarageBand:** Benchmark native iOS audio apps. They use `AVAudioRecorder` or `AVAudioEngine`, configure `AVAudioSession` for `.playAndRecord` with `.mixWithOthers` (to avoid crashes from notifications), and write raw buffers directly to disk before attempting any network sync.
+- **iOS Safari / PWA Constraints:** Safari strictly limits background execution. If a user locks their screen or switches tabs, `MediaRecorder` is instantly suspended. The `navigator.wakeLock` API is brittle and drops when visibility changes.
+
+### Current Mobile/Recording Workflow Summary
+- **UI & Data:** The `/read` route fetches dynamic `StudioEpisodeProduction` manuscripts via Prisma and renders a calm, teleprompter-like read mode.
+- **Recording Controls:** `RecorderBottomBar.tsx` offers a minimalist, distraction-free recording deck with a pulsing timer and `uploadState` feedback.
+- **Web Fallback:** `useNativeRecorderBridge.ts` currently handles the Safari fallback. It successfully uses `MediaRecorder` with MIME fallback detection (`audio/webm` → `audio/mp4`), tracks `uploadState` (`UPLOADING`, `UPLOADED`, `FAILED`), and provides a retry mechanism if the `fetch` to `/api/episode-production/import-media` fails. The Blob is currently held entirely in RAM.
+
+### iOS/Browser Constraints
+1. **Background Death:** Mobile Safari *will* kill the recording if Homer locks the screen or takes a phone call.
+2. **RAM & Payload Limits:** Holding a 1-hour audio Blob in RAM and POSTing it via a single `FormData` payload to a Next.js API route risks OOM crashes on older iPhones and Vercel/serverless timeout limits (usually 10-60s max).
+3. **Codec Shifts:** iOS Safari's `MediaRecorder` output container formats can vary wildly between iOS 16, 17, and 18.
+
+### Proposed Next Implementation Pass
+The web fallback is functional but risks data loss on long takes. The next beta-safe improvements are:
+1. **Direct-to-GCS Presigned Uploads:** Bypass the Next.js API route payload limits. Fetch a presigned GCS URL, `PUT` the audio Blob directly to the bucket, and then send a lightweight `POST` to `/api/episode-production/import-media` with the bucket key.
+2. **IndexedDB Chunk Rescue:** As `ondataavailable` fires, write chunks to a local IndexedDB store. If Safari crashes or the user accidentally closes the tab, the next visit can detect the orphaned chunks, reconstruct the Blob, and attempt the upload.
+
+### Files Likely Touched
+- `apps/quipsly/src/app/(app)/read/useNativeRecorderBridge.ts` (Major refactor for IndexedDB / Presigned URLs)
+- `apps/quipsly/src/app/api/upload/presigned/route.ts` (To generate the direct-upload URL)
+- `apps/quipsly/src/app/(app)/read/RecorderBottomBar.tsx` (To handle "Recovering orphaned recording..." state)
+
+### Native App Path Confirmed or Not Confirmed
+**Confirmed.** The architecture correctly probes for `webkit.messageHandlers.recorderControl`, proving the existence of the `HighGroundCapture` native Swift shell designed to bypass Safari's limitations.
+
+### Questions for Codex / Product Owner
+1. **IndexedDB vs. Native:** Should we invest engineering time into IndexedDB chunk-rescue for Safari, or accept the Safari fallback as a fragile "quick take" tool and push Homer exclusively to the TestFlight app for long sessions?
+2. **Upload Strategy:** Do we have approval to switch the web fallback's audio upload from a multipart Next.js POST directly to a Presigned GCS PUT to avoid serverless timeout limits on large files?
+
+## 2026-06-05 Research Input Available
+
+Deep research plan added: `docs/coordination/research-inputs/quipsly-ios-mobile-recording-codex-implementation-plan.md`.
+
+Next useful lane pass: propose the smallest native/web recording slice that makes beta safer without pretending mobile Safari can background-record like a native app. Preserve explicit segment boundaries, upload recovery, and honest web fallback language.
+
+## 2026-06-05 Codex Recording Domain Contract Pass
+
+Codex added `packages/quipsly-domain/src/recording.ts` and exported it from `@high-ground/quipsly-domain`.
+
+The contract defines:
+
+- Recording device kinds for web, iOS native, desktop, and external recorders.
+- Segment statuses from recording through verified/held/failed.
+- Explicit stop reasons including user-stop, interruption, route-change, app-backgrounded, crash-recovered, and network-loss.
+- Upload references for GCS/local/external media.
+- Episode recording session payloads keyed by `projectSlug` and `episodeSlug`.
+- Helpers for attention checks and deterministic end-to-end segment timeline offsets.
+
+Carry-forward rule: recording breaks are first-class sync data. Native/web/call-room work should preserve segment start/stop timestamps and upload evidence instead of trying to hide interruptions.
+
+## 2026-06-05 Marginalia Sprint - Beta Readiness Implementation
+
+### Goal Completed
+Implemented first-class recording segment capture for the web fallback, complying with the new `@high-ground/quipsly-domain/recording` contracts without making destructive schema changes.
+
+### Changes Made
+1. **`useNativeRecorderBridge.ts` (Web Fallback)**
+   - Now tracks an internal array of `RecordingSegment` objects natively.
+   - When the user taps `PAUSE`, `MARK_BREAK`, or `STOP`, the hook seamlessly generates a new segment with the precise duration and appropriate `stopReason` (`'pause'`, `'interruption'`, `'user-stop'`).
+   - The tracked segments are serialized as `recordingSegments` and appended to the multipart `FormData` payload for the existing `/api/episode-production/import-media` upload route.
+2. **`import-media/route.ts`**
+   - Parses the `recordingSegments` from the `FormData` or JSON payload.
+   - Safely injects the parsed segments directly into the `sync` metadata block of the resulting `EpisodeImportedMediaAsset` stored in Prisma.
+3. **`episodeArtifact.ts`**
+   - Updated the `EpisodeImportedMediaAsset` interface to include the `recordingSegments?: RecordingSegment[]` property in the `sync` block, referencing the new domain package.
+
+### Beta Status & Readiness
+This change makes mobile web recording fundamentally resilient to pausing and user-initiated breaks by creating explicit domain-level segments aligned to the resulting uploaded media file. It ensures the uploaded Blob isn't treated as a single opaque block of audio, allowing the editor timeline to eventually reconstruct exact take markers.
+
+### Remaining Work
+- Expose the segment boundaries visually in the `EpisodeArtifactTimelineClip` parsing during Handoff, so Homer can see visual breaks on his desktop timeline after recording on his phone.
+
+## Codex sprint note - 2026-06-05 recording spine pass
+
+- Hardened recording segment timestamp handling so invalid or missing start timestamps do not throw while calculating stop times.
+- Recorder local takes now have a visible **Recording spine** summary that treats interrupted recordings as stackable production segments.
+- Follow-up QA target: record two short takes, export the recording spine JSON, open the editor, and confirm the takes can hydrate as ordered audio segments.

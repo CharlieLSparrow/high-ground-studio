@@ -9,7 +9,11 @@ dist/
 .next/
 out/
 .vite/
+.build/
+**/.build/
 *.tsbuildinfo
+apps/local-engine/src/*.js
+apps/local-engine/src/*.js.map
 
 # logs
 npm-debug.log*
@@ -71,6 +75,11 @@ credentials.json
 dev.db
 *.db
 scratch/
+.tmp/
+.agents/
+.codex/
+**/.agents/
+**/.codex/
 *.py
 fix_*.js
 content/

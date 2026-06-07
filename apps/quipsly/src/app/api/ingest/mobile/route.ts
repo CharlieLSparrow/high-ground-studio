@@ -4,8 +4,35 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
+import { ensureCurrentActorHomeNest } from "@/lib/server/home-nest";
 
 type VideoIngestPrismaClient = ReturnType<typeof getPrismaClient> & {
+  studioMediaAsset: {
+    create: (input: {
+      data: {
+        filename: string;
+        url: string;
+        mimeType: string;
+        isGlobal: boolean;
+        isProxy: boolean;
+        cloudProvider: string;
+        rawAssetId: string;
+        projects?: {
+          connect: { id: string };
+        };
+      };
+    }) => Promise<{ id: string }>;
+  };
+  studioProject: {
+    findUnique: (input: {
+      where: { id: string };
+      select: { id: string };
+    }) => Promise<{ id: string } | null>;
+    findFirst: (input: {
+      where: { slug: string };
+      select: { id: string };
+    }) => Promise<{ id: string } | null>;
+  };
   studioVideoSource: {
     create: (input: {
       data: {
@@ -63,8 +90,8 @@ export async function POST(req: Request) {
 
     const mimeType = file.type || "audio/webm";
     const extension = inferAudioFileExtension(file.name || "audio", mimeType);
-    const safeProject = sanitizeSegment(projectSlug ?? "project").slice(0, 60);
-    const safeEpisode = sanitizeSegment(episodeSlug ?? "episode").slice(0, 80);
+  const safeProject = sanitizeSegment(projectSlug ?? "project").slice(0, 60);
+  const safeEpisode = sanitizeSegment(episodeSlug ?? "episode").slice(0, 80);
     const fileKey = `${Date.now()}-${safeProject}-${safeEpisode}-${trackId ?? "track"}.${extension}`;
     const objectName = `field-kit/${safeProject}/${safeEpisode}/${fileKey}`;
     const localPath = path.join(INGEST_MEDIA_DIR, fileKey);
@@ -115,21 +142,61 @@ export async function POST(req: Request) {
       data: { url: playbackUrl },
     });
 
+    let resolvedProjectId: string | null = null;
+    if (projectId) {
+      const matchedProject = await prisma.studioProject.findUnique({
+        where: { id: projectId },
+        select: { id: true },
+      });
+      resolvedProjectId = matchedProject?.id ?? null;
+    }
+
+    if (!resolvedProjectId && projectSlug) {
+      const matchedProject = await prisma.studioProject.findFirst({
+        where: { slug: safeProject },
+        select: { id: true },
+      });
+      resolvedProjectId = matchedProject?.id ?? null;
+    }
+
+    if (!resolvedProjectId) {
+      const homeNest = await ensureCurrentActorHomeNest(prisma as any);
+      resolvedProjectId = homeNest?.id ?? null;
+    }
+
+    const mediaAsset = await prisma.studioMediaAsset.create({
+      data: {
+        filename: file.name,
+        url: playbackUrl,
+        mimeType: file.type,
+        isGlobal: !resolvedProjectId,
+        isProxy: true,
+        cloudProvider: provider,
+        rawAssetId: source.id,
+        ...(resolvedProjectId
+          ? { projects: { connect: { id: resolvedProjectId } } }
+          : {}),
+      },
+    });
+
     console.log(`[Field Kit Ingest] Created source record: ${source.id}`);
 
     // 3. Trigger WebSocket notification to the Local Engine / Render Farm
-    // In a full implementation, we'd fire an event to a PubSub queue or WS server to tell the 
+    // In a full implementation, we'd fire an event to a PubSub queue or WS server to tell the
     // local desktop app to start downloading and generating proxies.
-    
-    return NextResponse.json({ 
-      success: true, 
-      sourceId: source.id,
-      url: playbackUrl,
-      message: "Media successfully uploaded to The Vault and attached to your project.",
-      projectId: projectId ?? null,
-      projectSlug,
-      episodeSlug,
-      trackId,
+
+      return NextResponse.json({
+        success: true,
+        sourceId: source.id,
+        url: playbackUrl,
+        mediaAssetId: mediaAsset.id,
+        message: resolvedProjectId
+          ? "Media successfully uploaded to the Vault and attached to a Nest."
+          : "Media successfully uploaded to the global Vault.",
+        projectId: projectId ?? null,
+        projectSlug,
+        episodeSlug,
+        trackId,
       type: type ?? "audio",
       storage: provider,
     });

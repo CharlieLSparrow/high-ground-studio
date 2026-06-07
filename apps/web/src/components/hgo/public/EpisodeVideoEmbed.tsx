@@ -1,5 +1,8 @@
 import React from "react";
-import type { HgoPublicEpisodePacket } from "@/lib/hgo/public-episode-packet";
+import {
+  getHgoPublicEpisodeOutputContract,
+  type HgoPublicEpisodePacket,
+} from "@/lib/hgo/public-episode-packet";
 
 export function EpisodeVideoEmbed({ packet }: { packet: HgoPublicEpisodePacket }) {
   if (!packet.media.youtubeId) return null;
@@ -7,6 +10,7 @@ export function EpisodeVideoEmbed({ packet }: { packet: HgoPublicEpisodePacket }
   const embedUrl = `https://www.youtube-nocookie.com/embed/${packet.media.youtubeId}`;
   const watchUrl = `https://youtu.be/${packet.media.youtubeId}`;
   const thumbnailUrl = packet.media.heroImageUrl ?? `https://i.ytimg.com/vi/${packet.media.youtubeId}/maxresdefault.jpg`;
+  const outputContract = packet.outputContract ?? getHgoPublicEpisodeOutputContract();
 
   return (
     <section className="relative isolate w-full overflow-hidden border-b border-amber-500/20 bg-zinc-950 text-white">
@@ -65,6 +69,15 @@ export function EpisodeVideoEmbed({ packet }: { packet: HgoPublicEpisodePacket }
               )}
             </div>
           )}
+          <a
+            href="https://nest.quipsly.com/outputs/hgo-episode-page"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex w-fit items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.13em] text-amber-200 transition hover:border-amber-300/60 hover:bg-amber-400/15"
+            title={`Packet fields: ${outputContract.packetShape.join(", ")}`}
+          >
+            Quipsly output: {outputContract.title}
+          </a>
         </div>
 
         <a

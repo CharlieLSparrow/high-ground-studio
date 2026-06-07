@@ -111,7 +111,7 @@ Since all experiences use the unified `ScrollPanel` and `ScrollGroup` architectu
 2. **Initial Mock Component:**
    - I have created a standalone mock component at `apps/web/src/components/scroll-experience/ScrollExperienceMVP.tsx`.
    - **Format Chosen:** Storyboard / Media Bin Presentation.
-   - **Component Model:** 
+   - **Component Model:**
      - `ScrollExperienceMVP`: Top-level container managing the vertical array.
      - `ScrollGroup`: Maps to scenes, catching vertical snap points and rendering a horizontal row.
      - `ScrollPanel`: A single shot/frame container.
@@ -143,7 +143,7 @@ model ScrollExperience {
 
   groups          ScrollGroup[]
   interactions    ScrollInteraction[]
-  
+
   @@index([projectId, status])
 }
 
@@ -152,13 +152,13 @@ model ScrollGroup {
   experienceId     String
   title            String
   order            Int
-  layoutType       String   @default("HORIZONTAL_CAROUSEL") 
+  layoutType       String   @default("HORIZONTAL_CAROUSEL")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   experience       ScrollExperience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
   panels           ScrollPanel[]
-  
+
   @@index([experienceId, order])
 }
 
@@ -173,7 +173,7 @@ model ScrollPanel {
   updatedAt        DateTime @updatedAt
 
   group            ScrollGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  
+
   @@index([groupId, order])
 }
 
@@ -182,13 +182,13 @@ model ScrollInteraction {
   experienceId     String
   panelId          String?  // If null, applies to the whole experience
   userId           String?  // Nullable for guest/client review links
-  guestSessionId   String?  
+  guestSessionId   String?
   interactionType  String   // 'COMMENT', 'RATING', 'FAVORITE', 'SELECTION', 'COMPLETION'
   payloadJson      Json     // e.g. { rating: 5 }, { text: "Fix this color" }
   createdAt        DateTime @default(now())
 
   experience       ScrollExperience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
-  
+
   @@index([experienceId, panelId])
   @@index([interactionType])
 }
@@ -198,7 +198,7 @@ model ScrollInteraction {
 
 ## Addendum: The Scroll-Native Engine Prototype (Self-Directed Passion Run)
 
-Following the audit, a massive self-directed passion project was executed to build a robust, 1000+ line prototype of the entire Scroll-Native Engine in `apps/web/src/components/scroll-experience`. 
+Following the audit, a massive self-directed passion project was executed to build a robust, 1000+ line prototype of the entire Scroll-Native Engine in `apps/web/src/components/scroll-experience`.
 
 ### Key Deliverables:
 1. **The Core Engine:** Developed the `ScrollExperienceEngine.tsx`, `ScrollGroupManager.tsx`, and `ScrollPanelRenderer.tsx` using native CSS snap (`scroll-snap-type: y mandatory`) to ensure perfect, OS-level mobile gestures.
@@ -288,7 +288,71 @@ Per the Sprint 4 directive, I have closed the loop on review feedback visibility
 **How Creator Sees Review Feedback:**
 - When inside the `StoryboardBuilder`, creators will now see a dynamic feedback badge right below their Storyboard title.
 - **Empty State:** If no comments/favorites exist, it displays a subtle grey "No feedback yet" pill.
-- **Active State:** As feedback rolls in, it becomes a bright emerald indicator showing exactly how many comments (bubble icon) and favorites (heart icon) exist on that specific storyboard. 
+- **Active State:** As feedback rolls in, it becomes a bright emerald indicator showing exactly how many comments (bubble icon) and favorites (heart icon) exist on that specific storyboard.
 
 **Remaining Interaction Cleanup Risks:**
 - **Drill-down UI:** We now show *how many* comments exist, but clicking the badge currently does not open a full "Feedback List" drawer inside the editor. The creator still has to click "Review Mode ↗" and swipe through the storyboard to find *which* specific frames have the comments. This is acceptable for a lightweight beta implementation but requires a centralized dashboard feed in the future.
+
+---
+
+## 2026-06-05 Research Proposal - AG-Scroll-Experiences
+
+**Research Sources & Examples Reviewed:**
+1. **TikTok / Instagram Reels / YouTube Shorts:** Masterclass in vertical infinite scrolling for distinct, algorithmically delivered entities. Right-aligned interaction bars (Like, Comment, Share) keep the lower quadrant clear for captions while maximizing visual real estate.
+2. **Instagram Stories / Snapchat:** Horizontal progression (tap left/right edge) through a discrete group of content from a single creator. Time-boxed consumption.
+3. **Duolingo / Mobile Courses:** Progressive disclosure. Bitesize horizontal steps (cards) within a vertical structure (the learning path/unit).
+4. **Webtoons:** Continuous vertical canvas for pacing and suspense. Traditional panel comics often use horizontal swipe per panel.
+5. **Pic-Time / Pixieset (Photography Client Galleries):** Grid layouts transitioning to horizontal lightboxes. Heavy emphasis on "Favorite" (heart) and "Select for Album" interactions at the individual media level.
+6. **Pinterest:** Staggered vertical masonry for discovery, horizontal swipe within a "Pin" containing multiple images (carousels).
+
+**Recommended Interaction Model:**
+The core abstraction relies on a **Two-Axis Matrix** (Vertical Groups x Horizontal Panels):
+- **Vertical Axis (`ScrollGroup`):** Defines the macro-structure. In a course, this is a "Lesson". In a storyboard, a "Scene". In a photo gallery, a "Collection". Users scroll down to move to the next logical grouping.
+- **Horizontal Axis (`ScrollPanel`):** Defines the micro-structure. Inside a group, users tap left/right or horizontally swipe to advance through individual cards/beats.
+- **Interaction Overlay:** A floating, z-indexed action bar (typically right-aligned vertically or bottom-aligned horizontally) containing context-aware actions:
+  - *Favorites/Likes:* Double-tap screen or tap Heart icon.
+  - *Comments:* Tap chat bubble to open a bottom-sheet drawer without losing context of the panel.
+  - *Selections:* A toggleable checkmark for client proofing (e.g., "Select this photo for final edit").
+  - *Progress/Completion:* A visual progress bar at the top of the horizontal group, firing a `GroupCompleted` event when the last card is reached.
+
+**Current Quipsly Integration Points:**
+- `apps/quipsly/src/app/review/[storyboardId]`: Currently demonstrates this interaction model for Storyboards.
+- `ScrollInteraction` Prisma schema: Already decoupled via `experienceId` and `panelId`, allowing it to attach to ANY content type (not just storyboards) natively.
+
+**Proposed Next Implementation Pass:**
+The first beta-safe version to prove this idea beyond storyboards should be a **Generic Scroll Engine Component Pipeline**:
+1. Abstract the UI out of `/review/[storyboardId]` into a purely generic `<ScrollExperienceEngine />` component that accepts a standardized JSON payload of `groups` and `panels`.
+2. This generic engine will render the Two-Axis Matrix and connect directly to the existing `InteractionStateContext` for comments/favorites.
+3. Keep it purely mock-data driven or internal-only for its first iteration (e.g., a hidden `/beta/scroll-sandbox` route) to prove it can render a Course, a Comic, and a Photo Gallery from the exact same React component simply by changing the JSON passed in.
+
+**Files Likely Touched:**
+- `apps/web/src/components/scroll-experience/ScrollExperienceEngine.tsx` (NEW - generic renderer)
+- `apps/web/src/components/scroll-experience/types.ts` (NEW - interface definitions for generic payload)
+- `apps/quipsly/src/app/(app)/review/[storyboardId]/page.tsx` (Refactor to use the generic engine)
+
+**Data Model Proposals:**
+No database schema changes needed. The beauty of the `ScrollInteraction` model mapping string IDs means we can mock different experiences entirely in code using JSON payloads.
+If we want to save these generic experiences later, we could introduce a dynamic JSON table:
+- `[PROPOSAL]` **ScrollExperience** table: `id`, `title`, `type` (course, gallery, comic), `payloadJson`. *(Note: For the next pass, we will strictly use in-memory JSON to avoid schema migrations).*
+
+**Questions for Codex/Product Owner:**
+1. **Engine Unification:** Should the generic `<ScrollExperienceEngine />` live in `apps/web/src/components/scroll-experience` so it can be consumed by both Quipsly (for previewing) and Web (for public publishing)?
+2. **Skinning:** Should the engine support distinct "skins" (e.g., a "dark mode immersive" skin for comics vs a "clean minimal" skin for photo galleries), or should the styling be strictly unified?
+3. **Next Sprint Focus:** Are you comfortable with me building a `/scroll-sandbox` hidden route that mounts 3 mock JSON payloads (a course, a gallery, a comic) to prove the abstraction visually?
+
+---
+
+## 2026-06-05 Marginalia Beta Sprint - Concrete Readiness Improvement
+
+**What I changed:**
+Implemented a new public publishing route (`/published/scroll/[candidateId]`) that renders public-safe `PublishPackets` instead of raw private manuscript state (like `StudioStoryboard`). The route parses `HgoEpisodePublishCandidate` and safely maps `PublishPacketKind` (e.g., `story-scroll`, `gallery-proof`, `course-export`) to the corresponding `ExperienceType` adapter in our engine, guaranteeing only `published` candidates are visible.
+
+**Files touched:**
+- `[NEW] apps/web/src/app/published/scroll/[candidateId]/page.tsx`
+
+**Risks or follow-up needed:**
+- We currently pull `packet.media` into panels. Depending on the `PublishPacketKind`, we might also want to parse `packet.bodyMarkdown` into distinct `TEXT` panels.
+- Needs routing integration to expose these safe public links from the user's publishing dashboard.
+
+**Recommendation for Codex:**
+**Keep and validate.** This aligns perfectly with the new `quipsly-domain/publishing.ts` foundation constraint that public publishing should strictly use public-safe packets rather than exposing raw private document/storyboard structures.

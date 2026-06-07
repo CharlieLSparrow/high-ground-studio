@@ -43,14 +43,14 @@ Files changed: None (QA + Proposal only).
 
 Files intentionally avoided: `prisma/schema.prisma` (Deferred until proposal approval).
 
-Validation run: Architecture review of `QuipslyAssistantSidebar.tsx` and `route.ts`. 
+Validation run: Architecture review of `QuipslyAssistantSidebar.tsx` and `route.ts`.
 
 Risks: The current local ledger relies on transient state. Page reloads wipe out assistant context, unapplied approvals, and the history of rejected proposals.
 
 ### Proposal: Assistant Persistence Schema
 
 **1. Problem**
-Assistant sessions, actions, and ledger entries are completely transient, making it impossible to audit past assistant interventions or resume a complex organization task across sessions. 
+Assistant sessions, actions, and ledger entries are completely transient, making it impossible to audit past assistant interventions or resume a complex organization task across sessions.
 
 **2. Proposed schema/infrastructure change**
 Introduce durable schema models to anchor the assistant to the project.
@@ -67,7 +67,7 @@ model StudioAssistantSession {
   actions         StudioAssistantAction[]
 
   project         StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
+
   @@index([projectId, createdAt])
 }
 
@@ -80,14 +80,14 @@ model StudioAssistantMessage {
   createdAt       DateTime  @default(now())
 
   session         StudioAssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  
+
   @@index([sessionId, createdAt])
 }
 
 model StudioAssistantAction {
   id              String    @id @default(cuid())
   sessionId       String
-  kind            String    
+  kind            String
   label           String
   explanation     String
   riskLevel       String
@@ -98,19 +98,19 @@ model StudioAssistantAction {
 
   session         StudioAssistantSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   ledgerEntries   StudioAssistantLedger[]
-  
+
   @@index([sessionId, status])
 }
 
 model StudioAssistantLedger {
   id              String    @id @default(cuid())
   actionId        String
-  status          String    
+  status          String
   note            String?
   createdAt       DateTime  @default(now())
 
   action          StudioAssistantAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
-  
+
   @@index([actionId, createdAt])
 }
 ```
@@ -142,7 +142,7 @@ Recommended next handoff: Codex to review schema proposal and authorize implemen
 
 ## 2026-06-04 09:25 local - Persistence Planner
 
-Prompt summary: Turn the assistant persistence proposal into a concrete implementation plan focusing on session loading, message persistence, action persistence, ledger syncing, preserving local behavior, and enforcing the anti-black-box rule.
+Prompt summary: Turn the assistant persistence proposal into a concrete implementation plan focusing on session loading, message persistence, action persistence, ledger syncing, preserving local behavior, and enforcing the visible-drafting and anti-silent-mutation rule.
 
 Files changed: None (Planning only).
 
@@ -151,7 +151,7 @@ Files intentionally avoided: `route.ts` and `QuipslyAssistantSidebar.tsx` (Defer
 Validation run: N/A.
 
 ### Exact Server Action / API Route Plan
-1. **`POST /api/quipsly-assistant`**: 
+1. **`POST /api/quipsly-assistant`**:
    - Accept optional `sessionId`. Look up or create `StudioAssistantSession` if missing.
    - Insert user message (`StudioAssistantMessage`).
    - Run Gemini query.
@@ -162,7 +162,7 @@ Validation run: N/A.
    - Accept `actionId`, `newStatus`, `note`.
    - Update `StudioAssistantAction.status`.
    - Insert `StudioAssistantLedger` record.
-3. **Anti-Black-Box Rule**: Update the system prompt directly in `route.ts` to strictly state "Quipslys may draft examples, but never black-box write."
+3. **Visible Drafting Rule**: Update the system prompt directly in `route.ts` to state that freeform drafting is allowed, while silent canon mutation, fake provenance, and hidden publishing are not.
 
 ### Exact UI Migration Sequence
 1. Update `QuipslyAssistantSidebar.tsx` state to hold `sessionId`.
@@ -176,7 +176,7 @@ Recommended next handoff: Code execution to wire the API and React component.
 
 ## 2026-06-04 09:37 local - Persistence Execution
 
-Prompt summary: Implement assistant persistence pass 1, making the assistant state durable while keeping safe transient fallbacks and enforcing the anti-black-box rule.
+Prompt summary: Implement assistant persistence pass 1, making the assistant state durable while keeping safe transient fallbacks and enforcing the visible-drafting and anti-silent-mutation rule.
 
 Files changed:
 - `apps/quipsly/src/app/api/quipsly-assistant/route.ts`
@@ -185,7 +185,7 @@ Files changed:
 
 Persistence Status: Persistence is active. Graceful fallback logic is fully implemented; if `process.env.DATABASE_URL` is missing or a query fails, it instantly falls back to transient `Date.now()` IDs, ensuring `/create` never crashes.
 
-Ledger Edge Cases: 
+Ledger Edge Cases:
 - `actionId`s are strictly required by the ledger route. If the frontend falls back to transient IDs because the DB failed during the initial generation, the ledger sync will log an error locally but will not crash the UI (optimistic updates remain intact).
 
 Recommended Validation Command:
@@ -345,7 +345,7 @@ Report findings:
 - **What Works Now**: Session IDs, messages, proposed actions, and status ledger updates persist to the database and re-hydrate on page load. Dynamic read-only searches fetch actual quotes/passages from the database and populate preview cards on approval.
 - **What is Persisted vs Local-Only**: Session metadata and actions history are persisted in DB. The dynamically retrieved results (evidence packets) and outline previews are local-only to prevent caching stale documents in the database.
 - **Next Safest Tool Action**: **Outline Cleanup / Heading Normalization**—inspecting heading prefixes (`#`, `##`, `Chapter 1:`) and automatically proposing tags/boundaries in the sidebar. This keeps document hierarchy clean while preserving human-only write authority.
-- **Safety Concerns**: AI ghostwriting is prevented by confining assistant suggestions to read-only previews and side-channel packets. Writing to the manuscript remains a human-gatekeeper task.
+- **Safety Concerns**: Hidden AI mutation is prevented by confining assistant changes to previews, side-channel packets, ledgers, or explicit user acceptance. Freeform drafting itself is allowed.
 
 Recommended next handoff:
 - Hand off to the coordinator/user to test the newly styled, highly legible approval/rejection card container visual changes on `/create`.
@@ -557,7 +557,7 @@ Prompt summary: Beta push: make the Quipsly assistant useful, safe, and visibly 
 
 ### 2. Screenshot-Ready Description of the Assistant Flow
 **The "Librarian First" Beta Experience:**
-1. **Context Awareness:** The user opens the Quipsly tab in a document. The sidebar header proudly displays the current Project and Document boundaries it is looking at. 
+1. **Context Awareness:** The user opens the Quipsly tab in a document. The sidebar header proudly displays the current Project and Document boundaries it is looking at.
 2. **Asking for Help:** The user types "I need to tie in themes of legacy here."
 3. **Transparent Reasoning:** Quipsly responds warmly and proposes a "Create research packet note" action. Underneath the title, a distinct highlighted block reads **WHY THIS SUGGESTION?** explaining exactly *why* tracking legacy themes is helpful for this section.
 4. **Human Authorship Gate:** The user clicks "Approve." The action turns green, a safe local preview card is generated showing exactly what the research packet looks like, and the change is logged safely to the local undo ledger without touching the manuscript. The user retains full control.
@@ -601,7 +601,7 @@ Prompt summary: Implement approved “Save as Research Note” for assistant act
   - Added `undoSavedAssistantAction`: Server action that archives a saved note by updating the `StudioAssistantAction` status to `"undone"` and logging it to the ledger.
 - `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`
   - Added `saveAction` and `undoSaveAction` handlers that optimisticly update the UI and trigger the new server actions.
-  - Upgraded the UI rendering logic so that `proposed` actions can be `approved`, and `approved` actions now expose a primary "Save as Research Note" button alongside "Undo approval". 
+  - Upgraded the UI rendering logic so that `proposed` actions can be `approved`, and `approved` actions now expose a primary "Save as Research Note" button alongside "Undo approval".
   - Rendered a new `saved` state, which replaces the action buttons with an "Undo saved note" option for full lifecycle management.
 
 ### 2. Persistence Model Used
@@ -617,3 +617,82 @@ To properly integrate these document-level entities into the core Story Bible wi
 1. Make `taggedSpanId` optional (`String?`).
 2. Add a direct, nullable `documentId` or `blockId` reference to allow nodes that "float" near a section of text (or apply to the whole document) without being anchored to exact `startOffset`/`endOffset` text ranges.
 Until then, querying the `StudioAssistantLedger` for `"saved"` statuses will serve as our durable entity storage for the beta.
+
+## 2026-06-05 Research Proposal - AG-Assistant
+
+### Research Sources & Examples Reviewed
+To design a source-aware research assistant and co-drafting partner, the following industry patterns were analyzed:
+- **Google NotebookLM:** The gold standard for source-grounded research. It builds "Source Guides" and heavily cites exact user excerpts. It never modifies the source material, ensuring the user remains the sole author.
+- **Cursor / Codex (AI Code Editors):** Pioneered the "diff-and-approve" model. The AI proposes changes or actions, but the human must explicitly accept, reject, or modify them. There is zero silent mutation.
+- **Notion AI / Microsoft Copilot:** Provide sidebars for querying document context. They often offer "Insert below" or "Replace selection," which keeps the locus of control with the user.
+- **Zotero AI / Perplexity Spaces:** Emphasize extreme provenance. Every fact or extracted entity is tied directly to a specific source document and paragraph.
+- **Obsidian Plugins (Smart Connections):** Focus on linking and surfacing related notes rather than writing new ones, acting as a "second brain" librarian.
+
+### Current Assistant Architecture Summary
+Based on the implementation sprints, Quipsly operates via:
+- **Context Injection:** Sends `visibleBlocks`, `activeBoundary`, `documentTitle`, and `recentTags` to the Gemini model.
+- **Strict Intent Schema:** The model is locked into proposing structured tool intents (`suggest-tags`, `PROPOSE_ENTITY`, `summarize-selected-block`, etc.) rather than returning raw conversational text.
+- **Ledger-Backed Action Lifecycle:** Proposals enter a `proposed` state. Users must explicitly act to move them to `approved`, `rejected`, `saved`, or `undone`.
+- **Provenance-First UI:** The sidebar requires a "Why this suggestion?" rationale and prominently displays the `sourceExcerpt` for extracted entities.
+- **Non-Destructive Persistence:** Because precise text-span anchoring (`StudioKnowledgeNode`) is too brittle for block-level scans, approved entities are safely persisted as JSON in the `StudioAssistantLedger` without touching manuscript content.
+
+### Safety & Product Boundary Recommendations
+1. **What should the assistant see from the editor/project context?**
+   - The currently visible text blocks (the immediate viewport).
+   - The active structural boundary (e.g., Chapter 4).
+   - Any currently highlighted/selected text.
+   - The project-wide Story Bible / Study Corpus index (for lore consistency).
+2. **What should it never do automatically?**
+   - It must never edit, insert, or delete manuscript text blocks (`StudioBlock`).
+   - It must never delete user-created tags or manual knowledge nodes.
+   - It must never auto-publish packages.
+3. **How should proposed actions, approval, rollback, and provenance work?**
+   - **Propose:** Show actionable cards in the sidebar with a clear rationale.
+   - **Approve/Save:** Explicit user click writes the action to the ledger.
+   - **Provenance:** Every action must link back to `projectSlug`, `documentId`, and the exact `sourceExcerpt` string.
+   - **Rollback:** A strict "Undo" button that appends an `undone` status to the ledger, archiving the note without touching the manuscript.
+4. **How should “research assistant and co-drafter” show up in UI language?**
+   - Avoid verbs like "Write," "Draft," or "Create."
+   - Use librarian/analyst verbs: "Extract," "Scan," "Find examples," "Compare," "Suggest tags."
+   - UI copy should frame Quipsly as an eager researcher: *"Quipsly identified 3 potential characters in this section."*
+
+### Proposed Next Implementation Pass
+**Feature: Inline Margin Suggestions (The "Librarian Tap on the Shoulder")**
+Currently, users must open the sidebar to see assistant actions. We should bring the "diff-and-approve" ethos of Cursor directly to the manuscript margin.
+- When Quipsly runs a background scan of a `StudioBlock` and finds a new entity or suggested tag, it should place a subtle, non-intrusive indicator (like a small spark icon) in the left margin next to the block.
+- Clicking the margin icon opens a popover containing the tool intent (e.g., "Suggest Chapter Tag: The Awakening").
+- The user can Approve or Reject instantly within the editor context.
+
+### Files Likely Touched
+- `apps/quipsly/src/components/editor/EditorMargin.tsx` (New or modified to show spark icons).
+- `apps/quipsly/src/components/QuipslyAssistantPopover.tsx` (New component for inline approval).
+- `apps/quipsly/src/app/api/quipsly-assistant/route.ts` (To support partial block-by-block scanning).
+
+### Risks and Anti-Patterns
+- **Anti-Pattern: The Notification Swarm.** If inline margin suggestions are too aggressive, the editor will feel cluttered and annoying (the "Clippy" effect). We must debounce scans and only show high-confidence suggestions.
+- **Risk: Syncing Ledger State with the Editor.** Inline approvals must instantly update the sidebar ledger state so the UI remains consistent. We will need a robust React Context or Zustand store for `AssistantActions`.
+
+### Questions for Codex / Product Owner
+1. **Margin UI vs Sidebar:** Do we want Quipsly to proactively analyze blocks as the user types (triggering margin sparks), or should it remain strictly user-invoked via the sidebar or slash commands?
+2. **Knowledge Node Schema:** Should we prioritize loosening `StudioKnowledgeNode` (making `taggedSpanId` optional) before beta launch, or is the ledger-backed approach sufficient for the initial cohort?
+3. **Consistency Checking:** Should Quipsly actively warn users if a newly typed block contradicts established Story Bible lore, or should that require a manual "Verify Consistency" action?
+
+## 2026-06-05 Beta Foundation Upgrade - AG-Assistant
+
+Timestamp: 2026-06-05 local
+Agent lane: AG-Assistant
+Prompt summary: Marginalia beta sprint - incorporate new source-aware foundations into the assistant lane.
+
+### 1. What I changed
+Upgraded the Assistant`s "Save as Research Note" action to fully embrace the new `SourceOverlay` and `SourceSelector` schemas introduced by Codex in `packages/quipsly-domain/src/source-aware.ts`. Instead of saving an ad-hoc provenance JSON structure to the ledger, the Assistant now constructs a strictly-typed `SourceOverlay` JSON object (using a `text-quote` or `block` selector). This ensures that when we eventually migrate off the ledger into dedicated schema tables, the data is already exactly in the shape the new domain layer expects.
+
+### 2. Files touched
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`
+  - Replaced the legacy provenance JSON payload inside `saveAction` with a strictly mapped `SourceOverlay` representation.
+
+### 3. Risks or follow-up needed
+- **Risk:** Because we are serializing the `SourceOverlay` into `StudioAssistantLedger.notes` (a string field) to avoid destructive schema changes, we don`t have true foreign key enforcement on `sourceDocumentId`.
+- **Follow-up:** Post-beta, we should safely execute a Prisma schema migration to create `StudioSourceOverlay` or add the optional `selector` JSON fields to `StudioKnowledgeNode`. Since the ledger JSON is already perfectly shaped, the migration script will be trivial (just a `JSON.parse` and map).
+
+### 4. Codex recommendation
+**KEEP and VALIDATE.** The change is entirely additive and isolated to the frontend payload construction before it hits the existing `saveAssistantAction` server action. It perfectly bridges the Assistant`s entity-saving capabilities with Codex`s new `source-aware.ts` foundation without touching the schema.

@@ -6,7 +6,7 @@ export default function SystemsAnxietyPage() {
   return (
     <div className="min-h-screen bg-[#f6efe6] text-[#4a2e1c] font-serif selection:bg-[#f4dab0]/50 overflow-x-hidden relative">
       {/* Soft parchment texture overlay */}
-      <div className="fixed inset-0 pointer-events-none opacity-20 mix-blend-multiply" 
+      <div className="fixed inset-0 pointer-events-none opacity-20 mix-blend-multiply"
            style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cream-paper.png")' }}></div>
 
       {/* Navigation */}
@@ -29,7 +29,7 @@ export default function SystemsAnxietyPage() {
       {/* Article Content */}
       <main className="pt-32 pb-24 px-6 relative z-10">
         <article className="max-w-3xl mx-auto bg-white border border-[#e8d0b5] rounded-[3rem] p-10 md:p-16 shadow-sm">
-          
+
           <div className="mb-12 text-center">
              <div className="inline-block p-4 bg-[#fdf5eb] rounded-full mb-6 border border-[#e8d0b5] rotate-3">
                <Heart className="w-8 h-8 text-[#a96735] fill-[#a96735]/20" />
@@ -52,7 +52,7 @@ export default function SystemsAnxietyPage() {
             </p>
 
             <p>
-              It is the creeping suspicion that you spend more time designing the perfect filing system for your ideas than you do actually having ideas. It's the moment you realize you've color-coded your manuscript's character tags in three different databases, but you haven't written a single word of dialogue since Tuesday. 
+              It is the creeping suspicion that you spend more time designing the perfect filing system for your ideas than you do actually having ideas. It's the moment you realize you've color-coded your manuscript's character tags in three different databases, but you haven't written a single word of dialogue since Tuesday.
             </p>
 
             <p>
@@ -60,7 +60,7 @@ export default function SystemsAnxietyPage() {
             </p>
 
             <p>
-              Currently, the technology industry has decided that the best way to help you with this burden is to invent Artificial Intelligence that does the creative part for you. The machine will gladly write your screenplay, generate your painting, and compose your sonnet in three seconds flat—which is perfectly fine if you want to skip the creative process. But what if creation is the part you actually love? What if the problem wasn't the blank page, but the administrative chaos surrounding it? Meanwhile, the human author, academic, or creator is left to organize the file folders, format the bibliography, update the spreadsheets, and debug the database.
+              Currently, the technology industry often treats Artificial Intelligence like a magic text box. Ask, receive, copy, paste, repeat. That can be wonderful. Sometimes you really do want the machine to write the messy first draft, generate the painting, or compose the sonnet in three seconds flat. But what happens next? What if you want to understand the draft, reshape it, cite it, map its structure, turn it into a podcast, build a course from it, or make the thing truly yours? Too often the human author, academic, or creator is still left to organize the file folders, format the bibliography, update the spreadsheets, and debug the database.
             </p>
 
             <div className="my-10 p-8 bg-[#fdf5eb] rounded-2xl border-l-4 border-[#a96735]">
@@ -93,10 +93,10 @@ export default function SystemsAnxietyPage() {
               Because ultimately, creativity shouldn't feel like a data-entry job. It should feel like flying. And if you have a flock of tiny, loyal birds carrying all your heavy baggage below you... well, it's a lot easier to get off the ground.
             </p>
           </div>
-          
+
         </article>
       </main>
-      
+
       {/* Footer */}
       <footer className="border-t border-[#e8d0b5] py-12 bg-[#fffaf1]/50 backdrop-blur">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-[#8c552e] text-sm font-medium font-sans">

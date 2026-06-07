@@ -1,34 +1,102 @@
-.git
-.next
-node_modules
-**/.next
-**/node_modules
-**/dist
-**/tsconfig.tsbuildinfo
+# Cloud Build upload context hygiene.
+# Keep Docker-required inputs for apps/quipsly, apps/web, apps/studio-collab,
+# prisma, ops, packages, and the few scripts copied by Dockerfiles.
+
+# VCS, local agents, and editor state
+.git/
+.github/
+.codex/
+.agents/
+.aider*
+.gemini/
+.antigravity/
+.DS_Store
+**/.DS_Store
+
+# Dependencies and generated build products
+node_modules/
+**/node_modules/
+.pnpm-store/
+pnpm-store/
+.turbo/
+**/.turbo/
+.cache/
+**/.cache/
+.next/
+**/.next/
+**/.build/
+**/dist/
+**/build/
+**/out/
+**/coverage/
+**/playwright-report/
+**/test-results/
+**/.nyc_output/
+**/.vitest/
+**/*.tsbuildinfo
+
+# Environment, credentials, logs, and local databases
 .env
 .env.*
 !.env.example
-.DS_Store
-logs
-artifacts
-project_audit.json
-pathways
+*.pem
+*.key
+*.p12
+*.service-account.json
+*credentials*.json
+*.log
+logs/
 dev.db
+*.sqlite
+*.sqlite3
+
+# Local scratch, generated assets, and heavy non-build roots
+artifacts/
+scratch/
+tmp/
+.tmp/
+project_audit.json
+pathways/
+assets/
+output/
+outputs/
+downloads/
+Downloads/
+HighGroundMedia/
+apps/quipsly-mac/
+
+# Non-deploy app workspaces. Do not add apps/quipsly, apps/web,
+# apps/motion-lab, or apps/studio-collab here without checking Dockerfiles.
+apps/engine/
+apps/quiplore/
+apps/quipsly-api/
+apps/desktop-companion/
+apps/render-engine/
+apps/ai-hub/
+apps/video-hub/
+apps/photography-hub/
+apps/studio-cut-web/
+apps/mobile-capture/
+apps/local-engine/
+apps/extension/
+
+# Web content staging/inbox can be enormous and is not needed for image builds.
+apps/web/content/_inbox/
+apps/web/content/_staging/
+
+# Repo-local documents and imported diagnostics
+docs/
+*.har
 *.docx
 *.txt
-docs
-apps/engine
-apps/quiplore
-apps/quipsly-api
-apps/desktop-companion
-apps/render-engine
-apps/ai-hub
-apps/video-hub
-apps/photography-hub
-apps/studio-cut-web
-apps/mobile-capture
-apps/local-engine
-apps/web/content/_inbox
-apps/web/content/_staging
+high_ground_tome.txt
+Leadership My Story 24MAR19.docx
+modern-web-guidance.md
+
+# One-off repair scripts from live cleanup sessions.
+*.py
+fix_*.js
+
+# Keep the docs component source if a web build imports it despite docs/ above.
 !apps/web/src/components/docs/
 !apps/web/src/components/docs/**

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BarChart3, TrendingUp, Users, DollarSign, Activity, Eye, Share2, MessageSquare, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
+import { TrendingUp, DollarSign, Eye, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
 import { mockPrinciples, getMockMetrics, mockPublishedEvents, mockPackages } from "../mockData";
 import { DashboardSkeleton } from "../components/LoadingSkeleton";
+import { getDestinationLabel } from "@/lib/publishing/statusModel";
 
 /**
  * Bespoke SVG Sparkline Component
@@ -13,7 +14,7 @@ function Sparkline({ data, color }: { data: number[], color: string }) {
   const max = Math.max(...data, 1);
   const min = Math.min(...data);
   const range = max - min;
-  
+
   const points = data.map((val, i) => {
     const x = (i / (data.length - 1)) * 100;
     const y = 100 - ((val - min) / (range || 1)) * 100;
@@ -88,7 +89,7 @@ export default function AnalyticsNexusPage() {
             <Sparkline data={[5, 12, 10, 30, 20, 25, 125]} color="#16a34a" />
           </div>
         </div>
-        
+
         <div className="bg-white p-6 rounded-2xl border border-[#e8dcc4] shadow-sm flex flex-col col-span-2">
            <div className="flex justify-between items-start mb-4">
              <h3 className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider">Actionable Insight</h3>
@@ -100,7 +101,7 @@ export default function AnalyticsNexusPage() {
       </div>
 
       <div className="grid grid-cols-12 gap-8 flex-1 min-h-0">
-        
+
         {/* Published Packages Performance List - SAAS UPGRADE: Progressive Disclosure */}
         <div className="col-span-7 flex flex-col bg-white rounded-2xl border border-[#e8dcc4] shadow-sm overflow-hidden">
           <div className="p-5 border-b border-[#e8dcc4] bg-[#f8f3e6] flex justify-between items-center">
@@ -114,7 +115,7 @@ export default function AnalyticsNexusPage() {
 
               return (
                 <div key={evt.id} className="border-b border-[#e8dcc4] last:border-0 hover:bg-[#fdfaf6] transition-colors">
-                  <button 
+                  <button
                     className="w-full p-5 flex justify-between items-center text-left focus:outline-none focus:bg-[#fdfaf6] focus:ring-inset focus:ring-2 focus:ring-amber-500"
                     onClick={() => setExpandedPackage(isExpanded ? null : evt.id)}
                     aria-expanded={isExpanded}
@@ -122,7 +123,7 @@ export default function AnalyticsNexusPage() {
                   >
                     <div>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-600 mr-2">
-                        {evt.destination.split("_")[0]}
+                        {getDestinationLabel(evt.destination)}
                       </span>
                       <h3 className="font-bold text-[#3d3122] inline-block">{pkg?.title}</h3>
                     </div>
@@ -131,7 +132,7 @@ export default function AnalyticsNexusPage() {
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-[#8c6b4a]" /> : <ChevronDown className="w-4 h-4 text-[#8c6b4a]" />}
                     </div>
                   </button>
-                  
+
                   {isExpanded && (
                     <div className="px-5 pb-5 pt-2 border-t border-dashed border-[#e8dcc4] bg-[#fdfaf6]">
                       <div className="grid grid-cols-3 gap-4">
@@ -165,7 +166,7 @@ export default function AnalyticsNexusPage() {
             <h2 className="font-bold text-[#3d3122]">Source Principle Feedback</h2>
             <p className="text-xs text-[#8c6b4a] mt-1">Which core ideas resonate with your audience?</p>
           </div>
-          
+
           <div className="p-5 flex-1 overflow-y-auto space-y-4">
             {mockPrinciples.map(prin => {
               const isSelected = selectedPrinciple === prin.id;
@@ -173,8 +174,8 @@ export default function AnalyticsNexusPage() {
               const hasData = correlatedViews > 0;
 
               return (
-                <button 
-                  key={prin.id} 
+                <button
+                  key={prin.id}
                   onClick={() => setSelectedPrinciple(prin.id)}
                   aria-pressed={isSelected}
                   className={`w-full text-left p-4 rounded-xl border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 ${isSelected ? "border-amber-600 bg-amber-50 shadow-sm" : "border-[#e8dcc4] hover:bg-[#f8f3e6]"}`}
@@ -184,7 +185,7 @@ export default function AnalyticsNexusPage() {
                     {hasData && <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-0.5 rounded">High Performer</span>}
                   </div>
                   <h3 className="font-bold text-[#3d3122] mb-3">{prin.title}</h3>
-                  
+
                   {hasData ? (
                     <div className="text-sm pt-3 border-t border-amber-200/50">
                       <div className="flex items-center gap-4 mb-3">

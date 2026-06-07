@@ -2,7 +2,7 @@
 
 Date: 2026-06-04
 
-Purpose: define the first safe product boundary for Quipslys as research assistants, not substitute writers.
+Purpose: define the first safe product boundary for Quipslys as source-aware research assistants and optional co-drafters that support freeform drafting without deceptive automation.
 
 ## Product promise
 
@@ -18,18 +18,18 @@ They should:
 - suggest tags and structure cleanup
 - prepare research packets
 - prepare media or production next steps
+- draft rough examples, rewrites, and voice experiments when asked
 
 They should not:
 
 - secretly rewrite manuscript prose
-- imitate the user's voice without approval
+- imitate the user's voice without request, labeling, and approval
 - publish public content directly
 - mutate private project state without visible approval
 - hide what changed
 - make provider, billing, or entitlement changes invisibly
-- Quipslys may draft examples, but never black-box write.
 
-The short version: Quipsly gathers knowledge so humans create wisdom.
+The short version: Quipsly gathers knowledge, helps shape drafts, and keeps humans in control of what becomes canon.
 
 ## Proposed action ledger
 
@@ -74,8 +74,8 @@ To support auditing, human-in-the-loop review, and rollback capabilities, the as
 
 ## Interaction boundaries & validation
 
-### Core Rule: “Quipslys may draft examples, but never black-box write”
-The assistant is a research helper and librarian. It is strictly prohibited from writing or rewriting prose directly inside the manuscript without visibility. Any generated text must be explicitly presented to the human as a suggestion.
+### Core Rule: “Draft boldly, approve deliberately”
+The assistant is a research helper, librarian, continuity checker, freeform drafting partner, and optional co-drafter. It may write rough drafts, propose rewrites, test alternate voices, and generate example passages when requested. It must not silently replace manuscript prose or mutate canon without visibility. Generated text should be presented as a draft, option, example, or suggestion when that distinction matters to the workflow.
 
 ### Human-in-the-Loop review flow (Approve / Reject / Undo / Audit)
 1. **Proposal**: Every mutating action suggested by the assistant is recorded as a `StudioAssistantAction` with status `PENDING`.
@@ -87,9 +87,22 @@ The assistant is a research helper and librarian. It is strictly prohibited from
 
 ## Voice rule
 
-The assistant can help draft notes, packets, outlines, and summaries. It should avoid presenting generated prose as the user's manuscript voice.
+The assistant can help draft notes, packets, outlines, summaries, scenes, panels, and rewrites. It may imitate a requested project voice or user-provided style sample when asked. It should label generated prose when the user needs that context, and it must not secretly replace existing canon while pretending nothing changed.
 
 If it offers wording, label it clearly as a suggestion or research-note draft.
+
+For the full drafting policy, see `docs/quipsly/quipsly-ai-drafting-policy.md`.
+
+## Output planning boundary
+
+The assistant may propose a `propose-output-plan` action. This is safe and non-destructive:
+
+- It may point to `/outputs/<outputId>`.
+- It may show required source inputs.
+- It may show a starter packet skeleton.
+- It may suggest an Art Foundry visual helper.
+
+It must not publish, render, upload, mutate manuscript text, or send content to a destination without explicit human approval and a separate destination-specific workflow.
 
 ## Future capabilities
 
@@ -117,4 +130,4 @@ Risky capabilities that require stronger controls:
 
 ## North star
 
-The assistant should feel like a brilliant librarian sitting beside the author with sticky notes, not like a novelist trying to steal the pen.
+The assistant should feel like a brilliant librarian, editor, and drafting partner sitting beside the creator with source cards, draft options, and visible controls. It should offer power without hiding the levers.

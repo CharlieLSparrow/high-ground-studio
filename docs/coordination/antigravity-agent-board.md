@@ -6,13 +6,15 @@ Purpose: keep parallel Gemini/Antigravity work useful without letting agents col
 
 Current editor-spine lesson doc: `docs/quipsly/editor-spine-lessons-learned.md`. Read this before changing `/create`; Chapter/Episode heading tags are the source of truth for outline navigation.
 
+Current midnight sprint handoff: `docs/coordination/midnight-sprint-2026-06-06.md`. Read this before touching Art Foundry, output catalogs, beta readiness, QuipLore visual library, or release smoke coverage.
+
 ## Workflow
 
 Codex is mission control for now.
 
-The user can paste prompts from Codex into individual Antigravity threads. Each Antigravity thread should append its report to its assigned report file under `docs/coordination/antigravity-reports/`. 
+The user can paste prompts from Codex into individual Antigravity threads. Each Antigravity thread should append its report to its assigned report file under `docs/coordination/antigravity-reports/`.
 
-To keep coordination fast and lightweight, **markdown reports are the only standard**. There is no need to write JSONL duplicates. 
+To keep coordination fast and lightweight, **markdown reports are the only standard**. There is no need to write JSONL duplicates.
 
 Each report should include:
 

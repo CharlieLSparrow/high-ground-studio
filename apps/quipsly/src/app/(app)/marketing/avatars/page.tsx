@@ -1,5 +1,4 @@
 import React from 'react';
-import { SidebarLayout } from '@/components/SidebarLayout';
 import { PersonaCard, PersonaData } from '@/components/marketing/PersonaCard';
 import { AvatarDashboardClient } from './AvatarDashboardClient';
 import { getPrismaClient } from '@/lib/prisma';
@@ -27,7 +26,7 @@ export default async function AvatarDashboard() {
   }));
 
   return (
-    <SidebarLayout>
+    <>
       <div className="p-8 max-w-7xl mx-auto w-full">
         <header className="flex justify-between items-end mb-10 border-b border-zinc-200 dark:border-zinc-800 pb-6">
           <div>
@@ -48,6 +47,6 @@ export default async function AvatarDashboard() {
           <AvatarDashboardClient />
         </div>
       </div>
-    </SidebarLayout>
+    </>
   );
 }

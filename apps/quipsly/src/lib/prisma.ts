@@ -12,7 +12,13 @@ export function getPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL is not set.");
   }
 
-  const adapter = new PrismaPg(connectionString);
+  const poolMax = Number.parseInt(process.env.PRISMA_PG_POOL_MAX ?? "2", 10);
+  const adapter = new PrismaPg({
+    connectionString,
+    max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
+  });
 
   const prisma =
     globalForStudioPrisma.studioPrisma ??
@@ -22,9 +28,7 @@ export function getPrismaClient(): PrismaClient {
         process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
     });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForStudioPrisma.studioPrisma = prisma;
-  }
+  globalForStudioPrisma.studioPrisma = prisma;
 
   return prisma;
 }

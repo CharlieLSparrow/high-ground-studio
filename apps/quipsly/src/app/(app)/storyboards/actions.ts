@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
 import { createStudioProject } from "@/lib/studio/project-registry";
+import type { PublicPublishPacket } from "@high-ground/quipsly-domain/publishing";
 
 const storage = new Storage();
 const bucketName = process.env.STORYBOARD_GCS_BUCKET || process.env.GCS_BUCKET || "quipsly-storyboard-dev-assets";
@@ -62,7 +63,7 @@ export async function updateStoryboard(
     where: { id: storyboardId },
     data,
   });
-  
+
   revalidatePath('/storyboards/builder');
   return { success: true, storyboard };
 }
@@ -101,7 +102,7 @@ export async function updateStoryboardFrame(
   }
 ) {
   const prisma = await getPrismaClient();
-  
+
   const frame = await (prisma as any).studioStoryboardFrame.update({
     where: { id: frameId },
     data,
@@ -120,7 +121,7 @@ export async function generateFrameImage(frameId: string) {
 
   if (!frame) return { error: "Frame not found" };
 
-  const prompt = `A cinematic storyboard panel. 
+  const prompt = `A cinematic storyboard panel.
 Sequence: ${frame.storyboard.title || 'Unknown'}.
 Camera Angle/Shot Type: ${frame.cameraInfo || 'Standard Wide'}.
 Action: ${frame.action || 'Characters in a scene'}.
@@ -137,8 +138,8 @@ Style: Cinematic black and white rough storyboard pencil sketch, high contrast, 
     const response = await ai.models.generateImages({
       model: 'imagen-3.0-generate-002',
       prompt: prompt,
-      config: { 
-        numberOfImages: 1, 
+      config: {
+        numberOfImages: 1,
         outputMimeType: 'image/jpeg',
         aspectRatio: '16:9'
       }
@@ -147,17 +148,17 @@ Style: Cinematic black and white rough storyboard pencil sketch, high contrast, 
     if (!response.generatedImages || response.generatedImages.length === 0) {
       throw new Error("No images generated.");
     }
-    
+
     const base64Image = response.generatedImages[0].image?.imageBytes;
     if (!base64Image) {
       throw new Error("No image bytes returned.");
     }
-    
+
     // Upload to GCS
     const bucket = storage.bucket(bucketName);
     const fileName = `storyboards/frames/frame-${frameId}-${Date.now()}.jpg`;
     const file = bucket.file(fileName);
-    
+
     const buffer = Buffer.from(base64Image, 'base64');
     await file.save(buffer, {
       contentType: 'image/jpeg',
@@ -165,19 +166,19 @@ Style: Cinematic black and white rough storyboard pencil sketch, high contrast, 
         cacheControl: 'public, max-age=31536000',
       }
     });
-    
+
     if (shouldMakeStoryboardImagesPublic) {
       await file.makePublic();
     }
-    
+
     const publicBaseUrl = process.env.STORYBOARD_PUBLIC_BASE_URL || `https://storage.googleapis.com/${bucketName}`;
     const imageUrl = `${publicBaseUrl.replace(/\/$/, "")}/${fileName}`;
-    
+
     const updatedFrame = await (prisma as any).studioStoryboardFrame.update({
       where: { id: frameId },
       data: { imageUrl }
     });
-    
+
     revalidatePath("/storyboards/builder");
     return { success: true, frame: updatedFrame };
   } catch (error: any) {
@@ -226,9 +227,9 @@ export async function approveLedgerSuggestions(storyboardId: string, frames: any
       where: { storyboardId },
       orderBy: { sortOrder: 'asc' }
     });
-    
+
     let nextSortOrder = existingFrames.length;
-    
+
     const createdFrames = [];
     for (const suggestedFrame of frames) {
       const frameNumber = `1.${nextSortOrder + 1}`;
@@ -248,7 +249,7 @@ export async function approveLedgerSuggestions(storyboardId: string, frames: any
       createdFrames.push(frame);
       nextSortOrder++;
     }
-    
+
     revalidatePath("/storyboards/builder");
     return { success: true, frames: createdFrames };
   } catch (error: any) {
@@ -257,3 +258,91 @@ export async function approveLedgerSuggestions(storyboardId: string, frames: any
   }
 }
 
+export async function compileStoryboardPublishPacket(storyboardId: string) {
+  const prisma = getPrismaClient();
+  try {
+    const storyboard = await (prisma as any).studioStoryboard.findUnique({
+      where: { id: storyboardId },
+      include: {
+        project: true,
+        frames: {
+          orderBy: { sortOrder: 'asc' }
+        }
+      }
+    });
+    if (!storyboard) {
+      return { error: "Storyboard not found" };
+    }
+
+    // Tenancy scope validation
+    const { ensureStudioWorkspace } = await import("@/lib/studio/project-registry");
+    const workspace = await ensureStudioWorkspace(prisma);
+    if (storyboard.project.workspaceId !== workspace.id) {
+      return { error: "Access denied: workspace mismatch" };
+    }
+
+    const slugify = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    const storyboardSlug = slugify(storyboard.title || "storyboard");
+
+    // Map frames to media references
+    const media: any[] = [];
+    storyboard.frames.forEach((frame: any) => {
+      if (frame.imageUrl) {
+        media.push({
+          id: frame.id,
+          kind: "image",
+          label: `Frame ${frame.frameNumber}`,
+          url: frame.imageUrl,
+          provider: frame.imageUrl.startsWith("https://storage.googleapis.com") ? "gcs" : "external",
+          role: "embed"
+        });
+      }
+    });
+
+    // Generate markdown body of frames (excluding any raw manuscript database fields)
+    let bodyMarkdown = `# ${storyboard.title}\n\n`;
+    if (storyboard.description) {
+      bodyMarkdown += `${storyboard.description}\n\n`;
+    }
+    bodyMarkdown += `## Storyboard Frames\n\n`;
+
+    storyboard.frames.forEach((frame: any) => {
+      bodyMarkdown += `### Frame ${frame.frameNumber} (${frame.shotSize || 'Medium Shot'})\n`;
+      if (frame.cameraInfo) bodyMarkdown += `* **Camera/Lens**: ${frame.cameraInfo}${frame.lens ? ` / ${frame.lens}` : ''}${frame.cameraMovement ? ` (${frame.cameraMovement})` : ''}\n`;
+      if (frame.estimatedDuration) bodyMarkdown += `* **Pacing/Duration**: ${frame.estimatedDuration} seconds\n`;
+      bodyMarkdown += `\n**Visual Action**:\n${frame.action || 'No action described.'}\n\n`;
+      if (frame.dialogue) {
+        bodyMarkdown += `**Dialogue/Notes**:\n> ${frame.dialogue}\n\n`;
+      }
+      bodyMarkdown += `---\n\n`;
+    });
+
+    // Construct the public-safe packet
+    const packet: PublicPublishPacket = {
+      packetVersion: 1,
+      id: `compiled-${storyboard.id}`,
+      kind: "story-scroll",
+      source: {
+        projectSlug: storyboard.project.slug,
+        documentId: storyboard.id,
+      },
+      title: storyboard.title,
+      slug: `storyboard-${storyboardSlug}`,
+      summary: storyboard.description || `Visual storyboard sequence containing ${storyboard.frames.length} frames.`,
+      bodyMarkdown: bodyMarkdown.trim(),
+      media,
+      destinations: [
+        { destination: "high-ground-odyssey", status: "draft" },
+        { destination: "gallery", status: "draft" }
+      ],
+      generatedFrom: "quipsly-editor",
+      createdAt: new Date().toISOString(),
+      savedAt: new Date().toISOString()
+    };
+
+    return { success: true, packet };
+  } catch (error: any) {
+    console.error("Failed to compile publish packet:", error);
+    return { error: error.message };
+  }
+}

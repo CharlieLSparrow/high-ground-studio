@@ -9,6 +9,7 @@ import { submitRenderJob } from "../render-queue/actions";
 import { VisualTimeline } from "./VisualTimeline";
 import { InteractiveTimeline } from "./timeline/InteractiveTimeline";
 import { MediaAssetPicker } from "./MediaAssetPicker";
+import { ExportQueueModule } from "./ExportQueueModule";
 import {
   makeTrackId,
   normalizeTrackId,
@@ -23,6 +24,7 @@ import {
   trackKindFromTrackId,
 } from "./useTimelineState";
 import { RemotionComposition } from "./RemotionComposition";
+import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
@@ -52,6 +54,56 @@ type EpisodeProductionState = {
   boundaryStartBlockId?: string;
 };
 
+type EpisodeCollaborationState = {
+  ok: boolean;
+  projectSlug: string;
+  episodeSlug: string;
+  productionId: string;
+  title: string;
+  role: string | null;
+  updatedAt: string;
+  timelineFingerprint: string;
+  timelineClipCount: number;
+  activeCollaborators: Array<{
+    email: string;
+    name: string;
+    app: string;
+    route: string;
+    editing: boolean;
+    lastSeenAt: string;
+  }>;
+  editLease: {
+    email: string;
+    name: string;
+    acquiredAt: string;
+    expiresAt: string;
+    app: string;
+  } | null;
+  assetManifest?: {
+    totalAssets: number;
+    timelineClipCount: number;
+    assets: Array<{
+      assetId: string;
+      clipId?: string | null;
+      name: string;
+      kind: "audio" | "video" | "unknown";
+      role?: string | null;
+      sourceUrl?: string | null;
+      playbackUrl?: string | null;
+      gcsUri?: string | null;
+      durationSeconds?: number | null;
+      trackId?: string | null;
+      status: "ready" | "needs-download" | "missing-source" | "held";
+    }>;
+  };
+  recommendedPollSeconds?: number;
+  guidance?: {
+    editSync?: string;
+    assets?: string;
+    conflicts?: string;
+  };
+};
+
 type ImportedMediaAsset = {
   id: string;
   sourceId: string;
@@ -61,6 +113,8 @@ type ImportedMediaAsset = {
   contentType: string;
   size: number;
   kind: "audio" | "video" | "unknown";
+  is360?: boolean;
+  originalFormat?: string;
   bucketName?: string;
   objectName?: string;
   gcsUri: string;
@@ -87,6 +141,37 @@ type ImportedMediaAsset = {
     proxyUrl?: string;
     note?: string;
   };
+};
+
+type PremiereDraftEdit = {
+  id: string;
+  projectSlug: string;
+  episodeSlug: string;
+  primarySequenceName: string;
+  stagedAt: string;
+  timelineClipCount: number;
+  matchedTimelineClipCount: number;
+  deactivatedSourceRangeCount: number;
+  readyMediaCount: number;
+  heldMediaCount: number;
+  warnings: string[];
+  timelineClips: TimelineClip[];
+  assetMatches: Array<{
+    id: string;
+    displayName: string;
+    kind: string;
+    status: string;
+    registeredAssetId: string;
+  }>;
+};
+
+type TimelineBackupRecord = {
+  id: string;
+  createdAt: string;
+  source: string;
+  draftEditId: string;
+  restoredFromBackupId: string;
+  timelineClipCount: number;
 };
 
 type EpisodeImportLane = {
@@ -515,6 +600,8 @@ function normalizeImportedMediaAssets(value: unknown): ImportedMediaAsset[] {
         contentType: coerceString(asset.contentType, "application/octet-stream"),
         size: typeof asset.size === "number" && Number.isFinite(asset.size) ? asset.size : 0,
         kind,
+        is360: Boolean(asset.is360),
+        originalFormat: coerceString(asset.originalFormat),
         bucketName: coerceString(asset.bucketName),
         objectName: coerceString(asset.objectName),
         gcsUri: coerceString(asset.gcsUri),
@@ -527,6 +614,68 @@ function normalizeImportedMediaAssets(value: unknown): ImportedMediaAsset[] {
       } satisfies ImportedMediaAsset;
     })
     .filter((asset): asset is ImportedMediaAsset => asset !== null);
+}
+
+function draftNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizePremiereDraftEdits(value: unknown): PremiereDraftEdit[] {
+  const record = asObject(value);
+  return coerceArray<Record<string, unknown>>(record?.premiereDraftEdits)
+    .map((draft) => {
+      const summary = asObject(draft.summary) ?? {};
+      const assetMatches = coerceArray<Record<string, unknown>>(draft.assetMatches)
+        .map((match) => ({
+          id: coerceString(match.id || match.premiereAssetId, makeId("premiere-match")),
+          displayName: coerceString(match.displayName, "Premiere media"),
+          kind: coerceString(match.kind, "unknown"),
+          status: coerceString(match.status, "unknown"),
+          registeredAssetId: coerceString(match.registeredAssetId),
+        }));
+      const timelineClips = coerceArray<Record<string, unknown>>(draft.timelineClips);
+      const deactivatedSourceRanges = coerceArray<Record<string, unknown>>(draft.deactivatedSourceRanges);
+      const warnings = coerceArray<unknown>(draft.warnings)
+        .map((warning) => coerceString(warning))
+        .filter(Boolean);
+      const id = coerceString(draft.id, makeId("premiere-draft"));
+
+      return {
+        id,
+        projectSlug: coerceString(draft.projectSlug, DEFAULT_EDITOR_PROJECT_SLUG),
+        episodeSlug: coerceString(draft.episodeSlug, "current-episode"),
+        primarySequenceName: coerceString(draft.primarySequenceName, "Premiere sequence"),
+        stagedAt: coerceString(draft.stagedAt || draft.generatedAt),
+        timelineClipCount: draftNumber(summary.timelineClipCount, timelineClips.length),
+        matchedTimelineClipCount: draftNumber(summary.matchedTimelineClipCount, timelineClips.filter((clip) => coerceString(clip.matchStatus) === "matched" || Boolean(clip.assetMatched)).length),
+        deactivatedSourceRangeCount: draftNumber(summary.deactivatedSourceRangeCount, deactivatedSourceRanges.length),
+        readyMediaCount: draftNumber(summary.readyMediaCount),
+        heldMediaCount: draftNumber(summary.heldMediaCount, assetMatches.filter((match) => match.status === "held").length),
+        warnings,
+        timelineClips: timelineClips.map(normalizeTimelineClip).filter((clip): clip is TimelineClip => Boolean(clip)),
+        assetMatches,
+      } satisfies PremiereDraftEdit;
+    })
+    .sort((a, b) => b.stagedAt.localeCompare(a.stagedAt));
+}
+
+function normalizeTimelineBackups(value: unknown): TimelineBackupRecord[] {
+  const record = asObject(value);
+  return coerceArray<Record<string, unknown>>(record?.timelineBackups)
+    .map((backup) => {
+      const timelineJson = asObject(backup.timelineJson);
+      const timelineClips = coerceArray(timelineJson?.timelineClips);
+      const productionTimelineClips = coerceArray(backup.productionTimelineClips);
+      return {
+        id: coerceString(backup.id, makeId("timeline-backup")),
+        createdAt: coerceString(backup.createdAt),
+        source: coerceString(backup.source, "timeline-backup"),
+        draftEditId: coerceString(backup.draftEditId),
+        restoredFromBackupId: coerceString(backup.restoredFromBackupId),
+        timelineClipCount: draftNumber(backup.timelineClipCount, timelineClips.length || productionTimelineClips.length),
+      } satisfies TimelineBackupRecord;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function normalizeAiIngestReport(value: unknown): AiIngestReport | null {
@@ -852,6 +1001,8 @@ function importedAssetConfidenceStatus(asset: ImportedMediaAsset, health: MediaS
 
 function importedAssetRoleLabel(asset: ImportedMediaAsset) {
   const role = coerceString(asset.importRole || asset.sync?.suggestedRole, "").trim();
+  if (role === "spine-audio") return "Spine audio";
+  if (role === "audio-source") return "Audio source";
   if (role === "phone-audio") return "Phone audio";
   if (role === "camera-video") return "Camera video";
   if (role === "reference-clip") return "Reference clip";
@@ -1508,6 +1659,352 @@ function describeClipSource(clip: TimelineClip) {
   return "Timeline asset";
 }
 
+function isRenderableVideoSource(source: string) {
+  if (!source || isYouTubeAsset(source)) return false;
+  return source.startsWith("http://")
+    || source.startsWith("https://")
+    || source.startsWith("/api/ingest/media/");
+}
+
+function isVisualTimelineClip(clip: TimelineClip) {
+  return clip.kind === "video" || isVideoTrackId(clip.trackId);
+}
+
+function clipContainsTime(clip: TimelineClip, time: number) {
+  return time >= clip.startIn && time < clip.startIn + Math.max(clip.duration, 0.05);
+}
+
+function clipSourceTimeAt(clip: TimelineClip, timelineTime: number) {
+  const offset = Math.max(0, timelineTime - clip.startIn);
+  const sourceOut = clip.sourceEnd ?? clip.sourceStart + clip.duration;
+  return Math.max(0, Math.min(sourceOut, clip.sourceStart + offset));
+}
+
+function sourceLabelForClip(clip: TimelineClip, assets: ImportedMediaAsset[]) {
+  const asset = selectedClipLinkedAsset(clip, assets);
+  return asset?.originalName || clip.name || "Video feed";
+}
+
+function sourceUrlForClip(clip: TimelineClip, assets: ImportedMediaAsset[]) {
+  const asset = selectedClipLinkedAsset(clip, assets);
+  return sanitizeTrackSource(asset?.playbackUrl || asset?.gcsUri || clip.assetId);
+}
+
+function videoTrackOrderValue(trackId: string) {
+  const match = /^V(\d+)(?:\.(\d+))?$/i.exec(trackId);
+  if (!match) return 0;
+  return Number(match[1]) + (match[2] ? Number(`0.${match[2]}`) : 0);
+}
+
+function programClipAtTime(clips: TimelineClip[], time: number) {
+  return clips
+    .filter((clip) => isVisualTimelineClip(clip) && !clip.deactivated && clipContainsTime(clip, time))
+    .sort((a, b) => {
+      const trackDelta = videoTrackOrderValue(b.trackId) - videoTrackOrderValue(a.trackId);
+      if (trackDelta) return trackDelta;
+      return b.startIn - a.startIn;
+    })[0] ?? null;
+}
+
+function isTimelineGapDeactivated(transcript: TranscriptBlock[], time: number) {
+  return transcript.some((block) => {
+    if (!block.deleted && !block.deactivated) return false;
+    return time >= block.time && time < block.time + block.duration;
+  });
+}
+
+function nextPlaybackTimeForMode(time: number, step: number, totalDuration: number, timeline: TimelineState) {
+  const requested = Math.min(totalDuration, time + step);
+  if (timeline.editorMode === "play-all") return requested;
+
+  const sortedDeactivated = [...timeline.transcript]
+    .filter((block) => block.deleted || block.deactivated)
+    .sort((a, b) => a.time - b.time);
+
+  for (const block of sortedDeactivated) {
+    const blockStart = Math.max(0, block.time);
+    const blockEnd = Math.max(blockStart, block.time + block.duration);
+    if (requested >= blockStart && requested < blockEnd) {
+      return Math.min(totalDuration, blockEnd);
+    }
+    if (time < blockStart && requested >= blockStart) {
+      return Math.min(totalDuration, blockEnd);
+    }
+  }
+
+  return requested;
+}
+
+function SyncedVideoMonitor({
+  source,
+  sourceTime,
+  isActive,
+  isPlaying,
+  label,
+  className = "",
+}: {
+  source: string;
+  sourceTime: number;
+  isActive: boolean;
+  isPlaying: boolean;
+  label: string;
+  className?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isRenderableVideoSource(source)) return;
+
+    const safeTime = Math.max(0, sourceTime);
+    if (Number.isFinite(safeTime) && Math.abs(video.currentTime - safeTime) > 0.35) {
+      try {
+        video.currentTime = safeTime;
+      } catch {
+        // Some remote sources do not allow immediate seeks until metadata is ready.
+      }
+    }
+
+    if (isPlaying && isActive) {
+      void video.play().catch(() => undefined);
+    } else {
+      video.pause();
+    }
+  }, [isActive, isPlaying, source, sourceTime]);
+
+  if (!isRenderableVideoSource(source)) {
+    return (
+      <div className={`flex h-full min-h-[150px] items-center justify-center rounded-xl border border-white/10 bg-[#111827] p-4 text-center text-xs font-bold leading-5 text-white/70 ${className}`}>
+        <div>
+          <div className="text-white">{label}</div>
+          <div className="mt-2 text-white/55">
+            {source && isYouTubeAsset(source)
+              ? "YouTube preview is timestamp-driven here; use the source clip loop or import a renderable copy for frame-accurate playback."
+              : "No renderable video source attached yet."}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={source}
+      muted
+      playsInline
+      preload="metadata"
+      className={`h-full min-h-[150px] w-full rounded-xl bg-black object-contain ${className}`}
+      controls={!isPlaying}
+    />
+  );
+}
+
+function EpisodeMonitorDeck({
+  timelineState,
+  importedMediaAssets,
+  currentTime,
+  totalDuration,
+  isPlaying,
+  selectedClipId,
+  onSelectClip,
+  onSeek,
+  onStartPlayback,
+  onPause,
+}: {
+  timelineState: TimelineState;
+  importedMediaAssets: ImportedMediaAsset[];
+  currentTime: number;
+  totalDuration: number;
+  isPlaying: boolean;
+  selectedClipId: string | null;
+  onSelectClip: (clipId: string) => void;
+  onSeek: (time: number) => void;
+  onStartPlayback: (mode: "play-all" | "play-edit") => void;
+  onPause: () => void;
+}) {
+  const videoClips = timelineState.clips
+    .filter(isVisualTimelineClip)
+    .sort((a, b) => trackSortValue(a.trackId) - trackSortValue(b.trackId) || a.startIn - b.startIn);
+  const programClip = programClipAtTime(timelineState.clips, currentTime);
+  const programSource = programClip ? sourceUrlForClip(programClip, importedMediaAssets) : "";
+  const programSourceTime = programClip ? clipSourceTimeAt(programClip, currentTime) : 0;
+  const mode = timelineState.editorMode === "play-all" ? "play-all" : "play-edit";
+  const currentGapIsDeactivated = isTimelineGapDeactivated(timelineState.transcript, currentTime);
+
+  return (
+    <section className="mb-6 overflow-hidden rounded-3xl border border-[#d8b777] bg-[#17120d] shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#241a10] px-4 py-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Multicam source + edit monitors</div>
+          <div className="mt-1 text-sm font-bold text-amber-50">
+            Review every feed, then adjust the edit by moving clip boundaries instead of destructively cutting source.
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onStartPlayback("play-all")}
+            className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors ${
+              mode === "play-all" && isPlaying ? "bg-amber-500 text-[#241a10]" : "border border-amber-400/40 bg-white/5 text-amber-100 hover:bg-white/10"
+            }`}
+          >
+            Play all source time
+          </button>
+          <button
+            type="button"
+            onClick={() => onStartPlayback("play-edit")}
+            className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors ${
+              mode === "play-edit" && isPlaying ? "bg-emerald-400 text-[#0e2418]" : "border border-emerald-300/40 bg-white/5 text-emerald-100 hover:bg-white/10"
+            }`}
+          >
+            Play active edit
+          </button>
+          <button
+            type="button"
+            onClick={onPause}
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/80 hover:bg-white/10"
+          >
+            Pause
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4 2xl:grid-cols-[1.05fr_1.4fr]">
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Source feeds</div>
+              <div className="mt-1 text-xs font-bold text-white/65">
+                Every video feed at the shared playhead. Speed is currently normal 1x unless a future speed-ramp says otherwise.
+              </div>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] font-black text-white/65">
+              {videoClips.length} feeds
+            </span>
+          </div>
+          <div className="mt-3 grid max-h-[470px] gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-1">
+            {videoClips.length ? videoClips.map((clip) => {
+              const source = sourceUrlForClip(clip, importedMediaAssets);
+              const active = clipContainsTime(clip, currentTime);
+              const sourceTime = clipSourceTimeAt(clip, currentTime);
+              const label = sourceLabelForClip(clip, importedMediaAssets);
+              return (
+                <button
+                  key={clip.id}
+                  type="button"
+                  onClick={() => {
+                    onSelectClip(clip.id);
+                    if (!active) onSeek(clip.startIn);
+                  }}
+                  className={`group rounded-2xl border p-2 text-left transition-all ${
+                    selectedClipId === clip.id
+                      ? "border-amber-300 bg-amber-300/10 shadow-[0_0_0_1px_rgba(252,211,77,0.35)]"
+                      : active
+                        ? "border-emerald-300/60 bg-emerald-300/10"
+                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.07]"
+                  }`}
+                >
+                  <div className="aspect-video overflow-hidden rounded-xl bg-black">
+                    <SyncedVideoMonitor
+                      source={source}
+                      sourceTime={sourceTime}
+                      isActive={active}
+                      isPlaying={isPlaying}
+                      label={label}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-black text-white">{label}</div>
+                      <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
+                        {clip.trackId} / source {formatClock(sourceTime)} / speed 1x
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
+                      active ? "bg-emerald-300 text-emerald-950" : "bg-white/10 text-white/60"
+                    }`}>
+                      {active ? "at playhead" : "cue"}
+                    </span>
+                  </div>
+                </button>
+              );
+            }) : (
+              <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm font-bold leading-6 text-white/55">
+                No video feeds yet. Import camera video or add a source clip to the timeline.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">Edit monitor</div>
+              <div className="mt-1 text-xs font-bold text-white/65">
+                {mode === "play-edit"
+                  ? "Playing the active cut and skipping deactivated transcript gaps."
+                  : "Playing continuous source time, including material marked inactive."}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">
+              <span className={`rounded-full px-2 py-1 ${mode === "play-edit" ? "bg-emerald-300 text-emerald-950" : "bg-amber-300 text-amber-950"}`}>
+                {mode === "play-edit" ? "Active edit" : "All source"}
+              </span>
+              {currentGapIsDeactivated && (
+                <span className="rounded-full bg-purple-300 px-2 py-1 text-purple-950">inactive gap</span>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black">
+            {programClip ? (
+              <SyncedVideoMonitor
+                source={programSource}
+                sourceTime={programSourceTime}
+                isActive
+                isPlaying={isPlaying}
+                label={sourceLabelForClip(programClip, importedMediaAssets)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center p-8 text-center">
+                <div>
+                  <div className="text-lg font-black text-white">No active visual at {formatClock(currentTime)}</div>
+                  <div className="mt-2 text-sm font-bold leading-6 text-white/55">
+                    This is either a real gap, an audio-only section, or a deactivated stretch waiting to be skipped in Play Edit.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+            <input
+              type="range"
+              min={0}
+              max={Math.max(1, totalDuration)}
+              step={0.05}
+              value={Math.min(currentTime, totalDuration)}
+              onChange={(event) => {
+                onPause();
+                onSeek(Number(event.target.value));
+              }}
+              className="w-full accent-emerald-300"
+            />
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 font-mono text-sm font-black text-white">
+              {formatClock(currentTime)} / {formatClock(totalDuration)}
+            </div>
+          </div>
+          {programClip && (
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-xs font-bold leading-5 text-white/65">
+              Showing <span className="text-white">{programClip.name}</span> from <span className="font-mono text-emerald-200">{programClip.trackId}</span>.
+              Select a source feed or adjust the selected clip boundaries below to change what the edit shows.
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function inferHealthKindFromClip(clip: TimelineClip): MediaSourceHealthKind {
   if (clip.kind === "audio" || isAudioTrackId(clip.trackId)) return "audio";
   if (clip.kind === "video" || isVideoTrackId(clip.trackId)) return "video";
@@ -1613,6 +2110,30 @@ function mediaHealthSummary(results: MediaSourceHealth[]) {
     previewUsable,
     renderUsable,
   };
+}
+
+function selectedClipLinkedAsset(clip: TimelineClip | null, assets: ImportedMediaAsset[]) {
+  if (!clip?.assetId) return null;
+  const source = sanitizeTrackSource(clip.assetId);
+  return assets.find((asset) =>
+    asset.id === source
+    || asset.sourceId === source
+    || asset.playbackUrl === source
+    || asset.gcsUri === source
+  ) ?? null;
+}
+
+function editorReadinessTone(readinessLevel: string) {
+  if (readinessLevel === "render") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (readinessLevel === "preview") return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-slate-200 bg-slate-50 text-slate-800";
+}
+
+function editorReadinessButtonTone(kind: "primary" | "safe" | "warning" | "neutral") {
+  if (kind === "primary") return "border-[#3d3122] bg-[#3d3122] text-white hover:bg-[#59442d]";
+  if (kind === "safe") return "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100";
+  if (kind === "warning") return "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100";
+  return "border-[#e8dcc4] bg-white text-[#5d4528] hover:bg-[#fffaf0]";
 }
 
 function eventDuration(event: RecordingSessionEvent) {
@@ -1799,6 +2320,36 @@ async function postEpisodeProduction(payload: Record<string, unknown>, options: 
     throw new Error(data?.message || data?.error || `Episode production returned ${response.status}`);
   }
   return data as EpisodeProductionState;
+}
+
+async function fetchEpisodeCollaborationState(
+  projectSlug: string,
+  episodeSlug: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<EpisodeCollaborationState | null> {
+  const params = new URLSearchParams({ projectSlug, episodeSlug });
+  const response = await fetch(`/api/episode-production/collaboration?${params.toString()}`, {
+    method: "GET",
+    signal: options.signal,
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.ok) return null;
+  return data as EpisodeCollaborationState;
+}
+
+async function sendEpisodeCollaborationHeartbeat(
+  payload: Record<string, unknown>,
+  options: { signal?: AbortSignal } = {},
+): Promise<EpisodeCollaborationState | null> {
+  const response = await fetch("/api/episode-production/collaboration", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: options.signal,
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.ok) return null;
+  return data as EpisodeCollaborationState;
 }
 
 function transcriptWordTimings(block: TranscriptBlock) {
@@ -2133,6 +2684,8 @@ function CloudEditorContent() {
   const [isExporting, setIsExporting] = useState(false);
   const [sessionSummary, setSessionSummary] = useState<string | null>(null);
   const [productionState, setProductionState] = useState<EpisodeProductionState | null>(null);
+  const [collaborationState, setCollaborationState] = useState<EpisodeCollaborationState | null>(null);
+  const [remoteTimelineNotice, setRemoteTimelineNotice] = useState<string | null>(null);
   const [isImportingMedia, setIsImportingMedia] = useState(false);
   const [isAiOrganizingMedia, setIsAiOrganizingMedia] = useState(false);
   const [isAdvancedToolsVisible, setIsAdvancedToolsVisible] = useState(false);
@@ -2140,6 +2693,8 @@ function CloudEditorContent() {
   const [transcriptAssistingAssetIds, setTranscriptAssistingAssetIds] = useState<Set<string>>(() => new Set());
   const [queueingMediaJobKeys, setQueueingMediaJobKeys] = useState<Set<string>>(() => new Set());
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
+  const [promotingPremiereDraftId, setPromotingPremiereDraftId] = useState<string | null>(null);
+  const [restoringTimelineBackupId, setRestoringTimelineBackupId] = useState<string | null>(null);
   const [editorCoPilotInput, setEditorCoPilotInput] = useState("");
   const [editorCoPilotLog, setEditorCoPilotLog] = useState<EditorCoPilotLogEntry[]>([]);
   const [editorCoPilotMessages, setEditorCoPilotMessages] = useState<EditorCoPilotMessage[]>(() => [
@@ -2188,10 +2743,15 @@ function CloudEditorContent() {
   const [realEditingMode, setRealEditingMode] = useState(false);
   const [isAddAtPlayheadPickerOpen, setIsAddAtPlayheadPickerOpen] = useState(false);
   const [isReplaceSourcePickerOpen, setIsReplaceSourcePickerOpen] = useState(false);
+  const [isExportQueueOpen, setIsExportQueueOpen] = useState(false);
 
   // The new NLE timeline reducer
   const {
     state: timelineState,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
     replaceTimeline,
     addClip,
     toggleDeleteBlock,
@@ -2205,6 +2765,7 @@ function CloudEditorContent() {
     moveClipTo,
     moveClipToTrack,
     renameClip,
+    updateClipVolume,
     snapClipToPrevious,
     snapClipToNext,
     updateClipTiming,
@@ -2212,10 +2773,56 @@ function CloudEditorContent() {
     pushTrackOverlapsFromClip,
     addLoopClip,
     deleteLoopClip,
+    setEditorMode,
+    updateClipTransforms,
+    addClipKeyframe,
   } = useTimelineState(INITIAL_STATE);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const timelineFingerprint = useMemo(() => timelineContentFingerprint(timelineState), [timelineState]);
   const routeToken = useMemo(() => `${resolvedProjectSlug}::${episodeSlug}`, [resolvedProjectSlug, episodeSlug]);
+  const [isAiAutoEditing, setIsAiAutoEditing] = useState(false);
+
+  const handleAiAutoEdit = async () => {
+    if (!timelineState.transcript?.length) return;
+    try {
+      setIsAiAutoEditing(true);
+      const res = await fetch("/api/ai-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcriptBlocks: timelineState.transcript })
+      });
+      const data = await res.json();
+
+      if (data.edits && data.edits.length > 0) {
+        for (const edit of data.edits) {
+          if (edit.type === "deactivate" && edit.blockId) {
+             const block = timelineState.transcript.find(b => b.id === edit.blockId);
+             if (block && !block.deactivated) {
+                 toggleDeleteBlock(edit.blockId);
+             }
+          } else if (edit.type === "add_keyframe" && typeof edit.timeOffset === "number") {
+             const videoClip = timelineState.clips.find(c => isVideoTrackId(c.trackId));
+             if (videoClip) {
+                // Safely add keyframe using the new reducer action
+                addClipKeyframe(videoClip.id, {
+                   id: `kf-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                   timeOffset: edit.timeOffset,
+                   x: edit.x ?? 0,
+                   y: edit.y ?? 0,
+                   scale: edit.scale ?? 90,
+                   easing: "ease-in-out",
+                   aiSuggested: true // For visual indicator
+                });
+             }
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAiAutoEditing(false);
+    }
+  };
 
   const setTimelineSaveStateSafe = (next: TimelineSaveState) => {
     timelineSaveStateRef.current = next;
@@ -2419,8 +3026,10 @@ function CloudEditorContent() {
         timelineSavedFingerprintRef.current = capturedFingerprint;
         setTimelineLastSavedAt(savedAt);
         setTimelineSaveStateSafe("saved");
+        setRemoteTimelineNotice(null);
       } else if (state.mode === "conflict") {
         setTimelineSaveStateSafe("conflict");
+        setRemoteTimelineNotice("Nest has a newer timeline. Refresh before continuing, or save again after you decide what to keep.");
         console.warn("Conflict detected. Server timeline has diverged.");
       } else {
         setTimelineSaveStateSafe("conflict");
@@ -2457,6 +3066,7 @@ function CloudEditorContent() {
     setIsTimelineHydrated(false);
     setTimelineHydrationSource("loading");
     setSessionSummary("Refreshing episode production state...");
+    setRemoteTimelineNotice(null);
     setTimelineReloadToken((token) => token + 1);
   };
 
@@ -2509,6 +3119,93 @@ function CloudEditorContent() {
     };
   }, [isTimelineHydrated, productionState, timelineFingerprint, saveTimelineEpisodeProduction, timelineLastSavedAt, routeToken]);
 
+  useEffect(() => {
+    if (!isTimelineHydrated || !productionState || productionState.mode !== "database") return;
+    const controller = new AbortController();
+
+    const sendHeartbeat = async () => {
+      try {
+        const hasUnsavedLocalChanges = timelineFingerprint !== timelineSavedFingerprintRef.current;
+        const state = await sendEpisodeCollaborationHeartbeat(
+          {
+            action: "heartbeat",
+            projectSlug: resolvedProjectSlug,
+            episodeSlug,
+            app: "web-editor",
+            route: "editor",
+            editing: hasUnsavedLocalChanges,
+          },
+          { signal: controller.signal },
+        );
+        if (!controller.signal.aborted) setCollaborationState(state);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("Could not update episode collaboration presence.", error);
+      }
+    };
+
+    void sendHeartbeat();
+    const interval = window.setInterval(sendHeartbeat, 10_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [episodeSlug, isTimelineHydrated, productionState, resolvedProjectSlug, routeToken, timelineFingerprint]);
+
+  useEffect(() => {
+    if (!isTimelineHydrated || !productionState || productionState.mode !== "database") return;
+    const controller = new AbortController();
+
+    const pollRemoteTimeline = async () => {
+      try {
+        const state = await fetchEpisodeCollaborationState(resolvedProjectSlug, episodeSlug, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (!state) return;
+        setCollaborationState(state);
+
+        if (!state.timelineFingerprint || state.timelineFingerprint === timelineSavedFingerprintRef.current) return;
+
+        const hasUnsavedLocalChanges = timelineFingerprint !== timelineSavedFingerprintRef.current;
+        if (
+          hasUnsavedLocalChanges
+          || timelineSaveStateRef.current === "saving"
+          || timelineSaveStateRef.current === "queued"
+        ) {
+          const collaborator = state.activeCollaborators.find((person) => person.editing) ?? state.activeCollaborators[0];
+          setRemoteTimelineNotice(
+            `${collaborator?.name ?? "A collaborator"} has a newer Nest timeline. Your local cut is untouched; save or refresh when ready.`,
+          );
+          return;
+        }
+
+        setRemoteTimelineNotice("A newer Nest timeline was found. Pulling it into this editor.");
+        hasHydratedProductionTimeline.current = false;
+        setIsTimelineHydrated(false);
+        setTimelineHydrationSource("loading");
+        setSessionSummary("Pulling collaborator timeline from Nest...");
+        setTimelineReloadToken((token) => token + 1);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("Could not poll episode collaboration state.", error);
+      }
+    };
+
+    const intervalMs = Math.max(3, collaborationState?.recommendedPollSeconds ?? 4) * 1000;
+    const interval = window.setInterval(pollRemoteTimeline, intervalMs);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [
+    collaborationState?.recommendedPollSeconds,
+    episodeSlug,
+    isTimelineHydrated,
+    productionState,
+    resolvedProjectSlug,
+    routeToken,
+    timelineFingerprint,
+  ]);
+
   const selectedClip = useMemo(() => {
     return timelineState.clips.find((clip) => clip.id === selectedClipId) ?? timelineState.clips[0] ?? null;
   }, [selectedClipId, timelineState.clips]);
@@ -2516,6 +3213,14 @@ function CloudEditorContent() {
   const importedMediaAssets = useMemo(() => {
     const parsed = normalizeImportedMediaAssets(productionState?.productionJson);
     return parsed.length > 0 ? parsed : STARTER_KIT_ASSETS;
+  }, [productionState?.productionJson]);
+
+  const premiereDraftEdits = useMemo(() => {
+    return normalizePremiereDraftEdits(productionState?.productionJson);
+  }, [productionState?.productionJson]);
+
+  const timelineBackups = useMemo(() => {
+    return normalizeTimelineBackups(productionState?.productionJson);
   }, [productionState?.productionJson]);
 
   const aiIngestReport = useMemo(() => {
@@ -2871,9 +3576,9 @@ function CloudEditorContent() {
 
     const label = asset?.originalName ?? clip?.name ?? "Spine audio";
     const source = asset?.playbackUrl ?? clip?.assetId ?? "";
-    
+
     if (persistedSpineAudio && (persistedSpineAudio.assetId || persistedSpineAudio.clipId)) {
-      if ((asset && persistedSpineAudio.assetId !== (asset.id || asset.sourceId)) || 
+      if ((asset && persistedSpineAudio.assetId !== (asset.id || asset.sourceId)) ||
           (clip && persistedSpineAudio.clipId !== clip.id)) {
         if (!window.confirm("This episode already has an audio spine. Changing it may misalign existing clips. Are you sure you want to replace the spine?")) {
           setMediaImportStatus("");
@@ -2918,6 +3623,142 @@ function CloudEditorContent() {
       setMediaImportStatus(error instanceof Error ? error.message : "Could not set spine audio.");
     }
   }, [episodeSlug, resolvedProjectSlug]);
+
+  const promotePremiereDraftEdit = useCallback(async (draft: PremiereDraftEdit) => {
+    const confirmed = window.confirm(
+      `Promote this Premiere draft edit for ${draft.episodeSlug}?\n\nQuipsly will create a timeline backup first, then replace the active timeline with ${draft.timelineClipCount} draft clip(s).`
+    );
+    if (!confirmed) return;
+
+    setPromotingPremiereDraftId(draft.id);
+    setMediaImportStatus(`Promoting Premiere draft edit for ${draft.episodeSlug} with a timeline backup...`);
+
+    try {
+      const response = await fetch("/api/episode-production/import-media", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "promote-premiere-draft-edit",
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          draftEditId: draft.id,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `Premiere draft promotion failed with HTTP ${response.status}`);
+      }
+
+      setProductionState((previous) => previous
+        ? {
+          ...previous,
+          productionJson: payload.productionJson ?? previous.productionJson,
+          timelineJson: payload.timelineJson ?? previous.timelineJson,
+          updatedAt: payload.updatedAt ?? previous.updatedAt,
+        }
+        : previous);
+
+      const promotedTimeline = extractTimelineFromPayload(payload.timelineJson);
+      if (promotedTimeline) {
+        replaceTimeline(promotedTimeline);
+        timelineSavedFingerprintRef.current = timelineContentFingerprint(promotedTimeline);
+        setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
+        setTimelineHydrationSource("saved timeline");
+        setTimelineSaveStateSafe("saved");
+        setViewMode("timeline");
+      }
+
+      setMediaImportStatus(
+        `Promoted Premiere draft edit. Backup ${payload.backupId ?? "created"} preserved the previous active timeline.`
+      );
+    } catch (error) {
+      console.warn("Could not promote Premiere draft edit.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not promote Premiere draft edit.");
+    } finally {
+      setPromotingPremiereDraftId(null);
+    }
+  }, [episodeSlug, replaceTimeline, resolvedProjectSlug]);
+
+  const previewPremiereDraftEdit = useCallback((draft: PremiereDraftEdit) => {
+    if (draft.timelineClips.length === 0) {
+      setMediaImportStatus("This Premiere draft has no valid timeline clips to preview.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Preview ${draft.timelineClipCount} Premiere draft clip(s) locally?\n\nThis pauses autosave for the preview. Use Refresh DB state to return to the saved timeline, or Promote to active timeline to save it properly with a backup.`
+    );
+    if (!confirmed) return;
+
+    hasHydratedProductionTimeline.current = false;
+    setIsTimelineHydrated(false);
+    replaceTimeline({
+      clips: draft.timelineClips,
+      transcript: timelineState.transcript,
+      paperEditSnapshots: timelineState.paperEditSnapshots,
+    });
+    setSelectedClipId(draft.timelineClips[0]?.id ?? null);
+    setCurrentTime(0);
+    setViewMode("timeline");
+    setTimelineSaveStateSafe("conflict");
+    setSessionSummary(`Previewing Premiere draft ${draft.id}. Autosave is paused until refresh or promotion.`);
+    setMediaImportStatus("Previewing staged Premiere draft locally. This has not been saved over the active timeline.");
+  }, [replaceTimeline, timelineState.paperEditSnapshots, timelineState.transcript]);
+
+  const restoreTimelineBackup = useCallback(async (backup: TimelineBackupRecord) => {
+    const confirmed = window.confirm(
+      `Restore timeline backup ${backup.id}?\n\nQuipsly will create a new pre-restore backup first, then replace the active timeline with ${backup.timelineClipCount} clip(s).`
+    );
+    if (!confirmed) return;
+
+    setRestoringTimelineBackupId(backup.id);
+    setMediaImportStatus(`Restoring timeline backup ${backup.id}...`);
+
+    try {
+      const response = await fetch("/api/episode-production/import-media", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "restore-timeline-backup",
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          backupId: backup.id,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `Timeline backup restore failed with HTTP ${response.status}`);
+      }
+
+      setProductionState((previous) => previous
+        ? {
+          ...previous,
+          productionJson: payload.productionJson ?? previous.productionJson,
+          timelineJson: payload.timelineJson ?? previous.timelineJson,
+          updatedAt: payload.updatedAt ?? previous.updatedAt,
+        }
+        : previous);
+
+      const restoredTimeline = extractTimelineFromPayload(payload.timelineJson);
+      if (restoredTimeline) {
+        replaceTimeline(restoredTimeline);
+        timelineSavedFingerprintRef.current = timelineContentFingerprint(restoredTimeline);
+        setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
+        setTimelineHydrationSource("saved timeline");
+        setTimelineSaveStateSafe("saved");
+        setViewMode("timeline");
+      }
+
+      setMediaImportStatus(
+        `Restored timeline backup. Pre-restore backup ${payload.preRestoreBackupId ?? "created"} preserved the timeline you just replaced.`
+      );
+    } catch (error) {
+      console.warn("Could not restore timeline backup.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not restore timeline backup.");
+    } finally {
+      setRestoringTimelineBackupId(null);
+    }
+  }, [episodeSlug, replaceTimeline, resolvedProjectSlug]);
 
   const addImportedAssetToTimeline = useCallback((asset: ImportedMediaAsset) => {
     const placement = smartImportedAssetPlacement(asset, timelineState.clips, currentTime);
@@ -3889,28 +4730,27 @@ function CloudEditorContent() {
         }
         const hasExisting = timelineState.clips.some((candidate) => candidate.id === clip.id);
         if (hasExisting) {
+          deleteClip(clip.id);
           updateEditorCoPilotLog(revertId, {
             status: "rolled-back",
-            result: "Timeline already contains that clip. Rollback skipped.",
+            result: `Removed "${clip.name}" from the timeline.`,
           });
           addEditorCoPilotMessage({
             at: new Date().toISOString(),
             role: "agent",
-            text: "Rollback skipped: timeline already contains the clip.",
+            text: changeSummaryText ? `Rolled back. ${changeSummaryText}` : "Rolled back added timeline clip.",
             logId: revertId,
           });
           break;
         }
-        addClip(clip);
-        setSelectedClipId(clip.id);
         updateEditorCoPilotLog(revertId, {
           status: "rolled-back",
-          result: `Re-added "${clip.name}".`,
+          result: "Clip was already gone. Rollback marked complete.",
         });
         addEditorCoPilotMessage({
           at: new Date().toISOString(),
           role: "agent",
-          text: changeSummaryText ? `Rolled back. ${changeSummaryText}` : "Rolled back timeline clip add.",
+          text: "Rollback complete: the added clip was already removed.",
           logId: revertId,
         });
         break;
@@ -4023,6 +4863,7 @@ function CloudEditorContent() {
     }
   }, [
     addClip,
+    deleteClip,
     setSyncWizardSpineAssetId,
     importedMediaAssets,
     timelineState.clips,
@@ -4038,9 +4879,85 @@ function CloudEditorContent() {
   // Calculate total duration in frames (30fps)
   const totalDuration = timelineState.clips.reduce((acc, clip) => Math.max(acc, clip.startIn + clip.duration), 1);
   const durationInFrames = Math.max(1, Math.round(totalDuration * 30));
+  const playbackMode = timelineState.editorMode === "play-all" ? "play-all" : "play-edit";
+  const playbackCockpitStats = useMemo(() => {
+    const sourceClips = timelineState.clips.filter(isVisualTimelineClip);
+    const activeTimelineClips = timelineState.clips.filter((clip) => !clip.deactivated);
+    const deactivatedTimelineClips = timelineState.clips.filter((clip) => clip.deactivated);
+    const skippedTranscriptBlocks = timelineState.transcript.filter((block) => block.deleted || block.deactivated);
+    const skippedDuration = skippedTranscriptBlocks.reduce((total, block) => total + Math.max(0, block.duration), 0);
+    const activeEditDuration = Math.max(0, totalDuration - skippedDuration);
+    const activeTranscriptBlocks = timelineState.transcript.filter((block) => !block.deleted && !block.deactivated);
+
+    return {
+      sourceClipCount: sourceClips.length,
+      activeClipCount: activeTimelineClips.length,
+      deactivatedClipCount: deactivatedTimelineClips.length,
+      skippedTranscriptBlockCount: skippedTranscriptBlocks.length,
+      skippedDuration,
+      activeEditDuration,
+      activeTranscriptBlocks,
+    };
+  }, [timelineState, totalDuration]);
+  const startPlaybackMode = useCallback((mode: "play-all" | "play-edit") => {
+    setEditorMode(mode);
+    setCurrentTime((time) => time >= totalDuration - 0.05 ? 0 : time);
+    setIsPreviewPlaying(true);
+  }, [setEditorMode, totalDuration]);
+  const pausePlayback = useCallback(() => {
+    setIsPreviewPlaying(false);
+  }, []);
+  const seekActiveEditBoundary = useCallback((direction: "previous" | "next") => {
+    const activeBlocks = playbackCockpitStats.activeTranscriptBlocks
+      .map((block) => ({
+        start: Math.max(0, block.time),
+        end: Math.max(0, block.time + block.duration),
+      }))
+      .filter((block) => block.end > block.start)
+      .sort((a, b) => a.start - b.start);
+    const fallbackClips = timelineState.clips
+      .filter((clip) => !clip.deactivated)
+      .map((clip) => ({
+        start: Math.max(0, clip.startIn),
+        end: Math.max(0, clip.startIn + clip.duration),
+      }))
+      .filter((clip) => clip.end > clip.start)
+      .sort((a, b) => a.start - b.start);
+    const candidates = activeBlocks.length ? activeBlocks : fallbackClips;
+    if (!candidates.length) {
+      setCurrentTime(0);
+      return;
+    }
+
+    const nextBoundary = direction === "next"
+      ? candidates.find((candidate) => candidate.start > currentTime + 0.05)?.start ?? totalDuration
+      : [...candidates].reverse().find((candidate) => candidate.start < currentTime - 0.05)?.start ?? 0;
+
+    setEditorMode("play-edit");
+    setIsPreviewPlaying(false);
+    setCurrentTime(Math.max(0, Math.min(totalDuration, nextBoundary)));
+  }, [currentTime, playbackCockpitStats.activeTranscriptBlocks, setEditorMode, timelineState.clips, totalDuration]);
+  const seekSourceBoundary = useCallback((direction: "previous" | "next") => {
+    const visualClipStarts = timelineState.clips
+      .filter(isVisualTimelineClip)
+      .map((clip) => Math.max(0, clip.startIn))
+      .sort((a, b) => a - b);
+    if (!visualClipStarts.length) {
+      setCurrentTime(0);
+      return;
+    }
+
+    const nextBoundary = direction === "next"
+      ? visualClipStarts.find((start) => start > currentTime + 0.05) ?? totalDuration
+      : [...visualClipStarts].reverse().find((start) => start < currentTime - 0.05) ?? 0;
+
+    setEditorMode("play-all");
+    setIsPreviewPlaying(false);
+    setCurrentTime(Math.max(0, Math.min(totalDuration, nextBoundary)));
+  }, [currentTime, setEditorMode, timelineState.clips, totalDuration]);
   const activeWord = useMemo(() => {
     for (const block of timelineState.transcript) {
-      if (block.deleted) continue;
+      if (block.deleted || block.deactivated) continue;
       const word = transcriptWordTimings(block).find((candidate) => currentTime >= candidate.start && currentTime < candidate.end);
       if (word) return { ...word, block };
     }
@@ -4309,7 +5226,7 @@ function CloudEditorContent() {
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
-        const msg = isSpine 
+        const msg = isSpine
           ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure?`
           : `Delete "${selectedClip.name}" from this timeline?`;
         if (!window.confirm(msg)) return;
@@ -4337,7 +5254,7 @@ function CloudEditorContent() {
 
     const interval = window.setInterval(() => {
       setCurrentTime((time) => {
-        const nextTime = time + 0.12;
+        const nextTime = nextPlaybackTimeForMode(time, 0.12, totalDuration, timelineState);
         if (nextTime >= totalDuration) {
           setIsPreviewPlaying(false);
           return totalDuration;
@@ -4347,7 +5264,7 @@ function CloudEditorContent() {
     }, 120);
 
     return () => window.clearInterval(interval);
-  }, [isPreviewPlaying, totalDuration]);
+  }, [isPreviewPlaying, playbackMode, timelineState, totalDuration]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -4362,13 +5279,137 @@ function CloudEditorContent() {
   }, [timelineState, productionState, importedMediaAssets, episodeSlug, resolvedProjectSlug]);
 
   const timelineSaved = timelineSaveState === "saved" || timelineFingerprint === timelineSavedFingerprintRef.current;
+  const selectedClipAsset = useMemo(() => {
+    return selectedClipLinkedAsset(selectedClip, importedMediaAssets);
+  }, [importedMediaAssets, selectedClip]);
+  const selectedClipHealthForCockpit = useMemo(() => {
+    return selectedClip ? timelineClipHealth(selectedClip) : null;
+  }, [selectedClip, timelineClipHealth]);
+  const editorNextActions = useMemo(() => {
+    const actions: Array<{
+      id: string;
+      label: string;
+      detail: string;
+      tone: "primary" | "safe" | "warning" | "neutral";
+      onClick?: () => void;
+      disabled?: boolean;
+    }> = [];
+
+    if (!persistedSpineAudio) {
+      actions.push({
+        id: "choose-spine",
+        label: "Choose spine audio",
+        detail: importedAudioAssets.length
+          ? "Make the cleanest recording the sync spine before lining up video."
+          : "Import phone/call audio first, then make it the spine.",
+        tone: importedAudioAssets.length ? "primary" : "warning",
+        onClick: importedAudioAssets[0] ? () => void setEpisodeSpineAudio({ asset: importedAudioAssets[0] }) : undefined,
+        disabled: !importedAudioAssets[0],
+      });
+    }
+
+    if (productionDiagnostics.missingSourceClips > 0 || mediaHealthStats.broken > 0) {
+      actions.push({
+        id: "fix-source",
+        label: "Fix missing media",
+        detail: "Your edit is safe, but final export needs source links repaired or replaced.",
+        tone: "warning",
+        onClick: productionDiagnostics.sourceProblemClips[0]
+          ? () => setSelectedClipId(productionDiagnostics.sourceProblemClips[0].id)
+          : undefined,
+      });
+    }
+
+    if (selectedClip && isMissingProductionSource(selectedClip) && importedMediaAssets.length > 0) {
+      actions.push({
+        id: "attach-selected",
+        label: "Attach media to selected clip",
+        detail: `Use the first safe import for ${selectedClip.name}; you can change it afterward.`,
+        tone: "primary",
+        onClick: () => void attachImportedAssetToSelectedClip(importedMediaAssets[0]),
+      });
+    }
+
+    if (!timelineSaved) {
+      actions.push({
+        id: "save",
+        label: "Save timeline",
+        detail: "Autosave is usually enough, but click once before leaving a real edit.",
+        tone: "safe",
+        onClick: () => void handleSaveEpisodeTimeline(),
+        disabled: timelineSaveState === "saving",
+      });
+    }
+
+    if (!actions.length) {
+      actions.push({
+        id: "keep-editing",
+        label: "Keep editing",
+        detail: productionDiagnostics.readyForRender
+          ? "This cut is render-ready. Review playback or move toward publishing."
+          : "This cut is safe to preview. Continue cutting or lining up sources.",
+        tone: productionDiagnostics.readyForRender ? "safe" : "neutral",
+        onClick: () => setViewMode("timeline"),
+      });
+    }
+
+    return actions.slice(0, 3);
+  }, [
+    attachImportedAssetToSelectedClip,
+    handleSaveEpisodeTimeline,
+    importedAudioAssets,
+    importedMediaAssets,
+    mediaHealthStats.broken,
+    persistedSpineAudio,
+    productionDiagnostics.missingSourceClips,
+    productionDiagnostics.readyForRender,
+    productionDiagnostics.sourceProblemClips,
+    selectedClip,
+    setEpisodeSpineAudio,
+    timelineSaveState,
+    timelineSaved,
+  ]);
+
+  const handleClaimEditFocus = useCallback(async () => {
+    try {
+      const state = await sendEpisodeCollaborationHeartbeat({
+        action: "claim-edit-lease",
+        projectSlug: resolvedProjectSlug,
+        episodeSlug,
+        app: "web-editor",
+        route: "editor",
+      });
+      setCollaborationState(state);
+      setRemoteTimelineNotice("Edit focus claimed. This is a soft hand-raise so collaborators know you are cutting right now.");
+    } catch (error) {
+      console.warn("Could not claim edit focus.", error);
+      setRemoteTimelineNotice("Could not claim edit focus. Check Nest sign-in/access and try again.");
+    }
+  }, [episodeSlug, resolvedProjectSlug]);
+
+  const handleReleaseEditFocus = useCallback(async () => {
+    try {
+      const state = await sendEpisodeCollaborationHeartbeat({
+        action: "release-edit-lease",
+        projectSlug: resolvedProjectSlug,
+        episodeSlug,
+        app: "web-editor",
+        route: "editor",
+      });
+      setCollaborationState(state);
+      setRemoteTimelineNotice("Edit focus released.");
+    } catch (error) {
+      console.warn("Could not release edit focus.", error);
+      setRemoteTimelineNotice("Could not release edit focus. Check Nest sign-in/access and try again.");
+    }
+  }, [episodeSlug, resolvedProjectSlug]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <header className="flex justify-between items-center p-4 border-b border-[#e8dcc4] bg-[#fdfaf6]">
         <div className="flex flex-col">
           <h1 className="text-xl font-black tracking-tight text-[#3d3122] flex items-center gap-3">
-            NLE // Editor {projectId && <span className="text-[#8c6b4a] font-medium text-sm">Project: {projectId}</span>}
+            Episode Editor {projectId && <span className="text-[#8c6b4a] font-medium text-sm">Nest: {projectId}</span>}
           </h1>
           {activeSpineAudioLabel && (
             <div className="mt-1 flex items-center gap-2 text-xs font-bold text-[#8c6b4a]">
@@ -4439,6 +5480,24 @@ function CloudEditorContent() {
             >
               Advanced Tools {isAdvancedToolsVisible ? "ON" : "OFF"}
             </button>
+            <div className="flex bg-white rounded-md border border-[#e8dcc4] overflow-hidden shadow-sm">
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                className="px-3 py-1 text-xs font-bold text-[#3d3122] hover:bg-[#fff8ec] disabled:opacity-30 disabled:hover:bg-transparent border-r border-[#e8dcc4] transition-colors"
+                title="Undo"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+              </button>
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                className="px-3 py-1 text-xs font-bold text-[#3d3122] hover:bg-[#fff8ec] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                title="Redo"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+              </button>
+            </div>
             <button
               onClick={handleSaveEpisodeTimeline}
               disabled={timelineSaveState === "saving"}
@@ -4455,15 +5514,74 @@ function CloudEditorContent() {
             Refresh DB State
           </button>
           <button
-            onClick={handleExportToQueue}
-            disabled={isExporting || !productionDiagnostics.readyForRender}
-            title={productionDiagnostics.readyForRender ? "Send this render-ready episode to the queue." : productionDiagnostics.readinessDetail}
-            className={`px-4 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm rounded-md transition-colors disabled:opacity-50 ${realEditingMode || !isAdvancedToolsVisible ? "hidden" : ""}`}
+            onClick={() => setIsExportQueueOpen(true)}
+            className={`px-4 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm rounded-md transition-colors ${realEditingMode || !isAdvancedToolsVisible ? "hidden" : ""}`}
           >
-            {isExporting ? "Sending..." : productionDiagnostics.readyForRender ? "Export to Queue" : "Fix Sources Before Export"}
+            Render & Export...
           </button>
         </div>
       </header>
+
+      {(collaborationState || remoteTimelineNotice) && (
+        <section className="border-b border-[#e8dcc4] bg-[#fffaf0] px-4 py-2">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-[#5f4a34]">
+            {collaborationState && (
+              <>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-black uppercase tracking-[0.14em] text-emerald-900">
+                  {collaborationState.activeCollaborators.length || 1} collaborator{(collaborationState.activeCollaborators.length || 1) === 1 ? "" : "s"} active
+                </span>
+                {collaborationState.editLease ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-bold text-amber-900">
+                    Edit focus: {collaborationState.editLease.name}
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-[#e8dcc4] bg-white px-3 py-1 font-bold text-[#8c6b4a]">
+                    No edit focus claimed
+                  </span>
+                )}
+                <button
+                  onClick={handleClaimEditFocus}
+                  className="rounded-full border border-[#e8dcc4] bg-white px-3 py-1 font-black uppercase tracking-[0.12em] text-[#3d3122] hover:bg-[#fff8ec]"
+                >
+                  Claim focus
+                </button>
+                <button
+                  onClick={handleReleaseEditFocus}
+                  className="rounded-full border border-[#e8dcc4] bg-white px-3 py-1 font-black uppercase tracking-[0.12em] text-[#8c6b4a] hover:bg-[#fff8ec]"
+                >
+                  Release
+                </button>
+                {collaborationState.assetManifest && (
+                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 font-bold text-indigo-900">
+                    {collaborationState.assetManifest.totalAssets} needed asset{collaborationState.assetManifest.totalAssets === 1 ? "" : "s"}
+                  </span>
+                )}
+              </>
+            )}
+            {remoteTimelineNotice && (
+              <div className="flex min-w-[280px] flex-1 items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 font-bold text-sky-950">
+                <span>{remoteTimelineNotice}</span>
+                <button
+                  onClick={handleRefreshProductionState}
+                  className="shrink-0 rounded-lg bg-sky-900 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white hover:bg-sky-800"
+                >
+                  Pull Nest timeline
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      <ExportQueueModule
+        isOpen={isExportQueueOpen}
+        onClose={() => setIsExportQueueOpen(false)}
+        timelineDurationSeconds={productionDiagnostics.timelineEndSeconds}
+        totalClips={productionDiagnostics.totalClips}
+        projectSlug={resolvedProjectSlug}
+        episodeSlug={episodeSlug}
+        timelineState={timelineState}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Media Pool Panel */}
@@ -5055,6 +6173,175 @@ function CloudEditorContent() {
                     {aiIngestReport.warnings[0]}
                   </div>
                 )}
+              </div>
+            )}
+            {premiereDraftEdits.length > 0 && (
+              <div className="mt-3 rounded-lg border border-[#3d3122] bg-[#fffdf7] p-3 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-black uppercase tracking-[0.18em] text-[#3d3122]">Premiere draft edits</div>
+                    <p className="mt-1 leading-5 text-[#6f5336]">
+                      Local Mac imports can stage Premiere timelines here. Review matching first, then promote only when you want this draft to become the active Quipsly timeline.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-[#d8b777] bg-[#fff8ec] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#7b4f1f]">
+                    {premiereDraftEdits.length} staged
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-3">
+                  {premiereDraftEdits.map((draft) => {
+                    const matchedPercent = draft.timelineClipCount > 0
+                      ? Math.round((draft.matchedTimelineClipCount / draft.timelineClipCount) * 100)
+                      : 0;
+                    const isPromoting = promotingPremiereDraftId === draft.id;
+                    return (
+                      <div key={draft.id} className="rounded-xl border border-[#e8dcc4] bg-white p-3 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-black text-[#3d3122]">{draft.episodeSlug} / {draft.primarySequenceName}</div>
+                            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#8c6b4a]">
+                              {draft.stagedAt ? `Staged ${new Date(draft.stagedAt).toLocaleString()}` : "Staged draft"}
+                            </div>
+                          </div>
+                          <div className={`rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] ${
+                            draft.heldMediaCount > 0 || draft.matchedTimelineClipCount < draft.timelineClipCount
+                              ? "border-amber-200 bg-amber-50 text-amber-900"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          }`}>
+                            {draft.matchedTimelineClipCount}/{draft.timelineClipCount} clips matched
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+                          <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2">
+                            <div className="font-mono text-lg font-black text-[#3d3122]">{draft.timelineClipCount}</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">timeline clips</div>
+                          </div>
+                          <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2">
+                            <div className="font-mono text-lg font-black text-[#3d3122]">{matchedPercent}%</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">asset match</div>
+                          </div>
+                          <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2">
+                            <div className="font-mono text-lg font-black text-[#3d3122]">{draft.deactivatedSourceRangeCount}</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">cut ranges</div>
+                          </div>
+                          <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2">
+                            <div className="font-mono text-lg font-black text-emerald-800">{draft.readyMediaCount}</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">ready media</div>
+                          </div>
+                          <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] px-3 py-2">
+                            <div className="font-mono text-lg font-black text-amber-900">{draft.heldMediaCount}</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">held media</div>
+                          </div>
+                        </div>
+
+                        {draft.warnings.length > 0 && (
+                          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-900">
+                            <div className="font-black">Before promoting</div>
+                            {draft.warnings.slice(0, 3).map((warning) => (
+                              <div key={warning} className="mt-1">- {warning}</div>
+                            ))}
+                          </div>
+                        )}
+
+                        {draft.assetMatches.length > 0 && (
+                          <div className="mt-3 rounded-lg border border-[#e8dcc4] bg-[#fffdf7] px-3 py-2">
+                            <div className="font-black text-[#3d3122]">Asset match sample</div>
+                            <div className="mt-2 grid gap-1">
+                              {draft.assetMatches.slice(0, 5).map((match) => (
+                                <div key={match.id} className="flex items-center justify-between gap-2 text-[11px] font-bold text-[#6f5336]">
+                                  <span className="truncate">{match.displayName}</span>
+                                  <span className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
+                                    match.status === "matched"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                      : match.status === "held"
+                                        ? "border-amber-200 bg-amber-50 text-amber-900"
+                                        : "border-slate-200 bg-slate-50 text-slate-700"
+                                  }`}>
+                                    {humanizeSlug(match.status)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => previewPremiereDraftEdit(draft)}
+                            disabled={draft.timelineClips.length === 0}
+                            className="rounded-lg border border-[#d8b777] bg-[#fff8ec] px-3 py-2 font-black text-[#7b4f1f] hover:bg-[#f3e4c7] disabled:cursor-not-allowed disabled:bg-[#f3e4c7] disabled:text-[#8c6b4a]"
+                          >
+                            Preview locally
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void promotePremiereDraftEdit(draft)}
+                            disabled={isPromoting || draft.timelineClipCount === 0}
+                            className="rounded-lg border border-[#3d3122] bg-[#3d3122] px-3 py-2 font-black text-white shadow-sm hover:bg-[#59442d] disabled:cursor-wait disabled:border-[#d8b777] disabled:bg-[#f3e4c7] disabled:text-[#8c6b4a]"
+                          >
+                            {isPromoting ? "Promoting with backup..." : "Promote to active timeline"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={refreshEpisodeProductionState}
+                            className="rounded-lg border border-[#d8b777] bg-[#fff8ec] px-3 py-2 font-black text-[#7b4f1f] hover:bg-[#f3e4c7]"
+                          >
+                            Refresh staged drafts
+                          </button>
+                          <span className="text-[11px] font-bold leading-5 text-[#8c6b4a]">
+                            Promotion creates a timeline backup first. It does not delete the staged draft.
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {timelineBackups.length > 0 && (
+              <div className="mt-3 rounded-lg border border-[#d8b777] bg-[#fffaf0] p-3 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-black uppercase tracking-[0.18em] text-[#3d3122]">Timeline backups</div>
+                    <p className="mt-1 leading-5 text-[#6f5336]">
+                      Quipsly creates these before Premiere draft promotion and backup restores. Restoring also creates a fresh pre-restore backup.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-[#d8b777] bg-white px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#7b4f1f]">
+                    {timelineBackups.length} backup{timelineBackups.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  {timelineBackups.slice(0, 6).map((backup) => {
+                    const isRestoring = restoringTimelineBackupId === backup.id;
+                    return (
+                      <div key={backup.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#e8dcc4] bg-white px-3 py-2 shadow-sm">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-mono text-[11px] font-black text-[#3d3122]">{backup.id}</div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#8c6b4a]">
+                            <span>{backup.timelineClipCount} clip{backup.timelineClipCount === 1 ? "" : "s"}</span>
+                            <span>{humanizeSlug(backup.source)}</span>
+                            {backup.draftEditId && <span>draft {backup.draftEditId}</span>}
+                            {backup.restoredFromBackupId && <span>restored from {backup.restoredFromBackupId}</span>}
+                            {backup.createdAt && <span>{new Date(backup.createdAt).toLocaleString()}</span>}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void restoreTimelineBackup(backup)}
+                          disabled={isRestoring || backup.timelineClipCount === 0}
+                          className="rounded-lg border border-[#d8b777] bg-[#fff8ec] px-3 py-2 font-black text-[#7b4f1f] hover:bg-[#f3e4c7] disabled:cursor-wait disabled:bg-[#f3e4c7] disabled:text-[#8c6b4a]"
+                        >
+                          {isRestoring ? "Restoring..." : "Restore backup"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
             <div className={`mt-3 rounded-lg border border-[#3d3122] bg-[#fffdf7] p-3 shadow-sm ${realEditingMode ? "hidden" : ""}`}>
@@ -5830,7 +7117,7 @@ function CloudEditorContent() {
                               })}
                               onSelect={(id) => {
                                 const asset = importedMediaAssets.find(a => a.id === id);
-                                if (asset) updateClipSource(selectedClip.id, asset.id, asset.originalName);
+                                if (asset) void attachImportedAssetToSelectedClip(asset);
                                 setIsReplaceSourcePickerOpen(false);
                               }}
                             />
@@ -5854,7 +7141,7 @@ function CloudEditorContent() {
                     const asset = importedMediaAssets.find(a => a.id === selectedClip.assetId);
                     const url = asset?.playbackUrl || asset?.sourceId || selectedClip.assetId;
                     const isYouTube = /youtube\.com|youtu\.be/i.test(url);
-                    
+
                     let sourceUrl = url;
                     if (isYouTube) {
                       const match = url.match(/[?&]v=([^&]+)/);
@@ -6022,6 +7309,91 @@ function CloudEditorContent() {
               >
                 Rename clip
               </button>
+
+              <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 p-2 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-black uppercase tracking-[0.14em] text-indigo-900">Audio Workflow</div>
+                  <div className="text-[10px] text-indigo-700 font-bold">Vol: {Math.round((selectedClip.volume ?? 1) * 100)}%</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => updateClipVolume(selectedClip.id, (selectedClip.volume ?? 1) === 0 ? 1 : 0)}
+                    className="rounded-lg border border-indigo-200 bg-white px-2 py-2 font-black text-indigo-900 hover:bg-indigo-100 text-[11px]"
+                  >
+                    {(selectedClip.volume ?? 1) === 0 ? "Unmute Clip" : "Mute Clip"}
+                  </button>
+                  <a
+                    href={`/api/extract-audio?sourceId=${selectedClip.sourceId ?? selectedClip.assetId}`}
+                    download
+                    className="flex items-center justify-center rounded-lg border border-indigo-200 bg-white px-2 py-2 font-black text-indigo-900 hover:bg-indigo-100 text-[11px]"
+                  >
+                    Extract .WAV
+                  </a>
+                </div>
+                <label className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-[#3d3122] bg-[#3d3122] px-2 py-2 font-black text-white hover:bg-[#59442d] text-[11px]">
+                  Attach Clean Audio...
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      formData.append("projectSlug", resolvedProjectSlug);
+                      formData.append("episodeSlug", episodeSlug);
+                      formData.append("importRole", "cleaned-audio");
+
+                      try {
+                        const res = await fetch("/api/episode-production/import-media", {
+                          method: "POST",
+                          body: formData,
+                        });
+                        if (!res.ok) throw new Error("Upload failed");
+                        const data = await res.json();
+
+                        // Mute original video
+                        updateClipVolume(selectedClip.id, 0);
+
+                        // Insert new audio clip
+                        const newId = `cleaned-${Date.now()}`;
+                        const cleanAudioClip: TimelineClip = {
+                          id: newId,
+                          assetId: data.importedAsset.playbackUrl || data.importedAsset.sourceId || "",
+                          sourceId: data.importedAsset.sourceId || undefined,
+                          kind: "audio",
+                          trackId: DEFAULT_AUDIO_TRACK,
+                          startIn: selectedClip.startIn,
+                          duration: selectedClip.duration,
+                          sourceStart: selectedClip.sourceStart,
+                          sourceEnd: selectedClip.sourceEnd,
+                          name: data.importedAsset.originalName || "Clean audio",
+                          color: "#4f46e5",
+                        };
+                        addClip(cleanAudioClip);
+                        moveClipToTrack(newId, DEFAULT_AUDIO_TRACK);
+                        updateClipTiming(newId, {
+                          startIn: selectedClip.startIn,
+                          duration: selectedClip.duration,
+                          sourceStart: selectedClip.sourceStart,
+                          sourceEnd: selectedClip.sourceEnd
+                        });
+
+                        alert("Clean audio attached successfully!");
+                      } catch (err) {
+                        console.error("Failed to attach audio:", err);
+                        alert("Failed to upload clean audio.");
+                      }
+
+                      // Clear input
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
               <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-white p-2 ${!isAdvancedToolsVisible ? "hidden" : ""}`}>
                 <div className="mb-2 font-black uppercase tracking-[0.14em] text-[#9a641e]">Move to track</div>
                 <div className="grid grid-cols-4 gap-1">
@@ -6053,7 +7425,7 @@ function CloudEditorContent() {
                   type="button"
                   onClick={() => {
                     const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
-                    const msg = isSpine 
+                    const msg = isSpine
                       ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure?`
                       : `Delete "${selectedClip.name}" from this timeline?`;
                     if (!window.confirm(msg)) return;
@@ -6067,7 +7439,7 @@ function CloudEditorContent() {
                   type="button"
                   onClick={() => {
                     const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
-                    const msg = isSpine 
+                    const msg = isSpine
                       ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure you want to delete it and close the gap?`
                       : `Delete "${selectedClip.name}" and close the gap on ${selectedClip.trackId}?`;
                     if (!window.confirm(msg)) return;
@@ -6132,6 +7504,93 @@ function CloudEditorContent() {
               </div>
               <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-white p-2 text-[10px] font-bold leading-5 text-[#6c5638] ${realEditingMode ? "hidden" : ""}`}>
                 Shortcuts: <span className="font-mono">D</span> duplicate, <span className="font-mono">Delete</span> remove, <span className="font-mono">Shift+Left/Right</span> nudge, <span className="font-mono">M</span> move to playhead, <span className="font-mono">X</span> split, <span className="font-mono">[ ]</span> snap.
+              </div>
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-black uppercase tracking-[0.16em] text-emerald-900">AI cut boundary adjust</div>
+                    <div className="mt-1 text-[11px] font-bold leading-5 text-emerald-800">
+                      Keep the AI edit, then make it yours by nudging what starts, what ends, and which source frames show.
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white px-2 py-1 font-mono text-[10px] font-black text-emerald-900">
+                    {formatClock(selectedClip.startIn)}-{formatClock(selectedClip.startIn + selectedClip.duration)}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "start", -1)}
+                    className="rounded-lg border border-emerald-200 bg-white px-2 py-2 font-black text-emerald-900 hover:bg-emerald-100"
+                  >
+                    Start 1s earlier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "start", 1)}
+                    className="rounded-lg border border-emerald-200 bg-white px-2 py-2 font-black text-emerald-900 hover:bg-emerald-100"
+                  >
+                    Start 1s later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "end", -1)}
+                    className="rounded-lg border border-emerald-200 bg-white px-2 py-2 font-black text-emerald-900 hover:bg-emerald-100"
+                  >
+                    End 1s earlier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "end", 1)}
+                    className="rounded-lg border border-emerald-200 bg-white px-2 py-2 font-black text-emerald-900 hover:bg-emerald-100"
+                  >
+                    End 1s later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "start", -0.1)}
+                    className="rounded-lg border border-emerald-200 bg-emerald-100 px-2 py-2 font-black text-emerald-950 hover:bg-emerald-200"
+                  >
+                    Start 0.1s earlier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "start", 0.1)}
+                    className="rounded-lg border border-emerald-200 bg-emerald-100 px-2 py-2 font-black text-emerald-950 hover:bg-emerald-200"
+                  >
+                    Start 0.1s later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "end", -0.1)}
+                    className="rounded-lg border border-emerald-200 bg-emerald-100 px-2 py-2 font-black text-emerald-950 hover:bg-emerald-200"
+                  >
+                    End 0.1s earlier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => trimClip(selectedClip.id, "end", 0.1)}
+                    className="rounded-lg border border-emerald-200 bg-emerald-100 px-2 py-2 font-black text-emerald-950 hover:bg-emerald-200"
+                  >
+                    End 0.1s later
+                  </button>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateClipTiming(selectedClip.id, { sourceStart: Math.max(0, selectedClip.sourceStart - 1) })}
+                    className="rounded-lg border border-emerald-200 bg-white px-2 py-2 font-black text-emerald-900 hover:bg-emerald-100"
+                  >
+                    Source starts earlier
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateClipTiming(selectedClip.id, { sourceStart: selectedClip.sourceStart + 1 })}
+                    className="rounded-lg border border-emerald-200 bg-white px-2 py-2 font-black text-emerald-900 hover:bg-emerald-100"
+                  >
+                    Source starts later
+                  </button>
+                </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
@@ -6207,9 +7666,251 @@ function CloudEditorContent() {
 
         {/* Main Editor Area */}
         <main className="flex-1 flex flex-col relative overflow-hidden bg-transparent p-8">
-          
+          <section className="mb-6 rounded-3xl border border-[#e8dcc4] bg-[#fffdf7] p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-[#9a641e]">Today&apos;s edit cockpit</div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-[#3d3122]">
+                  {episodeLabel}
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-[#6f5336]">
+                  One production room: manuscript boundary, imported media, spine audio, timeline clips, transcript, and publish handoff all stay tied to this Nest and episode.
+                </p>
+              </div>
+              <div className={`min-w-[220px] rounded-2xl border px-4 py-3 ${editorReadinessTone(productionDiagnostics.readinessLevel)}`}>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Edit state</div>
+                <div className="mt-1 text-lg font-black">{productionDiagnostics.readinessTitle}</div>
+                <div className="mt-1 text-xs font-bold leading-5">{productionDiagnostics.readinessDetail}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_1fr_1fr]">
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Production map</div>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${timelineSaveStatusStyles}`}>
+                    {timelineSaveStatusLabel}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                  <div className="rounded-xl border border-[#e8dcc4] bg-[#fffaf0] p-3">
+                    <div className="font-mono text-xl font-black text-[#3d3122]">{productionDiagnostics.totalClips}</div>
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Clips</div>
+                  </div>
+                  <div className="rounded-xl border border-[#e8dcc4] bg-[#fffaf0] p-3">
+                    <div className="font-mono text-xl font-black text-[#3d3122]">{formatClock(productionDiagnostics.timelineEndSeconds)}</div>
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Runtime</div>
+                  </div>
+                  <div className="rounded-xl border border-[#e8dcc4] bg-[#fffaf0] p-3">
+                    <div className="font-mono text-xl font-black text-[#3d3122]">{importedMediaAssets.length}</div>
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Imports</div>
+                  </div>
+                  <div className="rounded-xl border border-[#e8dcc4] bg-[#fffaf0] p-3">
+                    <div className="font-mono text-xl font-black text-[#3d3122]">{mediaHealthStats.broken}</div>
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Broken</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Selected clip</div>
+                  {selectedClip && (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentTime(selectedClip.startIn)}
+                      className="rounded-full border border-[#d8b777] bg-[#fff8ec] px-2 py-1 text-[10px] font-black text-[#7b4f1f] hover:bg-[#f3e4c7]"
+                    >
+                      Cue in
+                    </button>
+                  )}
+                </div>
+                {selectedClip ? (
+                  <div className="mt-3">
+                    <div className="truncate text-base font-black text-[#3d3122]">{selectedClip.name}</div>
+                    <div className="mt-2 flex flex-wrap gap-1 text-[10px] font-black uppercase tracking-[0.12em]">
+                      <span className="rounded-full border border-[#e8dcc4] bg-[#fffaf0] px-2 py-1 text-[#8c6b4a]">{selectedClip.trackId}</span>
+                      <span className={`rounded-full border px-2 py-1 ${healthStatusStyles(selectedClipHealthForCockpit?.status ?? (isMissingProductionSource(selectedClip) ? "error" : "unchecked"))}`}>
+                        {selectedClipHealthForCockpit ? healthStatusLabel(selectedClipHealthForCockpit.status) : isMissingProductionSource(selectedClip) ? "Missing source" : "Unchecked"}
+                      </span>
+                      {selectedClipAsset && (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-800">
+                          Linked import
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 text-xs font-bold leading-5 text-[#6f5336]">
+                      {selectedClipAsset
+                        ? `Using ${selectedClipAsset.originalName}.`
+                        : selectedClip.assetId
+                          ? `Source: ${describeClipSource(selectedClip)}.`
+                          : "No source attached yet."}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-xl border border-dashed border-[#e8dcc4] bg-[#fffaf0] p-4 text-sm font-bold text-[#8c6b4a]">
+                    Select a timeline clip to see source, safety, and edit controls.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Next best moves</div>
+                <div className="mt-3 space-y-2">
+                  {editorNextActions.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={action.onClick}
+                      disabled={action.disabled || !action.onClick}
+                      className={`w-full rounded-xl border px-3 py-2 text-left shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${editorReadinessButtonTone(action.tone)}`}
+                    >
+                      <div className="font-black">{action.label}</div>
+                      <div className="mt-1 text-[11px] font-bold leading-5 opacity-85">{action.detail}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <EpisodeMonitorDeck
+            timelineState={timelineState}
+            importedMediaAssets={importedMediaAssets}
+            currentTime={currentTime}
+            totalDuration={totalDuration}
+            isPlaying={isPreviewPlaying}
+            selectedClipId={selectedClip?.id ?? null}
+            onSelectClip={setSelectedClipId}
+            onSeek={setCurrentTime}
+            onStartPlayback={startPlaybackMode}
+            onPause={pausePlayback}
+          />
+
+          <section className="mb-6 rounded-[1.5rem] border border-[#e8dcc4] bg-[#fffaf0] p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8c6b4a]">Playback cockpit</div>
+                <h2 className="mt-1 text-xl font-black text-[#3d3122]">Review sources, then play the cut</h2>
+                <p className="mt-1 text-sm font-bold leading-6 text-[#6f5a3d]">
+                  Source review shows every video feed where it lives on the timeline. Active edit skips deactivated transcript gaps without deleting them, so the raw material remains recoverable.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => startPlaybackMode("play-all")}
+                  className={`rounded-xl border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] shadow-sm transition-colors ${
+                    playbackMode === "play-all"
+                      ? "border-[#8c6b4a] bg-[#8c6b4a] text-white"
+                      : "border-[#e8dcc4] bg-white text-[#6f5a3d] hover:border-[#8c6b4a]"
+                  }`}
+                >
+                  Play source review
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startPlaybackMode("play-edit")}
+                  className={`rounded-xl border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] shadow-sm transition-colors ${
+                    playbackMode === "play-edit"
+                      ? "border-[#8c6b4a] bg-[#8c6b4a] text-white"
+                      : "border-[#e8dcc4] bg-white text-[#6f5a3d] hover:border-[#8c6b4a]"
+                  }`}
+                >
+                  Play active edit
+                </button>
+                <button
+                  type="button"
+                  onClick={pausePlayback}
+                  className="rounded-xl border border-[#e8dcc4] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#6f5a3d] shadow-sm hover:border-[#8c6b4a]"
+                >
+                  Pause
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Sources</div>
+                <div className="mt-1 text-2xl font-black text-[#3d3122]">{playbackCockpitStats.sourceClipCount}</div>
+                <div className="mt-1 text-xs font-bold text-[#7a674c]">video/source feeds visible</div>
+              </div>
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Active edit</div>
+                <div className="mt-1 text-2xl font-black text-[#3d3122]">{formatClock(playbackCockpitStats.activeEditDuration)}</div>
+                <div className="mt-1 text-xs font-bold text-[#7a674c]">{playbackCockpitStats.activeClipCount} active clip{playbackCockpitStats.activeClipCount === 1 ? "" : "s"}</div>
+              </div>
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Skipped safely</div>
+                <div className="mt-1 text-2xl font-black text-[#3d3122]">{formatClock(playbackCockpitStats.skippedDuration)}</div>
+                <div className="mt-1 text-xs font-bold text-[#7a674c]">{playbackCockpitStats.skippedTranscriptBlockCount} deactivated gap{playbackCockpitStats.skippedTranscriptBlockCount === 1 ? "" : "s"}</div>
+              </div>
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Mode now</div>
+                <div className="mt-1 text-2xl font-black text-[#3d3122]">{playbackMode === "play-edit" ? "Edit" : "Source"}</div>
+                <div className="mt-1 text-xs font-bold text-[#7a674c]">{isPreviewPlaying ? "Playing" : "Paused"} at {formatClock(currentTime)}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => seekSourceBoundary("previous")}
+                className="rounded-xl border border-[#e8dcc4] bg-white px-3 py-2 text-xs font-black text-[#6f5a3d] shadow-sm hover:border-[#8c6b4a]"
+              >
+                Previous source
+              </button>
+              <button
+                type="button"
+                onClick={() => seekSourceBoundary("next")}
+                className="rounded-xl border border-[#e8dcc4] bg-white px-3 py-2 text-xs font-black text-[#6f5a3d] shadow-sm hover:border-[#8c6b4a]"
+              >
+                Next source
+              </button>
+              <button
+                type="button"
+                onClick={() => seekActiveEditBoundary("previous")}
+                className="rounded-xl border border-[#e8dcc4] bg-white px-3 py-2 text-xs font-black text-[#6f5a3d] shadow-sm hover:border-[#8c6b4a]"
+              >
+                Previous active section
+              </button>
+              <button
+                type="button"
+                onClick={() => seekActiveEditBoundary("next")}
+                className="rounded-xl border border-[#e8dcc4] bg-white px-3 py-2 text-xs font-black text-[#6f5a3d] shadow-sm hover:border-[#8c6b4a]"
+              >
+                Next active section
+              </button>
+            </div>
+          </section>
+
           <div className={`w-full flex justify-center mb-8 ${realEditingMode ? "hidden" : ""}`}>
-             <div className="w-full max-w-2xl bg-black rounded-2xl border-4 border-[#e8dcc4] overflow-hidden shadow-xl ring-1 ring-black/5">
+             <div className="w-full max-w-2xl bg-black rounded-2xl border-4 border-[#e8dcc4] overflow-hidden shadow-xl ring-1 ring-black/5 flex flex-col">
+                <div className="flex justify-between items-center bg-[#1b1b1b] px-4 py-2 border-b border-[#2d2d2d]">
+                   <div className="flex gap-2">
+                     <button
+                       onClick={() => startPlaybackMode("play-all")}
+                       className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md transition-colors ${timelineState.editorMode === "play-all" ? "bg-amber-600 text-white" : "bg-[#2d2d2d] text-gray-400 hover:text-white"}`}
+                     >
+                       Source review
+                     </button>
+                     <button
+                       onClick={() => startPlaybackMode("play-edit")}
+                       className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md transition-colors ${(timelineState.editorMode === "play-edit" || !timelineState.editorMode) ? "bg-amber-600 text-white" : "bg-[#2d2d2d] text-gray-400 hover:text-white"}`}
+                     >
+                       Active edit
+                     </button>
+                   </div>
+                   <button
+                     onClick={handleAiAutoEdit}
+                     disabled={isAiAutoEditing || !timelineState.transcript?.length}
+                     className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md text-white transition-colors flex items-center gap-2 ${isAiAutoEditing ? "bg-emerald-800 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500"}`}
+                   >
+                      <span className={`w-1.5 h-1.5 bg-white rounded-full ${isAiAutoEditing ? "animate-ping" : "animate-pulse"}`}></span>
+                      {isAiAutoEditing ? "AI Editing..." : "AI Auto-Edit"}
+                   </button>
+                </div>
                 {/* REMOTION PLAYER INTEGRATION */}
                 <Player
                   component={RemotionComposition}
@@ -6222,6 +7923,16 @@ function CloudEditorContent() {
                   controls
                 />
              </div>
+
+             {selectedClip && (
+               <div className="w-full max-w-2xl">
+                 <KeyframeControls
+                   clip={selectedClip}
+                   currentTime={currentTime}
+                   onUpdateTransforms={updateClipTransforms}
+                 />
+               </div>
+             )}
           </div>
 
           <div className={`mb-6 rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm ${realEditingMode ? "hidden" : ""}`}>
@@ -6255,7 +7966,7 @@ function CloudEditorContent() {
               <div className="p-4 bg-[#fdfaf6] border-b border-[#e8dcc4]">
                 <h2 className="font-bold text-lg text-[#3d3122]">Paper Edit</h2>
                 <p className="text-xs text-[#8c6b4a] font-medium mt-1">
-                  Select text to delete. Deleting text automatically slices the clips and ripples the timeline left!
+                  Select text to deactivate it from the active edit. Quipsly skips it during Play Active Edit, but keeps the source recoverable.
                 </p>
               </div>
               <div className="p-8 overflow-y-auto flex-1 space-y-6 text-xl leading-loose font-serif text-[#5e4b33]">
@@ -6265,16 +7976,23 @@ function CloudEditorContent() {
                     onClick={() => toggleDeleteBlock(block.id)}
                     className={`
                       inline-block mr-2 px-1 cursor-pointer transition-all rounded relative
-                      ${block.deleted ? 'line-through text-[#d4c1a0] decoration-red-500/50 decoration-2' : 'hover:bg-amber-100/50'}
+                      ${block.deleted || block.deactivated ? 'line-through text-[#d4c1a0]' : 'hover:bg-amber-100/50'}
+                      ${block.deleted ? 'decoration-red-500/50 decoration-2' : ''}
+                      ${block.deactivated ? 'decoration-purple-500/50 decoration-2 decoration-dashed' : ''}
                     `}
                   >
-                    {block.alert && !block.deleted && (
+                    {block.alert && !block.deleted && !block.deactivated && (
                       <span className="absolute -top-6 left-0 bg-red-500 text-white text-[10px] font-sans font-bold px-2.5 py-0.5 rounded-md shadow-sm whitespace-nowrap z-10">
                         {block.alert}
                       </span>
                     )}
+                    {(block.deactivated) && (
+                      <span className="absolute -top-4 left-0 text-[10px] whitespace-nowrap z-10 opacity-70">
+                        ✨ AI cut
+                      </span>
+                    )}
                     {transcriptWordTimings(block).map((word) => {
-                      const isActive = !block.deleted && currentTime >= word.start && currentTime < word.end;
+                      const isActive = !block.deleted && !block.deactivated && currentTime >= word.start && currentTime < word.end;
                       return (
                         <span
                           key={word.id}
@@ -6298,7 +8016,7 @@ function CloudEditorContent() {
 
           {viewMode === "timeline" && (
             <div className="w-full flex-1 flex flex-col justify-end mt-auto border border-[#e8dcc4] bg-white rounded-2xl overflow-hidden shadow-sm p-4 relative">
-              
+
               {(timelineState.loopClips?.length ?? 0) > 0 && (
                 <div className="absolute top-16 right-4 z-10 w-64 max-h-[40vh] overflow-y-auto bg-white border border-[#e8dcc4] rounded-lg shadow-lg flex flex-col p-3 gap-3">
                   <h3 className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider flex justify-between">
@@ -6306,7 +8024,7 @@ function CloudEditorContent() {
                   </h3>
                   {timelineState.loopClips!.map(loop => (
                     <div key={loop.id} className="relative rounded bg-slate-50 border border-slate-200 overflow-hidden flex flex-col group">
-                      <button 
+                      <button
                         onClick={() => deleteLoopClip(loop.id)}
                         className="absolute top-1 right-1 z-20 bg-white/80 hover:bg-white rounded-full w-5 h-5 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Delete loop"
@@ -6315,13 +8033,13 @@ function CloudEditorContent() {
                       </button>
                       <div className="aspect-video w-full bg-black relative">
                         {loop.sourceType === "youtube-embed" ? (
-                          <iframe 
+                          <iframe
                             className="w-full h-full"
                             src={`https://www.youtube.com/embed/${loop.sourceUrl}?start=${Math.floor(loop.startSec)}&end=${Math.ceil(loop.endSec)}&loop=1&playlist=${loop.sourceUrl}&autoplay=1&mute=1`}
                             allow="autoplay"
                           />
                         ) : (
-                          <video 
+                          <video
                             className="w-full h-full object-cover"
                             src={loop.sourceUrl}
                             autoPlay

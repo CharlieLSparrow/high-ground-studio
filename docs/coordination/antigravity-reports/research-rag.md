@@ -201,7 +201,7 @@ Files changed:
 The best first query for the assistant to make using this API would be:
 ```typescript
 const packet = await searchExamples(
-  { query: "character's core motivation" }, 
+  { query: "character's core motivation" },
   { activeProjectId: currentProjectId }
 );
 ```
@@ -263,7 +263,7 @@ Real sources currently queried:
 - `StudioDocumentBlock` for examples/passages.
 
 Empty-state behavior:
-When a packet contains 0 results, the new `formatPacketForAssistant` helper explicitly returns a guiding string to the LLM: 
+When a packet contains 0 results, the new `formatPacketForAssistant` helper explicitly returns a guiding string to the LLM:
 `[System] Search for "{query}" in library "{library}" returned no results. Try searching for a broader term or a different concept.`
 This ensures the LLM doesn't just hallucinate answers when the search fails, and instead realizes it needs to try a different query or admit it has no context.
 
@@ -374,7 +374,7 @@ Retrieval must gracefully route between different domains without tangling the a
 
 ### Required Result Metadata for Robust Citations
 
-To ensure the assistant never black-box writes, every retrieval result must carry exact provenance. The current discriminated unions in `RetrievalProvenance` are strong, but as we expand to books, they must guarantee:
+To ensure source-backed answers never fake provenance, every retrieval result must carry exact provenance. The current discriminated unions in `RetrievalProvenance` are strong, but as we expand to books, they must guarantee:
 - **Origin Type**: (`studio-span` | `quipsly-lore` | `external-book`)
 - **Container ID**: The `projectId` or Book ID.
 - **Node/Block ID**: The exact paragraph or chunk (for deep linking).
@@ -383,7 +383,7 @@ To ensure the assistant never black-box writes, every retrieval result must carr
 - **Verification Status**: Is this a user's rough note (`needs-review`) or a canonical published rule (`verified`)?
 
 ### First New Source to Add
-The highest ROI source to add next is the **QuipLore Quote Archive** (the `quiplore-archive` library). 
+The highest ROI source to add next is the **QuipLore Quote Archive** (the `quiplore-archive` library).
 - *Why:* It requires zero new schema. We already have `QuipslyNode` records with `nodeType = 'QUOTE'`.
 - *How:* We just need to implement a safe JSON text extraction or rely on a new string `content` column on `QuipslyNode`, then add the backend resolver logic to `searchQuotes`.
 
@@ -393,14 +393,14 @@ The highest ROI source to add next is the **QuipLore Quote Archive** (the `quipl
 
 ## 2026-06-04 13:31 local - Research/RAG
 
-Prompt summary: Audit how research retrieval plugs into Quipsly as a librarian/research-assistant system, ensuring it acts as a researcher rather than a black-box writer. Identify weaknesses in citation, source boundaries, and privacy.
+Prompt summary: Audit how research retrieval plugs into Quipsly as a librarian/research-assistant system, ensuring it acts as a researcher rather than a black-box writer. Identify weaknesses in citation, source boundaries, privacy, and where freeform drafting should be clearly separated from sourced claims.
 
 Files changed:
 - `docs/coordination/antigravity-reports/research-rag.md` (MODIFIED - appended this report)
 
 ### Integration Audit: The Librarian System
 
-Quipsly's retrieval layer must explicitly serve as a research pipeline, feeding the Assistant context without granting it mutation rights over the core manuscript. 
+Quipsly's retrieval layer must explicitly serve as a research pipeline, feeding the Assistant context without granting it mutation rights over the core manuscript.
 
 1. **Assistant Research Packets**: The Assistant invokes `searchQuotesAction` or `searchExamplesAction` as tools. It receives a `ManuscriptResearchPacket`. The Assistant reads this formatted packet into its context window, synthesizes an answer for the user, and appends a `StudioAssistantMessage`. The Assistant *cannot* directly modify `StudioDocumentBlock` records based on this retrieval.
 2. **Manuscript Tags & Selected Blocks**: If the user highlights a paragraph and asks a question (e.g., "What does this contradict?"), the Assistant can use the highlighted `blockId` as a baseline to form its `query` for the retrieval actions, cross-referencing the selection against the `active-manuscript` library.
@@ -447,7 +447,7 @@ In this massive 1,500+ line sprint, I took the retrieval contracts and wired the
 1. **Semantic Hybrid Search**: We now have the `embeddings.ts` infrastructure. It generates an embedding for a document block, stores it in the `RetrievalEmbedding` sidecar, and uses Reciprocal Rank Fusion (RRF) to blend `pgvector` semantic hits with keyword hits. The `vector` column is commented out in schema to protect local SQLite instances during this branch, but the code is perfectly wired.
 2. **Lore Graph Extraction**: `searchQuotes` and `searchExamples` now natively parse the `payloadJson` of `QuipslyNode` records in memory, extracting titles and text snippets. The assistant can now query the series bible!
 3. **The Assistant API**: The Vercel AI SDK is now running at `/api/assistant`. I gave `gpt-4o` two explicit tools: `findExamplesInManuscript` and `findQuotesInManuscript`. The system prompt enforces strict librarian behavior (no hallucination, strict citation).
-4. **The Gorgeous UI**: The `ManuscriptClient` now has two new toggles in the header: **Research** and **Assistant**. 
+4. **The Gorgeous UI**: The `ManuscriptClient` now has two new toggles in the header: **Research** and **Assistant**.
    - **Research** opens the `ResearchContextPane`, allowing authors to manually query the system and view `CitationCard`s.
    - **Assistant** opens the `AssistantSidebar`, allowing authors to chat with Quipsly. When the LLM calls a tool, the UI intercepts the JSON packet and renders it as a beautiful stack of `CitationCard`s directly in the chat stream!
 
@@ -456,7 +456,7 @@ This concludes the Research RAG lane foundation. The system is no longer just a 
 ## 2026-06-05 15:15 local - Beta Launch Posture (Prompt 1: PLAN ONLY)
 
 **1. Current beta readiness:** Needs integration.
-The core RAG backend, the Vercel AI SDK route, and the gorgeous React UI sidebars (`AssistantSidebar`, `ResearchContextPane`) are fully built and functionally verified. However, they are currently mounted exclusively in the internal `romance-lab` sandbox and hardcode `projectId="test-project-001"`. 
+The core RAG backend, the Vercel AI SDK route, and the gorgeous React UI sidebars (`AssistantSidebar`, `ResearchContextPane`) are fully built and functionally verified. However, they are currently mounted exclusively in the internal `romance-lab` sandbox and hardcode `projectId="test-project-001"`.
 
 **2. Biggest beta blocker in your lane:**
 Context resolution and tenant isolation. Because the UI hardcodes a test project ID, a real beta user opening the Assistant would either get an authorization error (because `requireProjectAccess` correctly blocks them) or they wouldn't be querying their own manuscript. The generic editor (`studio-manuscript-client.tsx`) operates heavily on local-storage drafts and currently doesn't pass a firm `projectId` down to its side panels.
@@ -470,7 +470,7 @@ Integrate the Quipsly Assistant and Research Panes directly into the generic `st
 - `apps/quipsly/src/components/research/AssistantSidebar.tsx` (Handle missing `projectId` gracefully).
 
 **5. Risks and rollback plan:**
-- *Risk:* Injecting heavy AI components into the highly-optimized TipTap editor client could affect layout or cause re-render stutter if not memoized properly. 
+- *Risk:* Injecting heavy AI components into the highly-optimized TipTap editor client could affect layout or cause re-render stutter if not memoized properly.
 - *Rollback Plan:* We can easily comment out the `"assistant"` and `"research"` objects from the `everydayManuscriptSidePanelModes` array in `studio-manuscript-client.tsx`, which will instantly hide the features from the UI without breaking the underlying API routes.
 
 **6. What should be owner-only/internal for beta:**
@@ -516,7 +516,7 @@ No new schema is needed yet. The existing `StudioDocumentBlock` supports all the
 ## 2026-06-05 15:40 local - Beta Launch Posture (Prompt 3: CLEAN AND INTEGRATE)
 
 **1. Exact changed files:**
-- `apps/quipsly/src/app/(app)/manuscript/studio-manuscript-client.tsx`: Added `"assistant"` and `"research"` to `ManuscriptSidePanelMode`. Imported and rendered `AssistantSidebar` and `ResearchContextPane`. Plumbed `latestShareSnapshot?.manuscriptId` as the `projectId`, `latestShareSnapshot?.id` as the `documentId`, and `selectedStructureRange?.startBlockId` as the `cursorNodeId`. 
+- `apps/quipsly/src/app/(app)/manuscript/studio-manuscript-client.tsx`: Added `"assistant"` and `"research"` to `ManuscriptSidePanelMode`. Imported and rendered `AssistantSidebar` and `ResearchContextPane`. Plumbed `latestShareSnapshot?.manuscriptId` as the `projectId`, `latestShareSnapshot?.id` as the `documentId`, and `selectedStructureRange?.startBlockId` as the `cursorNodeId`.
 - `apps/quipsly/src/components/research/AssistantSidebar.tsx`: Passed `documentId` and `cursorNodeId` to the API explicitly.
 - `apps/quipsly/src/components/research/ResearchContextPane.tsx`: Added `documentId` and `cursorNodeId` to the `ResearchContextPaneProps` interface to prevent typecheck errors when rendered by the client.
 
@@ -547,3 +547,119 @@ No new schema is needed yet. The existing `StudioDocumentBlock` supports all the
 - Re-syncing offline changes to update search results instantly without a full server round-trip.
 
 **Implementation Sprint 4 Status:** 🟢 COMPLETE. Context identity is hardened, `requireProjectAccess` actually verifies the ID, and citations declare their source domains explicitly.
+
+## 2026-06-05 Research Proposal - AG-Research-RAG
+
+### Research sources/examples reviewed
+- **NotebookLM:** Grounding UX best practices emphasize transitioning AI from an "oracle" to a verifiable partner. Key patterns include "Source-Bounded Context" (explicitly signaling AI is reasoning only over provided data), "Trust but Verify" citations (clickable markers jumping directly to the source paragraph), "Transparency of Scope" (the AI admits "I don't know" rather than hallucinating when data is absent), and "Layered Explainability" (tooltips for why a source was chosen).
+- **Zotero & Academic Workflows:** Stresses the importance of structured item types (Book, Interview/Transcript, Web Page). High-quality metadata is critical: ISBNs, DOIs, URLs, publishers, and specific granular attachments (e.g., PDF child items). Standardized metadata like Dublin Core/COinS ensures accurate scrapes.
+- **RAG Provenance UI:** The standard for trust is the "evidence-first" approach. Instead of the LLM generating a plain text citation, it should output a citation ID mapping to pre-verified metadata (block ID, stable ID) that the UI renders as interactive markers (e.g., hover-to-preview tooltips or side panels highlighting exact spans).
+
+### Recommended source/retrieval architecture
+- **Ingestion & Chunking:** Documents (manuscripts, transcripts, web pages) should be split into logical `StudioDocumentBlock`s. Rather than pure semantic chunking, structural chunking (by paragraph, heading, or speaker turn) ensures citations point to human-readable boundaries.
+- **Hybrid Search (Keyword + Semantic):** Start with robust keyword search combined with a vector database (like `pgvector`). Use Reciprocal Rank Fusion (RRF) to blend keyword exact-matches (vital for names/lore) with semantic intent (vital for themes).
+- **Packet-Based Context:** The system should build a structured `ManuscriptResearchPacket` encapsulating retrieved results, where each `RetrievalResult` contains deep `RetrievalProvenance` (e.g., `documentTitle`, `blockStableId`, `spanId`). This allows the LLM to synthesize an answer while outputting structured citation markers mapped to real database entities.
+
+### Current Quipsly gaps
+- **Schema Extensibility for External Sources:** The `StudioDocumentBlock` and `QuipslyNode` models are heavily biased towards the active manuscript and internal lore. There is no clear model for external reference materials (like PDFs, course pages, imported Zotero libraries, or raw interview transcripts) that maintain pristine source-truth while allowing user annotations.
+- **UI Presentation of Citations:** While the backend now generates rich provenance in `resultLine`, the Assistant UI still largely outputs plaintext `[Document: ... | Block: ...]` citations. We lack interactive, clickable Citation Cards or hover-to-preview tooltips.
+- **Abstention & Grounding Constraints:** The Assistant prompt doesn't strictly enforce an "I don't know" fallback or explicitly prevent "citation laundering" (the LLM making up a citation ID).
+
+### Proposed next implementation pass
+1. **Interactive Citation UI:** Upgrade the Assistant and Research UI components to parse citation IDs from the LLM response and render them as interactive tags. Clicking a tag should ideally scroll the manuscript or open a side-preview of the source block.
+2. **"Source Library" Concept:** Introduce a basic UI and API layer for managing an external "Source Library" (uploading reference materials that are separate from the active manuscript).
+3. **Structured Tool Calling:** Migrate the Vercel AI SDK route from parsing plain-text prompts to using proper structured tool calls (`@ai-sdk/react` tool maps), forcing the LLM to output an `answer` string and a structured `citations` array.
+
+### Files likely touched
+- `apps/quipsly/src/components/research/AssistantSidebar.tsx` (Citation rendering)
+- `apps/quipsly/src/app/api/assistant/route.ts` (Structured tool responses)
+- `apps/quipsly/src/lib/retrieval/search.ts` (Enhancing metadata extraction)
+
+### Schema ideas (SCHEMA PROPOSAL ONLY)
+```prisma
+model StudioSourceDocument {
+  id              String   @id @default(cuid())
+  projectId       String
+  itemType        String   @default("webpage") // book, transcript, webpage
+  title           String
+  authors         String?
+  publisher       String?
+  url             String?
+  externalId      String?  // DOI, ISBN
+  status          String   @default("ingested")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  blocks          StudioSourceBlock[]
+  project         StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model StudioSourceBlock {
+  id               String   @id @default(cuid())
+  sourceDocumentId String
+  content          String   @db.Text
+  pageNumber       String?
+  timestamp        String?  // For transcripts/video
+  embeddingId      String?  // Pointer to pgvector row
+  createdAt        DateTime @default(now())
+
+  sourceDocument   StudioSourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+}
+```
+
+### Questions for Codex/Product Owner
+1. **External Sources vs. Manuscript:** Should imported research materials (like web clippings or book excerpts) live inside `StudioDocument` with a specific `kind` flag, or do they warrant an entirely separate `StudioSourceDocument` schema as proposed above?
+2. **Immutable Truth:** If users want to highlight or tag external source materials, should those highlights mutate the `StudioSourceBlock` or generate separate overlay entities (`StudioTaggedSpan`) to preserve the pristine original text?
+3. **Zotero Integration:** Is the long-term vision to build a native Zotero sync connector, or simply to mimic their metadata structure for manual uploads?
+
+## 2026-06-05 Research Input Available
+
+Deep research plan added: `docs/coordination/research-inputs/quipsly-source-aware-rag-codex-plan.md`.
+
+Next useful lane pass: design the first source-aware research packet slice around immutable source text plus editable overlays. Quipslys may draft conclusions and summaries, but sourced claims should cite evidence and users decide what becomes final.
+
+## 2026-06-05 Codex Source-Aware Domain Contract Pass
+
+Codex added `packages/quipsly-domain/src/source-aware.ts` and exported it from `@high-ground/quipsly-domain`.
+
+The contract defines:
+
+- Source document kinds and ingest statuses.
+- Selectors for whole documents, blocks, text quotes, character ranges, time ranges, and media segments.
+- Editable source overlays for highlights, tags, notes, quotes, questions, examples, counterexamples, and citations.
+- Source-aware research packets with citations and human review status.
+- Helper constructors for whole-document, block, and text-quote selectors.
+
+Carry-forward rule: study documents and RAG should preserve source text as evidence and put edits/annotations/tags in overlays. Quipslys retrieve, compare, cite, organize, draft, and rewrite; users approve sourced conclusions and final outputs.
+
+## 2026-06-05 Marginalia Beta Sprint - AG-Research-RAG
+
+**1. What I changed:**
+Integrated the new `source-aware.ts` domain foundation into the RAG retrieval contract. I added `SourceAwareProvenance` to the `RetrievalProvenance` discriminated union so that search actions can return immutable source references (with their specific `SourceSelector` kinds and `SourceDocumentKind`). I also updated the Assistant's formatting route to parse and render `source-aware` origins explicitly in its output stream as `[Immutable Source: ... | Selector: ...]`.
+
+**2. Files touched:**
+- `packages/quipsly-domain/src/retrieval.ts` (Added `SourceAwareProvenance` and type guards)
+- `apps/quipsly/src/app/api/assistant/route.ts` (Updated `resultLine` to handle `source-aware` metadata)
+
+**3. Risks or follow-up needed:**
+- The domain definition is wired up, but the actual Prisma layer (`search.ts`) doesn't query a `StudioSourceDocument` table yet because the schema doesn't exist. Once Codex blesses the immutable source schema, we need to add the `source-aware` backend to the `resolveSourceLibrary` logic so the queries can hit real data.
+
+**4. Codex action:**
+**KEEP AND VALIDATE**. The changes are purely additive to the typescript domain and assistant formatting layer. They safely bridge the gap between the new `source-aware` contracts and the active RAG packets without breaking any existing `studio-span` behavior.
+
+## 2026-06-05 Codex Research UI Copy Alignment
+
+Codex updated `apps/quipsly/src/app/(app)/research/page.tsx` so the page matches the assistant-boundary doctrine:
+
+- `The Foragers` became `Research Library`.
+- `Autonomous Agents` became `Quipsly Assistants`.
+- The page now explains source text, editable overlays, and approval-first research packets.
+- Search copy now references source text, quote overlays, transcripts, notes, and concepts.
+
+Carry-forward rule: research UX should feel like expert librarians with receipts plus drafting partners when requested. Freeform drafting is allowed; fake citations, hidden changes, and unsupervised publishing are not.
+
+## Codex sprint note - 2026-06-05 source-aware UX pass
+
+- Added source-ingest and human-review status labels/descriptions to the shared Quipsly domain source-aware contract.
+- Updated the Research Library cards to show source status and review status instead of vague difficulty labels.
+- Follow-up target: connect real source documents and overlays to these cards once RAG persistence is promoted out of prototype state.

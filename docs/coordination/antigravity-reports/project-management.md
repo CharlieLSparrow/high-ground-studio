@@ -37,7 +37,7 @@ Prompt summary: Turn the routing inventory into a safe, step-by-step implementat
    - **Action:** Once Steps 1-3 are live and stable, completely delete `DEFAULT_PROJECT_SLUG` and the static `PROJECT_TEMPLATES` map.
 
 ### First Safe Code Change (The Entry Point)
-The safest and most impactful first code change is **Step 1**. 
+The safest and most impactful first code change is **Step 1**.
 Modifying `/create/page.tsx` to explicitly check for the `project` search parameter and redirecting to `/projects` when it is missing. This disables silent defaults for UI navigation without touching the database or deeper server logic yet.
 
 ### Risky Files/Routes
@@ -61,7 +61,7 @@ Files changed:
 I passed a new `isDefaultFallback` boolean property from the Server Component (`/create/page.tsx`) down into the Client Component (`Workspace.tsx`). This checks if `searchParams.project` was missing from the URL.
 
 If a user hits `/create` blindly and the app silently loads `DEFAULT_PROJECT_SLUG`, the Workbench now renders a prominent, themed warning banner at the top of the interface:
-> **Implicit Project Scope:** No explicit project was selected, so you have been routed to the default global manuscript. 
+> **Implicit Project Scope:** No explicit project was selected, so you have been routed to the default global manuscript.
 > `[Go to the Nest]` (Links to `/projects`)
 
 This acts as the gentlest possible "Step 1" of our migration path. It keeps the current `DEFAULT_PROJECT_SLUG` behavior fully intact, but aggressively signals to the user that they should explicitly select a project.
@@ -82,7 +82,7 @@ To support the vast array of creative work across Quipsly (from HGO manuscripts 
 
 1. **Project Types without Hardcoding**
    - **Schema Proposal:** Add an optional `type` or `templateType` enum to `StudioProject` (e.g., `MANUSCRIPT`, `PODCAST`, `PHOTOGRAPHY`, `COURSE`, `QUIPLORE_COLLECTION`).
-   - When the user selects a project, the `/create` workbench can read this `type` to dynamically arrange the sidebar. 
+   - When the user selects a project, the `/create` workbench can read this `type` to dynamically arrange the sidebar.
      - *Fiction/HGO:* Prioritizes the Living Manuscript, Storyboards, and Character bibles.
      - *Photography/Scroll:* Prioritizes Media Bins, Asset Layouts, and Publishing Integrations.
      - *Podcasts:* Prioritizes the Recording Room, Show Notes, and Audio tracks.
@@ -171,8 +171,8 @@ The current `project-registry.ts` is a static mock. In a true multi-user SaaS:
 - Projects must be dynamically queried using `listStudioProjectOptions` mapped against the user's entitlements, rather than hardcoding static configurations.
 
 ### 2. Avoiding Hardcoded Singleton Project Behavior
-Quipsly currently "creates data as a side effect" via functions like `seedTonightPack(projectSlug)` in the `CreatePage` route, which blindly mutates state assuming it is the single global instance. 
-- **The Fix:** Move seed/initialization logic strictly inside the "Create New Project" server action. 
+Quipsly currently "creates data as a side effect" via functions like `seedTonightPack(projectSlug)` in the `CreatePage` route, which blindly mutates state assuming it is the single global instance.
+- **The Fix:** Move seed/initialization logic strictly inside the "Create New Project" server action.
 - Project lookups (e.g., loading the workbench) must be purely read-only operations that fail loudly with a 404/Redirect if the project does not exist.
 
 ### 3. Future `requireProjectAccess(projectSlug, action)` Boundaries
@@ -201,7 +201,7 @@ To safely evolve the system without breaking current manuscript flows:
 Prompt summary: Execute a self-directed passion run to physically implement the specialized "Project Templates" via rich editor extensions, proving out the multi-template architecture.
 
 ### What Was Built
-I engineered a massive UI extension pack mapping directly to the 5 most distinct project templates we proposed. This required over 1,500 lines of highly-styled, interactive React code. 
+I engineered a massive UI extension pack mapping directly to the 5 most distinct project templates we proposed. This required over 1,500 lines of highly-styled, interactive React code.
 
 By utilizing the `EditorExtensionProvider` you wired up in `Workspace.tsx`, these templates instantly unlock rich, in-editor block cards whenever a paragraph is tagged appropriately:
 
@@ -272,9 +272,9 @@ A Patreon supporter will be able to log in, see a personalized "My First Nest" w
 Requires Codex/Product Owner approval to officially deprecate the `DEFAULT_PROJECT_SLUG` constant, which will break any hardcoded QA flows relying on the global singleton.
 
 ### Recommended Prompt 2 for my lane:
-Execute the "True Tenancy Onboarding & Default Slug Extinction" pass. 
-1. Delete `DEFAULT_PROJECT_SLUG` from `project-registry.ts` and remove it from all `/create`, `episode-production`, and `/call` route fallbacks. 
-2. Update `/create/page.tsx` to immediately `redirect("/projects")` if `searchParams.project` is missing. 
+Execute the "True Tenancy Onboarding & Default Slug Extinction" pass.
+1. Delete `DEFAULT_PROJECT_SLUG` from `project-registry.ts` and remove it from all `/create`, `episode-production`, and `/call` route fallbacks.
+2. Update `/create/page.tsx` to immediately `redirect("/projects")` if `searchParams.project` is missing.
 3. Update `/projects/page.tsx`: If the user has 0 projects, automatically execute `createStudioProject` to provision "My First Nest" and redirect them into it, establishing a seamless onboarding flow. Ensure no side-effect data creation happens outside of explicit project boundaries.
 
 ---
@@ -284,10 +284,10 @@ Execute the "True Tenancy Onboarding & Default Slug Extinction" pass.
 **Target:** Execute the Prompt 2 plan safely across the `AG-Project-Management` lane without breaking existing infrastructure or running into multi-user data bleeding.
 
 ### What Was Changed
-- **`src/lib/studio/project-registry.ts`:** 
+- **`src/lib/studio/project-registry.ts`:**
   - Changed `ensureStudioProjectDocument` to `lookupStudioProjectDocument`. The helper now strictly looks up the Project and Document and throws an exception if they don't exist. This permanently removes the "global side-effect creation" that was plaguing the codebase.
   - Updated `createStudioProject` to return a `{ project, workspace, document }` wrapper, allowing explicit creations to function smoothly.
-- **`src/app/(app)/create/page.tsx`:** 
+- **`src/app/(app)/create/page.tsx`:**
   - Removed the `DEFAULT_PROJECT_SLUG` fallback. If a user arrives without a `?project=` query param, they are instantly redirected back to `/projects`.
 - **`src/app/(app)/create/actions.ts` & `src/app/(app)/episode-production/actions.ts`:**
   - Migrated from `ensureStudioProjectDocument` to `lookupStudioProjectDocument` to prevent accidental project/document creation via background action calls.
@@ -325,6 +325,77 @@ Execute the "True Tenancy Onboarding & Default Slug Extinction" pass.
 ### Known Broken Legacy URLs
 - `/create` (no params) -> correctly broken and redirected.
 - Hardcoded fetch requests to `/api/episode-production/*` without `projectSlug` payload -> correctly broken and safely returns 500 without side effects.
+
+---
+
+## 2026-06-05 Research Proposal - AG-Project-Management
+
+### Research sources/examples reviewed
+- **Notion**: Utilizes top-level pages as pseudo-projects/workspaces. The boundary between "personal" and "shared" is fluid, which is flexible but often leads to organizational chaos.
+- **Figma**: Uses a strict Organization > Team > Project > File hierarchy. This is excellent for bounding context and access control cleanly, preventing "where does this belong" fatigue.
+- **Linear/Jira**: "Projects" have deadlines, issues, and specific lifecycles. They are fundamentally task-oriented rather than content-oriented.
+- **Patreon/Community SaaS**: Typically drops users into a gated community feed, followed by a separate area for personal creation. Best-in-class onboarding avoids long tooltips and instead drops users into an interactive, pre-populated template (e.g., a "Welcome to Quipsly" starter document).
+
+### Current Nest system summary
+In Quipsly, the `StudioWorkspace` is the tenancy boundary, and the `StudioProject` (user-facing: "Nest") is the conceptual boundary for a body of work.
+- A Nest binds together text (Documents), assets (MediaBins, ShootDays), logic (StoryBibleActions), and output (EpisodeProductions, Storyboards).
+- The recent implementation sprints safely gated Nest creation and explicitly blocked side-effect-driven global fallback projects, establishing a clean bedrock for beta users.
+
+### Beta readiness risks
+1. **Tenancy Leaks in Assistant Context:** We must ensure the AI assistant queries are strictly bounded by `projectId` or `workspaceId` so one beta user cannot accidentally query another user's research material.
+2. **"Blank Slate" Syndrome:** We removed the automatic creation of a default manuscript, which is great for safety, but now new users hit an empty state. If they don't know what shape to choose, they may churn before writing a word.
+3. **Study vs. Writing Confusion:** Currently, these are conceptual distincts. If they look identical in the UI without a clear hierarchy (e.g., a sidebar grouping "Sources" vs "Drafts"), users will jumble them.
+
+### Answers to Focus Questions
+1. **Is “Nest” the right beta-facing project unit and how should we explain it?**
+   Yes. "Project" feels like Jira (deadline/task-oriented), and "Workspace" feels like Slack (corporate silo). "Nest" aligns perfectly with Quipsly's brand as a creative companion. Explanation: *“Nests hold the work. Documents hold the text. Keep your drafts, research, and assistant context warm in one place.”*
+2. **How should Writing documents and Study documents coexist inside one Nest?**
+   They belong to the same `StudioProject`, but the UI must visually separate them—perhaps a sidebar divided into "Library/Sources" (Study Docs) and "Drafts/Manuscripts" (Writing Docs). The assistant is the bridge, reading from the Library to help write the Draft.
+3. **What should first-run onboarding look like for Patreon beta users?**
+   Upon first login, if the user has 0 Nests, the system should intercept them and auto-provision a "My First Nest" (using the Mixed or Writing template) pre-populated with a fully interactive "How to use Quipsly" document.
+4. **What routes should be public, beta-gated, owner-only, or hidden?**
+   - *Public:* Published packets (`/api/public/*`), external review links (`/review/[id]`).
+   - *Beta-gated:* `/projects`, `/create`, `/editor`, media endpoints.
+   - *Owner-only:* Analytics, global schema management, `high-ground-odyssey` bypasses.
+   - *Hidden:* `quipsly-dev-lab`, experimental feature flag routes.
+5. **What must be fixed before real external users touch this?**
+   - The interactive Starter Document needs to actually exist and be seeded into new Nests.
+   - The Assistant/RAG queries must have hardcoded `where: { projectId }` limits verified in code.
+
+### Proposed next implementation pass
+1. **The Starter Seed Pass:** Implement `seedStarterNest()` logic that triggers automatically for brand new users, injecting an interactive tutorial document.
+2. **Sidebar Separation Pass:** Update the `/create` workspace sidebar to visually group `StudioDocuments` into "Library" (study) and "Drafts" (writing) based on document metadata/tags.
+3. **Assistant Bounds Audit:** Grep the AI context retrieval paths to guarantee `projectId` isolation.
+
+### Files likely touched
+- `src/app/(app)/create/starterDocuments.ts`
+- `src/app/(app)/projects/page.tsx`
+- `src/lib/studio/project-registry.ts`
+- `src/app/(app)/create/Workspace.tsx`
+
+### Schema/routing proposals
+- **Schema:** Consider adding a `documentType` enum (`WRITING` | `STUDY`) to `StudioDocument` (currently we just use tags or project kinds, but explicit column typing would make UI grouping trivial).
+
+### Questions for Codex/Product Owner
+1. Do you want the "Starter Document" to be dynamic (generated by the AI greeting them) or a static hardcoded markdown payload?
+2. Should a Patreon beta user be restricted to a certain number of Nests during the initial beta phase?
+
+---
+
+## 2026-06-05 Marginalia Beta Sprint - AG-Project-Management
+
+### What I changed
+Implemented the **Starter Seed Pass** directly into the project registry to cure "Blank Slate" syndrome for new beta users. When `createStudioProject` is called, it now immediately provisions the first `StudioDocument` with the corresponding interactive tutorial blocks (and their tags/spans) from `starterDocuments.ts`, matching the requested `StudioNestKind`. This ensures that when a beta user creates a "Writing Nest" or "Study Nest", they are instantly dropped into a living document explaining how to use it, rather than staring at a terrifyingly empty white screen.
+
+### Files touched
+- `apps/quipsly/src/lib/studio/project-registry.ts`
+
+### Risks or follow-up needed
+- **Risk:** `createStudioProject` is now doing a lot more heavy lifting (nested db writes for blocks, tags, and tagged spans) within the creation lifecycle. If the `StudioPrismaClient` types aren't fully synchronized, or if the db transaction times out, project creation could partially fail (though the try/catch around seeding ensures the project itself will still return).
+- **Follow-up:** Check if `seedTonightPack` in `actions.ts` needs to be refactored or simplified now that `createStudioProject` reliably seeds starter blocks out-of-the-box.
+
+### Recommendation for Codex
+**Keep and Validate:** This directly satisfies the beta onboarding requirement of preventing confusing dead ends. Please validate the `StudioPrismaClient` type definitions and ensure the `try/catch` seed block performs reliably under production constraints.
 
 ---
 

@@ -5,6 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { PackageOpen, Youtube, CheckCircle2, AlertCircle, ArrowRight, Rss } from "lucide-react";
 import { getEpisodeCandidatesBySlugAction, approveEpisodeCandidateAction } from "@/app/(app)/create/actions";
 import { DashboardSkeleton, ContentBlockSkeleton } from "../components/LoadingSkeleton";
+import { DestinationStatusRail } from "../components/DestinationStatusRail";
+import {
+  buildCandidateDestinationStates,
+  summarizeDestinationStates,
+} from "@/lib/publishing/statusModel";
 
 export default function PackageBuilderPage() {
   const searchParams = useSearchParams();
@@ -40,6 +45,8 @@ export default function PackageBuilderPage() {
   }, [projectSlug]);
 
   const pkg = candidates.find(p => p.id === selectedPkgId) || null;
+  const destinationStates = pkg ? buildCandidateDestinationStates(pkg) : [];
+  const destinationSummary = summarizeDestinationStates(destinationStates);
 
   useEffect(() => {
     setValidationErrors([]);
@@ -84,8 +91,8 @@ export default function PackageBuilderPage() {
         <p className="text-[#8c6b4a] max-w-lg mb-8 leading-relaxed">
           Open your living writing document, tag at least one section with the <strong className="text-[#3d3122]">#episode</strong> or <strong className="text-[#3d3122]">#chapter</strong> structure tag, and click <strong className="text-[#3d3122]">Compile Document Outline</strong> in the Publisher Panel.
         </p>
-        <a href="/create" className="px-6 py-3 bg-[#3d3122] hover:bg-[#2c2217] text-white rounded-xl font-bold transition-all shadow-sm">
-          Go to Writing Desk
+        <a href="/projects?fallback=true" className="px-6 py-3 bg-[#3d3122] hover:bg-[#2c2217] text-white rounded-xl font-bold transition-all shadow-sm">
+          Choose a Nest
         </a>
       </div>
     );
@@ -101,7 +108,7 @@ export default function PackageBuilderPage() {
       </header>
 
       <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
-        
+
         {/* Left Column: Package Selection */}
         <div className="col-span-3 bg-white rounded-2xl border border-[#e8dcc4] shadow-sm flex flex-col overflow-hidden" role="region" aria-label="Package Queue">
           <div className="p-4 border-b border-[#e8dcc4] bg-[#f8f3e6]">
@@ -111,7 +118,7 @@ export default function PackageBuilderPage() {
             {candidates.map(p => {
               const isSelected = selectedPkgId === p.id;
               return (
-                <button 
+                <button
                   key={p.id}
                   onClick={() => setSelectedPkgId(p.id)}
                   aria-pressed={isSelected}
@@ -135,7 +142,7 @@ export default function PackageBuilderPage() {
 
         {/* Middle & Right Column: Builder Canvas */}
         <div className="col-span-9 flex flex-col bg-white rounded-2xl border border-[#e8dcc4] shadow-sm overflow-hidden">
-          
+
           {/* Builder Header */}
           <div className="p-6 border-b border-[#e8dcc4] flex justify-between items-start bg-[#fdfaf6]">
             {!pkg ? <ContentBlockSkeleton /> : (
@@ -148,10 +155,21 @@ export default function PackageBuilderPage() {
                     <span className="text-xs text-[#8c6b4a] font-mono">{pkg.candidateId}</span>
                   </div>
                   <h2 className="text-2xl font-bold text-[#3d3122]">{pkg.projectionTitle}</h2>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-800">
+                      {destinationSummary.published} published
+                    </span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
+                      {destinationSummary.ready} ready/queued
+                    </span>
+                    <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-rose-800">
+                      {destinationSummary.needsAttention} needs review
+                    </span>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   {pkg.candidateStatus !== "published" ? (
-                    <button 
+                    <button
                       onClick={handleApprove}
                       disabled={validationErrors.length > 0 || approving}
                       className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition-all shadow-sm flex items-center gap-2 focus:ring-2 focus:ring-offset-2 focus:ring-amber-600"
@@ -179,13 +197,13 @@ export default function PackageBuilderPage() {
             {(["content", "media", "destinations"] as const).map(tab => {
               const isActive = activeTab === tab;
               return (
-                <button 
+                <button
                   key={tab}
                   role="tab"
                   aria-selected={isActive}
                   aria-controls={`tabpanel-${tab}`}
                   id={`tab-${tab}`}
-                  onClick={() => setActiveTab(tab)} 
+                  onClick={() => setActiveTab(tab)}
                   className={`px-4 py-3 font-bold text-sm border-b-2 transition-all focus:outline-none focus:bg-amber-50 ${isActive ? "border-amber-600 text-amber-700" : "border-transparent text-[#8c6b4a] hover:text-[#3d3122]"}`}
                 >
                   {tab === "content" ? "Public Safe Content" : tab === "media" ? "Media Assets" : "Destination Overrides"}
@@ -195,7 +213,7 @@ export default function PackageBuilderPage() {
           </div>
 
           {/* Builder Content Area */}
-          <div 
+          <div
             className="flex-1 overflow-y-auto p-6 bg-[#fdfaf6]"
             id={`tabpanel-${activeTab}`}
             role="tabpanel"
@@ -203,6 +221,18 @@ export default function PackageBuilderPage() {
           >
             {!pkg ? <ContentBlockSkeleton /> : (
               <>
+                <div className="mb-6 rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-serif text-lg font-black text-[#3d3122]">Destination status</h3>
+                      <p className="mt-1 text-xs leading-5 text-[#8c6b4a]">
+                        This is the public packet map. It shows where this source-backed package is live, ready, queued, or blocked without exposing private manuscript notes.
+                      </p>
+                    </div>
+                  </div>
+                  <DestinationStatusRail states={destinationStates} />
+                </div>
+
                 {validationErrors.length > 0 && (
                   <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex gap-3 text-red-800" role="alert">
                     <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -219,16 +249,16 @@ export default function PackageBuilderPage() {
                   <div className="space-y-8">
                     <div>
                       <label htmlFor="pkg-summary" className="block text-sm font-bold uppercase tracking-wider text-[#8c6b4a] mb-3">Summary (Meta Description)</label>
-                      <textarea 
+                      <textarea
                         id="pkg-summary"
-                        className="w-full p-4 rounded-xl border border-[#e8dcc4] bg-white text-sm text-[#3d3122] focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-shadow" 
-                        rows={3} 
-                        value={pkg.packet?.summary || ""} 
-                        readOnly 
+                        className="w-full p-4 rounded-xl border border-[#e8dcc4] bg-white text-sm text-[#3d3122] focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-shadow"
+                        rows={3}
+                        value={pkg.packet?.summary || ""}
+                        readOnly
                         aria-readonly="true"
                       />
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-6">
                       <div>
                         <h3 className="text-sm font-bold uppercase tracking-wider text-[#8c6b4a] mb-3">Verified Pull Quotes</h3>
@@ -245,7 +275,7 @@ export default function PackageBuilderPage() {
                           <p className="text-sm text-[#8c6b4a] italic">No verified quotes compiled from this section.</p>
                         )}
                       </div>
-                      
+
                       <div>
                         <h3 className="text-sm font-bold uppercase tracking-wider text-[#8c6b4a] mb-3">Manuscript Text (MDX Draft)</h3>
                         <div className="p-4 bg-white rounded-xl border border-[#e8dcc4] shadow-sm max-h-[300px] overflow-y-auto text-sm text-[#5e4b33] leading-relaxed">
@@ -272,12 +302,12 @@ export default function PackageBuilderPage() {
                        </div>
                        <div className="flex-1 w-full">
                          <h3 className="font-bold text-[#3d3122]">Primary Thumbnail URL</h3>
-                         <input 
-                           type="text" 
-                           readOnly 
-                           value={pkg.packet?.media?.thumbnailUrl || "No media thumbnail connected. Using default."} 
-                           className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1 text-sm font-mono text-[#8c6b4a] mt-2 outline-none" 
-                           aria-label="Thumbnail URL" 
+                         <input
+                           type="text"
+                           readOnly
+                           value={pkg.packet?.media?.thumbnailUrl || "No media thumbnail connected. Using default."}
+                           className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1 text-sm font-mono text-[#8c6b4a] mt-2 outline-none"
+                           aria-label="Thumbnail URL"
                          />
                          <p className="text-xs text-[#8c6b4a] mt-2">To configure media assets (e.g. dynamic audio recording file paths), edit your show prep settings.</p>
                        </div>
@@ -308,7 +338,7 @@ export default function PackageBuilderPage() {
                           </div>
                           <div className="mt-4 pt-2 border-t border-gray-100">
                             {pkg.candidateStatus === "published" ? (
-                              <a 
+                              <a
                                 href={`https://highgroundodyssey.com/episodes/${pkg.projectionSlug}`}
                                 target="_blank"
                                 rel="noreferrer"
@@ -336,7 +366,7 @@ export default function PackageBuilderPage() {
                           </div>
                           <div className="mt-4 pt-2 border-t border-gray-100">
                             {pkg.packet?.media?.videoUrl ? (
-                              <a 
+                              <a
                                 href={pkg.packet.media.videoUrl}
                                 target="_blank"
                                 rel="noreferrer"
@@ -363,7 +393,7 @@ export default function PackageBuilderPage() {
                             <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal">Campaign sponsor sign-in and members-only teaser text</p>
                           </div>
                           <div className="mt-4 pt-2 border-t border-gray-100">
-                            <a 
+                            <a
                               href="https://patreon.com/c/HighGroundOdyssey"
                               target="_blank"
                               rel="noreferrer"
@@ -387,7 +417,7 @@ export default function PackageBuilderPage() {
                             <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal">iTunes and Spotify compliant dynamic self-hosted RSS XML</p>
                           </div>
                           <div className="mt-4 pt-2 border-t border-gray-100">
-                            <a 
+                            <a
                               href={`/api/public/podcast/rss/${projectSlug}`}
                               target="_blank"
                               rel="noreferrer"
@@ -420,12 +450,12 @@ export default function PackageBuilderPage() {
                               </div>
                               <div>
                                  <label htmlFor="yt-chapters" className="text-xs font-bold text-[#8c6b4a] uppercase">Chapter Markers</label>
-                                 <textarea 
-                                   id="yt-chapters" 
-                                   className="w-full mt-1 p-2 border border-[#e8dcc4] rounded-lg text-xs font-mono focus:ring-2 focus:ring-red-500 outline-none" 
-                                   rows={4} 
-                                   readOnly 
-                                   value={(pkg.packet.overrides.youtube.chapterMarkers || []).join("\n")} 
+                                 <textarea
+                                   id="yt-chapters"
+                                   className="w-full mt-1 p-2 border border-[#e8dcc4] rounded-lg text-xs font-mono focus:ring-2 focus:ring-red-500 outline-none"
+                                   rows={4}
+                                   readOnly
+                                   value={(pkg.packet.overrides.youtube.chapterMarkers || []).join("\n")}
                                  />
                               </div>
                             </>
@@ -448,11 +478,11 @@ export default function PackageBuilderPage() {
                           <p className="leading-relaxed">
                             Your Dynamic XML Feed URL is live and self-hosted on this Nest:
                           </p>
-                          <input 
-                             type="text" 
-                             readOnly 
-                             value={typeof window !== "undefined" ? `${window.location.origin}/api/public/podcast/rss/${projectSlug}` : `/api/public/podcast/rss/${projectSlug}`} 
-                             className="w-full bg-[#f8f3e6] border border-[#e8dcc4] rounded p-2 font-mono text-[10px] text-amber-800 outline-none" 
+                          <input
+                             type="text"
+                             readOnly
+                             value={typeof window !== "undefined" ? `${window.location.origin}/api/public/podcast/rss/${projectSlug}` : `/api/public/podcast/rss/${projectSlug}`}
+                             className="w-full bg-[#f8f3e6] border border-[#e8dcc4] rounded p-2 font-mono text-[10px] text-amber-800 outline-none"
                           />
                           <p className="leading-relaxed text-[#8c6b4a]">
                             Feed dynamically queries all approved candidates where `candidateStatus = "published"`. Copy the URL above and feed it to Apple Podcasts or Spotify.

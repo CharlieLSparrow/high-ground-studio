@@ -1,8 +1,18 @@
 "use server";
 
+import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
-import type { StudioProjectionStatus } from "@prisma/client";
+import {
+  canAccessStudioProjectBySlug,
+  type StudioProjectAccessAction,
+} from "@/lib/server/studio-project-access";
+import type { Prisma, StudioProjectionStatus } from "@prisma/client";
 import { ViewDefinition } from "./types";
+import type {
+  WorkbenchBaseState,
+  WorkbenchScopeProjectSummary,
+  WorkbenchScopedState,
+} from "./types";
 import { revalidatePath } from "next/cache";
 import {
   createManuscriptDraftPlainText,
@@ -12,7 +22,10 @@ import {
   DEFAULT_PROJECT_SLUG,
   DEV_PROJECT_SLUG,
   lookupStudioProjectDocument,
+  normalizeProjectSlug,
+  ensureStudioWorkspace,
   nestKindFromSourceLabel,
+  workflowSystemForNestKind,
   projectConfig,
 } from "./projectConfig";
 import { createStarterBlocks } from "./starterDocuments";
@@ -43,9 +56,214 @@ const SEED_TAGS = [
   { slug: "youtube-clip", label: "YouTube Clip", category: "media" }
 ];
 
+type ScopeProjectSlugsInput = string | string[] | undefined;
+
+type RawLinkedProjectRequest = {
+  projectSlug: string;
+  projectName: string;
+};
+
+type ScopedProjectSelection = {
+  projectSlug: string;
+  projectName: string;
+};
+
+const MAX_LINKED_SCOPE_COUNT = 8;
+
+function normalizeScopeSlugs(input: ScopeProjectSlugsInput, primaryProjectSlug: string) {
+  if (!input) return [] as string[];
+
+  const rawValues = Array.isArray(input)
+    ? input.flatMap((raw) => String(raw).split(","))
+    : String(input).split(",");
+
+  const normalized = rawValues
+    .map((value) => normalizeProjectSlug(value))
+    .filter((slug) => slug.length > 0 && slug !== primaryProjectSlug);
+
+  return Array.from(new Set(normalized)).slice(0, MAX_LINKED_SCOPE_COUNT);
+}
+
+function buildUnavailableScopeSummary(slug: string, status: WorkbenchScopeProjectSummary["status"], reason?: string): WorkbenchScopeProjectSummary {
+  return {
+    projectId: "",
+    projectSlug: slug,
+    projectName: slug
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase()),
+    projectNestKind: "writing",
+    workflowSystem: "content-creation",
+    status,
+    persistenceMode: "offline",
+    reason,
+  };
+}
+
+function projectToScopeSummary(
+  project: any,
+  scopeConfig: ScopedProjectSelection,
+): WorkbenchScopeProjectSummary | null {
+  const latestDocument = project?.documents?.[0];
+  const projectNestKind = nestKindFromSourceLabel(project?.sourceLabel ?? null);
+  const workflowSystem = workflowSystemForNestKind(projectNestKind);
+  if (!latestDocument?.id) {
+    return {
+      projectId: project?.id ?? "",
+      projectSlug: scopeConfig.projectSlug,
+      projectName: scopeConfig.projectName,
+      projectNestKind,
+      workflowSystem,
+      status: "missing",
+      persistenceMode: "database",
+      reason: "No document available for this Nest."
+    };
+  }
+
+  return {
+    projectId: project.id,
+    projectSlug: scopeConfig.projectSlug,
+    projectName: scopeConfig.projectName,
+    projectNestKind,
+    workflowSystem,
+    status: "connected",
+    documentId: latestDocument.id,
+    documentTitle: latestDocument.title,
+    persistenceMode: "database"
+  };
+}
+
 const TAG_CATEGORY_BY_SLUG = new Map(
   SEED_TAGS.map((tag) => [tag.slug, tag.category])
 );
+
+async function getActorEmail() {
+  const session = await auth();
+  return session?.user?.primaryEmail || session?.user?.email || null;
+}
+
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
+}
+
+async function recordDocumentOperation(
+  prisma: ReturnType<typeof getPrismaClient>,
+  input: {
+    projectId: string;
+    documentId: string;
+    operationType: string;
+    beforeJson?: unknown;
+    afterJson?: unknown;
+    payloadJson?: unknown;
+    groupId?: string;
+    origin?: "human" | "assistant" | "system" | "import";
+  },
+) {
+  try {
+    const actorEmail = await getActorEmail();
+    await prisma.studioDocumentOperation.create({
+      data: {
+        projectId: input.projectId,
+        documentId: input.documentId,
+        groupId: input.groupId ?? null,
+        actorEmail,
+        origin: input.origin ?? "human",
+        operationType: input.operationType,
+        beforeJson: input.beforeJson === undefined ? undefined : toPrismaJson(input.beforeJson),
+        afterJson: input.afterJson === undefined ? undefined : toPrismaJson(input.afterJson),
+        payloadJson: toPrismaJson(input.payloadJson),
+        reversible: true,
+      },
+    });
+  } catch (error) {
+    console.warn("Could not record document operation.", error);
+  }
+}
+
+async function requireProjectAccessBySlug(
+  prisma: ReturnType<typeof getPrismaClient>,
+  projectSlug: string,
+  action: StudioProjectAccessAction,
+) {
+  const actorEmail = await getActorEmail();
+  const allowed = await canAccessStudioProjectBySlug({
+    projectSlug,
+    email: actorEmail,
+    action,
+    prisma,
+  });
+
+  if (!allowed) {
+    throw new Error(`You do not have ${action} access to this Nest.`);
+  }
+}
+
+async function requireProjectAccessByProjectId(
+  prisma: ReturnType<typeof getPrismaClient>,
+  projectId: string,
+  action: StudioProjectAccessAction,
+) {
+  const project = await prisma.studioProject.findUnique({
+    where: { id: projectId },
+    select: { slug: true },
+  });
+
+  if (!project) {
+    throw new Error("Nest not found.");
+  }
+
+  await requireProjectAccessBySlug(prisma, project.slug, action);
+}
+
+async function requireProjectAccessByDocumentId(
+  prisma: ReturnType<typeof getPrismaClient>,
+  documentId: string,
+  action: StudioProjectAccessAction,
+) {
+  const document = await prisma.studioDocument.findUnique({
+    where: { id: documentId },
+    select: { project: { select: { slug: true } } },
+  });
+
+  if (!document) {
+    throw new Error("Document not found.");
+  }
+
+  await requireProjectAccessBySlug(prisma, document.project.slug, action);
+}
+
+async function requireProjectAccessByBlockId(
+  prisma: ReturnType<typeof getPrismaClient>,
+  blockId: string,
+  action: StudioProjectAccessAction,
+) {
+  const block = await prisma.studioDocumentBlock.findUnique({
+    where: { id: blockId },
+    select: { document: { select: { project: { select: { slug: true } } } } },
+  });
+
+  if (!block) {
+    throw new Error("Block not found.");
+  }
+
+  await requireProjectAccessBySlug(prisma, block.document.project.slug, action);
+}
+
+async function requireProjectAccessByAssistantActionId(
+  prisma: ReturnType<typeof getPrismaClient>,
+  actionId: string,
+  action: StudioProjectAccessAction,
+) {
+  const assistantAction = await prisma.studioAssistantAction.findUnique({
+    where: { id: actionId },
+    select: { session: { select: { projectId: true } } },
+  });
+
+  if (!assistantAction) {
+    throw new Error("Assistant action not found.");
+  }
+
+  await requireProjectAccessByProjectId(prisma, assistantAction.session.projectId, action);
+}
 
 export type HeadingBulkNormalizeResult = {
   ok: boolean;
@@ -224,7 +442,7 @@ function createDefaultViews(idPrefix = "default-view") {
   })) as ViewDefinition[];
 }
 
-function createOfflineWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
+function createOfflineWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG): WorkbenchBaseState {
   const config = projectConfig(projectSlug);
   const blocks = [
     { id: "offline-preface", text: "Preface", tags: ["chapter"] },
@@ -358,7 +576,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
     console.warn("DATABASE_URL is not set; skipping database seed and using offline workbench state.", error);
     return { projectId: OFFLINE_PROJECT_ID, documentId: OFFLINE_DOCUMENT_ID };
   }
-  
+
   const { project, document } = await lookupStudioProjectDocument(prisma, config.slug);
   const seedNestKind = nestKindFromSourceLabel(project.sourceLabel) || config.nestKind;
 
@@ -372,10 +590,10 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
         // @ts-ignore
         category: dbCategory
       },
-      create: { 
-        projectId: project.id, 
-        slug: t.slug, 
-        label: t.label, 
+      create: {
+        projectId: project.id,
+        slug: t.slug,
+        label: t.label,
         // @ts-ignore - Prisma types might be stale since db push failed, so bypass strict enum checks if needed
         category: dbCategory
       }
@@ -455,7 +673,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
   return { projectId: project.id, documentId: document.id };
 }
 
-export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
+export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG): Promise<WorkbenchBaseState | null> {
   let prisma: ReturnType<typeof getPrismaClient>;
   try {
     prisma = getPrismaClient();
@@ -463,7 +681,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     console.warn("DATABASE_URL is not set; loading offline Quipsly workbench state.", error);
     return createOfflineWorkbenchState(projectSlug);
   }
-  
+
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
   let project = null;
@@ -552,10 +770,129 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG) {
     projectId: project.id,
     projectSlug: project.slug,
     projectName: project.name,
+    projectNestKind: nestKindFromSourceLabel(project.sourceLabel),
+    workflowSystem: workflowSystemForNestKind(project.sourceLabel),
     documentId: document.id,
     documentTitle: document.title,
     persistenceMode: "database" as const
   };
+}
+
+async function loadLinkedScopeSummary(projectSlug: string): Promise<WorkbenchScopeProjectSummary> {
+  const normalizedSlug = normalizeProjectSlug(projectSlug);
+  const config = projectConfig(normalizedSlug);
+
+  try {
+    const actorEmail = await getActorEmail();
+    const canReadScope = await canAccessStudioProjectBySlug({
+      projectSlug: normalizedSlug,
+      email: actorEmail,
+      action: "read",
+    });
+
+    if (!canReadScope) {
+      return {
+        projectId: "",
+        projectSlug: normalizedSlug,
+        projectName: config.name,
+        projectNestKind: config.nestKind,
+        workflowSystem: workflowSystemForNestKind(config.nestKind),
+        status: "denied",
+        persistenceMode: "offline",
+        reason: "No read access for this Nest."
+      };
+    }
+
+    const prisma = getPrismaClient();
+    const workspace = await ensureStudioWorkspace(prisma);
+    const project = await prisma.studioProject.findUnique({
+      where: {
+        workspaceId_slug: {
+          workspaceId: workspace.id,
+          slug: normalizedSlug
+        }
+      },
+      include: {
+        documents: {
+          select: {
+            id: true,
+            title: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 1
+        }
+      }
+    });
+
+    if (!project) {
+      return {
+        projectId: "",
+        projectSlug: normalizedSlug,
+        projectName: config.name,
+        projectNestKind: config.nestKind,
+        workflowSystem: workflowSystemForNestKind(config.nestKind),
+        status: "missing",
+        persistenceMode: "offline",
+        reason: "This Nest does not exist in this workspace."
+      };
+    }
+
+    const summary = projectToScopeSummary(project, {
+      projectSlug: normalizedSlug,
+      projectName: config.name
+    });
+
+    if (summary) return summary;
+    return {
+      projectId: project.id,
+      projectSlug: normalizedSlug,
+      projectName: config.name,
+      projectNestKind: nestKindFromSourceLabel(project?.sourceLabel ?? null),
+      workflowSystem: workflowSystemForNestKind(project?.sourceLabel ?? null),
+      status: "missing",
+      persistenceMode: "database",
+      reason: "No document available for this Nest."
+    };
+  } catch (error) {
+    return buildUnavailableScopeSummary(
+      normalizedSlug,
+      "unavailable",
+      error instanceof Error ? error.message : "Unable to load scope"
+    );
+  }
+}
+
+export async function loadWorkbenchStateWithScope(
+  projectSlug = DEFAULT_PROJECT_SLUG,
+  scopeProjectSlugs: ScopeProjectSlugsInput = []
+): Promise<WorkbenchScopedState | null> {
+  const primary = await loadWorkbenchState(projectSlug);
+  if (!primary) return null;
+
+  const normalizedPrimary = normalizeProjectSlug(primary.projectSlug);
+  const linkedProjectSlugs = normalizeScopeSlugs(scopeProjectSlugs, normalizedPrimary);
+  if (linkedProjectSlugs.length === 0) {
+    return { ...primary, linkedProjects: [] };
+  }
+
+  const summaries = await Promise.all(
+    linkedProjectSlugs.map(async (slug) => {
+      const fallback = buildUnavailableScopeSummary(
+        slug,
+        "unavailable",
+        "This Nest is temporarily unavailable."
+      );
+
+      try {
+        return await loadLinkedScopeSummary(slug);
+      } catch {
+        return fallback;
+      }
+    })
+  );
+
+  return { ...primary, linkedProjects: summaries };
 }
 
 export async function saveBlockContent(blockId: string, newText: string) {
@@ -569,9 +906,40 @@ export async function saveBlockContent(blockId: string, newText: string) {
 
   if (blockId.startsWith("offline-")) return;
 
+  await requireProjectAccessByBlockId(prisma, blockId, "write");
+
+  const existingBlock = await prisma.studioDocumentBlock.findUnique({
+    where: { id: blockId },
+    select: {
+      body: true,
+      documentId: true,
+      document: { select: { projectId: true } },
+    },
+  });
+
+  if (!existingBlock) return;
+
   await prisma.studioDocumentBlock.update({
     where: { id: blockId },
     data: { body: newText }
+  });
+  await recordDocumentOperation(prisma, {
+    projectId: existingBlock.document.projectId,
+    documentId: existingBlock.documentId,
+    operationType: "block-content-save",
+    beforeJson: {
+      blockId,
+      body: existingBlock.body,
+    },
+    afterJson: {
+      blockId,
+      body: newText,
+    },
+    payloadJson: {
+      blockId,
+      previousLength: existingBlock.body.length,
+      nextLength: newText.length,
+    },
   });
   revalidatePath('/');
   revalidatePath('/create');
@@ -588,12 +956,45 @@ export async function archiveBlock(blockId: string) {
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
 
+  await requireProjectAccessByBlockId(prisma, blockId, "write");
+
+  const existingBlock = await prisma.studioDocumentBlock.findUnique({
+    where: { id: blockId },
+    select: {
+      body: true,
+      archivedAt: true,
+      archivedByLabel: true,
+      documentId: true,
+      document: { select: { projectId: true } },
+    },
+  });
+
+  if (!existingBlock) return;
+  const archivedAt = new Date();
+
   await prisma.studioDocumentBlock.update({
     where: { id: blockId },
     data: {
-      archivedAt: new Date(),
+      archivedAt,
       archivedByLabel: "quipsly-editor"
     }
+  });
+  await recordDocumentOperation(prisma, {
+    projectId: existingBlock.document.projectId,
+    documentId: existingBlock.documentId,
+    operationType: "block-archive",
+    beforeJson: {
+      blockId,
+      archivedAt: existingBlock.archivedAt?.toISOString() ?? null,
+      archivedByLabel: existingBlock.archivedByLabel,
+      body: existingBlock.body,
+    },
+    afterJson: {
+      blockId,
+      archivedAt: archivedAt.toISOString(),
+      archivedByLabel: "quipsly-editor",
+    },
+    payloadJson: { blockId },
   });
 
   revalidatePath('/');
@@ -611,12 +1012,44 @@ export async function unarchiveBlock(blockId: string) {
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
 
+  await requireProjectAccessByBlockId(prisma, blockId, "write");
+
+  const existingBlock = await prisma.studioDocumentBlock.findUnique({
+    where: { id: blockId },
+    select: {
+      body: true,
+      archivedAt: true,
+      archivedByLabel: true,
+      documentId: true,
+      document: { select: { projectId: true } },
+    },
+  });
+
+  if (!existingBlock) return;
+
   await prisma.studioDocumentBlock.update({
     where: { id: blockId },
     data: {
       archivedAt: null,
       archivedByLabel: null
     }
+  });
+  await recordDocumentOperation(prisma, {
+    projectId: existingBlock.document.projectId,
+    documentId: existingBlock.documentId,
+    operationType: "block-unarchive",
+    beforeJson: {
+      blockId,
+      archivedAt: existingBlock.archivedAt?.toISOString() ?? null,
+      archivedByLabel: existingBlock.archivedByLabel,
+      body: existingBlock.body,
+    },
+    afterJson: {
+      blockId,
+      archivedAt: null,
+      archivedByLabel: null,
+    },
+    payloadJson: { blockId },
   });
 
   revalidatePath('/');
@@ -637,6 +1070,8 @@ export async function restoreBlockState(
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
+
+  await requireProjectAccessByBlockId(prisma, blockId, "write");
 
   const block = await prisma.studioDocumentBlock.findUnique({
     where: { id: blockId },
@@ -761,6 +1196,8 @@ export async function splitBlockAtOffset(
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return null;
+
+  await requireProjectAccessByBlockId(prisma, blockId, "write");
 
   const block = await prisma.studioDocumentBlock.findUnique({
     where: { id: blockId },
@@ -919,6 +1356,8 @@ export async function mergeBlockWithPrevious(blockId: string) {
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return null;
 
+  await requireProjectAccessByBlockId(prisma, blockId, "write");
+
   const block = await prisma.studioDocumentBlock.findUnique({
     where: { id: blockId },
     include: {
@@ -1046,7 +1485,9 @@ export async function toggleBlockTag(
   ) {
     return;
   }
-  
+
+  await requireProjectAccessByProjectId(prisma, projectId, "write");
+
   // Find the tag
   let tag = await prisma.studioTag.findUnique({
     where: { projectId_slug: { projectId, slug: tagSlug } }
@@ -1060,7 +1501,7 @@ export async function toggleBlockTag(
         slug: tagSlug,
         label: tagSlug,
         // @ts-ignore
-        category: "meaning" 
+        category: "meaning"
       }
     });
   }
@@ -1070,6 +1511,15 @@ export async function toggleBlockTag(
   const startOffset = effectiveSelection?.startOffset ?? 0;
   const endOffset = effectiveSelection?.endOffset ?? text.length;
   const selectedText = effectiveSelection?.selectedText ?? text;
+
+  const [doc, block] = await Promise.all([
+    prisma.studioDocument.findUnique({ where: { id: documentId } }),
+    prisma.studioDocumentBlock.findUnique({ where: { id: blockId } }),
+  ]);
+  if (!doc || !block) return;
+  if (doc.projectId !== projectId || block.documentId !== documentId) {
+    throw new Error("Tag target does not belong to this Nest/document.");
+  }
 
   const existingSpans = await prisma.studioTaggedSpan.findMany({
     where: isStructureTag
@@ -1082,12 +1532,34 @@ export async function toggleBlockTag(
     for (const span of existingSpans) {
       await prisma.studioTaggedSpan.delete({ where: { id: span.id } });
     }
+    await recordDocumentOperation(prisma, {
+      projectId,
+      documentId,
+      operationType: "tag-remove",
+      beforeJson: {
+        blockId,
+        tagSlug,
+        spans: existingSpans.map((span) => ({
+          id: span.id,
+          startOffset: span.startOffset,
+          endOffset: span.endOffset,
+          selectedText: span.selectedText,
+        })),
+      },
+      afterJson: {
+        blockId,
+        tagSlug,
+        spans: [],
+      },
+      payloadJson: {
+        blockId,
+        tagSlug,
+        isStructureTag,
+      },
+    });
   } else {
     // Create span
-    const doc = await prisma.studioDocument.findUnique({ where: { id: documentId } });
-    const block = await prisma.studioDocumentBlock.findUnique({ where: { id: blockId } });
-    if (!doc || !block) return;
-
+    let removedCompetingTagSlugs: string[] = [];
     if (isStructureTag) {
       const competingTags = await prisma.studioTag.findMany({
         where: {
@@ -1096,8 +1568,9 @@ export async function toggleBlockTag(
             in: STRUCTURE_TAG_SLUGS.filter((slug) => slug !== tagSlug)
           }
         },
-        select: { id: true }
+        select: { id: true, slug: true }
       });
+      removedCompetingTagSlugs = competingTags.map((competingTag) => competingTag.slug);
 
       await prisma.studioTaggedSpan.deleteMany({
         where: {
@@ -1106,7 +1579,7 @@ export async function toggleBlockTag(
         }
       });
     }
-    
+
     await prisma.studioTaggedSpan.create({
       data: {
         documentId,
@@ -1120,8 +1593,34 @@ export async function toggleBlockTag(
         blockStableId: block.stableId
       }
     });
+    await recordDocumentOperation(prisma, {
+      projectId,
+      documentId,
+      operationType: "tag-add",
+      beforeJson: {
+        blockId,
+        tagSlug,
+        spans: [],
+        removedCompetingTagSlugs,
+      },
+      afterJson: {
+        blockId,
+        tagSlug,
+        span: {
+          startOffset,
+          endOffset,
+          selectedText: selectedText.slice(0, 1600),
+        },
+      },
+      payloadJson: {
+        blockId,
+        tagSlug,
+        isStructureTag,
+        removedCompetingTagSlugs,
+      },
+    });
   }
-  
+
   revalidatePath('/');
   revalidatePath('/create');
 }
@@ -1171,6 +1670,8 @@ export async function bulkNormalizeHeadings(documentId: string): Promise<Heading
       message: "Could not load document for cleanup."
     };
   }
+
+  await requireProjectAccessByProjectId(prisma, document.projectId, "write");
 
   const candidates: BoundaryCandidate[] = [];
   const skippedTaggedBlocks = new Set<string>();
@@ -1291,6 +1792,8 @@ export async function searchQuotesAction(query: string, projectSlug: string, lib
       return { ok: false, error: "Project not found" };
     }
 
+    await requireProjectAccessBySlug(prisma, project.slug, "read");
+
     const { searchQuotes } = await import("@/lib/retrieval");
     const packet = await searchQuotes({ query, library: librarySlug }, { activeProjectId: project.id });
     return { ok: true, packet };
@@ -1310,6 +1813,8 @@ export async function searchExamplesAction(query: string, projectSlug: string, l
       return { ok: false, error: "Project not found" };
     }
 
+    await requireProjectAccessBySlug(prisma, project.slug, "read");
+
     const { searchExamples } = await import("@/lib/retrieval");
     const packet = await searchExamples({ query, library: librarySlug }, { activeProjectId: project.id });
     return { ok: true, packet };
@@ -1323,7 +1828,7 @@ export async function searchExamplesAction(query: string, projectSlug: string, l
 export async function compileActiveProjectPackages(projectId: string) {
   try {
     const prisma = getPrismaClient();
-    const { auth } = await import("@/auth");
+    await requireProjectAccessByProjectId(prisma, projectId, "write");
     const session = await auth();
     const ownerEmail = session?.user?.email || "quipsly-publisher@highgroundodyssey.com";
 
@@ -1396,25 +1901,26 @@ export async function compileActiveProjectPackages(projectId: string) {
 
     for (const segment of segments) {
       const bodyBlocks = blocks.slice(segment.startIndex + 1, segment.endIndex + 1);
-      
+
       const excludedBlocks: Array<{ blockId: string; preview: string; reason: string }> = [];
       const bodyTextParts: string[] = [];
+      const showNotesParts: string[] = [];
 
       for (const b of bodyBlocks) {
         const spans = b.taggedSpans || [];
-        const privateSpans = spans.filter(ts => 
-          ts.tag.slug.toLowerCase() === "internal_note" || 
+        const privateSpans = spans.filter(ts =>
+          ts.tag.slug.toLowerCase() === "internal_note" ||
           ts.tag.slug.toLowerCase() === "private" ||
           ts.tag.slug.toLowerCase() === "private_note"
         );
-        
+
         if (privateSpans.length === 0) {
           bodyTextParts.push(b.body);
           continue;
         }
 
-        const isWholeBlockPrivate = privateSpans.some(ts => 
-          ts.startOffset == null || ts.endOffset == null || 
+        const isWholeBlockPrivate = privateSpans.some(ts =>
+          ts.startOffset == null || ts.endOffset == null ||
           (ts.startOffset === 0 && ts.endOffset >= b.body.length - 1)
         );
 
@@ -1426,7 +1932,7 @@ export async function compileActiveProjectPackages(projectId: string) {
         let cleanText = "";
         let currentIndex = 0;
         const sortedPrivate = [...privateSpans].sort((a, b) => (a.startOffset || 0) - (b.startOffset || 0));
-        
+
         let strippedAny = false;
         for (const span of sortedPrivate) {
           if (span.startOffset != null && span.startOffset > currentIndex) {
@@ -1446,11 +1952,17 @@ export async function compileActiveProjectPackages(projectId: string) {
         }
 
         if (cleanText.trim().length > 0) {
-          bodyTextParts.push(cleanText.trim());
+          const isShowNote = spans.some(ts => ts.tag.slug.toLowerCase() === "show-note" || ts.tag.slug.toLowerCase() === "show_note");
+          if (isShowNote) {
+            showNotesParts.push(cleanText.trim());
+          } else {
+            bodyTextParts.push(cleanText.trim());
+          }
         }
       }
-      
+
       const bodyText = bodyTextParts.join("\n\n");
+      const showNotesText = showNotesParts.join("\n\n");
       const summary = bodyText.substring(0, 160).trim() + (bodyText.length > 160 ? "..." : "");
 
       // Extract verified quotes within this segment
@@ -1513,7 +2025,30 @@ export async function compileActiveProjectPackages(projectId: string) {
         metadata: {
           publishedAt: new Date().toUTCString(),
           author: project.sourceLabel || "High Ground Studio",
-          excludedBlocks // Passed so Publisher Panel can display audit warnings
+          excludedBlocks, // Passed so Publisher Panel can display audit warnings
+          domainPacket: {
+            packetVersion: 1,
+            id: `compiled-${segment.boundaryBlockId}`,
+            kind: "episode-page",
+            source: {
+              projectSlug: project.slug,
+              documentId: document.id,
+              episodeSlug: cleanSlug,
+              sourceBlockIds: bodyBlocks.map(b => b.id)
+            },
+            title: segment.label,
+            slug: cleanSlug,
+            summary,
+            bodyMarkdown: bodyText || `<p>Draft content for ${segment.label}.</p>`,
+            showNotesMarkdown: showNotesText || undefined,
+            media: [],
+            destinations: [
+              { destination: "high-ground-odyssey", status: "packet-ready" }
+            ],
+            generatedFrom: "quipsly-editor",
+            createdAt: new Date().toISOString(),
+            savedAt: new Date().toISOString()
+          }
         }
       };
 
@@ -1683,11 +2218,11 @@ export async function compileActiveProjectPackages(projectId: string) {
 
 export async function getEpisodeCandidatesAction(projectId: string) {
   try {
-    const { auth } = await import("@/auth");
     const session = await auth();
     const isOwner = session?.user?.email?.endsWith("@highgroundodyssey.com") || process.env.NODE_ENV === "development";
 
     const prisma = getPrismaClient();
+    await requireProjectAccessByProjectId(prisma, projectId, "read");
     const candidates = await prisma.hgoEpisodePublishCandidate.findMany({
       where: { archivedAt: null },
       orderBy: { updatedAt: "desc" }
@@ -1719,7 +2254,6 @@ export async function getEpisodeCandidatesAction(projectId: string) {
 export async function approveEpisodeCandidateAction(candidateId: string) {
   try {
     const prisma = getPrismaClient();
-    const { auth } = await import("@/auth");
     const session = await auth();
     const ownerEmail = session?.user?.email || "quipsly-publisher@highgroundodyssey.com";
 
@@ -1733,6 +2267,12 @@ export async function approveEpisodeCandidateAction(candidateId: string) {
     }
 
     const quipslyPkg = (candidate.draftPacketJson || candidate.packetJson) as any;
+    const projectId = typeof quipslyPkg?.projectId === "string" ? quipslyPkg.projectId : "";
+    if (!projectId) {
+      return { ok: false, error: "Candidate is missing its source Nest." };
+    }
+    await requireProjectAccessByProjectId(prisma, projectId, "manage");
+
     const { mapQuipslyPackageToHgoPacket } = await import("@/lib/publishing/DestinationAdapters");
     const hgoPublicPacket = mapQuipslyPackageToHgoPacket(
       quipslyPkg,
@@ -1819,12 +2359,7 @@ export async function getEpisodeCandidatesBySlugAction(projectSlug: string) {
       where: { slug: projectSlug }
     });
     if (!project) {
-      // Fallback: get the first project in database if not found by slug
-      const fallbackProject = await prisma.studioProject.findFirst();
-      if (!fallbackProject) {
-        return { ok: false, error: "No projects found." };
-      }
-      return getEpisodeCandidatesAction(fallbackProject.id);
+      return { ok: false, error: "Project not found." };
     }
     return getEpisodeCandidatesAction(project.id);
   } catch (error: any) {
@@ -1842,6 +2377,9 @@ export async function getPublishingSuiteStatsAction(projectSlug: string) {
     if (!project) {
       return { ok: true, drafted: 0, published: 0 };
     }
+
+    await requireProjectAccessBySlug(prisma, project.slug, "read");
+
     const candidates = await prisma.hgoEpisodePublishCandidate.findMany({
       where: { archivedAt: null }
     });
@@ -1865,6 +2403,7 @@ export async function saveAssistantAction(actionId: string, provenance: Record<s
   try {
     if (!process.env.DATABASE_URL) return { ok: true, fallback: true };
     const prisma = getPrismaClient();
+    await requireProjectAccessByAssistantActionId(prisma, actionId, "write");
 
     await prisma.$transaction(async (tx) => {
       const action = await tx.studioAssistantAction.findUnique({
@@ -1899,6 +2438,7 @@ export async function undoSavedAssistantAction(actionId: string) {
   try {
     if (!process.env.DATABASE_URL) return { ok: true, fallback: true };
     const prisma = getPrismaClient();
+    await requireProjectAccessByAssistantActionId(prisma, actionId, "write");
 
     await prisma.$transaction(async (tx) => {
       const action = await tx.studioAssistantAction.findUnique({

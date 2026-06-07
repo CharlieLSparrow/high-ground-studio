@@ -22,7 +22,7 @@ type VideoSourcePrismaClient = ReturnType<typeof getPrismaClient> & {
 function inferContentType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".webm") return "audio/webm";
-  if (ext === ".mp4" || ext === ".mov" || ext === ".m4v") return "video/mp4";
+  if (ext === ".mp4" || ext === ".mov" || ext === ".m4v" || ext === ".insv") return "video/mp4";
   if (ext === ".mkv" || ext === ".avi") return "video/x-msvideo";
   if (ext === ".m4a") return "audio/m4a";
   if (ext === ".wav") return "audio/wav";

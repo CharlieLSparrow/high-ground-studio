@@ -3,6 +3,7 @@ import {
   STARTER_DEMO_PROJECT_SLUG,
   type StudioNestKind,
 } from "./projectConfig";
+import { listOutputsForNestKind } from "@high-ground/quipsly-domain/output-catalog";
 
 export type StarterBlock = {
   id: string;
@@ -32,6 +33,61 @@ const BLANK_MANUSCRIPT_BLOCKS: StarterBlock[] = [
     tags: [],
   },
 ];
+
+function createWelcomeToQuipslyBlocks(nestKind: StudioNestKind): StarterBlock[] {
+  const nestLabel = nestKind
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+  return [
+    {
+      id: "welcome-quipsly-chapter",
+      text: "Welcome to Quipsly",
+      tags: ["chapter"],
+    },
+    {
+      id: "welcome-quipsly-intro",
+      text:
+        `This is not a help page. Help pages are where useful knowledge goes to sit in a dusty waistcoat and cough politely. This is a living ${nestLabel} Nest document: you can edit it, split it, tag it, hide parts of it with views, and generally treat it like a workbench instead of a museum exhibit.`,
+      tags: ["educational"],
+    },
+    {
+      id: "welcome-quipsly-quote",
+      text:
+        "The basic trick is simple: keep one source of truth, then use tags, views, media, chat, and publishing packets to see the version of the work you need right now.",
+      tags: ["quote", "educational"],
+    },
+    {
+      id: "welcome-quipsly-show-note",
+      text:
+        "Show Note: this paragraph is deliberately not polished prose. It is production scaffolding. In an authoring view it can stay visible; in a clean reading or publishing view it can step behind the curtain without being deleted.",
+      tags: ["show-note"],
+    },
+    {
+      id: "welcome-quipsly-private-note",
+      text:
+        "Private Note: use internal notes for decisions, worries, alternate takes, source doubts, continuity gremlins, and anything else that should remain visible to collaborators but not accidentally march into public wearing a tiny hat.",
+      tags: ["internal_note"],
+    },
+    {
+      id: "welcome-quipsly-media-cue",
+      text:
+        "Media Cue: paste a link, attach an uploaded file, or describe the clip/image/audio that belongs here. Personal uploads start in Home Nest; attaching them to this Nest makes them available to the people who can access this work.",
+      tags: ["clip-cue", "media", "show-note"],
+    },
+    {
+      id: "welcome-quipsly-episode",
+      text: "First Working Packet",
+      tags: ["episode"],
+    },
+    {
+      id: "welcome-quipsly-next-action",
+      text:
+        "Start here: replace this block with the first real thing you want to make, study, record, publish, or remember. If you tag a heading as Chapter or Episode, the outline becomes a map instead of a scolding list.",
+      tags: ["educational"],
+    },
+  ];
+}
 
 export const QUIPSLY_STARTER_BLOCKS: StarterBlock[] = [
   {
@@ -83,6 +139,11 @@ export const QUIPSLY_STARTER_BLOCKS: StarterBlock[] = [
     id: "starter-research",
     text: "Research Note: Later, this is where example-finding agents should become useful: not as a mysterious oracle in a velvet box, but as a sidebar that says, 'Here are three places your library has wrestled with the same idea.' Helpful. Specific. Unimpressed by hype.",
     tags: ["internal_note", "educational"],
+  },
+  {
+    id: "starter-output-paths",
+    text: "Output Paths: this same document can project into a book export, public episode page, podcast package, quote feed, course, social cut, gallery, or scroll experience. The trick is not copying everything into eight tools. The trick is giving one source enough structure that the right packet can be prepared when you ask for it.",
+    tags: ["show-note", "educational"],
   },
   {
     id: "starter-ending",
@@ -165,7 +226,7 @@ const RESEARCH_NEST_BLOCKS: StarterBlock[] = [
   {
     id: "welcome-research-intro",
     text:
-      "Research Nests are for gathering the material behind your thinking. Tag quotes, examples, counterexamples, and source notes so Quipsly can help you retrieve evidence without becoming a black-box writer.",
+      "Research Nests are for gathering the material behind your thinking. Tag quotes, examples, counterexamples, and source notes so Quipsly can retrieve evidence, draft source-aware options, and keep claims tied back to receipts.",
     tags: ["educational"],
   },
   { id: "welcome-research-packet", text: "Research Packet 1", tags: ["episode"] },
@@ -174,6 +235,55 @@ const RESEARCH_NEST_BLOCKS: StarterBlock[] = [
     text:
       "A good research packet should answer: what did we find, why does it matter, where did it come from, and what can we safely do with it next?",
     tags: ["quote", "show-note"],
+  },
+];
+
+const MARINE_BIOLOGY_RESEARCH_BLOCKS: StarterBlock[] = [
+  {
+    id: "marine-biology-chapter",
+    text: "Marine Biology Photo Research Workspace",
+    tags: ["chapter"],
+  },
+  {
+    id: "marine-biology-purpose",
+    text:
+      "This Nest is for turning decades of marine biology photos into usable research material: intake folders, preserve source context, identify organisms, mark uncertainty, and prepare clean datasets for future machine-learning experiments.",
+    tags: ["educational"],
+  },
+  {
+    id: "marine-biology-rule",
+    text:
+      "Research rule of thumb: never let the model become the source of truth. Photos, observation notes, human labels, uncertainty, and provenance stay visible so future MLE work has receipts.",
+    tags: ["quote", "educational"],
+  },
+  {
+    id: "marine-biology-intake",
+    text:
+      "Photo Intake: start by attaching folders or batches to this Nest. Keep original filenames, dates, locations, photographer/source notes, and any existing labels intact. The Home Nest can catch personal uploads first; attaching assets here makes them available to collaborators on this research Nest.",
+    tags: ["media", "show-note"],
+  },
+  {
+    id: "marine-biology-packet",
+    text: "Identification Review Packet 1",
+    tags: ["episode"],
+  },
+  {
+    id: "marine-biology-labeling",
+    text:
+      "Labeling pass: for each useful image or clip, record candidate organism, confidence as plain notes, visible evidence, uncertainty, and who reviewed it. Use tags for species/groups as they emerge; do not force a perfect taxonomy before researchers have looked at the material.",
+    tags: ["educational", "show-note"],
+  },
+  {
+    id: "marine-biology-mle",
+    text:
+      "MLE Pipeline Later: the first real pipeline should probably export a transparent training manifest from the attached assets and labels, then run local-heavy image work in the Mac app or Vision Lab. For now, this Nest should organize the data well enough that building the model becomes less scary.",
+    tags: ["internal_note"],
+  },
+  {
+    id: "marine-biology-output",
+    text:
+      "Publication and collaboration outputs: research packets, image sets, label manifests, review queues, citation notes, and eventually model evaluation summaries can all project from this same Nest. No duplicated truth piles. No mystery spreadsheet goblins.",
+    tags: ["show-note", "educational"],
   },
 ];
 
@@ -191,6 +301,49 @@ const FICTION_NEST_BLOCKS: StarterBlock[] = [
     text:
       "Continuity note: anything that must survive revision belongs in a tagged note, not in your memory where the goblins can eat it.",
     tags: ["internal_note"],
+  },
+];
+
+const CHARLIE_MELISSA_FICTION_LAB_BLOCKS: StarterBlock[] = [
+  {
+    id: "fiction-lab-chapter",
+    text: "Charlie + Melissa Fiction Lab",
+    tags: ["chapter"],
+  },
+  {
+    id: "fiction-lab-purpose",
+    text:
+      "This private Nest is for fiction source materials: story bibles, comic packets, scenes, character notes, relationship maps, continuity receipts, art prompts, and scroll/storyboard experiments.",
+    tags: ["educational"],
+  },
+  {
+    id: "fiction-lab-privacy",
+    text:
+      "Privacy rule: this Nest should only be visible to explicitly granted users and admins. Invite collaborators from the Access page when a story world is ready to share.",
+    tags: ["internal_note"],
+  },
+  {
+    id: "fiction-lab-packet",
+    text: "My Heart Is a Junkyard Starship",
+    tags: ["episode"],
+  },
+  {
+    id: "fiction-lab-comic",
+    text:
+      "Comic/source packet workflow: keep the seed packet readable, project it into story bible entities and storyboard frames, preview the vertical scroll flow, then revise without creating duplicate truths.",
+    tags: ["show-note", "educational"],
+  },
+  {
+    id: "fiction-lab-tools",
+    text:
+      "Useful tools from this Nest: Open Story Bible for source text and continuity, open the private comic packet for current seed material, open Scroll Preview for phone-first pacing, and open Storyboard Builder for panel work.",
+    tags: ["show-note"],
+  },
+  {
+    id: "fiction-lab-ai",
+    text:
+      "AI drafting is allowed here, but keep drafts inspectable: preserve the prompt context, planning notes, character constraints, and revision trail so the work stays yours instead of becoming a mystery wall of words.",
+    tags: ["quote", "educational"],
   },
 ];
 
@@ -246,6 +399,15 @@ const MIXED_NEST_BLOCKS: StarterBlock[] = [
 ];
 
 const STARTER_BLOCKS_BY_KIND: Record<StudioNestKind, StarterBlock[]> = {
+  home: [
+    { id: "welcome-home-chapter", text: "Home Nest", tags: ["chapter"] },
+    {
+      id: "welcome-home-intro",
+      text:
+        "Your Home Nest is the private landing place for uploads, captures, notes, and source material before they are attached to a working Nest.",
+      tags: ["show-note"],
+    },
+  ],
   writing: WRITING_NEST_BLOCKS,
   study: STUDY_NEST_BLOCKS,
   production: PRODUCTION_NEST_BLOCKS,
@@ -256,6 +418,24 @@ const STARTER_BLOCKS_BY_KIND: Record<StudioNestKind, StarterBlock[]> = {
   mixed: MIXED_NEST_BLOCKS,
 };
 
+function createOutputPathBlocks(nestKind: StudioNestKind): StarterBlock[] {
+  if (nestKind === "home") return [];
+  const outputs = listOutputsForNestKind(nestKind).slice(0, 4);
+  if (outputs.length === 0) return [];
+
+  return [
+    {
+      id: `welcome-${nestKind}-output-paths`,
+      text: [
+        "Output paths for this Nest:",
+        ...outputs.map((output) => `- ${output.title}: ${output.humanPromise}`),
+        "These are projections from this same source spine. Do not copy the work into a separate tool unless the output contract truly cannot represent it.",
+      ].join("\n"),
+      tags: ["show-note", "educational"],
+    },
+  ];
+}
+
 export function createStarterBlocks(
   projectSlug: string,
   nestKind: StudioNestKind = "writing"
@@ -264,5 +444,18 @@ export function createStarterBlocks(
     return QUIPSLY_STARTER_BLOCKS;
   }
 
-  return STARTER_BLOCKS_BY_KIND[nestKind] ?? BLANK_MANUSCRIPT_BLOCKS;
+  if (projectSlug === "marine-biology-research") {
+    return [...MARINE_BIOLOGY_RESEARCH_BLOCKS, ...createOutputPathBlocks("research")];
+  }
+
+  if (projectSlug === "charlie-melissa-fiction-lab") {
+    return [...CHARLIE_MELISSA_FICTION_LAB_BLOCKS, ...createOutputPathBlocks("fiction")];
+  }
+
+  const starterBlocks = STARTER_BLOCKS_BY_KIND[nestKind] ?? BLANK_MANUSCRIPT_BLOCKS;
+  return [
+    ...createWelcomeToQuipslyBlocks(nestKind),
+    ...starterBlocks,
+    ...createOutputPathBlocks(nestKind),
+  ];
 }

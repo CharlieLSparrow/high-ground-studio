@@ -1,5 +1,4 @@
 import { getPrismaClient } from '@/lib/prisma';
-import { SidebarLayout } from '@/components/SidebarLayout';
 import { StripboardClient } from './stripboard-client';
 
 export const dynamic = 'force-dynamic';
@@ -11,15 +10,15 @@ export default async function StripboardPage({ searchParams }: { searchParams: {
   const user = await prisma.user.findFirst();
   if (!user) {
     return (
-      <SidebarLayout>
+      <>
         <div className="p-8">System not configured. No users found.</div>
-      </SidebarLayout>
+      </>
     );
   }
 
   // Get all projects for selection
   const workspace = await prisma.studioWorkspace.findFirst();
-  const projects = workspace 
+  const projects = workspace
     ? await prisma.studioProject.findMany({
         where: { workspaceId: workspace.id },
         orderBy: { updatedAt: 'desc' }
@@ -44,18 +43,18 @@ export default async function StripboardPage({ searchParams }: { searchParams: {
   }
 
   return (
-    <SidebarLayout>
+    <>
       <div className="p-8 max-w-6xl mx-auto">
         <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
           <div>
             <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Stripboard Engine</h1>
             <p className="text-zinc-500 mt-2">Drag and drop scenes to organize your shooting schedule.</p>
           </div>
-          
+
           {projects.length > 0 && (
             <div className="relative">
               <form action="">
-                <select 
+                <select
                   name="projectId"
                   className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm font-medium w-full md:w-64 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   defaultValue={selectedProjectId || ''}
@@ -73,10 +72,10 @@ export default async function StripboardPage({ searchParams }: { searchParams: {
         </header>
 
         {selectedProjectId ? (
-          <StripboardClient 
-            projectId={selectedProjectId} 
-            initialScenes={scenes} 
-            initialShootDays={shootDays} 
+          <StripboardClient
+            projectId={selectedProjectId}
+            initialScenes={scenes}
+            initialShootDays={shootDays}
           />
         ) : (
           <div className="p-12 text-center border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
@@ -85,6 +84,6 @@ export default async function StripboardPage({ searchParams }: { searchParams: {
           </div>
         )}
       </div>
-    </SidebarLayout>
+    </>
   );
 }

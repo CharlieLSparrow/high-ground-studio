@@ -1,96 +1,53 @@
 "use server";
 
-import fs from "fs/promises";
-import path from "path";
-
 type MediaFile = {
   name: string;
   sourcePath: string;
   type: "video" | "photo" | "audio" | "unknown";
   sizeMb: string;
   proposedDestination: string;
+  status?: string;
 };
 
-// Default server-side prototype paths. Real desktop ingest should pass explicit
-// operator-selected paths instead of assuming the Cloud Run host filesystem is
-// the user's Mac.
-const DEFAULT_SOURCE = "/tmp/quipsly/ingest";
-const DEFAULT_DEST = "/tmp/quipsly/media-library";
-
-const EXT_MAP: Record<string, MediaFile["type"]> = {
-  ".mp4": "video",
-  ".mov": "video",
-  ".insv": "video", // Insta360
-  ".jpg": "photo",
-  ".jpeg": "photo",
-  ".png": "photo",
-  ".raw": "photo",
-  ".wav": "audio",
-  ".mp3": "audio",
+const LOCAL_ENGINE_HANDOFF = {
+  macApp: "Quipsly Mac",
+  localEngine: "apps/local-engine",
+  recommendedRoute: "/editor",
+  supportedWorkflow:
+    "Choose files in Quipsly Mac, probe/proxy/upload through local-engine, then attach registered assets to a Nest or episode in the web editor.",
 };
 
-export async function scanDirectory(sourcePath: string = DEFAULT_SOURCE, destPath: string = DEFAULT_DEST) {
-  try {
-    // Ensure folders exist for the prototype
-    await fs.mkdir(sourcePath, { recursive: true });
-    await fs.mkdir(destPath, { recursive: true });
-
-    const entries = await fs.readdir(sourcePath, { withFileTypes: true });
-    const mediaFiles: MediaFile[] = [];
-
-    for (const entry of entries) {
-      if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        const type = EXT_MAP[ext] || "unknown";
-        
-        if (type === "unknown") continue;
-
-        const fullPath = path.join(sourcePath, entry.name);
-        const stats = await fs.stat(fullPath);
-        
-        // Group by Year/Month
-        const date = new Date(stats.mtime);
-        const year = date.getFullYear().toString();
-        const month = (date.getMonth() + 1).toString().padStart(2, "0");
-        
-        const proposedDestDir = path.join(destPath, year, month, type);
-        const proposedDestination = path.join(proposedDestDir, entry.name);
-
-        mediaFiles.push({
-          name: entry.name,
-          sourcePath: fullPath,
-          type,
-          sizeMb: (stats.size / (1024 * 1024)).toFixed(2),
-          proposedDestination,
-        });
-      }
-    }
-
-    return { success: true, files: mediaFiles, sourcePath, destPath };
-  } catch (error: any) {
-    return { success: false, error: error.message };
-  }
+function unsupportedLocalFilesystemMessage() {
+  return [
+    "The Nest web app no longer scans arbitrary local folders.",
+    "That work belongs to Quipsly Mac + local-engine so imports can use native file pickers, local ffmpeg, local cache, upload retries, and clear user consent.",
+    "Open Quipsly Mac, use Import to Episode or Local Files, then return here after the assets are registered.",
+  ].join(" ");
 }
 
-export async function organizeMedia(files: MediaFile[], dryRun: boolean = true) {
-  const results = [];
-  
-  for (const file of files) {
-    try {
-      const destDir = path.dirname(file.proposedDestination);
-      
-      if (!dryRun) {
-        await fs.mkdir(destDir, { recursive: true });
-        // Use copy + delete (or just rename)
-        await fs.copyFile(file.sourcePath, file.proposedDestination);
-        await fs.unlink(file.sourcePath);
-      }
-      
-      results.push({ ...file, status: "success" });
-    } catch (err: any) {
-      results.push({ ...file, status: "error", error: err.message });
-    }
-  }
+export async function scanDirectory(sourcePath = "", destPath = "") {
+  return {
+    success: false,
+    disabled: true,
+    files: [] as MediaFile[],
+    sourcePath,
+    destPath,
+    handoff: LOCAL_ENGINE_HANDOFF,
+    error: unsupportedLocalFilesystemMessage(),
+  };
+}
 
-  return { success: true, results, dryRun };
+export async function organizeMedia(files: MediaFile[], dryRun = true) {
+  return {
+    success: false,
+    disabled: true,
+    results: files.map((file) => ({
+      ...file,
+      status: "held",
+      error: "Use Quipsly Mac/local-engine for local filesystem organization.",
+    })),
+    dryRun,
+    handoff: LOCAL_ENGINE_HANDOFF,
+    error: unsupportedLocalFilesystemMessage(),
+  };
 }

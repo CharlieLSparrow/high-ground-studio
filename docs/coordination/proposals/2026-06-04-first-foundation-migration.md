@@ -4,7 +4,7 @@ Date: 2026-06-04
 
 ## Problem
 
-Quipsly is transitioning to a SaaS foundation for creators. The current schema lacks the necessary multi-tenant ownership relationships (Workspace -> Organization) and audit trails for projects (createdBy/updatedBy). Additionally, to support Quipsly as a research assistant that never black-box writes, we need durable persistence for assistant sessions, messages, proposed actions, and a ledger for auditing those actions.
+Quipsly is transitioning to a SaaS foundation for creators. The current schema lacks the necessary multi-tenant ownership relationships (Workspace -> Organization) and audit trails for projects (createdBy/updatedBy). Additionally, to support Quipsly as a source-aware research assistant, freeform drafting partner, and optional co-drafter that prevents silent canon mutation and fake provenance, we need durable persistence for assistant sessions, messages, proposed actions, and a ledger for auditing those actions.
 
 ## Proposed Schema Change
 

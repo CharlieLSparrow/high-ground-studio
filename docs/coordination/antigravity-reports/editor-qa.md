@@ -43,7 +43,7 @@ Manual code review on the author workflow and UX labels.
 - **Chapter/Episode tagging**: PASS. The structure strip explicitly highlights when a block acts as a section start.
 - **Tag removal**: PASS. "Clear tags" works optimally, pushing a robust undo state to reverse clearing if accidentally clicked.
 - **Merge/split blocks**: PASS. Enter safely splits text while preserving tags, Backspace securely merges up at cursor 0. Undo states cover merge/split flawlessly.
-- **Outline navigation**: PASS. The "Document Outline" in `ViewFilter.tsx` successfully nests chapters and episodes, and clicking one updates the URL boundary parameter. 
+- **Outline navigation**: PASS. The "Document Outline" in `ViewFilter.tsx` successfully nests chapters and episodes, and clicking one updates the URL boundary parameter.
 - **Scroll stability**: PASS. Scroll positions are accurately captured and restored during DOM alterations (tagging, merging).
 - **One living document feel**: PASS. The "Everything Mode" default view and the continuous scroll capability achieve the intended living document experience without hiding too much by default.
 
@@ -76,7 +76,7 @@ None observed in the code. The `quipsly:focus-block` event and `scrollIntoView` 
 - **Manuscript Outline**: PASS. Now reads cleanly as a Table of Contents without block index noise.
 
 **Exact Recommended Fixes for Codex (UI Clutter & Jumpiness)**:
-The current implementation of `Tagger.tsx` wraps *every single text block* with a top "Structure" box and a bottom helper toolbar ("Enter splits. Backspace at start merges up."). 
+The current implementation of `Tagger.tsx` wraps *every single text block* with a top "Structure" box and a bottom helper toolbar ("Enter splits. Backspace at start merges up.").
 - **The Problem**: Allocating this much vertical UI scaffolding above and below every paragraph completely breaks the "one living document" feel, making the editor feel like a database form builder. If we hide them using `h-0`, the layout will jump violently on hover/focus.
 - **Recommended Fix 1**: Move the "Chapter/Episode" tagging buttons and the "Merge up / Clear tags" buttons into a single, compact, absolute-positioned floating toolbar that only fades in on `group-hover:opacity-100 focus-within:opacity-100` (e.g., positioned to the left margin or absolute right).
 - **Recommended Fix 2**: Remove the "Enter splits. Backspace at start merges up." helper text from rendering under every block. Move this to a one-time global empty-state hint, or a subtle header tooltip.
@@ -113,7 +113,7 @@ Since we included `focus-within:opacity-100`, there is no mobile risk. As soon a
 The overall surface feels excellent and achieves the "living document" goal. Codex improved the textareas to be `bg-transparent border-transparent` by default, which removes the "form field" boxes and makes the manuscript look like pure text until interacted with. The inline tags and the global helper hint in `Workspace.tsx` are intact and look great.
 
 **Collision / Regression Found**:
-Codex took the fading toolbar and positioned it `absolute right-2 top-2` relative to the block container. 
+Codex took the fading toolbar and positioned it `absolute right-2 top-2` relative to the block container.
 *The Regression*: Because the textarea spans 100% width, this floating toolbar sits directly on top of the right side of the text when the block is focused or hovered. If a user's text wraps to the end of the line, the text is obscured. On mobile, tapping the right side of the text will accidentally trigger toolbar buttons.
 
 **Top Recommended Fixes**:
@@ -138,7 +138,7 @@ Per instructions to "prefer report-first", I have not patched the absolute posit
 The toolbar overlap is completely resolved. The text inside the `bg-transparent` textarea can now wrap safely to the right edge without flowing underneath any floating controls.
 
 **Mobile Risk Assessment**:
-Zero remaining risk. Because the controls live in the `h-7` vertical gap *below* the paragraph, tapping the right side of the text on mobile will no longer trigger accidental toolbar clicks. 
+Zero remaining risk. Because the controls live in the `h-7` vertical gap *below* the paragraph, tapping the right side of the text on mobile will no longer trigger accidental toolbar clicks.
 
 ## 2026-06-04 13:05 local - Antigravity Editor QA (Living Document Polish)
 
@@ -253,28 +253,28 @@ Zero remaining risk. Because the controls live in the `h-7` vertical gap *below*
 
 **1. Current beta readiness**: Keep but adjust. The editor feels like a fast, native, living document. However, its publishing targets are currently disconnected mock scripts rather than real data exports.
 
-**2. Biggest beta blocker in your lane**: 
+**2. Biggest beta blocker in your lane**:
 Publishing boundaries are completely detached from real editor data. The "Publisher Mode" right now uses a static API script (`publish-starter-episodes`) instead of exporting the author's actual Chapter/Episode tags, cleaning them of private notes, and converting them into deployable HGO artifacts. A beta user currently can't take their real writing and see how it converts to a published artifact.
 
-**3. The highest-leverage “Do pass” you recommend for Prompt 2**: 
-**Live Packet Export (Studio to Artifact)**. We will build the generator function inside the editor spine that reads the active Chapter/Episode boundaries from the `blocks` array, explicitly strips out blocks tagged as `internal_note` or `private`, and generates real `EpisodeArtifact` objects. We'll wire this into the `PublisherModePanel` so users can hit "Preview/Publish" and see exactly what Quipsly generates from their living document. 
+**3. The highest-leverage “Do pass” you recommend for Prompt 2**:
+**Live Packet Export (Studio to Artifact)**. We will build the generator function inside the editor spine that reads the active Chapter/Episode boundaries from the `blocks` array, explicitly strips out blocks tagged as `internal_note` or `private`, and generates real `EpisodeArtifact` objects. We'll wire this into the `PublisherModePanel` so users can hit "Preview/Publish" and see exactly what Quipsly generates from their living document.
 
 **4. Files/routes/models you expect to touch**:
 - `apps/quipsly/src/app/(app)/create/PublisherModePanel.tsx` (Wire up live preview and export)
 - `apps/quipsly/src/app/(app)/create/actions.ts` (Add `generateEpisodeArtifactFromBoundary` server action)
 
-**5. Risks and rollback plan**: 
-- *Risk*: Generating the `EpisodeArtifact` might expose complex boundary parsing logic that breaks if users tag things weirdly. 
+**5. Risks and rollback plan**:
+- *Risk*: Generating the `EpisodeArtifact` might expose complex boundary parsing logic that breaks if users tag things weirdly.
 - *Rollback*: Keep the existing `publish-starter-episodes` logic intact as a fallback button. Rollback via git revert of `PublisherModePanel`.
 
-**6. What should be owner-only/internal for beta**: 
+**6. What should be owner-only/internal for beta**:
 Actually pushing the generated artifact to the production HighGroundOdyssey.com database should remain owner-only or tightly gated for now to prevent beta users from flooding the public site. However, the *generation and preview* of the packet inside Quipsly should be available to everyone to prove the pipeline works.
 
-**7. What a beta user should be able to successfully do after your pass**: 
+**7. What a beta user should be able to successfully do after your pass**:
 A beta user will be able to write an episode in their living document, tag it with `# Chapter` and `# Episode`, hit "Publisher Mode", and instantly see a generated preview of their clean public packet (verifying that their private `internal_note` blocks were safely stripped out).
 
-**8. Any schema, auth, deployment, or cross-lane dependency you need Codex/Product Owner to approve**: 
-Need approval on whether we should push the artifacts straight to the `StudioEpisodeProduction` table as a "draft" for beta users, or if we just hold them in the UI preview for now. 
+**8. Any schema, auth, deployment, or cross-lane dependency you need Codex/Product Owner to approve**:
+Need approval on whether we should push the artifacts straight to the `StudioEpisodeProduction` table as a "draft" for beta users, or if we just hold them in the UI preview for now.
 
 Recommended Prompt 2 for my lane:
 "Execute the 'Live Packet Export' pass. Update PublisherModePanel and actions.ts to generate a real `EpisodeArtifact` from the user's active Episode boundary in the document, explicitly filtering out blocks with the `internal_note` tag. Show a JSON/UI preview of the generated packet in the Publisher Mode panel, but disable the final 'Push to HGO' button unless the user is an owner. Do not modify the schema."
@@ -322,9 +322,75 @@ The compiler currently filters entire blocks if they contain a private span. If 
 **What was delivered**:
 1. **Span-Level Private Filtering**: Upgraded the compiler in `actions.ts` to perform surgical string slicing. If an author tags only a single sentence as `internal_note` or `private`, the compiler safely slices out only that span and preserves the rest of the public paragraph. If the entire block is tagged private, it continues to drop the whole block.
 2. **Exclusion Tracking**: The compiler now tracks what text was stripped (with a truncated preview) and why ("Entire block marked private" vs "Contains private text spans"), and passes this securely via the `metadata.excludedBlocks` packet array.
-3. **Human-Readable Public Preview**: Overhauled the preview `<details>` block in `PublisherModePanel.tsx`. Instead of a raw JSON dump, it now explicitly renders the generated HTML `body` text exactly as it will appear on the public HGO site. 
+3. **Human-Readable Public Preview**: Overhauled the preview `<details>` block in `PublisherModePanel.tsx`. Instead of a raw JSON dump, it now explicitly renders the generated HTML `body` text exactly as it will appear on the public HGO site.
 4. **Author-Facing Audit Section**: Added a prominent "Excluded from public packet" red section that lists exactly which blocks/sentences were stripped for privacy reasons, allowing the author to verify what was hidden. The raw JSON payload is now tucked away in a sub-accordion for developers.
 5. **No Schema Changes**: Used the existing `metadata` free-form JSON field in the packet shape to pass exclusion reports to the UI, strictly maintaining the AG-Publishing-Integrations packet contract.
 
 **Remaining Author-Flow Risks**:
 The span slicing logic (`substring` operations) assumes that the text has not been fundamentally altered between tag creation and compilation. If span offsets drift, the slice might clip adjacent words. However, `Tagger.tsx` automatically invalidates and removes tags if block text is heavily mutated over them, meaning the tags should be clean at the time of compilation. No critical risks remain for the Beta launch.
+
+## 2026-06-05 Research Proposal - AG-Editor-Spine
+
+### Research Sources & Examples Reviewed
+*   **Google Docs / Traditional Editors**: The standard for "linear flow." The margin-comment UX is widely considered the gold standard for annotations because it explicitly separates content from discussion without cluttering the page.
+*   **Notion / Gutenberg (Block Editors)**: Excellent for modularity, drag-and-drop, and addressing specific content types. However, they struggle with long-form writing flow and often make span-level annotations difficult because the fundamental unit is the block, not the character stream.
+*   **Scrivener / Ulysses**: Standard tools for long-form authors. They separate the "Manuscript" outline (the binder) from the text editor. Compiling out to a manuscript is a distinct action.
+
+### What Quipsly Already Gets Right
+*   **The "One Living Document" Model**: By maintaining the document as a single continuous stream of blocks, we avoid the fragmentation of Notion or the isolation of Scrivener folders. If you want to merge Chapter 1 and 2, you just delete the heading.
+*   **Separation of Presentation and State**: We store structure as `tags` and `spans` on `blocks`. This means the agent can precisely address and modify text without parsing messy HTML, while the user just types.
+*   **Public/Private Filtering**: The recent span-level filtering allows Quipsly to function as both a private workspace and a public publishing engine simultaneously.
+
+### Current Beta Risks
+1.  **Tag Clutter**: As authors add lore tags, character tags, and status tags, the inline block toolbar may become a noisy, colorful mess that distracts from the writing flow.
+2.  **Span-Offset Drift**: If collaborative typing happens rapidly, or if the agent inserts text, span `startOffset` and `endOffset` values may drift. Currently, `Tagger.tsx` aggressively drops tags if text mutates heavily, which could frustrate authors who lose their carefully highlighted private notes.
+3.  **Linear Scroll Fatigue**: In a 50,000-word document, rendering thousands of `BlockItem` components can thrash the browser DOM, even with React `memo`.
+
+### Proposed Next Implementation Pass
+1.  **Inline Margin Annotations**: Move from inline block-tag chips to a formal Google Docs-style "Margin" for comments and annotations. This keeps the block clean while preserving the block-level addressing needed by the AI.
+2.  **Robust Span Anchoring**: Implement a differential text-sync approach (e.g., Operational Transformation or diff-match-patch) so that minor edits inside a block smoothly shift the `startOffset` and `endOffset` of tags instead of invalidating them entirely.
+3.  **Block Virtualization**: Implement windowing/virtualization for `Tagger.tsx` so only the blocks currently visible on-screen (plus a buffer) are rendered, solving the DOM thrashing issue for novel-length documents.
+
+### Files Likely Touched
+*   `apps/quipsly/src/app/(app)/create/Tagger.tsx` (Virtualization, Offset sync logic)
+*   `apps/quipsly/src/app/(app)/create/BlockItem.tsx` (Margin rendering)
+*   `apps/quipsly/src/app/(app)/create/actions.ts` (Diff-matching for server sync)
+
+### What Not to Change
+*   Do not fragment the `blocks` array into separate relational tables for "Chapters" or "Pages". Keep the One Living Document model.
+*   Do not introduce standard WYSIWYG HTML (like `contenteditable` nested elements). Keep the plain-text-plus-offsets structure because it is highly agent-friendly and predictable.
+
+### Questions for Codex/Product Owner
+1.  Should span offsets be synced via Operational Transformation (OT), or should we just let the AI agents handle offset correction during background passes?
+2.  For margin annotations, do we want them visible by default, or hidden behind a "Review Mode" toggle to prioritize a clean writing experience?
+3.  Is DOM virtualization a priority for Beta, or are we artificially capping document lengths for the initial launch?
+
+## 2026-06-05 Marginalia Beta Sprint - Publishing Foundation Alignment
+
+**1. What was changed:**
+Implemented an additive split between standard manuscript body text and `showNotesMarkdown` during the packet compilation phase, aligning the Editor Spine directly with the new `packages/quipsly-domain/src/publishing.ts` contract (`PublicPublishPacket`).
+- When an author tags a block with `#show-note` in the Living Document, the compiler now surgically routes that block's text into the `showNotesMarkdown` stream instead of awkwardly jamming it into the main `bodyMarkdown` text.
+- To keep changes perfectly additive and safe for the existing `DestinationAdapters`, the strict domain packet shape was injected under `packet.metadata.domainPacket`.
+- Updated `PublisherModePanel.tsx` to proudly render the "Extracted Show Notes" underneath the public content preview, giving authors complete confidence that their show notes are being handled correctly.
+
+**2. Files touched:**
+- `apps/quipsly/src/app/(app)/create/actions.ts`
+- `apps/quipsly/src/app/(app)/create/PublisherModePanel.tsx`
+
+**3. Risks or follow-up needed:**
+The primary risk is that `DestinationAdapters` mapping (specifically `mapQuipslyPackageToHgoPacket`) currently ignores `metadata.domainPacket` and generates HGO `showNotes` statically from `beats`. A follow-up pass in `AG-Publishing-Integrations` should update `mapQuipslyPackageToHgoPacket` to intelligently consume `pkg.metadata.domainPacket.showNotesMarkdown` if it exists.
+
+**4. Disposition:**
+Codex should **keep** and **validate**. It is purely additive, honors the living document model by turning a block tag into a structural routing instruction, and creates zero schema regressions.
+
+## 2026-06-05 Codex App Shell / Editor Entry Cleanup
+
+Codex updated `apps/quipsly/src/components/SidebarLayout.tsx` so the top-level app navigation treats `/projects`, `/nests`, and `/create` as one active Nest/editor path. The bare `/create` route already redirects to the Nest picker, so app chrome should not imply a separate hardcoded Studio entry that bypasses project selection.
+
+Carry-forward rule: users enter work through Nests. Editing, recording, publishing, and research should attach to a selected Nest/project rather than a hidden global manuscript.
+
+## Codex sprint note - 2026-06-05 beta spine pass
+
+- Added an editor-side **Recording handoff** summary inside the production truth panel. It surfaces recorder room presence, take count, recorder duration, uploaded/local/failed counts, timeline audio count, spine candidates, and whether a spine is set.
+- The intent is to make recorder -> editor hydration understandable before a user touches timeline controls.
+- Follow-up QA target: open `/editor?project=quipsly-dev-lab&episode=episode-8` after a recorder save and confirm the handoff card reflects real takes and spine state.

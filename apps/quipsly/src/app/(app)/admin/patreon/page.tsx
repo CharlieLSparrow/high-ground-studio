@@ -2,10 +2,13 @@ import { getAdminInboxStats, getRecentInboxEvents, getRecentReconciliations } fr
 import { ProviderEventInbox } from "@/components/admin/ProviderEventInbox";
 import { ReconciliationLedger } from "@/components/admin/ReconciliationLedger";
 import { Database, RefreshCcw } from "lucide-react";
+import { requireQuipslyAdminActor } from "@/lib/server/user-management";
 
 export const dynamic = "force-dynamic";
 
 export default async function PatreonAdminDashboard() {
+  await requireQuipslyAdminActor();
+
   const [stats, events, reconciliations] = await Promise.all([
     getAdminInboxStats(),
     getRecentInboxEvents(),
@@ -54,7 +57,7 @@ function StatCard({ title, value, color }: { title: string, value: number, color
     emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
     sky: "bg-sky-50 text-sky-700 border-sky-200"
   };
-  
+
   return (
     <div className={`rounded-xl border p-5 ${colorMap[color]}`}>
       <div className="text-sm font-semibold mb-1 opacity-80">{title}</div>

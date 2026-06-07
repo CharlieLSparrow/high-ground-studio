@@ -25,7 +25,7 @@ export function CreateEntityModal({ projectId, onCreated }: CreateEntityModalPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId, type, name }),
       });
-      
+
       if (res.ok) {
         setName("");
         setType("CHARACTER");
@@ -42,8 +42,8 @@ export function CreateEntityModal({ projectId, onCreated }: CreateEntityModalPro
   };
 
   return (
-    <dialog 
-      id="create-entity-modal" 
+    <dialog
+      id="create-entity-modal"
       className="bg-void border border-white/10 rounded-xl p-0 shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm max-w-md w-full mx-auto my-auto top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 m-0 fixed"
     >
       <div className="p-5 border-b border-white/5 flex items-center justify-between">
@@ -84,6 +84,7 @@ export function CreateEntityModal({ projectId, onCreated }: CreateEntityModalPro
             <option value="THEME_MOTIF">Theme / Motif / Concept</option>
             <option value="RELATIONSHIP">Relationship / Connection</option>
             <option value="TIMELINE_EVENT">Timeline Event / Milestone</option>
+            <option value="BEAT">Structural Beat</option>
           </select>
         </div>
 

@@ -4,7 +4,8 @@ export type StoryEntityType =
   | "SCENE"
   | "RELATIONSHIP"
   | "TIMELINE_EVENT"
-  | "THEME_MOTIF";
+  | "THEME_MOTIF"
+  | "BEAT";
 
 export interface StoryEntityMention {
   id: string;

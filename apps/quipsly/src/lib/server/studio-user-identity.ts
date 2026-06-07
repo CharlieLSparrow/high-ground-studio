@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AppRole, Prisma } from "@prisma/client";
+import type { AppRole, Prisma, PrismaClient } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { canAccessStudio } from "@/lib/studio-authz";
@@ -100,6 +100,65 @@ export async function getStudioUserIdentityByEmail(
 ): Promise<StudioUserIdentity | null> {
   const user = await findUserRecordByEmail(email);
   return user ? mapStudioUserIdentity(user) : null;
+}
+
+export async function ensureInvitedStudioUserByEmail(input: {
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  prisma?: PrismaClient | Prisma.TransactionClient;
+}): Promise<StudioUserIdentity> {
+  const prisma = input.prisma ?? getPrismaClient();
+  const normalizedEmail = normalizeEmail(input.email);
+
+  if (!normalizedEmail) {
+    throw new Error("Invitee email is required.");
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { primaryEmail: normalizedEmail },
+        {
+          aliases: {
+            some: {
+              email: normalizedEmail,
+            },
+          },
+        },
+      ],
+    },
+    include: userIdentityInclude,
+  });
+
+  if (existing) {
+    const data: Prisma.UserUpdateInput = {
+      isActive: true,
+    };
+    const name = input.name?.trim();
+    if (name) data.name = name;
+    if (input.image) data.image = input.image;
+
+    const updated = await prisma.user.update({
+      where: { id: existing.id },
+      data,
+      include: userIdentityInclude,
+    });
+
+    return mapStudioUserIdentity(updated);
+  }
+
+  const created = await prisma.user.create({
+    data: {
+      primaryEmail: normalizedEmail,
+      name: input.name?.trim() || null,
+      image: input.image || null,
+      isActive: true,
+    },
+    include: userIdentityInclude,
+  });
+
+  return mapStudioUserIdentity(created);
 }
 
 export async function ensureStudioUserFromGoogle(input: {

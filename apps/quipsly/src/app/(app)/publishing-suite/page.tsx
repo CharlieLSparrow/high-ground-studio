@@ -39,7 +39,7 @@ export default function PublishingSuiteDashboard() {
       </div>
 
       <div className="grid grid-cols-3 gap-8">
-        
+
         <Link href={`/publishing-suite/package-builder?project=${projectSlug}`} className="group bg-white rounded-3xl p-8 border border-[#e8dcc4] shadow-sm hover:shadow-md hover:border-amber-400 transition-all flex flex-col items-center text-center">
           <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
             <PackageOpen className="w-8 h-8 text-amber-600" />
@@ -76,6 +76,19 @@ export default function PublishingSuiteDashboard() {
           </p>
           <div className="flex items-center gap-2 text-sm font-bold text-amber-600">
             View Performance <ArrowRight className="w-4 h-4" />
+          </div>
+        </Link>
+
+        <Link href={`/publishing-suite/youtube?project=${projectSlug}`} className="group bg-white rounded-3xl p-8 border border-[#e8dcc4] shadow-sm hover:shadow-md hover:border-red-400 transition-all flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-600"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/></svg>
+          </div>
+          <h2 className="text-xl font-bold text-[#3d3122] mb-2">YouTube Desk</h2>
+          <p className="text-sm text-[#8c6b4a] mb-6 flex-1">
+            Manage channel OAuth, assemble YouTube payloads (Title, Tags, Chapters), and push directly to YouTube Data API.
+          </p>
+          <div className="flex items-center gap-2 text-sm font-bold text-red-600">
+            Open YouTube Desk <ArrowRight className="w-4 h-4" />
           </div>
         </Link>
 

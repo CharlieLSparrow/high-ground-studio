@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "styleBase": "warm storybook illustration, friendly sparrow-like Quipsly mascot, expressive eyes, cozy parchment palette, handmade texture, soft lantern light, charming useful details, no photorealism",
+  "negativePrompt": "scary, aggressive, uncanny, extra limbs, broken wings, distorted face, unreadable text, watermark, logo artifacts, harsh neon, photorealistic human, corporate clipart",
+  "roles": {
+    "librarian": {
+      "label": "Research Librarian",
+      "prompt": "Quipsly research librarian with round glasses, notebook, tiny index cards, source citations, old books, warm library desk, curious and trustworthy"
+    },
+    "scribe": {
+      "label": "Writing Scribe",
+      "prompt": "tiny Quipsly writing with a feather pen on parchment, manuscript pages, gentle focus, helpful but not authoring for the human"
+    },
+    "producer": {
+      "label": "Podcast Producer",
+      "prompt": "two Quipsly podcast producers with microphones, camera, laptop, show notes, cozy recording desk, collaborative and excited"
+    },
+    "quote-curator": {
+      "label": "Quote Curator",
+      "prompt": "Quipsly quote curator sorting quote cards, labeled drawers, magnifying glass, attribution notes, warm archive"
+    },
+    "publisher": {
+      "label": "Publishing Messenger",
+      "prompt": "Quipsly messenger preparing publish packets, envelopes, tiny satchel, destination labels, careful and organized"
+    },
+    "teacher": {
+      "label": "Course Teacher",
+      "prompt": "Quipsly teacher preparing flashcards, lesson cards, quiz notes, little chalkboard, patient and joyful"
+    },
+    "gallery-guide": {
+      "label": "Gallery Guide",
+      "prompt": "Quipsly gallery guide arranging photo proofs, selection cards, client notes, warm studio table"
+    }
+  }
+}

@@ -9,17 +9,18 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { SnippetExtension } from "../lib/SnippetExtension";
 import { cn } from "@/app/(app)/studio-ui";
-import { 
-  Bold, 
-  Italic, 
-  Code, 
-  Sparkles, 
-  Tag, 
-  Video, 
-  User, 
+import {
+  Bold,
+  Italic,
+  Code,
+  Sparkles,
+  Tag,
+  Video,
+  User,
   BookOpen,
   Clapperboard
 } from "lucide-react";
+import type { SourceSelector } from "@high-ground/quipsly-domain/source-aware";
 
 interface EditorProps {
   roomName: string;
@@ -35,11 +36,11 @@ interface EditorProps {
   additionalExtensions?: any[];
 }
 
-export default function Editor({ 
-  roomName, 
-  token = "", 
+export default function Editor({
+  roomName,
+  token = "",
   collabUrl = "",
-  userName = "Anonymous", 
+  userName = "Anonymous",
   userColor = "#f97316", // Default orange
   onSelectTagging,
   onSelectBreakdown,
@@ -142,14 +143,15 @@ export default function Editor({
 
     const handleHighlight = (e: Event) => {
       clearHighlight();
-      
+
       const customEvent = e as CustomEvent;
-      const snippet = customEvent.detail?.snippet;
+      const selector = customEvent.detail?.selector as SourceSelector | undefined;
+      const snippet = selector?.kind === "text-quote" ? selector.exactText : customEvent.detail?.snippet;
       if (!snippet) return;
 
       let foundNode: any = null;
       let foundNodePos: number | null = null;
-      
+
       editor.state.doc.descendants((node, pos) => {
         if (node.isTextblock && node.textContent.includes(snippet)) {
           foundNodePos = pos;
@@ -163,7 +165,7 @@ export default function Editor({
           if (domNode && domNode instanceof HTMLElement) {
             activeHighlightDom = domNode;
             domNode.classList.add("ring-2", "ring-flare", "bg-flare/10", "transition-all", "duration-500", "rounded-md");
-            
+
             // Only scroll into view if it's far out of viewport to avoid jarring jumps
             const rect = domNode.getBoundingClientRect();
             if (rect.top < 0 || rect.bottom > window.innerHeight) {
@@ -179,11 +181,13 @@ export default function Editor({
     };
 
     window.addEventListener("quipsly:highlight-mention", handleHighlight);
+    window.addEventListener("quipsly:source-overlay-preview", handleHighlight);
     window.addEventListener("quipsly:clear-highlight", clearHighlight);
 
     return () => {
       clearHighlight();
       window.removeEventListener("quipsly:highlight-mention", handleHighlight);
+      window.removeEventListener("quipsly:source-overlay-preview", handleHighlight);
       window.removeEventListener("quipsly:clear-highlight", clearHighlight);
     };
   }, [editor]);
@@ -214,7 +218,7 @@ export default function Editor({
   }
 
   return (
-    <div 
+    <div
       className="w-full bg-studio-panel/30 border border-studio-line/30 rounded-2xl shadow-studio-panel backdrop-blur-xl p-[28px] transition-all duration-300 relative focus-within:border-studio-source/40"
       onClick={handleEditorClick}
     >

@@ -34,7 +34,7 @@ Both should use the same living-document spine where possible:
 
 ## Starter document rule
 
-New Nests should seed a real editable welcome/how-to document inside the editor.
+New Nests should seed a real editable welcome/how-to document inside the editor. Starter documents should also teach likely output paths from the shared output catalog so beta users understand that books, courses, episode pages, feeds, quote cards, and galleries are projections from the same Nest.
 
 This is intentional. Users should learn Quipsly by editing the same type of document they will use for real work, not by reading a detached tutorial page.
 
@@ -61,3 +61,23 @@ Each Nest kind gets a starter document shaped for the work:
 - Do not make Study documents a separate app if the tagged living-document spine can support them.
 - Do not let media import, recorder, or publishing writes proceed without an explicit `projectSlug`.
 
+
+## 2026-06-05 Codex beta update: customer-facing Nest route and document kinds
+
+Current product language:
+
+- **Nest** is the customer-facing project container.
+- `StudioProject` remains the backing database implementation.
+- `/projects` remains the existing hub route.
+- `/nests` is now a customer-facing alias for the same hub.
+- `/nests/<slug>` redirects into `/create?project=<slug>` so links can use Nest language without duplicating editor code.
+
+Shared document-kind vocabulary now lives in `packages/quipsly-domain/src/nests.ts`:
+
+- `original-content`: living manuscripts, articles, books, scripts, talks, podcast episode writing.
+- `study-source`: imported books, course pages, web pages, transcripts, and other source material with overlays on top.
+- `research-packet`: curated source, quote, example, citation, and note bundles.
+- `production-room`: episode recording, timeline, transcript, and media-sync workspaces.
+- `publish-packet`: public-safe projections for owned sites, feeds, social, Patreon, courses, galleries, and exports.
+
+Design rule: do not split these into disconnected products unless the tagged living-document spine genuinely cannot support the workflow. Start by adding document kinds, packet views, overlays, and destination states around the Nest.

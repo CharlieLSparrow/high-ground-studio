@@ -18,10 +18,15 @@ export {
   resolveProjectSlug,
   projectConfig,
   slugifyProjectName,
+  WORKFLOW_SYSTEM_DESCRIPTIONS,
+  WORKFLOW_SYSTEM_FOR_NEST_KIND,
+  WORKFLOW_SYSTEM_LABELS,
+  workflowSystemForNestKind,
 } from "@/lib/studio/project-registry";
 
 export type {
   StudioNestKind,
   StudioProjectConfig,
   StudioProjectOption,
+  QuipslyWorkflowSystem,
 } from "@/lib/studio/project-registry";

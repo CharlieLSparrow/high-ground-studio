@@ -7,7 +7,7 @@ export function generateMockExperience(type: ExperienceType, groupCount: number 
     const panels: ScrollPanel[] = [];
     for (let p = 0; p < panelsPerGroup; p++) {
       const panelId = `pnl_${g}_${p}`;
-      
+
       let content = {};
       let panelType: PanelType = 'MEDIA';
 
@@ -38,6 +38,13 @@ export function generateMockExperience(type: ExperienceType, groupCount: number 
           content = {
             text: `"The galaxy is vast, but this sector is ours." - Unknown Commander (Entry ${g}-${p})`,
             nodePayload: { tags: ['#lore', '#faction'] }
+          };
+          break;
+        case 'COMIC':
+          content = {
+            imageUrl: `https://placehold.co/1080x1920/1a1a2e/e94560?text=Comic+Panel+${g + 1}-${p + 1}`,
+            text: p % 2 === 0 ? `"Wait, what did you just say?"` : `"I said... we're not alone out here."`,
+            caption: p === 0 ? 'MEANWHILE, ON SECTOR 4...' : undefined,
           };
           break;
         default:

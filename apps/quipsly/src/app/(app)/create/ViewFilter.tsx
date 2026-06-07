@@ -4,6 +4,11 @@ import { useMemo, useState } from "react";
 import { BookOpen, Filter, Layers, LayoutTemplate, X } from "lucide-react";
 import { DocumentBoundary, ViewDefinition } from "./types";
 import { DEFAULT_VIEW } from "./Workspace";
+import {
+  WORKFLOW_SYSTEM_DESCRIPTIONS,
+  WORKFLOW_SYSTEM_LABELS,
+  WORKFLOW_SYSTEM_SEQUENCE,
+} from "@/lib/studio/project-registry";
 
 export default function ViewFilter({
   activeView,
@@ -13,6 +18,7 @@ export default function ViewFilter({
   activeBoundaryId,
   setActiveBoundaryId,
   scrolledBoundaryId,
+  workflowSystem,
 }: {
   activeView: ViewDefinition;
   setActiveView: (view: ViewDefinition) => void;
@@ -21,6 +27,7 @@ export default function ViewFilter({
   activeBoundaryId: string | null;
   setActiveBoundaryId: (boundaryId: string | null) => void;
   scrolledBoundaryId?: string | null;
+  workflowSystem: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing";
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const activeBoundary = documentBoundaries.find((boundary) => boundary.id === activeBoundaryId) ?? null;
@@ -83,6 +90,40 @@ export default function ViewFilter({
           <button className="rounded-full p-1.5 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122] md:hidden" onClick={() => setIsOpen(false)}>
             <X size={20} />
           </button>
+        </div>
+
+        <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+          <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+            <Layers size={12} />
+            Workflow System
+          </h3>
+          <p className="text-xs leading-5 text-[#6b5b45]">
+            Current lane: <span className="font-black text-[#3d3122]">{WORKFLOW_SYSTEM_LABELS[workflowSystem]}</span>
+          </p>
+          <p className="mt-2 text-[10px] leading-5 text-[#6b5b45]">
+            This is an informational map of available lanes. A Nest can stay in any lane; there is no right or wrong place to work.
+          </p>
+          <div className="mt-3 grid gap-1 text-[10px]">
+            {WORKFLOW_SYSTEM_SEQUENCE.map((system, index) => (
+              <div
+                key={system}
+                className={`rounded-lg border px-2 py-2 ${
+                  system === workflowSystem
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : index < WORKFLOW_SYSTEM_SEQUENCE.indexOf(workflowSystem)
+                      ? "border-[#e8dcc4] bg-[#fff3dd] text-[#8a6943]"
+                      : "border-[#ece6df] bg-white text-[#8f7d63]"
+                }`}
+              >
+                <div className="font-black uppercase tracking-[0.14em]">
+                  {index + 1}. {WORKFLOW_SYSTEM_LABELS[system]}
+                </div>
+                <div className="text-[10px] leading-5 text-[#6f5a3e]">
+                  {WORKFLOW_SYSTEM_DESCRIPTIONS[system]}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">

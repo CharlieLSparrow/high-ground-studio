@@ -7,6 +7,7 @@ import { StoryboardAdapter } from './adapters/StoryboardAdapter';
 import { CourseAdapter } from './adapters/CourseAdapter';
 import { PhotographyAdapter } from './adapters/PhotographyAdapter';
 import { LorelistAdapter } from './adapters/LorelistAdapter';
+import { ComicAdapter } from './adapters/ComicAdapter';
 
 interface ScrollPanelRendererProps {
   panel: ScrollPanel;
@@ -37,6 +38,8 @@ export function ScrollPanelRenderer({ panel, experienceType, isActive }: ScrollP
         return <PhotographyAdapter panel={panel} />;
       case 'LORELIST':
         return <LorelistAdapter panel={panel} />;
+      case 'COMIC':
+        return <ComicAdapter panel={panel} />;
       default:
         return (
           <div className="flex-1 flex items-center justify-center p-8 text-center text-zinc-500">

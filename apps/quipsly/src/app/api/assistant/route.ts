@@ -27,6 +27,8 @@ function resultLine(result: RetrievalResult, index: number) {
     sourceMeta = `[Knowledge Node: ${prov.nodeType}]`;
   } else if (prov.origin === "quipsly-lore") {
     sourceMeta = `[Lore: ${prov.nodeSlug}]`;
+  } else if (prov.origin === "source-aware") {
+    sourceMeta = `[Immutable Source: ${prov.documentKind} | Selector: ${prov.selector.kind}]`;
   }
 
   const citation = result.citation ? ` (Reasoning: ${result.citation})` : "";

@@ -1,4 +1,5 @@
 import { getPrismaClient } from "@/lib/prisma";
+import { requireQuipslyAdminActor } from "@/lib/server/user-management";
 
 function emptyStats() {
   return {
@@ -8,6 +9,8 @@ function emptyStats() {
 }
 
 export async function getAdminInboxStats() {
+  await requireQuipslyAdminActor();
+
   if (!process.env.DATABASE_URL) return emptyStats();
 
   try {
@@ -34,6 +37,8 @@ export async function getAdminInboxStats() {
 }
 
 export async function getRecentInboxEvents() {
+  await requireQuipslyAdminActor();
+
   if (!process.env.DATABASE_URL) return [];
 
   try {
@@ -49,6 +54,8 @@ export async function getRecentInboxEvents() {
 }
 
 export async function getRecentReconciliations() {
+  await requireQuipslyAdminActor();
+
   if (!process.env.DATABASE_URL) return [];
 
   try {

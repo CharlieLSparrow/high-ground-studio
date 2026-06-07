@@ -37,7 +37,7 @@ To ensure high-fidelity containment of fiction and book analysis details, we est
 
 ### Provenance-Linked Mentions Highlight (Completed in Sprint 4)
 
-We successfully implemented interactive inline provenance highlights in the document workspace safely and without mutating the Yjs manuscript. 
+We successfully implemented interactive inline provenance highlights in the document workspace safely and without mutating the Yjs manuscript.
 1. The Story Bible dispatches a global `quipsly:highlight-mention` event when a user hovers over an entity's extracted quote.
 2. The `Editor.tsx` component actively listens for this event.
 3. The editor resolves the TipTap virtual DOM node that contains the snippet using `editor.state.doc.descendants` and `editor.view.nodeDOM()`.
@@ -46,3 +46,64 @@ We successfully implemented interactive inline provenance highlights in the docu
 6. A safety timeout (3 seconds) and a dedicated `quipsly:clear-highlight` listener ensure the highlights automatically vanish and never get stuck.
 
 This gives authors an immediate, high-fidelity visualization of thematic continuity in place, without risking any automated text mutation.
+
+---
+
+## 2026-06-05 Research Proposal - AG-Fiction-Analysis
+
+### Research Sources & Examples Reviewed
+- **Campfire & World Anvil:** Provide encyclopedic, modular worldbuilding templates (species, magic systems). Powerful but can detach authors from direct manuscript drafting if too detached.
+- **Plottr:** Focuses intensely on visual structural plotting (e.g., Save the Cat, Hero's Journey) rather than deep lore database management.
+- **LivingWriter & Aeon Timeline:** Lead in providing robust, pre-built structural templates (like *Romancing the Beat*) and stringent chronological consistency tracking, which is vital for romance and series continuity.
+- **Sudowrite:** Leads the AI-assisted drafting space, using a community-driven "Story Bible" feature to maintain consistency across AI generations and utilizing uncensored models tuned for specific emotional/romantic beats.
+- **Literary Analysis Workflows:** Rely on tracking thematic occurrences, rhetorical devices, and character arcs across large corpuses, structurally similar to worldbuilding but strictly analytical.
+
+### Current Fiction/Analysis State Summary
+- **Entity Storage:** The Quipsly Story Bible currently relies on `StoryEntity` records strictly scoped to a `projectId`, utilizing a dynamic `attributes` JSON for flexible metadata (e.g., source excerpts, living notes).
+- **Security & Scoping:** Strict backend validation (`requireProjectAccess`) guarantees that entities cannot bleed into unrelated projects or teams.
+- **UI & UX:** The UI features a tabbed "Entity Card" (Overview & Living Notes), a masonry-style "Entity Directory", and a high-fidelity "Intelligence Inbox" for manually triggered AI extractions.
+- **Editor Integration:** `Editor.tsx` now listens to `quipsly:highlight-mention` events to visually map Story Bible provenance excerpts onto the manuscript via DOM manipulation without mutating the underlying Yjs document.
+
+### Recommended Product Model
+1. **The "Integrated Ledger" Model:** Quipsly should avoid becoming a detached "wiki" product (like World Anvil). The Story Bible should remain a contextual sidebar that acts as an "overlay" on the writing process, providing immediate insights and continuity checks where the author is actually writing.
+2. **Dual-Lens Design:** The flexible `attributes` schema allows the exact same backend to serve both fiction writing (tracking *character motivations* and *magic systems*) and book analysis (tracking *thematic occurrences* and *rhetorical devices*). Quipsly should dynamically adjust its terminology and templates based on the user's defined project context.
+3. **Private Romance Compartmentalization:** For romance/adult content, we must maintain strict multi-tenant isolation. Furthermore, Quipsly should consider allowing specific Story Bible entities or draft blocks to be marked as "Vaulted" (locally encrypted) to guarantee privacy from standard team collaborators if desired.
+
+### Proposed Next Implementation Pass
+**Feature:** Structural Beat Sheet & Timeline Overlay
+Generative drafting is allowed, including freeform AI-written rough material. Quipsly's advantage is that drafts can sit beside structure, continuity, character maps, and source/canon context. The safest next implementation step is still to introduce Plottr/Aeon-style visual structure directly into the Story Bible sidebar so drafts have a strong canon scaffold.
+1. Add a "Timeline & Beats" view to the Story Bible panel.
+2. Allow users to map existing Story Entities (scenes, characters) to structural beats (e.g., Inciting Incident, Midpoint, Dark Night of the Soul).
+3. Synchronize this timeline with `Editor.tsx` so clicking a structural beat smoothly scrolls the manuscript to the corresponding section.
+
+### Files Likely Touched
+- `apps/quipsly/src/components/story-bible/StoryBibleSidebar.tsx` (Add new Timeline Tab)
+- `apps/quipsly/src/components/story-bible/TimelineView.tsx` (New Component)
+- `apps/quipsly/src/app/api/story-bible/entities/route.ts` (Extend creation logic to support "Beat" or "Event" entity types)
+- `apps/quipsly/src/components/Editor.tsx` (Add intersection observers to track which beat is active)
+
+### Privacy/Safety Risks
+- **Data Leakage:** Syncing beats to editor scroll positions could inadvertently expose plot structure to users who shouldn't have access. Tenancy must cover the metadata.
+- **Model Censorship Risk:** Standard foundational models often false-flag romance/adult structural analysis. We must ensure prompt routing for these specific lane requests utilizes an uncensored or explicitly tuned model.
+
+### Questions for Codex/Product Owner
+1. **Templates:** Should Quipsly offer pre-built templates for specific genres (e.g., *Romancing the Beat*) out of the box, or should we rely on users building their own structures via the flexible `attributes` system?
+2. **Model Routing:** Are we comfortable using our standard LLM models for private romance/adult analysis, or do we need to route those specific requests to uncensored models to prevent safety rejections?
+3. **Data Model:** For the "Timeline Overlay" pass, should we store "Beats" as a distinct Prisma model, or just leverage a new `type: "beat"` within the existing `StoryEntity` table?
+
+---
+
+## 2026-06-05 Marginalia Beta Sprint - AG-Fiction-Analysis
+
+### 1. What changed
+To adopt Codex's new `source-aware` foundation, I upgraded the provenance-linked highlight system. The Story Bible no longer relies solely on raw `snippet` strings for manuscript overlays. It now constructs formal `SourceSelector` objects (specifically `createTextQuoteSelector`) from `@high-ground/quipsly-domain/source-aware` and dispatches them via a new `quipsly:source-overlay-preview` event. The `Editor.tsx` component was updated to parse these formal selectors, rendering the visual highlight while maintaining backward compatibility with the legacy event.
+
+### 2. Files touched
+- `apps/quipsly/src/components/story-bible/EntityCard.tsx`
+- `apps/quipsly/src/components/Editor.tsx`
+
+### 3. Risks or follow-up needed
+- The hardcoded `"current-document"` ID in `createTextQuoteSelector` assumes the Story Bible overlay always targets the active document editor. If the workspace moves to a multi-document layout, we will need to pass the real `documentId` context to the Story Bible Sidebar so it can target cross-document selectors accurately.
+
+### 4. Recommendation for Codex
+**Keep**. The changes are purely additive, strictly adhere to the new `quipsly-domain` contracts, and do not mutate the database schema or the Yjs document state.

@@ -10,6 +10,10 @@ Projects own documents, tags, media assets, episode production rooms, publishing
 
 Project slugs should not be scattered through routes. Quipsly uses a shared project registry at `apps/quipsly/src/lib/studio/project-registry.ts`.
 
+Nests should also make output paths visible without turning each output into a separate authoring silo. The shared output catalog lives at `packages/quipsly-domain/src/output-catalog.ts`, with app views at `/outputs` and `/outputs/<outputId>`.
+
+The live real-work route map is tracked in `docs/quipsly/live-nests-real-work.md`. The short version: `/projects` is the Nest hub, `/nests/[slug]` is the Nest control room, and tool routes like `/create`, `/editor`, `/recorder`, and `/call` should preserve an explicit `project=<slug>`.
+
 That registry owns:
 
 - slug normalization

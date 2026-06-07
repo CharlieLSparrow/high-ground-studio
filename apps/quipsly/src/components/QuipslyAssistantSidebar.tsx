@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Check, ChevronRight, ClipboardList, Feather, HeartHandshake, Loader2, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
+import { Bot, Check, ChevronRight, ClipboardList, Feather, HeartHandshake, Loader2, PackageCheck, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import type { DocumentBoundary, ViewDefinition } from "@/app/(app)/create/types";
 import { searchExamplesAction, searchQuotesAction, saveAssistantAction, undoSavedAssistantAction } from "@/app/(app)/create/actions";
 import { StoryBibleSidebar } from "./story-bible";
@@ -157,6 +157,12 @@ export function QuipslyAssistantSidebar({
   }, [activeBoundary?.label, activeView.name, projectSlug]);
 
   const recentTags = useMemo(() => uniqueTags(visibleBlocks), [visibleBlocks]);
+  const quickPrompts = useMemo(() => [
+    "What outputs could this section become?",
+    "Find related examples in this Nest.",
+    "Suggest structure cleanup for this section.",
+    "Prepare a research packet preview.",
+  ], []);
 
   const askAssistant = async () => {
     const trimmed = message.trim();
@@ -190,7 +196,7 @@ export function QuipslyAssistantSidebar({
       setSuggestions(data.suggestions ?? []);
       setWarning(data.warning ?? null);
       if (data.sessionId) setSessionId(data.sessionId);
-      
+
       const createdAt = new Date().toISOString();
       const proposedActions = data.actions?.length ? data.actions : (data.toolIntents ?? []).map((intent: any, index: number) => ({
         ...intent,
@@ -310,6 +316,33 @@ export function QuipslyAssistantSidebar({
       };
     }
 
+    if (action.kind === "propose-output-plan") {
+      const payload = action.payload ?? {};
+      const readinessPlan = payload.readinessPlan as any;
+      const packetSkeleton = payload.packetSkeleton as any;
+      const requiredInputs = Array.isArray(readinessPlan?.requiredInputs) ? readinessPlan.requiredInputs : [];
+      const fields = packetSkeleton?.fields && typeof packetSkeleton.fields === "object"
+        ? Object.keys(packetSkeleton.fields)
+        : [];
+
+      return {
+        id: `preview-${Date.now().toString(36)}`,
+        actionId: action.id,
+        title: `Output plan: ${String(payload.title || "Untitled output")}`,
+        kind: action.kind,
+        detail: String(readinessPlan?.readinessSummary || "Review this output plan before creating or publishing a packet."),
+        items: [
+          { label: "Output plan route", detail: String(payload.href || "No route provided.") },
+          ...requiredInputs.slice(0, 5).map((input: any) => ({
+            label: String(input.label || "Required input"),
+            detail: `${String(input.status || "needs-review")}: ${String(input.note || "Review before publishing.")}`,
+          })),
+          ...(fields.length ? [{ label: "Packet fields", detail: fields.join(", ") }] : []),
+        ],
+        createdAt,
+      };
+    }
+
     if (action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE") {
       const p = action.payload || {};
       const entityName = String(p.name || "Unknown Entity");
@@ -330,6 +363,27 @@ export function QuipslyAssistantSidebar({
           { label: "Source Excerpt", detail: `"${sourceExcerpt}"` },
           ...items,
         ],
+        createdAt,
+      };
+    }
+
+    if (action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE") {
+      const p = action.payload || {};
+      const isRewrite = action.kind === "PROPOSE_REWRITE";
+
+      const items = [];
+      if (isRewrite && p.originalText) {
+        items.push({ label: "Original Text", detail: String(p.originalText) });
+      }
+      items.push({ label: isRewrite ? "Proposed Rewrite" : "Proposed Draft", detail: String(p.draftText || p.rewriteText || "No text provided.") });
+
+      return {
+        id: `preview-${Date.now().toString(36)}`,
+        actionId: action.id,
+        title: isRewrite ? "Suggested Rewrite" : "Suggested Draft",
+        kind: action.kind,
+        detail: action.explanation || (isRewrite ? "Review the rewritten text." : "Review the drafted text."),
+        items,
         createdAt,
       };
     }
@@ -641,16 +695,30 @@ export function QuipslyAssistantSidebar({
     updateActionStatus(action.id, "saved");
     logChange(action, "saved", "Saved as persistent research note in ledger.");
     syncLedger(action.id, "saved", "Saved as Research Note");
-    
+
     const p = action.payload || {};
+    const exactText = (p as any).attributes?.sourceExcerpt || null;
+
+    // Beta Readiness Improvement: Use new source-aware foundation schema for ledger notes
+    // This allows seamless migration to SourceOverlay later.
     const provenance = {
+      id: `overlay-${action.id}`,
+      kind: "note",
+      selector: {
+        kind: exactText ? "text-quote" : "block",
+        sourceDocumentId: documentId,
+        blockId: visibleBlocks[0]?.id || undefined,
+        exactText: exactText || undefined,
+      },
+      label: action.label,
+      note: JSON.stringify(p),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdByUserId: "quipsly-assistant",
+      // Legacy backwards-compatible fields
       projectSlug,
-      documentId,
       documentTitle,
-      blockId: visibleBlocks[0]?.id || null,
-      sourceExcerpt: (p as any).attributes?.sourceExcerpt || null,
       assistantActionId: action.id,
-      createdBy: "Quipsly AI",
     };
     await saveAssistantAction(action.id, provenance);
   };
@@ -780,6 +848,18 @@ export function QuipslyAssistantSidebar({
                     <Sparkles className="h-4 w-4 text-[#a36f2e]" />
                     Ask for research help
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {quickPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => setMessage(prompt)}
+                        className="rounded-full border border-[#e8dcc4] bg-[#fffaf1] px-3 py-1.5 text-[11px] font-bold text-[#6b5b45] transition hover:border-[#d3a24f] hover:bg-amber-50"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
                   <textarea
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
@@ -880,6 +960,11 @@ export function QuipslyAssistantSidebar({
                               {action.kind === "find-examples" || action.kind === "search-quotes" ? (
                                 <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-sky-700">
                                   Research: {action.kind === "find-examples" ? "Examples" : "Quotes"} (Read-Only Search)
+                                </div>
+                              ) : action.kind === "propose-output-plan" ? (
+                                <div className="mt-1 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+                                  <PackageCheck className="h-3.5 w-3.5" />
+                                  Output plan preview (No publishing)
                                 </div>
                               ) : (
                                 <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">

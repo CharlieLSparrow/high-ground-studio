@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { format, isSameDay } from "date-fns";
-import { Clock, Send, PlayCircle, Rss, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Clock, CheckCircle2 } from "lucide-react";
 import { mockPublishedEvents, generateTimelineDays, mockPackages } from "../mockData";
+import {
+  getDestinationLabel,
+  getPublicationStatusLabel,
+  publicationStatusClass,
+} from "@/lib/publishing/statusModel";
 
 export default function CalendarDispatcherPage() {
   const [days] = useState(generateTimelineDays(14)); // 14 day timeline
@@ -40,7 +45,7 @@ export default function CalendarDispatcherPage() {
       </header>
 
       <div className="flex-1 bg-white rounded-2xl border border-[#e8dcc4] shadow-sm overflow-hidden flex flex-col">
-        
+
         {/* Calendar Header / Timeline Scale */}
         <div className="grid grid-cols-7 border-b border-[#e8dcc4] bg-[#f8f3e6]">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, i) => (
@@ -74,7 +79,7 @@ export default function CalendarDispatcherPage() {
                       <div key={evt.id} className={`p-2 rounded-lg border text-left flex flex-col gap-1 shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer ${isPublished ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
                         <div className="flex justify-between items-start">
                           <span className={`text-[10px] font-bold uppercase tracking-wider ${isPublished ? "text-green-700" : "text-amber-700"}`}>
-                            {evt.destination.split("_")[0]}
+                            {getDestinationLabel(evt.destination)}
                           </span>
                           {isPublished ? <CheckCircle2 className="w-3 h-3 text-green-600" /> : <Clock className="w-3 h-3 text-amber-600" />}
                         </div>
@@ -100,10 +105,14 @@ export default function CalendarDispatcherPage() {
               <div key={evt.id} className="w-64 flex-shrink-0 bg-white rounded-xl border border-[#e8dcc4] p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-2">
                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">DRAFT</span>
-                   <span className="text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a]">{evt.destination.split("_")[0]}</span>
+                   <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${publicationStatusClass(evt.status)}`}>
+                    {getPublicationStatusLabel(evt.status)}
+                   </span>
                 </div>
                 <h3 className="font-bold text-sm text-[#3d3122] truncate">{pkg?.title}</h3>
-                <p className="text-xs text-[#8c6b4a] mt-2">Waiting for embargo clearance.</p>
+                <p className="text-xs text-[#8c6b4a] mt-2">
+                  {getDestinationLabel(evt.destination)} package waiting for scheduling or review.
+                </p>
                 <button className="w-full mt-4 bg-[#f8f3e6] text-[#8c6b4a] text-xs font-bold py-2 rounded-lg hover:bg-[#ebdcc8] hover:text-[#3d3122] transition-colors">
                   Schedule Job
                 </button>

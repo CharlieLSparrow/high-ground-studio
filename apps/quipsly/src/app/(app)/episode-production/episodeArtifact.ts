@@ -9,6 +9,10 @@ export type EpisodeArtifactTimelineClip = {
   name: string;
   color: string;
   kind?: "audio" | "video";
+  generatedFrom?: string;
+  recordingSync?: Record<string, unknown>;
+  takeOrder?: number;
+  segmentOrder?: number;
 };
 
 export type EpisodeArtifactTranscript = {
@@ -43,6 +47,26 @@ export type EpisodeImportedMediaAsset = {
   importedAt: string;
   source: "editor-import" | "recorder-upload" | "field-kit" | (string & {});
   importRole?: string;
+  metadata?: {
+    recordingSync?: {
+      recordedStartAt?: string;
+      recordedEndAt?: string;
+      deviceLabel?: string;
+      sourceDeviceClockNotes?: string;
+      segmentOrder?: number;
+      takeOrder?: number;
+      sourceFileCreatedAt?: string;
+      sourceFileModifiedAt?: string;
+      durationSeconds?: number;
+      importJobId?: string;
+      queuedAt?: string;
+      fingerprint?: string;
+      homeNestSlug?: string;
+      [key: string]: unknown;
+    };
+    localImport?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
   sync: {
     status: "ready-to-sync" | "synced" | "held";
     anchorTimelineSeconds?: number;
@@ -56,6 +80,8 @@ export type EpisodeImportedMediaAsset = {
     note?: string;
     source?: string;
     syncedAt?: string;
+    recordingSegments?: import("@high-ground/quipsly-domain/recording").RecordingSegment[];
+    recordingSync?: Record<string, unknown>;
   };
   proxy: {
     status: "queued" | "ready" | "not-required" | "failed" | "external-preview";
@@ -68,6 +94,9 @@ import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
 export const EPISODE_ARTIFACT_CURRENT_VERSION = 2;
 export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 1;
+export const EPISODE_PRODUCTION_CURRENT_VERSION = 1;
+export const EPISODE_AUDIO_TAKE_STACK_SOURCE = "quipsly-audio-take-stack-v1";
+export const EPISODE_MAC_TIMELINE_ATTACH_SOURCE = "quipsly-mac-import-attach-v1";
 
 export type EpisodeArtifactSource = "quipsly-editor" | "quipsly-recorder" | "editor-import" | "api-import" | (string & {});
 
@@ -84,6 +113,22 @@ export type EpisodeArtifactPayload = {
   generatedFrom: string;
   savedAt: string;
   generatedAt?: string;
+};
+
+export type EpisodeProductionJsonPayload = {
+  episodeProductionPayloadVersion: number;
+  projectSlug: string;
+  episodeSlug: string;
+  importedMedia?: EpisodeImportedMediaAsset[];
+  timelineClips?: EpisodeArtifactTimelineClip[];
+  audioTakeStack?: Record<string, unknown>;
+  audioTakeStackTrackId?: string;
+  spineAudioAssetId?: string | null;
+  spineAudioClipId?: string | null;
+  spineAudioSource?: string | null;
+  spineAudioLabel?: string | null;
+  source?: string;
+  [key: string]: unknown;
 };
 
 export type EpisodeArtifactLegacyInput = {

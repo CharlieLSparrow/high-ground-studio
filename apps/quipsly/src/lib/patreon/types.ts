@@ -29,8 +29,10 @@ export type PatreonResourceIdentifier = z.infer<typeof PatreonResourceIdentifier
  * Patreon Member Attributes
  */
 export const PatreonMemberAttributesSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().nullable().optional(),
   full_name: z.string().optional(),
+  currently_entitled_amount_cents: z.number().int().nullable().optional(),
+  campaign_lifetime_support_cents: z.number().int().nullable().optional(),
   is_follower: z.boolean().optional(),
   last_charge_date: z.string().nullable().optional(),
   last_charge_status: z.enum(['Paid', 'Declined', 'Deleted', 'Pending', 'Refunded', 'Fraud', 'Other']).nullable().optional(),

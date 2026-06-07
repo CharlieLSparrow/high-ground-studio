@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.7.0",
+    "@high-ground/quipsly-domain": "workspace:*",
     "@high-ground/worldhub-domain": "workspace:*",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",

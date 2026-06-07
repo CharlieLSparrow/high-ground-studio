@@ -25,15 +25,15 @@ export async function EpisodeSupportCta({
               {user ? "Beta Access Active" : "Support the expedition"}
             </div>
             <h2 className="mt-3 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">
-              {user 
+              {user
                 ? `Welcome back, ${user.name || user.email?.split("@")[0]}`
                 : `Help keep ${episodeLabel} and the next stories moving.`
               }
             </h2>
             <p className="mt-3 max-w-2xl text-base leading-7 text-zinc-300">
-              {user 
+              {user
                 ? "You have access to the member dashboard. Open the interactive reader on any episode to highlight passages and save them to your study library."
-                : "Patreon support helps fund the episodes, companion writing, research notes, and the tools we are building around High Ground Odyssey. Sign in to unlock interactive reading."
+                : "Patreon support helps fund the episodes, companion writing, research notes, and the tools we are building around High Ground Odyssey. Supporters also help us beta-test Quipsly Nest as it opens up."
               }
             </p>
           </div>
@@ -80,4 +80,3 @@ export async function EpisodeSupportCta({
     </section>
   );
 }
-

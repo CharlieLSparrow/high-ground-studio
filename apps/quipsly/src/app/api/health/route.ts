@@ -1,10 +1,10 @@
 import {
-  createStudioHealthResponseBody,
-  STUDIO_HEALTH_HEADERS,
-} from "@/lib/studio-health.mjs";
+  createCompatibilityHealthResponseBody,
+  RELEASE_HEALTH_HEADERS,
+} from "@/lib/release-health";
 
 export function GET() {
-  return Response.json(createStudioHealthResponseBody(), {
-    headers: STUDIO_HEALTH_HEADERS,
+  return Response.json(createCompatibilityHealthResponseBody(), {
+    headers: RELEASE_HEALTH_HEADERS,
   });
 }

@@ -2,6 +2,13 @@
 
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createRecordingSegmentTimelineOffsets,
+  getRecordingSessionDurationSeconds,
+  segmentNeedsAttention,
+  type EpisodeRecordingSession,
+  type RecordingSegment,
+} from "@high-ground/quipsly-domain/recording";
 
 type RecordingEventKind = "session" | "marker" | "clip" | "retake" | "note";
 
@@ -610,6 +617,45 @@ function defaultRoom(): PersistedRoom {
 
 function makeRoomSnapshotFingerprint(snapshot: RecorderRoomSnapshot) {
   return JSON.stringify(snapshot);
+}
+
+function addSecondsToIso(value: string | null | undefined, seconds: number) {
+  if (!value || seconds <= 0) return undefined;
+  const startMs = Date.parse(value);
+  if (!Number.isFinite(startMs)) return undefined;
+  return new Date(startMs + seconds * 1000).toISOString();
+}
+
+function recordingSegmentFromTrack(
+  track: ImportedTrack,
+  sessionId: string,
+  fallbackIndex: number,
+): RecordingSegment {
+  const durationSeconds = Math.max(0, resolveTrackWindowDurationMs(track) / 1000);
+  const recordedStartAt = track.recordedStartAt || track.createdAt || new Date().toISOString();
+  const recordedEndAt = track.recordedEndAt || addSecondsToIso(recordedStartAt, durationSeconds);
+
+  return {
+    id: track.id || `segment-${fallbackIndex + 1}`,
+    sessionId,
+    participantId: "local-recorder",
+    deviceKind: track.source === "local-recorder" ? "web-browser" : "external-recorder",
+    status: track.uploadState === "uploaded" ? "uploaded" : track.uploadState === "error" ? "failed" : "local-ready",
+    startedAt: recordedStartAt,
+    stoppedAt: recordedEndAt,
+    durationSeconds,
+    stopReason: track.source === "local-recorder" ? "user-stop" : "unknown",
+    upload: track.sourceId || track.sourceUrl
+      ? {
+          provider: track.sourceId ? "gcs" : "external",
+          objectKey: track.sourceId,
+          url: track.sourceUrl,
+          contentType: track.type,
+          sizeBytes: track.size,
+        }
+      : undefined,
+    notes: track.name,
+  };
 }
 
 function normalizeClipCue(raw: unknown): ClipCue {
@@ -1245,6 +1291,46 @@ export default function RecorderDashboard() {
     }),
     [audioBlob, audioMimeType, clips, elapsedMs, episodeSlug, events, producerNotes, productionState?.id, productionState?.mode, projectSlug, roomName, script, tracks],
   );
+  const recordingSession = useMemo<EpisodeRecordingSession>(() => {
+    const sessionId = productionState?.id ?? `${projectSlug || "local"}:${episodeSlug || "episode"}`;
+    const segments = tracks.map((track, index) => recordingSegmentFromTrack(track, sessionId, index));
+    const now = new Date().toISOString();
+
+    return {
+      payloadVersion: 1,
+      id: sessionId,
+      projectSlug,
+      episodeSlug,
+      title: roomName,
+      participants: [
+        {
+          id: "local-recorder",
+          displayName: "Local recorder",
+          role: "host",
+          deviceKind: "web-browser",
+        },
+      ],
+      segments,
+      createdAt: segments[0]?.startedAt ?? now,
+      savedAt: lastSavedAt ?? now,
+    };
+  }, [episodeSlug, lastSavedAt, productionState?.id, projectSlug, roomName, tracks]);
+  const recordingOffsets = useMemo(
+    () => createRecordingSegmentTimelineOffsets(recordingSession),
+    [recordingSession],
+  );
+  const recordingSpineSummary = useMemo(() => {
+    const totalDurationSeconds = getRecordingSessionDurationSeconds(recordingSession);
+    const attentionCount = recordingSession.segments.filter(segmentNeedsAttention).length;
+    const uploadedCount = recordingSession.segments.filter((segment) => segment.upload?.objectKey || segment.upload?.url).length;
+
+    return {
+      totalDurationSeconds,
+      attentionCount,
+      uploadedCount,
+      segmentCount: recordingSession.segments.length,
+    };
+  }, [recordingSession]);
   const loadYouTubeDummyClip = () => {
     const demoClip = makeDemoYoutubeClip();
     setClips([demoClip]);
@@ -1412,7 +1498,7 @@ export default function RecorderDashboard() {
     if (!activePlaybackEntry) return;
 
     const timeoutMs = (activePlaybackEntry.sourceDuration * 1000) + 250; // 250ms buffer for iframe loading
-    
+
     const timeout = setTimeout(() => {
       const currentIndex = clipPlaybackPlan.findIndex(
         (entry) => entry.clipId === activePlaybackEntry.clipId && entry.segmentId === activePlaybackEntry.segmentId
@@ -1431,13 +1517,13 @@ export default function RecorderDashboard() {
 
   const armMic = async (forceRearm = false) => {
     if (streamRef.current && !forceRearm) return streamRef.current;
-    
+
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       setMicReady(false);
     }
-    
+
     setMicError(null);
 
     try {
@@ -1518,11 +1604,11 @@ export default function RecorderDashboard() {
       const stopMs = startedAtRef.current ? Math.max(0, stoppedAt.getTime() - startedAtRef.current) : 0;
       const recordedSessionStartMs = segmentClockMs;
       const recordedSessionEndMs = recordedSessionStartMs + stopMs;
-      
+
       const idbChunks = await getAllRecorderChunks();
       const finalChunks = idbChunks.length > 0 ? idbChunks : chunksRef.current;
       const blob = new Blob(finalChunks, { type: mimeType || "audio/webm" });
-      
+
       const trackId = nextTrackId(tracksRef.current, inferredKind);
       const trackUrl = URL.createObjectURL(blob);
       const extension = inferUploadTrackFileExt(blob.type, inferredKind);
@@ -1530,7 +1616,7 @@ export default function RecorderDashboard() {
       const trackRecordId = makeId("track");
       setAudioBlob(blob);
       setAudioUrl(trackUrl);
-      
+
       const track: ImportedTrack = {
         id: trackRecordId,
         name: `${roomName} local recording.${extension}`,
@@ -2173,6 +2259,66 @@ export default function RecorderDashboard() {
                       No browser recording captured yet.
                     </div>
                   )}
+
+                  <div className="mt-4 rounded-2xl border border-[#d8c29c] bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-black uppercase tracking-[0.18em] text-[#9b6927]">Recording spine</div>
+                        <h3 className="mt-1 font-serif text-lg font-black text-[#342616]">
+                          Breaks are preserved as stackable segments.
+                        </h3>
+                        <p className="mt-2 text-xs leading-5 text-[#6b5a43]">
+                          Each take keeps start/stop timestamps and upload evidence. If a call drops or a phone recording restarts, Quipsly can stack the segments end-to-end and sync them back to the continuous edit.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => downloadText(`${projectSlug}-recording-spine.json`, JSON.stringify(recordingSession, null, 2))}
+                        className="rounded-full border border-[#d7bd8f] bg-[#fff8e8] px-3 py-2 text-[11px] font-black uppercase tracking-wide text-[#7d5725] shadow-sm hover:bg-[#fff0cf]"
+                      >
+                        Export spine
+                      </button>
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                      <div className="rounded-xl border border-[#ead8b6] bg-[#fffaf0] p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#9b6927]">Segments</div>
+                        <div className="mt-1 text-2xl font-black text-[#342616]">{recordingSpineSummary.segmentCount}</div>
+                      </div>
+                      <div className="rounded-xl border border-[#ead8b6] bg-[#fffaf0] p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#9b6927]">Duration</div>
+                        <div className="mt-1 text-2xl font-black text-[#342616]">
+                          {formatClock(recordingSpineSummary.totalDurationSeconds * 1000)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">Uploaded</div>
+                        <div className="mt-1 text-2xl font-black text-emerald-900">{recordingSpineSummary.uploadedCount}</div>
+                      </div>
+                      <div className={`rounded-xl border p-3 ${
+                        recordingSpineSummary.attentionCount > 0
+                          ? "border-amber-200 bg-amber-50"
+                          : "border-emerald-200 bg-emerald-50"
+                      }`}>
+                        <div className={`text-[10px] font-black uppercase tracking-[0.16em] ${
+                          recordingSpineSummary.attentionCount > 0 ? "text-amber-700" : "text-emerald-700"
+                        }`}>Needs attention</div>
+                        <div className={`mt-1 text-2xl font-black ${
+                          recordingSpineSummary.attentionCount > 0 ? "text-amber-900" : "text-emerald-900"
+                        }`}>{recordingSpineSummary.attentionCount}</div>
+                      </div>
+                    </div>
+                    {recordingOffsets.length > 0 ? (
+                      <div className="mt-4 max-h-32 space-y-1 overflow-y-auto rounded-xl border border-[#ead8b6] bg-[#fffaf0] p-2">
+                        {recordingOffsets.map((offset, index) => (
+                          <div key={offset.segmentId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-[11px] text-[#6b5a43]">
+                            <span className="font-black text-[#342616]">Segment {index + 1}</span>
+                            <span>{formatClock(offset.timelineStartSeconds * 1000)} - {formatClock(offset.timelineEndSeconds * 1000)}</span>
+                            <span className="rounded-full border border-[#ead8b6] bg-[#fffaf0] px-2 py-0.5 font-black uppercase tracking-wide">{offset.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div className="mt-4 max-h-52 space-y-2 overflow-y-auto pr-1">
                     {tracks.map((track) => (

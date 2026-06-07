@@ -1,5 +1,6 @@
 import { AbsoluteFill, Audio, Sequence, Video } from "remotion";
 import { TimelineState, isAudioTrackId, isVideoTrackId } from "./useTimelineState";
+import { Video360Player } from "./Video360Player";
 import type { TimelineClip } from "./useTimelineState";
 
 const FPS = 30;
@@ -13,7 +14,11 @@ function looksLikeAssetUrl(assetId: string) {
 }
 
 function hasVideoExtension(assetId: string) {
-  return /\.(mp4|webm|mov|m4v|m3u8|mpd)(\?|$)/i.test(assetId);
+  return /\.(mp4|webm|mov|m4v|m3u8|mpd|insv)(\?|$)/i.test(assetId);
+}
+
+function is360Asset(assetId: string) {
+  return /\.(insv)(\?|$)/i.test(assetId);
 }
 
 function hasAudioExtension(assetId: string) {
@@ -68,10 +73,10 @@ type RemotionCompositionProps = {
   timeline: TimelineState;
 };
 
-function sortComposureClips(clips: TimelineClip[]) {
+function sortComposureClips(clips: any[]) {
   return [...clips].sort((a, b) => {
-    if (a.startIn !== b.startIn) {
-      return a.startIn - b.startIn;
+    if (a.renderStartIn !== b.renderStartIn) {
+      return a.renderStartIn - b.renderStartIn;
     }
     const aIsAudio = isAudioTrackId(a.trackId) ? 1 : 0;
     const bIsAudio = isAudioTrackId(b.trackId) ? 1 : 0;
@@ -80,13 +85,93 @@ function sortComposureClips(clips: TimelineClip[]) {
   });
 }
 
+function computeRenderSegments(timeline: TimelineState) {
+  if (timeline.editorMode === "play-all" || !timeline.editorMode) {
+    return timeline.clips.map(clip => ({
+      ...clip,
+      renderStartIn: clip.startIn,
+      renderDuration: clip.duration,
+      renderSourceStart: clip.sourceStart,
+      renderSourceEnd: clip.sourceEnd ?? (clip.sourceStart + clip.duration)
+    }));
+  }
+
+  const deactivatedBlocks = timeline.transcript.filter(b => b.deactivated || b.deleted);
+
+  function getRippledTime(t: number) {
+    let shift = 0;
+    for (const b of deactivatedBlocks) {
+      if (t >= b.time + b.duration) {
+         shift += b.duration;
+      } else if (t > b.time) {
+         shift += (t - b.time);
+      }
+    }
+    return t - shift;
+  }
+
+  let renderSegments = [];
+
+  for (const clip of timeline.clips) {
+     let segments = [{
+       startIn: clip.startIn,
+       sourceStart: clip.sourceStart,
+       duration: clip.duration
+     }];
+
+     for (const block of deactivatedBlocks) {
+        const blockStart = block.time;
+        const blockEnd = blockStart + block.duration;
+        const newSegments = [];
+        for (const seg of segments) {
+           const segEnd = seg.startIn + seg.duration;
+           if (segEnd <= blockStart || seg.startIn >= blockEnd) {
+             newSegments.push(seg);
+             continue;
+           }
+           if (seg.startIn < blockStart) {
+             newSegments.push({
+               startIn: seg.startIn,
+               sourceStart: seg.sourceStart,
+               duration: blockStart - seg.startIn
+             });
+           }
+           if (segEnd > blockEnd) {
+             newSegments.push({
+               startIn: blockEnd,
+               sourceStart: seg.sourceStart + (blockEnd - seg.startIn),
+               duration: segEnd - blockEnd
+             });
+           }
+        }
+        segments = newSegments;
+     }
+
+     for (const s of segments) {
+       if (s.duration < 0.05) continue;
+       renderSegments.push({
+         ...clip,
+         // We generate a unique ID for React keys since one clip can become multiple segments
+         id: `${clip.id}-seg-${Math.round(s.startIn * 1000)}`,
+         renderStartIn: getRippledTime(s.startIn),
+         renderDuration: s.duration,
+         renderSourceStart: s.sourceStart,
+         renderSourceEnd: s.sourceStart + s.duration
+       });
+     }
+  }
+
+  return renderSegments;
+}
+
 export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
-  const orderedClips = sortComposureClips(timeline.clips);
+  const segments = computeRenderSegments(timeline);
+  const orderedSegments = sortComposureClips(segments);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
-      {orderedClips.map((clip) => {
-        const startFrame = secondsToFrame(clip.startIn);
+      {orderedSegments.map((clip) => {
+        const startFrame = secondsToFrame(clip.renderStartIn);
         const normalizedTrackId = String(clip.trackId ?? "").trim().toUpperCase();
         const sourceId = normalizeMediaSource(normalizeClipAsset(clip.assetId)) ?? "";
         const hasVideoSource = isVideoLikeAsset(sourceId);
@@ -95,15 +180,16 @@ export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
         const resolvedKind = resolveClipKind(clip, normalizedTrackId, hasVideoSource, hasAudioSource);
         const fallbackColor = clip.color || "#1b1b1b";
         const missingSource = !hasSource;
-        const sourceStart = parseSourceNumber(clip.sourceStart);
-        const sourceEnd = resolveClipSourceEnd(clip);
+        const sourceStart = clip.renderSourceStart;
+        const sourceEnd = clip.renderSourceEnd;
         const isYoutube = sourceId ? isYouTubeSource(sourceId) : false;
-        const safeDuration = Math.max(secondsToFrame(clip.duration), 1);
+        const safeDuration = Math.max(secondsToFrame(clip.renderDuration), 1);
         const mediaSource = sourceId ?? "";
         const sourceStartFrame = secondsToFrame(sourceStart);
         const sourceEndFrame = Math.max(sourceStartFrame + 1, secondsToFrame(sourceEnd));
 
         if (resolvedKind === "video") {
+          const is360 = is360Asset(mediaSource);
           return (
             <Sequence
               key={clip.id}
@@ -112,7 +198,16 @@ export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
               name={`${clip.trackId}: ${clip.name}`}
             >
               {hasVideoSource && hasSource && !isYoutube ? (
-                <Video src={mediaSource} startFrom={sourceStartFrame} endAt={sourceEndFrame} />
+                is360 ? (
+                  <Video360Player
+                    src={mediaSource}
+                    startFrom={sourceStartFrame}
+                    endAt={sourceEndFrame}
+                    volume={clip.volume ?? 1}
+                    transforms={clip.transforms}
+                  />  ) : (
+                  <Video src={mediaSource} startFrom={sourceStartFrame} endAt={sourceEndFrame} volume={clip.volume ?? 1} />
+                )
               ) : hasVideoSource && isYoutube ? (
                 <AbsoluteFill
                   style={{
@@ -164,37 +259,7 @@ export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
 
         if (resolvedKind === "audio") {
           if (!hasAudioSource || !hasSource) {
-            return (
-              <Sequence
-                key={clip.id}
-                from={startFrame}
-                durationInFrames={safeDuration}
-                name={`${clip.trackId}: ${clip.name} (no source)`}
-              >
-                <AbsoluteFill
-                  style={{
-                    backgroundColor: "#0f172a",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      color: "white",
-                      fontSize: 16,
-                      fontFamily: "sans-serif",
-                      fontWeight: "bold",
-                      textAlign: "center",
-                      padding: 16,
-                      maxWidth: "80%",
-                      opacity: 0.75,
-                    }}
-                  >
-                    {missingSource ? "No audio source yet" : clip.name}
-                  </span>
-                </AbsoluteFill>
-              </Sequence>
-            );
+            return null;
           }
 
           const safeSourceStart = secondsToFrame(parseSourceNumber(sourceStart, 0));
@@ -209,7 +274,7 @@ export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
                   durationInFrames={safeDuration}
                   name={`${clip.trackId}: ${clip.name}`}
                 >
-                  <Audio src={mediaSource} startFrom={safeSourceStart} endAt={safeSourceEnd} />
+                  <Audio src={mediaSource} startFrom={safeSourceStart} endAt={safeSourceEnd} volume={clip.volume ?? 1} />
                 </Sequence>
               );
         }

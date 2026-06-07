@@ -53,7 +53,7 @@ Recommended next handoff: DevOps / Codex to fix `run.services.get` (Cloud Run Ad
 - `cloudbuild.prisma-db-push.yaml` (rename/refactor to `cloudbuild.prisma-migrate.yaml`)
 - `scripts/release-quipsly.sh` (integrate safe DB migrate step)
 - `docs/DEPLOYMENT.md`
-**5. Risks and rollback plan**: Migrating from `db push` to `migrate deploy` requires creating a baseline migration. If it fails or schema drifts, the rollback is to manually restore the database from a pre-beta backup snapshot. 
+**5. Risks and rollback plan**: Migrating from `db push` to `migrate deploy` requires creating a baseline migration. If it fails or schema drifts, the rollback is to manually restore the database from a pre-beta backup snapshot.
 **6. What should be owner-only/internal for beta**: `prisma db push` operations and Cloud Build pipeline modifications.
 **7. What a beta user should be able to successfully do after your pass**: Use the application without facing sudden catastrophic data loss during a new release. They will benefit from faster, safer, and more reliable deployments.
 **8. Dependencies to approve**: Codex MUST manually run a `gcloud` command to unblock the Cloud Run deployment. Codex MUST approve generating the initial Prisma migration baseline.
@@ -91,5 +91,43 @@ Recommended Prompt 2 for my lane:
    - Run `./scripts/release-quipsly.sh`
 
 6. **Rollback Commands**:
-   - App Revert: `gcloud run services update-traffic studio --to-revisions=studio-PREVIOUS-REVISION-ID=100 --region=us-central1`
-   - Data Revert: Restore from Cloud SQL automated snapshot.
+## 2026-06-05 Research Proposal - AG-Release-Captain
+
+**Research Sources/Examples Reviewed**:
+- Google Cloud Run best practices for Next.js deployments (Artifact Registry tagging, `--no-traffic` preview deployments).
+- Prisma Serverless best practices (using dedicated Cloud Run Jobs for `prisma migrate deploy` over Unix sockets).
+- Zero-Downtime Expand-Contract database schema patterns.
+
+**Current Deploy Pipeline Summary**:
+Our current deploy script (`scripts/release-quipsly.sh`) runs local validation, then triggers Cloud Build to build a Next.js standalone Docker image, run migrations during build, and shift 100% of live traffic immediately.
+
+**Biggest Release Risks**:
+1. **No Preview Validation**: We deploy straight to 100% live traffic. If routing breaks, users see it immediately.
+2. **Slow/Expensive Builds**: We run `pnpm build` locally to verify, then Cloud Build runs it *again* from scratch, wasting minutes and quota.
+3. **Database Migration Race Conditions**: Running migrations from within the Dockerfile or startup script is unsafe in serverless. It needs a dedicated Cloud Run Job.
+
+**Proposed Next Implementation Pass**:
+Implement a "Preview -> Promote" Release Train:
+1. Decouple the database migration into a dedicated **Cloud Run Job** (`studio-db-migrator`).
+2. Update Cloud Build to push images tagged with the Git SHA.
+3. Deploy the new revision to Cloud Run with `--no-traffic` and a custom `--tag` (e.g., `preview`).
+4. Run automated smoke tests (simulating `Host` headers for `nest.quipsly.com` and `HighGroundOdyssey.com`) against the preview URL.
+5. Require explicit "DEPLOY GO" to shift 100% traffic.
+
+**Files Likely Touched**:
+- `cloudbuild.studio.deploy.yaml` (Update to use tags and `--no-traffic`)
+- `cloudbuild.prisma-migrate.yaml` (Refactor to update and execute a Cloud Run Job)
+- `scripts/release-quipsly.sh` (Split into `release-preview.sh` and `promote-production.sh`)
+- `package.json` (Playwright smoke test script)
+
+**Exact Future Deploy Checklist**:
+1. `git push` triggers (or manual script runs) Preview Build.
+2. Cloud Run Job executes `prisma migrate deploy`.
+3. Cloud Build deploys `--no-traffic` revision to `preview---studio-hm2odnvjga-uc.a.run.app`.
+4. Automated script curls the preview URL simulating multi-tenant domains.
+5. **Codex Review Gate**: Codex clicks the preview link.
+6. **DEPLOY GO**: Codex runs `gcloud run services update-traffic studio --to-tags preview=100`.
+
+**Questions for Codex/Product Owner**:
+1. Are you okay with shifting to GitHub Actions to coordinate this, or should we keep everything in local bash scripts + Cloud Build?
+2. Do we want to introduce Playwright for the multi-tenant Host header testing, or just use simple `curl` assertions in bash?

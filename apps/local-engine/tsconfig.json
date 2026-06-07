@@ -4,7 +4,11 @@
     "target": "es2022",
     "esModuleInterop": true,
     "moduleResolution": "node",
+    "rootDir": "src",
+    "outDir": "dist",
     "skipLibCheck": true,
     "strict": false
-  }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
 }

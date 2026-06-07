@@ -13,7 +13,7 @@ The active product direction:
 - Quipsly/Nest is the main creative operating system.
 - The `/create` manuscript editor is the critical spine: one living document, Chapter/Episode structure tags, outline navigation, assistant support, and future publishing/media workflows.
 - The `/editor` media workflow is the Episode 4 production/editing surface: import media, set spine audio, sync/relink assets, save timeline safely.
-- Quipslys are research assistants/librarians, not substitute writers. They may draft examples with receipts, but never black-box write.
+- Quipslys are research assistants/librarians first and co-drafters when asked. They may draft, rewrite, freeform generate, and test voices. The product must prevent silent canon mutation, fake provenance, and hidden publishing, not shame users for wanting AI-written drafts.
 - HighGroundOdyssey.com is the public applied content/coaching site powered by Quipsly/Nest outputs.
 - QuipLore.com is the public quote discovery/curation product powered by Quipsly research, provenance, and API boundaries.
 
@@ -72,4 +72,3 @@ Do not run build/typecheck/migrations unless explicitly asked.
 ## Last round to rerun
 
 The next post-reboot action is to re-send the 12 lane-specific prompts from Codex's latest prompt pack. If a lane already completed that exact task before the crash and its report survived, it should do a delta report instead of duplicating work.
-

@@ -88,16 +88,17 @@ The kernel must be able to represent:
 This lets a selected quote become a show note, clip candidate, video range,
 article pull quote, or podcast metadata item without copy/paste chaos.
 
-### Agents find examples, not vibes
+### Agents offer more than vibes
 
-Quipsly's AI posture is not black-box generation by default.
+Quipsly should support freeform AI drafting, but its deeper advantage is everything around the draft: sources, examples, structure, provenance, outlines, media context, version history, and publishing workflows.
 
-The companion should act like a research librarian and example finder:
+The companion should act like a research librarian, example finder, editor, and drafting partner:
 
 - read the current kernel context
 - search trusted corpora
 - show source-backed cards
 - explain why each result appeared
+- draft or rewrite when asked
 - propose explicit operations
 - wait for approval before mutating important state
 

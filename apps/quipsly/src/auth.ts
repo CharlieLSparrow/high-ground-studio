@@ -20,22 +20,28 @@ type GoogleProfile = {
   picture?: string;
 };
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      authorization: {
-        params: {
-          prompt: "select_account",
-        },
+const authProviders = [
+  Google({
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    authorization: {
+      params: {
+        prompt: "select_account",
       },
-    }),
-    Patreon({
-      clientId: process.env.PATREON_CLIENT_ID,
-      clientSecret: process.env.PATREON_CLIENT_SECRET,
-    }),
-  ],
+    },
+  }),
+  ...(process.env.PATREON_CLIENT_ID && process.env.PATREON_CLIENT_SECRET
+    ? [
+        Patreon({
+          clientId: process.env.PATREON_CLIENT_ID,
+          clientSecret: process.env.PATREON_CLIENT_SECRET,
+        }),
+      ]
+    : []),
+];
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  providers: authProviders,
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   trustHost: true,
   session: {
@@ -148,6 +154,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return session;
     },
+
+    async redirect({ url, baseUrl }) {
+      try {
+        const target = new URL(url, baseUrl);
+        const home = new URL(baseUrl);
+
+        if (target.origin !== home.origin) {
+          return `${baseUrl}/projects`;
+        }
+
+        if (target.pathname === "/" || target.pathname.startsWith("/api/auth")) {
+          return `${baseUrl}/projects`;
+        }
+
+        return target.toString();
+      } catch {
+        return `${baseUrl}/projects`;
+      }
+    },
   },
 });
-

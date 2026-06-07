@@ -7,8 +7,15 @@ import Tagger from "./Tagger";
 import { EditorExtensionProvider } from "./registry/EditorExtensionRegistry";
 import { coreBlockCards } from "./registry/coreBlockCards";
 import ViewFilter from "./ViewFilter";
-import { DocumentBoundary, ViewDefinition } from "./types";
+import { DocumentBoundary, ViewDefinition, WorkbenchScopeProjectSummary } from "./types";
 import { QuipslyAssistantSidebar } from "@/components/QuipslyAssistantSidebar";
+import {
+  WORKFLOW_SYSTEM_DESCRIPTIONS,
+  WORKFLOW_SYSTEM_LABELS,
+  WORKFLOW_SYSTEM_SEQUENCE,
+  normalizeNestKind,
+  workflowSystemForNestKind,
+} from "@/lib/studio/project-registry";
 
 export const DEFAULT_VIEW: ViewDefinition = {
   id: "default",
@@ -108,26 +115,32 @@ function deriveDocumentBoundaries(blocks: Array<{ id: string; text: string; tags
   }));
 }
 
-export default function Workspace({ 
-  initialBlocks, 
+export default function Workspace({
+  initialBlocks,
   initialViews,
-  projectId, 
+  projectId,
   projectSlug,
   projectName,
+  projectNestKind,
+  workflowSystem,
   documentId,
   documentTitle,
   persistenceMode = "database",
+  linkedProjects = [],
   availableProjects = [],
   isDefaultFallback = false
-}: { 
-  initialBlocks: any[], 
+}: {
+  initialBlocks: any[],
   initialViews: ViewDefinition[],
-  projectId: string, 
+  projectId: string,
   projectSlug?: string,
   projectName?: string,
+  projectNestKind?: string,
+  workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing",
   documentId: string,
   documentTitle?: string,
   persistenceMode?: "database" | "offline",
+  linkedProjects?: WorkbenchScopeProjectSummary[],
   availableProjects?: { slug: string; name: string; nestKind?: string }[],
   isDefaultFallback?: boolean
 }) {
@@ -161,7 +174,20 @@ export default function Workspace({
   const [views, setViews] = useState<ViewDefinition[]>(initialViews);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeProjectSlug = projectSlug ?? "";
-  const manuscriptHref = `/create?project=${encodeURIComponent(activeProjectSlug)}${publisherMode ? "&publisher=1" : ""}`;
+  const resolvedNestKind = normalizeNestKind(projectNestKind);
+  const resolvedWorkflowSystem = workflowSystem ?? workflowSystemForNestKind(resolvedNestKind);
+  const activeWorkflowIndex = WORKFLOW_SYSTEM_SEQUENCE.indexOf(resolvedWorkflowSystem);
+  const linkedProjectSlugs = linkedProjects.map((project) => project.projectSlug).filter(Boolean);
+  const encodedScope = linkedProjectSlugs.length > 0 ? `&scope=${encodeURIComponent(linkedProjectSlugs.join(","))}` : "";
+  const manuscriptHref = `/create?project=${encodeURIComponent(activeProjectSlug)}${publisherMode ? "&publisher=1" : ""}${encodedScope}`;
+  const scopeCandidates = useMemo(
+    () => (availableProjects || [])
+      .filter((project) =>
+        project.slug !== activeProjectSlug && !linkedProjectSlugs.includes(project.slug)
+      )
+      .slice(0, 6),
+    [availableProjects, activeProjectSlug, linkedProjectSlugs],
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -262,14 +288,15 @@ export default function Workspace({
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-[#fdfaf6] text-[#3d3122]">
       {/* Left sidebar - ViewFilter */}
-      <ViewFilter 
-         activeView={activeView} 
+      <ViewFilter
+         activeView={activeView}
          setActiveView={handleActiveViewChange}
          views={views}
          documentBoundaries={documentBoundaries}
          activeBoundaryId={activeBoundaryId}
          setActiveBoundaryId={handleActiveBoundaryChange}
          scrolledBoundaryId={scrolledBoundaryId}
+         workflowSystem={resolvedWorkflowSystem}
       />
       {/* Main editor area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 relative">
@@ -290,6 +317,32 @@ export default function Workspace({
                   <br />
                   <span className="font-medium text-[#8c6b4a] opacity-90 mt-1 inline-block">💡 <strong>Pro tip:</strong> Press Enter to split blocks. Backspace at the start of a block merges it up.</span>
                 </p>
+              </div>
+              <div className="rounded-xl border border-[#d9c7a5] bg-[#fff9ef] px-3 py-2 text-xs">
+                <div className="font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Workflow Lens</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {WORKFLOW_SYSTEM_SEQUENCE.map((stage, stageIndex) => (
+                    <span
+                      key={stage}
+                      title={WORKFLOW_SYSTEM_DESCRIPTIONS[stage]}
+                      className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                        stage === resolvedWorkflowSystem
+                          ? "border-amber-300 bg-amber-100 text-amber-900"
+                          : stageIndex <= activeWorkflowIndex
+                            ? "border-[#e1c8a2] bg-[#fff3dd] text-[#8a6943]"
+                            : "border-[#ece6df] bg-white text-[#8f7d63] opacity-70"
+                      }`}
+                    >
+                      {WORKFLOW_SYSTEM_LABELS[stage as keyof typeof WORKFLOW_SYSTEM_LABELS]}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] leading-5 text-[#6f5a3e] max-w-[250px]">
+                  {WORKFLOW_SYSTEM_DESCRIPTIONS[resolvedWorkflowSystem]}
+                </p>
+                <p className="mt-2 rounded-lg border border-[#e9dac0] bg-white px-2 py-1.5 text-[11px] text-[#7c654d]">
+                  Available lens is transparent: choose any stage view as needed; no stage is required for working in this document.
+                  </p>
               </div>
               <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold border border-amber-200 shadow-sm flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
@@ -336,7 +389,11 @@ export default function Workspace({
                 {(availableProjects || []).map((project) => (
                   <Link
                     key={project.slug}
-                    href={`/create?project=${encodeURIComponent(project.slug)}${publisherMode ? "&publisher=1" : ""}`}
+                    href={(() => {
+                      const scope = linkedProjectSlugs.filter((scopeSlug) => scopeSlug !== project.slug);
+                      const scopeParam = scope.length > 0 ? `&scope=${encodeURIComponent(scope.join(","))}` : "";
+                      return `/create?project=${encodeURIComponent(project.slug)}${publisherMode ? "&publisher=1" : ""}${scopeParam}`;
+                    })()}
                     className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
                       activeProjectSlug === project.slug
                         ? "bg-[#3d3122] text-white shadow-sm"
@@ -346,6 +403,58 @@ export default function Workspace({
                     {project.name}
                   </Link>
                 ))}
+              </div>
+              <div className="mr-2 shrink-0 flex flex-nowrap items-center gap-1 rounded-full border border-[#e6d7bc] bg-[#f4e8d2] p-1">
+                <span className="pl-2 pr-1 text-[10px] font-bold uppercase tracking-wider text-[#a36f2e]">Scope:</span>
+                {linkedProjectSlugs.length === 0 ? (
+                  <span className="shrink-0 rounded-full border border-[#edd6a8] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#8c6b4a]">
+                    Central manuscript only
+                  </span>
+                ) : null}
+                {linkedProjects.map((linkedProject) => {
+                  const scopeStyle = linkedProject.status === "connected"
+                    ? "bg-[#3d3122] text-white border-[#3d3122]"
+                    : linkedProject.status === "missing"
+                      ? "bg-[#ffdcb3] text-[#8a4f0b] border-[#f0bd79]"
+                      : linkedProject.status === "denied"
+                        ? "bg-[#f8d7da] text-[#9b2b42] border-[#f3b0b8]"
+                        : "bg-[#ece6df] text-[#6b5b45] border-[#d4c8b7]";
+                  const statusLabel = linkedProject.status === "connected"
+                    ? "Connected"
+                    : linkedProject.status === "missing"
+                      ? "Missing"
+                      : linkedProject.status === "denied"
+                        ? "Denied"
+                        : "Unavailable";
+
+                  const nextScope = linkedProjectSlugs.filter((slug) => slug !== linkedProject.projectSlug);
+                  const scopeLink = `/create?project=${encodeURIComponent(activeProjectSlug)}${publisherMode ? "&publisher=1" : ""}${nextScope.length > 0 ? `&scope=${encodeURIComponent(nextScope.join(","))}` : ""}`;
+                  return (
+                    <Link
+                      key={linkedProject.projectId || linkedProject.projectSlug}
+                      href={scopeLink}
+                      title={linkedProject.reason ?? `Nested nest status: ${linkedProject.status}`}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-bold transition-colors ${scopeStyle}`}
+                    >
+                      {linkedProject.projectName}
+                      <span className="ml-1.5 rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] bg-white/20 border-current">
+                        {statusLabel}
+                      </span>
+                    </Link>
+                  );
+                })}
+                {scopeCandidates.map((project) => {
+                  const addScope = [...new Set([...linkedProjectSlugs, project.slug])];
+                  return (
+                    <Link
+                      key={project.slug}
+                      href={`/create?project=${encodeURIComponent(activeProjectSlug)}${publisherMode ? "&publisher=1" : ""}&scope=${encodeURIComponent(addScope.join(","))}`}
+                      className="shrink-0 rounded-full border border-[#b9c58b] bg-[#f4f8e6] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#5a6549] transition-colors hover:bg-[#eef4d7]"
+                    >
+                      + {project.name}
+                    </Link>
+                  );
+                })}
               </div>
               <Link
                 href="/projects"
@@ -420,15 +529,15 @@ export default function Workspace({
               </Link>
             </div>
           ) : null}
-          
+
           <div className="bg-white p-4 md:p-12 rounded-2xl shadow-sm border border-[#e8dcc4] min-h-[800px]">
             <EditorExtensionProvider customCards={coreBlockCards}>
-              <Tagger 
+              <Tagger
                 key={`${activeProjectSlug}:${documentId}`}
-                activeView={activeView} 
+                activeView={activeView}
                 activeBoundaryId={activeBoundaryId}
                 documentBoundaries={documentBoundaries}
-                adHocTags={adHocTags} 
+                adHocTags={adHocTags}
                 initialBlocks={initialBlocks}
                 projectId={projectId}
                 documentId={documentId}

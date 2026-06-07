@@ -19,6 +19,38 @@
     "./retrieval": {
       "types": "./src/retrieval.ts",
       "import": "./src/retrieval.ts"
+    },
+    "./publishing": {
+      "types": "./src/publishing.ts",
+      "import": "./src/publishing.ts"
+    },
+    "./source-aware": {
+      "types": "./src/source-aware.ts",
+      "import": "./src/source-aware.ts"
+    },
+    "./recording": {
+      "types": "./src/recording.ts",
+      "import": "./src/recording.ts"
+    },
+    "./nests": {
+      "types": "./src/nests.ts",
+      "import": "./src/nests.ts"
+    },
+    "./generated-art": {
+      "types": "./src/generated-art.ts",
+      "import": "./src/generated-art.ts"
+    },
+    "./art-recipes": {
+      "types": "./src/art-recipes.ts",
+      "import": "./src/art-recipes.ts"
+    },
+    "./output-catalog": {
+      "types": "./src/output-catalog.ts",
+      "import": "./src/output-catalog.ts"
+    },
+    "./core": {
+      "types": "./src/core.ts",
+      "import": "./src/core.ts"
     }
   },
   "scripts": {

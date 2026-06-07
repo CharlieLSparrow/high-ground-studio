@@ -5,8 +5,9 @@ import { StoryEntity, StudioAssistantAction } from "./types";
 import { EntityDirectory } from "./EntityDirectory";
 import { EntityCard } from "./EntityCard";
 import { AssistantInbox } from "./AssistantInbox";
+import { TimelineView } from "./TimelineView";
 import { CreateEntityModal } from "./CreateEntityModal";
-import { Library, Sparkles } from "lucide-react";
+import { Library, Sparkles, Clock } from "lucide-react";
 
 interface StoryBibleSidebarProps {
   projectId: string;
@@ -18,7 +19,7 @@ interface StoryBibleSidebarProps {
   visibleBlocks?: any[];
 }
 
-type TabState = "DIRECTORY" | "INBOX";
+type TabState = "DIRECTORY" | "TIMELINE" | "INBOX";
 
 export function StoryBibleSidebar({
   projectId,
@@ -139,6 +140,21 @@ export function StoryBibleSidebar({
         </button>
 
         <button
+          id="story-bible-tab-timeline"
+          onClick={() => setActiveTab("TIMELINE")}
+          aria-selected={activeTab === "TIMELINE"}
+          role="tab"
+          className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 flex justify-center items-center gap-2 ${
+            activeTab === "TIMELINE"
+              ? "border-flare text-subject"
+              : "border-transparent text-white/50 hover:text-white"
+          }`}
+        >
+          <Clock className="h-4 w-4" aria-hidden="true" />
+          Beats
+        </button>
+
+        <button
           id="story-bible-tab-inbox"
           onClick={() => setActiveTab("INBOX")}
           aria-selected={activeTab === "INBOX"}
@@ -179,6 +195,18 @@ export function StoryBibleSidebar({
                 <EntityCard entity={selectedEntity} onBack={() => setSelectedEntity(null)} />
               ) : (
                 <EntityDirectory entities={entities} onSelectEntity={setSelectedEntity} />
+              ))}
+
+            {activeTab === "TIMELINE" &&
+              (selectedEntity ? (
+                <EntityCard entity={selectedEntity} onBack={() => setSelectedEntity(null)} />
+              ) : (
+                <TimelineView
+                  entities={entities}
+                  onSelectEntity={setSelectedEntity}
+                  visibleBlocks={visibleBlocks}
+                  onEntityUpdated={fetchEntities}
+                />
               ))}
 
             {activeTab === "INBOX" && (

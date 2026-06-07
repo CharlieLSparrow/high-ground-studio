@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { StoryEntity } from "./types";
 import { ArrowLeft, Save, FileText, Share2, Eye, Tag } from "lucide-react";
+import { createTextQuoteSelector } from "@high-ground/quipsly-domain/source-aware";
 
 interface EntityCardProps {
   entity: StoryEntity;
@@ -48,6 +49,8 @@ export function EntityCard({ entity: initialEntity, onBack }: EntityCardProps) {
   };
 
   const handleMentionHover = (snippet: string) => {
+    const selector = createTextQuoteSelector("current-document", snippet);
+    window.dispatchEvent(new CustomEvent("quipsly:source-overlay-preview", { detail: { selector } }));
     window.dispatchEvent(new CustomEvent("quipsly:highlight-mention", { detail: { snippet } }));
   };
 
@@ -133,8 +136,8 @@ export function EntityCard({ entity: initialEntity, onBack }: EntityCardProps) {
               </h3>
               <div className="space-y-2">
                 {entity.mentions?.map((m) => (
-                  <div 
-                    key={m.id} 
+                  <div
+                    key={m.id}
                     onMouseEnter={() => handleMentionHover(m.snippet)}
                     onMouseLeave={handleMentionLeave}
                     className="group bg-gradient-to-br from-white/[0.03] to-white/[0.01] hover:from-flare/10 hover:to-transparent transition-all cursor-pointer rounded-xl p-3 border border-white/5 hover:border-flare/30"

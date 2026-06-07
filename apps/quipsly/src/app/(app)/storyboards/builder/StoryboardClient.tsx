@@ -29,7 +29,7 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
   const { toasts, showToast } = useToast();
 
   const [projects, setProjects] = useState<any[]>(initialProjects);
-  
+
   // Initialize active project based on URL or fallback to first project
   const [activeProject, setActiveProject] = useState(() => {
     if (projectSlug) {
@@ -41,6 +41,21 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
 
   const [generatingFrames, setGeneratingFrames] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'GRID' | 'SCROLL' | 'COMIC'>('GRID');
+  const [compilingStoryboardId, setCompilingStoryboardId] = useState<string | null>(null);
+  const [compiledPacket, setCompiledPacket] = useState<any | null>(null);
+
+  const handleCompilePacket = async (storyboardId: string) => {
+    setCompilingStoryboardId(storyboardId);
+    const { compileStoryboardPublishPacket } = await import('../actions');
+    const res = await compileStoryboardPublishPacket(storyboardId);
+    setCompilingStoryboardId(null);
+    if (res.success && res.packet) {
+      setCompiledPacket(res.packet);
+      showToast("Public packet compiled successfully!", "success");
+    } else {
+      showToast("Failed to compile packet: " + res.error, "error");
+    }
+  };
 
   const debouncedUpdateStoryboard = useDebouncedCallback((id: string, data: any) => {
     updateStoryboard(id, data);
@@ -54,10 +69,10 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
   // Quarantined project creation handler for beta posture
   // const handleNewProject = async () => {
   //   const title = `Untitled Project ${projects.length + 1}`;
-  //   
+  //
   //   const formData = new FormData();
   //   formData.append("title", title);
-  //   
+  //
   //   const res = await createProject(formData);
   //   if (res.success && res.project) {
   //     setProjects([res.project, ...projects]);
@@ -102,7 +117,7 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
   const handleGenerateFrame = async (frameId: string, storyboardId: string) => {
     setGeneratingFrames(prev => ({ ...prev, [frameId]: true }));
     const res = await generateFrameImage(frameId);
-    
+
     if (res.success && res.frame) {
       if (activeProject) {
         const updatedStoryboards = activeProject.storyboards.map((s: any) => {
@@ -146,11 +161,11 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
 
   return (
     <div className="flex w-full h-full divide-x divide-zinc-200 dark:divide-zinc-800 relative">
-      
+
       {/* Toast Notification Container */}
       <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-2">
         {toasts.map(toast => (
-          <div key={toast.id} className={`flex items-center justify-between p-4 rounded-xl shadow-lg text-sm font-semibold max-w-sm w-full backdrop-blur transition-all animate-in slide-in-from-right-4 
+          <div key={toast.id} className={`flex items-center justify-between p-4 rounded-xl shadow-lg text-sm font-semibold max-w-sm w-full backdrop-blur transition-all animate-in slide-in-from-right-4
             ${toast.type === 'error' ? 'bg-red-500/90 text-white' : toast.type === 'success' ? 'bg-emerald-500/90 text-white' : 'bg-zinc-800/90 text-white'}`}
           >
             {toast.message}
@@ -160,12 +175,12 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
 
       {/* Assistant Ledger Suggestor - Only show if we have an active storyboard to inject to */}
       {activeProject?.storyboards?.[0] && (
-        <StoryboardAssistantSuggestor 
+        <StoryboardAssistantSuggestor
           storyboardId={activeProject.storyboards[0].id}
           onApprove={(frames) => handleApproveSuggestions(activeProject.storyboards[0].id, frames)}
         />
       )}
-      
+
       {/* LEFT PANE: PROJECTS */}
       <div className="w-80 flex flex-col bg-zinc-50 dark:bg-zinc-950 overflow-y-auto">
         <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-zinc-900">
@@ -222,21 +237,21 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                 <p className="text-sm text-zinc-500 mt-0.5">{activeProject.description || "No project description"}</p>
               </div>
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={() => setViewMode(viewMode === 'SCROLL' ? 'GRID' : 'SCROLL')}
                   aria-label={viewMode === 'SCROLL' ? 'Exit Scroll Mode' : 'Preview Scroll Mode'}
                   className={`flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg transition-colors focus:ring-2 focus:ring-indigo-500 outline-none ${viewMode === 'SCROLL' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}
                 >
                   <AlignLeft className="w-4 h-4 rotate-90" /> {viewMode === 'SCROLL' ? 'Exit Scroll' : 'Preview Scroll'}
                 </button>
-                <button 
+                <button
                   onClick={() => setViewMode(viewMode === 'COMIC' ? 'GRID' : 'COMIC')}
                   aria-label={viewMode === 'COMIC' ? 'Exit Comic Mode' : 'Comic Mode'}
                   className={`flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg transition-colors focus:ring-2 focus:ring-indigo-500 outline-none ${viewMode === 'COMIC' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}
                 >
                   <ImageIcon className="w-4 h-4" /> {viewMode === 'COMIC' ? 'Exit Comic' : 'Comic Mode'}
                 </button>
-                <button 
+                <button
                   onClick={handleAddStoryboard}
                   aria-label="Add Storyboard"
                   className="flex items-center gap-2 text-sm font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -252,7 +267,7 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                   <Film className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" />
                   <h3 className="text-lg font-bold text-zinc-700 dark:text-zinc-300 mb-2">No storyboards yet</h3>
                   <p className="text-sm text-zinc-500 mb-6 max-w-xs">Create your first storyboard to start organizing your frames and shots for this project.</p>
-                  <button 
+                  <button
                     onClick={handleAddStoryboard}
                     className="flex items-center gap-2 text-sm font-semibold bg-indigo-600 text-white px-5 py-2.5 rounded-xl shadow-sm hover:bg-indigo-700 transition-colors focus:ring-2 focus:ring-indigo-500 outline-none"
                   >
@@ -273,8 +288,8 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">Document Linked</span>
                         )}
                       </div>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         defaultValue={storyboard.title}
                         onChange={(e) => debouncedUpdateStoryboard(storyboard.id, { title: e.target.value })}
                         aria-label="Storyboard Title"
@@ -282,7 +297,7 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                       />
                     </div>
                     <div className="flex items-center gap-3">
-                      
+
                       {/* Review Feedback Display */}
                       <div className="flex items-center gap-2 mr-2">
                         {(!storyboard.feedbackStats || (storyboard.feedbackStats.comments === 0 && storyboard.feedbackStats.favorites === 0)) ? (
@@ -308,17 +323,27 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                       </div>
 
                       {storyboard.frames && storyboard.frames.length > 0 && (
-                        <a 
-                          href={`/review/${storyboard.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="Open in Review Mode"
-                          className="text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-                        >
-                          Review Mode ↗
-                        </a>
+                        <>
+                          <a
+                            href={`/review/${storyboard.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="Open in Review Mode"
+                            className="text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                          >
+                            Review Mode ↗
+                          </a>
+                          <button
+                            onClick={() => handleCompilePacket(storyboard.id)}
+                            disabled={compilingStoryboardId === storyboard.id}
+                            aria-label="Compile Public Packet"
+                            className="text-sm font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 outline-none"
+                          >
+                            {compilingStoryboardId === storyboard.id ? "Compiling..." : "Compile Packet"}
+                          </button>
+                        </>
                       )}
-                      <select 
+                      <select
                         defaultValue={storyboard.aspectRatio || '16:9'}
                         onChange={(e) => updateStoryboard(storyboard.id, { aspectRatio: e.target.value })}
                         aria-label="Storyboard Aspect Ratio"
@@ -340,7 +365,7 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                   )}
 
                    {viewMode === 'GRID' && (
-                    <StoryboardGridRenderer 
+                    <StoryboardGridRenderer
                       storyboard={storyboard}
                       mediaAssets={activeProject.mediaAssets || []}
                       generatingFrames={generatingFrames}
@@ -356,6 +381,89 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
         )}
       </div>
 
+      {/* Compiled Public Packet Modal */}
+      {compiledPacket && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full flex flex-col max-h-[85vh] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
+              <div>
+                <h3 id="modal-title" className="text-lg font-black text-zinc-900 dark:text-white tracking-tight">Public Publish Packet</h3>
+                <p className="text-xs text-zinc-500 mt-1">Generated: <strong>story-scroll</strong> public projection</p>
+              </div>
+              <button
+                onClick={() => setCompiledPacket(null)}
+                aria-label="Close Modal"
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4 text-sm">
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4 text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                <strong>Public safety verified:</strong> This packet represents a public-safe projection. Raw manuscript database rows, creator drafts, and backstage metadata have been filtered out. Only validated visual descriptions, audio/image links, and public copy are serialized.
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-zinc-800 dark:text-zinc-200">Packet Metadata</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs bg-zinc-50 dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200/50 dark:border-zinc-800 font-mono">
+                  <div><span className="text-zinc-400">ID:</span> {compiledPacket.id}</div>
+                  <div><span className="text-zinc-400">Kind:</span> {compiledPacket.kind}</div>
+                  <div><span className="text-zinc-400">Title:</span> {compiledPacket.title}</div>
+                  <div><span className="text-zinc-400">Slug:</span> {compiledPacket.slug}</div>
+                  <div className="col-span-2"><span className="text-zinc-400">Project Slug:</span> {compiledPacket.source.projectSlug}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-zinc-800 dark:text-zinc-200">Media Attachments ({compiledPacket.media?.length || 0})</h4>
+                {compiledPacket.media?.length === 0 ? (
+                  <p className="text-xs text-zinc-500">No public media attachments.</p>
+                ) : (
+                  <ul className="text-xs space-y-1 bg-zinc-50 dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200/50 dark:border-zinc-800 max-h-24 overflow-y-auto list-disc pl-5 font-mono">
+                    {compiledPacket.media.map((med: any) => (
+                      <li key={med.id} className="truncate text-zinc-600 dark:text-zinc-400">
+                        {med.label}: {med.url}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-zinc-800 dark:text-zinc-200">Markdown Content Draft</h4>
+                <pre className="bg-zinc-950 text-zinc-300 p-4 rounded-xl text-xs font-mono overflow-auto max-h-48 border border-zinc-800 whitespace-pre-wrap font-sans">
+                  {compiledPacket.bodyMarkdown}
+                </pre>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center">
+              <span className="text-xs text-zinc-500 font-medium">Ready for dispatch pipelines.</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(compiledPacket, null, 2));
+                    showToast("Packet JSON copied to clipboard!", "success");
+                  }}
+                  className="px-4 py-2 text-xs font-semibold bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-850 transition-colors focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  Copy JSON
+                </button>
+                <button
+                  onClick={() => setCompiledPacket(null)}
+                  className="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

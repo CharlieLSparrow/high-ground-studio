@@ -21,7 +21,7 @@
 | **AG-HighGroundOdyssey** | `high-ground-odyssey.md` | Antigravity | `/`, `/episodes/[[...slug]]`, `/episodes/[slug]/read`, `/library`, `/dashboard` | `/team/hgo-publish-queue`, `/team/hgo-publish-draft-lab` | **Ready** |
 | **AG-QuipLore** | `quiplore.md` | Antigravity | `/stream`, `/quotes/*`, `/hub`, `/lorelists/*` | Authenticated Nest saves | **Ready** |
 | **AG-Fiction-Analysis** | `fiction-analysis.md` | AG-Fiction-Analysis | `/api/story-bible/*` | | **Ready** |
-| **AG-Publishing-Integrations**| `publishing-integrations.md`| Antigravity | `/api/public/podcast/rss/*` | `/publishing-suite/*` | **Ready** |
+| **AG-Publishing-Integrations**| `publishing-integrations.md`| Antigravity | `/api/public/podcast/rss/*` | `/publishing-suite/*`, `/api/handoff/publish` | **Ready** |
 | **AG-Scroll-Experiences** | `scroll-experiences.md` | | `/review/[storyboardId]` | Storyboard Builder (Review Feedback UI) | **Ready** |
 
 ## 2. Active Beta Blockers & Cross-Lane Risks
@@ -52,3 +52,44 @@ Before deploying, the Release Captain should run `node scripts/scan-beta-blocker
 ## 2026-06-05 Codex Nest hardening note
 
 Beta readiness now treats the Nest as the required project boundary. New Nests seed an editable welcome/how-to document based on Nest kind, and recorder direct entry without `project` shows a recovery screen instead of silently using a fallback. Future agent passes should read `docs/quipsly/nest-project-system.md` before changing project routing, starter documents, recorder/editor project params, or publishing packet ownership.
+
+## 2026-06-05 Patreon beta policy implementation note
+
+Codex implemented the beta access policy that any active paid Patreon supporter qualifies. Runtime auth is scoped to the Quipsly beta Patreon membership plan, not arbitrary memberships. Webhook and reconciliation logic now use a shared paid-patron eligibility helper. Future Patreon work must not reintroduce tier allowlists for MVP without explicit Product Owner approval.
+
+## 2026-06-05 Codex Solo Foundation Sprint
+
+This pass turned several deep-research drops into concrete beta foundations without running build/deploy.
+
+### Research inputs now stored in repo
+
+- `docs/coordination/research-inputs/quipsly-cloud-run-release-train-codex-plan.md`
+- `docs/coordination/research-inputs/quipsly-patreon-beta-access-codex-plan.md`
+- `docs/coordination/research-inputs/quipsly-publishing-integrations-codex-implementation-plan.md`
+- `docs/coordination/research-inputs/quipsly-source-aware-rag-codex-plan.md`
+- `docs/coordination/research-inputs/quipsly-ios-mobile-recording-codex-implementation-plan.md`
+
+### New/reinforced beta foundations
+
+- Release health: `/api/healthz` plus backward-compatible `/api/health`.
+- Release scripts: preview deploy, preview smoke, traffic inspection, preview promotion, explicit rollback.
+- Host routing: public marketing/help routes stay on `quipsly.com`; app shell stays on `nest.quipsly.com`.
+- Publishing domain contract: public-safe packets, destinations, per-destination statuses.
+- Source-aware domain contract: immutable sources plus editable overlays, selectors, citations, and research packets.
+- Recording domain contract: recording sessions, participants, segments, stop reasons, upload refs, and deterministic timeline offsets.
+
+### Carry-forward beta rule
+
+For beta, prioritize pathways that make the product feel coherent even if every advanced feature is not finished:
+
+1. Supporters can get access safely.
+2. Nests make project/document boundaries understandable.
+3. Writing/study/media/publishing share the same source spine.
+4. Release Captain can preview, smoke, promote, and rollback without heroics.
+5. Quipslys can assist with evidence, organization, freeform drafting, and source-aware drafting. Users direct the work and decide what becomes canon.
+
+## 2026-06-06 Beta tester experience plan
+
+Before broad supporter beta access, route/product work should be checked against `docs/quipsly/beta-tester-experience-plan-2026-06-06.md`.
+
+The short version: beta testers should land in a clear Nest, learn by editing a real welcome document, understand Chapter/Episode tagging immediately, see what is safe/private/public, ask Quipsly for inspectable help, and always have a recovery or feedback path.

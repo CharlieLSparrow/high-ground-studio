@@ -1,5 +1,4 @@
 import React from "react";
-import { SidebarLayout } from "@/components/SidebarLayout";
 import { getPrismaClient } from "@/lib/prisma";
 import { CampaignSandboxClient } from "./CampaignSandboxClient";
 import { getOrCreateUserOrgAction } from "@/app/(app)/settings/actions";
@@ -12,7 +11,7 @@ export default async function CampaignsPage() {
   const session = await auth();
   const isDev = process.env.NODE_ENV === "development";
   const isOwner = Array.isArray(session?.user?.roles) && session.user.roles.includes("OWNER");
-  
+
   if (!session?.user?.id) {
     redirect("/");
   }
@@ -28,14 +27,14 @@ export default async function CampaignsPage() {
   } catch (error) {
     console.error("Failed to bootstrap organization for marketing context:", error);
     return (
-      <SidebarLayout>
+      <>
         <div className="p-8 text-center bg-[#032321] border border-studio-line rounded-2xl max-w-lg mx-auto mt-20 text-studio-ink">
           <h2 className="text-xl font-bold text-studio-danger mb-2">Workspace Uninitialized</h2>
           <p className="text-studio-muted text-sm">
             Please verify your Google authentication credentials and organization role.
           </p>
         </div>
-      </SidebarLayout>
+      </>
     );
   }
 
@@ -73,7 +72,7 @@ export default async function CampaignsPage() {
   });
 
   return (
-    <SidebarLayout>
+    <>
       <CampaignSandboxClient
         initialCampaigns={campaigns}
         avatars={avatars}
@@ -82,6 +81,6 @@ export default async function CampaignsPage() {
         leads={leads}
         organization={organization}
       />
-    </SidebarLayout>
+    </>
   );
 }

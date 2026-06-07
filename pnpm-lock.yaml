@@ -345,6 +345,9 @@ importers:
       '@remotion/renderer':
         specifier: ^4.0.469
         version: 4.0.469(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@remotion/three':
+        specifier: ^4.0.473
+        version: 4.0.473(@react-three/fiber@9.6.1(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(three@0.165.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(remotion@4.0.469(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(three@0.165.0)
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -609,6 +612,9 @@ importers:
       '@google/genai':
         specifier: ^2.7.0
         version: 2.7.0
+      '@high-ground/quipsly-domain':
+        specifier: workspace:*
+        version: link:../../packages/quipsly-domain
       '@high-ground/worldhub-domain':
         specifier: workspace:*
         version: link:../../packages/worldhub-domain
@@ -3005,6 +3011,15 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
+
+  '@remotion/three@4.0.473':
+    resolution: {integrity: sha512-yd1RmJ+A+67wWHICy2yJWsrpDorxogAq9uzAGCejFykKNuGe1wl3TnGjcvvHF18VNq0O+aTIEqyXqb8L+0CZyA==}
+    peerDependencies:
+      '@react-three/fiber': '>=8.0.0'
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+      remotion: 4.0.473
+      three: '>=0.137.0'
 
   '@remotion/timeline-utils@4.0.469':
     resolution: {integrity: sha512-Jrl0IUdgljfh64SgOxkFvgMX4UY1nYxDp8Hddrk2R8edIcVUJrMoe2+xLlgFoKwyhyZNE4kHNXnrVlUoSI4d5g==}
@@ -11656,6 +11671,14 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@remotion/three@4.0.473(@react-three/fiber@9.6.1(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(three@0.165.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(remotion@4.0.469(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(three@0.165.0)':
+    dependencies:
+      '@react-three/fiber': 9.6.1(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(three@0.165.0)
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+      remotion: 4.0.469(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      three: 0.165.0
 
   '@remotion/timeline-utils@4.0.469':
     dependencies:

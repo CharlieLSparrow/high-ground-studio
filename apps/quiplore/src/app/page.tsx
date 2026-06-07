@@ -4,15 +4,26 @@ import Image from "next/image";
 import Link from "next/link";
 import { BookOpen, Feather, Sparkles, Quote, MessageSquare, CheckCircle2 } from "lucide-react";
 import { getLorelistsHomeData } from "./actions/feed-actions";
+import {
+  getGeneratedQuipslyArt,
+  getGeneratedQuipslyArtByRole,
+} from "@high-ground/quipsly-domain/generated-art";
 
 export default async function QuiploreLandingPage() {
   const lorelists = await getLorelistsHomeData();
+  const heroArt = getGeneratedQuipslyArt("quip-lore-curators");
+  const librarianArt = getGeneratedQuipslyArt("curious-librarian");
+  const quoteCompanions = [
+    heroArt,
+    librarianArt,
+    ...getGeneratedQuipslyArtByRole("generator").slice(0, 4),
+  ];
 
   return (
     <div className="min-h-screen bg-[#fdf1dc] text-[#4c331b] font-serif selection:bg-[#e2b17b]/50 overflow-x-hidden relative">
-      
+
       {/* Soft paper texture overlay */}
-      <div className="fixed inset-0 pointer-events-none opacity-20 mix-blend-multiply" 
+      <div className="fixed inset-0 pointer-events-none opacity-20 mix-blend-multiply"
            style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/cream-paper.png")' }}></div>
 
       {/* Navigation */}
@@ -25,14 +36,20 @@ export default async function QuiploreLandingPage() {
             <span className="font-black text-2xl tracking-tight text-[#4c331b] font-serif">QuipLore</span>
           </div>
           <div className="flex items-center gap-6">
-            <Link 
-              href="/hub" 
+            <Link
+              href="/hub"
               className="text-sm font-bold text-[#ad6b35] hover:text-[#4c331b] transition-colors"
             >
               Explore Hub
             </Link>
-            <Link 
-              href="https://quipsly.com" 
+            <Link
+              href="/visual-library"
+              className="hidden text-sm font-bold text-[#ad6b35] hover:text-[#4c331b] transition-colors sm:block"
+            >
+              Visual Library
+            </Link>
+            <Link
+              href="https://quipsly.com"
               className="text-sm font-bold bg-[#ad6b35] hover:bg-[#4c331b] text-white px-5 py-2.5 rounded-xl transition-all shadow-md"
             >
               Meet the Quipslys
@@ -44,7 +61,7 @@ export default async function QuiploreLandingPage() {
       {/* Hero Section */}
       <main className="pt-32 pb-24 px-6 relative z-10">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-          
+
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#f8d9b0] text-[#ad6b35] text-xs font-bold uppercase tracking-widest border border-[#e2b17b] font-sans">
               <Sparkles className="w-3 h-3" />
@@ -54,7 +71,7 @@ export default async function QuiploreLandingPage() {
             <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#4c331b] leading-[1.1]">
               The literary archive for your best ideas.
             </h1>
-            
+
             <p className="text-lg md:text-xl text-[#ad6b35] leading-relaxed max-w-lg font-sans">
               Gather your favorite quotes, notes, and sparks of inspiration. QuipLore helps you discover verified quotes in a warm, trustworthy storybook archive.
             </p>
@@ -64,26 +81,30 @@ export default async function QuiploreLandingPage() {
                  <Quote className="w-5 h-5" />
                  Start Reading
                </Link>
+               <Link href="/visual-library" className="border border-[#ad6b35] bg-white/70 text-[#ad6b35] px-8 py-4 rounded-xl font-bold hover:bg-[#f8d9b0] transition-colors shadow-sm text-lg flex items-center gap-2">
+                 <Sparkles className="w-5 h-5" />
+                 Visual Library
+               </Link>
             </div>
           </div>
 
           <div className="relative animate-in fade-in slide-in-from-right-8 duration-1000">
             {/* Soft backdrop */}
             <div className="absolute inset-0 bg-[#f8d9b0] rounded-[2rem] blur-2xl transform rotate-3 scale-105" />
-            
+
             <div className="relative bg-white p-4 rounded-[2rem] border border-[#e2b17b] shadow-xl rotate-1 hover:rotate-0 transition-transform duration-500">
               <div className="bg-[#fdf1dc] rounded-xl overflow-hidden border border-[#e2b17b]/50 relative">
-                <Image 
-                  src="/images/examples/quipsly-home-introduction-page.png" 
-                  alt="QuipLore Interface" 
-                  width={800} 
-                  height={600} 
+                <Image
+                  src={heroArt.src}
+                  alt={heroArt.alt}
+                  width={800}
+                  height={600}
                   className="w-full h-auto object-cover opacity-95 hover:opacity-100 transition-opacity mix-blend-multiply"
                   priority
                 />
               </div>
             </div>
-            
+
             {/* Little floating elements to add whimsy */}
             <div className="absolute -bottom-6 -left-6 bg-white p-3 rounded-xl border border-[#e2b17b] shadow-lg rotate-[-5deg] animate-pulse">
                <Quote className="w-6 h-6 text-[#ad6b35]" />
@@ -131,8 +152,58 @@ export default async function QuiploreLandingPage() {
             </div>
           </div>
         </div>
+
+        <section className="max-w-7xl mx-auto mt-32 grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            {quoteCompanions.map((item, index) => (
+              <div
+                key={item.id}
+                className={`overflow-hidden rounded-[1.6rem] border border-[#e2b17b] bg-white p-2 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl ${
+                  index === 1 ? "md:translate-y-8" : ""
+                }`}
+              >
+                <Image
+                  src={item.src}
+                  alt={item.alt}
+                  width={320}
+                  height={320}
+                  className="aspect-square w-full rounded-[1.2rem] object-cover"
+                />
+                <div className="px-2 py-3 font-sans">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ad6b35]">{item.role}</p>
+                  <p className="mt-1 truncate text-sm font-bold text-[#4c331b]">{item.title}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-[2.5rem] border border-[#e2b17b] bg-white/80 p-8 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#e2b17b] bg-[#f8d9b0]/70 px-4 py-1.5 font-sans text-xs font-black uppercase tracking-[0.18em] text-[#ad6b35]">
+              <Sparkles className="h-3.5 w-3.5" />
+              Powered by Quipsly
+            </div>
+            <h2 className="mt-5 text-4xl font-bold tracking-tight text-[#4c331b]">
+              QuipLore is where the research becomes shareable.
+            </h2>
+            <p className="mt-5 font-sans text-lg leading-8 text-[#ad6b35]">
+              Quipsly does the source work: finding quote origins, preparing citations, tagging themes, and building packets. QuipLore turns those packets into beautiful quote cards, lorelists, feeds, and social-ready inspiration without throwing away provenance.
+            </p>
+            <div className="mt-6 grid gap-3 font-sans text-sm text-[#8d5a2b]">
+              {[
+                "Quote cards should carry attribution and confidence, not just vibes.",
+                "Lorelists are curated paths through ideas, people, sources, and themes.",
+                "Every public card should be traceable back to a source-aware research packet.",
+              ].map((item) => (
+                <div key={item} className="flex gap-3 rounded-2xl border border-[#e2b17b]/70 bg-[#fdf1dc] p-4">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
-      
+
       {/* Footer */}
       <footer className="border-t border-[#e2b17b] py-12 mt-20 bg-white/50 backdrop-blur">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[#ad6b35] text-sm font-medium font-sans">

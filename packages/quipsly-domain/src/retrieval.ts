@@ -16,7 +16,7 @@
  *   complementary, not replaced.
  */
 
-import type { QuipslyId, VerificationStatus } from "./index";
+import type { QuipslyId, VerificationStatus, SourceSelector, SourceDocumentKind } from "./index";
 
 // ---------------------------------------------------------------------------
 // Retrieval Intent
@@ -94,7 +94,20 @@ export type QuipslyLoreBackend = {
 export type RetrievalProvenance =
   | StudioSpanProvenance
   | StudioKnowledgeProvenance
-  | QuipslyNodeProvenance;
+  | QuipslyNodeProvenance
+  | SourceAwareProvenance;
+
+/**
+ * Result originated from an external SourceDocument managed by the
+ * source-aware immutable reference system.
+ */
+export type SourceAwareProvenance = {
+  readonly origin: "source-aware";
+  readonly projectId: string;
+  readonly sourceDocumentId: string;
+  readonly documentKind: SourceDocumentKind;
+  readonly selector: SourceSelector;
+};
 
 /**
  * Result originated from a StudioDocumentBlock body or a StudioTaggedSpan
@@ -392,6 +405,15 @@ export function isLoreProvenance(
 }
 
 /**
+ * Type guard: is this provenance from the source-aware immutable reference system?
+ */
+export function isSourceAwareProvenance(
+  p: RetrievalProvenance,
+): p is SourceAwareProvenance {
+  return p.origin === "source-aware";
+}
+
+/**
  * Count distinct source origins in a set of results.
  */
 export function countSourcesCovered(
@@ -408,6 +430,9 @@ export function countSourcesCovered(
         break;
       case "quipsly-lore":
         seen.add(`lore:${r.provenance.nodeId}`);
+        break;
+      case "source-aware":
+        seen.add(`source:${r.provenance.sourceDocumentId}`);
         break;
     }
   }

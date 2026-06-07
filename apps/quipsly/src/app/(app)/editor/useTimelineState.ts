@@ -50,6 +50,11 @@ function sanitizeTimelineClip(clip: TimelineClip, fallbackTrackId: string): Time
     name: (clip.name ?? "").trim() || "Clip",
     color: clip.color || "#2563eb",
     assetId: clip.assetId || "",
+    sourceId: typeof clip.sourceId === "string" ? clip.sourceId : undefined,
+    volume: Math.max(0, Math.min(2, toFiniteNumber(clip.volume, 1))),
+    deactivated: Boolean(clip.deactivated),
+    aiSuggested: Boolean(clip.aiSuggested),
+    transforms: Array.isArray(clip.transforms) ? clip.transforms : [],
   };
 }
 
@@ -62,6 +67,8 @@ function sanitizeTranscriptBlock(block: TranscriptBlock) {
     text: (block.text ?? "").trim(),
     deleted: Boolean(block.deleted),
     alert: block.alert ?? null,
+    aiSuggested: Boolean(block.aiSuggested),
+    deactivated: Boolean(block.deactivated),
   } satisfies TranscriptBlock;
 }
 
@@ -117,6 +124,17 @@ export function isAudioTrackId(value: unknown) {
   return raw.toUpperCase().startsWith(TRACK_PREFIX_AUDIO);
 }
 
+export type TransformKeyframe = {
+  id: string;
+  timeOffset: number; // Seconds from the start of the clip
+  scale?: number;     // Zoom (2D) or FOV (360)
+  x?: number;         // Pan X (2D) or Yaw (360)
+  y?: number;         // Pan Y (2D) or Pitch (360)
+  rotation?: number;  // Roll
+  easing?: "linear" | "ease-in-out";
+  aiSuggested?: boolean;
+};
+
 export type TimelineClip = {
   id: string;
   assetId: string;
@@ -128,6 +146,11 @@ export type TimelineClip = {
   name: string;
   color: string;
   trackId: string;
+  sourceId?: string;
+  volume?: number;
+  deactivated?: boolean;
+  aiSuggested?: boolean;
+  transforms?: TransformKeyframe[];
 };
 
 export type TranscriptBlock = {
@@ -137,6 +160,8 @@ export type TranscriptBlock = {
   text: string;
   deleted: boolean;
   alert: string | null;
+  deactivated?: boolean;
+  aiSuggested?: boolean;
 };
 
 export type PaperEditSnapshot = {
@@ -165,6 +190,7 @@ export type TimelineState = {
   transcript: TranscriptBlock[];
   paperEditSnapshots?: Record<string, PaperEditSnapshot>;
   loopClips?: LoopClip[];
+  editorMode?: "play-all" | "play-edit";
 };
 
 function sanitizePaperEditSnapshots(value: TimelineState["paperEditSnapshots"]) {
@@ -213,17 +239,19 @@ function sanitizeLoopClip(loop: any): LoopClip {
 
 function sanitizeTimelineState(nextState: TimelineState | null | undefined): TimelineState {
   if (!nextState || typeof nextState !== "object") {
-    return { clips: [], transcript: [], loopClips: [] };
+    return { clips: [], transcript: [], loopClips: [], editorMode: "play-edit" };
   }
   const paperEditSnapshots = sanitizePaperEditSnapshots(nextState.paperEditSnapshots);
   const rawClips = Array.isArray(nextState.clips) ? nextState.clips : [];
   const rawTranscript = Array.isArray(nextState.transcript) ? nextState.transcript : [];
   const rawLoopClips = Array.isArray(nextState.loopClips) ? nextState.loopClips : [];
-  
+  const editorMode: "play-all" | "play-edit" = nextState.editorMode === "play-all" ? "play-all" : "play-edit";
+
   const sanitized = {
     clips: rawClips.map((clip) => sanitizeTimelineClip(clip, DEFAULT_VIDEO_TRACK)),
     transcript: rawTranscript.map(sanitizeTranscriptBlock),
     loopClips: rawLoopClips.map(sanitizeLoopClip),
+    editorMode,
   };
 
   return paperEditSnapshots ? { ...sanitized, paperEditSnapshots } : sanitized;
@@ -244,13 +272,29 @@ type Action =
   | { type: "MOVE_CLIP_TO"; payload: { clipId: string; startIn: number } }
   | { type: "MOVE_CLIP_TO_TRACK"; payload: { clipId: string; trackId: string } }
   | { type: "RENAME_CLIP"; payload: { clipId: string; name: string } }
+  | { type: "UPDATE_CLIP_TRANSFORMS"; payload: { clipId: string; transforms: TransformKeyframe[] } }
+  | { type: "UPDATE_CLIP_VOLUME"; payload: { clipId: string; volume: number } }
+  | { type: "ADD_CLIP_KEYFRAME"; payload: { clipId: string; keyframe: TransformKeyframe } }
   | { type: "SNAP_CLIP_TO_PREVIOUS"; payload: { clipId: string } }
   | { type: "SNAP_CLIP_TO_NEXT"; payload: { clipId: string } }
   | { type: "UPDATE_CLIP_TIMING"; payload: { clipId: string; startIn?: number; duration?: number; sourceStart?: number; sourceEnd?: number } }
   | { type: "COMPACT_TRACK_FROM_CLIP"; payload: { clipId: string } }
   | { type: "PUSH_TRACK_OVERLAPS_FROM_CLIP"; payload: { clipId: string } }
   | { type: "ADD_LOOP_CLIP"; payload: { loop: LoopClip } }
-  | { type: "DELETE_LOOP_CLIP"; payload: { loopId: string } };
+  | { type: "DELETE_LOOP_CLIP"; payload: { loopId: string } }
+  | { type: "TOGGLE_EDITOR_MODE"; payload?: never }
+  | { type: "SET_EDITOR_MODE"; payload: { mode: "play-all" | "play-edit" } };
+
+type TimelineHistoryState = {
+  past: TimelineState[];
+  present: TimelineState;
+  future: TimelineState[];
+};
+
+type HistoryAction =
+  | { type: "UNDO" }
+  | { type: "REDO" }
+  | Action;
 
 function timelineReducer(state: TimelineState, action: Action): TimelineState {
   switch (action.type) {
@@ -259,6 +303,18 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
 
     case "REPLACE":
       return sanitizeTimelineState(action.payload);
+
+    case "TOGGLE_EDITOR_MODE":
+      return {
+        ...state,
+        editorMode: state.editorMode === "play-all" ? "play-edit" : "play-all"
+      };
+
+    case "SET_EDITOR_MODE":
+      return {
+        ...state,
+        editorMode: action.payload.mode,
+      };
 
     case "ADD_CLIP":
       return sanitizeTimelineState({
@@ -272,102 +328,23 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       if (blockIndex === -1) return state;
 
       const block = state.transcript[blockIndex];
-      const isDeleting = !block.deleted;
-      const timeDelta = isDeleting ? -block.duration : block.duration;
-      const deleteStart = Math.max(0, block.time);
-      const deleteEnd = Math.max(deleteStart, deleteStart + Math.max(0.01, block.duration));
-      
+      const isDeleting = !block.deactivated;
+
       const newTranscript = [...state.transcript];
-      newTranscript[blockIndex] = { ...block, deleted: isDeleting };
+      newTranscript[blockIndex] = {
+        ...block,
+        deactivated: isDeleting,
+        deleted: isDeleting // Keep deleted synced for legacy components
+      };
+
+      // Mark the corresponding portion of the clip as deactivated?
+      // Actually, we'll let RemotionComposition handle the skipping dynamically based on the transcript's deactivated flag.
+
       const snapshots = state.paperEditSnapshots ?? {};
-
-      if (!isDeleting) {
-        const snapshot = snapshots[blockId];
-        if (snapshot) {
-          const { [blockId]: _restored, ...remainingSnapshots } = snapshots;
-          return sanitizeTimelineState({
-            clips: snapshot.clips,
-            transcript: snapshot.transcript.map((candidate) =>
-              candidate.id === blockId ? { ...candidate, deleted: false } : candidate
-            ),
-            paperEditSnapshots: remainingSnapshots,
-          });
-        }
-
-        return {
-          ...state,
-          transcript: newTranscript,
-        };
-      }
-      
-      let nextClips = state.clips.map((clip) => ({ ...clip }));
-
-      const transformed: TimelineClip[] = [];
-
-      for (const clip of nextClips) {
-        const clipStart = Math.max(0, clip.startIn);
-        const clipEnd = clipStart + Math.max(0, clip.duration);
-        const doesIntersect = overlapsInterval(clipStart, clipEnd, deleteStart, deleteEnd);
-        if (!doesIntersect) {
-          transformed.push(clip);
-          continue;
-        }
-
-        const leftDuration = deleteStart - clipStart;
-        const rightStart = Math.min(clipEnd, deleteEnd);
-        const rightDuration = Math.max(0, clipEnd - rightStart);
-
-        const shouldKeepLeft = leftDuration >= MIN_TIMELINE_CLIP_SECONDS;
-        const shouldKeepRight = rightDuration >= MIN_TIMELINE_CLIP_SECONDS;
-
-        if (!shouldKeepLeft && !shouldKeepRight) {
-          continue;
-        }
-
-        if (shouldKeepLeft) {
-          transformed.push({
-            ...clip,
-            sourceEnd: Math.max(clip.sourceStart + leftDuration, clip.sourceStart + MIN_TIMELINE_CLIP_SECONDS),
-            duration: clampDuration(leftDuration),
-          });
-        }
-
-        if (shouldKeepRight) {
-          const sourceStart = clip.sourceStart + (rightStart - clipStart);
-          const sourceEnd = Math.max(sourceStart, clip.sourceEnd ?? sourceStart) + rightDuration;
-          transformed.push({
-            ...clip,
-            id: makeSplitTimelineId(clip.id, "right"),
-            startIn: rightStart,
-            sourceStart,
-            sourceEnd,
-            duration: clampDuration(rightDuration),
-          });
-        }
-      }
-
-      nextClips = transformed;
-
-      // Ripple subsequent clips for both delete and restore operations.
-      nextClips = nextClips.map((c) => {
-        if (c.startIn > block.time) {
-          return { ...c, startIn: c.startIn + timeDelta };
-        }
-        return c;
-      });
-      
-      // Ripple transcript
-      const rippledTranscript = newTranscript.map((b, i) => {
-        if (i > blockIndex) {
-          return { ...b, time: Math.max(0, b.time + timeDelta) };
-        }
-        return b;
-      });
 
       return {
         ...state,
-        transcript: rippledTranscript,
-        clips: nextClips.filter((candidate) => toFiniteNumber(candidate.duration, 0) >= MIN_TIMELINE_CLIP_SECONDS),
+        transcript: newTranscript,
         paperEditSnapshots: {
           ...snapshots,
           [blockId]: snapshots[blockId] ?? {
@@ -451,7 +428,6 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
     }
     case "UPDATE_CLIP_SOURCE": {
       const nextAssetId = action.payload.assetId.trim();
-      if (!nextAssetId) return state;
 
       return {
         ...state,
@@ -558,14 +534,42 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
       };
     }
     case "RENAME_CLIP": {
-      const name = action.payload.name.trim();
-      if (!name) return state;
-
       return {
         ...state,
         clips: state.clips.map((clip) =>
-          clip.id === action.payload.clipId ? { ...clip, name } : clip
+          clip.id === action.payload.clipId
+            ? { ...clip, name: action.payload.name }
+            : clip
         ),
+      };
+    }
+    case "UPDATE_CLIP_TRANSFORMS": {
+      return {
+        ...state,
+        clips: state.clips.map((clip) =>
+          clip.id === action.payload.clipId
+            ? { ...clip, transforms: action.payload.transforms }
+            : clip
+        ),
+      };
+    }
+    case "UPDATE_CLIP_VOLUME": {
+      return {
+        ...state,
+        clips: state.clips.map((clip) =>
+          clip.id === action.payload.clipId ? { ...clip, volume: action.payload.volume } : clip
+        ),
+      };
+    }
+    case "ADD_CLIP_KEYFRAME": {
+      return {
+        ...state,
+        clips: state.clips.map((clip) => {
+          if (clip.id !== action.payload.clipId) return clip;
+          const newTransforms = [...(clip.transforms || []), action.payload.keyframe];
+          newTransforms.sort((a, b) => a.timeOffset - b.timeOffset);
+          return { ...clip, transforms: newTransforms };
+        }),
       };
     }
     case "SNAP_CLIP_TO_PREVIOUS": {
@@ -700,11 +704,58 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
   }
 }
 
-export function useTimelineState(initialState: TimelineState) {
-  const [state, dispatch] = useReducer(timelineReducer, initialState);
+function timelineHistoryReducer(history: TimelineHistoryState, action: HistoryAction): TimelineHistoryState {
+  if (action.type === "UNDO") {
+    if (history.past.length === 0) return history;
+    const previous = history.past[history.past.length - 1];
+    const newPast = history.past.slice(0, history.past.length - 1);
+    return {
+      past: newPast,
+      present: previous,
+      future: [history.present, ...history.future],
+    };
+  }
+
+  if (action.type === "REDO") {
+    if (history.future.length === 0) return history;
+    const next = history.future[0];
+    const newFuture = history.future.slice(1);
+    return {
+      past: [...history.past, history.present],
+      present: next,
+      future: newFuture,
+    };
+  }
+
+  const nextPresent = timelineReducer(history.present, action);
+
+  if (nextPresent === history.present) {
+    return history;
+  }
+
+  // Cap history at 50 states to prevent memory leaks in the browser
+  const newPast = [...history.past, history.present].slice(-50);
 
   return {
-    state,
+    past: newPast,
+    present: nextPresent,
+    future: [],
+  };
+}
+
+export function useTimelineState(initialState: TimelineState) {
+  const [history, dispatch] = useReducer(timelineHistoryReducer, {
+    past: [],
+    present: sanitizeTimelineState(initialState),
+    future: [],
+  });
+
+  return {
+    state: history.present,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    undo: () => dispatch({ type: "UNDO" }),
+    redo: () => dispatch({ type: "REDO" }),
     replaceTimeline: (nextState: TimelineState) =>
       dispatch({ type: "REPLACE", payload: nextState }),
     addClip: (clip: TimelineClip) =>
@@ -731,6 +782,12 @@ export function useTimelineState(initialState: TimelineState) {
       dispatch({ type: "MOVE_CLIP_TO_TRACK", payload: { clipId, trackId } }),
     renameClip: (clipId: string, name: string) =>
       dispatch({ type: "RENAME_CLIP", payload: { clipId, name } }),
+    updateClipTransforms: (clipId: string, transforms: TransformKeyframe[]) =>
+      dispatch({ type: "UPDATE_CLIP_TRANSFORMS", payload: { clipId, transforms } }),
+    updateClipVolume: (clipId: string, volume: number) =>
+      dispatch({ type: "UPDATE_CLIP_VOLUME", payload: { clipId, volume } }),
+    addClipKeyframe: (clipId: string, keyframe: TransformKeyframe) =>
+      dispatch({ type: "ADD_CLIP_KEYFRAME", payload: { clipId, keyframe } }),
     snapClipToPrevious: (clipId: string) =>
       dispatch({ type: "SNAP_CLIP_TO_PREVIOUS", payload: { clipId } }),
     snapClipToNext: (clipId: string) =>
@@ -741,6 +798,10 @@ export function useTimelineState(initialState: TimelineState) {
       dispatch({ type: "COMPACT_TRACK_FROM_CLIP", payload: { clipId } }),
     pushTrackOverlapsFromClip: (clipId: string) =>
       dispatch({ type: "PUSH_TRACK_OVERLAPS_FROM_CLIP", payload: { clipId } }),
+    toggleEditorMode: () =>
+      dispatch({ type: "TOGGLE_EDITOR_MODE" }),
+    setEditorMode: (mode: "play-all" | "play-edit") =>
+      dispatch({ type: "SET_EDITOR_MODE", payload: { mode } }),
     addLoopClip: (loop: LoopClip) =>
       dispatch({ type: "ADD_LOOP_CLIP", payload: { loop } }),
     deleteLoopClip: (loopId: string) =>

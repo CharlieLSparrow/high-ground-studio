@@ -57,7 +57,8 @@ Why this matters:
 
 ### Priority notes
 
-- Team chat collaboration is foundational but can wait until the editor/project spine is stable.
+- Team chat collaboration now has a first-pass Nest thread: one durable default thread per StudioProject, exposed through a floating app panel when a route has project context.
+- Next chat step is not more thread complexity; it is richer work attachment: turn a chat message into a task, review request, clip note, manuscript note, or assistant memory.
 - GIF maker in the YouTube/video editor should be considered a high-priority media feature because it directly improves editing, collaboration, and social output.
 - This should eventually involve AG-Video-Editor, AG-Project-Management, AG-Assistant, and possibly AG-QuipLore for quote/social-card parallels.
 
@@ -370,4 +371,3 @@ These may belong on an About Us / lore page later as a joke list of options we c
 - A Library of Quipsly
 - A Schema of Quipsly
 - A Concern of Quipsly
-

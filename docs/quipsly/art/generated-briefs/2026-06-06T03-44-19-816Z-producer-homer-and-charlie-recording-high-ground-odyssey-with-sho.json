@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "createdAt": "2026-06-06T03:44:19.816Z",
+  "role": "producer",
+  "roleLabel": "Podcast Producer",
+  "subject": "Homer and Charlie recording High Ground Odyssey with show notes and clip cues",
+  "mood": "curious, cheerful, useful",
+  "surface": "Quipsly and High Ground Odyssey",
+  "prompt": "warm storybook illustration, friendly sparrow-like Quipsly mascot, expressive eyes, cozy parchment palette, handmade texture, soft lantern light, charming useful details, no photorealism, two Quipsly podcast producers with microphones, camera, laptop, show notes, cozy recording desk, collaborative and excited, specific subject: Homer and Charlie recording High Ground Odyssey with show notes and clip cues, mood: curious, cheerful, useful, intended surface: Quipsly and High Ground Odyssey, square composition, clear mascot silhouette, enough empty space for product copy if needed",
+  "negativePrompt": "scary, aggressive, uncanny, extra limbs, broken wings, distorted face, unreadable text, watermark, logo artifacts, harsh neon, photorealistic human, corporate clipart",
+  "recommendedSize": "1254x1254",
+  "ingestTargets": [
+    "apps/quipsly/public/images/quipsly-generated",
+    "apps/quiplore/public/images/quipsly-generated"
+  ],
+  "comfyUi": {
+    "note": "Use this prompt in the local ComfyUI workflow. After export, run the ingest script or copy the approved PNG into the generated asset folder and add a named entry to packages/quipsly-domain/src/generated-art.ts.",
+    "defaultLocalUrl": "http://127.0.0.1:8188"
+  }
+}

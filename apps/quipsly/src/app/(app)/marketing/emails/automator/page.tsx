@@ -1,5 +1,4 @@
 import React from 'react';
-import { SidebarLayout } from '@/components/SidebarLayout';
 import { AutomatorClient } from './AutomatorClient';
 import { getPrismaClient } from '@/lib/prisma';
 
@@ -12,7 +11,7 @@ export default async function EmailAutomatorPage() {
   });
 
   return (
-    <SidebarLayout>
+    <>
       <div className="flex flex-col h-[calc(100vh-64px)] w-full">
         <header className="p-8 pb-0 shrink-0">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">Welcome Sequence Automator</h1>
@@ -24,6 +23,6 @@ export default async function EmailAutomatorPage() {
           <AutomatorClient personas={personas} />
         </div>
       </div>
-    </SidebarLayout>
+    </>
   );
 }

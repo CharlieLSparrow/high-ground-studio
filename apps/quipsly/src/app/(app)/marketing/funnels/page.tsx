@@ -1,7 +1,6 @@
 import React from 'react';
 import { FunnelVisualizer } from '@/components/marketing/FunnelVisualizer';
 import { QuipslyAgenticInsights } from '@/components/marketing/QuipslyAgenticInsights';
-import { SidebarLayout } from '@/components/SidebarLayout';
 import { getPrismaClient } from '@/lib/prisma';
 import { Users, Mail, MousePointerClick } from 'lucide-react';
 
@@ -9,14 +8,14 @@ export const dynamic = 'force-dynamic';
 
 export default async function FunnelDashboard() {
   const prisma = getPrismaClient();
-  
+
   // Get primary user
   const user = await prisma.user.findFirst();
   if (!user) {
     return (
-      <SidebarLayout>
+      <>
         <div className="p-8">System not configured. No users found.</div>
-      </SidebarLayout>
+      </>
     );
   }
 
@@ -24,7 +23,7 @@ export default async function FunnelDashboard() {
   const landingPages = await prisma.landingPage.findMany({
     where: { userId: user.id }
   });
-  
+
   const totalLpViews = landingPages.reduce((acc, lp) => acc + lp.views, 0) || 1200; // Mock base if 0
   const totalLpConversions = landingPages.reduce((acc, lp) => acc + lp.conversions, 0);
 
@@ -33,7 +32,7 @@ export default async function FunnelDashboard() {
     where: { userId: user.id }
   });
   // Mock some engagement stats for the email sequence based on leads
-  const emailOpens = Math.floor(totalLpConversions * 0.6); 
+  const emailOpens = Math.floor(totalLpConversions * 0.6);
   const emailClicks = Math.floor(emailOpens * 0.15);
 
   // 3. Get Recent Leads
@@ -83,7 +82,7 @@ export default async function FunnelDashboard() {
   ];
 
   return (
-    <SidebarLayout>
+    <>
       <div className="p-8 max-w-7xl mx-auto w-full">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Marketing Pipeline</h1>
@@ -103,7 +102,7 @@ export default async function FunnelDashboard() {
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -190,13 +189,13 @@ export default async function FunnelDashboard() {
               </div>
             </div>
           </div>
-          
+
           <div className="xl:w-80 flex-shrink-0">
             {/* The QuipslyAgenticInsights component analyzes the funnel steps for revenue leaks */}
             <QuipslyAgenticInsights funnelStepsData={mappedSteps} personaId="1" />
           </div>
         </div>
       </div>
-    </SidebarLayout>
+    </>
   );
 }

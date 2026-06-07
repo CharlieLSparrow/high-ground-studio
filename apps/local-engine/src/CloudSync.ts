@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { configuredMediaBucketName } from './MediaVaultConfig';
 
 export class CloudSyncDaemon {
   private ingestDir: string;
@@ -15,12 +16,12 @@ export class CloudSyncDaemon {
 
   private realCloudVault: any[] = [];
   private lastVaultFetch: number = 0;
-  
+
   private fetchCloudVault() {
     const now = Date.now();
     if (now - this.lastVaultFetch < 10000) return; // Cache for 10 seconds
     this.lastVaultFetch = now;
-    
+
     try {
       const { Storage } = require('@google-cloud/storage');
       const { OAuth2Client } = require('google-auth-library');
@@ -28,10 +29,10 @@ export class CloudSyncDaemon {
       const token = execSync('gcloud auth print-access-token').toString().trim();
       const authClient = new OAuth2Client();
       authClient.setCredentials({ access_token: token });
-      
+
       const storage = new Storage({ projectId: 'high-ground-odyssey', authClient });
-      const bucket = storage.bucket('high-ground-raw-footage');
-      
+      const bucket = storage.bucket(configuredMediaBucketName());
+
       bucket.getFiles().then(([files]: any) => {
          this.realCloudVault = files.map((f: any) => {
             const meta = f.metadata;
@@ -81,25 +82,8 @@ export class CloudSyncDaemon {
   public async triggerSync(onProgress?: (progress: number) => void) {
     if (this.isSyncing) return;
     this.isSyncing = true;
-    
-    // Mocking a resumable chunked upload...
-    // In production, this would use @google-cloud/storage streams
-    let progress = 0;
-    while (progress < 100) {
-      progress += 5;
-      if (onProgress) onProgress(progress);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate slow upload
-    }
-
-    // 100% verified upload - trigger auto-delete!
-    console.log("Checksum verified! Auto-deleting local file to save premium storage space...");
-    this.autoDeleteLocalCache();
-
+    console.warn("CloudSyncDaemon legacy trigger is disabled. Use Mac Import to Episode for real upload/register work.");
+    if (onProgress) onProgress(0);
     this.isSyncing = false;
-  }
-
-  private autoDeleteLocalCache() {
-    // In production, this would fs.unlinkSync() the actual files
-    console.log("Local ingest files have been securely wiped.");
   }
 }

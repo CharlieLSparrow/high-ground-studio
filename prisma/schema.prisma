@@ -168,6 +168,17 @@ enum StudioManuscriptKind {
   SYNTHETIC
 }
 
+enum StudioProjectAccessRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum StudioProjectAccessStatus {
+  ACTIVE
+  REVOKED
+}
+
 // The canonical human/app identity record.
 //
 // Source of truth:
@@ -253,6 +264,9 @@ model User {
   marketingLeads          MarketingLead[]
   marketingCampaigns      MarketingCampaign[]
   organizationMemberships OrganizationMember[]
+  studioProjectAccessGrantsCreated StudioProjectAccessGrant[] @relation("StudioProjectAccessGrantCreatedBy")
+  nativeAuthCodes        StudioNativeAuthCode[]
+  nativeDeviceSessions   StudioNativeDeviceSession[]
   feedbackTickets         FeedbackTicket[]
   userEvents              UserEvent[]
 }
@@ -292,6 +306,42 @@ model UserRole {
 
   @@unique([userId, role])
   @@index([role])
+}
+
+model StudioNativeAuthCode {
+  id             String    @id @default(cuid())
+  codeHash       String    @unique
+  userId         String
+  callbackScheme String
+  state          String?
+  deviceLabel    String?
+  metadataJson   Json?
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  consumedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model StudioNativeDeviceSession {
+  id               String    @id @default(cuid())
+  userId           String
+  deviceLabel      String?
+  refreshTokenHash String    @unique
+  metadataJson     Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  lastUsedAt       DateTime?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 // Client-specific domain data hangs off User rather than bloating the base
@@ -879,10 +929,42 @@ model StudioProject {
   storyEntities      StoryEntity[]
   storyBibleActions  StoryBibleAction[]
   storyboards        StudioStoryboard[]
+  chatThreads        StudioNestChatThread[]
+  chatMessages       StudioNestChatMessage[]
+  accessGrants       StudioProjectAccessGrant[]
+  nestInvites        StudioNestInvite[]
+  assetAttachments   StudioAssetAttachment[]
+  assetProcessingJobs StudioAssetProcessingJob[]
+  sourceUnits        StudioSourceUnit[]
+  documentOperations StudioDocumentOperation[]
+  productionRooms    StudioProductionRoom[]
+  outputPackets      StudioOutputPacket[]
+  publishedArtifacts StudioPublishedArtifact[]
+  workflowJobs       StudioWorkflowJob[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
   @@index([manuscriptId])
+}
+
+model StudioProjectAccessGrant {
+  id              String                    @id @default(cuid())
+  projectId       String
+  email           String
+  role            StudioProjectAccessRole   @default(VIEWER)
+  status          StudioProjectAccessStatus @default(ACTIVE)
+  createdByUserId String?
+  createdByEmail  String?
+  note            String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  project   StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("StudioProjectAccessGrantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, email])
+  @@index([email, status])
+  @@index([projectId, status])
 }
 
 model StudioDocument {
@@ -902,6 +984,10 @@ model StudioDocument {
   taggedSpans        StudioTaggedSpan[]
   knowledgeNodes     StudioKnowledgeNode[]
   episodeProductions StudioEpisodeProduction[]
+  sourceUnits        StudioSourceUnit[]
+  documentOperations StudioDocumentOperation[]
+  productionRooms    StudioProductionRoom[]
+  outputPackets      StudioOutputPacket[]
 
   @@index([projectId, stableId])
   @@index([projectId, projectionStatus])
@@ -934,6 +1020,286 @@ model StudioEpisodeProduction {
   @@index([documentId])
   @@index([projectId, boundaryKind])
   @@index([projectId, status, updatedAt])
+}
+
+model StudioNestInvite {
+  id             String                  @id @default(cuid())
+  projectId      String
+  email          String
+  role           StudioProjectAccessRole @default(VIEWER)
+  status         String                  @default("pending")
+  tokenHash      String?                 @unique
+  invitedByEmail String?
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  note           String?
+  metadataJson   Json                    @default("{}")
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+  @@index([email, status])
+  @@index([projectId, status])
+}
+
+model StudioAssetAttachment {
+  id             String   @id @default(cuid())
+  projectId      String
+  assetId        String
+  role           String?
+  source         String   @default("manual")
+  createdByEmail String?
+  metadataJson   Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project StudioProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   StudioMediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, assetId])
+  @@index([assetId])
+  @@index([projectId, role])
+}
+
+model StudioAssetVariant {
+  id           String   @id @default(cuid())
+  assetId      String
+  kind         String
+  url          String
+  mimeType     String?
+  width        Int?
+  height       Int?
+  duration     Float?
+  sizeBytes    BigInt?
+  metadataJson Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  asset StudioMediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, kind, url])
+  @@index([assetId, kind])
+}
+
+model StudioAssetProcessingJob {
+  id             String    @id @default(cuid())
+  projectId      String?
+  assetId        String
+  type           String
+  status         String    @default("queued")
+  requestedByEmail String?
+  inputJson      Json      @default("{}")
+  resultJson     Json?
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project StudioProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset   StudioMediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, status, createdAt])
+  @@index([projectId, status])
+  @@index([type, status])
+}
+
+model StudioSourceUnit {
+  id              String   @id @default(cuid())
+  projectId       String
+  documentId      String?
+  assetId         String?
+  slug            String
+  kind            String
+  title           String
+  sourceUrl       String?
+  sourcePath      String?
+  author          String?
+  capturedAt      DateTime?
+  immutableText   String?
+  editableNotes   String?
+  metadataJson    Json     @default("{}")
+  createdByEmail  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project  StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document StudioDocument?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  asset    StudioMediaAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, slug])
+  @@index([projectId, kind])
+  @@index([documentId])
+  @@index([assetId])
+}
+
+model StudioDocumentOperation {
+  id             String   @id @default(cuid())
+  projectId      String
+  documentId     String
+  groupId        String?
+  actorEmail     String?
+  origin         String   @default("human")
+  operationType  String
+  status         String   @default("applied")
+  beforeJson     Json?
+  afterJson      Json?
+  payloadJson    Json     @default("{}")
+  reversible     Boolean  @default(true)
+  revertedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  project  StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+  @@index([projectId, groupId])
+  @@index([actorEmail, createdAt])
+}
+
+model StudioProductionRoom {
+  id            String   @id @default(cuid())
+  projectId     String
+  documentId    String?
+  slug          String
+  title         String
+  kind          String   @default("episode")
+  status        String   @default("draft")
+  spineAssetId  String?
+  metadataJson  Json     @default("{}")
+  createdByEmail String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project          StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document         StudioDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  timelineVersions StudioTimelineVersion[]
+  outputPackets    StudioOutputPacket[]
+  workflowJobs     StudioWorkflowJob[]
+
+  @@unique([projectId, slug])
+  @@index([documentId])
+  @@index([projectId, kind, status])
+}
+
+model StudioTimelineVersion {
+  id               String   @id @default(cuid())
+  productionRoomId String
+  version          Int
+  label            String?
+  status           String   @default("draft")
+  timelineJson     Json     @default("{}")
+  createdByEmail   String?
+  createdAt        DateTime @default(now())
+
+  productionRoom StudioProductionRoom @relation(fields: [productionRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([productionRoomId, version])
+  @@index([productionRoomId, createdAt])
+}
+
+model StudioOutputPacket {
+  id               String   @id @default(cuid())
+  projectId        String
+  documentId       String?
+  productionRoomId String?
+  slug             String
+  kind             String
+  title            String
+  status           String   @default("draft")
+  packetJson       Json     @default("{}")
+  lineageJson      Json     @default("{}")
+  createdByEmail   String?
+  approvedByEmail  String?
+  approvedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document       StudioDocument?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  productionRoom StudioProductionRoom? @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  publishAttempts StudioPublishAttempt[]
+  publishedArtifacts StudioPublishedArtifact[]
+  workflowJobs   StudioWorkflowJob[]
+
+  @@unique([projectId, slug])
+  @@index([projectId, kind, status])
+  @@index([documentId])
+  @@index([productionRoomId])
+}
+
+model StudioPublishAttempt {
+  id             String   @id @default(cuid())
+  outputPacketId String
+  destination    String
+  status         String   @default("queued")
+  requestJson    Json     @default("{}")
+  resultJson     Json?
+  error          String?
+  requestedByEmail String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  outputPacket StudioOutputPacket @relation(fields: [outputPacketId], references: [id], onDelete: Cascade)
+
+  @@index([outputPacketId, destination, status])
+  @@index([destination, status, createdAt])
+}
+
+model StudioPublishedArtifact {
+  id             String   @id @default(cuid())
+  projectId      String
+  outputPacketId String?
+  destination    String
+  externalId     String?
+  publicUrl      String?
+  status         String   @default("published")
+  metadataJson   Json     @default("{}")
+  publishedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project      StudioProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outputPacket StudioOutputPacket? @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, destination, status])
+  @@index([outputPacketId])
+  @@index([destination, externalId])
+}
+
+model StudioWorkflowJob {
+  id               String   @id @default(cuid())
+  projectId        String?
+  assetId          String?
+  productionRoomId String?
+  outputPacketId   String?
+  type             String
+  status           String   @default("queued")
+  source           String   @default("app")
+  priority         Int      @default(100)
+  inputJson        Json     @default("{}")
+  resultJson       Json?
+  error            String?
+  requestedByEmail String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project        StudioProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset          StudioMediaAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  productionRoom StudioProductionRoom? @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  outputPacket   StudioOutputPacket?   @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status, createdAt])
+  @@index([assetId, status])
+  @@index([productionRoomId, status])
+  @@index([outputPacketId, status])
+  @@index([type, status])
 }
 
 model StudioVideoSource {
@@ -1522,6 +1888,7 @@ model StudioMediaAsset {
   isProxy       Boolean @default(false)
   rawAssetId    String? // If this is a proxy, points to the original raw StudioMediaAsset
   cloudProvider String  @default("gcs")
+  isGlobal      Boolean @default(false)
 
   // New Video Metadata
   duration     Float?
@@ -1536,9 +1903,16 @@ model StudioMediaAsset {
   projects StudioProject[]
   mediaBin MediaBin?       @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
   clips    MediaClip[]
+  mediaTags StudioMediaTag[]
+  assetAttachments StudioAssetAttachment[]
+  variants StudioAssetVariant[]
+  processingJobs StudioAssetProcessingJob[]
+  sourceUnits StudioSourceUnit[]
+  workflowJobs StudioWorkflowJob[]
 
   @@index([createdAt])
   @@index([mediaBinId])
+  @@index([isGlobal])
 }
 
 model MediaBin {
@@ -1555,6 +1929,21 @@ model MediaBin {
   @@index([projectId])
 }
 
+model StudioMediaTag {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  label       String
+  description String?
+  color       String   @default("#8c6b4a")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  mediaAssets StudioMediaAsset[]
+  mediaClips  MediaClip[]
+
+  @@index([slug])
+}
+
 model MediaClip {
   id           String   @id @default(cuid())
   mediaAssetId String
@@ -1566,6 +1955,7 @@ model MediaClip {
   updatedAt    DateTime @updatedAt
 
   mediaAsset StudioMediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  mediaTags  StudioMediaTag[]
   tags       StudioTag[]
 
   @@index([mediaAssetId])
@@ -2294,6 +2684,44 @@ model StudioStoryboardFrame {
 }
 
 // -----------------------------------------------------------------------------
+// NEST CHAT
+// -----------------------------------------------------------------------------
+
+model StudioNestChatThread {
+  id        String   @id @default(cuid())
+  projectId String
+  key       String   @default("default")
+  title     String   @default("Nest Chat")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages StudioNestChatMessage[]
+
+  @@unique([projectId, key])
+  @@index([projectId, updatedAt])
+}
+
+model StudioNestChatMessage {
+  id          String   @id @default(cuid())
+  projectId   String
+  threadId    String
+  authorEmail String?
+  authorName  String?
+  body        String   @db.Text
+  gifUrl      String?
+  metadataJson Json    @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  thread  StudioNestChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([threadId, createdAt])
+}
+
+// -----------------------------------------------------------------------------
 // QUIPSLY ASSISTANT
 // -----------------------------------------------------------------------------
 
@@ -2369,7 +2797,7 @@ model ScrollInteraction {
   interactionType  String   // 'COMMENT', 'RATING', 'FAVORITE', 'SELECTION', 'COMPLETION'
   payloadJson      Json     // e.g. { rating: 5 }, { text: "Fix this color" }
   createdAt        DateTime @default(now())
-  
+
   @@index([experienceId, panelId])
   @@index([interactionType])
 }

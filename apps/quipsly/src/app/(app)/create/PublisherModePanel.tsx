@@ -204,10 +204,19 @@ export default function PublisherModePanel({
                         <div className="text-[10px] font-black uppercase tracking-wider text-emerald-700 mb-1">Public Content Preview</div>
                         <div className="prose prose-sm prose-amber max-w-none">
                           <h4 className="text-base font-serif mb-2 font-bold text-[#3d3122]">{c.packet?.title}</h4>
-                          <div 
+                          <div
                             className="text-[#3d3122] text-xs whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto"
-                            dangerouslySetInnerHTML={{ __html: c.packet?.body || "" }} 
+                            dangerouslySetInnerHTML={{ __html: c.packet?.body || "" }}
                           />
+                          {c.packet?.metadata?.domainPacket?.showNotesMarkdown && (
+                            <div className="mt-4 border-t border-[#ead7ad]/50 pt-3">
+                              <h5 className="text-[10px] font-black uppercase tracking-wider text-emerald-700 mb-1">Extracted Show Notes</h5>
+                              <div
+                                className="text-[#6b5b45] text-xs whitespace-pre-wrap leading-relaxed max-h-20 overflow-y-auto italic border-l-2 border-[#d3a24f] pl-2"
+                                dangerouslySetInnerHTML={{ __html: c.packet.metadata.domainPacket.showNotesMarkdown }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
 

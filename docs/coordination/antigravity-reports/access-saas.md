@@ -193,3 +193,9 @@ Relation Collision & Index Risks:
 
 Recommended next handoff:
 - Codex should apply the schema changes, run `prisma migrate dev` on the PostgreSQL instance, backfill the default tenant organization records, and map synthetic IDs back to database IDs.
+
+## 2026-06-05 Codex Nest Routing Hardening
+
+Codex patched `/create` so a missing or stale `?project=` slug redirects back to `/projects?fallback=true&missing=<slug>` instead of crashing the workbench. The Projects/Nests hub now explains the missing slug and invites the user to choose or create a Nest.
+
+Carry-forward rule: customer-facing routes should fail toward understandable project selection, not implicit shared manuscripts or raw 500 pages.

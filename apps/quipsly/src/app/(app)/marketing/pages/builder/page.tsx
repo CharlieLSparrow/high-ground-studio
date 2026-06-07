@@ -1,5 +1,4 @@
 import React from 'react';
-import { SidebarLayout } from '@/components/SidebarLayout';
 import { BuilderClient } from './BuilderClient';
 import { getPrismaClient } from '@/lib/prisma';
 
@@ -12,10 +11,10 @@ export default async function LeadCaptureBuilderPage() {
   });
 
   return (
-    <SidebarLayout>
+    <>
       <div className="flex h-[calc(100vh-64px)] w-full">
         <BuilderClient personas={personas} />
       </div>
-    </SidebarLayout>
+    </>
   );
 }

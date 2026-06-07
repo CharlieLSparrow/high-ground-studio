@@ -3,7 +3,43 @@ import path from 'node:path';
 
 const MANIFEST_PATH = path.join(process.cwd(), 'docs', 'coordination', 'BETA-MANIFEST.md');
 
-function runScan() {
+async function checkHealthz() {
+  const targetUrl = process.env.PREVIEW_URL || 'http://localhost:3000';
+  console.log(`\n🩺 Checking Release Health at ${targetUrl}/api/healthz...`);
+
+  try {
+    const res = await fetch(`${targetUrl}/api/healthz`);
+    if (!res.ok) {
+      console.warn(`⚠️  Health check returned ${res.status}. Ensure the server is running if you expect a strict check.`);
+      return false;
+    }
+
+    const data = await res.json();
+    let hasMissingConfig = false;
+
+    if (data.config) {
+      for (const [key, status] of Object.entries(data.config)) {
+        if (!status.configured) {
+          console.error(`❌ MISSING CONFIG: ${key} is required but missing from the runtime environment.`);
+          hasMissingConfig = true;
+        }
+      }
+    } else {
+      console.warn('⚠️  Health check did not return a config block. Is this the compatibility endpoint?');
+    }
+
+    if (hasMissingConfig) {
+      console.error('❌ DEPLOY BLOCKED. Release health check failed due to missing required configuration.');
+      process.exit(1);
+    } else {
+      console.log('✅ Health check passed. Runtime config is intact.');
+    }
+  } catch (err) {
+    console.warn(`⚠️  Could not reach ${targetUrl}/api/healthz. Skipping strict config validation.`);
+  }
+}
+
+async function runScan() {
   if (!fs.existsSync(MANIFEST_PATH)) {
     console.error('❌ ERROR: BETA-MANIFEST.md not found. Are you running this from the workspace root?');
     process.exit(1);
@@ -58,6 +94,8 @@ function runScan() {
     }
     hasError = true;
   }
+
+  await checkHealthz();
 
   console.log('\n--- Scan Summary ---');
   if (hasError) {

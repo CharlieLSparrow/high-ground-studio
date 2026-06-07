@@ -1,5 +1,1 @@
-import ProjectsHub from "../projects/page";
-
-export const dynamic = "force-dynamic";
-
-export default ProjectsHub;
+export { default } from "../projects/page";

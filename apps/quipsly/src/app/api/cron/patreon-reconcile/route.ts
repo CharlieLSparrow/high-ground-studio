@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  evaluatePatreonBetaAccess,
+  QUIPSLY_BETA_PATREON_PLAN_SLUG,
+} from "@/lib/patreon/betaAccess";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const authHeader = req.headers.get("authorization");
+    const secret = process.env.PATREON_RECONCILE_SECRET;
+
+    if (secret && authHeader !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const prisma = getPrismaClient();
 
     const unprocessedEvents = await prisma.worldHubProviderEvent.findMany({
@@ -22,12 +33,15 @@ export async function POST() {
 
     // Ensure the Quipsly Beta plan exists in the catalog
     const betaPlan = await prisma.membershipPlan.upsert({
-      where: { slug: "quipsly-beta-patreon" },
-      update: {},
+      where: { slug: QUIPSLY_BETA_PATREON_PLAN_SLUG },
+      update: {
+        description: "Granted to active paid Patreon supporters",
+        isActive: true,
+      },
       create: {
         name: "Quipsly Beta Access (Patreon)",
-        slug: "quipsly-beta-patreon",
-        description: "Granted via Patreon Webhooks",
+        slug: QUIPSLY_BETA_PATREON_PLAN_SLUG,
+        description: "Granted to active paid Patreon supporters",
       },
     });
 
@@ -36,11 +50,19 @@ export async function POST() {
         const payload = event.payloadSummaryJson as any;
         const email = payload?.data?.attributes?.email;
         const patronStatus = payload?.data?.attributes?.patron_status;
+        const lastChargeStatus = payload?.data?.attributes?.last_charge_status;
+        const currentlyEntitledAmountCents = payload?.data?.attributes?.currently_entitled_amount_cents;
+        const willPayAmountCents = payload?.data?.attributes?.will_pay_amount_cents;
+        const tierIds = (
+          payload?.data?.relationships?.currently_entitled_tiers?.data || []
+        )
+          .map((tier: { id?: unknown }) => (typeof tier.id === "string" ? tier.id : null))
+          .filter(Boolean) as string[];
 
         if (!email) {
           await prisma.worldHubProviderEvent.update({
             where: { id: event.id },
-            data: { processingStatus: "SKIPPED", errorMessage: "No email in payload" },
+            data: { processingStatus: "NEEDS_REVIEW", errorMessage: "No email in payload" },
           });
           continue;
         }
@@ -66,11 +88,15 @@ export async function POST() {
           });
         }
 
-        // 2. Grant or Revoke based on status
-        // Usually, 'active_patron' means they are currently paying
-        const isEligible = patronStatus === "active_patron";
+        const decision = evaluatePatreonBetaAccess({
+          patronStatus,
+          lastChargeStatus,
+          currentlyEntitledAmountCents,
+          willPayAmountCents,
+          tierIds,
+        });
 
-        if (isEligible) {
+        if (decision.eligible) {
           const existingMembership = await prisma.membership.findFirst({
             where: { userId: user.id, planId: betaPlan.id },
           });
@@ -81,25 +107,31 @@ export async function POST() {
                 userId: user.id,
                 planId: betaPlan.id,
                 status: "ACTIVE",
-                notes: `Auto-granted via Patreon Event ${event.id}`,
+                notes: `Auto-granted via Patreon Event ${event.id}: ${decision.reasonCode}`,
               },
             });
           } else if (existingMembership.status !== "ACTIVE") {
             await prisma.membership.update({
               where: { id: existingMembership.id },
-              data: { status: "ACTIVE" },
+              data: {
+                status: "ACTIVE",
+                notes: `Restored via Patreon Event ${event.id}: ${decision.reasonCode}`,
+              },
             });
           }
-        } else {
+        } else if (decision.status === "EXPIRED") {
           // Revoke if they have an active membership
           const existingMembership = await prisma.membership.findFirst({
             where: { userId: user.id, planId: betaPlan.id, status: "ACTIVE" },
           });
-          
+
           if (existingMembership) {
             await prisma.membership.update({
               where: { id: existingMembership.id },
-              data: { status: "EXPIRED", notes: `Revoked via Patreon Event ${event.id}` },
+              data: {
+                status: "EXPIRED",
+                notes: `Revoked via Patreon Event ${event.id}: ${decision.reasonCode}`,
+              },
             });
           }
         }
@@ -109,6 +141,7 @@ export async function POST() {
           data: {
             processingStatus: "PROCESSED",
             processedAt: new Date(),
+            errorMessage: decision.eligible ? null : decision.reasonMessage,
           },
         });
       } catch (err: any) {

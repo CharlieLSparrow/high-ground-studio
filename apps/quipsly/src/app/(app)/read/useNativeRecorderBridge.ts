@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { RecordingSegment } from '@high-ground/quipsly-domain/recording';
 
 export type RecorderState = 'READY' | 'RECORDING' | 'PAUSED' | 'STOPPED' | 'ERROR';
 export type UploadState = 'IDLE' | 'SAVING_LOCALLY' | 'UPLOADING' | 'UPLOADED' | 'FAILED';
@@ -16,13 +17,18 @@ export function useNativeRecorderBridge(projectSlug: string, episodeSlug: string
   const [uploadState, setUploadState] = useState<UploadState>('IDLE');
   const [durationMs, setDurationMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [hasNativeBridge, setHasNativeBridge] = useState(false);
-  
+
   const stateRef = useRef(recorderState);
   useEffect(() => {
     stateRef.current = recorderState;
   }, [recorderState]);
+
+  const segmentsRef = useRef<RecordingSegment[]>([]);
+  const currentSegmentStartRef = useRef<number>(0);
+  const fileTimeCursorRef = useRef<number>(0);
+  const segmentStartTimeRef = useRef<number>(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -45,33 +51,37 @@ export function useNativeRecorderBridge(projectSlug: string, episodeSlug: string
   const performUpload = useCallback(async (blob: Blob, startedAt: number, stoppedAt: number) => {
     setUploadState('UPLOADING');
     setError(null);
-    
+
     const formData = new FormData();
     const ext = mimeTypeRef.current.split('/')[1] || 'webm';
     formData.append('file', blob, `take-${Date.now()}.${ext}`);
     formData.append('projectSlug', projectSlug);
     formData.append('episodeSlug', episodeSlug);
     formData.append('importRole', 'phone-audio');
-    
+
     formData.append('startedAt', startedAt.toString());
     formData.append('stoppedAt', stoppedAt.toString());
     formData.append('userAgent', navigator.userAgent);
-    
+
+    if (segmentsRef.current.length > 0) {
+      formData.append('recordingSegments', JSON.stringify(segmentsRef.current));
+    }
+
     try {
       const res = await fetch('/api/episode-production/import-media', {
         method: 'POST',
         body: formData,
       });
-      
+
       const data = await res.json();
-      
+
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'Failed to import media to episode.');
       }
-      
+
       console.log('Upload successful:', data);
       setUploadState('UPLOADED');
-      
+
       window.dispatchEvent(new CustomEvent('nativeRecorderState', {
         detail: { type: 'UPLOAD_COMPLETE', detail: { mediaAssetId: data.importedAsset?.id || 'beta-fallback-mock-asset' } }
       }));
@@ -89,7 +99,7 @@ export function useNativeRecorderBridge(projectSlug: string, episodeSlug: string
     const handleNativeEvent = (e: Event) => {
       const customEvent = e as CustomEvent<{ detail: RecorderEventDetail; type: string }>;
       const { type, detail } = customEvent.detail;
-      
+
       if (type === 'STATE_CHANGE' && detail.state) {
         setRecorderState(detail.state);
         if (detail.durationMs !== undefined) {
@@ -111,27 +121,52 @@ export function useNativeRecorderBridge(projectSlug: string, episodeSlug: string
 
   const sendCommand = useCallback(async (action: 'START' | 'STOP' | 'PAUSE' | 'RESUME' | 'MARK_BREAK') => {
     const current = stateRef.current;
-    
+
     if (action === 'START' && current !== 'READY' && current !== 'STOPPED') return;
     if (action === 'STOP' && current !== 'RECORDING' && current !== 'PAUSED') return;
     if (action === 'PAUSE' && current !== 'RECORDING') return;
     if (action === 'RESUME' && current !== 'PAUSED') return;
-    
+
     if (hasNativeBridge) {
-      (window as any).webkit.messageHandlers.recorderControl.postMessage({ action });
+      (window as any).webkit.messageHandlers.recorderControl.postMessage({ action, projectSlug, episodeSlug });
     } else {
       try {
+        const now = Date.now();
+        const durationSec = (now - segmentStartTimeRef.current) / 1000;
+
+        const endCurrentSegment = (reason: 'pause' | 'user-stop' | 'interruption') => {
+          segmentsRef.current.push({
+            id: `seg-${Date.now()}`,
+            sessionId: 'web-fallback-session',
+            participantId: 'local-user',
+            deviceKind: 'web-browser',
+            status: 'local-ready',
+            startedAt: new Date(segmentStartTimeRef.current).toISOString(),
+            stoppedAt: new Date().toISOString(),
+            durationSeconds: durationSec,
+            stopReason: reason,
+          });
+          fileTimeCursorRef.current += durationSec;
+        };
+
+        const startNewSegment = () => {
+          segmentStartTimeRef.current = Date.now();
+        };
+
         if (action === 'START') {
           setDurationMs(0);
           setUploadState('IDLE');
           setError(null);
           blobRef.current = null;
           chunksRef.current = [];
-          
+          segmentsRef.current = [];
+          fileTimeCursorRef.current = 0;
+          startNewSegment();
+
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const mediaRecorder = new MediaRecorder(stream, { mimeType: mimeTypeRef.current });
           mediaRecorderRef.current = mediaRecorder;
-          
+
           mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) {
               chunksRef.current.push(e.data);
@@ -144,30 +179,38 @@ export function useNativeRecorderBridge(projectSlug: string, episodeSlug: string
             blobRef.current = blob;
             const stoppedAt = Date.now();
             const startedAt = startTimestampRef.current || stoppedAt;
-            
+
             stream.getTracks().forEach(track => track.stop());
-            
+
             await performUpload(blob, startedAt, stoppedAt);
           };
 
           mediaRecorder.start(1000);
           startTimestampRef.current = Date.now();
           setRecorderState('RECORDING');
-          
+
         } else if (action === 'PAUSE' && mediaRecorderRef.current) {
           mediaRecorderRef.current.pause();
+          endCurrentSegment('pause');
           setRecorderState('PAUSED');
-          
+
         } else if (action === 'RESUME' && mediaRecorderRef.current) {
           mediaRecorderRef.current.resume();
+          startNewSegment();
           setRecorderState('RECORDING');
-          
+
         } else if (action === 'STOP' && mediaRecorderRef.current) {
+          if (stateRef.current === 'RECORDING') {
+            endCurrentSegment('user-stop');
+          }
           mediaRecorderRef.current.stop();
           setRecorderState('STOPPED');
-          
+
         } else if (action === 'MARK_BREAK') {
-          console.log('Break marked in web fallback.');
+          if (stateRef.current === 'RECORDING') {
+            endCurrentSegment('interruption');
+            startNewSegment();
+          }
         }
       } catch (err: any) {
         console.error('Web Fallback MediaRecorder error:', err);

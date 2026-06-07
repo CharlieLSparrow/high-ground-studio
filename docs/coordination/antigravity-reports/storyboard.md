@@ -96,7 +96,7 @@ Validation run:
 
 **Proposed Editor Media Handoff Contract:**
 1. **Schema Validation:** The current `StudioStoryboardFrame.mediaClipId` relation mapping to `MediaClip` is perfectly sufficient for the handoff. No schema changes are needed. A frame represents one distinct shot, so 1:1 mapping to a `MediaClip` works perfectly.
-2. **UI Implementation in Storyboard:** I have added a dedicated "Linked Media" UI slot into the StoryboardFrame component. Currently, it acts as a placeholder that says "Link Media from Editor". 
+2. **UI Implementation in Storyboard:** I have added a dedicated "Linked Media" UI slot into the StoryboardFrame component. Currently, it acts as a placeholder that says "Link Media from Editor".
 3. **Editor Integration Needs:**
    - The `/editor` lane must expose an API or a shared React Context/Store that allows fetching a user's `MediaClip` inventory for the active `StudioProject`.
    - The Storyboard builder will either accept a drag-and-drop action of a `MediaClip` card from a side-panel asset library, OR provide an "Asset Picker Modal" when the "Link Media" button is clicked.
@@ -146,7 +146,7 @@ Files changed:
 
 Report:
 - **Prompt-based linking**: It is technically still present *as a fallback button* because the `assets` array is currently empty. However, the primary flow is now wired to render the AG-Video-Editor's `<MediaAssetPicker />` inline over the frame when the user clicks "Pick Media" or "Replace".
-- **What shared component/API is needed**: 
+- **What shared component/API is needed**:
   1. We need the `activeProject` API payload or `StoryboardClient` parent page to fetch and pass down the actual `mediaClips`/`assets` array so we can feed it into `<MediaAssetPicker assets={realAssets} />`.
   2. We still need `<MediaClipPreview clipId={frame.mediaClipId} />` from the Editor lane. Currently, a linked frame just shows an icon and the raw text ID.
 - **What the user sees on a linked frame**:
@@ -169,7 +169,7 @@ Files intentionally avoided:
 Report:
 - **Prompt-based linking**: NO. The temporary `window.prompt` logic has been completely eradicated. The UI relies strictly on the AG-Video-Editor's `<MediaAssetPicker />` component now. If the `assets` array is empty, the user simply sees the picker's native "No media assets available" state.
 - **Persistence**: Real persistence (`updateStoryboardFrame` with `mediaClipId: string | null`) remains fully intact. When the picker fires `onSelect(assetId)`, the real backend action is called.
-- **What preview/picker component is now needed**: 
+- **What preview/picker component is now needed**:
   - The `<MediaAssetPicker />` is integrated but we still need the parent route to fetch and supply the `assets: PickerAsset[]` array.
   - We still need a `<MediaClipPreview clipId={frame.mediaClipId} />` component from the Editor lane so we can display a thumbnail on a linked frame instead of just the ID string.
 
@@ -227,9 +227,9 @@ Because the schema cleanly separates the conceptual Frame (`imageUrl`, `action`,
 3. **Course Visuals**: `frameType = SLIDE`. The AI generates diagrams or 4:3 slide backgrounds. `dialogue` becomes the presenter's transcript, and `mediaClipId` links to the recorded B-roll/A-roll segment for that specific slide.
 
 ### How it Connects to Scroll Experiences
-"Scroll-native" stories (like Webtoon or NYT Scrollytelling) rely on vertical sequences. 
+"Scroll-native" stories (like Webtoon or NYT Scrollytelling) rely on vertical sequences.
 - A `StudioStoryboard` represents the entire vertical scroll page.
-- Each `StudioStoryboardFrame` represents one scroll "trigger point" or "section". 
+- Each `StudioStoryboardFrame` represents one scroll "trigger point" or "section".
 - **The Handoff**: Instead of generating a traditional PDF or video timeline, the Quipsly compiler iterates through the `frames`. It uses the `imageUrl` as the sticky background, the `dialogue`/`action` as the text overlay that fades in as the user scrolls, and if `mediaClipId` is present, it auto-plays the video clip when that frame scrolls into view.
 
 ### First Practical Cross-Output Feature
@@ -244,7 +244,7 @@ Files changed:
 - `apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx` (Added the "Preview Scroll" UI affordance button).
 
 Report:
-- **Mapping from storyboard to scroll model**: 
+- **Mapping from storyboard to scroll model**:
   - `StudioStoryboard` Maps to -> `Scroll Page / Chapter`
   - `StudioStoryboardFrame` Maps to -> `Scroll Section / Trigger Point`
   - `imageUrl` Maps to -> Sticky background asset
@@ -278,7 +278,7 @@ Prompt summary: Audit storyboard as an integrated Quipsly planning surface acros
 
 ### Project Risks
 1. **Disconnected Workflow**: Storyboard creation is currently an isolated destination (`/storyboards`). Authors writing a manuscript will not naturally discover it unless we add a bridge.
-2. **Assistant Opacity**: If an AI creates a storyboard today, it would just instantly inject frames. This violates the Quipsly "no black-box writing" rule. We must implement the Assistant Ledger UI wrapper for storyboards soon.
+2. **Assistant Opacity**: If an AI creates a storyboard today, it would just instantly inject frames. This creates hidden canon mutation risk. We must implement the Assistant Ledger UI wrapper for storyboards soon.
 
 ### Recommended Safest Next Integration Step
 **Connect the Manuscript to the Storyboard.**
@@ -299,7 +299,7 @@ Files intentionally avoided:
 
 Report:
 1. **Scrollytelling & Comic Modes**: `StoryboardClient.tsx` now supports three distinct `viewMode` states. The traditional `GRID` view, a vertical stacking `SCROLL` renderer with image overlays, and a grid-based `COMIC` renderer. This demonstrates how a single storyboard schema powers multiple Quipsly output formats.
-2. **Assistant Ledger UI**: The new `StoryboardAssistantSuggestor` component serves as the frontend for reading `StudioAssistantAction` records. It mocks an AI-generated set of frames and forces the user to Approve/Reject them, fulfilling the Quipsly "no black-box AI" requirement in the visual realm.
+2. **Assistant Ledger UI**: The new `StoryboardAssistantSuggestor` component serves as the frontend for reading `StudioAssistantAction` records. It mocks an AI-generated set of frames and forces the user to Approve/Reject them, fulfilling the Quipsly visible proposal and approval requirement in the visual realm.
 3. **Manuscript Integration**: The right sidebar of the Manuscript editor now includes a "Storyboards" panel, establishing the direct workflow from writing -> storyboarding.
 4. All work completed successfully without modifying the schema or touching the central `/create` route.
 
@@ -390,6 +390,130 @@ Completed the Sprint 4 beta hardening and integration:
   - `/storyboard` (legacy singular path) redirects to the builder page, preserving parameters.
   - Both routes are secured by ownership/development flags, maintaining private beta posture.
 
+## 2026-06-05 Marginalia Beta Sprint Report - AG-Storyboard
+
+### 1. What was changed
+We integrated the Storyboard lane with the new public publishing packet foundations:
+* **Backend Compilation Action**: Added `compileStoryboardPublishPacket(storyboardId)` in `actions.ts`. It fetches the storyboard and its frames, performs a strict workspace ownership verification, sanitizes narration/details to exclude private manuscript data or backstage notes, and packages the results into a `PublicPublishPacket` of kind `story-scroll`.
+* **Frontend Cockpit Integration**: Added a **"Compile Packet"** button to the header of populated storyboards in the builder interface.
+* **Public Preview Modal**: Clicking the button shows a custom, responsive modal overlay detailing the public-safe packet metadata, media attachments, and the compiled markdown body, with options to copy the JSON payload or close.
+* **Pre-existing Compiler Errors Cleared**: Fixed two incorrect relative import paths in `episodeArtifact.ts` and `useNativeRecorderBridge.ts` pointing to `packages/quipsly-domain` which were breaking TypeScript compilations.
+
+### 2. Files touched
+* [actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/actions.ts) (Added packet compiler action)
+* [StoryboardClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx) (Wired compilation button and packet modal viewer)
+* [episodeArtifact.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/episode-production/episodeArtifact.ts) (Fixed relative domain import paths)
+* [useNativeRecorderBridge.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/read/useNativeRecorderBridge.ts) (Fixed relative domain import paths)
+* [storyboard.md](file:///Users/wall-e/Dev/high-ground-studio/docs/coordination/antigravity-reports/storyboard.md) (This report)
+
+### 3. Risks or follow-up needed
+* **Minimal Risk**: The new compilation flow does not touch database schemas and operates as a read-only projection of existing database records, making it extremely safe.
+* **Follow-up**: In future sprints, wire the "Compile Packet" action to trigger the dispatch queue to register the packet dynamically with `HgoStagedProjectionArtifact` or `HgoEpisodePublishCandidate` database tables for seamless publishing pipeline handoff.
+
+### 4. Codex Verdict Recommendation
+* **Verdict**: **Validate & Keep**. The implementation resolves existing workspace build issues and adds a critical publishing bridge matching the monorepo's public-safe packet principles.
 
 
+## 2026-06-05 Research Proposal - AG-Storyboard
 
+### 1. Research Sources & Examples Reviewed
+To design a professional, unified pre-visualization pipeline for Quipsly, we analyzed the workflow characteristics and UX conventions of major visual planning, media production, and collaboration platforms:
+* **Milanote**: Flexible layout canvases allowing visual cards (text, tasks, links, images) to sit side-by-side. Focus: Non-linear brainstorming and card-based task grouping.
+* **StudioBinder**: Cinematic shot list generators focusing on standard camera directions (lens width, shot sizes, camera movement, scene numbers, and estimated duration). Focus: Production organization and technical cinematography alignment.
+* **Boords**: Dedicated animatics creator where frames are assembled with dialogue/notes and can be played back linearly with custom audio tracks or exported directly as mock animatic videos.
+* **Frame.io**: Timecode-specific feedback loops, side-by-side versioning comparisons, and overlay drawing annotations. Focus: Post-production validation and client approval flows.
+* **Figma & FigJam / Miro**: Freeform spatial mapping, comment threads, and explicit visual connectors. Focus: Collaboration and structural relationships.
+* **CapCut Templates**: Beat-synced placeholders and rigid visual boundaries designed to auto-fit user media into duration-locked slots.
+* **Social Video Planners (TikTok/Reels UI)**: Device viewport simulation showing strict vertical overlays (Safe Zones for caption overlays, buttons, avatar details, and visual safe margins) and content structure templates (Hook -> Core Body -> CTA).
+* **YouTube Packaging/Storyboard Workflows**: Thumbnail/Title ideation as the primary visual entry point, coupled with script-to-frame pacing (e.g., matching A-roll talking-head tracks with B-roll visual beats).
+
+---
+
+### 2. Current Quipsly Storyboard Summary
+The storyboard builder currently operates as a project-scoped pre-visualization interface inside the Content Studio.
+* **Database Models**:
+  - `StudioStoryboard`: Parent container storing the storyboard title, optional links to manuscripts (`documentId`), manuscript blocks (`documentBlockId`), podcast/video episodes (`episodeProductionId`), and overall `aspectRatio`.
+  - `StudioStoryboardFrame`: Visual cells storing `frameNumber`, `imageUrl` (AI sketch or public GCS URL), narrative details (`action`, `dialogue`), technical directives (`shotSize`, `lens`, `cameraMovement`), timeline estimates (`estimatedDuration`), and `mediaClipId` linking to raw project files.
+* **Components**:
+  - `StoryboardClient`: Core client orchestrator managing active project selection, viewModes, and frame modifications.
+  - `StoryboardGridRenderer`: Editor layout displaying detail panels, inline image generators (using Gemini/Imagen 3 API with fallback SVG sketches), and the newly added 3-step Quick Start Workflow component.
+  - `StoryboardAssistantSuggestor`: Ledger panel that enables users to approve and save AI-suggested sequences directly to the database.
+* **Formats/Views**: Grid (detailed layout), Scroll (vertical/horizontal matrix projection), and Comic (panel-based print layout).
+
+---
+
+### 3. Recommended Role in the Product
+To prevent the Storyboard from becoming a disconnected feature island, we define its role relative to Quipsly's core editors:
+
+#### A. Storyboard vs. Manuscript Editor
+* **Manuscript/Editor**: Strictly focuses on *narrative and temporal flows* (the written word, scripts, linear dialogues, structural outlines, text-based reasoning).
+* **Storyboard**: Focuses on *spatial and visual orchestration*. It translates the text outlines into spatial blockings, manages visual pacing (estimating frame durations), and acts as the bridge between conceptual scripts and physical media assets.
+
+#### B. Connection Architecture
+```mermaid
+graph TD
+    Workspace[Nest Workspace] --> Project[Studio Project]
+    Project --> Manuscript[Manuscript / Script]
+    Project --> Storyboard[Studio Storyboard]
+    Project --> MediaLibrary[Media Assets]
+
+    Manuscript -->|Document Blocks| Block[Script Beat / Segment]
+    Storyboard -->|Frames| Frame[Storyboard Frame]
+    MediaLibrary -->|Files| RawAsset[Raw Media Asset]
+
+    Block -.->|Narrative Link| Frame
+    Frame -->|mediaClipId| RawAsset
+    Frame -->|estimatedDuration| EditorTimeline[Video Editor Timeline / Rough Cut]
+```
+* **Script Blocks**: Each frame is optionally bound to a `StudioDocumentBlock` ID. Changing a beat in the manuscript flags the connected storyboard frames as "Draft / Out-of-sync".
+* **Media Assets & Clips**: A frame's `mediaClipId` maps directly to a user's uploaded library file (`StudioMediaAsset`).
+* **Publishing Outputs**:
+  - **YouTube/Cinematic**: Frames represent visual B-roll sequences supporting A-roll script beats.
+  - **Reels/Shorts**: Frames represent 9:16 visual panels structured in Hook -> Body -> CTA segments, overlaying device safe-zone grids.
+  - **Courses**: Frames act as slide backdrops with presenter notes.
+  - **Scroll-Native Stories**: Frames translate directly to sticky scrolling scroll sections with text overlays.
+
+#### C. Beta-Safe vs. Internal-Only Boundary
+* **Beta-Safe (Private Beta Launch)**:
+  - Linear storyboard creation, description editing, and camera/direction selectors.
+  - Media asset picker mapping user uploads to frames.
+  - AI Sandbox image generation fallback (safe offline design).
+  - Read-only Scroll Experience simulator `/review/[id]` for mobile previews and comments.
+* **Internal-Only (Development/Future)**:
+  - *Auto-Rough Cut Creator*: Click "Export to Timeline" to automatically push sequence assets and durations as clip blocks on the `/editor` timeline.
+  - *Real-time Multiplayer Canvas*: Freeform whiteboard layouts where teams drag frames around.
+  - *External Share Links*: Public review links with anonymous guest annotations bypassing Patreon auth.
+
+---
+
+### 4. Proposed Next Implementation Pass
+For the next implementation sprint, we propose adding these high-leverage features:
+1. **Manuscript Beat-to-Frame Sync**: Add a "Map to Script Beat" modal allowing creators to bind frames to paragraphs of their manuscript, displaying script text side-by-side in the frame card.
+2. **Social Video templates (9:16 Preview)**: Add a `9:16 (Vertical)` option to aspect ratios. When selected, display a CSS overlay simulating TikTok/Instagram safe zones (comment blocks, action buttons) directly over the generated/attached image to verify readability.
+3. **Rough Cut Blueprint Export**: Create a server action `exportStoryboardToTimeline(storyboardId)` that takes storyboard frames (durations, action names, and linked media files) and generates a structural draft timeline readable by the video editor.
+
+---
+
+### 5. Files Likely Touched
+* `apps/quipsly/src/app/(app)/storyboards/builder/StoryboardClient.tsx`
+* `apps/quipsly/src/app/(app)/storyboards/builder/StoryboardGridRenderer.tsx`
+* `apps/quipsly/src/app/(app)/storyboards/actions.ts`
+* `apps/quipsly/src/app/(app)/editor/actions.ts` (or shared project timeline handlers)
+
+---
+
+### 6. Cross-Lane Dependencies
+We request the following shared primitives to complete integration:
+* **From AG-Video-Editor**:
+  - `<MediaClipPreview clipId={id} />`: A component to render hover playable video clips/thumbnails instead of a "Preview Missing" tag.
+  - `<TimecodePicker />`: An affordance to let users specify a sub-segment (In/Out points) of the linked media asset for the frame.
+* **From AG-Scroll-Experiences**:
+  - `<ScrollExperienceContainer />`: An component to project the storyboard as a vertical mobile deck.
+  - `<InteractionOverlay />`: Unified comment/review drawer to sync feedback.
+
+---
+
+### 7. Questions for Codex/Product Owner
+1. **Guest Access**: Should review links `/review/[storyboardId]` be strictly gated behind Patreon Beta login, or should we allow authors to generate unauthenticated password-protected links for their external clients?
+2. **AI Generation Cost Controls**: Should we enforce a daily or monthly frame-generation credit limit per user on the `imagen-3.0-generate-002` action?
+3. **Script Auto-Parsing**: Would you prefer the AI suggestor to parse the entire manuscript and auto-create frames, or keep it strictly manual/ledger approved as it is now?

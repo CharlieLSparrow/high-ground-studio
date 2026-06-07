@@ -1,10 +1,20 @@
 /**
  * DestinationAdapters.ts
- * 
+ *
  * Core business logic and interfaces for the Publishing Adapters.
  * This represents the abstract contract between Quipsly's public-safe JSON
  * and the chaotic walled gardens of external APIs (YouTube, Patreon, Apple Podcasts).
  */
+
+import type {
+  PublicPublishPacket,
+  PublishSourceRef,
+  PublishMediaRef,
+  DestinationPublicationState,
+  PublishDestinationSlug,
+  DestinationPublicationStatus,
+  PublishPacketKind,
+} from "@high-ground/quipsly-domain";
 
 export interface QuipslyPublicPackage {
   id: string;
@@ -13,7 +23,7 @@ export interface QuipslyPublicPackage {
   title: string;
   summary: string;
   body: string; // Markdown or HTML representation of the content
-  
+
   // Media Assets (Pre-processed public URLs)
   media: {
     audioUrl?: string;
@@ -25,7 +35,7 @@ export interface QuipslyPublicPackage {
   // Safe Content
   beats: Array<{ title: string; summary: string; timestamp?: number }>;
   verifiedQuotes: Array<{ text: string; attribution: string; principleId?: string }>;
-  
+
   // Platform Overrides
   overrides?: {
     youtube?: { tags: string[]; chapterMarkers: string[]; isShort: boolean };
@@ -232,7 +242,7 @@ export class PodcastRssAdapter extends DestinationAdapter {
 
   async publish(pkg: QuipslyPublicPackage): Promise<PublishResult> {
     this.log("info", "Publishing to RSS Feed...", { packageId: pkg.id });
-    
+
     // Simulate network delay
     await new Promise((resolve) => setTimeout(resolve, 800));
 
@@ -272,7 +282,7 @@ export class YouTubeAdapter extends DestinationAdapter {
 
     if (!pkg.media.videoUrl) errors.push("Video asset URL is strictly required for YouTube.");
     if (pkg.title.length > 100) errors.push("Title exceeds YouTube's 100 character limit.");
-    
+
     const descLength = pkg.summary.length + pkg.body.length;
     if (descLength > 5000) errors.push("Description exceeds YouTube's 5000 character limit.");
 
@@ -286,7 +296,7 @@ export class YouTubeAdapter extends DestinationAdapter {
   async prepare(pkg: QuipslyPublicPackage): Promise<unknown> {
     // Generate YouTube API specific snippet and status objects
     let description = pkg.summary + "\n\n" + pkg.body;
-    
+
     // Inject chapter markers if they exist
     if (pkg.overrides?.youtube?.chapterMarkers?.length) {
       description += "\n\nChapters:\n" + pkg.overrides.youtube.chapterMarkers.join("\n");
@@ -309,7 +319,7 @@ export class YouTubeAdapter extends DestinationAdapter {
 
   async publish(pkg: QuipslyPublicPackage): Promise<PublishResult> {
     this.log("info", "Uploading to YouTube API...", { packageId: pkg.id });
-    
+
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     return {
@@ -359,7 +369,7 @@ export class PatreonAdapter extends DestinationAdapter {
     if (!pkg.overrides?.patreon) {
       warnings.push("No Patreon overrides found. Post will default to public.");
     }
-    
+
     if (pkg.overrides?.patreon?.isMembersOnly && !pkg.overrides?.patreon?.teaser) {
       warnings.push("Members-only post has no teaser text for public viewers.");
     }
@@ -370,9 +380,9 @@ export class PatreonAdapter extends DestinationAdapter {
   async prepare(pkg: QuipslyPublicPackage): Promise<PatreonPostCreateRequest> {
     const isPublic = !pkg.overrides?.patreon?.isMembersOnly;
     const teaser = pkg.overrides?.patreon?.teaser || pkg.summary;
-    
-    // Patreon expects HTML for content. If the body is markdown, it might look slightly plain, 
-    // but Patreon's editor parses basic formatting. For strict compliance, a markdown-to-html 
+
+    // Patreon expects HTML for content. If the body is markdown, it might look slightly plain,
+    // but Patreon's editor parses basic formatting. For strict compliance, a markdown-to-html
     // converter should be used here if needed.
     const contentHtml = pkg.body.includes("<p>") ? pkg.body : `<p>${pkg.body.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>")}</p>`;
 
@@ -403,10 +413,10 @@ export class PatreonAdapter extends DestinationAdapter {
     }
 
     this.log("info", "Drafting Patreon Post...", { packageId: pkg.id });
-    
+
     try {
       const requestPayload = await this.prepare(pkg);
-      
+
       // Get the campaign ID from the prepared payload
       const campaignId = requestPayload.data.relationships?.campaign.data.id;
       if (!campaignId) {
@@ -496,4 +506,244 @@ export class PublishingDispatcher {
     }
     return results;
   }
+}
+
+export function mapDomainDestinationToLocal(dest: PublishDestinationSlug): PublishingDestination {
+  if (dest === "high-ground-odyssey") return "high_ground_odyssey";
+  if (dest === "podcast-rss") return "podcast_rss";
+  if (dest === "youtube") return "youtube";
+  if (dest === "patreon") return "patreon";
+  return "high_ground_odyssey"; // fallback
+}
+
+export function mapLocalDestinationToDomain(dest: PublishingDestination): PublishDestinationSlug {
+  if (dest === "high_ground_odyssey") return "high-ground-odyssey";
+  if (dest === "podcast_rss") return "podcast-rss";
+  if (dest === "youtube") return "youtube";
+  if (dest === "patreon") return "patreon";
+  return "high-ground-odyssey"; // fallback
+}
+
+export function mapDomainPacketToQuipslyPackage(
+  packet: PublicPublishPacket
+): QuipslyPublicPackage {
+  const audioRef = packet.media.find((m) => m.kind === "audio");
+  const videoRef = packet.media.find((m) => m.kind === "video");
+  const thumbnailRef = packet.media.find((m) => m.kind === "image" || m.role === "thumbnail");
+
+  const beats: Array<{ title: string; summary: string; timestamp?: number }> = [];
+  if (packet.showNotesMarkdown) {
+    const lines = packet.showNotesMarkdown.split("\n");
+    for (const line of lines) {
+      const match = line.match(/^\s*[-\*]\s*(?:\[(\d+):(\d+)\]\s*)?\*\*([^\*]+)\*\*:\s*(.*)$/);
+      if (match) {
+        const minutes = match[1] ? parseInt(match[1], 10) : 0;
+        const seconds = match[2] ? parseInt(match[2], 10) : 0;
+        const title = match[3].trim();
+        const summary = match[4].trim();
+        const timestamp = match[1] ? minutes * 60 + seconds : undefined;
+        beats.push({ title, summary, timestamp });
+      }
+    }
+  }
+
+  if (beats.length === 0) {
+    beats.push({ title: "Introduction", summary: packet.summary || `Start of ${packet.title}`, timestamp: 0 });
+  }
+
+  const destinationsMap: Record<PublishingDestination, PublicationStatus> = {
+    high_ground_odyssey: "draft",
+    podcast_rss: "draft",
+    youtube: "draft",
+    patreon: "draft"
+  };
+
+  for (const dest of packet.destinations) {
+    const statusMap: Record<DestinationPublicationStatus, PublicationStatus> = {
+      draft: "draft",
+      "packet-ready": "staged",
+      queued: "staged",
+      published: "published",
+      held: "needs review",
+      "needs-review": "needs review",
+      failed: "failed"
+    };
+    const localDest = mapDomainDestinationToLocal(dest.destination);
+    destinationsMap[localDest] = statusMap[dest.status] || "draft";
+  }
+
+  const kindMap: Record<PublishPacketKind, "episode" | "post" | "video" | "newsletter" | "clip"> = {
+    "episode-page": "episode",
+    "podcast-episode": "episode",
+    "youtube-video": "video",
+    "social-cut": "clip",
+    "quote-feed": "post",
+    "book-export": "post",
+    "course-export": "post",
+    "story-scroll": "post",
+    "gallery-proof": "post",
+    "manual-package": "post"
+  };
+
+  return {
+    id: packet.id,
+    projectId: packet.source.documentId || packet.source.projectSlug,
+    kind: kindMap[packet.kind] || "post",
+    title: packet.title,
+    summary: packet.summary || "",
+    body: packet.bodyMarkdown || "",
+    media: {
+      audioUrl: audioRef?.url,
+      videoUrl: videoRef?.url,
+      thumbnailUrl: thumbnailRef?.url,
+    },
+    beats,
+    verifiedQuotes: [],
+    overrides: {
+      youtube: {
+        tags: [],
+        chapterMarkers: [],
+        isShort: false
+      },
+      patreon: {
+        isMembersOnly: false,
+        teaser: packet.summary || "",
+        tierId: undefined
+      }
+    },
+    metadata: {
+      publishedAt: packet.createdAt,
+      author: packet.source.projectSlug,
+      destinations: destinationsMap
+    }
+  };
+}
+
+export function mapQuipslyPackageToDomainPacket(
+  pkg: QuipslyPublicPackage,
+  projectSlug: string
+): PublicPublishPacket {
+  const mediaRefs: PublishMediaRef[] = [];
+
+  if (pkg.media.audioUrl) {
+    mediaRefs.push({
+      id: `${pkg.id}-audio`,
+      kind: "audio",
+      label: "Episode Audio",
+      url: pkg.media.audioUrl,
+      provider: pkg.media.audioUrl.includes("storage.googleapis.com") ? "gcs" : "external",
+      role: "source"
+    });
+  }
+
+  if (pkg.media.videoUrl) {
+    mediaRefs.push({
+      id: `${pkg.id}-video`,
+      kind: "video",
+      label: "Episode Video",
+      url: pkg.media.videoUrl,
+      provider: pkg.media.videoUrl.includes("youtube.com") ? "youtube" : "external",
+      role: "source"
+    });
+  }
+
+  if (pkg.media.thumbnailUrl) {
+    mediaRefs.push({
+      id: `${pkg.id}-thumbnail`,
+      kind: "image",
+      label: "Cover Thumbnail",
+      url: pkg.media.thumbnailUrl,
+      provider: "external",
+      role: "thumbnail"
+    });
+  }
+
+  const destinations: DestinationPublicationState[] = [];
+  if (pkg.metadata.destinations) {
+    for (const [destSlug, status] of Object.entries(pkg.metadata.destinations)) {
+      const statusMap: Record<PublicationStatus, DestinationPublicationStatus> = {
+        draft: "draft",
+        staged: "packet-ready",
+        published: "published",
+        "needs review": "needs-review",
+        failed: "failed"
+      };
+      destinations.push({
+        destination: mapLocalDestinationToDomain(destSlug as PublishingDestination),
+        status: statusMap[status as PublicationStatus] || "draft"
+      });
+    }
+  } else {
+    const statusMap: Record<PublicationStatus, DestinationPublicationStatus> = {
+      draft: "draft",
+      staged: "packet-ready",
+      published: "published",
+      "needs review": "needs-review",
+      failed: "failed"
+    };
+    const localStatus = pkg.metadata.status || "draft";
+    const mappedStatus = statusMap[localStatus] || "draft";
+    destinations.push({ destination: "high-ground-odyssey", status: mappedStatus });
+    destinations.push({ destination: "podcast-rss", status: mappedStatus });
+    destinations.push({ destination: "youtube", status: "draft" });
+    destinations.push({ destination: "patreon", status: "draft" });
+  }
+
+  const kindMap: Record<"episode" | "post" | "video" | "newsletter" | "clip", PublishPacketKind> = {
+    episode: "episode-page",
+    post: "manual-package",
+    video: "youtube-video",
+    newsletter: "manual-package",
+    clip: "social-cut"
+  };
+
+  const showNotesMarkdown = pkg.beats.map(b => {
+    const timestampStr = b.timestamp
+      ? `[${Math.floor(b.timestamp / 60)}:${String(b.timestamp % 60).padStart(2, "0")}] `
+      : "";
+    return `- ${timestampStr}**${b.title}**: ${b.summary}`;
+  }).join("\n");
+
+  return {
+    packetVersion: 1,
+    id: pkg.id,
+    kind: kindMap[pkg.kind] || "manual-package",
+    source: {
+      projectSlug,
+      documentId: pkg.projectId,
+    },
+    title: pkg.title,
+    slug: pkg.id.replace("compiled-", ""),
+    summary: pkg.summary,
+    bodyMarkdown: pkg.body,
+    showNotesMarkdown,
+    media: mediaRefs,
+    destinations,
+    generatedFrom: "quipsly-editor",
+    createdAt: pkg.metadata.publishedAt || new Date().toISOString(),
+    savedAt: new Date().toISOString()
+  };
+}
+
+export function validatePublicPublishPacket(
+  packet: PublicPublishPacket
+): AdapterValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!packet.title) errors.push("Packet title is missing.");
+  if (!packet.slug) errors.push("Packet slug is missing.");
+  if (!packet.bodyMarkdown) errors.push("Packet body content is missing.");
+
+  const audio = packet.media.find(m => m.kind === "audio");
+  if (!audio || !audio.url) {
+    warnings.push("No audio track detected in media references.");
+  }
+
+  const thumbnail = packet.media.find(m => m.role === "thumbnail" || m.kind === "image");
+  if (!thumbnail || !thumbnail.url) {
+    warnings.push("No cover thumbnail detected in media references.");
+  }
+
+  return { isValid: errors.length === 0, errors, warnings };
 }

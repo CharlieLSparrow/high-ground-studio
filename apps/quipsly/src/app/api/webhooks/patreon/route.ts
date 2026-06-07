@@ -3,7 +3,10 @@ import crypto from "crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { PatreonWebhookEventType } from "@/lib/patreon/types";
 
+export const runtime = "nodejs";
+
 const PATREON_WEBHOOK_SECRET = process.env.PATREON_WEBHOOK_SECRET || "";
+const ALLOWED_PATREON_EVENTS = new Set<string>(Object.values(PatreonWebhookEventType));
 
 function verifyPatreonSignature(signature: string | null, rawBody: string): boolean {
   if (!signature || !PATREON_WEBHOOK_SECRET) return false;
@@ -14,8 +17,8 @@ function verifyPatreonSignature(signature: string | null, rawBody: string): bool
       .update(rawBody)
       .digest("hex");
 
-    const signatureBuffer = Buffer.from(signature);
-    const hashBuffer = Buffer.from(hash);
+    const signatureBuffer = Buffer.from(signature, "hex");
+    const hashBuffer = Buffer.from(hash, "hex");
 
     if (signatureBuffer.length !== hashBuffer.length) {
       return false;
@@ -28,20 +31,25 @@ function verifyPatreonSignature(signature: string | null, rawBody: string): bool
   }
 }
 
+function sha256(value: string) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const prisma = getPrismaClient(); // Must instantiate here or top level 
+    const prisma = getPrismaClient(); // Must instantiate here or top level
     const signature = req.headers.get("x-patreon-signature");
     const eventType = req.headers.get("x-patreon-event") as PatreonWebhookEventType;
-    const patreonEventId = req.headers.get("x-patreon-event-id"); 
-    
+    const patreonEventId = req.headers.get("x-patreon-event-id");
+
     const rawBody = await req.text();
+    const payloadHash = sha256(rawBody);
 
     if (!verifyPatreonSignature(signature, rawBody)) {
       // @ts-ignore
       const ip = req.ip || req.headers.get("x-forwarded-for");
       console.warn(`[Patreon Webhook] Invalid signature from IP: ${ip || "unknown"}`);
-      return NextResponse.json({ ok: true }, { status: 200 });
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     let payload: any;
@@ -49,7 +57,11 @@ export async function POST(req: NextRequest) {
       payload = JSON.parse(rawBody);
     } catch (err) {
       console.error("[Patreon Webhook] Malformed JSON payload:", err);
-      return NextResponse.json({ ok: true }, { status: 200 });
+      payload = {
+        data: null,
+        malformed: true,
+        payloadHash,
+      };
     }
 
     const connection = await prisma.worldHubProviderConnection.findUnique({
@@ -61,16 +73,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Configuration Error" }, { status: 500 });
     }
 
+    const processingStatus =
+      payload?.malformed || !eventType || !ALLOWED_PATREON_EVENTS.has(eventType)
+        ? "NEEDS_REVIEW"
+        : "UNPROCESSED";
+    const stableEventKey =
+      patreonEventId ||
+      (eventType && payload?.data?.id ? `${eventType}:${payload.data.id}` : `body:${payloadHash}`);
+
     try {
       await prisma.worldHubProviderEvent.create({
         data: {
           connectionId: connection.id,
           eventType: eventType || "unknown",
           externalEventId: payload.data?.id || null,
-          idempotencyKey: patreonEventId || payload.data?.id || `fallback-${Date.now()}`,
+          idempotencyKey: stableEventKey,
+          payloadHash,
           payloadSummaryJson: payload,
-          processingStatus: "UNPROCESSED",
+          processingStatus,
           verificationStatus: "verified",
+          errorMessage: processingStatus === "NEEDS_REVIEW" ? "Signed Patreon event requires manual review" : null,
         }
       });
       console.log(`[Patreon Webhook] Successfully ingested ${eventType} event.`);
@@ -79,7 +101,7 @@ export async function POST(req: NextRequest) {
         console.warn(`[Patreon Webhook] Duplicate event detected. Skipping. ID: ${patreonEventId}`);
         return NextResponse.json({ ok: true, note: "duplicate_skipped" });
       }
-      throw dbError; 
+      throw dbError;
     }
 
     return NextResponse.json({ ok: true });
