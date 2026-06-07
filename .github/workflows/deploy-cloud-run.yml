@@ -57,12 +57,14 @@ jobs:
 
           web=false
           studio=false
+          schema=false
           summary="No deployable app changes detected."
 
           case "$TARGET" in
             all)
               web=true
               studio=true
+              schema=true
               summary="Manual deploy requested for web and studio."
               ;;
             web)
@@ -71,6 +73,7 @@ jobs:
               ;;
             studio)
               studio=true
+              schema=true
               summary="Manual deploy requested for studio."
               ;;
             auto)
@@ -208,6 +211,8 @@ jobs:
           echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
 
       - name: Smoke Test Preview
+        env:
+          HOST_HEADER: nest.quipsly.com
         run: bash scripts/release/quipsly-smoke-preview.sh
 
       - name: Promote Preview to Production
