@@ -135,3 +135,23 @@ Warning threshold is currently `150 MiB` via `CONTEXT_WARN_MIB`.
 ## Current product-owner recommendation
 
 Do not add more product surface before this lands. The branch is large and valuable; ship it through schema sync, preview deploy, smoke, and promotion first. After live deploy, resume Mac auth/user switching validation against `nest.quipsly.com` and then continue local editor/media workflow hardening.
+
+## PR validation update
+
+Current PR: https://github.com/CharlieLSparrow/high-ground-studio/pull/53
+
+Latest validated commit:
+
+- `32c3a25 Track HGO public episode packets`
+
+GitHub Actions run:
+
+- `PR Tests` run `27106409671`: PASS
+- Install dependencies: PASS
+- Quipsly TypeScript validation: PASS
+- Quipsly production build: PASS
+- release script/workflow syntax validation: PASS
+
+The previous CI failure was caused by Quipsly importing local HGO episode JSON packets that were ignored by the root `content/` ignore rule. The fix tracks only `apps/web/content/publish/hgo-episodes/*.json` and keeps broader local `content/` scratch data ignored.
+
+Next release move is still schema sync + preview deploy + smoke + promote once Google Cloud deploy auth is refreshed.
