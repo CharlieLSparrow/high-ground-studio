@@ -256,8 +256,6 @@ jobs:
           echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
 
       - name: Smoke Test Preview
-        env:
-          HOST_HEADER: nest.quipsly.com
         run: bash scripts/release/quipsly-smoke-preview.sh
 
       - name: Promote Preview to Production

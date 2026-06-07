@@ -23,6 +23,11 @@ TARGET_URL="${TARGET_URL%/}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+if [[ "${TARGET_URL}" == https://*.run.app && -n "${HOST_HEADER}" ]]; then
+  echo "Ignoring HOST_HEADER for Cloud Run tagged URL smoke: ${TARGET_URL}" >&2
+  HOST_HEADER=""
+fi
+
 curl_args=(-fsS --max-time 20)
 status_curl_args=(-sS --max-time 20)
 if [[ -n "${HOST_HEADER}" ]]; then
