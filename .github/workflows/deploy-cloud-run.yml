@@ -31,6 +31,7 @@ env:
   WIF_PROVIDER: projects/659427658635/locations/global/workloadIdentityPools/github-actions/providers/github
   DEPLOYER_SERVICE_ACCOUNT: github-actions-deployer@high-ground-odyssey.iam.gserviceaccount.com
   NEXT_TELEMETRY_DISABLED: "1"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   plan:
@@ -130,17 +131,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: 'pnpm'
-
-      - name: Install pnpm
-        shell: bash
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.30.3 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -153,6 +151,9 @@ jobs:
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Deploy web Cloud Run
         env:
@@ -187,11 +188,27 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
       - name: Run Release Preflight
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
         run: bash scripts/release/quipsly-release-preflight.sh
+
+      - name: Build Prisma Migration Image
+        if: needs.plan.outputs.schema == 'true'
+        env:
+          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/prisma-migrate:${{ github.sha }}
+          LATEST_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/prisma-migrate:latest
+        run: |
+          docker buildx build \
+            --file ops/prisma-migrate.Dockerfile \
+            --tag "$IMAGE_URI" \
+            --tag "$LATEST_URI" \
+            --push \
+            .
 
       - name: Run Schema Sync (DB Migrations)
         if: needs.plan.outputs.schema == 'true'
@@ -199,7 +216,23 @@ jobs:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
           IMAGE_TAG: ${{ github.sha }}
+          SKIP_BUILD: "1"
         run: bash scripts/release/quipsly-schema-sync.sh
+
+      - name: Build Studio Image
+        env:
+          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/studio:${{ github.sha }}
+          LATEST_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/studio:latest
+        run: |
+          docker buildx build \
+            --file apps/quipsly/Dockerfile \
+            --build-arg NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
+            --build-arg STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
+            --build-arg QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=0 \
+            --tag "$IMAGE_URI" \
+            --tag "$LATEST_URI" \
+            --push \
+            .
 
       - name: Deploy Studio Preview Revision
         env:
@@ -208,6 +241,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           SOURCE_SHA: ${{ github.sha }}
           DEPLOYED_BY: "GitHub Actions"
+          SKIP_BUILD: "1"
         run: bash scripts/release/quipsly-deploy-preview.sh
 
       - name: Resolve Preview URL

@@ -19,11 +19,15 @@ fi
 
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-echo "Building Quipsly image ${IMAGE_URI}"
-gcloud builds submit \
-  --config "${CLOUD_BUILD_CONFIG}" \
-  --substitutions "_REGION=${REGION},_ARTIFACT_REPOSITORY=${ARTIFACT_REPOSITORY},_IMAGE_NAME=${IMAGE_NAME},_IMAGE_TAG=${IMAGE_TAG}" \
-  .
+if [[ "${SKIP_BUILD:-0}" == "1" || "${SKIP_CLOUD_BUILD:-0}" == "1" ]]; then
+  echo "Using existing Quipsly image ${IMAGE_URI}"
+else
+  echo "Building Quipsly image ${IMAGE_URI}"
+  gcloud builds submit \
+    --config "${CLOUD_BUILD_CONFIG}" \
+    --substitutions "_REGION=${REGION},_ARTIFACT_REPOSITORY=${ARTIFACT_REPOSITORY},_IMAGE_NAME=${IMAGE_NAME},_IMAGE_TAG=${IMAGE_TAG}" \
+    .
+fi
 
 echo "Deploying no-traffic preview revision for ${SERVICE_NAME}"
 gcloud run deploy "${SERVICE_NAME}" \
