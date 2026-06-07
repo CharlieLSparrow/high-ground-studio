@@ -106,7 +106,7 @@ struct NestSessionView: View {
                 Label(primarySignInLabel, systemImage: "safari")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(nativeAuthSession.isSigningIn || isBrowserSignInPending || isCheckingSession)
+            .disabled(isBrowserSignInPending || isCheckingSession)
 
             Button {
                 Task {
@@ -350,28 +350,20 @@ struct NestSessionView: View {
         isBrowserSignInPending = true
         let state = appState.beginNestNativeAuthState()
         let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
-
-        Task {
-            isBrowserSignInPending = false
-            sessionStatus = "Opening secure macOS Nest sign-in..."
-
-            guard let result = await nativeAuthSession.signIn(
+        sessionStatus = "Opening Nest in your browser. Approve “Open Quipsly” if macOS asks."
+        NSWorkspace.shared.open(
+            NestSessionActions.nativeHandoffURL(
                 nestBaseURL: appState.nestURL,
                 state: state,
                 deviceLabel: deviceLabel
-            ) else {
-                sessionStatus = nativeAuthSession.lastError
-                    ?? "Nest sign-in was canceled. Use the recovery fallback if macOS browser sign-in refuses to complete."
-                return
-            }
+            )
+        )
 
-            sessionStatus = "Nest returned a one-time code. Creating the Mac device session..."
-            if await appState.handleNativeAuthResult(result) {
-                sessionStatus = "Mac device session saved. Verifying connection now..."
-                await checkSession()
-            } else {
-                sessionStatus = appState.lastNestSessionCheckLabel
-            }
+        Task {
+            try? await Task.sleep(for: .seconds(45))
+            guard isBrowserSignInPending else { return }
+            isBrowserSignInPending = false
+            sessionStatus = "Still waiting for the browser handoff. If Chrome shows an “Open Quipsly” prompt, approve it. Otherwise use the recovery fallback."
         }
     }
 
