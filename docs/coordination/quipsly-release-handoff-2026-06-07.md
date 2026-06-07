@@ -1,12 +1,12 @@
 # Quipsly Release Handoff - 2026-06-07
 
-Status timestamp: 2026-06-07 15:59 MDT
+Status timestamp: 2026-06-07 17:07 MDT
 
 ## Current release branch
 
 - Branch: `codex/quipsly-romance-lab-001`
 - Draft PR: https://github.com/CharlieLSparrow/high-ground-studio/pull/53
-- Latest pushed commit at handoff: `cda5cac Harden GitHub studio deploy preflight`
+- Latest pushed commit at handoff: `05d732b Smoke Cloud Run preview without host override`
 - Local/remote state at handoff: clean and synced
 
 ## What this branch contains
@@ -30,7 +30,31 @@ Status timestamp: 2026-06-07 15:59 MDT
   - manual `studio` / `all` deploys initialize and run schema sync
   - auto deploy treats additive SQL/schema-sync scripts as schema-affecting
   - studio deploy runs release preflight before schema sync/deploy
-  - preview smoke uses `HOST_HEADER=nest.quipsly.com`
+  - preview smoke avoids overriding `Host` for Cloud Run tagged `*.run.app` URLs
+
+## Live deploy result
+
+Nest/Quipsly studio deploy is live.
+
+- Commit deployed/promoted: `05d732b`
+- Cloud Run production revision observed from `/api/health`: `studio-00228-puf`
+- Source SHA observed from `/api/health`: `05d732bf5a82124a8e4583ab753af2ec6aaff026`
+- GitHub Actions `Deploy Cloud Run` run `27107357335`: PASS
+- GitHub Actions `Build and Deploy` run `27107357332`: PASS
+- Live smoke:
+
+```bash
+PREVIEW_URL=https://nest.quipsly.com bash scripts/release/quipsly-smoke-preview.sh
+```
+
+Result: PASS.
+
+Important release-pipeline lesson:
+
+- Do not pass `HOST_HEADER=nest.quipsly.com` when smoking a Cloud Run tagged preview URL such as `https://quipsly-preview---studio-hm2odnvjga-uc.a.run.app`.
+- Google Frontend returns an edge `404` before traffic reaches Cloud Run when the tag URL is called with the custom domain host header.
+- `scripts/release/quipsly-smoke-preview.sh` now ignores `HOST_HEADER` automatically for `*.run.app` targets.
+- Deploy workflow/script-only changes no longer trigger the web deploy lane; this avoids unrelated Docker Hub failures during Studio-only release work.
 
 ## Validation already run locally
 
@@ -46,7 +70,7 @@ bash -n scripts/release/quipsly-promote-preview.sh
 git diff --check
 ```
 
-## Current deploy blocker
+## Local deploy blocker
 
 Local `gcloud` auth for `charlie@highgroundodyssey.com` is expired.
 
@@ -84,7 +108,7 @@ Do not use that account for deploy unless IAM is intentionally expanded.
 ```bash
 REGION=us-central1 PROJECT_ID=high-ground-odyssey bash scripts/release/quipsly-schema-sync.sh
 REGION=us-central1 PROJECT_ID=high-ground-odyssey bash scripts/release/quipsly-deploy-preview.sh
-PREVIEW_URL=<preview-url> HOST_HEADER=nest.quipsly.com bash scripts/release/quipsly-smoke-preview.sh
+PREVIEW_URL=<preview-url> bash scripts/release/quipsly-smoke-preview.sh
 REGION=us-central1 PROJECT_ID=high-ground-odyssey bash scripts/release/quipsly-promote-preview.sh
 ```
 
@@ -154,4 +178,4 @@ GitHub Actions run:
 
 The previous CI failure was caused by Quipsly importing local HGO episode JSON packets that were ignored by the root `content/` ignore rule. The fix tracks only `apps/web/content/publish/hgo-episodes/*.json` and keeps broader local `content/` scratch data ignored.
 
-Next release move is still schema sync + preview deploy + smoke + promote once Google Cloud deploy auth is refreshed.
+Next release move: resume Mac auth/user switching validation against `nest.quipsly.com`, then continue local editor/media workflow hardening. For future deploys, prefer the GitHub Actions release path unless local `gcloud` deploy auth has been refreshed.
