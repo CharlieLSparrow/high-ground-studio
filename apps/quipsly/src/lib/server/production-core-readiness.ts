@@ -16,6 +16,8 @@ export const REQUIRED_PRODUCTION_CORE_TABLES = [
   "StudioPublishAttempt",
   "StudioPublishedArtifact",
   "StudioWorkflowJob",
+  "StudioNativeAuthCode",
+  "StudioNativeDeviceSession",
 ] as const;
 
 export const PRODUCTION_CORE_FEATURE_GROUPS = [
@@ -44,6 +46,11 @@ export const PRODUCTION_CORE_FEATURE_GROUPS = [
       "StudioPublishAttempt",
       "StudioPublishedArtifact",
     ],
+  },
+  {
+    id: "native-mac-auth",
+    label: "Native Mac app sessions",
+    tables: ["StudioNativeAuthCode", "StudioNativeDeviceSession"],
   },
 ] as const;
 

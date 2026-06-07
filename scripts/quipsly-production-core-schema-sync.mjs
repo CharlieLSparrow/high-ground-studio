@@ -106,6 +106,8 @@ async function verifyRequiredTables() {
     "StudioPublishAttempt",
     "StudioPublishedArtifact",
     "StudioWorkflowJob",
+    "StudioNativeAuthCode",
+    "StudioNativeDeviceSession",
   ];
 
   const rows = await prisma.$queryRaw`

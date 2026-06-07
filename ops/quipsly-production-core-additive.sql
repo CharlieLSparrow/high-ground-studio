@@ -329,6 +329,52 @@ CREATE INDEX IF NOT EXISTS "StudioWorkflowJob_outputPacketId_status_idx"
 CREATE INDEX IF NOT EXISTS "StudioWorkflowJob_type_status_idx"
   ON "StudioWorkflowJob"("type", "status");
 
+CREATE TABLE IF NOT EXISTS "StudioNativeAuthCode" (
+  "id" TEXT NOT NULL,
+  "codeHash" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "callbackScheme" TEXT NOT NULL,
+  "state" TEXT,
+  "deviceLabel" TEXT,
+  "metadataJson" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "expiresAt" TIMESTAMP(3) NOT NULL,
+  "consumedAt" TIMESTAMP(3),
+  CONSTRAINT "StudioNativeAuthCode_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "StudioNativeAuthCode_codeHash_key"
+  ON "StudioNativeAuthCode"("codeHash");
+
+CREATE INDEX IF NOT EXISTS "StudioNativeAuthCode_userId_expiresAt_idx"
+  ON "StudioNativeAuthCode"("userId", "expiresAt");
+
+CREATE INDEX IF NOT EXISTS "StudioNativeAuthCode_expiresAt_idx"
+  ON "StudioNativeAuthCode"("expiresAt");
+
+CREATE TABLE IF NOT EXISTS "StudioNativeDeviceSession" (
+  "id" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "deviceLabel" TEXT,
+  "refreshTokenHash" TEXT NOT NULL,
+  "metadataJson" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lastUsedAt" TIMESTAMP(3),
+  "expiresAt" TIMESTAMP(3) NOT NULL,
+  "revokedAt" TIMESTAMP(3),
+  CONSTRAINT "StudioNativeDeviceSession_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "StudioNativeDeviceSession_refreshTokenHash_key"
+  ON "StudioNativeDeviceSession"("refreshTokenHash");
+
+CREATE INDEX IF NOT EXISTS "StudioNativeDeviceSession_userId_revokedAt_idx"
+  ON "StudioNativeDeviceSession"("userId", "revokedAt");
+
+CREATE INDEX IF NOT EXISTS "StudioNativeDeviceSession_expiresAt_idx"
+  ON "StudioNativeDeviceSession"("expiresAt");
+
 DO $$
 BEGIN
   ALTER TABLE "StudioNestInvite"
@@ -542,5 +588,23 @@ BEGIN
     ADD CONSTRAINT "StudioWorkflowJob_outputPacketId_fkey"
     FOREIGN KEY ("outputPacketId") REFERENCES "StudioOutputPacket"("id")
     ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER TABLE "StudioNativeAuthCode"
+    ADD CONSTRAINT "StudioNativeAuthCode_userId_fkey"
+    FOREIGN KEY ("userId") REFERENCES "User"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER TABLE "StudioNativeDeviceSession"
+    ADD CONSTRAINT "StudioNativeDeviceSession_userId_fkey"
+    FOREIGN KEY ("userId") REFERENCES "User"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
