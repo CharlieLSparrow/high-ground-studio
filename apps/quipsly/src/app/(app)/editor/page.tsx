@@ -6214,13 +6214,29 @@ function CloudEditorContent() {
                       )}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={clearPremiereRestorePreviews}
-                    className="rounded-lg border border-indigo-300 bg-white px-3 py-2 font-black text-indigo-900 hover:bg-indigo-100"
-                  >
-                    Clear restore previews
-                  </button>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Save the current timeline with ${premiereRestorePreviewClips.length} local restore preview clip${premiereRestorePreviewClips.length === 1 ? "" : "s"}?\n\nThis intentionally persists your current timeline. Use this only after reviewing the restore previews you want to keep.`
+                        );
+                        if (!confirmed) return;
+                        void handleSaveEpisodeTimeline();
+                      }}
+                      disabled={timelineSaveState === "saving"}
+                      className="rounded-lg border border-indigo-900 bg-indigo-900 px-3 py-2 font-black text-white hover:bg-indigo-800 disabled:cursor-wait disabled:border-indigo-200 disabled:bg-indigo-100 disabled:text-indigo-500"
+                    >
+                      {timelineSaveState === "saving" ? "Saving..." : "Save with previews"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearPremiereRestorePreviews}
+                      className="rounded-lg border border-indigo-300 bg-white px-3 py-2 font-black text-indigo-900 hover:bg-indigo-100"
+                    >
+                      Clear restore previews
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
