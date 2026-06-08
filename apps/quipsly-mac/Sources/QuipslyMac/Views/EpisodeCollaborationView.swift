@@ -5,6 +5,7 @@ struct EpisodeCollaborationView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var client = NestEpisodeCollaborationClient()
     @State private var isDownloadingMissingAssets = false
+    @State private var bulkDownloadStatusMessage: String?
 
     var body: some View {
         ScrollView {
@@ -239,7 +240,11 @@ struct EpisodeCollaborationView: View {
             }
 
             if isDownloadingMissingAssets {
-                Label("Downloading each missing file into the local EpisodeAssets cache. You can keep this panel open; Quipsly will refresh availability when it finishes.", systemImage: "externaldrive.badge.timemachine")
+                Label(bulkDownloadStatusMessage ?? "Downloading each missing file into the local EpisodeAssets cache. You can keep this panel open; Quipsly will refresh availability when it finishes.", systemImage: "externaldrive.badge.timemachine")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let bulkDownloadStatusMessage {
+                Label(bulkDownloadStatusMessage, systemImage: "checkmark.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -644,12 +649,20 @@ struct EpisodeCollaborationView: View {
 
     private func downloadMissingAssets() async {
         guard !isDownloadingMissingAssets else { return }
+        let assetsToDownload = collaborationAssets.filter(shouldDownloadAsset)
+        guard !assetsToDownload.isEmpty else {
+            bulkDownloadStatusMessage = "No downloadable missing assets found."
+            return
+        }
+
         isDownloadingMissingAssets = true
+        bulkDownloadStatusMessage = "Starting download pass for \(assetsToDownload.count) asset(s)."
         defer {
             isDownloadingMissingAssets = false
         }
 
-        for asset in collaborationAssets where shouldDownloadAsset(asset) {
+        for (index, asset) in assetsToDownload.enumerated() {
+            bulkDownloadStatusMessage = "Downloading \(index + 1) of \(assetsToDownload.count): \(asset.name)"
             await client.downloadAsset(
                 asset,
                 projectSlug: cleanProjectSlug,
@@ -657,10 +670,12 @@ struct EpisodeCollaborationView: View {
             )
         }
 
+        bulkDownloadStatusMessage = "Download pass complete. Refreshing local file availability."
         client.refreshLocalAssetAvailability(
             projectSlug: cleanProjectSlug,
             episodeSlug: cleanEpisodeSlug
         )
+        bulkDownloadStatusMessage = "Download pass complete. Local availability refreshed."
     }
 
     private func episodeEditorURL() -> URL? {
