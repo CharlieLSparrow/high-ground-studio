@@ -102,12 +102,9 @@ struct QuipslyWebRouteView: View {
             }
 
             Button {
-                NestSessionActions.openExternalLogin(
-                    nestBaseURL: appState.nestURL,
-                    callbackPath: NestSessionActions.callbackPath(for: webState.currentURL ?? url)
-                )
+                signInWithBrowser()
             } label: {
-                Label("Sign in in Browser", systemImage: "safari")
+                Label("Connect Mac Session", systemImage: "person.badge.key")
             }
 
             Button {
@@ -139,22 +136,30 @@ struct QuipslyWebRouteView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Sign in in browser") {
-                NestSessionActions.openExternalLogin(
-                    nestBaseURL: appState.nestURL,
-                    callbackPath: NestSessionActions.callbackPath(for: webState.currentURL ?? url)
-                )
+            Button("Open Nest Session") {
+                appState.selectedSection = .nestSession
             }
-            Button("Browser fallback") {
-                NestSessionActions.openExternalLogin(
-                    nestBaseURL: appState.nestURL,
-                    callbackPath: NestSessionActions.callbackPath(for: webState.currentURL ?? url)
-                )
+            Button("Sign in with browser") {
+                signInWithBrowser()
             }
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(radius: 10, y: 4)
+    }
+
+    private func signInWithBrowser() {
+        let state = appState.beginNestNativeAuthState()
+        let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
+        NSWorkspace.shared.open(
+            NestSessionActions.nativeHandoffURL(
+                nestBaseURL: appState.nestURL,
+                state: state,
+                deviceLabel: deviceLabel
+            )
+        )
+        appState.selectedSection = .nestSession
+        appState.lastMacCallbackDiagnosticLabel = "Browser sign-in opened from the embedded editor. Approve Open Quipsly Mac if macOS asks."
     }
 }
 
@@ -305,11 +310,11 @@ private func sessionGuidance(for url: URL?, title: String?) -> String? {
     let title = title?.lowercased() ?? ""
 
     if absolute.contains("/api/auth/signin") || absolute.contains("/login") || title.contains("sign in") {
-        return "Sign in inside this Mac window first. Native Mac actions reuse this embedded Nest session for chat, imports, sync, and draft staging."
+        return "Connect a Mac Nest profile first. Use Nest Session or Sign in with browser; the embedded editor receives a short-lived web session from the native Mac profile."
     }
 
     if absolute.contains("accounts.google.com") {
-        return "Google is asking for authentication. Finish the flow here so the Mac app can reuse the same Nest session."
+        return "Google is asking for authentication. If this embedded page is stubborn, use Connect Mac Session so Google sign-in happens in your normal browser and returns to Quipsly Mac."
     }
 
     if title.contains("unauthorized") || title.contains("forbidden") {

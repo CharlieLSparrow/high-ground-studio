@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct EpisodeEditorView: View {
@@ -15,6 +16,7 @@ struct EpisodeEditorView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            sessionPreflight
 
             if let editorURL {
                 QuipslyWebRouteView(
@@ -67,6 +69,66 @@ struct EpisodeEditorView: View {
         }
         .padding()
         .background(.bar)
+    }
+
+    private var sessionPreflight: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: hasConnectedNestProfile ? "checkmark.seal.fill" : "person.crop.circle.badge.exclamationmark")
+                .font(.title2)
+                .foregroundStyle(hasConnectedNestProfile ? .green : .orange)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(hasConnectedNestProfile ? "Nest session ready" : "Nest session required")
+                    .font(.headline)
+                Text(sessionPreflightText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            Spacer()
+
+            Button {
+                appState.selectedSection = .nestSession
+            } label: {
+                Label(hasConnectedNestProfile ? "Session details" : "Open Nest Session", systemImage: "person.badge.key")
+            }
+
+            if !hasConnectedNestProfile {
+                Button {
+                    let state = appState.beginNestNativeAuthState()
+                    let deviceLabel = Host.current().localizedName ?? "Quipsly Mac"
+                    NSWorkspace.shared.open(
+                        NestSessionActions.nativeHandoffURL(
+                            nestBaseURL: appState.nestURL,
+                            state: state,
+                            deviceLabel: deviceLabel
+                        )
+                    )
+                    appState.selectedSection = .nestSession
+                    appState.lastMacCallbackDiagnosticLabel = "Browser sign-in opened from Episode Editor. Approve Open Quipsly Mac if macOS asks."
+                } label: {
+                    Label("Sign in with browser", systemImage: "safari")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(hasConnectedNestProfile ? Color.green.opacity(0.09) : Color.orange.opacity(0.12))
+    }
+
+    private var hasConnectedNestProfile: Bool {
+        !appState.activeNestSessionProfileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !appState.nestSessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var sessionPreflightText: String {
+        if hasConnectedNestProfile {
+            return "Using \(appState.activeNestSessionProfileEmail). The embedded editor will request a short-lived Nest web session before loading this episode."
+        }
+
+        return "Connect once in Nest Session. After that, native chat, imports, sync prep, and the embedded editor can all reuse the same Mac profile."
     }
 
     private var invalidRoutePanel: some View {
