@@ -3252,6 +3252,12 @@ function CloudEditorContent() {
     return normalizePremiereDraftEdits(productionState?.productionJson);
   }, [productionState?.productionJson]);
 
+  const premiereRestorePreviewClips = useMemo(() => {
+    return timelineState.clips.filter((clip) =>
+      clip.id.startsWith("premiere-restore-preview-") || clip.name.startsWith("Restore preview -")
+    );
+  }, [timelineState.clips]);
+
   const timelineBackups = useMemo(() => {
     return normalizeTimelineBackups(productionState?.productionJson);
   }, [productionState?.productionJson]);
@@ -3737,6 +3743,26 @@ function CloudEditorContent() {
     setSessionSummary(`Previewing Premiere draft ${draft.id}. Autosave is paused until refresh or promotion.`);
     setMediaImportStatus("Previewing staged Premiere draft locally. This has not been saved over the active timeline.");
   }, [replaceTimeline, timelineState.paperEditSnapshots, timelineState.transcript]);
+
+  const clearPremiereRestorePreviews = useCallback(() => {
+    if (premiereRestorePreviewClips.length === 0) {
+      setMediaImportStatus("No local restore previews to clear.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Clear ${premiereRestorePreviewClips.length} local restore preview clip${premiereRestorePreviewClips.length === 1 ? "" : "s"}?\n\nThis only removes temporary preview clips from your current local timeline view. It does not delete media, Premiere draft data, or saved Nest backups.`
+    );
+    if (!confirmed) return;
+
+    const previewIds = new Set(premiereRestorePreviewClips.map((clip) => clip.id));
+    premiereRestorePreviewClips.forEach((clip) => deleteClip(clip.id));
+    setSelectedClipId((current) => current && previewIds.has(current) ? null : current);
+    setIsPreviewPlaying(false);
+    setTimelineSaveStateSafe("conflict");
+    setSessionSummary("Cleared local Premiere restore preview clips. Saved Nest production data was not changed.");
+    setMediaImportStatus(`Cleared ${premiereRestorePreviewClips.length} local restore preview clip${premiereRestorePreviewClips.length === 1 ? "" : "s"}.`);
+  }, [deleteClip, premiereRestorePreviewClips, setSelectedClipId]);
 
   const restoreTimelineBackup = useCallback(async (backup: TimelineBackupRecord) => {
     const confirmed = window.confirm(
@@ -6131,6 +6157,25 @@ function CloudEditorContent() {
             {mediaImportStatus && (
               <div className="mt-2 rounded-lg border border-[#e8dcc4] bg-white px-3 py-2 font-bold text-[#6f5336]">
                 {mediaImportStatus}
+              </div>
+            )}
+            {premiereRestorePreviewClips.length > 0 && (
+              <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-indigo-950 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-black text-[#2f261a]">Local restore previews are active</div>
+                    <p className="mt-1 text-[11px] font-bold leading-5 opacity-80">
+                      {premiereRestorePreviewClips.length} preserved Premiere range{premiereRestorePreviewClips.length === 1 ? "" : "s"} were added as temporary review clips. They are not promoted or saved as production decisions until you intentionally save/promote.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearPremiereRestorePreviews}
+                    className="rounded-lg border border-indigo-300 bg-white px-3 py-2 font-black text-indigo-900 hover:bg-indigo-100"
+                  >
+                    Clear restore previews
+                  </button>
+                </div>
               </div>
             )}
             {!realEditingMode && aiIngestReport && (
