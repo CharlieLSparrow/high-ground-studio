@@ -10,6 +10,8 @@ struct EpisodeCollaborationView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 controls
+                NestSessionInlineStatusView(context: "Episode sync")
+                syncReadinessPanel
                 statusStrip
                 collaboratorSection
                 assetSection
@@ -135,6 +137,117 @@ struct EpisodeCollaborationView: View {
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var syncReadinessPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sync readiness")
+                        .font(.headline)
+                    Text(syncReadinessSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                Label(syncReadinessTitle, systemImage: syncReadinessSymbol)
+                    .font(.caption.bold())
+                    .foregroundStyle(syncReadinessColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.thinMaterial, in: Capsule())
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
+                syncReadinessItem(
+                    title: "Target episode",
+                    detail: hasTargetEpisode ? "\(cleanProjectSlug) / \(cleanEpisodeSlug)" : "Choose the Nest and episode to sync.",
+                    symbol: hasTargetEpisode ? "checkmark.circle.fill" : "scope",
+                    color: hasTargetEpisode ? .green : .orange
+                )
+                syncReadinessItem(
+                    title: "Nest session",
+                    detail: hasNestSession ? appState.activeNestSessionProfileEmail : "Sign in once before fetching shared edit state.",
+                    symbol: hasNestSession ? "checkmark.circle.fill" : "person.badge.key",
+                    color: hasNestSession ? .green : .orange
+                )
+                syncReadinessItem(
+                    title: "Shared timeline",
+                    detail: client.state.ok ? "\(client.state.timelineClipCount ?? 0) clips · fingerprint \(String((client.state.timelineFingerprint ?? "missing").prefix(10)))" : "Refresh after sign-in to load Nest timeline truth.",
+                    symbol: client.state.ok ? "checkmark.circle.fill" : "arrow.clockwise.circle",
+                    color: client.state.ok ? .green : .orange
+                )
+                syncReadinessItem(
+                    title: "Local assets",
+                    detail: localAssetReadinessDetail,
+                    symbol: localAssetsNeedAttention ? "externaldrive.badge.exclamationmark" : "externaldrive.badge.checkmark",
+                    color: localAssetsNeedAttention ? .orange : .green
+                )
+            }
+
+            HStack(spacing: 10) {
+                if !hasNestSession {
+                    Button {
+                        appState.selectedSection = .nestSession
+                    } label: {
+                        Label("Open Nest Session", systemImage: "person.badge.key")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Button {
+                    Task {
+                        await refreshCollaborationAndAvailability()
+                    }
+                } label: {
+                    Label("Refresh sync state", systemImage: "arrow.clockwise")
+                }
+
+                Button {
+                    client.refreshLocalAssetAvailability(
+                        projectSlug: cleanProjectSlug,
+                        episodeSlug: cleanEpisodeSlug
+                    )
+                } label: {
+                    Label("Check local files", systemImage: "externaldrive.badge.checkmark")
+                }
+
+                Spacer()
+
+                Text("This is transparent status, not a gate. It shows what is linked and available before you cut.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(syncReadinessColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(syncReadinessColor.opacity(0.22))
+        }
+    }
+
+    private func syncReadinessItem(title: String, detail: String, symbol: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: symbol)
+                .foregroundStyle(color)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.bold())
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var statusStrip: some View {
@@ -394,6 +507,98 @@ struct EpisodeCollaborationView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var cleanProjectSlug: String {
+        appState.editorProjectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cleanEpisodeSlug: String {
+        appState.editorEpisodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasTargetEpisode: Bool {
+        !cleanProjectSlug.isEmpty && !cleanEpisodeSlug.isEmpty
+    }
+
+    private var hasNestSession: Bool {
+        !appState.activeNestSessionProfileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !appState.nestSessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var collaborationAssets: [EpisodeCollaborationAsset] {
+        client.state.assetManifest?.assets ?? []
+    }
+
+    private var cachedLocalAssetCount: Int {
+        collaborationAssets.filter { asset in
+            guard let availability = client.localAssetAvailability[asset.id] else { return false }
+            return availability.status == .cached || availability.status == .needsRelink
+        }.count
+    }
+
+    private var missingLocalAssetCount: Int {
+        max(0, collaborationAssets.count - cachedLocalAssetCount)
+    }
+
+    private var localAssetsNeedAttention: Bool {
+        !collaborationAssets.isEmpty && missingLocalAssetCount > 0
+    }
+
+    private var localAssetReadinessDetail: String {
+        if collaborationAssets.isEmpty {
+            return "No required assets reported yet."
+        }
+
+        if missingLocalAssetCount == 0 {
+            return "\(cachedLocalAssetCount) of \(collaborationAssets.count) asset(s) available on this Mac."
+        }
+
+        return "\(cachedLocalAssetCount) of \(collaborationAssets.count) asset(s) local. \(missingLocalAssetCount) still need download, relink, or source attention."
+    }
+
+    private var syncReadinessTitle: String {
+        if !hasTargetEpisode { return "Choose episode" }
+        if !hasNestSession { return "Needs session" }
+        if !client.state.ok { return "Refresh Nest" }
+        if localAssetsNeedAttention { return "Assets pending" }
+        return "Ready"
+    }
+
+    private var syncReadinessSummary: String {
+        if !hasTargetEpisode {
+            return "Choose the project and episode first so the Mac app can fetch the correct shared timeline and asset manifest."
+        }
+
+        if !hasNestSession {
+            return "Sign in through Nest Session before collaborative sync. The local engine can still work, but shared timeline state needs your Nest account."
+        }
+
+        if !client.state.ok {
+            return "Refresh to load the current Nest timeline, active editors, edit focus, and required assets."
+        }
+
+        if collaborationAssets.isEmpty {
+            return "Nest is reachable. No episode assets are reported yet, so this is ready for manuscript/timeline review but not for local media cutting."
+        }
+
+        if localAssetsNeedAttention {
+            return "Nest timeline is loaded. Download or relink the missing local assets before relying on this Mac for playback or export."
+        }
+
+        return "Nest timeline is loaded and all reported assets are locally available. Claim edit focus when you start timeline surgery."
+    }
+
+    private var syncReadinessSymbol: String {
+        syncNeedsAttention ? "exclamationmark.triangle.fill" : "checkmark.seal.fill"
+    }
+
+    private var syncReadinessColor: Color {
+        syncNeedsAttention ? .orange : .green
+    }
+
+    private var syncNeedsAttention: Bool {
+        !hasTargetEpisode || !hasNestSession || !client.state.ok || localAssetsNeedAttention
     }
 
     private func episodeEditorURL() -> URL? {
