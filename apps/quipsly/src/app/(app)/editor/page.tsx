@@ -6167,6 +6167,52 @@ function CloudEditorContent() {
                     <p className="mt-1 text-[11px] font-bold leading-5 opacity-80">
                       {premiereRestorePreviewClips.length} preserved Premiere range{premiereRestorePreviewClips.length === 1 ? "" : "s"} were added as temporary review clips. They are not promoted or saved as production decisions until you intentionally save/promote.
                     </p>
+                    <div className="mt-2 grid gap-1">
+                      {premiereRestorePreviewClips.slice(0, 6).map((clip) => (
+                        <div key={clip.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-indigo-100 bg-white px-2 py-1.5">
+                          <div className="min-w-0">
+                            <div className="truncate text-[11px] font-black text-[#2f261a]">{clip.name}</div>
+                            <div className="mt-0.5 font-mono text-[10px] text-indigo-900/70">
+                              {clip.trackId} · {formatClock(clip.startIn)}-{formatClock(clip.startIn + clip.duration)} · source {formatClock(clip.sourceStart)}-{formatClock(clip.sourceEnd ?? clip.sourceStart + clip.duration)}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedClipId(clip.id);
+                                setCurrentTime(clip.startIn);
+                                setViewMode("timeline");
+                                setEditorMode("play-all");
+                                setIsPreviewPlaying(false);
+                                setMediaImportStatus(`Cued local restore preview: ${clip.name}.`);
+                              }}
+                              className="rounded border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-black text-indigo-900 hover:bg-indigo-100"
+                            >
+                              Jump
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                deleteClip(clip.id);
+                                setSelectedClipId((current) => current === clip.id ? null : current);
+                                setIsPreviewPlaying(false);
+                                setTimelineSaveStateSafe("conflict");
+                                setMediaImportStatus(`Removed local restore preview: ${clip.name}.`);
+                              }}
+                              className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-black text-rose-900 hover:bg-rose-100"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {premiereRestorePreviewClips.length > 6 && (
+                        <div className="rounded-md border border-dashed border-indigo-200 bg-white px-2 py-1.5 text-[10px] font-black text-indigo-900">
+                          + {premiereRestorePreviewClips.length - 6} more local restore preview{premiereRestorePreviewClips.length - 6 === 1 ? "" : "s"} on the timeline.
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <button
                     type="button"
