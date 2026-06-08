@@ -96,6 +96,7 @@ struct PremiereDraftEditView: View {
             missingMediaRecoveryPanel(for: draft)
             timelineOverview(for: draft)
             editReviewDeck(for: draft)
+            editDecisionPanel(for: draft)
 
             if let suggestedSpine = draft.suggestedSpine {
                 VStack(alignment: .leading, spacing: 6) {
@@ -577,6 +578,199 @@ struct PremiereDraftEditView: View {
         }
         .padding(12)
         .background(.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func editDecisionPanel(for draft: PremiereDraftEditPacket) -> some View {
+        let rows = editDecisionRows(for: draft)
+        let totalInactiveDuration = rows.reduce(0) { $0 + $1.duration }
+        let matchedRows = rows.filter { $0.matchStatus == "matched" }.count
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "slider.horizontal.below.rectangle")
+                    .font(.title2)
+                    .foregroundStyle(.indigo)
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Edit decisions preserved from Premiere")
+                        .font(.headline)
+                    Text("These are the sections Premiere removed or deactivated. Quipsly keeps them as explicit source ranges so “cut out” can become “restore, shorten, extend, or leave skipped” later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                statusPill(
+                    text: rows.isEmpty ? "No inactive ranges" : "\(rows.count) preserved",
+                    tone: rows.isEmpty ? .green : .indigo
+                )
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], alignment: .leading, spacing: 12) {
+                reviewModeCard(
+                    title: "Skipped source",
+                    symbol: "forward.end.alt.fill",
+                    value: timelineTimeLabel(totalInactiveDuration),
+                    detail: "Total source time preserved as inactive ranges, not thrown away."
+                )
+                reviewModeCard(
+                    title: "Recoverable ranges",
+                    symbol: "arrow.uturn.backward.circle",
+                    value: "\(matchedRows) / \(rows.count)",
+                    detail: "Matched ranges can become restore candidates as soon as the Nest editor supports boundary toggles."
+                )
+                reviewModeCard(
+                    title: "Editing model",
+                    symbol: "rectangle.3.group",
+                    value: "Source + edit",
+                    detail: "Source monitors show everything; program playback skips inactive decisions."
+                )
+            }
+
+            if rows.isEmpty {
+                Text("This draft did not report deactivated source ranges. You can still review active clips and source monitors above.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Largest preserved cut ranges")
+                            .font(.subheadline.bold())
+                        Spacer()
+                        Text("These are candidates for “bring this back” editing.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(rows.prefix(10)) { row in
+                        editDecisionRow(row)
+                    }
+
+                    if rows.count > 10 {
+                        Text("+ \(rows.count - 10) more preserved edit decision(s) in the copied report.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            HStack {
+                Button {
+                    copyToPasteboard(editDecisionReport(for: draft, rows: rows))
+                } label: {
+                    Label("Copy edit decision report", systemImage: "doc.on.doc")
+                }
+
+                Spacer()
+
+                Text("Next layer: make these rows adjustable boundaries in the Nest timeline instead of just diagnostics.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private struct EditDecisionRow: Identifiable {
+        var id: String
+        var sourceName: String
+        var kind: String
+        var sourceStart: Double
+        var sourceEnd: Double
+        var duration: Double
+        var matchStatus: String
+        var confidence: String?
+        var reason: String?
+    }
+
+    private func editDecisionRows(for draft: PremiereDraftEditPacket) -> [EditDecisionRow] {
+        let namesByPremiereAssetId = Dictionary(uniqueKeysWithValues: draft.assetMatches.map { ($0.premiereAssetId, $0.displayName) })
+
+        return draft.deactivatedSourceRanges
+            .map { range in
+                EditDecisionRow(
+                    id: range.id,
+                    sourceName: namesByPremiereAssetId[range.premiereAssetId] ?? range.premiereAssetId,
+                    kind: range.kind,
+                    sourceStart: range.sourceStart,
+                    sourceEnd: range.sourceEnd,
+                    duration: range.duration,
+                    matchStatus: range.matchStatus,
+                    confidence: range.confidence,
+                    reason: range.reason
+                )
+            }
+            .sorted { left, right in
+                if left.duration != right.duration { return left.duration > right.duration }
+                return left.sourceStart < right.sourceStart
+            }
+    }
+
+    private func editDecisionRow(_ row: EditDecisionRow) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: row.kind == "audio" ? "waveform.path.ecg.rectangle" : "film.stack")
+                .foregroundStyle(row.kind == "audio" ? .green : .blue)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(row.sourceName)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+                    Text(humanize(row.matchStatus))
+                        .font(.caption2.bold())
+                        .foregroundStyle(sourceReviewStatusColor(row.matchStatus))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(sourceReviewStatusColor(row.matchStatus).opacity(0.12), in: Capsule())
+                }
+
+                Text("\(timelineTimeLabel(row.sourceStart)) to \(timelineTimeLabel(row.sourceEnd)) · \(timelineTimeLabel(row.duration)) skipped")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                if let reason = row.reason, !reason.isEmpty {
+                    Text(reason)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                } else if let confidence = row.confidence, !confidence.isEmpty {
+                    Text("Confidence: \(humanize(confidence))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func editDecisionReport(for draft: PremiereDraftEditPacket, rows: [EditDecisionRow]) -> String {
+        let lines = rows.map { row in
+            "- \(row.sourceName) [\(humanize(row.matchStatus))]: \(timelineTimeLabel(row.sourceStart))-\(timelineTimeLabel(row.sourceEnd)) · \(timelineTimeLabel(row.duration)) skipped\(row.reason.map { " · \($0)" } ?? "")"
+        }.joined(separator: "\n")
+
+        return """
+        Quipsly Premiere edit decisions
+
+        Project: \(draft.projectSlug)
+        Episode: \(draft.episodeSlug)
+        Sequence: \(draft.primarySequenceName ?? "none")
+
+        Meaning:
+        Premiere cut/deactivated these source ranges. Quipsly preserved them so they can become explicit restore/extend/shorten decisions later.
+
+        Preserved inactive ranges:
+        \(lines.isEmpty ? "- No inactive source ranges reported." : lines)
+        """
     }
 
     private struct SourceReviewRow: Identifiable {
