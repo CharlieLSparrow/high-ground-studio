@@ -29,7 +29,7 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             Task {
-                if await appState.handleNativeSessionCallback(url) {
+                if await appState.handleIncomingQuipslyURL(url) {
                     appState.selectedSection = .nestSession
                 }
             }

@@ -36,6 +36,17 @@ enum NestSessionActions {
         return components.url ?? URL(string: "\(fallback)/api/mac/session-handoff?native=1&callbackScheme=\(callbackScheme)")!
     }
 
+    static func diagnosticPingURL(state: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "quipslymac"
+        components.host = "diagnostics"
+        components.path = "/ping"
+        components.queryItems = [
+            URLQueryItem(name: "state", value: state),
+        ]
+        return components.url ?? URL(string: "quipslymac://diagnostics/ping?state=\(state)")!
+    }
+
     static func accountSwitchURL(nestBaseURL: String, callbackScheme: String = "quipslymac", state: String = "", deviceLabel: String = "Quipsly Mac") -> URL {
         let fallback = "https://nest.quipsly.com"
         let base = nestBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : nestBaseURL

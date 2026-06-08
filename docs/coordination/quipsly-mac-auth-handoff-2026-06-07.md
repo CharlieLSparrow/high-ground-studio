@@ -13,11 +13,13 @@
 1. If a stale macOS Keychain modal is still visible, dismiss it manually once. The current dev build should no longer call Keychain for Nest session storage.
 2. Relaunch Quipsly Mac through `apps/quipsly-mac/script/build_and_run.sh --verify` or the existing app icon after the script has rebuilt `dist/QuipslyMac.app`.
 3. Open `Nest Session`.
-4. Click `Sign in with browser`.
-5. Sign in normally on `nest.quipsly.com`.
-6. On the `Opening Quipsly Mac` handoff page, approve macOS opening Quipsly Mac if prompted.
-7. Confirm `Nest Session` shows a verified email.
-8. Open `Episode Editor`; it should load the real embedded editor instead of the Nest marketing/sign-in card.
+4. Click `Run diagnostics`. Before sign-in, it should at least prove whether `quipslymac://` opens the current app bundle. If it says the URL scheme is broken, rebuild/relaunch from the script before debugging server auth.
+5. Click `Sign in with browser`.
+6. Sign in normally on `nest.quipsly.com`.
+7. On the `Opening Quipsly Mac` handoff page, approve macOS opening Quipsly Mac if prompted.
+8. Confirm `Nest Session` shows a verified email.
+9. Click `Run diagnostics` again. It should show PASS for URL scheme, profile, token, session-check, and embedded editor bridge.
+10. Open `Episode Editor`; it should load the real embedded editor instead of the Nest marketing/sign-in card.
 
 ## Known fallback
 

@@ -35,6 +35,8 @@ final class AppState: ObservableObject {
     @Published var pendingNestNativeAuthState: String {
         didSet { defaults.set(pendingNestNativeAuthState, forKey: Keys.pendingNestNativeAuthState) }
     }
+    @Published var pendingMacCallbackDiagnosticState = ""
+    @Published var lastMacCallbackDiagnosticLabel = "Not tested yet."
     @Published var showExperimentalModules: Bool {
         didSet { defaults.set(showExperimentalModules, forKey: Keys.showExperimentalModules) }
     }
@@ -66,8 +68,32 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
+    func beginMacCallbackDiagnosticState() -> String {
+        let state = "qdiag_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+        pendingMacCallbackDiagnosticState = state
+        lastMacCallbackDiagnosticLabel = "Waiting for macOS to route a diagnostic callback..."
+        return state
+    }
+
+    func handleIncomingQuipslyURL(_ url: URL) async -> Bool {
+        guard url.scheme?.lowercased() == "quipslymac" else {
+            return false
+        }
+
+        if handleMacCallbackDiagnosticURL(url) {
+            selectedSection = .nestSession
+            return true
+        }
+
+        return await handleNativeSessionCallback(url)
+    }
+
+    @discardableResult
     func handleNativeSessionCallback(_ url: URL) async -> Bool {
         guard let result = NestMacSessionCallback.parse(url) else {
+            if url.scheme?.lowercased() == "quipslymac" {
+                lastMacCallbackDiagnosticLabel = "Quipsly Mac received a URL, but it was not a usable session callback."
+            }
             return false
         }
 
@@ -91,6 +117,7 @@ final class AppState: ObservableObject {
                 deviceLabel: deviceLabel
             )
             saveNestSession(credentials: credentials)
+            lastMacCallbackDiagnosticLabel = "Received browser callback and exchanged the one-time code."
             lastNestSessionCheckLabel = "Connected \(Date.now.formatted(date: .abbreviated, time: .shortened))"
             return true
         } catch {
@@ -177,6 +204,29 @@ final class AppState: ObservableObject {
             lastNestSessionCheckLabel = "Recovery exchange failed \(Date.now.formatted(date: .abbreviated, time: .shortened)): \(error.localizedDescription)"
             return false
         }
+    }
+
+    private func handleMacCallbackDiagnosticURL(_ url: URL) -> Bool {
+        let isDiagnosticHost = url.host?.lowercased() == "diagnostics"
+        let isDiagnosticPath = url.path.lowercased() == "/ping"
+        guard isDiagnosticHost, isDiagnosticPath else {
+            return false
+        }
+
+        let state = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "state" })?
+            .value?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard !pendingMacCallbackDiagnosticState.isEmpty, state == pendingMacCallbackDiagnosticState else {
+            lastMacCallbackDiagnosticLabel = "Quipsly Mac received a diagnostic callback, but the state did not match. Try again."
+            return true
+        }
+
+        pendingMacCallbackDiagnosticState = ""
+        lastMacCallbackDiagnosticLabel = "macOS opened Quipsly Mac through quipslymac:// successfully."
+        return true
     }
 
     @discardableResult

@@ -8,6 +8,8 @@ struct NestSessionView: View {
     @State private var pastedCode = ""
     @State private var isAdvancedFallbackVisible = false
     @State private var hasAutoCheckedSavedToken = false
+    @State private var isRunningDiagnostics = false
+    @State private var diagnosticLines: [String] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,6 +17,7 @@ struct NestSessionView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     connectionCard
+                    diagnosticsPanel
                     profileVault
                     primaryActions
                     advancedFallback
@@ -150,6 +153,52 @@ struct NestSessionView: View {
             }
             .disabled(appState.nestSessionToken.isEmpty && !isBrowserSignInPending)
         }
+    }
+
+    private var diagnosticsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Connection diagnostics")
+                        .font(.title2.bold())
+                    Text("Run this when sign-in feels stuck. It checks the Mac URL scheme, saved profile, Nest API session, and embedded editor bridge without showing secrets.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    Task {
+                        await runDiagnostics()
+                    }
+                } label: {
+                    Label(isRunningDiagnostics ? "Checking..." : "Run diagnostics", systemImage: "stethoscope")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRunningDiagnostics)
+            }
+
+            if diagnosticLines.isEmpty {
+                Text(appState.lastMacCallbackDiagnosticLabel)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(diagnosticLines, id: \.self) { line in
+                        Text(line)
+                            .font(.callout.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private var profileVault: some View {
@@ -435,5 +484,96 @@ struct NestSessionView: View {
             sessionStatus = "Session check failed: \(error.localizedDescription)"
             appState.lastNestSessionCheckLabel = Date.now.formatted(date: .abbreviated, time: .shortened)
         }
+    }
+
+    private func runDiagnostics() async {
+        isRunningDiagnostics = true
+        diagnosticLines = []
+        defer { isRunningDiagnostics = false }
+
+        appendDiagnostic("Starting Quipsly Mac connection diagnostics.")
+
+        let callbackState = appState.beginMacCallbackDiagnosticState()
+        NSWorkspace.shared.open(NestSessionActions.diagnosticPingURL(state: callbackState))
+        try? await Task.sleep(for: .milliseconds(900))
+
+        if appState.pendingMacCallbackDiagnosticState.isEmpty {
+            appendDiagnostic("PASS URL scheme: \(appState.lastMacCallbackDiagnosticLabel)")
+        } else {
+            appState.pendingMacCallbackDiagnosticState = ""
+            appState.lastMacCallbackDiagnosticLabel = "No diagnostic callback returned. The quipslymac:// URL scheme may not be registered on the app bundle you launched."
+            appendDiagnostic("FAIL URL scheme: \(appState.lastMacCallbackDiagnosticLabel)")
+        }
+
+        let profileEmail = appState.activeNestSessionProfileEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if profileEmail.isEmpty {
+            appendDiagnostic("NEEDS SIGN-IN profile: No active Nest profile is saved on this Mac.")
+        } else {
+            appendDiagnostic("PASS profile: Active profile is \(profileEmail).")
+        }
+
+        let refreshed = await appState.refreshActiveNestSessionIfNeeded(force: false)
+        let tokenAvailable = !appState.nestSessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if refreshed, tokenAvailable {
+            appendDiagnostic("PASS token: A short-lived access token is available.")
+        } else {
+            appendDiagnostic("NEEDS SIGN-IN token: No usable Mac access token is available yet.")
+            return
+        }
+
+        await runSessionCheckDiagnostic()
+        await runWebSessionDiagnostic()
+    }
+
+    private func runSessionCheckDiagnostic() async {
+        guard var components = URLComponents(string: appState.nestURL) else {
+            appendDiagnostic("FAIL Nest URL: The configured Nest URL is invalid.")
+            return
+        }
+        components.path = "/api/mac/session-check"
+        components.queryItems = nil
+        guard let url = components.url else {
+            appendDiagnostic("FAIL session-check: Could not build the Nest session-check URL.")
+            return
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(appState.nestSessionToken)", forHTTPHeaderField: "Authorization")
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let user = root?["user"] as? [String: Any]
+            let email = user?["email"] as? String ?? user?["primaryEmail"] as? String ?? ""
+            let error = root?["error"] as? String
+
+            if (200...299).contains(statusCode), !email.isEmpty {
+                appendDiagnostic("PASS session-check: Nest verified \(email).")
+                appState.recordVerifiedNestSession(email: email, name: user?["name"] as? String)
+            } else {
+                appendDiagnostic("FAIL session-check: \(error ?? "Nest returned \(statusCode).")")
+            }
+        } catch {
+            appendDiagnostic("FAIL session-check: \(error.localizedDescription)")
+        }
+    }
+
+    private func runWebSessionDiagnostic() async {
+        do {
+            let url = try await NestSessionExchangeClient.webSessionLoginURL(
+                nestBaseURL: appState.nestURL,
+                returnTo: "/editor?project=\(appState.editorProjectSlug)&episode=\(appState.editorEpisodeSlug)"
+            )
+            appendDiagnostic("PASS embedded editor bridge: Nest returned a web-session login URL for \(url.host ?? "Nest").")
+        } catch {
+            appendDiagnostic("FAIL embedded editor bridge: \(error.localizedDescription)")
+        }
+    }
+
+    private func appendDiagnostic(_ line: String) {
+        diagnosticLines.append(line)
     }
 }
