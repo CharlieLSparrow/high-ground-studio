@@ -12,11 +12,17 @@ const LEGACY_TOKEN_VERSION = 1;
 const LEGACY_TOKEN_SOURCE = "quipsly-mac-session-handoff";
 const ACCESS_TOKEN_VERSION = 2;
 const ACCESS_TOKEN_SOURCE = "quipsly-mac-access-token";
+const WEB_SESSION_TOKEN_VERSION = 3;
+const WEB_SESSION_TOKEN_SOURCE = "quipsly-mac-web-session";
+const WEB_SESSION_CODE_SOURCE = "quipsly-mac-web-session-code";
 
 const LEGACY_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TOKEN_TTL_MS = 20 * 60 * 1000;
+const WEB_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const REFRESH_TOKEN_TTL_MS = 45 * 24 * 60 * 60 * 1000;
+
+export const MAC_WEB_SESSION_COOKIE_NAME = "quipsly_mac_web_session";
 
 export type MacSessionActor = {
   id: string;
@@ -24,7 +30,7 @@ export type MacSessionActor = {
   primaryEmail: string;
   name: string;
   roles: string[];
-  source: "mac-access-token" | "mac-session-token";
+  source: "mac-access-token" | "mac-session-token" | "mac-web-session";
   sessionId?: string;
   expiresAt?: number;
 };
@@ -43,6 +49,10 @@ type LegacyMacSessionPayload = {
 
 type MacAccessTokenPayload = LegacyMacSessionPayload & {
   sessionId: string;
+};
+
+type MacWebSessionTokenPayload = LegacyMacSessionPayload & {
+  sessionId?: string;
 };
 
 type DeviceSessionBundle = {
@@ -126,7 +136,7 @@ function userRoles(user: { roles?: Array<{ role?: unknown }> }) {
     : [];
 }
 
-function encodeSignedToken(payload: LegacyMacSessionPayload | MacAccessTokenPayload) {
+function encodeSignedToken(payload: LegacyMacSessionPayload | MacAccessTokenPayload | MacWebSessionTokenPayload) {
   const encodedPayload = base64UrlJson(payload);
   return `${encodedPayload}.${sign(encodedPayload)}`;
 }
@@ -228,15 +238,79 @@ export function verifyMacAccessToken(token: string | null | undefined): MacSessi
   };
 }
 
+export function createMacWebSessionToken(actor: MacSessionActor, ttlMs = WEB_SESSION_TTL_MS) {
+  const now = Date.now();
+  const exp = now + ttlMs;
+  const token = encodeSignedToken({
+    v: WEB_SESSION_TOKEN_VERSION,
+    source: WEB_SESSION_TOKEN_SOURCE,
+    sub: actor.id,
+    email: normalizeEmail(actor.email || actor.primaryEmail),
+    primaryEmail: normalizeEmail(actor.primaryEmail || actor.email),
+    name: actor.name || actor.primaryEmail || actor.email,
+    roles: Array.isArray(actor.roles) ? actor.roles : [],
+    sessionId: actor.sessionId,
+    iat: now,
+    exp,
+  });
+
+  return {
+    token,
+    expiresAt: new Date(exp).toISOString(),
+    expiresAtMs: exp,
+  };
+}
+
+export function verifyMacWebSessionToken(token: string | null | undefined): MacSessionActor | null {
+  const payload = verifySignedPayload<MacWebSessionTokenPayload>(token);
+  if (!payload) return null;
+  if (payload.v !== WEB_SESSION_TOKEN_VERSION || payload.source !== WEB_SESSION_TOKEN_SOURCE) return null;
+  if (!payload.sub || !payload.email) return null;
+
+  return {
+    id: payload.sub,
+    email: payload.email,
+    primaryEmail: payload.primaryEmail || payload.email,
+    name: payload.name || payload.email,
+    roles: Array.isArray(payload.roles) ? payload.roles : [],
+    source: "mac-web-session",
+    sessionId: payload.sessionId,
+    expiresAt: payload.exp,
+  };
+}
+
 export function readBearerToken(request: Request | NextRequest) {
   const header = request.headers.get("authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
 }
 
+function readCookieValue(request: Request | NextRequest, name: string) {
+  const nextCookie = (request as NextRequest).cookies?.get?.(name)?.value;
+  if (nextCookie) return nextCookie;
+
+  const cookieHeader = request.headers.get("cookie") || "";
+  const cookies = cookieHeader.split(";").map((part) => part.trim()).filter(Boolean);
+  for (const cookie of cookies) {
+    const separator = cookie.indexOf("=");
+    if (separator <= 0) continue;
+    const key = cookie.slice(0, separator).trim();
+    if (key !== name) continue;
+    return decodeURIComponent(cookie.slice(separator + 1));
+  }
+
+  return null;
+}
+
+export function readMacWebSessionToken(request: Request | NextRequest) {
+  return readCookieValue(request, MAC_WEB_SESSION_COOKIE_NAME);
+}
+
 export function resolveMacSessionActor(request: Request | NextRequest) {
   const token = readBearerToken(request);
-  return verifyMacAccessToken(token) || verifyMacSessionToken(token);
+  return verifyMacAccessToken(token)
+    || verifyMacSessionToken(token)
+    || verifyMacWebSessionToken(readMacWebSessionToken(request));
 }
 
 export function macSessionExpiresAt(token: string) {
@@ -288,6 +362,116 @@ export async function createMacNativeAuthCode(session: Session, options: {
       name: String(session.user?.name || email),
       roles: sessionRoles(session),
     },
+  };
+}
+
+export async function createMacWebSessionLoginCode(input: {
+  actor: MacSessionActor;
+  returnTo: string;
+  metadataJson?: Record<string, unknown> | null;
+}) {
+  if (!input.actor.id || !input.actor.email) {
+    throw new MacNativeSessionError(
+      "missing-mac-actor",
+      "Quipsly Mac needs a verified device session before opening the embedded editor.",
+      401,
+    );
+  }
+
+  const code = randomSecret("qmac_web");
+  const expiresAt = new Date(Date.now() + AUTH_CODE_TTL_MS);
+  const prisma = getPrismaClient();
+
+  await prisma.studioNativeAuthCode.create({
+    data: {
+      codeHash: hashSecret(code),
+      userId: input.actor.id,
+      callbackScheme: WEB_SESSION_CODE_SOURCE,
+      state: null,
+      deviceLabel: "Quipsly Mac WebView",
+      expiresAt,
+      metadataJson: {
+        purpose: WEB_SESSION_CODE_SOURCE,
+        returnTo: input.returnTo,
+        sourceSessionId: input.actor.sessionId ?? null,
+        ...(input.metadataJson ?? {}),
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  return {
+    code,
+    expiresAt: expiresAt.toISOString(),
+    user: {
+      id: input.actor.id,
+      email: normalizeEmail(input.actor.email),
+      primaryEmail: normalizeEmail(input.actor.primaryEmail || input.actor.email),
+      name: input.actor.name || input.actor.email,
+      roles: input.actor.roles,
+    },
+  };
+}
+
+export async function consumeMacWebSessionLoginCode(input: {
+  code: string;
+}) {
+  const code = String(input.code || "").trim();
+  if (!code) {
+    throw new MacNativeSessionError("missing-code", "A one-time Mac web-session code is required.", 401);
+  }
+
+  const prisma = getPrismaClient();
+  const codeHash = hashSecret(code);
+  const now = new Date();
+
+  const result = await prisma.$transaction(async (tx) => {
+    const authCode = await tx.studioNativeAuthCode.findUnique({
+      where: { codeHash },
+      include: { user: { include: { roles: true } } },
+    });
+
+    if (!authCode || authCode.callbackScheme !== WEB_SESSION_CODE_SOURCE) {
+      throw new MacNativeSessionError("invalid-code", "That Mac web-session code was not found.", 401);
+    }
+    if (authCode.consumedAt) {
+      throw new MacNativeSessionError("code-consumed", "That Mac web-session code has already been used.", 401);
+    }
+    if (authCode.expiresAt.getTime() < now.getTime()) {
+      throw new MacNativeSessionError("code-expired", "That Mac web-session code expired. Reload the embedded editor.", 401);
+    }
+
+    await tx.studioNativeAuthCode.update({
+      where: { id: authCode.id },
+      data: { consumedAt: now },
+    });
+
+    const metadata =
+      authCode.metadataJson && typeof authCode.metadataJson === "object"
+        ? authCode.metadataJson as Record<string, unknown>
+        : {};
+    const email = normalizeEmail(authCode.user.primaryEmail);
+    const actor: MacSessionActor = {
+      id: authCode.user.id,
+      email,
+      primaryEmail: email,
+      name: authCode.user.name || email,
+      roles: userRoles(authCode.user),
+      source: "mac-web-session",
+      sessionId: typeof metadata.sourceSessionId === "string" ? metadata.sourceSessionId : undefined,
+    };
+
+    return {
+      actor,
+      returnTo: typeof metadata.returnTo === "string" ? metadata.returnTo : "/projects",
+    };
+  });
+
+  const webSession = createMacWebSessionToken(result.actor);
+  return {
+    ...result,
+    token: webSession.token,
+    expiresAt: webSession.expiresAt,
+    expiresAtMs: webSession.expiresAtMs,
   };
 }
 

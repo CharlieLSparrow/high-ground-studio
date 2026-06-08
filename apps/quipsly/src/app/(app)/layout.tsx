@@ -5,6 +5,9 @@ import "../globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
 import { BetaAccessView } from "@/components/beta/BetaAccessView";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
+import { canAccessStudio } from "@/lib/studio-authz";
+import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/server/mac-session-token";
+import { cookies } from "next/headers";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
@@ -78,12 +81,27 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await auth();
+  const cookieStore = await cookies();
+  const macWebActor = session?.user
+    ? null
+    : verifyMacWebSessionToken(cookieStore.get(MAC_WEB_SESSION_COOKIE_NAME)?.value);
   const ownerOverride = process.env.QUIPSLY_OWNER_OVERRIDE === "true";
-  const actorEmail = session?.user?.primaryEmail || session?.user?.email || null;
+  const actorEmail =
+    session?.user?.primaryEmail
+    || session?.user?.email
+    || macWebActor?.primaryEmail
+    || macWebActor?.email
+    || null;
+  const actorRoles = session?.user?.roles || macWebActor?.roles || [];
   const isAdminBypass = isUserManagementAdminEmail(actorEmail);
+  const hasAccess =
+    ownerOverride
+    || isAdminBypass
+    || Boolean(session?.user && (session.user as any).hasBetaAccess)
+    || Boolean(macWebActor && canAccessStudio(actorRoles as any));
 
   // If they aren't logged in, redirect to the marketing/login page
-  if (!session?.user && !ownerOverride) {
+  if (!session?.user && !macWebActor && !ownerOverride) {
     return (
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
@@ -94,7 +112,7 @@ export default async function RootLayout({
   }
 
   // If they are logged in but don't have beta access, show the pending state
-  if (!ownerOverride && !isAdminBypass && !(session?.user as any).hasBetaAccess) {
+  if (!hasAccess) {
     return (
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
@@ -118,7 +136,15 @@ export default async function RootLayout({
                   isStaff: Boolean(session.user.isStaff),
                   hasBetaAccess: Boolean((session.user as any).hasBetaAccess),
                 }
-              : null
+              : macWebActor
+                ? {
+                    email: macWebActor.primaryEmail || macWebActor.email || "",
+                    name: macWebActor.name || null,
+                    image: null,
+                    isStaff: canAccessStudio(macWebActor.roles as any),
+                    hasBetaAccess: hasAccess,
+                  }
+                : null
           }
         >
           {children}

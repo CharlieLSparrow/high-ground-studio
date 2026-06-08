@@ -2,7 +2,6 @@ import SwiftUI
 
 struct NestSessionView: View {
     @EnvironmentObject private var appState: AppState
-    @StateObject private var nativeAuthSession = NestNativeAuthSession()
     @State private var sessionStatus = "Not connected yet."
     @State private var isCheckingSession = false
     @State private var isBrowserSignInPending = false
@@ -52,7 +51,7 @@ struct NestSessionView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Nest Sign-In")
                 .font(.largeTitle.bold())
-            Text("Quipsly Mac uses the normal browser sign-in flow, exchanges a one-time code, then keeps a revocable device session in Keychain.")
+            Text("Quipsly Mac uses the normal browser sign-in flow, exchanges a one-time code, then keeps a revocable device session in a local profile vault.")
                 .font(.title3)
                 .foregroundStyle(.secondary)
             Text("Google sign-in happens in the system browser where it belongs. Native API calls use short-lived access tokens refreshed from the saved Mac profile.")
@@ -139,7 +138,7 @@ struct NestSessionView: View {
             } label: {
                 Label("Switch browser account", systemImage: "person.2.badge.gearshape")
             }
-            .disabled(nativeAuthSession.isSigningIn || isBrowserSignInPending || isCheckingSession)
+            .disabled(isBrowserSignInPending || isCheckingSession)
 
             Button(role: .destructive) {
                 isBrowserSignInPending = false
@@ -159,7 +158,7 @@ struct NestSessionView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Profile vault")
                         .font(.title2.bold())
-                    Text("Refresh credentials live in macOS Keychain. Pick a profile to swap the active Nest device session.")
+                    Text("Refresh credentials live in Quipsly Mac's local profile vault. Pick a profile to swap the active Nest device session.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -291,7 +290,7 @@ struct NestSessionView: View {
                 Button {
                     NestSessionActions.openExternalHandoff(nestBaseURL: appState.nestURL)
                 } label: {
-                    Label("Open manual recovery token page", systemImage: "key")
+                    Label("Open manual recovery code page", systemImage: "key")
                 }
             }
             .padding(.top, 8)
@@ -310,7 +309,7 @@ struct NestSessionView: View {
             Text("1. Quipsly Mac opens the normal browser sign-in flow pointed at Nest.")
             Text("2. Google/Patreon sign-in happens in the system browser security context, not inside our embedded editor webview.")
             Text("3. Nest redirects back to `quipslymac://auth/session` with a one-time code and matching state.")
-            Text("4. Quipsly Mac exchanges that code for a revocable device session and stores the refresh credential in Keychain.")
+            Text("4. Quipsly Mac exchanges that code for a revocable device session and stores the refresh credential in the local profile vault.")
             Text("5. Native features like chat, imports, episode sync, and timeline attach use short-lived access tokens that refresh automatically.")
         }
         .font(.callout)
@@ -334,7 +333,7 @@ struct NestSessionView: View {
             return "Complete sign-in in the browser. Quipsly Mac will catch the quipslymac:// callback automatically."
         }
         if !appState.lastNestSessionEmail.isEmpty {
-            return "Native API calls use this Keychain-stored Mac device session. Switch account if you need a different user's Nests."
+            return "Native API calls use this saved Mac device session. Switch account if you need a different user's Nests."
         }
         return "Use browser sign-in first. Manual code paste is only a recovery fallback."
     }

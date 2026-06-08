@@ -1,5 +1,7 @@
 import Foundation
+#if !DEBUG
 import Security
+#endif
 
 struct NestSessionProfile: Codable, Hashable, Identifiable {
     var id: String { email }
@@ -16,55 +18,38 @@ struct NestSessionProfile: Codable, Hashable, Identifiable {
 }
 
 enum NestSessionTokenStore {
+    #if !DEBUG
     private static let service = "com.quipsly.mac.nest-session"
+    #endif
     private static let account = "default-access-token"
     private static let legacyDefaultAccount = "default"
     private static let legacyDefaultsKey = "quipslyMac.nestSessionToken"
     private static let profilesDefaultsKey = "quipslyMac.nestSessionProfiles"
     private static let activeProfileDefaultsKey = "quipslyMac.activeNestSessionProfileEmail"
+    private static let fileVaultName = "nest-session-vault.json"
 
     static func load() -> String {
-        if
+        guard
             let activeEmail = activeProfileEmail(),
-            let profileToken = readKeychainToken(account: accessAccount(activeEmail)),
+            let profileToken = readVaultToken(account: accessAccount(activeEmail)),
             !profileToken.isEmpty
-        {
-            writeKeychainToken(profileToken, account: account)
-            return profileToken
+        else {
+            return ""
         }
 
-        if let token = readKeychainToken(account: account), !token.isEmpty {
-            return token
-        }
-
-        if let legacyToken = readKeychainToken(account: legacyDefaultAccount), !legacyToken.isEmpty {
-            writeKeychainToken(legacyToken, account: account)
-            deleteKeychainToken(account: legacyDefaultAccount)
-            return legacyToken
-        }
-
-        let legacyToken = UserDefaults.standard.string(forKey: legacyDefaultsKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !legacyToken.isEmpty {
-            save(legacyToken)
-            return legacyToken
-        }
-
-        return ""
+        return profileToken
     }
 
     static func save(_ token: String) {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedToken.isEmpty else {
-            deleteKeychainToken(account: account)
+        guard
+            !trimmedToken.isEmpty,
+            let activeEmail = activeProfileEmail()
+        else {
             return
         }
 
-        writeKeychainToken(trimmedToken, account: account)
-
-        if let activeEmail = activeProfileEmail() {
-            writeKeychainToken(trimmedToken, account: accessAccount(activeEmail))
-        }
+        writeVaultToken(trimmedToken, account: accessAccount(activeEmail))
 
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
     }
@@ -127,9 +112,8 @@ enum NestSessionTokenStore {
         nextProfiles.insert(profile, at: 0)
         saveProfiles(nextProfiles)
         setActiveProfileEmail(normalizedEmail)
-        writeKeychainToken(trimmedAccessToken, account: accessAccount(normalizedEmail))
-        writeKeychainToken(trimmedRefreshToken, account: refreshAccount(normalizedEmail))
-        writeKeychainToken(trimmedAccessToken, account: account)
+        writeVaultToken(trimmedAccessToken, account: accessAccount(normalizedEmail))
+        writeVaultToken(trimmedRefreshToken, account: refreshAccount(normalizedEmail))
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
         return profile
     }
@@ -184,7 +168,7 @@ enum NestSessionTokenStore {
     static func refreshToken(for email: String) -> String? {
         let normalizedEmail = normalizeEmail(email)
         guard !normalizedEmail.isEmpty else { return nil }
-        return readKeychainToken(account: refreshAccount(normalizedEmail))
+        return readVaultToken(account: refreshAccount(normalizedEmail))
     }
 
     @discardableResult
@@ -195,12 +179,7 @@ enum NestSessionTokenStore {
         }
 
         setActiveProfileEmail(normalizedEmail)
-        let token = readKeychainToken(account: accessAccount(normalizedEmail)) ?? ""
-        if !token.isEmpty {
-            writeKeychainToken(token, account: account)
-        } else {
-            deleteKeychainToken(account: account)
-        }
+        let token = readVaultToken(account: accessAccount(normalizedEmail)) ?? ""
         return (profile, token)
     }
 
@@ -208,9 +187,9 @@ enum NestSessionTokenStore {
         let normalizedEmail = normalizeEmail(email)
         guard !normalizedEmail.isEmpty else { return }
 
-        deleteKeychainToken(account: accessAccount(normalizedEmail))
-        deleteKeychainToken(account: refreshAccount(normalizedEmail))
-        deleteKeychainToken(account: legacyProfileAccount(normalizedEmail))
+        deleteVaultToken(account: accessAccount(normalizedEmail))
+        deleteVaultToken(account: refreshAccount(normalizedEmail))
+        deleteVaultToken(account: legacyProfileAccount(normalizedEmail))
         saveProfiles(profiles().filter { $0.email != normalizedEmail })
 
         if activeProfileEmail() == normalizedEmail {
@@ -218,26 +197,26 @@ enum NestSessionTokenStore {
             if let next = profiles().first {
                 _ = switchActiveProfile(email: next.email)
             } else {
-                deleteKeychainToken(account: account)
+                deleteVaultToken(account: account)
             }
         }
     }
 
     static func clearActiveProfile() {
         UserDefaults.standard.removeObject(forKey: activeProfileDefaultsKey)
-        deleteKeychainToken(account: account)
+        deleteVaultToken(account: account)
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
     }
 
     static func clearAllProfiles() {
         for profile in profiles() {
-            deleteKeychainToken(account: accessAccount(profile.email))
-            deleteKeychainToken(account: refreshAccount(profile.email))
-            deleteKeychainToken(account: legacyProfileAccount(profile.email))
+            deleteVaultToken(account: accessAccount(profile.email))
+            deleteVaultToken(account: refreshAccount(profile.email))
+            deleteVaultToken(account: legacyProfileAccount(profile.email))
         }
 
-        deleteKeychainToken(account: account)
-        deleteKeychainToken(account: legacyDefaultAccount)
+        deleteVaultToken(account: account)
+        deleteVaultToken(account: legacyDefaultAccount)
         UserDefaults.standard.removeObject(forKey: profilesDefaultsKey)
         UserDefaults.standard.removeObject(forKey: activeProfileDefaultsKey)
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
@@ -296,7 +275,90 @@ enum NestSessionTokenStore {
         return formatter
     }
 
-    private static func writeKeychainToken(_ token: String, account: String) {
+    private static func writeVaultToken(_ token: String, account: String) {
+        #if DEBUG
+        var vault = readFileTokenVault()
+        vault[account] = token
+        writeFileTokenVault(vault)
+        #else
+        writeSystemKeychainToken(token, account: account)
+        #endif
+    }
+
+    private static func deleteVaultToken(account: String) {
+        #if DEBUG
+        var vault = readFileTokenVault()
+        vault.removeValue(forKey: account)
+        writeFileTokenVault(vault)
+        #else
+        deleteSystemKeychainToken(account: account)
+        #endif
+    }
+
+    private static func readVaultToken(account: String) -> String? {
+        #if DEBUG
+        return readFileTokenVault()[account]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #else
+        return readSystemKeychainToken(account: account)
+        #endif
+    }
+
+    private static func readFileTokenVault() -> [String: String] {
+        guard
+            let url = fileTokenVaultURL(),
+            let data = try? Data(contentsOf: url),
+            let vault = try? JSONDecoder().decode([String: String].self, from: data)
+        else {
+            return [:]
+        }
+
+        return vault
+    }
+
+    private static func writeFileTokenVault(_ vault: [String: String]) {
+        guard let url = fileTokenVaultURL(createDirectory: true) else { return }
+
+        do {
+            let data = try JSONEncoder().encode(vault)
+            try data.write(to: url, options: [.atomic])
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            // Keep native UI calm. API calls will report auth-required if the
+            // local vault cannot be written.
+        }
+    }
+
+    private static func fileTokenVaultURL(createDirectory: Bool = false) -> URL? {
+        do {
+            let base = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: createDirectory
+            )
+            let directory = base.appendingPathComponent("QuipslyMac", isDirectory: true)
+            if createDirectory {
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true
+                )
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o700],
+                    ofItemAtPath: directory.path
+                )
+            }
+            return directory.appendingPathComponent(fileVaultName)
+        } catch {
+            return nil
+        }
+    }
+
+    #if !DEBUG
+    private static func writeSystemKeychainToken(_ token: String, account: String) {
         let data = Data(token.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -316,7 +378,7 @@ enum NestSessionTokenStore {
         }
     }
 
-    private static func deleteKeychainToken(account: String) {
+    private static func deleteSystemKeychainToken(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -325,7 +387,7 @@ enum NestSessionTokenStore {
         SecItemDelete(query as CFDictionary)
     }
 
-    private static func readKeychainToken(account: String) -> String? {
+    private static func readSystemKeychainToken(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -343,4 +405,5 @@ enum NestSessionTokenStore {
         return String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+    #endif
 }

@@ -41,7 +41,9 @@ struct QuipslyWebRouteView: View {
     var title: String
     var subtitle: String
     var showsSessionGuidance = true
+    var useMacWebSession = true
 
+    @EnvironmentObject private var appState: AppState
     @StateObject private var webState = QuipslyWebViewState()
     @State private var reloadToken = 0
 
@@ -51,7 +53,13 @@ struct QuipslyWebRouteView: View {
             Divider()
 
             ZStack(alignment: .top) {
-                QuipslyWebView(url: url, reloadToken: reloadToken, state: webState)
+                QuipslyWebView(
+                    url: url,
+                    reloadToken: reloadToken,
+                    state: webState,
+                    appState: appState,
+                    useMacWebSession: useMacWebSession
+                )
 
                 if showsSessionGuidance, let guidance = webState.sessionGuidance {
                     sessionGuidanceBanner(guidance)
@@ -89,14 +97,13 @@ struct QuipslyWebRouteView: View {
 
             Button {
                 reloadToken += 1
-                webState.reload()
             } label: {
                 Label("Reload", systemImage: "arrow.clockwise")
             }
 
             Button {
                 NestSessionActions.openExternalLogin(
-                    nestBaseURL: url.absoluteString,
+                    nestBaseURL: appState.nestURL,
                     callbackPath: NestSessionActions.callbackPath(for: webState.currentURL ?? url)
                 )
             } label: {
@@ -134,13 +141,13 @@ struct QuipslyWebRouteView: View {
             Spacer()
             Button("Sign in in browser") {
                 NestSessionActions.openExternalLogin(
-                    nestBaseURL: url.absoluteString,
+                    nestBaseURL: appState.nestURL,
                     callbackPath: NestSessionActions.callbackPath(for: webState.currentURL ?? url)
                 )
             }
             Button("Browser fallback") {
                 NestSessionActions.openExternalLogin(
-                    nestBaseURL: url.absoluteString,
+                    nestBaseURL: appState.nestURL,
                     callbackPath: NestSessionActions.callbackPath(for: webState.currentURL ?? url)
                 )
             }
@@ -155,6 +162,8 @@ struct QuipslyWebView: NSViewRepresentable {
     let url: URL
     let reloadToken: Int
     @ObservedObject var state: QuipslyWebViewState
+    @ObservedObject var appState: AppState
+    let useMacWebSession: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(state: state)
@@ -177,10 +186,22 @@ struct QuipslyWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.state = state
 
-        if context.coordinator.loadedURL != url || context.coordinator.reloadToken != reloadToken {
+        let sessionProfileKey = useMacWebSession ? appState.activeNestSessionProfileEmail : ""
+
+        if
+            context.coordinator.loadedURL != url ||
+            context.coordinator.reloadToken != reloadToken ||
+            context.coordinator.sessionProfileKey != sessionProfileKey
+        {
             context.coordinator.loadedURL = url
             context.coordinator.reloadToken = reloadToken
-            webView.load(URLRequest(url: url))
+            context.coordinator.sessionProfileKey = sessionProfileKey
+            context.coordinator.load(
+                url,
+                in: webView,
+                appState: appState,
+                useMacWebSession: useMacWebSession
+            )
             updateState(from: webView)
         }
     }
@@ -199,9 +220,45 @@ struct QuipslyWebView: NSViewRepresentable {
         var state: QuipslyWebViewState
         var loadedURL: URL?
         var reloadToken = -1
+        var sessionProfileKey = ""
+        private var activeBootstrapKey = ""
 
         init(state: QuipslyWebViewState) {
             self.state = state
+        }
+
+        @MainActor
+        func load(_ targetURL: URL, in webView: WKWebView, appState: AppState, useMacWebSession: Bool) {
+            guard useMacWebSession else {
+                webView.load(URLRequest(url: targetURL))
+                return
+            }
+
+            let key = "\(targetURL.absoluteString)|\(reloadToken)|\(appState.activeNestSessionProfileEmail)"
+            activeBootstrapKey = key
+            state.sessionGuidance = "Preparing a secure Mac web session for this editor route."
+
+            Task { @MainActor [weak webView] in
+                guard let webView else { return }
+                let refreshed = await appState.refreshActiveNestSessionIfNeeded()
+                guard refreshed else {
+                    self.state.sessionGuidance = "Open Nest Session, connect a profile, then reload this editor. The embedded editor needs a Mac web session cookie."
+                    return
+                }
+
+                do {
+                    let returnTo = NestSessionActions.callbackPath(for: targetURL)
+                    let loginURL = try await NestSessionExchangeClient.webSessionLoginURL(
+                        nestBaseURL: appState.nestURL,
+                        returnTo: returnTo
+                    )
+                    guard self.activeBootstrapKey == key else { return }
+                    webView.load(URLRequest(url: loginURL))
+                } catch {
+                    guard self.activeBootstrapKey == key else { return }
+                    self.state.sessionGuidance = "Quipsly Mac could not prepare the embedded editor session: \(error.localizedDescription)"
+                }
+            }
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

@@ -69,6 +69,11 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
+# The SwiftPM executable is ad-hoc signed during build with a hash-derived
+# identifier. Re-sign the finished app bundle with our real bundle id so macOS
+# Keep a stable local-development app identity between rebuilds.
+codesign --force --deep --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE" >/dev/null
+
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }

@@ -61,15 +61,24 @@ This is intentionally different from destructive cut-only workflows. Deactivated
 
 The Mac app has one primary Nest sign-in path:
 
-- Native browser authentication through `ASWebAuthenticationSession`.
+- Normal browser authentication through Nest.
+- One-time native handoff through `quipslymac://auth/session`.
+- Exchange into a revocable Mac device session.
+- Embedded editor access through the short-lived `/api/mac/web-session` cookie bridge.
 
-The app opens `/api/mac/session-handoff?native=1&callbackScheme=quipslymac` in the system browser authentication session. Nest handles Google/Patreon sign-in in the browser, then returns to the app with a custom-scheme callback:
+The app opens `/api/mac/session-handoff?native=1&callbackScheme=quipslymac` in the system browser. Nest handles Google/Patreon sign-in in the browser, then shows a handoff page that attempts to open the Mac app with a custom-scheme callback:
 
 ```text
-quipslymac://auth/session#token=<short-lived-token>&expiresAt=<iso-date>
+quipslymac://auth/session#code=<one-time-code>&expiresAt=<iso-date>
 ```
 
-The handoff token is short-lived and signed by the same server secret used for app auth. Native API calls attach it as:
+The handoff code is short-lived and one-use. The Mac app exchanges it through:
+
+```text
+/api/mac/session-exchange
+```
+
+The exchange returns short-lived access credentials and refresh credentials for a revocable native device session. Native API calls attach the current access token as:
 
 ```text
 Authorization: Bearer <token>
@@ -81,9 +90,23 @@ Current check endpoint:
 /api/mac/session-check
 ```
 
+Current embedded-editor bridge:
+
+```text
+/api/mac/web-session
+```
+
+The Mac app posts its access token to `/api/mac/web-session`, receives a one-use web login URL, loads that URL in WKWebView, and Nest sets an HTTP-only `quipsly_mac_web_session` cookie before redirecting to the editor route.
+
 The token is an access bridge, not a new account system. Nest still owns users, roles, invites, and project access.
 
-The old paste-a-token field remains only as an advanced recovery path. It is not considered signed in until `/api/mac/session-check` accepts the token.
+Development storage note:
+
+- Local unsigned development builds store Mac device-session credentials in `~/Library/Application Support/QuipslyMac/nest-session-vault.json` with user-only permissions.
+- This avoids macOS Keychain prompts caused by changing ad-hoc code-sign identities during rapid local development.
+- Non-debug builds use the same profile-vault API backed by macOS Keychain, assuming the bundle identifier, signing identity, and access group are stable.
+
+The old paste-a-code field remains only as an advanced recovery path. It is not considered signed in until `/api/mac/session-exchange` creates a device session and `/api/mac/session-check` accepts the resulting access token.
 
 ### Local engine owns media processing
 
@@ -467,19 +490,21 @@ The current smoke fixture is tiny. Real Insta360, iPhone, camera, and long-form 
 
 ## Native Nest sign-in model
 
-Quipsly Mac should use the native-app OAuth pattern, not embedded WebView login.
+Quipsly Mac should use the native-app browser handoff pattern, not embedded WebView OAuth.
 
 Current rule:
 
 - The embedded web editor can display Nest pages after auth.
-- OAuth/sign-in starts through `ASWebAuthenticationSession`, which opens the system browser/security context.
-- Nest redirects back to the app with `quipslymac://auth/session#token=...`.
-- The app stores the short-lived signed token in its normal settings store and verifies it through `/api/mac/session-check`.
-- Native API calls attach that verified token as `Authorization: Bearer <token>`.
+- OAuth/sign-in starts in the normal browser/security context.
+- Nest serves an "Open Quipsly Mac" handoff page that attempts `quipslymac://auth/session#code=...`.
+- The app exchanges that one-time code through `/api/mac/session-exchange`.
+- The app stores the resulting device session in the local profile vault and verifies it through `/api/mac/session-check`.
+- Native API calls attach the current short-lived access token as `Authorization: Bearer <token>`.
+- Embedded editor routes call `/api/mac/web-session` to convert the native access token into a short-lived HTTP-only web session cookie.
 
 Break-glass recovery:
 
-- `/api/mac/session-handoff` can still render a copy/paste token page for debugging.
-- Saving a pasted recovery token must not be treated as signed-in until `/api/mac/session-check` verifies it.
+- `/api/mac/session-handoff` can still render a copy/paste recovery code drawer for debugging.
+- Saving a pasted recovery code must not be treated as signed-in until `/api/mac/session-exchange` and `/api/mac/session-check` both succeed.
 
 The app bundle must register the `quipslymac` URL scheme. The durable launcher is `apps/quipsly-mac/script/build_and_run.sh`; `apps/quipsly-mac/scripts/build_and_run.sh` delegates to it so both entrypoints produce a bundle with the same callback registration.

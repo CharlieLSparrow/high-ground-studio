@@ -36,8 +36,8 @@ Runtime: native SwiftPM macOS app on the user's machine.
 Responsibilities:
 
 - Native production cockpit for local files, import comfort, sync prep, Premiere rescue, and embedded Nest routes.
-- System-browser sign-in using `ASWebAuthenticationSession`.
-- Local app settings for Nest base URL, local engine URL, default Nest/project/episode, and session token storage.
+- Browser handoff sign-in using `quipslymac://auth/session` one-time codes.
+- Local app settings for Nest base URL, local engine URL, default Nest/project/episode, and profile-vault session storage.
 
 Deploy rule:
 
