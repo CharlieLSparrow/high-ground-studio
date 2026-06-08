@@ -156,6 +156,7 @@ type PremiereDraftEdit = {
   heldMediaCount: number;
   warnings: string[];
   timelineClips: TimelineClip[];
+  deactivatedSourceRanges: PremiereDraftDeactivatedRange[];
   assetMatches: Array<{
     id: string;
     displayName: string;
@@ -163,6 +164,19 @@ type PremiereDraftEdit = {
     status: string;
     registeredAssetId: string;
   }>;
+};
+
+type PremiereDraftDeactivatedRange = {
+  id: string;
+  assetId: string;
+  premiereAssetId: string;
+  kind: string;
+  sourceStart: number;
+  sourceEnd: number;
+  duration: number;
+  matchStatus: string;
+  confidence: string;
+  reason: string;
 };
 
 type TimelineBackupRecord = {
@@ -635,6 +649,24 @@ function normalizePremiereDraftEdits(value: unknown): PremiereDraftEdit[] {
         }));
       const timelineClips = coerceArray<Record<string, unknown>>(draft.timelineClips);
       const deactivatedSourceRanges = coerceArray<Record<string, unknown>>(draft.deactivatedSourceRanges);
+      const normalizedDeactivatedSourceRanges = deactivatedSourceRanges.map((range) => {
+        const sourceStart = draftNumber(range.sourceStart, 0);
+        const sourceEnd = draftNumber(range.sourceEnd, sourceStart + draftNumber(range.duration, 0.05));
+        const duration = Math.max(0.05, draftNumber(range.duration, sourceEnd - sourceStart));
+
+        return {
+          id: coerceString(range.id, makeId("premiere-cut-range")),
+          assetId: coerceString(range.assetId),
+          premiereAssetId: coerceString(range.premiereAssetId || range.assetId),
+          kind: coerceString(range.kind, "unknown"),
+          sourceStart,
+          sourceEnd: Math.max(sourceStart + duration, sourceEnd),
+          duration,
+          matchStatus: coerceString(range.matchStatus, Boolean(range.assetMatched) ? "matched" : "unknown"),
+          confidence: coerceString(range.confidence),
+          reason: coerceString(range.reason),
+        } satisfies PremiereDraftDeactivatedRange;
+      });
       const warnings = coerceArray<unknown>(draft.warnings)
         .map((warning) => coerceString(warning))
         .filter(Boolean);
@@ -653,6 +685,7 @@ function normalizePremiereDraftEdits(value: unknown): PremiereDraftEdit[] {
         heldMediaCount: draftNumber(summary.heldMediaCount, assetMatches.filter((match) => match.status === "held").length),
         warnings,
         timelineClips: timelineClips.map(normalizeTimelineClip).filter((clip): clip is TimelineClip => Boolean(clip)),
+        deactivatedSourceRanges: normalizedDeactivatedSourceRanges,
         assetMatches,
       } satisfies PremiereDraftEdit;
     })
@@ -6195,6 +6228,12 @@ function CloudEditorContent() {
                       ? Math.round((draft.matchedTimelineClipCount / draft.timelineClipCount) * 100)
                       : 0;
                     const isPromoting = promotingPremiereDraftId === draft.id;
+                    const assetNamesByPremiereId = new Map(draft.assetMatches.map((match) => [match.id, match.displayName]));
+                    const preservedEditDecisionRows = [...draft.deactivatedSourceRanges]
+                      .sort((left, right) => right.duration - left.duration)
+                      .slice(0, 6);
+                    const preservedEditDecisionDuration = draft.deactivatedSourceRanges.reduce((total, range) => total + Math.max(0, range.duration), 0);
+                    const matchedPreservedDecisionCount = draft.deactivatedSourceRanges.filter((range) => range.matchStatus === "matched").length;
                     return (
                       <div key={draft.id} className="rounded-xl border border-[#e8dcc4] bg-white p-3 shadow-sm">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -6263,6 +6302,65 @@ function CloudEditorContent() {
                                   </span>
                                 </div>
                               ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {draft.deactivatedSourceRanges.length > 0 && (
+                          <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-indigo-950">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="font-black text-[#2f261a]">Preserved edit decisions</div>
+                                <p className="mt-1 text-[11px] font-bold leading-5 opacity-80">
+                                  Premiere cut these source ranges out. Quipsly keeps them visible so they can become restore, shorten, extend, or leave-skipped decisions later.
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em]">
+                                <span className="rounded-full border border-indigo-200 bg-white px-2 py-1">
+                                  {draft.deactivatedSourceRanges.length} range{draft.deactivatedSourceRanges.length === 1 ? "" : "s"}
+                                </span>
+                                <span className="rounded-full border border-indigo-200 bg-white px-2 py-1">
+                                  {formatClock(preservedEditDecisionDuration)} skipped
+                                </span>
+                                <span className="rounded-full border border-indigo-200 bg-white px-2 py-1">
+                                  {matchedPreservedDecisionCount} matched
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-2 grid gap-1">
+                              {preservedEditDecisionRows.map((range) => {
+                                const sourceName = assetNamesByPremiereId.get(range.premiereAssetId) ?? range.premiereAssetId ?? range.assetId;
+                                const matched = range.matchStatus === "matched";
+                                return (
+                                  <div key={range.id} className="rounded-md border border-indigo-100 bg-white px-2 py-1.5">
+                                    <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-[#3d3122]">
+                                      <span className="truncate">{sourceName}</span>
+                                      <span className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
+                                        matched
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                          : "border-amber-200 bg-amber-50 text-amber-900"
+                                      }`}>
+                                        {humanizeSlug(range.matchStatus)}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-indigo-900/75">
+                                      <span>{range.kind}</span>
+                                      <span>{formatClock(range.sourceStart)}-{formatClock(range.sourceEnd)}</span>
+                                      <span>{formatClock(range.duration)} skipped</span>
+                                    </div>
+                                    {(range.reason || range.confidence) && (
+                                      <div className="mt-1 text-[10px] font-bold leading-4 text-indigo-900/70">
+                                        {range.reason || `Confidence: ${humanizeSlug(range.confidence)}`}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {draft.deactivatedSourceRanges.length > preservedEditDecisionRows.length && (
+                                <div className="rounded-md border border-dashed border-indigo-200 bg-white px-2 py-1.5 text-[10px] font-black text-indigo-900">
+                                  + {draft.deactivatedSourceRanges.length - preservedEditDecisionRows.length} more preserved decision{draft.deactivatedSourceRanges.length - preservedEditDecisionRows.length === 1 ? "" : "s"} in the staged draft.
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
