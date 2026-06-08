@@ -6349,17 +6349,54 @@ function CloudEditorContent() {
                               {preservedEditDecisionRows.map((range) => {
                                 const sourceName = assetNamesByPremiereId.get(range.premiereAssetId) ?? range.premiereAssetId ?? range.assetId;
                                 const matched = range.matchStatus === "matched";
+                                const matchingClip = draft.timelineClips.find((clip) => {
+                                  const sourceOut = clip.sourceEnd ?? (clip.sourceStart + clip.duration);
+                                  const sameAsset = clip.assetId === range.assetId || clip.assetId === range.premiereAssetId;
+                                  return sameAsset && range.sourceStart >= clip.sourceStart - 0.05 && range.sourceStart <= sourceOut + 0.05;
+                                }) ?? draft.timelineClips.find((clip) =>
+                                  clip.assetId === range.assetId || clip.assetId === range.premiereAssetId
+                                ) ?? null;
+                                const exactSourceCue = matchingClip
+                                  ? range.sourceStart >= matchingClip.sourceStart - 0.05
+                                    && range.sourceStart <= (matchingClip.sourceEnd ?? (matchingClip.sourceStart + matchingClip.duration)) + 0.05
+                                  : false;
                                 return (
                                   <div key={range.id} className="rounded-md border border-indigo-100 bg-white px-2 py-1.5">
                                     <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-[#3d3122]">
                                       <span className="truncate">{sourceName}</span>
-                                      <span className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
-                                        matched
-                                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                          : "border-amber-200 bg-amber-50 text-amber-900"
-                                      }`}>
-                                        {humanizeSlug(range.matchStatus)}
-                                      </span>
+                                      <div className="flex shrink-0 items-center gap-1">
+                                        <span className={`rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
+                                          matched
+                                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                            : "border-amber-200 bg-amber-50 text-amber-900"
+                                        }`}>
+                                          {humanizeSlug(range.matchStatus)}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!matchingClip) {
+                                              setMediaImportStatus(`No active source clip found for preserved range from ${sourceName}. Import/relink that media before cueing it.`);
+                                              return;
+                                            }
+                                            const sourceOffset = Math.max(0, range.sourceStart - matchingClip.sourceStart);
+                                            const cueTime = Math.max(0, Math.min(totalDuration, matchingClip.startIn + sourceOffset));
+                                            setSelectedClipId(matchingClip.id);
+                                            setCurrentTime(cueTime);
+                                            setViewMode("timeline");
+                                            setEditorMode("play-all");
+                                            setIsPreviewPlaying(false);
+                                            setMediaImportStatus(
+                                              exactSourceCue
+                                                ? `Cued preserved range from ${sourceName} at source ${formatClock(range.sourceStart)}. No timeline changes made.`
+                                                : `Cued nearest active use of ${sourceName}. The preserved source range is not active on the timeline yet. No timeline changes made.`
+                                            );
+                                          }}
+                                          className="rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-black text-[9px] text-indigo-900 hover:bg-indigo-100"
+                                        >
+                                          {exactSourceCue ? "Cue range" : "Cue source"}
+                                        </button>
+                                      </div>
                                     </div>
                                     <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-indigo-900/75">
                                       <span>{range.kind}</span>
