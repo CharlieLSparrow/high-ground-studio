@@ -6396,6 +6396,43 @@ function CloudEditorContent() {
                                         >
                                           {exactSourceCue ? "Cue range" : "Cue source"}
                                         </button>
+                                        {matchingClip && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const restoredKind = matchingClip.kind === "audio" || range.kind === "audio" ? "audio" : "video";
+                                              const previewStart = Math.max(0, totalDuration);
+                                              const previewClip: TimelineClip = {
+                                                id: `premiere-restore-preview-${range.id}-${Date.now()}`,
+                                                assetId: matchingClip.assetId || range.assetId || range.premiereAssetId,
+                                                sourceId: matchingClip.sourceId,
+                                                kind: restoredKind,
+                                                trackId: restoredKind === "audio" ? "A9" : "V9",
+                                                startIn: previewStart,
+                                                duration: Math.max(0.05, range.duration),
+                                                sourceStart: Math.max(0, range.sourceStart),
+                                                sourceEnd: Math.max(range.sourceStart + Math.max(0.05, range.duration), range.sourceEnd),
+                                                name: `Restore preview - ${sourceName}`,
+                                                color: "#4f46e5",
+                                                volume: matchingClip.volume,
+                                                aiSuggested: true,
+                                              };
+
+                                              addClip(previewClip);
+                                              setSelectedClipId(previewClip.id);
+                                              setCurrentTime(previewStart);
+                                              setViewMode("timeline");
+                                              setEditorMode("play-all");
+                                              setIsPreviewPlaying(false);
+                                              setTimelineSaveStateSafe("conflict");
+                                              setSessionSummary(`Previewing preserved Premiere range from ${sourceName}. This local restore preview is not promoted yet.`);
+                                              setMediaImportStatus(`Added a local restore preview for ${sourceName} at ${formatClock(previewStart)}. Review it, then save/promote intentionally if you want to keep it.`);
+                                            }}
+                                            className="rounded border border-indigo-300 bg-white px-2 py-0.5 font-black text-[9px] text-indigo-900 hover:bg-indigo-50"
+                                          >
+                                            Preview restore
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                     <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-indigo-900/75">
