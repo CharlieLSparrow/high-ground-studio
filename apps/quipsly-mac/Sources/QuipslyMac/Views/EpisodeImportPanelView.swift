@@ -39,6 +39,8 @@ struct EpisodeImportPanelView: View {
                     .foregroundStyle(.green)
             }
 
+            NestSessionInlineStatusView(context: "Episode import")
+
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], alignment: .leading, spacing: 12) {
                 TextField("Project slug", text: $appState.editorProjectSlug)
                     .textFieldStyle(.roundedBorder)

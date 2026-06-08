@@ -11,6 +11,7 @@ struct PremiereDraftEditView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                NestSessionInlineStatusView(context: "Premiere draft staging")
 
                 if let statusMessage {
                     Text(statusMessage)

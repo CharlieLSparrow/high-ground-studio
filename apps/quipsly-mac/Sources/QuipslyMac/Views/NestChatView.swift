@@ -57,6 +57,8 @@ struct NestChatView: View {
                 }
             }
 
+            NestSessionInlineStatusView(context: "Nest Chat")
+
             HStack {
                 Label(client.status, systemImage: client.errorMessage == nil ? "checkmark.circle" : "exclamationmark.triangle")
                     .foregroundStyle(client.errorMessage == nil ? .green : .orange)

@@ -29,6 +29,13 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
+                NestSessionInlineStatusView(
+                    context: "Native tools",
+                    compact: true
+                )
+
+                Divider()
+
                 Text("Local engine")
                     .font(.caption)
                     .foregroundStyle(.secondary)
