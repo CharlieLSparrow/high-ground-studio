@@ -215,6 +215,17 @@ struct EpisodeCollaborationView: View {
                     Label("Check local files", systemImage: "externaldrive.badge.checkmark")
                 }
 
+                if missingDownloadableAssetCount > 0 {
+                    Button {
+                        Task {
+                            await downloadMissingAssets()
+                        }
+                    } label: {
+                        Label("Download missing assets", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
                 Spacer()
 
                 Text("This is transparent status, not a gate. It shows what is linked and available before you cut.")
@@ -545,6 +556,10 @@ struct EpisodeCollaborationView: View {
         !collaborationAssets.isEmpty && missingLocalAssetCount > 0
     }
 
+    private var missingDownloadableAssetCount: Int {
+        collaborationAssets.filter(shouldDownloadAsset).count
+    }
+
     private var localAssetReadinessDetail: String {
         if collaborationAssets.isEmpty {
             return "No required assets reported yet."
@@ -599,6 +614,36 @@ struct EpisodeCollaborationView: View {
 
     private var syncNeedsAttention: Bool {
         !hasTargetEpisode || !hasNestSession || !client.state.ok || localAssetsNeedAttention
+    }
+
+    private func shouldDownloadAsset(_ asset: EpisodeCollaborationAsset) -> Bool {
+        guard asset.bestURL != nil else { return false }
+
+        guard let availability = client.localAssetAvailability[asset.id] else {
+            return true
+        }
+
+        switch availability.status {
+        case .cached, .needsRelink:
+            return false
+        case .missing, .sourceUnavailable, .error:
+            return true
+        }
+    }
+
+    private func downloadMissingAssets() async {
+        for asset in collaborationAssets where shouldDownloadAsset(asset) {
+            await client.downloadAsset(
+                asset,
+                projectSlug: cleanProjectSlug,
+                episodeSlug: cleanEpisodeSlug
+            )
+        }
+
+        client.refreshLocalAssetAvailability(
+            projectSlug: cleanProjectSlug,
+            episodeSlug: cleanEpisodeSlug
+        )
     }
 
     private func episodeEditorURL() -> URL? {
