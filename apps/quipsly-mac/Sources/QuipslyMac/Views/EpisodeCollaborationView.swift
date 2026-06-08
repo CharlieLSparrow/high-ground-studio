@@ -4,6 +4,7 @@ import SwiftUI
 struct EpisodeCollaborationView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var client = NestEpisodeCollaborationClient()
+    @State private var isDownloadingMissingAssets = false
 
     var body: some View {
         ScrollView {
@@ -221,15 +222,25 @@ struct EpisodeCollaborationView: View {
                             await downloadMissingAssets()
                         }
                     } label: {
-                        Label("Download missing assets", systemImage: "arrow.down.circle")
+                        Label(
+                            isDownloadingMissingAssets ? "Downloading assets..." : "Download missing assets",
+                            systemImage: isDownloadingMissingAssets ? "arrow.down.circle.dotted" : "arrow.down.circle"
+                        )
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(isDownloadingMissingAssets)
                 }
 
                 Spacer()
 
                 Text("This is transparent status, not a gate. It shows what is linked and available before you cut.")
                     .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isDownloadingMissingAssets {
+                Label("Downloading each missing file into the local EpisodeAssets cache. You can keep this panel open; Quipsly will refresh availability when it finishes.", systemImage: "externaldrive.badge.timemachine")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -632,6 +643,12 @@ struct EpisodeCollaborationView: View {
     }
 
     private func downloadMissingAssets() async {
+        guard !isDownloadingMissingAssets else { return }
+        isDownloadingMissingAssets = true
+        defer {
+            isDownloadingMissingAssets = false
+        }
+
         for asset in collaborationAssets where shouldDownloadAsset(asset) {
             await client.downloadAsset(
                 asset,
