@@ -40,6 +40,7 @@ struct EpisodeImportPanelView: View {
             }
 
             NestSessionInlineStatusView(context: "Episode import")
+            importReadinessPanel
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], alignment: .leading, spacing: 12) {
                 TextField("Project slug", text: $appState.editorProjectSlug)
@@ -435,16 +436,210 @@ struct EpisodeImportPanelView: View {
         engine.episodeImportJobs.filter { $0.status == .held || $0.status == .failed }.count
     }
 
+    private var importReadinessPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Import readiness")
+                        .font(.headline)
+                    Text(readinessSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                readinessToneLabel
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
+                readinessItem(
+                    title: "Nest session",
+                    detail: hasConnectedNestProfile ? appState.activeNestSessionProfileEmail : "Connect before registering media.",
+                    ok: hasConnectedNestProfile
+                )
+                readinessItem(
+                    title: "Local engine",
+                    detail: engine.connectionState.isOnline ? "Ready for probe, proxy, and upload jobs." : "Start or reconnect the local engine.",
+                    ok: engine.connectionState.isOnline
+                )
+                readinessItem(
+                    title: "Target episode",
+                    detail: hasImportTarget ? "\(cleanProjectSlug) / \(cleanEpisodeSlug)" : "Add a project and episode slug.",
+                    ok: hasImportTarget
+                )
+                readinessItem(
+                    title: "Import intent",
+                    detail: selectedRole == .spineAudio ? "This file becomes the sync spine." : selectedRole.detail,
+                    ok: true
+                )
+            }
+
+            if let issue = safeImportPreflightIssue {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "hand.raised.fill")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(issue.title)
+                            .font(.caption.bold())
+                        Text(issue.message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            HStack(spacing: 10) {
+                if !hasConnectedNestProfile {
+                    Button {
+                        appState.selectedSection = .nestSession
+                    } label: {
+                        Label("Open Nest Session", systemImage: "person.badge.key")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                if !engine.connectionState.isOnline {
+                    Button {
+                        engine.connect(to: appState.engineURL)
+                    } label: {
+                        Label("Reconnect engine", systemImage: "bolt.badge.automatic")
+                    }
+                }
+
+                Button {
+                    appState.selectedSection = .episodeEditor
+                } label: {
+                    Label("Open Episode Editor", systemImage: "timeline.selection")
+                }
+
+                Spacer()
+
+                Text("Non-blocking: Quipsly will hold unsafe work instead of faking success.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(readinessBackgroundColor, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(readinessStrokeColor)
+        }
+    }
+
+    private func readinessItem(title: String, detail: String, ok: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.bold())
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var readinessToneLabel: some View {
+        Label(readinessToneTitle, systemImage: isReadyForCloudRegistration ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+            .font(.caption.bold())
+            .foregroundStyle(isReadyForCloudRegistration ? .green : .orange)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+    }
+
+    private var readinessSummary: String {
+        if isReadyForCloudRegistration {
+            return "Ready to import, process locally, and register media with Nest."
+        }
+
+        var missing: [String] = []
+        if !hasConnectedNestProfile { missing.append("Nest session") }
+        if !engine.connectionState.isOnline { missing.append("local engine") }
+        if !hasImportTarget { missing.append("target episode") }
+        return "Needs attention: \(missing.joined(separator: ", ")). You can still choose files; Quipsly should hold work safely until the missing pieces are fixed."
+    }
+
+    private var readinessToneTitle: String {
+        isReadyForCloudRegistration ? "Ready" : "Needs attention"
+    }
+
+    private var readinessBackgroundColor: Color {
+        isReadyForCloudRegistration ? Color.green.opacity(0.08) : Color.orange.opacity(0.10)
+    }
+
+    private var readinessStrokeColor: Color {
+        isReadyForCloudRegistration ? Color.green.opacity(0.20) : Color.orange.opacity(0.25)
+    }
+
+    private var cleanProjectSlug: String {
+        appState.editorProjectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cleanEpisodeSlug: String {
+        appState.editorEpisodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasImportTarget: Bool {
+        !cleanProjectSlug.isEmpty && !cleanEpisodeSlug.isEmpty
+    }
+
+    private var hasConnectedNestProfile: Bool {
+        !appState.activeNestSessionProfileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !appState.nestSessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isReadyForCloudRegistration: Bool {
+        hasConnectedNestProfile && engine.connectionState.isOnline && hasImportTarget
+    }
+
+    private var safeImportPreflightIssue: (title: String, message: String)? {
+        if !hasImportTarget {
+            return (
+                "Choose the episode first",
+                "Add both a project slug and episode slug before importing. Quipsly needs those labels so the files land in the right Nest instead of becoming mystery meat."
+            )
+        }
+
+        if !engine.connectionState.isOnline {
+            return (
+                "Local engine is offline",
+                "Start or reconnect the local engine before importing. The engine probes media, makes proxies, and keeps big files out of the web app."
+            )
+        }
+
+        return nil
+    }
+
     private func handleImportSelection(_ result: Result<[URL], Error>, isFolder: Bool) {
         guard case .success(let urls) = result else { return }
+
+        if let issue = safeImportPreflightIssue {
+            showImportPreflightAlert(title: issue.title, message: issue.message)
+            return
+        }
 
         for (index, url) in urls.enumerated() {
             engine.queueEpisodeImport(
                 path: url.path,
                 isFolder: isFolder,
-                projectSlug: appState.editorProjectSlug,
-                episodeSlug: appState.editorEpisodeSlug,
-                homeNestSlug: appState.homeNestSlug,
+                projectSlug: cleanProjectSlug,
+                episodeSlug: cleanEpisodeSlug,
+                homeNestSlug: appState.homeNestSlug.trimmingCharacters(in: .whitespacesAndNewlines),
                 nestBaseURL: appState.nestURL,
                 role: selectedRole,
                 recordingSyncMetadata: makeRecordingSyncMetadata(for: url, takeOffset: index)
@@ -452,6 +647,15 @@ struct EpisodeImportPanelView: View {
         }
 
         nextTakeOrder = max(1, nextTakeOrder + urls.count)
+    }
+
+    private func showImportPreflightAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func handlePremierePacketSelection(_ result: Result<[URL], Error>) {
