@@ -86,7 +86,7 @@ final class AuthManager: NSObject, ObservableObject, ASWebAuthenticationPresenta
             }
 
             // Parse URL-encoded fragment
-            let parsedFragment = URLComponents()
+            var parsedFragment = URLComponents()
             parsedFragment.query = fragment
             guard let items = parsedFragment.queryItems,
                   let code = items.first(where: { $0.name == "code" })?.value,
@@ -165,7 +165,7 @@ final class AuthManager: NSObject, ObservableObject, ASWebAuthenticationPresenta
         userName = nil
     }
 
-    func getAccessToken() -> String? {
+    nonisolated func getAccessToken() -> String? {
         return getKeychainItem(account: "accessToken")
     }
 
@@ -184,7 +184,7 @@ final class AuthManager: NSObject, ObservableObject, ASWebAuthenticationPresenta
         SecItemAdd(query as CFDictionary, nil)
     }
     
-    private func getKeychainItem(account: String) -> String? {
+    nonisolated private func getKeychainItem(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
