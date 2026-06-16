@@ -17,7 +17,7 @@ class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
 
 struct HybridWebView: UIViewRepresentable {
     let url: URL
-    private let recorderController = AudioCaptureController()
+    @EnvironmentObject var audioCapture: AudioCaptureController
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -36,7 +36,7 @@ struct HybridWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
 
-        recorderController.onStateChange = { [weak webView] event in
+        audioCapture.onStateChange = { [weak webView] event in
             guard let webView = webView else { return }
             do {
                 let jsonData = try JSONEncoder().encode(event)
@@ -65,7 +65,7 @@ struct HybridWebView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self, recorderController: recorderController)
+        Coordinator(self, recorderController: audioCapture)
     }
 
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {

@@ -1,8 +1,17 @@
 import Foundation
 import AVFoundation
+import Combine
 import MediaPlayer
+import UIKit
 
-class AudioCaptureController: NSObject, AVAudioRecorderDelegate {
+class AudioCaptureController: NSObject, AVAudioRecorderDelegate, ObservableObject {
+    @Published var isRecording: Bool = false
+    @Published var currentDuration: TimeInterval = 0
+    @Published var currentTakeOrder: Int = 1
+    @Published var currentSegmentOrder: Int = 1
+
+    private var displayDurationTimer: Timer?
+
     private var audioRecorder: AVAudioRecorder?
     private var currentRecordingURL: URL?
     private var state: RecorderState = .stopped
@@ -154,14 +163,16 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate {
             id: "seg-\(Int(now.timeIntervalSince1970 * 1000))",
             sessionId: "native-ios-session",
             participantId: "local-user",
-            deviceKind: "ios-app",
+            deviceKind: UIDevice.current.name,
             status: "local-ready",
             startedAt: ISO8601DateFormatter().string(from: start),
             stoppedAt: ISO8601DateFormatter().string(from: now),
             durationSeconds: durationSec,
             stopReason: reason
         )
+        // Simulate segmentOrder injection
         segments.append(segment)
+        currentSegmentOrder += 1
         currentSegmentStart = nil
     }
 
@@ -218,12 +229,26 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate {
             audioRecorder?.delegate = self
             audioRecorder?.record()
 
-            state = .recording
+            DispatchQueue.main.async {
+                self.state = .recording
+                self.isRecording = true
+            }
+            
             let now = Date()
             startTime = now
             overallStartTimestamp = now
             accumulatedDuration = 0
             segments = []
+            currentSegmentOrder = 1
+            
+            DispatchQueue.main.async {
+                self.currentDuration = 0
+                self.displayDurationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                    guard let self = self, let start = self.startTime, self.state == .recording else { return }
+                    self.currentDuration = self.accumulatedDuration + Date().timeIntervalSince(start)
+                }
+            }
+
             startNewSegment()
 
             broadcastState()
@@ -245,7 +270,14 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate {
             accumulatedDuration += Date().timeIntervalSince(start)
         }
 
-        state = .stopped
+        DispatchQueue.main.async {
+            self.state = .stopped
+            self.isRecording = false
+            self.displayDurationTimer?.invalidate()
+            self.displayDurationTimer = nil
+            self.currentTakeOrder += 1
+        }
+        
         broadcastState()
         clearNowPlayingInfo()
 

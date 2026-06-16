@@ -5,6 +5,11 @@ struct RecorderCommand: Codable {
     let projectSlug: String?
     let episodeSlug: String?
 
+    static let stop = RecorderCommand(action: .stop, projectSlug: nil, episodeSlug: nil)
+    static let pause = RecorderCommand(action: .pause, projectSlug: nil, episodeSlug: nil)
+    static let resume = RecorderCommand(action: .resume, projectSlug: nil, episodeSlug: nil)
+    static let markBreak = RecorderCommand(action: .markBreak, projectSlug: nil, episodeSlug: nil)
+
     enum ActionType: String, Codable {
         case start = "START"
         case stop = "STOP"

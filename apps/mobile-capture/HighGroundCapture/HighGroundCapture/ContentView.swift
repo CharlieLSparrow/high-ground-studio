@@ -1,8 +1,13 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var authManager = AuthManager.shared
     var body: some View {
-        AdaptiveQuipslyMobileShell()
+        if authManager.isAuthenticated {
+            AdaptiveQuipslyMobileShell()
+        } else {
+            LoginView()
+        }
     }
 }
 

@@ -5,6 +5,7 @@ struct IPadQuipslyStudioView: View {
     @Binding var selectedInspector: MobileInspectorMode
     @Binding var selectedBlockID: MobileManuscriptBlock.ID?
     @Binding var showFocusMode: Bool
+    @EnvironmentObject var audioCapture: AudioCaptureController
 
     private let blocks = MobileManuscriptBlock.sample
 
@@ -66,6 +67,13 @@ struct IPadQuipslyStudioView: View {
         .safeAreaInset(edge: .bottom) {
             MobileTransportDock(contextLabel: selectedSection.title)
         }
+        .onChange(of: audioCapture.isRecording) { isRecording in
+            if isRecording {
+                withAnimation {
+                    showFocusMode = true
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -74,6 +82,8 @@ struct IPadQuipslyStudioView: View {
         case .session:
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    ContextPickerView()
+                    
                     MobileHeroCard(
                         eyebrow: "iPad Studio",
                         title: "Write, cue, record, and edit from one living document.",

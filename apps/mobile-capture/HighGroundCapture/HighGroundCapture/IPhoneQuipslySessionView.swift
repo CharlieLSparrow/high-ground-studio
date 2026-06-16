@@ -4,6 +4,8 @@ struct IPhoneQuipslySessionView: View {
     @Binding var selectedSection: MobileWorkspaceSection
     @Binding var selectedBlockID: MobileManuscriptBlock.ID?
     @Binding var showFocusMode: Bool
+    
+    @EnvironmentObject var audioCapture: AudioCaptureController
 
     private let blocks = MobileManuscriptBlock.sample
 
@@ -12,6 +14,8 @@ struct IPhoneQuipslySessionView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
+                        ContextPickerView()
+                        
                         MobileHeroCard(
                             eyebrow: "iPhone Session",
                             title: "Manuscript first. Controls at thumb distance.",
@@ -54,6 +58,14 @@ struct IPhoneQuipslySessionView: View {
             NativeEditorView()
                 .tabItem { Label("Editor", systemImage: "slider.horizontal.3") }
                 .tag(MobileWorkspaceSection.editor)
+        }
+        .onChange(of: audioCapture.isRecording) { isRecording in
+            if isRecording {
+                // Auto-engage focus mode when recording starts to minimize clutter
+                withAnimation {
+                    showFocusMode = true
+                }
+            }
         }
     }
 }

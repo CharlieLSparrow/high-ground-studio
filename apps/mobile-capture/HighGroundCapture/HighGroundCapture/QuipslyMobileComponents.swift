@@ -186,7 +186,7 @@ struct MobileTransportDock: View {
     let contextLabel: String
     @State private var playhead: Double = 0.18
     @State private var isPlaying = false
-    @State private var isRecording = false
+    @EnvironmentObject var audioCapture: AudioCaptureController
 
     var body: some View {
         VStack(spacing: 10) {
@@ -196,9 +196,10 @@ struct MobileTransportDock: View {
                     .foregroundStyle(.secondary)
                 Slider(value: $playhead)
                     .accessibilityLabel("Session playhead")
+                    .disabled(audioCapture.isRecording)
                 Text(timeLabel)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(audioCapture.isRecording ? .red : .secondary)
                     .frame(width: 58, alignment: .trailing)
             }
 
@@ -229,16 +230,26 @@ struct MobileTransportDock: View {
                     .frame(height: 22)
 
                 Button {
-                    isRecording.toggle()
+                    if audioCapture.isRecording {
+                        audioCapture.handleCommand(.stop)
+                    } else {
+                        // Normally we'd pass the actual slugs here
+                        let slugs = MobileContextManager.shared.getTargetSlugs()
+                        let cmd = RecorderCommand(action: .start, projectSlug: slugs.projectSlug ?? "unknown", episodeSlug: slugs.episodeSlug ?? "project-bin")
+                        audioCapture.handleCommand(cmd)
+                    }
                 } label: {
-                    Label(isRecording ? "Recording" : "Record", systemImage: isRecording ? "record.circle.fill" : "record.circle")
+                    Label(audioCapture.isRecording ? "Stop Recording" : "Record", systemImage: audioCapture.isRecording ? "stop.circle.fill" : "record.circle")
                 }
-                .foregroundStyle(isRecording ? .red : .primary)
+                .foregroundStyle(audioCapture.isRecording ? .red : .primary)
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Button {} label: {
+                Button {
+                    audioCapture.handleCommand(.markBreak)
+                } label: {
                     Label("Mark break", systemImage: "scissors")
                 }
+                .disabled(!audioCapture.isRecording)
                 .keyboardShortcut("b", modifiers: [.command])
             }
             .labelStyle(.iconOnly)
@@ -250,10 +261,17 @@ struct MobileTransportDock: View {
     }
 
     private var timeLabel: String {
-        let totalSeconds = Int(playhead * 45 * 60)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        if audioCapture.isRecording {
+            let totalSeconds = Int(audioCapture.currentDuration)
+            let minutes = totalSeconds / 60
+            let seconds = totalSeconds % 60
+            return String(format: "%02d:%02d", minutes, seconds)
+        } else {
+            let totalSeconds = Int(playhead * 45 * 60)
+            let minutes = totalSeconds / 60
+            let seconds = totalSeconds % 60
+            return String(format: "%02d:%02d", minutes, seconds)
+        }
     }
 }
 
@@ -297,6 +315,7 @@ struct MediaCueBoard: View {
 
 struct RecorderControlBoard: View {
     @StateObject private var uploadManager = UploadManager.shared
+    @EnvironmentObject var audioCapture: AudioCaptureController
 
     var body: some View {
         ScrollView {
@@ -320,22 +339,44 @@ struct RecorderControlBoard: View {
                     Text(uploadManager.statusText ?? "No active upload")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    
+                    if audioCapture.isRecording {
+                        HStack {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 10, height: 10)
+                            Text("Recording (Take \(audioCapture.currentTakeOrder), Seg \(audioCapture.currentSegmentOrder))")
+                                .font(.headline)
+                                .foregroundStyle(.red)
+                        }
+                    }
 
                     HStack {
-                        Button {} label: {
+                        Button {
+                            let slugs = MobileContextManager.shared.getTargetSlugs()
+                            let cmd = RecorderCommand(action: .start, projectSlug: slugs.projectSlug ?? "unknown", episodeSlug: slugs.episodeSlug ?? "project-bin")
+                            audioCapture.handleCommand(cmd)
+                        } label: {
                             Label("Start", systemImage: "record.circle")
                         }
                         .buttonStyle(.borderedProminent)
+                        .disabled(audioCapture.isRecording)
 
-                        Button {} label: {
+                        Button {
+                            audioCapture.handleCommand(.markBreak)
+                        } label: {
                             Label("Mark break", systemImage: "scissors")
                         }
                         .buttonStyle(.bordered)
+                        .disabled(!audioCapture.isRecording)
 
-                        Button {} label: {
+                        Button {
+                            audioCapture.handleCommand(.stop)
+                        } label: {
                             Label("Stop", systemImage: "stop.circle")
                         }
                         .buttonStyle(.bordered)
+                        .disabled(!audioCapture.isRecording)
                     }
                 }
                 .padding()

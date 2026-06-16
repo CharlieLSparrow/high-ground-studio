@@ -14,7 +14,7 @@ class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSess
     @Published var networkQuality: String = "Excellent"
     @Published var webrtcVideoEnabled: Bool = true
 
-    private let studioApiBaseUrl = "https://studio-hm2odnvjga-uc.a.run.app/api"
+    private let studioApiBaseUrl = Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com/api"
     private let chunkSize: Int = 5 * 1024 * 1024 // 5MB chunks to survive bad cell coverage
 
     private let pathMonitor = NWPathMonitor()
@@ -175,6 +175,7 @@ class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSess
 
         let fileUrl = session.fileUrl
         let chunkIndex = session.currentChunk
+        let sourceContentType = contentType(for: fileUrl)
 
         // Read the specific chunk into memory (avoids OOM on massive 4K video files)
         guard let fileHandle = try? FileHandle(forReadingFrom: fileUrl) else {
@@ -200,10 +201,14 @@ class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSess
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue(sourceContentType, forHTTPHeaderField: "X-Content-Type")
         request.setValue(fileUrl.lastPathComponent, forHTTPHeaderField: "X-File-Name")
         request.setValue(sessionId, forHTTPHeaderField: "X-Session-ID")
         request.setValue(String(chunkIndex), forHTTPHeaderField: "X-Chunk-Index")
         request.setValue(String(session.totalChunks), forHTTPHeaderField: "X-Total-Chunks")
+        if let token = AuthManager.shared.getAccessToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue(session.projectSlug, forHTTPHeaderField: "X-Project-Slug")
         request.setValue(session.episodeSlug, forHTTPHeaderField: "X-Episode-Slug")
         request.setValue(session.sourceType, forHTTPHeaderField: "X-Source-Type")
@@ -211,10 +216,10 @@ class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSess
             request.setValue(trackId, forHTTPHeaderField: "X-Track-Id")
         }
         if let startedAt = session.startedAt {
-            request.setValue(startedAt, forHTTPHeaderField: "X-Started-At")
+            request.setValue(startedAt, forHTTPHeaderField: "X-Recording-Started-At")
         }
         if let stoppedAt = session.stoppedAt {
-            request.setValue(stoppedAt, forHTTPHeaderField: "X-Stopped-At")
+            request.setValue(stoppedAt, forHTTPHeaderField: "X-Recording-Stopped-At")
         }
         if let segments = session.recordingSegmentsJson {
             request.setValue(segments, forHTTPHeaderField: "X-Recording-Segments")
@@ -232,8 +237,7 @@ class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSess
         self.isUploading = false
         self.lastUploadedSourceId = session.lastMediaAssetId ?? session.lastSourceId
 
-        // Clean up the massive original video file to free up iPhone storage
-        try? FileManager.default.removeItem(at: session.fileUrl)
+        // Keep the local source recording until a separate verified-prune policy exists.
         activeUploads.removeValue(forKey: sessionId)
         saveActiveUploads()
 
@@ -365,6 +369,25 @@ class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, URLSess
         if let data = UserDefaults.standard.data(forKey: "com.quipsly.uploadManager.activeUploads"),
            let saved = try? JSONDecoder().decode([String: UploadSession].self, from: data) {
             activeUploads = saved
+        }
+    }
+
+    private func contentType(for fileUrl: URL) -> String {
+        switch fileUrl.pathExtension.lowercased() {
+        case "m4a", "mp4a":
+            return "audio/mp4"
+        case "aac":
+            return "audio/aac"
+        case "wav":
+            return "audio/wav"
+        case "mp3":
+            return "audio/mpeg"
+        case "mov":
+            return "video/quicktime"
+        case "mp4", "m4v":
+            return "video/mp4"
+        default:
+            return "application/octet-stream"
         }
     }
 }
