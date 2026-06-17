@@ -136,9 +136,41 @@ export function ScrollGroupManager({ group, experienceType }: ScrollGroupManager
     }
   }, [group.id, setActivePanel]);
 
+  const handleScrollPrev = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: -window.innerWidth, behavior: 'smooth' });
+    }
+  };
+
+  const handleScrollNext = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: window.innerWidth, behavior: 'smooth' });
+    }
+  };
+
+  // Keyboard navigation local to this group when active
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only process if this group's panel is currently active in global state
+      // (This avoids all groups listening to arrows simultaneously)
+      const isActiveGroup = group.panels.some(p => p.id === activeId);
+      if (!isActiveGroup) return;
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleScrollNext();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleScrollPrev();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeId, group.panels]);
+
   return (
     <div 
-      className="w-full h-[100dvh] snap-start snap-always relative flex items-center justify-center bg-zinc-950"
+      className="w-full h-[100dvh] snap-start snap-always relative flex items-center justify-center bg-zinc-950 group/manager"
       data-group-id={group.id}
     >
       {/* Horizontal Scrolling Panel Container */}
@@ -153,6 +185,27 @@ export function ScrollGroupManager({ group, experienceType }: ScrollGroupManager
           </div>
         ))}
       </div>
+
+      {/* Desktop Navigation Chevrons (Hidden on Mobile) */}
+      {group.panels.length > 1 && (
+        <>
+          <button 
+            onClick={handleScrollPrev}
+            className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/40 hover:bg-black/80 backdrop-blur-md items-center justify-center rounded-full text-white/50 hover:text-white transition-all opacity-0 group-hover/manager:opacity-100 z-40"
+            aria-label="Previous panel"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          
+          <button 
+            onClick={handleScrollNext}
+            className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/40 hover:bg-black/80 backdrop-blur-md items-center justify-center rounded-full text-white/50 hover:text-white transition-all opacity-0 group-hover/manager:opacity-100 z-40"
+            aria-label="Next panel"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </button>
+        </>
+      )}
 
       {/* Group Title Overlay */}
       <div className="absolute top-safe-20 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-md text-xs text-zinc-300 pointer-events-none border border-white/10 shadow-xl z-30 mt-4">

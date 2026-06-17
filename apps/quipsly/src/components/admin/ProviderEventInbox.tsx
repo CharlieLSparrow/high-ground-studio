@@ -42,11 +42,16 @@ export function ProviderEventInbox({ events }: { events: WorldHubProviderEvent[]
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "PROCESSED") {
-    return <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100"><CheckCircle className="h-3 w-3" /> Processed</span>;
+  switch (status) {
+    case "PROCESSED":
+      return <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100"><CheckCircle className="h-3 w-3" /> Processed</span>;
+    case "FAILED":
+      return <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100"><AlertCircle className="h-3 w-3" /> Failed</span>;
+    case "NEEDS_REVIEW":
+      return <span className="flex items-center gap-1 text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100"><AlertCircle className="h-3 w-3" /> Needs Review</span>;
+    case "SKIPPED_STALE":
+      return <span className="flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200"><CheckCircle className="h-3 w-3" /> Skipped (Stale)</span>;
+    default:
+      return <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100"><Clock className="h-3 w-3" /> Unprocessed</span>;
   }
-  if (status === "FAILED") {
-    return <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100"><AlertCircle className="h-3 w-3" /> Failed</span>;
-  }
-  return <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100"><Clock className="h-3 w-3" /> Unprocessed</span>;
 }

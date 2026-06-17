@@ -529,3 +529,52 @@ I explicitly integrated the new `packages/quipsly-domain/src/recording.ts` found
 
 **4. Keep, adjust, quarantine, or validate:**
 **Keep.** It is purely additive, backwards-compatible with old payloads, and strictly implements the new recording domain model into the editor timeline without schema changes.
+
+## 2026-06-08 Premiere Rescue Workflow Sprint - AG-Video-Editor
+
+**Prompt summary:** Strengthen the episode editor and Premiere rescue workflow. Prioritize source/program monitor clarity, Play All vs Play Edit semantics, and promotion visibility for real episode editing.
+
+**Files changed:**
+- `apps/quipsly/src/app/(app)/editor/page.tsx`
+
+**Files intentionally avoided:**
+- `schema.prisma`
+- `apps/quipsly/src/app/(app)/editor/timeline/*`
+- `apps/quipsly/src/app/(app)/editor/useTimelineState.ts` (State structures are already perfect).
+
+**What became safer & clearer:**
+1. **Source / Program Monitor Clarity:** Renamed the ambiguous "Source review" and "Active edit" toggles to "Source Monitor" and "Program Monitor", complete with descriptive tooltips explaining exactly how they treat the timeline (e.g. playing all material vs skipping deleted transcript blocks).
+2. **Rescue Button Bridges:** Changed the "Cue source" buttons in the Premiere Preserved Decisions bin to say "Cue in Source Monitor" and "Preview Restore", making the bridge between rescue actions and the player states explicit.
+3. **Promotion Language:** The draft promotion button now clearly states beforehand that promotion *replaces* the active timeline, but a backup is saved to history which can be restored from the Mac app, and local preview restore clips are safely included.
+
+**Validation run:**
+- Local UI inspection and state mapping trace for `startPlaybackMode`.
+
+**Risks:**
+- Beta users might not fully grasp the difference between Source and Program monitor without hovering for the tooltip, but it perfectly matches Premiere semantics for editors like Charlie.
+
+**Recommended next handoff:**
+- UI developer to add a dedicated dual-player view if `editorMode === "both"`, or a shared developer to create the `MediaClipPreview` so we can preview items before they even hit the main Remotion player.
+
+## 2026-06-08 Transcript Playhead Alignment - AG-Video-Editor
+
+**Prompt summary:** Take a bigger swing inside the bounding box. Build the most useful concrete improvement possible without being blocked by schema.
+
+**Files changed:**
+- `apps/quipsly/src/app/(app)/editor/page.tsx`
+
+**Files intentionally avoided:**
+- Extracted component files (Kept the transcript rendering inline to avoid sweeping prop-drilling or breaking architecture while implementing the core behavior).
+
+**What became safer & clearer:**
+1. **Bi-directional Descript-style Seeking:** The outstanding request for Transcript Playhead Alignment has been completed. Users can now click *any word* in the Paper Edit view to instantly jump the playhead to that exact millisecond.
+2. **Safe Block Deletion:** Upgraded the block deletion UX. Previously, an accidental click anywhere on a transcript block would toggle it off/on (cutting it from the active edit). Now, deletion requires a deliberate `Shift+Click` on the block, bringing it inline with professional NLE paradigms and preventing accidental timeline destruction while trying to navigate text.
+
+**Validation run:**
+- Event delegation tested visually: word clicks `stopPropagation()` to seek the playhead. `Shift+Click` events bubble up to the block container to toggle deletion safely. 
+
+**Risks:**
+- The transcript container in `page.tsx` is becoming quite dense. If we add more features (like right-click context menus for speaker assignment), we will absolutely need to extract `TranscriptView.tsx`.
+
+**Recommended next handoff:**
+- Extract `TranscriptView.tsx` into its own component file to reduce `page.tsx` payload size.

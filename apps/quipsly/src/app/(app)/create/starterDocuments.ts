@@ -241,13 +241,13 @@ const RESEARCH_NEST_BLOCKS: StarterBlock[] = [
 const MARINE_BIOLOGY_RESEARCH_BLOCKS: StarterBlock[] = [
   {
     id: "marine-biology-chapter",
-    text: "Marine Biology Photo Research Workspace",
+    text: "Chula Vista Reef Ball Visual Research Workspace",
     tags: ["chapter"],
   },
   {
     id: "marine-biology-purpose",
     text:
-      "This Nest is for turning decades of marine biology photos into usable research material: intake folders, preserve source context, identify organisms, mark uncertainty, and prepare clean datasets for future machine-learning experiments.",
+      "This Nest is for turning Chula Vista reef-ball tile photos into usable research material: preserve source context, connect workbook metadata, identify organisms, mark coverage and uncertainty, and prepare clean datasets for future machine-learning experiments.",
     tags: ["educational"],
   },
   {
@@ -259,7 +259,7 @@ const MARINE_BIOLOGY_RESEARCH_BLOCKS: StarterBlock[] = [
   {
     id: "marine-biology-intake",
     text:
-      "Photo Intake: start by attaching folders or batches to this Nest. Keep original filenames, dates, locations, photographer/source notes, and any existing labels intact. The Home Nest can catch personal uploads first; attaching assets here makes them available to collaborators on this research Nest.",
+      "Photo Intake: start by attaching reef-ball tile batches, manifests, and workbook bridge records to this Nest. Keep original filenames, dates, locations, source notes, and any existing labels intact. The Home Nest can catch personal uploads first; attaching assets here makes them available to collaborators on this research Nest.",
     tags: ["media", "show-note"],
   },
   {
@@ -270,19 +270,19 @@ const MARINE_BIOLOGY_RESEARCH_BLOCKS: StarterBlock[] = [
   {
     id: "marine-biology-labeling",
     text:
-      "Labeling pass: for each useful image or clip, record candidate organism, confidence as plain notes, visible evidence, uncertainty, and who reviewed it. Use tags for species/groups as they emerge; do not force a perfect taxonomy before researchers have looked at the material.",
+      "Labeling pass: for each useful image, record candidate organism, confidence as plain notes, visible evidence, uncertainty, reviewer, and any mask/coverage layer that should become training evidence later. Use tags for groups as they emerge; do not force a perfect taxonomy before researchers have looked at the material.",
     tags: ["educational", "show-note"],
   },
   {
     id: "marine-biology-mle",
     text:
-      "MLE Pipeline Later: the first real pipeline should probably export a transparent training manifest from the attached assets and labels, then run local-heavy image work in the Mac app or Vision Lab. For now, this Nest should organize the data well enough that building the model becomes less scary.",
+      "MLE Pipeline Later: the first real pipeline should export a transparent training/evaluation manifest from reviewed assets, masks, labels, and workbook metadata, then run local-heavy image work in Quipsly Mac Vision Lab. For now, this Nest should organize the data well enough that building the model becomes less risky.",
     tags: ["internal_note"],
   },
   {
     id: "marine-biology-output",
     text:
-      "Publication and collaboration outputs: research packets, image sets, label manifests, review queues, citation notes, and eventually model evaluation summaries can all project from this same Nest. No duplicated truth piles. No mystery spreadsheet goblins.",
+      "Publication and collaboration outputs: research packets, image sets, label manifests, review queues, citation notes, and eventually model evaluation summaries can all project from this same Nest. No duplicated truth piles. No mystery spreadsheet drift.",
     tags: ["show-note", "educational"],
   },
 ];

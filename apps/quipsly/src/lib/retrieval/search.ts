@@ -1,5 +1,5 @@
 import { getPrismaClient } from "../prisma";
-import { hybridSearchExamples } from "./embeddings";
+import { hybridSearchExamples, searchSemanticLoreQuotes } from "./embeddings";
 import {
   SearchQuotesInput,
   SearchExamplesInput,
@@ -108,6 +108,93 @@ export async function searchQuotes(
             nodeSlug: lore.slug,
             nodeType: lore.nodeType,
             nodeStatus: lore.status,
+          },
+        });
+      }
+    } else if (backend.type === "source-aware") {
+      // Find matches in StudioSourceUnit
+      const units = await prisma.studioSourceUnit.findMany({
+        where: {
+          projectId: backend.projectId,
+          OR: [
+            { title: { contains: input.query, mode: "insensitive" } },
+            { immutableText: { contains: input.query, mode: "insensitive" } },
+          ],
+        },
+        take: limit,
+      });
+
+      for (const unit of units) {
+        results.push({
+          resultId: createRetrievalResultId(),
+          content: unit.immutableText || "",
+          title: unit.title,
+          relevanceScore: 1.0,
+          citation: unit.kind,
+          verificationStatus: "needs-review",
+          provenance: {
+            origin: "source-aware",
+            projectId: backend.projectId,
+            sourceDocumentId: unit.id,
+            documentKind: unit.kind as any,
+            selector: {
+              kind: "whole-document",
+              sourceDocumentId: unit.id,
+            },
+          },
+        });
+      }
+    } else if (backend.type === "semantic-lore") {
+      const vectorHits = await searchSemanticLoreQuotes(input.query, backend.projectId, limit);
+      let quotes: any[] = [];
+      
+      if (vectorHits.length > 0) {
+        // Fetch full objects with relations
+        const fullQuotes = await prisma.quipLoreQuote.findMany({
+          where: { id: { in: vectorHits.map(h => h.id) } },
+          include: { work: true, source: true, author: true }
+        });
+        // Sort back to vector distance order
+        quotes = vectorHits.map(h => fullQuotes.find(q => q.id === h.id)).filter(q => q !== undefined);
+      } else {
+        // Fallback to keyword search if vector returns nothing (e.g. no API key or no embeddings yet)
+        quotes = await prisma.quipLoreQuote.findMany({
+          where: {
+            projectId: backend.projectId,
+            OR: [
+              { text: { contains: input.query, mode: "insensitive" } },
+              { context: { contains: input.query, mode: "insensitive" } },
+            ],
+          },
+          include: {
+            work: true,
+            source: true,
+            author: true,
+          },
+          take: limit,
+        });
+      }
+
+      for (const quote of quotes) {
+        const titleParts = [];
+        if (quote.work) titleParts.push(quote.work.title);
+        if (quote.source) titleParts.push(quote.source.title);
+        if (quote.author) titleParts.push(quote.author.name);
+        
+        const title = titleParts.length > 0 ? titleParts.join(" - ") : "Untitled Semantic Lore";
+
+        results.push({
+          resultId: createRetrievalResultId(),
+          content: quote.text + (quote.context ? `\n\nContext: ${quote.context}` : ""),
+          title: title,
+          relevanceScore: 1.0,
+          citation: "Semantic Lore Match",
+          verificationStatus: "needs-review",
+          provenance: {
+            origin: "semantic-lore",
+            quoteId: quote.id,
+            workId: quote.workId || undefined,
+            sourceId: quote.sourceId || undefined,
           },
         });
       }
@@ -253,6 +340,94 @@ export async function searchExamples(
            },
          });
        }
+    } else if (backend.type === "source-aware") {
+      // Find matches in StudioSourceUnit
+      const units = await prisma.studioSourceUnit.findMany({
+        where: {
+          projectId: backend.projectId,
+          OR: [
+            { title: { contains: input.query, mode: "insensitive" } },
+            { immutableText: { contains: input.query, mode: "insensitive" } },
+            { editableNotes: { contains: input.query, mode: "insensitive" } },
+          ],
+        },
+        take: limit,
+      });
+
+      for (const unit of units) {
+        results.push({
+          resultId: createRetrievalResultId(),
+          content: unit.immutableText || unit.editableNotes || "",
+          title: unit.title,
+          relevanceScore: 1.0,
+          citation: unit.kind,
+          verificationStatus: "needs-review",
+          provenance: {
+            origin: "source-aware",
+            projectId: backend.projectId,
+            sourceDocumentId: unit.id,
+            documentKind: unit.kind as any,
+            selector: {
+              kind: "whole-document",
+              sourceDocumentId: unit.id,
+            },
+          },
+        });
+      }
+    } else if (backend.type === "semantic-lore") {
+      const vectorHits = await searchSemanticLoreQuotes(input.query, backend.projectId, limit);
+      let quotes: any[] = [];
+      
+      if (vectorHits.length > 0) {
+        // Fetch full objects with relations
+        const fullQuotes = await prisma.quipLoreQuote.findMany({
+          where: { id: { in: vectorHits.map(h => h.id) } },
+          include: { work: true, source: true, author: true }
+        });
+        // Sort back to vector distance order
+        quotes = vectorHits.map(h => fullQuotes.find(q => q.id === h.id)).filter(q => q !== undefined);
+      } else {
+        // Fallback to keyword search if vector returns nothing
+        quotes = await prisma.quipLoreQuote.findMany({
+          where: {
+            projectId: backend.projectId,
+            OR: [
+              { text: { contains: input.query, mode: "insensitive" } },
+              { context: { contains: input.query, mode: "insensitive" } },
+            ],
+          },
+          include: {
+            work: true,
+            source: true,
+            author: true,
+          },
+          take: limit,
+        });
+      }
+
+      for (const quote of quotes) {
+        const titleParts = [];
+        if (quote.work) titleParts.push(quote.work.title);
+        if (quote.source) titleParts.push(quote.source.title);
+        if (quote.author) titleParts.push(quote.author.name);
+        
+        const title = titleParts.length > 0 ? titleParts.join(" - ") : "Untitled Semantic Lore";
+
+        results.push({
+          resultId: createRetrievalResultId(),
+          content: quote.text + (quote.context ? `\n\nContext: ${quote.context}` : ""),
+          title: title,
+          relevanceScore: 1.0,
+          citation: "Semantic Lore Match",
+          verificationStatus: "needs-review",
+          provenance: {
+            origin: "semantic-lore",
+            quoteId: quote.id,
+            workId: quote.workId || undefined,
+            sourceId: quote.sourceId || undefined,
+          },
+        });
+      }
     }
   }
 
@@ -395,6 +570,65 @@ export async function buildContextPacket(
         blockStableId: block.stableId,
       },
     });
+  }
+
+  // 3. Fetch Semantic Lore context
+  const searchQuery = input.additionalQuery || (targetBlock ? targetBlock.body.split(/\s+/).filter(w => w.length > 5).slice(0, 2).join(" ") : "");
+  
+  if (searchQuery) {
+    const vectorHits = await searchSemanticLoreQuotes(searchQuery, context.activeProjectId, 3);
+    let loreQuotes: any[] = [];
+    
+    if (vectorHits.length > 0) {
+      // Fetch full objects with relations
+      const fullQuotes = await prisma.quipLoreQuote.findMany({
+        where: { id: { in: vectorHits.map(h => h.id) } },
+        include: { work: true, source: true, author: true }
+      });
+      // Sort back to vector distance order
+      loreQuotes = vectorHits.map(h => fullQuotes.find(q => q.id === h.id)).filter(q => q !== undefined);
+    } else {
+      // Fallback
+      loreQuotes = await prisma.quipLoreQuote.findMany({
+        where: {
+          projectId: context.activeProjectId,
+          OR: [
+            { text: { contains: searchQuery, mode: "insensitive" } },
+            { context: { contains: searchQuery, mode: "insensitive" } },
+          ],
+        },
+        include: {
+          work: true,
+          source: true,
+          author: true,
+        },
+        take: 3,
+      });
+    }
+
+    for (const quote of loreQuotes) {
+      const titleParts = [];
+      if (quote.work) titleParts.push(quote.work.title);
+      if (quote.source) titleParts.push(quote.source.title);
+      if (quote.author) titleParts.push(quote.author.name);
+      
+      const title = titleParts.length > 0 ? titleParts.join(" - ") : "Untitled Semantic Lore";
+
+      results.push({
+        resultId: createRetrievalResultId(),
+        content: quote.text + (quote.context ? `\n\nContext: ${quote.context}` : ""),
+        title: title,
+        relevanceScore: 0.85,
+        citation: "Contextual Lore Match",
+        verificationStatus: "needs-review",
+        provenance: {
+          origin: "semantic-lore",
+          quoteId: quote.id,
+          workId: quote.workId || undefined,
+          sourceId: quote.sourceId || undefined,
+        },
+      });
+    }
   }
 
   const limitedResults = results.slice(0, limit);

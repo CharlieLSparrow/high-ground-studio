@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 
 function asRecord(value: unknown) {
@@ -73,6 +74,22 @@ export async function POST(request: Request) {
         ok: false,
         error: "Episode production persistence is not available in this deployment.",
       }, { status: 503 });
+    }
+
+    const access = await resolveEpisodeProductionAccess({
+      request,
+      projectSlug,
+      action: "write",
+      prisma,
+    });
+
+    if (!access.allowed) {
+      return NextResponse.json({
+        ok: false,
+        code: access.code,
+        error: access.error,
+        actorSource: access.actor.source,
+      }, { status: access.status });
     }
 
     const { production } = await ensureProjectAndProduction(prisma, projectSlug, episodeSlug);

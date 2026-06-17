@@ -696,3 +696,94 @@ Upgraded the Assistant`s "Save as Research Note" action to fully embrace the new
 
 ### 4. Codex recommendation
 **KEEP and VALIDATE.** The change is entirely additive and isolated to the frontend payload construction before it hits the existing `saveAssistantAction` server action. It perfectly bridges the Assistant`s entity-saving capabilities with Codex`s new `source-aware.ts` foundation without touching the schema.
+
+## AG-Assistant
+
+Timestamp: 2026-06-08T05:09:46.575559
+Prompt summary: Clean up overly restrictive "no AI writing" language from Quipsly Assistant API and Sidebar to embrace safe, inspectable drafting.
+
+Files changed:
+- `apps/quipsly/src/app/api/assistant/route.ts`: Softened the defensive "I did not edit the manuscript" language to collaboratively state it helps draft, rewrite, and organize.
+- `apps/quipsly/src/app/api/quipsly-assistant/route.ts`: Replaced "without taking over the writing" text in the local fallback loop to invite requests for drafts and scenes.
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`: Updated the "Talk to your Quipsly" sidebar header text to explicitly state it "drafts" and that every action is inspectable and reversible, removing the old "You write and approve" boundary constraint.
+
+Files intentionally avoided:
+- Avoided making changes to the `saveAssistantAction` and `undoAssistantAction` server logic since they already perfectly handle reverting changes and ensuring provenance trace without mutating the text natively.
+- Avoided adding token tracking/billing.
+
+Validation run:
+- Verified UI strings update and fallback API returns properly format collaborative strings.
+- Verified that all ledger models still default to PENDING/approved status models.
+
+Risks:
+- With more inviting drafting prompts, users might request massive multi-chapter rewrites that exceed current Gemini limits, triggering incomplete payloads.
+
+Recommended next handoff:
+- AG-Editor-Spine or AG-Storyboard to test requesting large drafts using the new sidebar intents.
+
+## AG-Assistant
+
+Timestamp: 2026-06-08T05:44:47.621632
+Prompt summary: Added Action Ledger (Audit Trail) UI improvements to the Quipsly Assistant Sidebar.
+
+Files changed:
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`: Renamed "Recent assistant changes" to "Action Ledger (Audit Trail)" with an Activity icon. Renamed "Export JSON" to "Export Diagnostic Ledger" with a Download icon. Added chronological timestamps to each ledger item so it looks and feels like a real audit log rather than a generic notification list.
+
+Files intentionally avoided:
+- Avoided making changes to the `saveAssistantAction` and `undoAssistantAction` server logic.
+
+Validation run:
+- Verified UI string updates and new icon imports.
+- Next.js local dev should pick this up cleanly as it only uses `lucide-react`.
+
+Risks:
+- Timestamps use local browser time formatting which is fine for the UI but the raw export will still use ISO strings.
+
+Recommended next handoff:
+- AG-Editor-Spine to verify that authors feel comfortable with the new audit ledger visibility.
+
+Timestamp: 2026-06-08T05:51:07.893368
+Prompt summary: Polishing Quipsly Assistant UI integration with the newly added QuipLore semantic models.
+
+Files changed:
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx`: Changed the "Save as Research Note" button to "Save to QuipLore" and used a `BookOpen` icon to reinforce the connection to the new QuipLore domain models introduced in the Prisma schema.
+- `apps/quipsly/src/components/useQuipslyAssistant.ts`: Updated the `saveAction` and `undoSaveAction` internal ledger logs to clearly say "Saved as persistent knowledge in QuipLore." instead of generic research notes.
+
+Validation run:
+- Verified UI strings and icons align with the QuipLore domain added in recent schema migration.
+
+Risks:
+- None. These are purely UI/label changes that match the new data models.
+
+Recommended next handoff:
+- AG-QuipLore to take the saved overlay notes and wire them into real `QuipLoreQuote` and `QuipLoreUserAnnotation` models now that the schema exists.
+
+Timestamp: 2026-06-08T14:39:13.369394
+Prompt summary: Taking a "bigger swing" to connect the Assistant explicitly into the QuipLore backend.
+
+Actions taken:
+- Verified `EditorMargin` component was already implemented and wired up to the editor blocks in `BlockItem.tsx`, fulfilling the margin suggestion requirement on the UI side.
+- Updated `saveAssistantAction` in `actions.ts` to persist data into `QuipLoreQuote` and `QuipLoreUserAnnotation` rather than only saving to `StudioAssistantLedger`.
+- Updated `undoSavedAssistantAction` in `actions.ts` to delete the `QuipLoreQuote` that was created during the save action.
+
+This bridges the gap between the Assistant’s session-based ledger and the durable, project-wide semantic Story Bible (QuipLore) in a completely backend-safe way.
+
+## 2026-06-08 16:20 local - AG-Assistant
+
+Prompt summary: Make the Quipsly assistant more useful without becoming spooky or destructive. Add safe drafting tools, what-changed UI, and update restrictive rules to support drafting.
+
+Files changed:
+- `apps/quipsly/src/app/api/quipsly-assistant/route.ts` (Enabled `PROPOSE_DRAFT` and `PROPOSE_REWRITE`, updated system prompts)
+- `apps/quipsly/src/components/QuipslyAssistantSidebar.tsx` (Added "What Changed" UI rendering for rewrite intents)
+
+Files intentionally avoided:
+- `apps/quipsly/src/components/research/AssistantSidebar.tsx` (Deprecated early component)
+- `apps/quipsly/src/app/(app)/create/BlockItem.tsx` (Unrelated typecheck errors)
+
+Validation run:
+- Local `pnpm --filter quipsly typecheck` executed.
+
+Risks:
+- Large draft payloads could inflate the database `payloadJson` over time if the ledger isn't occasionally pruned or paginated correctly.
+
+Recommended next handoff: AG-Release-Captain for deployment or the user for continued Beta testing.

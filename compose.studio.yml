@@ -2,7 +2,7 @@ name: high-ground-studio-local
 
 services:
   studio-postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: high-ground-studio-postgres
     environment:
       POSTGRES_DB: high_ground_studio

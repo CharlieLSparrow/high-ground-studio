@@ -32,6 +32,7 @@ import { SourceBadge } from "./SourceBadge";
 import { StatPanel } from "./StatPanel";
 import { VerificationBadge } from "./VerificationBadge";
 import { QuipVisual } from "./QuipVisual";
+import { SaveToLorelistModal } from "./SaveToLorelistModal";
 
 const modeOptions: readonly {
   readonly mode: StreamMode;
@@ -72,6 +73,7 @@ export function QuipStreamExperience({
   const activeQuoteIdRef = useRef<string | null>(null);
   const wheelLockedRef = useRef(false);
   const touchStartYRef = useRef<number | null>(null);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
 
   const cards = useMemo(() => getQuipStreamCards(mode), [mode]);
   const activeCard = cards[index] ?? cards[0];
@@ -196,22 +198,14 @@ export function QuipStreamExperience({
     });
   }, [activeCard, pushEvent]);
 
-  const toggleLorelist = useCallback(() => {
-    if (!activeCard) {
-      return;
-    }
-
+  const handleSaveToLorelist = useCallback((lorelistId: string, note?: string) => {
+    if (!activeCard) return;
     setLorelistQuoteIds((current) => {
       const next = new Set(current);
-
-      if (next.has(activeCard.quote.id)) {
-        next.delete(activeCard.quote.id);
-        pushEvent("remove_from_lorelist", activeCard.quote.id);
-      } else {
-        next.add(activeCard.quote.id);
-        pushEvent("add_to_lorelist", activeCard.quote.id);
-      }
-
+      next.add(activeCard.quote.id);
+      const metadata: Record<string, string> = { lorelistId };
+      if (note) metadata.note = note;
+      pushEvent("add_to_lorelist", activeCard.quote.id, metadata);
       return next;
     });
   }, [activeCard, pushEvent]);
@@ -368,11 +362,11 @@ export function QuipStreamExperience({
               </button>
               <button
                 className={`icon-button ${isInLorelist ? "active" : ""}`}
-                onClick={toggleLorelist}
-                title={isInLorelist ? "Remove from Lorelist" : "Add to Lorelist"}
+                onClick={() => setSaveModalOpen(true)}
+                title={isInLorelist ? "Added to Lorelist" : "Add to Lorelist"}
                 type="button"
                 aria-label={
-                  isInLorelist ? "Remove from Lorelist" : "Add to Lorelist"
+                  isInLorelist ? "Added to Lorelist" : "Add to Lorelist"
                 }
               >
                 <ListPlus size={17} aria-hidden="true" />
@@ -465,6 +459,15 @@ export function QuipStreamExperience({
           </div>
         </div>
       ) : null}
+
+      {saveModalOpen && (
+        <SaveToLorelistModal
+          quote={activeCard.quote}
+          isOpen={saveModalOpen}
+          onClose={() => setSaveModalOpen(false)}
+          onSave={handleSaveToLorelist}
+        />
+      )}
     </section>
   );
 }

@@ -94,3 +94,124 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.email) {
+      return Response.json(
+        { error: "Unauthorized. Please sign in first." },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: session.user.email.toLowerCase() },
+          {
+            aliases: {
+              some: {
+                email: session.user.email.toLowerCase(),
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!user) {
+      return Response.json(
+        { error: "User identity record not found in database." },
+        { status: 404 }
+      );
+    }
+
+    const { snippetId } = await req.json();
+
+    if (!snippetId) {
+      return Response.json(
+        { error: "Snippet ID is required." },
+        { status: 400 }
+      );
+    }
+
+    await prisma.snippet.delete({
+      where: {
+        id: snippetId,
+        userId: user.id,
+      },
+    });
+
+    return Response.json({ success: true, message: "Snippet deleted successfully." });
+  } catch (error: any) {
+    console.error("Error deleting snippet:", error);
+    return Response.json(
+      { error: "Internal server error.", details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.email) {
+      return Response.json(
+        { error: "Unauthorized. Please sign in first." },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: session.user.email.toLowerCase() },
+          {
+            aliases: {
+              some: {
+                email: session.user.email.toLowerCase(),
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!user) {
+      return Response.json(
+        { error: "User identity record not found in database." },
+        { status: 404 }
+      );
+    }
+
+    const { snippetId, note } = await req.json();
+
+    if (!snippetId) {
+      return Response.json(
+        { error: "Snippet ID is required." },
+        { status: 400 }
+      );
+    }
+
+    const snippet = await prisma.snippet.update({
+      where: {
+        id: snippetId,
+        userId: user.id,
+      },
+      data: {
+        note: note === undefined ? undefined : note,
+      },
+    });
+
+    return Response.json({ success: true, message: "Snippet updated successfully.", snippet });
+  } catch (error: any) {
+    console.error("Error updating snippet:", error);
+    return Response.json(
+      { error: "Internal server error.", details: error.message },
+      { status: 500 }
+    );
+  }
+}

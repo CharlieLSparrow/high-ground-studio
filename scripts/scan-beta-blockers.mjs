@@ -2,6 +2,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MANIFEST_PATH = path.join(process.cwd(), 'docs', 'coordination', 'BETA-MANIFEST.md');
+const REPORTS_DIR = path.join(process.cwd(), 'docs', 'coordination', 'antigravity-reports');
+
+const ALLOWED_LANES = new Set([
+  'AG-Editor-Spine',
+  'AG-Assistant',
+  'AG-Research-RAG',
+  'AG-Video-Editor',
+  'AG-Storyboard',
+  'AG-Project-Management',
+  'AG-Marketing',
+  'AG-Patreon-Support',
+  'AG-Mobile-Recording',
+  'AG-Agent-Coordination',
+  'AG-HighGroundOdyssey',
+  'AG-QuipLore',
+  'AG-Fiction-Analysis',
+  'AG-Publishing-Integrations',
+  'AG-Scroll-Experiences',
+  'AG-Release-Captain'
+]);
 
 async function checkHealthz() {
   const targetUrl = process.env.PREVIEW_URL || 'http://localhost:3000';
@@ -49,11 +69,20 @@ async function runScan() {
   const lines = content.split('\n');
 
   let inTable = false;
+  let inBlockersSection = false;
   const statuses = [];
   const blockers = [];
 
   // Parse the table and blockers
   for (const line of lines) {
+    if (line.startsWith('## 2. Active Beta Blockers')) {
+      inBlockersSection = true;
+      continue;
+    }
+    if (inBlockersSection && line.startsWith('## 3.')) {
+      inBlockersSection = false;
+    }
+
     if (line.trim().startsWith('| **AG-')) {
       inTable = true;
       const cols = line.split('|').map(c => c.trim());
@@ -64,9 +93,9 @@ async function runScan() {
       }
     }
 
-    if (line.trim().startsWith('- **AG-Release-Captain**:')) {
+    if (inBlockersSection && line.trim().startsWith('- **')) {
       if (!line.includes('RESOLVED')) {
-         blockers.push('Release Captain deployment blocker is active: ' + line.trim());
+         blockers.push(line.trim());
       }
     }
   }
@@ -74,6 +103,9 @@ async function runScan() {
   console.log('🛡️  Quipsly Beta Pre-Deploy Scan 🛡️\n');
   let hasError = false;
   let hasPending = false;
+  let hasNamingError = false;
+
+  let hasNeedsReview = false;
 
   for (const { lane, status } of statuses) {
     if (status.toLowerCase().includes('blocked')) {
@@ -82,9 +114,32 @@ async function runScan() {
     } else if (status.toLowerCase().includes('pending')) {
       console.warn(`⚠️  PENDING: ${lane} has not completed its beta execution pass.`);
       hasPending = true;
+    } else if (status.toLowerCase().includes('needs codex review')) {
+      console.error(`🛑 REVIEW REQUIRED: ${lane} requires explicit Codex review.`);
+      hasNeedsReview = true;
     } else if (status.toLowerCase().includes('ready')) {
       console.log(`✅ READY: ${lane}`);
     }
+  }
+
+  if (fs.existsSync(REPORTS_DIR)) {
+    console.log('\n📝 Validating Report Lane Names...');
+    const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.md'));
+    for (const file of files) {
+      const reportContent = fs.readFileSync(path.join(REPORTS_DIR, file), 'utf-8');
+      const reportLines = reportContent.split('\n');
+      for (const rline of reportLines) {
+        const match = rline.match(/^## .*? - (AG-[\w-]+)/);
+        if (match) {
+          const lane = match[1];
+          if (!ALLOWED_LANES.has(lane)) {
+            console.error(`❌ INVALID LANE NAME: "${lane}" found in ${file}. Agents must use strictly allowed lane names.`);
+            hasNamingError = true;
+          }
+        }
+      }
+    }
+    if (!hasNamingError) console.log('✅ All lane names correctly adhere to the stable 16-lane manifest.');
   }
 
   if (blockers.length > 0) {
@@ -98,8 +153,11 @@ async function runScan() {
   await checkHealthz();
 
   console.log('\n--- Scan Summary ---');
-  if (hasError) {
-    console.error('❌ DEPLOY BLOCKED. Resolve blocked lanes and global blockers before deploying.');
+  if (hasError || hasNamingError) {
+    console.error('❌ DEPLOY BLOCKED. Resolve blocked lanes, invalid names, and global blockers before deploying.');
+    process.exit(1);
+  } else if (hasNeedsReview) {
+    console.error('❌ DEPLOY BLOCKED. You must review the lanes marked "Needs Codex Review" and explicitly change their status to "Ready" in the manifest.');
     process.exit(1);
   } else if (hasPending) {
     console.warn('⚠️  DEPLOY WARN. Some lanes are still pending. Proceed only if those lanes are intentionally omitted from this beta patch.');

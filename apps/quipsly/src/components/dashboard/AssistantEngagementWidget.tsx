@@ -32,7 +32,7 @@ export const AssistantEngagementWidget = React.memo(({ logs }: { logs: Assistant
                 aria-hidden="true"
               >
                 {log.type === 'research' ? <Search size={14} className="text-blue-600" /> : 
-                 log.type === 'cleanup' ? <Feather size={14} className="text-indigo-600" /> : 
+                 log.type === 'cleanup' ? <img src="/quipsly-app-icon.png" alt="" className="w-3.5 h-3.5 rounded-[3px]" /> : 
                  <Sparkles size={14} className="text-amber-600" />}
               </div>
               <div 

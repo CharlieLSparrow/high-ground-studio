@@ -57,11 +57,13 @@
 // office that eventually learns all their names, bloodlines, entitlements, and
 // regrettable scheduling decisions.
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 // Roles are stored separately from auth provider details. That is deliberate.
@@ -223,12 +225,18 @@ model User {
   primaryEmail       String    @unique
   name               String?
   image              String?
+  firebaseUid        String?   @unique
   newsletterOptIn    Boolean   @default(false)
   announcementsOptIn Boolean   @default(false)
   welcomeCompletedAt DateTime?
   isActive           Boolean   @default(true)
+  emailVerified      DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+
+  accounts     Account[]
+  sessions     Session[]
+  quipslyNotes QuipslyNote[]
 
   aliases               UserEmail[]
   roles                 UserRole[]
@@ -252,23 +260,61 @@ model User {
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
   weeklyCommitmentsReviewed    WeeklyCommitment[]     @relation("WeeklyCommitmentReviewedBy")
 
-  collections             Collection[]
-  snippets                Snippet[]
-  bookmarks               Bookmark[]
-  quipStreamSessions      QuipStreamSession[]
-  socialAccounts          SocialAccount[]
-  marketingFunnels        MarketingFunnel[]
-  marketingPersonas       MarketingPersona[]
-  landingPages            LandingPage[]
-  emailSequences          EmailSequence[]
-  marketingLeads          MarketingLead[]
-  marketingCampaigns      MarketingCampaign[]
-  organizationMemberships OrganizationMember[]
-  studioProjectAccessGrantsCreated StudioProjectAccessGrant[] @relation("StudioProjectAccessGrantCreatedBy")
-  nativeAuthCodes        StudioNativeAuthCode[]
-  nativeDeviceSessions   StudioNativeDeviceSession[]
-  feedbackTickets         FeedbackTicket[]
-  userEvents              UserEvent[]
+  collections                      Collection[]
+  snippets                         Snippet[]
+  bookmarks                        Bookmark[]
+  quipStreamSessions               QuipStreamSession[]
+  socialAccounts                   SocialAccount[]
+  marketingFunnels                 MarketingFunnel[]
+  marketingPersonas                MarketingPersona[]
+  landingPages                     LandingPage[]
+  emailSequences                   EmailSequence[]
+  marketingLeads                   MarketingLead[]
+  marketingCampaigns               MarketingCampaign[]
+  organizationMemberships          OrganizationMember[]
+  studioProjectAccessGrantsCreated StudioProjectAccessGrant[]  @relation("StudioProjectAccessGrantCreatedBy")
+  nativeAuthCodes                  StudioNativeAuthCode[]
+  nativeDeviceSessions             StudioNativeDeviceSession[]
+  feedbackTickets                  FeedbackTicket[]
+  userEvents                       UserEvent[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -404,10 +450,10 @@ model Membership {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  user            User                       @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
-  plan            MembershipPlan             @relation(fields: [planId], references: [id], onDelete: Restrict)
-  grantedBy       User?                      @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
-  reconciliations MembershipReconciliation[]
+  user      User                @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  plan      MembershipPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  grantedBy User?               @relation("MembershipGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+  ledgers   EntitlementLedger[]
 
   @@index([userId, status])
   @@index([planId])
@@ -453,6 +499,39 @@ model CoachingFeatureGrant {
   @@index([featureId, status])
   @@index([userId, status])
   @@index([source, status])
+}
+
+model StudioAsset {
+  id         String   @id @default(cuid())
+  filename   String
+  url        String
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  tagsJson   Json
+  uploadedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+model WorldHubSocialInteraction {
+  id              String   @id @default(cuid())
+  platform        String
+  interactionType String
+  externalId      String   @unique
+  parentPostId    String?
+  authorName      String
+  authorAvatarUrl String?
+  content         String
+  repliedTo       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([platform, interactionType])
+  @@index([createdAt])
 }
 
 model WeeklyCommitment {
@@ -576,6 +655,9 @@ model WorldHubProviderConnection {
   providerKind      String
   displayName       String
   status            String    @default("planned")
+  accountId         String?
+  accountName       String?
+  avatarUrl         String?
   accountLabel      String?
   capabilitiesJson  Json
   requiredEnvJson   Json
@@ -616,8 +698,8 @@ model WorldHubProviderEvent {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  connection      WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  reconciliations MembershipReconciliation[]
+  connection         WorldHubProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  entitlementLedgers EntitlementLedger[]
 
   @@unique([connectionId, idempotencyKey])
   @@index([connectionId, receivedAt])
@@ -637,6 +719,8 @@ model WorldHubProviderSyncJob {
   errorMessage     String?
   requestedByEmail String?
   requestedAt      DateTime  @default(now())
+  scheduledAt      DateTime?
+  attempts         Int       @default(0)
   startedAt        DateTime?
   completedAt      DateTime?
   createdAt        DateTime  @default(now())
@@ -646,6 +730,7 @@ model WorldHubProviderSyncJob {
 
   @@index([providerKey, status, requestedAt])
   @@index([subjectType, subjectId])
+  @@index([status, scheduledAt])
 }
 
 model WorldHubCatalogItem {
@@ -915,32 +1000,45 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace          StudioWorkspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents          StudioDocument[]
-  tags               StudioTag[]
-  viewDefinitions    StudioViewDefinition[]
-  knowledgeNodes     StudioKnowledgeNode[]
-  manuscript         StudioManuscript?         @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
-  mediaAssets        StudioMediaAsset[]
-  mediaBins          MediaBin[]
-  episodeProductions StudioEpisodeProduction[]
-  scenes             Scene[]
-  shootDays          ShootDay[]
-  storyEntities      StoryEntity[]
-  storyBibleActions  StoryBibleAction[]
-  storyboards        StudioStoryboard[]
-  chatThreads        StudioNestChatThread[]
-  chatMessages       StudioNestChatMessage[]
-  accessGrants       StudioProjectAccessGrant[]
-  nestInvites        StudioNestInvite[]
-  assetAttachments   StudioAssetAttachment[]
+  workspace           StudioWorkspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents           StudioDocument[]
+  tags                StudioTag[]
+  viewDefinitions     StudioViewDefinition[]
+  knowledgeNodes      StudioKnowledgeNode[]
+  manuscript          StudioManuscript?          @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets         StudioMediaAsset[]
+  mediaBins           MediaBin[]
+  episodeProductions  StudioEpisodeProduction[]
+  scenes              Scene[]
+  shootDays           ShootDay[]
+  storyEntities       StoryEntity[]
+  storyBibleActions   StoryBibleAction[]
+  storyboards         StudioStoryboard[]
+  chatThreads         StudioNestChatThread[]
+  chatMessages        StudioNestChatMessage[]
+  accessGrants        StudioProjectAccessGrant[]
+  nestInvites         StudioNestInvite[]
+  assetAttachments    StudioAssetAttachment[]
   assetProcessingJobs StudioAssetProcessingJob[]
-  sourceUnits        StudioSourceUnit[]
-  documentOperations StudioDocumentOperation[]
-  productionRooms    StudioProductionRoom[]
-  outputPackets      StudioOutputPacket[]
-  publishedArtifacts StudioPublishedArtifact[]
-  workflowJobs       StudioWorkflowJob[]
+  sourceUnits         StudioSourceUnit[]
+  documentOperations  StudioDocumentOperation[]
+  productionRooms     StudioProductionRoom[]
+  outputPackets       StudioOutputPacket[]
+  publishedArtifacts  StudioPublishedArtifact[]
+  workflowJobs        StudioWorkflowJob[]
+
+  // QuipLore Relations
+  quipLoreWorks       QuipLoreWork[]
+  quipLoreAuthors     QuipLoreAuthor[]
+  quipLoreSources     QuipLoreSource[]
+  quipLoreQuotes      QuipLoreQuote[]
+  quipLoreCitations   QuipLoreCitation[]
+  quipLoreAnnotations QuipLoreUserAnnotation[]
+  quipLoreThemes      QuipLoreTheme[]
+  quipLoreTags        QuipLoreTag[]
+  quipLoreCollections QuipLoreCollection[]
+
+  scrollExperiences StudioScrollExperience[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1084,19 +1182,19 @@ model StudioAssetVariant {
 }
 
 model StudioAssetProcessingJob {
-  id             String    @id @default(cuid())
-  projectId      String?
-  assetId        String
-  type           String
-  status         String    @default("queued")
+  id               String    @id @default(cuid())
+  projectId        String?
+  assetId          String
+  type             String
+  status           String    @default("queued")
   requestedByEmail String?
-  inputJson      Json      @default("{}")
-  resultJson     Json?
-  error          String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  inputJson        Json      @default("{}")
+  resultJson       Json?
+  error            String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   project StudioProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
   asset   StudioMediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -1107,23 +1205,23 @@ model StudioAssetProcessingJob {
 }
 
 model StudioSourceUnit {
-  id              String   @id @default(cuid())
-  projectId       String
-  documentId      String?
-  assetId         String?
-  slug            String
-  kind            String
-  title           String
-  sourceUrl       String?
-  sourcePath      String?
-  author          String?
-  capturedAt      DateTime?
-  immutableText   String?
-  editableNotes   String?
-  metadataJson    Json     @default("{}")
-  createdByEmail  String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(cuid())
+  projectId      String
+  documentId     String?
+  assetId        String?
+  slug           String
+  kind           String
+  title          String
+  sourceUrl      String?
+  sourcePath     String?
+  author         String?
+  capturedAt     DateTime?
+  immutableText  String?
+  editableNotes  String?
+  metadataJson   Json      @default("{}")
+  createdByEmail String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   project  StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document StudioDocument?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
@@ -1136,20 +1234,20 @@ model StudioSourceUnit {
 }
 
 model StudioDocumentOperation {
-  id             String   @id @default(cuid())
-  projectId      String
-  documentId     String
-  groupId        String?
-  actorEmail     String?
-  origin         String   @default("human")
-  operationType  String
-  status         String   @default("applied")
-  beforeJson     Json?
-  afterJson      Json?
-  payloadJson    Json     @default("{}")
-  reversible     Boolean  @default(true)
-  revertedAt     DateTime?
-  createdAt      DateTime @default(now())
+  id            String    @id @default(cuid())
+  projectId     String
+  documentId    String
+  groupId       String?
+  actorEmail    String?
+  origin        String    @default("human")
+  operationType String
+  status        String    @default("applied")
+  beforeJson    Json?
+  afterJson     Json?
+  payloadJson   Json      @default("{}")
+  reversible    Boolean   @default(true)
+  revertedAt    DateTime?
+  createdAt     DateTime  @default(now())
 
   project  StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -1160,21 +1258,21 @@ model StudioDocumentOperation {
 }
 
 model StudioProductionRoom {
-  id            String   @id @default(cuid())
-  projectId     String
-  documentId    String?
-  slug          String
-  title         String
-  kind          String   @default("episode")
-  status        String   @default("draft")
-  spineAssetId  String?
-  metadataJson  Json     @default("{}")
+  id             String   @id @default(cuid())
+  projectId      String
+  documentId     String?
+  slug           String
+  title          String
+  kind           String   @default("episode")
+  status         String   @default("draft")
+  spineAssetId   String?
+  metadataJson   Json     @default("{}")
   createdByEmail String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  project          StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document         StudioDocument?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  project          StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document         StudioDocument?         @relation(fields: [documentId], references: [id], onDelete: SetNull)
   timelineVersions StudioTimelineVersion[]
   outputPackets    StudioOutputPacket[]
   workflowJobs     StudioWorkflowJob[]
@@ -1201,28 +1299,28 @@ model StudioTimelineVersion {
 }
 
 model StudioOutputPacket {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   projectId        String
   documentId       String?
   productionRoomId String?
   slug             String
   kind             String
   title            String
-  status           String   @default("draft")
-  packetJson       Json     @default("{}")
-  lineageJson      Json     @default("{}")
+  status           String    @default("draft")
+  packetJson       Json      @default("{}")
+  lineageJson      Json      @default("{}")
   createdByEmail   String?
   approvedByEmail  String?
   approvedAt       DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document       StudioDocument?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  productionRoom StudioProductionRoom? @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
-  publishAttempts StudioPublishAttempt[]
+  project            StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document           StudioDocument?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  productionRoom     StudioProductionRoom?     @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  publishAttempts    StudioPublishAttempt[]
   publishedArtifacts StudioPublishedArtifact[]
-  workflowJobs   StudioWorkflowJob[]
+  workflowJobs       StudioWorkflowJob[]
 
   @@unique([projectId, slug])
   @@index([projectId, kind, status])
@@ -1231,18 +1329,18 @@ model StudioOutputPacket {
 }
 
 model StudioPublishAttempt {
-  id             String   @id @default(cuid())
-  outputPacketId String
-  destination    String
-  status         String   @default("queued")
-  requestJson    Json     @default("{}")
-  resultJson     Json?
-  error          String?
+  id               String    @id @default(cuid())
+  outputPacketId   String
+  destination      String
+  status           String    @default("queued")
+  requestJson      Json      @default("{}")
+  resultJson       Json?
+  error            String?
   requestedByEmail String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   outputPacket StudioOutputPacket @relation(fields: [outputPacketId], references: [id], onDelete: Cascade)
 
@@ -1251,17 +1349,17 @@ model StudioPublishAttempt {
 }
 
 model StudioPublishedArtifact {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   projectId      String
   outputPacketId String?
   destination    String
   externalId     String?
   publicUrl      String?
-  status         String   @default("published")
-  metadataJson   Json     @default("{}")
+  status         String    @default("published")
+  metadataJson   Json      @default("{}")
   publishedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   project      StudioProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   outputPacket StudioOutputPacket? @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
@@ -1272,23 +1370,23 @@ model StudioPublishedArtifact {
 }
 
 model StudioWorkflowJob {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   projectId        String?
   assetId          String?
   productionRoomId String?
   outputPacketId   String?
   type             String
-  status           String   @default("queued")
-  source           String   @default("app")
-  priority         Int      @default(100)
-  inputJson        Json     @default("{}")
+  status           String    @default("queued")
+  source           String    @default("app")
+  priority         Int       @default(100)
+  inputJson        Json      @default("{}")
   resultJson       Json?
   error            String?
   requestedByEmail String?
   startedAt        DateTime?
   completedAt      DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   project        StudioProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   asset          StudioMediaAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
@@ -1481,6 +1579,7 @@ model HgoEpisodePublishCandidate {
   proposedRoute          String
   readinessState         String
   candidateStatus        String    @default("private-review")
+  approvalStatus         String    @default("draft")
   packetJson             Json
   reviewBriefJson        Json
   draftPacketJson        Json
@@ -1617,6 +1716,7 @@ model StudioTaggedSpan {
 
 model StudioKnowledgeNode {
   id                    String                  @id @default(cuid())
+  externalId            String?                 @unique
   projectId             String
   documentId            String
   blockId               String
@@ -1900,15 +2000,15 @@ model StudioMediaAsset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects StudioProject[]
-  mediaBin MediaBin?       @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
-  clips    MediaClip[]
-  mediaTags StudioMediaTag[]
+  projects         StudioProject[]
+  mediaBin         MediaBin?                  @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips            MediaClip[]
+  mediaTags        StudioMediaTag[]
   assetAttachments StudioAssetAttachment[]
-  variants StudioAssetVariant[]
-  processingJobs StudioAssetProcessingJob[]
-  sourceUnits StudioSourceUnit[]
-  workflowJobs StudioWorkflowJob[]
+  variants         StudioAssetVariant[]
+  processingJobs   StudioAssetProcessingJob[]
+  sourceUnits      StudioSourceUnit[]
+  workflowJobs     StudioWorkflowJob[]
 
   @@index([createdAt])
   @@index([mediaBinId])
@@ -2524,6 +2624,9 @@ enum StoryEntityType {
   RELATIONSHIP
   TIMELINE_EVENT
   THEME_MOTIF
+  COMIC_ACT
+  COMIC_PANEL
+  BEAT
 }
 
 enum StoryBibleActionStatus {
@@ -2541,6 +2644,7 @@ enum StoryBibleActionType {
 
 model StoryEntity {
   id         String          @id @default(cuid())
+  externalId String?         @unique
   projectId  String
   type       StoryEntityType
   name       String
@@ -2603,25 +2707,25 @@ model StoryBibleLedger {
 }
 
 // -----------------------------------------------------------------------------
-// PATREON & PROVIDER RECONCILIATION
+// ENTITLEMENT LEDGER (Provider Agnostic)
 // -----------------------------------------------------------------------------
 
-model MembershipReconciliation {
+model EntitlementLedger {
   id             String   @id @default(cuid())
-  provider       String
-  providerEmail  String
+  provider       String // e.g., "patreon", "apple_iap", "stripe", "manual"
+  providerEmail  String?
   proposedTier   String
   action         String
   status         String   @default("pending")
   providerStatus String?
-  eventId        String
+  eventId        String?
   membershipId   String?
   note           String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  event      WorldHubProviderEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  membership Membership?           @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+  event      WorldHubProviderEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  membership Membership?            @relation(fields: [membershipId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
 }
@@ -2631,12 +2735,13 @@ model MembershipReconciliation {
 // -----------------------------------------------------------------------------
 
 model RetrievalEmbedding {
-  id              String   @id @default(cuid())
+  id              String                      @id @default(cuid())
   sourceOrigin    String // "studio-span" | "studio-knowledge" | "quipsly-lore"
   sourceId        String // The ID of the block/node
   projectId       String
   contentSnapshot String // The text that was embedded
-  createdAt       DateTime @default(now())
+  embedding       Unsupported("vector(768)")?
+  createdAt       DateTime                    @default(now())
 
   @@index([projectId])
 }
@@ -2654,8 +2759,9 @@ model StudioStoryboard {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  frames  StudioStoryboardFrame[]
+  project           StudioProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  frames            StudioStoryboardFrame[]
+  scrollExperiences StudioScrollExperience[]
 
   @@index([projectId])
 }
@@ -2678,7 +2784,8 @@ model StudioStoryboardFrame {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  storyboard StudioStoryboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+  storyboard      StudioStoryboard       @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+  scrollPanelRefs StudioScrollPanelRef[]
 
   @@index([storyboardId, sortOrder])
 }
@@ -2703,16 +2810,16 @@ model StudioNestChatThread {
 }
 
 model StudioNestChatMessage {
-  id          String   @id @default(cuid())
-  projectId   String
-  threadId    String
-  authorEmail String?
-  authorName  String?
-  body        String   @db.Text
-  gifUrl      String?
-  metadataJson Json    @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  projectId    String
+  threadId     String
+  authorEmail  String?
+  authorName   String?
+  body         String   @db.Text
+  gifUrl       String?
+  metadataJson Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   project StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   thread  StudioNestChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -2790,14 +2897,239 @@ model StudioAssistantAction {
 // -----------------------------------------------------------------------------
 
 model ScrollInteraction {
-  id               String   @id @default(cuid())
-  experienceId     String   // Maps to StudioStoryboard.id or StudioDocument.id
-  panelId          String?  // Maps to StudioStoryboardFrame.id or StudioDocumentBlock.id
-  userId           String?  // Nullable for guest/client review links
-  interactionType  String   // 'COMMENT', 'RATING', 'FAVORITE', 'SELECTION', 'COMPLETION'
-  payloadJson      Json     // e.g. { rating: 5 }, { text: "Fix this color" }
-  createdAt        DateTime @default(now())
+  id              String   @id @default(cuid())
+  experienceId    String // Maps to StudioStoryboard.id or StudioDocument.id
+  panelId         String? // Maps to StudioStoryboardFrame.id or StudioDocumentBlock.id
+  userId          String? // Nullable for guest/client review links
+  interactionType String // 'COMMENT', 'RATING', 'FAVORITE', 'SELECTION', 'COMPLETION'
+  payloadJson     Json // e.g. { rating: 5 }, { text: "Fix this color" }
+  createdAt       DateTime @default(now())
 
   @@index([experienceId, panelId])
   @@index([interactionType])
+}
+
+model StudioScrollExperience {
+  id           String   @id @default(cuid())
+  projectId    String
+  storyboardId String?
+  slug         String
+  title        String
+  layout       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project    StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  storyboard StudioStoryboard?     @relation(fields: [storyboardId], references: [id], onDelete: SetNull)
+  sections   StudioScrollSection[]
+
+  @@index([projectId])
+  @@index([storyboardId])
+}
+
+model StudioScrollSection {
+  id           String   @id @default(cuid())
+  experienceId String
+  sortOrder    Int
+  label        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  experience StudioScrollExperience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  panelRefs  StudioScrollPanelRef[]
+
+  @@index([experienceId, sortOrder])
+}
+
+model StudioScrollPanelRef {
+  id         String   @id @default(cuid())
+  sectionId  String
+  frameId    String? // Links to StudioStoryboardFrame if it exists
+  externalId String? // E.g., 'panel-001' from JSON if no strict relation
+  sortOrder  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  section StudioScrollSection    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  frame   StudioStoryboardFrame? @relation(fields: [frameId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId, sortOrder])
+  @@index([frameId])
+}
+
+// -----------------------------------------------------------------------------
+// QUIPLORE DOMAIN (SEMANTIC RESEARCH & CITATIONS)
+// -----------------------------------------------------------------------------
+
+model QuipLoreAuthor {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project StudioProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  works   QuipLoreWork[]
+  quotes  QuipLoreQuote[]
+
+  @@index([projectId])
+}
+
+model QuipLoreWork {
+  id          String    @id @default(cuid())
+  projectId   String
+  authorId    String?
+  title       String
+  description String?   @db.Text
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project StudioProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author  QuipLoreAuthor?  @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  sources QuipLoreSource[]
+  quotes  QuipLoreQuote[]
+
+  @@index([projectId])
+}
+
+model QuipLoreSource {
+  id          String   @id @default(cuid())
+  projectId   String
+  workId      String?
+  title       String
+  url         String?
+  isbn        String?
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   StudioProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  work      QuipLoreWork?      @relation(fields: [workId], references: [id], onDelete: SetNull)
+  quotes    QuipLoreQuote[]
+  citations QuipLoreCitation[]
+
+  @@index([projectId])
+}
+
+model QuipLoreQuote {
+  id        String                      @id @default(cuid())
+  projectId String
+  workId    String?
+  authorId  String?
+  sourceId  String?
+  text      String                      @db.Text
+  context   String?                     @db.Text
+  embedding Unsupported("vector(768)")?
+  createdAt DateTime                    @default(now())
+  updatedAt DateTime                    @updatedAt
+
+  project     StudioProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  work        QuipLoreWork?            @relation(fields: [workId], references: [id], onDelete: SetNull)
+  author      QuipLoreAuthor?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  source      QuipLoreSource?          @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  citations   QuipLoreCitation[]
+  annotations QuipLoreUserAnnotation[]
+  tags        QuipLoreTag[]            @relation("QuoteTags")
+  collections QuipLoreCollection[]     @relation("QuoteCollections")
+
+  @@index([projectId])
+}
+
+model QuipLoreCitation {
+  id        String   @id @default(cuid())
+  projectId String
+  quoteId   String
+  sourceId  String?
+  locator   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project StudioProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quote   QuipLoreQuote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  source  QuipLoreSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([quoteId])
+}
+
+model QuipLoreUserAnnotation {
+  id        String   @id @default(cuid())
+  projectId String
+  quoteId   String
+  note      String   @db.Text
+  isPrivate Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quote   QuipLoreQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([quoteId])
+}
+
+model QuipLoreTheme {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tags    QuipLoreTag[]
+
+  @@index([projectId])
+}
+
+model QuipLoreTag {
+  id        String   @id @default(cuid())
+  projectId String
+  themeId   String?
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project StudioProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  theme   QuipLoreTheme?  @relation(fields: [themeId], references: [id], onDelete: SetNull)
+  quotes  QuipLoreQuote[] @relation("QuoteTags")
+
+  @@unique([projectId, name])
+}
+
+model QuipLoreCollection {
+  id          String   @id @default(cuid())
+  projectId   String
+  title       String
+  description String?  @db.Text
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project StudioProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quotes  QuipLoreQuote[] @relation("QuoteCollections")
+
+  @@index([projectId])
+}
+
+// -----------------------------------------------------------------------------
+// Native App Models (Quipsly Notes MVP)
+// -----------------------------------------------------------------------------
+
+model QuipslyNote {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  content    String
+  tags       String[] @default([])
+  folderName String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([updatedAt(sort: Desc)])
 }

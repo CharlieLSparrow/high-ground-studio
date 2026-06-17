@@ -1,9 +1,10 @@
 import "server-only";
 
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, StudioProjectAccessRole } from "@prisma/client";
 
 import { createStarterBlocks } from "@/app/(app)/create/starterDocuments";
 import { ensureStudioProjectOwnerGrant, normalizeAccessEmail } from "@/lib/server/studio-project-access";
+import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 import {
   defaultDocumentTitleForNest,
   ensureStudioWorkspace,
@@ -18,6 +19,11 @@ export type LiveWorkNestTemplate = {
   nestKind: StudioNestKind;
   documentTitle?: string;
   isPrivate?: boolean;
+  collaborators?: Array<{
+    email: string;
+    role: StudioProjectAccessRole;
+    note?: string;
+  }>;
 };
 
 export const LIVE_WORK_NESTS: LiveWorkNestTemplate[] = [
@@ -37,10 +43,22 @@ export const LIVE_WORK_NESTS: LiveWorkNestTemplate[] = [
   },
   {
     slug: "marine-biology-research",
-    name: "Marine Biology Research",
-    description: "Shared marine photo-research workspace for image intake, organism identification notes, dataset manifests, MLE planning, and publication-ready findings.",
+    name: "Chula Vista Reef Ball Research",
+    description: "Visual research Nest for Chula Vista reef-ball tile photos, workbook metadata, organism identification, mask annotations, review notes, and ML-ready dataset exports.",
     nestKind: "research",
-    documentTitle: "Marine Biology Photo Research Notebook",
+    documentTitle: "Chula Vista Reef Ball Research Notebook",
+    collaborators: [
+      {
+        email: "charlie@highgroundodyssey.com",
+        role: "OWNER",
+        note: "Default collaborator for the reef-ball visual research Nest.",
+      },
+      {
+        email: "mako@highgroundodyssey.com",
+        role: "EDITOR",
+        note: "Default collaborator for the reef-ball visual research Nest.",
+      },
+    ],
   },
   {
     slug: "quiplore-quote-library",
@@ -139,6 +157,58 @@ async function ensureDocumentStarterBlocks({
   }
 }
 
+async function ensureTemplateCollaboratorGrants({
+  prisma,
+  projectId,
+  collaborators,
+  ownerEmail,
+  createdByEmail,
+}: {
+  prisma: PrismaClient;
+  projectId: string;
+  collaborators?: LiveWorkNestTemplate["collaborators"];
+  ownerEmail?: string | null;
+  createdByEmail?: string | null;
+}) {
+  if (!collaborators?.length) return;
+
+  const normalizedOwnerEmail = normalizeAccessEmail(ownerEmail);
+  const normalizedCreatedByEmail = normalizeAccessEmail(createdByEmail);
+
+  for (const collaborator of collaborators) {
+    const email = normalizeAccessEmail(collaborator.email);
+    if (!email || email === normalizedOwnerEmail) continue;
+
+    await ensureInvitedStudioUserByEmail({
+      email,
+      prisma,
+    });
+
+    await prisma.studioProjectAccessGrant.upsert({
+      where: {
+        projectId_email: {
+          projectId,
+          email,
+        },
+      },
+      update: {
+        role: collaborator.role,
+        status: "ACTIVE",
+        createdByEmail: normalizedCreatedByEmail || normalizedOwnerEmail || null,
+        note: collaborator.note || null,
+      },
+      create: {
+        projectId,
+        email,
+        role: collaborator.role,
+        status: "ACTIVE",
+        createdByEmail: normalizedCreatedByEmail || normalizedOwnerEmail || null,
+        note: collaborator.note || null,
+      },
+    });
+  }
+}
+
 export async function ensureLiveWorkNests({
   prisma,
   ownerEmail,
@@ -234,6 +304,14 @@ export async function ensureLiveWorkNests({
       ownerEmail: normalizedOwnerEmail,
       createdByEmail: normalizedOwnerEmail,
       prisma,
+    });
+
+    await ensureTemplateCollaboratorGrants({
+      prisma,
+      projectId: project.id,
+      collaborators: template.collaborators,
+      ownerEmail: normalizedOwnerEmail,
+      createdByEmail: normalizedOwnerEmail,
     });
 
     results.push({ slug: template.slug, id: project.id, created });

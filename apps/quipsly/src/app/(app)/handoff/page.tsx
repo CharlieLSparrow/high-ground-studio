@@ -4,7 +4,8 @@ import { FileText, Download, Printer } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HandoffDashboard({ searchParams }: { searchParams: { projectId?: string } }) {
+export default async function HandoffDashboard({ searchParams }: { searchParams: Promise<{ projectId?: string }> }) {
+  const params = await searchParams;
   const prisma = getPrismaClient();
 
   const studioProjects = await prisma.studioProject.findMany({
@@ -12,7 +13,7 @@ export default async function HandoffDashboard({ searchParams }: { searchParams:
   });
 
   // Pick first by default if not specified
-  const selectedProjectId = searchParams.projectId || studioProjects[0]?.id;
+  const selectedProjectId = params.projectId || studioProjects[0]?.id;
 
   return (
     <>

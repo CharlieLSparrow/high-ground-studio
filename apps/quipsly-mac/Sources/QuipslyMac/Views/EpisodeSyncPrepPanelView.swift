@@ -95,7 +95,7 @@ struct EpisodeSyncPrepPanelView: View {
         if !hasSpine {
             nextAction = "Choose one clean audio file as the spine."
         } else if targetCount == 0 {
-            nextAction = "Add camera video, b-roll, or reference clips."
+            nextAction = "Add camera video, b-roll, or reference decisions."
         } else if heldCount > 0 {
             nextAction = "Recover held files or keep them visible for later."
         } else {
@@ -106,7 +106,7 @@ struct EpisodeSyncPrepPanelView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "slider.horizontal.below.rectangle")
                     .font(.title3)
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(.quipslyClayTeal)
                     .frame(width: 28)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -155,7 +155,7 @@ struct EpisodeSyncPrepPanelView: View {
             }
         }
         .padding(14)
-        .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.quipslyClayTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func cockpitMetric(label: String, value: String, tone: Color, detail: String) -> some View {
@@ -181,7 +181,7 @@ struct EpisodeSyncPrepPanelView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("No imported episode media yet.")
                 .font(.headline)
-            Text("Import one audio file as the spine, then add camera video or reference clips. This panel will turn those imports into a sync-ready checklist.")
+            Text("Import one audio file as the spine, then add camera video or reference decisions. This panel will turn those imports into a sync-ready checklist.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -229,7 +229,7 @@ struct EpisodeSyncPrepPanelView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("No video targets queued yet.")
                         .font(.subheadline.weight(.semibold))
-                    Text("Add camera video, b-roll, YouTube/source clips, or reference clips. They will appear here with duration, wall-clock hints, and offset controls.")
+                    Text("Add camera video, b-roll, YouTube/source decisions, or reference decisions. They will appear here with duration, wall-clock hints, and offset controls.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -263,7 +263,7 @@ struct EpisodeSyncPrepPanelView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Sync diagnostics packet")
                         .font(.headline)
-                    Text("Export or send a compact JSON snapshot of this episode import/sync-prep state without changing timeline clips.")
+                    Text("Export or send a compact JSON snapshot of this episode import/sync-prep state without changing timeline decisions.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -581,7 +581,7 @@ private struct TargetVideoSyncCard: View {
     }
 
     private var iconName: String {
-        target.registration?.assetId == nil ? "video.badge.exclamationmark" : "video.fill"
+        target.registration?.assetId == nil ? "exclamationmark.triangle" : "video.fill"
     }
 
     private var statusTint: Color {
@@ -686,7 +686,7 @@ private func roleLabel(_ role: EpisodeImportRole) -> String {
     case .cameraVideo:
         return "Camera video"
     case .referenceClip:
-        return "Reference clip"
+        return "Reference decision"
     case .bRoll:
         return "B-roll"
     case .youtubeSourceClip:

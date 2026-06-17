@@ -509,3 +509,63 @@ Risks or follow-up needed:
 
 Whether Codex should keep, adjust, quarantine, or validate your work:
 - **Keep.** The change is entirely additive, prevents a severe UX failure post-signup, and integrates seamlessly with the existing middleware rules. Codex should validate the visual styling of `/welcome` matches expectations.
+
+## 2026-06-08 11:00 local - AG-Marketing
+
+Prompt summary: Improve public Quipsly positioning with specific, marketable workflows. Explain writing, research packets, media import/sync, YouTube/video editing, podcast production, publishing, quote/scroll/comic/course outputs, and Quipslys as enthusiastic research assistants. Tone should be warm, practical, creative, concrete, yes-anding the philosophy with product proof and avoiding preachy anti-AI language.
+
+Files changed:
+- `apps/quipsly/src/app/(marketing)/page.tsx`
+
+Files intentionally avoided:
+- `apps/quipsly/src/proxy.ts` (Routing logic)
+- Any auth or Nest (`/create`, `/dashboard`) routes.
+
+Validation run:
+- No terminal builds executed, visual inspection of code and React syntax confirmed safe.
+
+Risks:
+- Copy changes modify the Problem Manifesto and feature grid on the landing page. We've removed the explicit negative references to generative AI, framing Quipslys as empowering tools instead. Need to monitor if this impacts the previous messaging strategy with Codex.
+
+Recommended next handoff:
+- Hand back to Codex or wait for further marketing assets to inject.
+
+## 2026-06-08 11:45 local - AG-Marketing
+
+Prompt summary: Take the initiative to anchor everything in good UX or create a more solid infrastructure.
+
+Files changed:
+- `apps/quipsly/src/app/(marketing)/pricing/page.tsx` (New - redirect to `/#pricing`)
+- `apps/quipsly/src/app/(marketing)/waitlist/page.tsx` (New - redirect to `/#waitlist`)
+- `apps/quipsly/src/app/(marketing)/creator/page.tsx` (New - redirect to `/`)
+- `apps/quipsly/src/app/(marketing)/privacy/page.tsx` (New - Branded beta placeholder)
+- `apps/quipsly/src/app/(marketing)/terms/page.tsx` (New - Branded beta placeholder)
+- `docs/announcements/patreon-beta-announcement.md` (New - Communication asset)
+
+Validation run:
+- Verified `next.config.mjs` and `proxy.ts` behavior for these routes.
+
+Risks:
+- The new `/privacy` and `/terms` placeholders are basic but prevent 404s. The `/creator` route drops users to the homepage rather than a specific creator landing page, assuming we want to centralize traffic for the beta.
+
+Recommended next handoff:
+- The marketing lane is essentially fully prepped for the beta drop. Handoff to AG-Patreon-Support or AG-Release-Captain to proceed with launch activities.
+
+## 2026-06-08 14:38 local - AG-Marketing
+
+Prompt summary: Codex instructed to take a bigger swing inside bounding box, build the most useful concrete improvement without planning-only reports, and test it locally.
+
+Files changed:
+- `apps/quipsly/src/app/(marketing)/components/MarketingQuipslyDemo.tsx` (NEW)
+- `apps/quipsly/src/app/(marketing)/page.tsx`
+
+Files intentionally avoided:
+- Core Nest Auth and database schemas (fully decoupled frontend mock only).
+
+Validation run:
+- Verified interactive demo using standard Lucide icons, Next.js components, and Tailwind classes. Typechecked.
+
+Risks:
+- Purely frontend mock. Safe from database corruption or data loss. Does not interact with real user data yet.
+
+Recommended next handoff: AG-Marketing or AG-Agent-Coordination to review the interactive marketing funnel and begin aligning to backend RAG implementations once ready.

@@ -1,13 +1,17 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import {
   getHgoPublicEpisodeOutputContract,
   type HgoPublicEpisodePacket,
 } from "@/lib/hgo/public-episode-packet";
 
 export function EpisodeVideoEmbed({ packet }: { packet: HgoPublicEpisodePacket }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+
   if (!packet.media.youtubeId) return null;
 
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${packet.media.youtubeId}`;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${packet.media.youtubeId}?autoplay=1`;
   const watchUrl = `https://youtu.be/${packet.media.youtubeId}`;
   const thumbnailUrl = packet.media.heroImageUrl ?? `https://i.ytimg.com/vi/${packet.media.youtubeId}/maxresdefault.jpg`;
   const outputContract = packet.outputContract ?? getHgoPublicEpisodeOutputContract();
@@ -22,15 +26,35 @@ export function EpisodeVideoEmbed({ packet }: { packet: HgoPublicEpisodePacket }
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_0%,rgba(245,158,11,0.18),transparent_32%),linear-gradient(180deg,rgba(9,9,11,0.38)_0%,rgba(9,9,11,0.88)_72%,rgb(9,9,11)_100%)]" />
 
       <div className="relative w-full bg-black shadow-[0_40px_140px_rgba(0,0,0,0.85)]">
-        <div className="aspect-video w-full">
-          <iframe
-            className="h-full w-full"
-            src={embedUrl}
-            title={`${packet.title} on YouTube`}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allowFullScreen
-          />
+        <div className="aspect-video w-full relative">
+          {isPlaying ? (
+            <iframe
+              className="h-full w-full absolute inset-0"
+              src={embedUrl}
+              title={`${packet.title} on YouTube`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          ) : (
+            <button
+              onClick={() => setIsPlaying(true)}
+              className="group absolute inset-0 w-full h-full bg-cover bg-center flex items-center justify-center cursor-pointer outline-none border-none"
+              style={{ backgroundImage: `url(${thumbnailUrl})` }}
+              aria-label={`Play video: ${packet.title}`}
+            >
+              <div className="absolute inset-0 bg-black/40 transition-colors group-hover:bg-black/50" />
+              <div className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full border border-white/20 bg-black/60 text-white shadow-2xl backdrop-blur-sm transition-all duration-300 group-hover:scale-110 group-hover:border-amber-400 group-hover:bg-amber-400 group-hover:text-black">
+                <svg
+                  className="h-8 w-8 fill-current ml-1"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { auth } from "@/auth";
 
 import SocialLinks from "./SocialLinks";
 
-export default function SiteHeader() {
+export default async function SiteHeader() {
+  const session = await auth();
+  const user = session?.user;
+
   return (
     <header className="sticky top-0 z-50 border-b border-white/8 bg-[rgba(6,16,20,0.72)] backdrop-blur-[18px]">
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-6 py-4">
@@ -47,12 +51,29 @@ export default function SiteHeader() {
 
         <div className="flex items-center gap-3">
           <SocialLinks />
-          <Link
-            href="/api/auth/signin"
-            className="rounded-full border border-white/10 bg-white/8 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)] no-underline transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            Sign in
-          </Link>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <Link
+                href="/dashboard"
+                className="text-xs font-bold uppercase tracking-[0.08em] text-amber-400 hover:text-amber-300 no-underline transition"
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/api/auth/signout"
+                className="rounded-full border border-white/10 bg-white/8 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)] no-underline transition hover:border-red-500/40 hover:text-red-400"
+              >
+                Sign out
+              </Link>
+            </div>
+          ) : (
+            <Link
+              href="/api/auth/signin"
+              className="rounded-full border border-white/10 bg-white/8 px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)] no-underline transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>

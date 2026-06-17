@@ -9,6 +9,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageEyebrow from "@/components/ui/PageEyebrow";
 import BackLink from "@/components/ui/BackLink";
 import { deleteSnippetAction } from "./actions";
+import LibraryClient from "./LibraryClient";
 
 const LIBRARY_TIME_ZONE = "America/Denver";
 
@@ -61,7 +62,7 @@ export default async function LibraryPage() {
               Your Saved Highlights
             </h1>
             <p className="mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.88)]">
-              Manage and review the passages and notes you curated while reading High Ground Odyssey transcripts in the Interactive Reader.
+              Manage, search, and design shareable graphics from the passages and notes you curated while reading High Ground Odyssey transcripts.
             </p>
           </div>
         </GlassPanel>
@@ -77,58 +78,7 @@ export default async function LibraryPage() {
             </Link>
           </div>
         ) : (
-          <div className="mt-8 grid gap-6 md:grid-cols-2">
-            {snippets.map((snippet) => (
-              <GlassPanel
-                key={snippet.id}
-                className="flex flex-col justify-between p-6 text-[var(--text-light)]"
-              >
-                <div>
-                  <blockquote className="border-l-2 border-amber-400 pl-4 text-sm italic text-zinc-200">
-                    "{snippet.highlightedText}"
-                  </blockquote>
-                  {snippet.note && (
-                    <div className="mt-3 text-xs text-zinc-400 bg-black/20 px-3 py-2 rounded-lg">
-                      <strong>Note:</strong> {snippet.note}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-white/5 pt-4 text-xs text-zinc-400">
-                  <div className="space-y-1">
-                    <div>
-                      Saved from{" "}
-                      {snippet.sourceUrl ? (
-                        <Link
-                          href={snippet.sourceUrl}
-                          className="font-semibold text-amber-400 hover:underline"
-                        >
-                          {snippet.sourceTitle || "Episode"}
-                        </Link>
-                      ) : (
-                        <span className="font-semibold text-zinc-300">
-                          {snippet.sourceTitle || "Episode"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="font-mono text-zinc-500">
-                      {formatLibraryDate(snippet.createdAt)}
-                    </div>
-                  </div>
-
-                  <form action={deleteSnippetAction}>
-                    <input type="hidden" name="snippetId" value={snippet.id} />
-                    <button
-                      type="submit"
-                      className="inline-flex rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-red-200 transition hover:bg-red-500/25"
-                    >
-                      Delete
-                    </button>
-                  </form>
-                </div>
-              </GlassPanel>
-            ))}
-          </div>
+          <LibraryClient snippets={snippets} />
         )}
       </PageContainer>
     </main>

@@ -23,6 +23,10 @@ export type ProxyGenerationResult = {
   recoverable?: boolean;
 };
 
+export type ProxyGenerationOptions = {
+  cacheDir?: string;
+};
+
 function safeFilePart(value: string) {
   return value
     .trim()
@@ -37,8 +41,11 @@ function parseDurationSeconds(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function cacheRoot() {
-  return process.env.QUIPSLY_MEDIA_CACHE_DIR
+function cacheRoot(cacheDir?: string) {
+  const trimmedCacheDir = String(cacheDir || '').trim();
+  return trimmedCacheDir
+    ? path.resolve(trimmedCacheDir)
+    : process.env.QUIPSLY_MEDIA_CACHE_DIR
     || path.join(os.homedir(), 'Library', 'Caches', 'Quipsly', 'Media');
 }
 
@@ -82,7 +89,7 @@ function probeDuration(sourcePath: string): Promise<number | undefined> {
 }
 
 export class ProxyGenerator {
-  public async generateProxyAndThumbnail(sourcePath: string): Promise<ProxyGenerationResult> {
+  public async generateProxyAndThumbnail(sourcePath: string, options: ProxyGenerationOptions = {}): Promise<ProxyGenerationResult> {
     const absoluteSourcePath = path.resolve(sourcePath);
     const warnings: string[] = [];
     let fingerprint = '';
@@ -101,7 +108,7 @@ export class ProxyGenerator {
     }
     const ext = path.extname(absoluteSourcePath).toLowerCase();
     const baseName = safeFilePart(path.basename(absoluteSourcePath, ext));
-    const outputDir = path.join(cacheRoot(), fingerprint);
+    const outputDir = path.join(cacheRoot(options.cacheDir), fingerprint);
     const proxyPath = path.join(outputDir, `${baseName}.proxy.mp4`);
     const thumbnailPath = path.join(outputDir, `${baseName}.thumb.jpg`);
 

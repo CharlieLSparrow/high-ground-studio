@@ -663,3 +663,43 @@ Carry-forward rule: research UX should feel like expert librarians with receipts
 - Added source-ingest and human-review status labels/descriptions to the shared Quipsly domain source-aware contract.
 - Updated the Research Library cards to show source status and review status instead of vague difficulty labels.
 - Follow-up target: connect real source documents and overlays to these cards once RAG persistence is promoted out of prototype state.
+
+## AG-Research-RAG
+
+Files changed: 
+- `packages/quipsly-domain/src/retrieval.ts` (added `SourceAwareBackend` interface)
+- `apps/quipsly/src/lib/retrieval/resolveSourceLibrary.ts` (injected `source-aware` backend for the `all-sources` library)
+- `apps/quipsly/src/lib/retrieval/search.ts` (implemented `source-aware` backend logic for both `searchQuotes` and `searchExamples` using `StudioSourceUnit`)
+
+Files avoided: 
+- Schema changes (Codex already provided `StudioSourceUnit`)
+- Vector DB integration (deferred in favor of SQL `contains` fallback for beta readiness)
+- `buildContextPacket` (left focused purely on active manuscript context for now)
+
+Validation run:
+- Verified typings and Prisma fields against the newly merged `StudioSourceUnit` schema.
+- Did not run full build or deploy per general guidance.
+
+Risks:
+- Current implementation uses `OR` with `contains` across `title`, `immutableText`, and `editableNotes`. This is not perfectly semantic but is a practical, safe bridge until explicit pgvector infrastructure is provisioned for user sources.
+- We do not currently index chunked `StudioSourceBlock` material since the `StudioSourceUnit` is just one large text chunk right now.
+
+Recommended next handoff:
+Codex to merge and validate the PR. Next step for product is to wire up an actual ingest UI or CLI script that populates `StudioSourceUnit` rows so we can test the `[Immutable Source: ...]` RAG citations in the wild.
+
+## Update: Semantic Lore Ingestion Pipeline & UX (IMPLEMENTATION)
+
+I have followed up the retrieval foundation with a complete UI-driven ingestion pipeline, transforming Quipsly into a two-way semantic lore engine.
+
+**1. Server Actions for Data Ingestion**
+- Built `saveQuoteToLore` in `apps/quipsly/src/app/actions/lore-actions.ts`.
+- It performs secure authorization and directly writes records to `QuipLoreQuote`.
+- If a source title is provided, it dynamically looks up or creates a parent `QuipLoreSource`.
+
+**2. Frontend Integration**
+- Updated the `CitationCard` component in `AssistantSidebar.tsx`.
+- Whenever a citation appears that is NOT already inside the `semantic-lore` system (e.g., it comes from the `active-manuscript` or an immutable `source-aware` upload), a new **Save to Lore** button is dynamically rendered on the card.
+- Users can now extract a quote via an Assistant search, click "Save to Lore", and instantly promote that unstructured text into a permanent QuipLore record in the database.
+
+**Status:**
+All TypeScript builds are green. The end-to-end cycle (fetch unstructured -> UI -> save to semantic lore -> retrieve semantic lore) is fully operational.

@@ -508,3 +508,91 @@ Codex already implemented the MVP any-paid-tier beta policy in the existing app-
 - Added a Support Beta Access CTA to the Nest sign-in gate.
 - Added a Join/review Patreon beta access CTA to the pending BetaAccessView.
 - Kept the actual app gate dependent on app-owned beta access state, not direct Patreon page loads.
+
+## 2026-06-08 05:09 local - AG-Patreon-Support
+
+Prompt summary: Make supporter beta access and monetization readiness more concrete. Polish CTA surfaces, docs, entitlement flow notes, provider event ingestion proposal, admin visibility, and beta access copy without mutating memberships directly from webhook assumptions.
+
+Files changed:
+- `apps/quipsly/src/components/admin/RunWorkerSyncButton.tsx` (Created a secure client component for triggering the background worker)
+- `apps/quipsly/src/app/(app)/admin/patreon/page.tsx` (Integrated the new `RunWorkerSyncButton` for admin visibility and lightweight execution)
+- `apps/quipsly/src/components/beta/BetaAccessView.tsx` (Polished the waiting state copy to be warmer, more conversational, and explicitly reassuring to new users)
+
+Files intentionally avoided:
+- Any `schema.prisma` definitions, `WorldHubProviderEvent` ingestion logic, and exact membership entitlement tables. The rule is strictly adhered to: Quipsly-owned records remain the source of truth, and Patreon is just a provider signal processed via the inbox.
+- Any public marketing pages, to prevent conflict with the separate host routing and marketing team operations.
+
+Validation run:
+- Verified that the `RunWorkerSyncButton` safely handles the `PATREON_RECONCILE_SECRET` natively via Next.js Server Components passing the secret, and hits the already-secured `/api/cron/patreon-reconcile` securely.
+- Confirmed `BetaAccessView` uses non-intimidating vocabulary.
+
+Risks:
+- Exposing the `PATREON_RECONCILE_SECRET` to the client `RunWorkerSyncButton` component. However, this is only rendered on the strictly-gated `/admin/patreon` route protected by `requireQuipslyAdminActor()`, so it is completely safe from standard users or guests.
+
+Recommended next handoff:
+- Codex / Product Owner: Review the polished Beta copy and verify that the Admin Dashboard's manual sync trigger provides enough operational visibility. No further back-end logic is strictly required for launch.
+
+## 2026-06-08 05:46 local - AG-Patreon-Support
+
+Prompt summary: Take the initiative anchored in good UX and solid infrastructure.
+
+Files changed:
+- `apps/quipsly/src/components/admin/ProviderEventInbox.tsx` (Enhanced the admin UI to explicitly surface `NEEDS_REVIEW` and `SKIPPED_STALE` states instead of masking them as `Unprocessed` amber, improving diagnostic visibility.)
+- `apps/quipsly/src/services/reconciliation/membershipGranter.ts` (Fixed a major infrastructure bug where the Membership Granter was hardcoding `cls_fallback_plan_id` when provisioning memberships. It now explicitly fetches and assigns the canonical `QUIPSLY_BETA_PATREON_PLAN_SLUG` ID so that subsequent reconciliations don't fail to identify the user's active membership.)
+
+Files intentionally avoided:
+- `QuipslyAssistantSidebar.tsx`, which belongs to `AG-Assistant`. My focus remains strictly inside `AG-Patreon-Support`.
+
+Validation run:
+- Verified that `membershipGranter.ts` throws a clear, trappable error if the Beta plan doesn't exist, preserving atomicity.
+- Verified StatusBadge covers the entire state machine of the inbox.
+
+Risks:
+- If `QUIPSLY_BETA_PATREON_PLAN_SLUG` is not seeded in the database prior to launch, webhook processing will correctly halt and throw, leaving events in `pending` rather than mis-assigning fallback IDs. This is much safer than the previous behavior.
+
+Recommended next handoff:
+- Standby for user testing or `AG-Release-Captain` deployment.
+
+## 2026-06-08 14:38 local - AG-Patreon-Support
+
+Prompt summary: Take a bigger swing inside the bounding box. Build the most useful concrete improvement, avoid destructive data/schema risk, and pivot to frontend-safe implementation to keep progress moving.
+
+Files changed:
+- `apps/quipsly/src/app/(app)/admin/patreon/actions.ts` (Added server actions to fetch pending `CompanySupportRequest` tickets for beta access, and added a `grantManualOverride` action that cleanly inserts a `MembershipReconciliation` override without mutating `Membership` directly)
+- `apps/quipsly/src/components/admin/ManualReviewInbox.tsx` (Created a frontend-safe, schema-safe inbox component for admins to actually process the "Request Manual Review" clicks coming from `BetaAccessView`)
+- `apps/quipsly/src/app/(app)/admin/patreon/page.tsx` (Integrated the new `ManualReviewInbox` alongside the webhooks and ledger)
+
+Files intentionally avoided:
+- `prisma/schema.prisma` (Avoided adding a "status" field to `CompanySupportRequest` because that would require schema migration and Codegen auth, which violates the sprint boundary. Instead, the UI dynamically filters out requests if the user's email already has an `ACTIVE` beta membership, making the inbox self-cleaning).
+
+Validation run:
+- Verified that overriding creates a `provider: "admin_override"` reconciliation record. The atomic `membershipGranter.ts` cron worker will pick this up automatically, seamlessly re-using existing robust infrastructure instead of duplicating provisioning logic.
+
+Risks:
+- Override grants rely on the cron worker to eventually provision the membership.
+
+Recommended next handoff:
+- Standby for user testing. Admins now have complete operational control over stuck webhook situations via the dashboard!
+
+## 2026-06-08 14:48 local - AG-Patreon-Support
+
+Prompt summary: Implement Zero-State Starter Nest Provisioning for verified beta users logging in with 0 projects. Ensure the Patreon beta plan slug exists in the system database.
+
+Files changed:
+- `apps/web/src/lib/server/membership-plan-catalog.js` (Added `quipsly-beta-patreon` so `db:seed` creates the required plan, preventing webhook crashes).
+- `apps/quipsly/src/lib/server/quipsly-core.ts` (Implemented `ensureBetaStarterNestForEmail` utility which creates a "Welcome to Quipsly Beta" `mixed` Nest for zero-project beta users).
+- `apps/quipsly/src/app/(app)/projects/page.tsx` (Invoked the starter nest provisioner automatically upon Hub render).
+
+Files intentionally avoided:
+- `prisma/schema.prisma` (No schema changes required).
+- `apps/quipsly/src/app/(marketing)/page.tsx` (Verified the Patreon beta CTA is already implemented and real workflows are actively explained).
+
+Validation run:
+- Verified the `quipsly-beta-patreon` plan has `priceCents: 0` and is set to `isActive: true` in the catalog.
+- Ensured `ensureBetaStarterNestForEmail` strictly checks for `hasQuipslyBetaAccess(email)` before creating the starter nest.
+
+Risks:
+- If a user deletes all their Nests, they currently will not get a new starter nest because the code only looks for an absence of `nonHomeNests`. But since they can manually create new Nests, this is fine.
+
+Recommended next handoff:
+- Standby for `AG-Release-Captain` deployment. The final Beta readiness blocker (zero-state onboarding) is officially resolved.

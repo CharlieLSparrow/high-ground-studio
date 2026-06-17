@@ -71,9 +71,10 @@ async function fetchEpisodeContext(projectSlug: string, episodeSlug: string) {
 export default async function ReadModePage({
   searchParams,
 }: {
-  searchParams: { projectSlug?: string; episodeSlug?: string };
+  searchParams: Promise<{ projectSlug?: string; episodeSlug?: string }>;
 }) {
-  const { projectSlug, episodeSlug } = searchParams;
+  const params = await searchParams;
+  const { projectSlug, episodeSlug } = params;
   
   if (!projectSlug || !episodeSlug) {
     notFound();

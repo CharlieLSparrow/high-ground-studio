@@ -7,6 +7,10 @@ struct PremiereDraftEditView: View {
     @EnvironmentObject private var engine: LocalEngineClient
     @State private var statusMessage: String?
 
+    private var stagedDrafts: [PremiereDraftEditPacket] {
+        engine.premiereDraftEdits()
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -22,11 +26,10 @@ struct PremiereDraftEditView: View {
                         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
 
-                let drafts = engine.premiereDraftEdits()
-                if drafts.isEmpty {
+                if stagedDrafts.isEmpty {
                     emptyState
                 } else {
-                    ForEach(drafts) { draft in
+                    ForEach(stagedDrafts) { draft in
                         draftCard(draft)
                     }
                 }
@@ -50,7 +53,7 @@ struct PremiereDraftEditView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("No Premiere packet staged yet", systemImage: "rectangle.stack.badge.play")
                 .font(.title3.bold())
-            Text("Go to Import to Episode, stage `episode-1.json`, `episode-2.json`, or `episode-3.json`, then come back here. Quipsly will show timeline clips, inactive source ranges, and asset matching status.")
+            Text("Go to Import to Episode, stage `episode-1.json`, `episode-2.json`, or `episode-3.json`, then come back here. Quipsly will show timeline decisions, inactive source ranges, and asset matching status.")
                 .foregroundStyle(.secondary)
             Button {
                 appState.selectedSection = .mediaEngine
@@ -84,11 +87,11 @@ struct PremiereDraftEditView: View {
                 metric("Media", "\(draft.summary.mediaCount)")
                 metric("Ready", "\(draft.summary.readyMediaCount)")
                 metric("Held", "\(draft.summary.heldMediaCount)")
-                metric("Timeline clips", "\(draft.summary.timelineClipCount)")
-                metric("Matched clips", "\(draft.summary.matchedTimelineClipCount)")
+                metric("Timeline decisions", "\(draft.summary.timelineClipCount)")
+                metric("Matched decisions", "\(draft.summary.matchedTimelineClipCount)")
                 metric("Inactive ranges", "\(draft.summary.deactivatedSourceRangeCount)")
                 if let skipped = draft.summary.skippedTimelineClipCount, skipped > 0 {
-                    metric("Skipped clips", "\(skipped)")
+                    metric("Skipped decisions", "\(skipped)")
                 }
             }
 
@@ -170,7 +173,7 @@ struct PremiereDraftEditView: View {
                 Button {
                     copyToPasteboard(missingMediaReport(for: draft))
                 } label: {
-                    Label("Copy missing report", systemImage: "exclamationmark.doc")
+                    Label("Copy missing report", systemImage: "doc.badge.exclamationmark")
                 }
 
                 Button {
@@ -222,8 +225,8 @@ struct PremiereDraftEditView: View {
         let detail = hasHeldMedia
             ? "This draft still references files that are missing, iCloud-only, or not ready. Keep the draft visible, but recover the media before trusting playback."
             : hasUnmatchedClips
-                ? "The Premiere packet translated successfully, but timeline clips still point at Premiere placeholders. Start queued imports in Media Engine so Quipsly assets replace those placeholders."
-                : "All draft clips have matched Quipsly assets. Stage this draft in Nest, then promote from the web editor after reviewing the backup prompt."
+                ? "The Premiere packet translated successfully, but timeline decisions still point at Premiere placeholders. Start queued imports in Media Engine so Quipsly assets replace those placeholders."
+                : "All draft decisions have matched Quipsly assets. Stage this draft in Nest, then promote from the web editor after reviewing the backup prompt."
 
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: isReadyForNestStage ? "checkmark.seal.fill" : hasHeldMedia ? "externaldrive.badge.exclamationmark" : "arrow.triangle.2.circlepath.circle")
@@ -351,7 +354,7 @@ struct PremiereDraftEditView: View {
 
     private func missingMediaRow(_ match: PremiereDraftAssetMatch) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: match.kind == "audio" ? "waveform.badge.exclamationmark" : "film.badge.exclamationmark")
+            Image(systemName: match.kind == "audio" ? "waveform.badge.exclamationmark" : "exclamationmark.triangle")
                 .foregroundStyle(missingMediaStatusColor(match.status))
                 .frame(width: 24)
 
@@ -429,31 +432,7 @@ struct PremiereDraftEditView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(tracks, id: \.id) { track in
-                    HStack(alignment: .center, spacing: 10) {
-                        Text(track.id)
-                            .font(.caption.bold().monospaced())
-                            .frame(width: 34, alignment: .leading)
-                            .foregroundStyle(track.id.hasPrefix("A") ? .green : .blue)
-
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(.white.opacity(0.06))
-
-                                ForEach(Array(track.clips.prefix(260))) { clip in
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(timelineClipColor(clip).opacity(0.82))
-                                        .frame(
-                                            width: max(1.5, geometry.size.width * clip.duration / duration),
-                                            height: 14
-                                        )
-                                        .offset(x: geometry.size.width * clip.startIn / duration)
-                                        .help("\(clip.name) · \(timelineTimeLabel(clip.startIn)) + \(timelineTimeLabel(clip.duration)) · \(clip.matchStatus)")
-                                }
-                            }
-                        }
-                        .frame(height: 18)
-                    }
+                    timelineOverviewTrackRow(track, duration: duration)
                 }
             }
 
@@ -465,6 +444,42 @@ struct PremiereDraftEditView: View {
         }
         .padding(12)
         .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func timelineOverviewTrackRow(_ track: TimelineTrack, duration: Double) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(track.id)
+                .font(.caption.bold().monospaced())
+                .frame(width: 34, alignment: .leading)
+                .foregroundStyle(track.id.hasPrefix("A") ? .green : .blue)
+
+            GeometryReader { geometry in
+                timelineOverviewTrackLane(track, width: geometry.size.width, duration: duration)
+            }
+            .frame(height: 18)
+        }
+    }
+
+    private func timelineOverviewTrackLane(_ track: TimelineTrack, width: CGFloat, duration: Double) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(.white.opacity(0.06))
+
+            ForEach(Array(track.editDecisions.prefix(260))) { decision in
+                timelineOverviewDecisionMark(decision, width: width, duration: duration)
+            }
+        }
+    }
+
+    private func timelineOverviewDecisionMark(_ decision: PremiereDraftTimelineClip, width: CGFloat, duration: Double) -> some View {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(timelineClipColor(decision).opacity(0.82))
+            .frame(
+                width: max(1.5, width * decision.duration / duration),
+                height: 14
+            )
+            .offset(x: width * decision.startIn / duration)
+            .help("\(decision.name) · \(timelineTimeLabel(decision.startIn)) + \(timelineTimeLabel(decision.duration)) · \(decision.matchStatus)")
     }
 
     private func editReviewDeck(for draft: PremiereDraftEditPacket) -> some View {
@@ -515,13 +530,13 @@ struct PremiereDraftEditView: View {
                     title: "Play active edit",
                     symbol: "forward.end.fill",
                     value: timelineTimeLabel(activeDuration),
-                    detail: "Use this to watch the translated cut. Deactivated clips and removed source ranges are skipped instead of deleted."
+                    detail: "Use this to watch the translated cut. Deactivated decisions and removed source ranges are skipped instead of deleted."
                 )
                 reviewModeCard(
                     title: "Program timeline",
                     symbol: "timeline.selection",
                     value: timelineTimeLabel(timelineDuration),
-                    detail: "\(activeClips.count) active clip(s), \(deactivatedClips.count) deactivated clip(s), \(timelineTimeLabel(inactiveRangesDuration)) recovered inactive source range(s)."
+                    detail: "\(activeClips.count) active decision(s), \(deactivatedClips.count) deactivated decision(s), \(timelineTimeLabel(inactiveRangesDuration)) recovered inactive source range(s)."
                 )
             }
 
@@ -630,7 +645,7 @@ struct PremiereDraftEditView: View {
             }
 
             if rows.isEmpty {
-                Text("This draft did not report deactivated source ranges. You can still review active clips and source monitors above.")
+                Text("This draft did not report deactivated source ranges. You can still review active decisions and source monitors above.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -788,10 +803,10 @@ struct PremiereDraftEditView: View {
     }
 
     private func sourceReviewRow(for match: PremiereDraftAssetMatch, draft: PremiereDraftEditPacket) -> SourceReviewRow {
-        let clips = draft.timelineClips.filter { $0.premiereAssetId == match.premiereAssetId }
-        let activeClips = clips.filter { !$0.deactivated }
+        let decisions = draft.timelineClips.filter { $0.premiereAssetId == match.premiereAssetId }
+        let activeClips = decisions.filter { !$0.deactivated }
         let inactiveRanges = draft.deactivatedSourceRanges.filter { $0.premiereAssetId == match.premiereAssetId }
-        let tracks = Array(Set(clips.map(\.trackId))).sorted(by: compareTrackIds)
+        let tracks = Array(Set(decisions.map(\.trackId))).sorted(by: compareTrackIds)
         let spineAssetId = draft.suggestedSpine?.premiereAssetId
 
         return SourceReviewRow(
@@ -918,7 +933,7 @@ struct PremiereDraftEditView: View {
         let timelineDuration = max(0, draft.timelineClips.map { $0.startIn + $0.duration }.max() ?? 0)
 
         let sources = rows.map { row in
-            "- \(row.displayName) [\(humanize(row.status))]: \(row.activeClipCount) active clip(s), \(timelineTimeLabel(row.activeDuration)) used, \(row.inactiveRangeCount) inactive range(s), tracks \(row.tracks.joined(separator: ", "))"
+            "- \(row.displayName) [\(humanize(row.status))]: \(row.activeClipCount) active decision(s), \(timelineTimeLabel(row.activeDuration)) used, \(row.inactiveRangeCount) inactive range(s), tracks \(row.tracks.joined(separator: ", "))"
         }.joined(separator: "\n")
 
         return """
@@ -931,10 +946,10 @@ struct PremiereDraftEditView: View {
         Program edit:
         - Timeline length: \(timelineTimeLabel(timelineDuration))
         - Active edit length: \(timelineTimeLabel(activeDuration))
-        - Active clips: \(activeClips.count)
-        - Deactivated clips: \(deactivatedClips.count)
+        - Active decisions: \(activeClips.count)
+        - Deactivated decisions: \(deactivatedClips.count)
         - Recovered inactive source ranges: \(draft.deactivatedSourceRanges.count)
-        - Missing/unmatched timeline clips: \(draft.unmatchedTimelineClipCount)
+        - Missing/unmatched timeline decisions: \(draft.unmatchedTimelineClipCount)
 
         Source monitors:
         \(sources.isEmpty ? "- No source monitors yet." : sources)
@@ -943,21 +958,18 @@ struct PremiereDraftEditView: View {
 
     private struct TimelineTrack: Identifiable {
         var id: String
-        var clips: [PremiereDraftTimelineClip]
+        var editDecisions: [PremiereDraftTimelineClip]
     }
 
     private func timelineTracks(for draft: PremiereDraftEditPacket) -> [TimelineTrack] {
         let grouped = Dictionary(grouping: draft.timelineClips) { $0.trackId }
-        return grouped.keys
-            .sorted(by: compareTrackIds)
-            .map { trackId in
-                TimelineTrack(
-                    id: trackId,
-                    clips: (grouped[trackId] ?? []).sorted { left, right in
-                        left.startIn < right.startIn || (left.startIn == right.startIn && left.duration > right.duration)
-                    }
-                )
+        let sortedTrackIds = Array(grouped.keys).sorted(by: compareTrackIds)
+        return sortedTrackIds.map { trackId in
+            let sortedDecisions = (grouped[trackId] ?? []).sorted { left, right in
+                left.startIn < right.startIn || (left.startIn == right.startIn && left.duration > right.duration)
             }
+            return TimelineTrack(id: trackId, editDecisions: sortedDecisions)
+        }
     }
 
     private func compareTrackIds(_ left: String, _ right: String) -> Bool {
@@ -972,12 +984,12 @@ struct PremiereDraftEditView: View {
         return leftNumber < rightNumber
     }
 
-    private func timelineClipColor(_ clip: PremiereDraftTimelineClip) -> Color {
-        if clip.matchStatus == "held" || clip.matchStatus == "not-staged" {
+    private func timelineClipColor(_ decision: PremiereDraftTimelineClip) -> Color {
+        if decision.matchStatus == "held" || decision.matchStatus == "not-staged" {
             return .orange
         }
 
-        return clip.kind == "audio" || clip.trackId.hasPrefix("A") ? .green : .blue
+        return decision.kind == "audio" || decision.trackId.hasPrefix("A") ? .green : .blue
     }
 
     private func timelineTimeLabel(_ seconds: Double) -> String {
@@ -1001,8 +1013,8 @@ struct PremiereDraftEditView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 workflowStep("1", "Register or hold media", "\(draft.summary.readyMediaCount) ready, \(draft.summary.heldMediaCount) held. Held files stay visible so iCloud/relink work is explicit.")
-                workflowStep("2", "Stage draft in Nest", "Full drafts stay diagnostic. If old files are missing, stage a matched-only rescue draft to skip those clips for now without forgetting them.")
-                workflowStep("3", "Preview in the web editor", "Use the Episode Editor to inspect the translated clips and inactive ranges before promotion.")
+                workflowStep("2", "Stage draft in Nest", "Full drafts stay diagnostic. If old files are missing, stage a matched-only rescue draft to skip those decisions for now without forgetting them.")
+                workflowStep("3", "Preview in the web editor", "Use the Episode Editor to inspect the translated decisions and inactive ranges before promotion.")
                 workflowStep("4", "Promote only when confident", "Nest creates a backup before promoting the draft to the active timeline.")
             }
         }
@@ -1083,7 +1095,7 @@ struct PremiereDraftEditView: View {
         let alert = NSAlert()
         alert.messageText = "Stage this Premiere draft in Nest?"
         if let skipped = draft.summary.skippedTimelineClipCount, skipped > 0 {
-            alert.informativeText = "This saves a matched-only rescue draft for \(draft.episodeSlug). It skips \(skipped) unmatched Premiere clip(s) for now, keeps the original packet recoverable, and does not overwrite the active episode timeline."
+            alert.informativeText = "This saves a matched-only rescue draft for \(draft.episodeSlug). It skips \(skipped) unmatched Premiere decision(s) for now, keeps the original packet recoverable, and does not overwrite the active episode timeline."
         } else {
             alert.informativeText = "This saves the draft edit as a review artifact for \(draft.episodeSlug). It does not overwrite the active episode timeline."
         }

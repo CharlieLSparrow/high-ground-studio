@@ -21,9 +21,32 @@ interface ScrollExperienceEngineProps {
  * Enforces dynamic viewport heights (`100dvh`) to prevent mobile Safari address bar jank,
  * and sets up intersection observers to track which vertical group is currently focused.
  */
-function ExperienceLayout({ experience }: { experience: ScrollExperience }) {
+import { persistScrollExperienceAction } from '@/app/review/actions';
+
+function ExperienceLayout({ experience, mode }: { experience: ScrollExperience, mode?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { setActivePanel } = useInteractionState();
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  // Keyboard Navigation for Vertical Groups
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!containerRef.current) return;
+      
+      // Only handle up/down if they aren't interacting with an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        containerRef.current.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        containerRef.current.scrollBy({ top: -window.innerHeight, behavior: 'smooth' });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Basic IntersectionObserver to detect which group is in view (for analytics/state)
   useEffect(() => {
@@ -49,6 +72,20 @@ function ExperienceLayout({ experience }: { experience: ScrollExperience }) {
     return () => observer.disconnect();
   }, [experience]);
 
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const result = await persistScrollExperienceAction(experience);
+      if (result.success) {
+        alert("Experience successfully saved to the database!");
+      }
+    } catch (e: any) {
+      alert("Failed to save: " + e.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="relative w-full h-[100dvh] bg-black text-white overflow-hidden flex flex-col font-sans touch-none overscroll-y-none">
       <AnalyticsTracker />
@@ -61,6 +98,15 @@ function ExperienceLayout({ experience }: { experience: ScrollExperience }) {
             {experience.type} • {experience.groups.length} Sections
           </p>
         </div>
+        {mode === 'preview' && (
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="pointer-events-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded shadow-lg transition-all"
+          >
+            {isSaving ? "Saving..." : "Save to DB"}
+          </button>
+        )}
       </header>
 
       {/* Main Vertical Scroll Container */}
@@ -92,7 +138,7 @@ function ExperienceLayout({ experience }: { experience: ScrollExperience }) {
 export default function ScrollExperienceEngine({ experience, mode = 'view' }: ScrollExperienceEngineProps) {
   return (
     <InteractionStateProvider experienceId={experience.id}>
-      <ExperienceLayout experience={experience} />
+      <ExperienceLayout experience={experience} mode={mode} />
     </InteractionStateProvider>
   );
 }

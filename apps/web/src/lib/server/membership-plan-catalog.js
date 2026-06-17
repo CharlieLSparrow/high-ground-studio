@@ -26,6 +26,15 @@ export const membershipPlanCatalog = [
     billingIntervalMonths: 1,
     isActive: true,
   },
+  {
+    slug: "quipsly-beta-patreon",
+    name: "Quipsly Beta Access",
+    description:
+      "Automated grant for active Patreon supporters to access the Quipsly private beta.",
+    priceCents: 0,
+    billingIntervalMonths: null,
+    isActive: true,
+  },
 ];
 
 /**

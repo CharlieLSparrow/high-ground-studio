@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCloudStorageUpload } from "@/hooks/useCloudStorageUpload";
 import {
   createRecordingSegmentTimelineOffsets,
   getRecordingSessionDurationSeconds,
@@ -860,6 +861,8 @@ export default function RecorderDashboard() {
   const [clips, setClips] = useState<ClipCue[]>(defaultRoom().clips);
   const [events, setEvents] = useState<RecordingEvent[]>([]);
   const [tracks, setTracks] = useState<ImportedTrack[]>([]);
+  
+  const { tasks: cloudUploadTasks, uploadFile: cloudUploadFile } = useCloudStorageUpload();
 
   const [micReady, setMicReady] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -1370,57 +1373,39 @@ export default function RecorderDashboard() {
     setTracks((current) => current.map((track) => (track.id === trackRecordId ? { ...track, ...patch } : track)));
   }, []);
 
-  const uploadTrack = useCallback((trackRecordId: string, trackSlotId: string, blob: Blob, trackKind: RecordingTrackKind) => {
-    const controller = new AbortController();
-    trackUploadAbortRefs.current[trackRecordId]?.abort();
-    trackUploadAbortRefs.current[trackRecordId] = controller;
-
+  const uploadTrack = useCallback(async (trackRecordId: string, trackSlotId: string, blob: Blob, trackKind: RecordingTrackKind) => {
     setAudioStatus("Uploading local track to Vault...", "uploading");
     setTrackUploadMeta(trackRecordId, {
       uploadState: "uploading",
       uploadMessage: "Queued for upload",
     });
 
-    void uploadRecordingTrack(blob, {
-      projectSlug,
-      episodeSlug,
-      trackId: trackSlotId,
-      trackKind,
-      fileName: `${projectSlug}-${episodeSlug}-${trackSlotId}.${inferUploadTrackFileExt(blob.type, trackKind)}`,
-      signal: controller.signal,
-    }).then((response) => {
-      if (controller.signal.aborted) return;
-      const mapped = mapUploadResponse(response);
-      if (mapped?.sourceId) {
-        setAudioUploadSourceId(mapped.sourceId);
-        setTrackUploadMeta(trackRecordId, {
-          sourceId: mapped.sourceId,
-          sourceUrl: mapped.url || undefined,
-          uploadState: "uploaded",
-          uploadMessage: mapped.message ?? "Uploaded",
-        });
-        setAudioStatus(`Uploaded: ${mapped.message ?? "Audio synced to episode room."}`, "uploaded");
-        return;
-      }
-      setTrackUploadMeta(trackRecordId, {
-        uploadState: "uploaded",
-        uploadMessage: mapped?.message ? `Upload ok: ${mapped.message}` : "Upload completed",
+    const fileExt = inferUploadTrackFileExt(blob.type, trackKind);
+    const fileName = `${projectSlug}-${episodeSlug}-${trackSlotId}.${fileExt}`;
+
+    try {
+      const publicUrl = await cloudUploadFile(trackRecordId, blob, fileName, blob.type, {
+        episodeId: episodeSlug,
+        directory: projectSlug,
       });
-      setAudioStatus(mapped?.message ? `Upload ok: ${mapped.message}` : "Upload completed", "uploaded");
-    }).catch((error) => {
-      if (isAbortError(error)) return;
-      console.warn("Could not upload recording track.", error);
+
+      if (publicUrl) {
+        setTrackUploadMeta(trackRecordId, {
+          sourceUrl: publicUrl,
+          uploadState: "uploaded",
+          uploadMessage: "Uploaded to GCS",
+        });
+        setAudioStatus(`Uploaded: Audio synced to episode room via GCS.`, "uploaded");
+      }
+    } catch (error) {
+      console.warn("Could not upload recording track via GCS.", error);
       setTrackUploadMeta(trackRecordId, {
         uploadState: "error",
         uploadMessage: error instanceof Error ? error.message : "Upload failed",
       });
       setAudioStatus("Upload failed. Track stored locally and retry manually.", "error");
-    }).finally(() => {
-      if (trackUploadAbortRefs.current[trackRecordId] === controller) {
-        delete trackUploadAbortRefs.current[trackRecordId];
-      }
-    });
-  }, [episodeSlug, projectSlug, setTrackUploadMeta]);
+    }
+  }, [episodeSlug, projectSlug, setTrackUploadMeta, cloudUploadFile]);
 
   const roomSaveStatusLabel = (() => {
     if (roomSaveState === "queued") return "Queued";
@@ -1978,58 +1963,52 @@ export default function RecorderDashboard() {
 
       <div className="mx-auto max-w-[1500px] p-3 md:p-5">
         {isMobileLayout ? (
-          <div className="space-y-3 pb-24">
-            <section className="rounded-3xl border border-[#dfcaa5] bg-[#fffaf0] p-3 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.2em] text-[#b07328]">
-                    {humanizeSlug(episodeSlug)} session
-                  </div>
-                  <h1 className="text-xl font-black">Manuscript readout</h1>
-                </div>
-                <span
-                  className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
-                    productionState?.mode === "database"
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border-amber-200 bg-amber-50 text-amber-800"
+          <div className="fixed inset-0 z-50 flex flex-col bg-[#0b0d12] font-sans text-white overflow-hidden">
+            {/* Top Bar */}
+            <div className="flex items-center justify-between border-b border-white/5 bg-[#11141a]/80 px-4 py-3 shadow-md backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`h-2 w-2 rounded-full ${
+                    isRecording ? "animate-pulse bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]" : "bg-emerald-500"
                   }`}
-                >
-                  {productionState?.mode === "database" ? "DB" : "Local"}
+                />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">
+                  {humanizeSlug(episodeSlug)}
                 </span>
               </div>
+              <div className="font-mono text-sm font-bold tracking-wider text-amber-100">
+                {formatClock(elapsedMs)}
+              </div>
+            </div>
 
+            {/* Prompter Area */}
+            <div className="flex-1 overflow-y-auto scroll-smooth bg-[#0b0d12] p-4 pb-48">
               <textarea
                 value={script}
                 onChange={(event) => setScript(event.target.value)}
-                className="h-[60vh] min-h-[360px] w-full resize-none rounded-2xl border border-[#e4cfaa] bg-white p-3 font-serif text-lg leading-8 text-[#342616] shadow-inner outline-none focus:border-[#c0832d]"
-                spellCheck
+                className="h-full min-h-[80vh] w-full resize-none bg-transparent font-serif text-[28px] leading-[1.6] text-amber-50/90 outline-none placeholder:text-white/20 md:text-[36px]"
+                placeholder="Paste manuscript here..."
+                spellCheck={false}
               />
-            </section>
+            </div>
 
-            <section className="rounded-3xl border border-[#2a2118] bg-[#20170f] p-4 text-white shadow-xl">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.22em] text-[#f4b860]">Clip in sync</div>
-                  <h2 className="mt-1 text-2xl font-black tabular-nums">{formatClock(elapsedMs)}</h2>
-                  <div className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-[#b9a27d]">
-                    {activePlaybackEntry ? `${activePlaybackEntry.clipTitle} • ${activePlaybackEntry.segmentNote || "Segment"}` : "No clip loaded"}
-                  </div>
+            {/* Inline Clip Viewer Overlay (if clip is active) */}
+            {previewUrl && (
+              <div className="absolute left-4 right-4 top-14 z-20 overflow-hidden rounded-2xl border border-white/10 bg-black/90 shadow-2xl backdrop-blur-xl">
+                <div className="flex items-center justify-between bg-white/5 px-3 py-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                    {activePlaybackEntry?.clipTitle || "Clip Cue"}
+                  </span>
+                  <button
+                    onClick={() => setClipFollowRecording((v) => !v)}
+                    className={`rounded px-2 py-1 text-[9px] font-bold uppercase tracking-wider ${
+                      clipFollowRecording ? "bg-amber-500/20 text-amber-300" : "bg-white/5 text-white/40"
+                    }`}
+                  >
+                    Sync {clipFollowRecording ? "ON" : "OFF"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setClipFollowRecording((value) => !value)}
-                  className={`rounded-full border px-3 py-2 text-[11px] font-black uppercase tracking-wide ${
-                    clipFollowRecording
-                      ? "border-emerald-200 bg-emerald-900 text-emerald-100"
-                      : "border-[#d8b777] bg-[#fff4d8] text-[#6b4d12]"
-                  }`}
-                >
-                  {clipFollowRecording ? "Auto-sync on" : "Auto-sync off"}
-                </button>
-              </div>
-
-              <div className="aspect-video overflow-hidden rounded-2xl border border-[#e2c99d] bg-[#1f1710]">
-                {previewUrl ? (
+                <div className="aspect-video">
                   <iframe
                     key={`${activePlaybackEntry?.clipId}-${activePlaybackEntry?.segmentId}-${playNonce}`}
                     src={previewUrl}
@@ -2038,75 +2017,74 @@ export default function RecorderDashboard() {
                     className="h-full w-full"
                     title="Clip preview"
                   />
-                ) : (
-                  <div className="flex h-full items-center justify-center p-4 text-center text-xs leading-5 text-[#d9c7a7]">
-                    Add a YouTube URL to a clip to watch inline while recording.
+                </div>
+                <button
+                  onClick={playAndLogSegment}
+                  className="w-full bg-amber-500/10 py-3 text-xs font-black uppercase tracking-widest text-amber-400 transition-colors hover:bg-amber-500/20"
+                >
+                  Play & Log Event
+                </button>
+              </div>
+            )}
+
+            {/* Bottom Recording Control Dock */}
+            <div className="absolute bottom-6 left-4 right-4 z-30">
+              <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-[#11141a]/80 p-4 shadow-2xl backdrop-blur-xl">
+                {/* Audio Visualizer */}
+                <div className="flex h-8 items-end justify-center gap-[2px] opacity-80">
+                  {audioLevels.map((level, index) => (
+                    <div
+                      key={index}
+                      className={`w-1 rounded-t-sm transition-all duration-75 ${
+                        isRecording ? "bg-red-500" : micReady ? "bg-emerald-400" : "bg-white/20"
+                      }`}
+                      style={{ height: `${Math.max(2, level * 0.8)}px` }}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {audioUploadState === "uploaded"
+                        ? "Uploaded"
+                        : roomSaveState === "error"
+                        ? "Error"
+                        : micReady
+                        ? "Ready"
+                        : "Standby"}
+                    </span>
+                    {micError && <span className="text-[9px] text-red-400">{micError}</span>}
                   </div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={playAndLogSegment}
-                disabled={!previewUrl}
-                className="mt-3 w-full rounded-full bg-[#f0a83b] px-4 py-3 text-xs font-black uppercase tracking-wide text-[#2b1b0b] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isRecording ? "Play active segment and log event" : "Play clip end-to-end"}
-              </button>
-            </section>
 
-            <section className="fixed inset-x-3 bottom-4 z-10 rounded-3xl border border-[#2a2118] bg-[#20170f] p-4 text-white shadow-2xl">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.2em] text-[#f4b860]">Recording</div>
-                  <h2 className="text-3xl font-black tabular-nums">{formatClock(elapsedMs)}</h2>
-                  <div className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-[#d9c7a7]">
-                    {audioUploadState === "uploaded" ? "Uploaded" : isRecording ? "Recording" : roomSaveState === "error" ? "Save error" : "Ready"}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => armMic(true)}
+                      disabled={micReady || isRecording}
+                      className="rounded-full bg-white/5 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-white/80 transition-colors disabled:opacity-30"
+                    >
+                      {micReady ? "Armed" : "Arm Mic"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={isRecording ? stopRecording : startRecording}
+                      className={`flex h-14 w-14 items-center justify-center rounded-full transition-all ${
+                        isRecording
+                          ? "animate-pulse bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]"
+                          : "bg-white text-black shadow-xl"
+                      }`}
+                    >
+                      {isRecording ? (
+                        <div className="h-5 w-5 rounded-sm bg-white" />
+                      ) : (
+                        <div className="ml-1 h-4 w-4 rounded-full bg-red-600" />
+                      )}
+                    </button>
                   </div>
-                  {audioUploadStatus ? <div className="mt-1 text-[10px] text-[#f8d5a7]">{audioUploadStatus}</div> : null}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => armMic(true)}
-                    disabled={micReady || isRecording}
-                    className="rounded-full border border-[#64503a] bg-[#34271a] px-3 py-2 text-[11px] font-black uppercase tracking-wide text-[#ffe6b6] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {micReady ? "Mic armed" : "Arm mic"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={isRecording ? stopRecording : startRecording}
-                    className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide shadow-lg ${
-                      isRecording ? "bg-red-600 text-white shadow-red-900/40" : "bg-[#f0a83b] text-[#2b1b0b] shadow-orange-950/30"
-                    }`}
-                  >
-                    {isRecording ? "Stop" : "Start"}
-                  </button>
                 </div>
               </div>
-
-              {micError ? (
-                <div className="mt-2 rounded-2xl border border-red-500/30 bg-red-950/40 p-2 text-xs text-red-100">{micError}</div>
-              ) : null}
-
-              {audioUploadSourceId ? (
-                <div className="mt-2 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-[10px] text-[#f6e3c3]">
-                  Source ID: {audioUploadSourceId}
-                </div>
-              ) : null}
-
-              <div className="mt-3 flex h-12 items-end gap-1 rounded-2xl border border-white/10 bg-black/30 p-2">
-                {audioLevels.map((level, index) => (
-                  <div
-                    key={index}
-                    className={`w-full rounded-full transition-all duration-75 ${
-                      index < 12 ? "bg-emerald-400" : index < 15 ? "bg-yellow-300" : "bg-red-400"
-                    }`}
-                    style={{ height: `${level}px` }}
-                  />
-                ))}
-              </div>
-            </section>
+            </div>
           </div>
         ) : (
           <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)_400px]">
@@ -2334,6 +2312,7 @@ export default function RecorderDashboard() {
                               {track.recordedStartAt ? ` / ${formatRecordingTimestamp(track.recordedStartAt)} → ${track.recordedEndAt ? formatRecordingTimestamp(track.recordedEndAt) : "..."}` : ""}
                               {track.uploadState ? ` / ${track.uploadState}` : ""}
                               {track.uploadMessage ? ` / ${track.uploadMessage}` : ""}
+                              {cloudUploadTasks[track.id] && cloudUploadTasks[track.id].state === "uploading" ? ` / ${cloudUploadTasks[track.id].progressPercent}%` : ""}
                             </div>
                             {track.sourceUrl ? (
                               <a

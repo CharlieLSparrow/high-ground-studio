@@ -28,7 +28,7 @@ function safeCallbackPath(value: FormDataEntryValue | null) {
 }
 
 export async function upsertManagedUserAction(formData: FormData) {
-  await requireQuipslyAdminActor();
+  const actor = await requireQuipslyAdminActor();
 
   const targetEmail = normalizeAccessEmail(String(formData.get("primaryEmail") || ""));
   const name = String(formData.get("name") || "").trim();
@@ -53,6 +53,7 @@ export async function upsertManagedUserAction(formData: FormData) {
         data: {
           primaryEmail: targetEmail,
           name: name || null,
+          emailVerified: new Date(),
           ...(role
             ? {
                 roles: {
@@ -69,6 +70,7 @@ export async function upsertManagedUserAction(formData: FormData) {
           where: { id: existingUser.id },
           data: {
             name: name || undefined,
+            emailVerified: new Date(),
           },
         });
 
@@ -82,6 +84,7 @@ export async function upsertManagedUserAction(formData: FormData) {
 
       params.set("updated", targetEmail);
     }
+    params.set("actor", actor.email);
   } catch (error) {
     setError(params, error instanceof Error ? error.message : "Unable to save managed user.");
   }
@@ -113,7 +116,7 @@ export async function grantProjectAccessFromAdminAction(formData: FormData) {
   const prisma = getPrismaClient();
 
   try {
-    await grantNestAccess({
+    const access = await grantNestAccess({
       prisma,
       nestSlug: projectSlug,
       email: targetEmail,
@@ -124,6 +127,7 @@ export async function grantProjectAccessFromAdminAction(formData: FormData) {
 
     params.set("invited", `${targetEmail}::${projectSlug}`);
     params.set("role", role);
+    if (access.inviteLoginToken) params.set("inviteToken", access.inviteLoginToken);
     if (callbackPath) params.set("callbackPath", callbackPath);
   } catch (error) {
     setError(params, error instanceof Error ? error.message : "Unable to grant project access.");

@@ -11,9 +11,20 @@ out/
 .vite/
 .build/
 **/.build/
+.swiftpm/
+DerivedData/
+*.xcresult
+*.xcuserstate
+*.app/
 *.tsbuildinfo
 apps/local-engine/src/*.js
 apps/local-engine/src/*.js.map
+apps/quipsly-mac/script/test-export.*
+apps/quipsly-mac/script/test-episode-publish-report-*.json
+apps/quipsly/test-results/
+tsc_output.txt
+debug-candidates.js
+test-proxy.js
 
 # logs
 npm-debug.log*

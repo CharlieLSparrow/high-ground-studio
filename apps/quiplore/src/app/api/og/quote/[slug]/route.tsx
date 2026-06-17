@@ -9,6 +9,12 @@ export async function GET(
 ) {
   const { slug } = await context.params;
   const passport = getQuotePassportBySlug(slug);
+  const url = new URL(request.url);
+  const format = url.searchParams.get("format") || "wide";
+  
+  const isSquare = format === "square";
+  const width = isSquare ? 1080 : 1200;
+  const height = isSquare ? 1080 : 630;
 
   if (!passport) {
     return new Response("Not found", { status: 404 });
@@ -76,8 +82,8 @@ export async function GET(
       </div>
     ),
     {
-      width: 1200,
-      height: 630,
+      width,
+      height,
     }
   );
 }

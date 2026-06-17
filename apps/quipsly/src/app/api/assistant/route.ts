@@ -57,11 +57,17 @@ export async function POST(req: Request) {
   const query = getLatestUserMessage(body.messages);
 
   if (!projectId) {
-    return new Response("Missing projectId context.", { status: 400 });
+    return new Response(JSON.stringify({ message: "Missing projectId context." }), { 
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
   }
 
   if (!query) {
-    return new Response("Ask Quipsly what to find in the manuscript or source library.", { status: 400 });
+    return new Response(JSON.stringify({ message: "Ask Quipsly what to find in the manuscript or source library." }), { 
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
   }
 
   const contextSearchPromise = (documentId && cursorNodeId)
@@ -74,24 +80,26 @@ export async function POST(req: Request) {
     contextSearchPromise,
   ]);
 
-  const sections = [
-    "I searched the available source-backed Quipsly retrieval tools. I did not edit the manuscript.",
-    "",
-    examplesResult.status === "fulfilled"
-      ? packetSection("Examples", examplesResult.value)
-      : errorSection("Examples", examplesResult.reason),
-    "",
-    (contextResult.status === "fulfilled" && contextResult.value)
-      ? packetSection("Active Document Context", contextResult.value)
-      : (contextResult.status === "rejected" ? errorSection("Active Document Context", contextResult.reason) : ""),
-    "",
-    quotesResult.status === "fulfilled"
-      ? packetSection("Quotes", quotesResult.value)
-      : errorSection("Quotes", quotesResult.reason),
-  ];
+  const packets: ManuscriptResearchPacket[] = [];
+  
+  if (examplesResult.status === "fulfilled" && examplesResult.value.results.length > 0) {
+    packets.push(examplesResult.value);
+  }
+  
+  if (contextResult.status === "fulfilled" && contextResult.value && contextResult.value.results.length > 0) {
+    packets.push(contextResult.value);
+  }
+  
+  if (quotesResult.status === "fulfilled" && quotesResult.value.results.length > 0) {
+    packets.push(quotesResult.value);
+  }
 
-  return new Response(sections.join("\n"), {
+  const message = packets.length > 0 
+    ? "I searched the available source-backed Quipsly retrieval tools to help you draft, rewrite, and organize."
+    : "I searched the available source libraries but did not find any matching results.";
+
+  return new Response(JSON.stringify({ message, packets }), {
     status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
+    headers: { "content-type": "application/json" },
   });
 }

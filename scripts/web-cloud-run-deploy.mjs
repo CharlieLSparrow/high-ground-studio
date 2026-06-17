@@ -420,6 +420,9 @@ const deployArgs = [
   region,
   "--image",
   imageUri,
+  "--no-traffic",
+  "--tag",
+  "web-preview",
   "--quiet",
 ];
 
@@ -517,42 +520,18 @@ if (createService) {
 const deployedRevision =
   getLatestCreatedRevision(serviceAfter) || getLatestRevision(serviceAfter);
 
-if (
-  deployedRevision &&
-  getTrafficPercentForRevision(serviceAfter, deployedRevision) !== 100
-) {
-  console.log(
-    `\nRouting 100% traffic to deployed revision ${deployedRevision}; service traffic was pinned to another revision.`,
-  );
-  run("gcloud", [
-    "run",
-    "services",
-    "update-traffic",
-    service,
-    "--project",
-    project,
-    "--region",
-    region,
-    "--to-revisions",
-    `${deployedRevision}=100`,
-  ]);
-
-  serviceAfter = parseService(
-    read("gcloud", [
-      "run",
-      "services",
-      "describe",
-      service,
-      "--project",
-      project,
-      "--region",
-      region,
-      "--format=json",
-    ]),
-  );
+let previewUrl = "";
+if (serviceAfter.status && serviceAfter.status.traffic) {
+  const previewTraffic = serviceAfter.status.traffic.find(t => t.tag === "web-preview");
+  if (previewTraffic && previewTraffic.url) {
+    previewUrl = previewTraffic.url;
+  }
 }
 
-await assertHttpOk(`${serviceUrl}/api/health`, (body) => {
+const targetSmokeUrl = previewUrl || serviceUrl;
+console.log(`\nSmoke testing against: ${targetSmokeUrl}`);
+
+await assertHttpOk(`${targetSmokeUrl}/api/health`, (body) => {
   try {
     const parsed = JSON.parse(body);
     return (
@@ -565,29 +544,33 @@ await assertHttpOk(`${serviceUrl}/api/health`, (body) => {
   }
 });
 
-await assertHttpOk(`${serviceUrl}/`, (body) =>
+await assertHttpOk(`${targetSmokeUrl}/`, (body) =>
   body.includes("High Ground Odyssey"),
 );
 
-await assertHttpOk(`${serviceUrl}/projection-stage/import`, (body) =>
+await assertHttpOk(`${targetSmokeUrl}/projection-stage/import`, (body) =>
   body.includes("Projection or Content Studio packet JSON"),
 );
 
-await assertTeamRedirect(`${serviceUrl}/team/progress`);
-await assertTeamRedirect(`${serviceUrl}/team/hgo-publish-queue`);
+await assertTeamRedirect(`${targetSmokeUrl}/team/progress`);
+await assertTeamRedirect(`${targetSmokeUrl}/team/hgo-publish-queue`);
 
 console.log("\nDeploy complete");
-console.log(`url: ${serviceUrl}`);
+console.log(`Live url: ${serviceUrl}`);
+console.log(`Preview url: ${previewUrl}`);
+
+console.log("\nPromote command:");
+console.log(`gcloud run services update-traffic ${service} --project=${project} --region=${region} --to-tags=web-preview=100`);
 
 const rollbackRevision = previousRevision || getLatestRevision(serviceBefore);
 
 if (rollbackRevision) {
-  console.log("\nRollback command");
+  console.log("\nRollback command:");
   console.log(
     `gcloud run services update-traffic ${service} --project=${project} --region=${region} --to-revisions=${rollbackRevision}=100`,
   );
 } else {
-  console.log("\nRollback note");
+  console.log("\nRollback note:");
   console.log(
     `This was the first ${service} deploy. To remove it, route traffic away or delete the Cloud Run service after confirming no DNS points at it.`,
   );

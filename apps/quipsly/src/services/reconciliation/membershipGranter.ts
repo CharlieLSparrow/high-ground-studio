@@ -1,13 +1,14 @@
 import { getPrismaClient } from "@/lib/prisma";
+import { QUIPSLY_BETA_PATREON_PLAN_SLUG } from "@/lib/patreon/betaAccess";
 
 const prisma = getPrismaClient();
 
 /**
- * Sweeps pending MembershipReconciliation records and applies them to the canonical
+ * Sweeps pending EntitlementLedger records and applies them to the canonical
  * Membership table. Uses atomic transactions to prevent desync on failure.
  */
 export async function grantPendingReconciliations() {
-  const pendingReconciliations = await prisma.membershipReconciliation.findMany({
+  const pendingReconciliations = await prisma.entitlementLedger.findMany({
     where: { status: "pending" },
     include: {
       membership: true,
@@ -25,18 +26,27 @@ export async function grantPendingReconciliations() {
       let targetMembershipId = reconciliation.membershipId;
 
       if (!targetMembershipId) {
+        if (!reconciliation.providerEmail) continue;
         const user = await prisma.user.findUnique({
           where: { primaryEmail: reconciliation.providerEmail.toLowerCase() }
         });
         
         if (user) {
           targetUserId = user.id;
+
+          // Find the proper plan ID for the beta patreon plan
+          const betaPlan = await prisma.membershipPlan.findUnique({
+            where: { slug: QUIPSLY_BETA_PATREON_PLAN_SLUG }
+          });
+
+          if (!betaPlan) {
+            throw new Error(`Critical: MembershipPlan with slug '${QUIPSLY_BETA_PATREON_PLAN_SLUG}' not found.`);
+          }
+
           const newMembership = await prisma.membership.create({
             data: {
               userId: user.id,
-              // Note: Assumes a MembershipPlan with slug 'free' exists. 
-              // Hardcoding planId is a placeholder. Real code would query the catalog.
-              planId: "cls_fallback_plan_id", 
+              planId: betaPlan.id, 
               status: "ACTIVE"
             }
           });
@@ -64,7 +74,7 @@ export async function grantPendingReconciliations() {
           });
         }
 
-        await tx.membershipReconciliation.update({
+        await tx.entitlementLedger.update({
           where: { id: reconciliation.id },
           data: { 
             status: "applied",
@@ -76,7 +86,7 @@ export async function grantPendingReconciliations() {
       successCount++;
     } catch (err) {
       console.error(`[Membership Granter] Failed to apply reconciliation ${reconciliation.id}:`, err);
-      await prisma.membershipReconciliation.update({
+      await prisma.entitlementLedger.update({
         where: { id: reconciliation.id },
         data: { 
           status: "failed",

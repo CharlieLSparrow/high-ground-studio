@@ -2,7 +2,7 @@
 
 import React, { useMemo } from "react";
 import { StoryEntity } from "./types";
-import { Search, Plus, User, MapPin, Film, Layers, Clock, Link2 } from "lucide-react";
+import { Search, Plus, User, MapPin, Film, Layers, Clock, Link2, BookOpen, PanelsTopLeft, Activity } from "lucide-react";
 
 interface EntityDirectoryProps {
   entities: StoryEntity[];
@@ -16,6 +16,10 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   THEME_MOTIF: <Layers className="h-4 w-4" />,
   TIMELINE_EVENT: <Clock className="h-4 w-4" />,
   RELATIONSHIP: <Link2 className="h-4 w-4" />,
+  COMIC_ACT: <BookOpen className="h-4 w-4" />,
+  COMIC_PANEL: <PanelsTopLeft className="h-4 w-4" />,
+  BEAT: <Activity className="h-4 w-4" />,
+  RESEARCH_NOTE: <BookOpen className="h-4 w-4" />,
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -25,6 +29,10 @@ const TYPE_COLORS: Record<string, string> = {
   THEME_MOTIF: "text-amber-400 bg-amber-400/10 border-amber-400/20",
   TIMELINE_EVENT: "text-rose-400 bg-rose-400/10 border-rose-400/20",
   RELATIONSHIP: "text-indigo-400 bg-indigo-400/10 border-indigo-400/20",
+  COMIC_ACT: "text-orange-400 bg-orange-400/10 border-orange-400/20",
+  COMIC_PANEL: "text-cyan-400 bg-cyan-400/10 border-cyan-400/20",
+  BEAT: "text-pink-400 bg-pink-400/10 border-pink-400/20",
+  RESEARCH_NOTE: "text-amber-400 bg-amber-400/10 border-amber-400/20",
 };
 
 export function EntityDirectory({ entities, onSelectEntity }: EntityDirectoryProps) {

@@ -364,6 +364,13 @@ export interface QuipCardProjection {
   readonly themes: readonly ThemeProjection[];
 }
 
+export interface ShareCardProjection extends QuipCardProjection {
+  readonly format: "square" | "wide";
+  readonly watermarkRequired: boolean;
+  readonly customOgImageUrl?: string;
+  readonly shareUrl: string;
+}
+
 export interface LorelistItemProjection {
   readonly id: QuipslyId;
   readonly quoteId: QuipslyId;
@@ -545,3 +552,5 @@ export function formatSourceType(sourceType: SourceType): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+export * from "./timeline";
+export * from "./manuscript";

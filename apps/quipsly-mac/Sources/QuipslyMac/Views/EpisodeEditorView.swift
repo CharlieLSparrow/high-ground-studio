@@ -3,6 +3,7 @@ import SwiftUI
 
 struct EpisodeEditorView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var localEditStore: LocalEpisodeEditStore
 
     private var editorURL: URL? {
         buildEditorURL(
@@ -12,26 +13,52 @@ struct EpisodeEditorView: View {
         )
     }
 
+    private var activeLocalSession: LocalEpisodeEditSession? {
+        localEditStore.session(
+            projectSlug: appState.editorProjectSlug,
+            episodeSlug: appState.editorEpisodeSlug
+        )
+    }
+
+    @StateObject private var sessionContext = EditorSessionContext()
+    @StateObject private var playbackContext = EditorPlaybackContext()
+
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            sessionPreflight
 
-            if let editorURL {
-                QuipslyWebRouteView(
-                    url: editorURL,
-                    title: "Live Nest editor",
-                    subtitle: "Back, forward, reload, and external browser handoff stay native to the Mac shell."
-                )
-                .overlay(alignment: .bottomLeading) {
-                    routeBadge(editorURL)
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    // Monitor View (Top Half)
+                    NativeMonitorView(sessionContext: sessionContext, playbackContext: playbackContext)
+                        .frame(height: geo.size.height * 0.5)
+                        .clipped()
+                    
+                    Divider()
+                    
+                    // Transport Controls
+                    NativeTransportControls(playbackContext: playbackContext)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal)
+                        .background(Color(NSColor.controlBackgroundColor))
+                    
+                    Divider()
+                    
+                    // Timeline View (Bottom Half)
+                    NativeTimelineView(sessionContext: sessionContext, playbackContext: playbackContext)
+                        .frame(maxHeight: .infinity)
                 }
-            } else {
-                invalidRoutePanel
             }
         }
         .background(QuipslyBackground())
+        // Sync the context when active session changes
+        .onChange(of: activeLocalSession) { _, newSession in
+            sessionContext.refresh(with: newSession)
+        }
+        .onAppear {
+            sessionContext.refresh(with: activeLocalSession)
+        }
     }
 
     private var header: some View {

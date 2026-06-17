@@ -178,7 +178,7 @@ struct EpisodeCollaborationView: View {
                 )
                 syncReadinessItem(
                     title: "Shared timeline",
-                    detail: client.state.ok ? "\(client.state.timelineClipCount ?? 0) clips · fingerprint \(String((client.state.timelineFingerprint ?? "missing").prefix(10)))" : "Refresh after sign-in to load Nest timeline truth.",
+                    detail: client.state.ok ? "\(client.state.timelineClipCount ?? 0) decisions · fingerprint \(String((client.state.timelineFingerprint ?? "missing").prefix(10)))" : "Refresh after sign-in to load Nest timeline truth.",
                     symbol: client.state.ok ? "checkmark.circle.fill" : "arrow.clockwise.circle",
                     color: client.state.ok ? .green : .orange
                 )
@@ -308,7 +308,7 @@ struct EpisodeCollaborationView: View {
             }
 
             HStack(spacing: 12) {
-                metric("Clips", value: "\(client.state.timelineClipCount ?? 0)")
+                metric("Decisions", value: "\(client.state.timelineClipCount ?? 0)")
                 metric("Assets", value: "\(client.state.assetManifest?.totalAssets ?? 0)")
                 metric("Active editors", value: "\(max(client.state.activeCollaborators.count, client.state.ok ? 1 : 0))")
                 metric("Fingerprint", value: String((client.state.timelineFingerprint ?? "missing").prefix(10)))
@@ -338,7 +338,7 @@ struct EpisodeCollaborationView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], alignment: .leading, spacing: 12) {
                     ForEach(client.state.activeCollaborators) { collaborator in
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(collaborator.name)
+                            Text(collaborator.name.isEmpty ? collaborator.email : collaborator.name)
                                 .font(.headline)
                             Text(collaborator.email)
                                 .font(.caption)

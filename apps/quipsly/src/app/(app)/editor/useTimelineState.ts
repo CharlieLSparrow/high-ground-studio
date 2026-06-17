@@ -6,7 +6,8 @@ export const TRACK_PREFIX_AUDIO = "A" as const;
 
 export const DEFAULT_VIDEO_TRACK = `${TRACK_PREFIX_VIDEO}1`;
 export const DEFAULT_AUDIO_TRACK = `${TRACK_PREFIX_AUDIO}1`;
-export type TimelineTrackKind = "audio" | "video";
+import type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
+export type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, PaperEditSnapshot, LoopClip, TimelineState };
 
 type TrackPrefix = typeof TRACK_PREFIX_VIDEO | typeof TRACK_PREFIX_AUDIO;
 
@@ -124,74 +125,7 @@ export function isAudioTrackId(value: unknown) {
   return raw.toUpperCase().startsWith(TRACK_PREFIX_AUDIO);
 }
 
-export type TransformKeyframe = {
-  id: string;
-  timeOffset: number; // Seconds from the start of the clip
-  scale?: number;     // Zoom (2D) or FOV (360)
-  x?: number;         // Pan X (2D) or Yaw (360)
-  y?: number;         // Pan Y (2D) or Pitch (360)
-  rotation?: number;  // Roll
-  easing?: "linear" | "ease-in-out";
-  aiSuggested?: boolean;
-};
-
-export type TimelineClip = {
-  id: string;
-  assetId: string;
-  kind: TimelineTrackKind;
-  startIn: number;   // Start time relative to timeline (00:00)
-  duration: number;  // Duration of the clip on timeline
-  sourceStart: number; // In-point on the source media
-  sourceEnd?: number;
-  name: string;
-  color: string;
-  trackId: string;
-  sourceId?: string;
-  volume?: number;
-  deactivated?: boolean;
-  aiSuggested?: boolean;
-  transforms?: TransformKeyframe[];
-};
-
-export type TranscriptBlock = {
-  id: string;
-  time: number; // Timeline time where this block starts
-  duration: number;
-  text: string;
-  deleted: boolean;
-  alert: string | null;
-  deactivated?: boolean;
-  aiSuggested?: boolean;
-};
-
-export type PaperEditSnapshot = {
-  clips: TimelineClip[];
-  transcript: TranscriptBlock[];
-  createdAt?: string;
-  label?: string;
-};
-
-export type LoopClip = {
-  id: string;
-  sourceType: "youtube-embed" | "bucket-video";
-  sourceUrl: string;
-  startSec: number;
-  endSec: number;
-  title: string;
-  exportability: "playable" | "exportable";
-  manuscriptBlockId?: string;
-  projectSlug?: string;
-  episodeSlug?: string;
-  createdAt?: string;
-};
-
-export type TimelineState = {
-  clips: TimelineClip[];
-  transcript: TranscriptBlock[];
-  paperEditSnapshots?: Record<string, PaperEditSnapshot>;
-  loopClips?: LoopClip[];
-  editorMode?: "play-all" | "play-edit";
-};
+// Types exported from @high-ground/quipsly-domain above
 
 function sanitizePaperEditSnapshots(value: TimelineState["paperEditSnapshots"]) {
   const snapshots = value && typeof value === "object" ? value : {};

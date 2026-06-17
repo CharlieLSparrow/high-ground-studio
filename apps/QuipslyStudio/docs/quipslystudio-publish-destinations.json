@@ -1,0 +1,147 @@
+{
+  "model": "quipslystudio-publish-destinations",
+  "version": "2026-06-16.publish-destinations.v1",
+  "truth": "Publishing destinations consume exported artifacts and metadata packets. They never mutate source lanes, proxy media, edit decisions, crop recipes, or transcript truth.",
+  "operatorRule": "Use this catalog before preparing platform copy, upload packets, dry-run workers, or manual publishing checklists.",
+  "sharedRequirements": [
+    "Every publish record should reference a delivery lane id, exported artifact path, title, description or show notes, visibility intent, schedule intent, and receipt status.",
+    "Manual upload and API upload paths should use the same packet metadata so receipts can be reconciled later.",
+    "Dry-run workers may validate artifacts and metadata contracts but must not upload, schedule, publish, create provider receipts, or create public URLs."
+  ],
+  "destinations": [
+    {
+      "id": "youtube_episode",
+      "platform": "YouTube",
+      "label": "YouTube episode",
+      "artifactKind": "video",
+      "preferredFormat": "16:9",
+      "typicalDeliveryLaneIds": ["episode-16x9-master"],
+      "requires": ["title", "description", "thumbnail", "visibility", "scheduleIntent"],
+      "niceToHave": ["chapters", "tags", "playlist", "episodePageUrl", "patreonUrl"],
+      "humanChecklist": [
+        "Confirm the 16:9 master plays correctly.",
+        "Confirm title, description, thumbnail, and visibility.",
+        "Confirm schedule or publish-now intent.",
+        "Copy provider video id and public URL back into the publish receipt."
+      ],
+      "agentGuidance": "Prepare concise title/description options and verify packet completeness. Do not publish without explicit human approval."
+    },
+    {
+      "id": "patreon_episode",
+      "platform": "Patreon",
+      "label": "Patreon episode post",
+      "artifactKind": "video_or_post",
+      "preferredFormat": "16:9",
+      "typicalDeliveryLaneIds": ["episode-16x9-master", "podcast-audio-master"],
+      "requires": ["title", "memberCopy", "attachmentOrEmbedIntent", "visibilityTierIntent"],
+      "niceToHave": ["youtubeUrl", "episodePageUrl", "bonusPrompt", "behindTheScenesNote"],
+      "humanChecklist": [
+        "Confirm patron-facing copy and tier visibility.",
+        "Confirm whether the post embeds YouTube, uploads video, attaches audio, or links to the episode page.",
+        "Copy Patreon post id and URL back into the publish receipt."
+      ],
+      "agentGuidance": "Draft member-facing context and summarize what patrons get. Keep tier decisions explicit and inspectable."
+    },
+    {
+      "id": "youtube_short",
+      "platform": "YouTube Shorts",
+      "label": "YouTube Short",
+      "artifactKind": "video",
+      "preferredFormat": "9:16",
+      "typicalDeliveryLaneIds": ["short-9x16-*"],
+      "requires": ["shortTitle", "verticalVideo", "captionIntent", "visibility", "scheduleIntent"],
+      "niceToHave": ["hashtags", "sourceEpisodeUrl", "pinnedComment"],
+      "humanChecklist": [
+        "Confirm the 9:16 short starts fast and captions are readable.",
+        "Confirm title/hashtags and schedule.",
+        "Copy provider video id and URL back into the publish receipt."
+      ],
+      "agentGuidance": "Create short-specific hook/title options from the transcript segment. Do not reuse long episode copy unchanged."
+    },
+    {
+      "id": "instagram_reel",
+      "platform": "Instagram",
+      "label": "Instagram Reel",
+      "artifactKind": "video",
+      "preferredFormat": "9:16",
+      "typicalDeliveryLaneIds": ["short-9x16-*"],
+      "requires": ["verticalVideo", "caption", "hashtags", "scheduleIntent"],
+      "niceToHave": ["coverFrame", "collaboratorTags", "locationTag"],
+      "humanChecklist": [
+        "Confirm vertical crop, captions, and safe text placement.",
+        "Confirm caption and hashtags match Instagram tone.",
+        "Copy post URL back into the publish receipt."
+      ],
+      "agentGuidance": "Prefer punchy captions and avoid platform-incompatible links in primary caption copy."
+    },
+    {
+      "id": "facebook_reel",
+      "platform": "Facebook",
+      "label": "Facebook Reel",
+      "artifactKind": "video",
+      "preferredFormat": "9:16",
+      "typicalDeliveryLaneIds": ["short-9x16-*"],
+      "requires": ["verticalVideo", "caption", "scheduleIntent"],
+      "niceToHave": ["hashtags", "episodePageUrl", "pageAudienceNote"],
+      "humanChecklist": [
+        "Confirm vertical playback and captions.",
+        "Confirm page/audience target.",
+        "Copy post URL back into the publish receipt."
+      ],
+      "agentGuidance": "Keep copy accessible and slightly more context-rich than Instagram when useful."
+    },
+    {
+      "id": "linkedin_video",
+      "platform": "LinkedIn",
+      "label": "LinkedIn video",
+      "artifactKind": "video",
+      "preferredFormat": "9:16_or_16:9",
+      "typicalDeliveryLaneIds": ["short-9x16-*", "episode-16x9-master"],
+      "requires": ["video", "professionalContextCopy", "visibility", "scheduleIntent"],
+      "niceToHave": ["articleUrl", "newsletterTieIn", "questionForComments"],
+      "humanChecklist": [
+        "Confirm the clip has professional context, not just a raw social caption.",
+        "Confirm the aspect ratio is appropriate for the target post.",
+        "Copy post URL back into the publish receipt."
+      ],
+      "agentGuidance": "Frame the post around a useful idea, lesson, or discussion prompt."
+    },
+    {
+      "id": "spotify_podcast",
+      "platform": "Spotify for Podcasters",
+      "label": "Spotify podcast episode",
+      "artifactKind": "audio",
+      "preferredFormat": "audio",
+      "typicalDeliveryLaneIds": ["podcast-audio-master"],
+      "requires": ["audioMaster", "episodeTitle", "showNotes", "publishOrScheduleIntent"],
+      "niceToHave": ["episodeNumber", "seasonNumber", "transcript", "episodePageUrl"],
+      "humanChecklist": [
+        "Confirm the audio master plays cleanly.",
+        "Confirm title, show notes, and episode metadata.",
+        "Copy provider episode id and URL back into the publish receipt."
+      ],
+      "agentGuidance": "Prepare show notes from the transcript and manuscript context. Keep audio-specific metadata separate from video copy."
+    },
+    {
+      "id": "apple_podcasts",
+      "platform": "Apple Podcasts",
+      "label": "Apple Podcasts episode",
+      "artifactKind": "audio",
+      "preferredFormat": "audio",
+      "typicalDeliveryLaneIds": ["podcast-audio-master"],
+      "requires": ["audioMaster", "episodeTitle", "showNotes", "publishOrScheduleIntent"],
+      "niceToHave": ["episodeNumber", "seasonNumber", "transcript", "episodePageUrl"],
+      "humanChecklist": [
+        "Confirm audio metadata and show notes match podcast feed requirements.",
+        "Confirm release timing matches Spotify and episode page timing.",
+        "Copy provider episode id and URL back into the publish receipt."
+      ],
+      "agentGuidance": "Treat Apple and Spotify as separate receipts even if they share one audio master and show-notes draft."
+    }
+  ],
+  "agentExamples": [
+    "script/agentctl.sh publish-destinations",
+    "script/agentctl.sh publish-ledger",
+    "script/agentctl.sh publish-connector-workers-dry-run-all"
+  ]
+}

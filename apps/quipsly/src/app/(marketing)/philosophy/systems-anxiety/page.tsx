@@ -13,8 +13,8 @@ export default function SystemsAnxietyPage() {
       <nav className="fixed top-0 w-full z-50 bg-[#f6efe6]/90 backdrop-blur-md border-b border-[#e8d0b5]/50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between font-sans">
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-10 h-10 flex items-center justify-center">
-              <Feather className="w-6 h-6 text-[#a96735]" />
+            <div className="w-10 h-10 flex items-center justify-center overflow-hidden rounded-xl border border-[#e8d0b5] bg-white shadow-sm">
+              <img src="/quipsly-app-icon.png" alt="Quipsly" className="w-full h-full object-cover" />
             </div>
             <span className="font-black text-2xl tracking-tight text-[#3d2618] font-serif">Quipsly</span>
           </Link>
@@ -101,7 +101,9 @@ export default function SystemsAnxietyPage() {
       <footer className="border-t border-[#e8d0b5] py-12 bg-[#fffaf1]/50 backdrop-blur">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-[#8c552e] text-sm font-medium font-sans">
           <div className="flex items-center gap-2">
-            <Feather className="w-5 h-5 text-[#a96735]" />
+            <span className="h-8 w-8 overflow-hidden rounded-xl border border-[#e8d0b5] bg-white shadow-sm">
+              <img src="/quipsly-app-icon.png" alt="Quipsly" className="h-full w-full object-cover" />
+            </span>
             <span className="font-bold text-[#3d2618] font-serif text-xl tracking-wide">Quipsly</span>
           </div>
           <p className="italic text-[#a96735]">"Collect words. Build wisdom."</p>

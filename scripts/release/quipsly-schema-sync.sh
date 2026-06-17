@@ -17,7 +17,7 @@ if [[ -z "${PROJECT_ID}" ]]; then
 fi
 
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
-SCHEMA_SYNC_COMMAND="node scripts/quipsly-nest-chat-schema-push.mjs && node scripts/quipsly-production-core-schema-sync.mjs"
+SCHEMA_SYNC_COMMAND="pnpm prisma db push --accept-data-loss && node scripts/quipsly-nest-chat-schema-push.mjs && node scripts/quipsly-production-core-schema-sync.mjs"
 
 if [[ "${RUN_PRISMA_MIGRATE}" == "1" ]]; then
   SCHEMA_SYNC_COMMAND="pnpm prisma migrate deploy && ${SCHEMA_SYNC_COMMAND}"

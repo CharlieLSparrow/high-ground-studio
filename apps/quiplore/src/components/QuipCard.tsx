@@ -6,6 +6,9 @@ import type { QuipCardProjection } from "@high-ground/quipsly-domain";
 import { QuipVisual } from "./QuipVisual";
 import { SourceBadge } from "./SourceBadge";
 import { VerificationBadge } from "./VerificationBadge";
+import { ShareQuoteModal } from "./ShareQuoteModal";
+import { SaveToLorelistModal } from "./SaveToLorelistModal";
+import { useState } from "react";
 
 export function QuipCard({
   card,
@@ -13,7 +16,10 @@ export function QuipCard({
 }: {
   readonly card: QuipCardProjection;
   readonly curatorNote?: string;
+  readonly passport?: any; // To pass passport down if available, or we can fetch it in modal
 }) {
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
   return (
     <article className="quip-card">
       <QuipVisual visual={card.quote.visual} />
@@ -45,23 +51,38 @@ export function QuipCard({
           <Bookmark size={15} aria-hidden="true" />
           Save
         </button>
-        <button className="button" type="button">
+        <button 
+          className="button" 
+          type="button"
+          onClick={() => setSaveModalOpen(true)}
+        >
           <ListPlus size={15} aria-hidden="true" />
           Add
         </button>
         <button 
           className="button" 
           type="button" 
-          onClick={() => {
-            if (typeof navigator !== "undefined" && navigator.clipboard) {
-              navigator.clipboard.writeText(`"${card.quote.text}" - ${card.person.displayName}`);
-            }
-          }}
+          onClick={() => setShareModalOpen(true)}
         >
           <Share2 size={15} aria-hidden="true" />
           Share
         </button>
       </div>
+      {/* We pass a mock passport if real passport is missing to avoid breaking legacy usages */}
+      {shareModalOpen && (
+        <ShareQuoteModal
+          passport={card as any} 
+          isOpen={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+        />
+      )}
+      {saveModalOpen && (
+        <SaveToLorelistModal
+          quote={card.quote}
+          isOpen={saveModalOpen}
+          onClose={() => setSaveModalOpen(false)}
+        />
+      )}
     </article>
   );
 }

@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
-import { resolveMacSessionActor } from "@/lib/server/mac-session-token";
+
 import {
   normalizeAccessEmail,
   resolveStudioProjectAccess,
@@ -133,18 +133,14 @@ function editLease(collaboration: JsonRecord) {
 
 async function resolveActor(request: NextRequest) {
   const session = await auth();
-  const macActor = session?.user?.id ? null : resolveMacSessionActor(request);
   const email = normalizeAccessEmail(
     session?.user?.primaryEmail
-      || session?.user?.email
-      || macActor?.primaryEmail
-      || macActor?.email,
+      || session?.user?.email,
   );
   return {
-    id: cleanString(session?.user?.id || macActor?.id),
+    id: cleanString(session?.user?.id),
     email,
-    name: cleanString(session?.user?.name || macActor?.name || email),
-    source: session?.user?.id ? "embedded-cookie" : macActor ? macActor.source : "none",
+    name: cleanString(session?.user?.name, email),
   };
 }
 

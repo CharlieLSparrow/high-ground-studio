@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct EpisodeImportPanelView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var engine: LocalEngineClient
+    @EnvironmentObject private var mediaAccess: MediaAccessStore
 
     @State private var selectedRole: EpisodeImportRole = .spineAudio
     @State private var isChoosingFiles = false
@@ -181,6 +182,17 @@ struct EpisodeImportPanelView: View {
                     PremiereRelinkResultSummaryView(result: result)
                 }
 
+                if engine.premiereSourceMaterializationStatus != "No source readiness check yet" {
+                    Text(engine.premiereSourceMaterializationStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                if let result = engine.lastPremiereSourceMaterializationResult {
+                    PremiereSourceMaterializationSummaryView(result: result)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Quick stage generated packets")
                         .font(.caption.bold())
@@ -229,7 +241,7 @@ struct EpisodeImportPanelView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("\(summary.episodeSlug): \(summary.healthLabel)")
                                         .font(.caption.bold())
-                                    Text("\(summary.primaryTimelineClipCount ?? 0) clips · \(summary.mediaCount ?? 0) needed media · \(summary.skippedProjectMediaCount ?? 0) skipped project refs · \(summary.missingMediaCount ?? 0) missing needed · spine: \(summary.topSpineName ?? "none")")
+                                    Text("\(summary.primaryTimelineClipCount ?? 0) decisions · \(summary.mediaCount ?? 0) needed media · \(summary.skippedProjectMediaCount ?? 0) skipped project refs · \(summary.missingMediaCount ?? 0) missing needed · spine: \(summary.topSpineName ?? "none")")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                     if let projectMediaCount = summary.projectMediaCount, projectMediaCount > (summary.mediaCount ?? 0) {
@@ -255,8 +267,7 @@ struct EpisodeImportPanelView: View {
                                         }
 
                                         Button {
-                                            handlePremierePacketURL(URL(fileURLWithPath: summary.outputPath))
-                                            appState.selectedSection = .premiereDraftEdit
+                                            handlePremierePacketURL(URL(fileURLWithPath: summary.outputPath), reviewAfterStaging: true)
                                         } label: {
                                             Label("Stage + review", systemImage: "timeline.selection")
                                         }
@@ -269,6 +280,18 @@ struct EpisodeImportPanelView: View {
                                             } label: {
                                                 Label("Find missing media", systemImage: "folder.badge.questionmark")
                                             }
+                                        }
+
+                                        Button {
+                                            engine.inspectPremierePacketSources(packetPath: summary.outputPath)
+                                        } label: {
+                                            Label("Check sources", systemImage: "externaldrive.badge.checkmark")
+                                        }
+
+                                        Button {
+                                            engine.inspectPremierePacketSources(packetPath: summary.outputPath, requestDownloads: true)
+                                        } label: {
+                                            Label("Request downloads", systemImage: "icloud.and.arrow.down")
                                         }
                                     }
                                     .controlSize(.small)
@@ -303,7 +326,7 @@ struct EpisodeImportPanelView: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            Text("\(packet.mediaCount) media item(s), \(packet.timelineClipCount) timeline clips, \(packet.inactiveRangeCount) inactive source ranges.")
+                            Text("\(packet.mediaCount) media item(s), \(packet.timelineClipCount) timeline decisions, \(packet.inactiveRangeCount) inactive source ranges.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
@@ -347,7 +370,7 @@ struct EpisodeImportPanelView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("No episode imports queued yet.")
                     .font(.headline)
-                Text("Start with spine audio if you have it. Add camera video and reference clips after that.")
+                Text("Start with spine audio if you have it. Add camera video and reference decisions after that.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -634,6 +657,12 @@ struct EpisodeImportPanelView: View {
         }
 
         for (index, url) in urls.enumerated() {
+            if isFolder {
+                mediaAccess.addRoot(url)
+            } else {
+                mediaAccess.addParentRoot(forFile: url)
+            }
+
             engine.queueEpisodeImport(
                 path: url.path,
                 isFolder: isFolder,
@@ -642,6 +671,7 @@ struct EpisodeImportPanelView: View {
                 homeNestSlug: appState.homeNestSlug.trimmingCharacters(in: .whitespacesAndNewlines),
                 nestBaseURL: appState.nestURL,
                 role: selectedRole,
+                mediaCacheDir: QuipslyMediaWorkspace.proxyCacheRootURL(rootPath: appState.mediaWorkspacePath).path,
                 recordingSyncMetadata: makeRecordingSyncMetadata(for: url, takeOffset: index)
             )
         }
@@ -662,6 +692,7 @@ struct EpisodeImportPanelView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
+            mediaAccess.addParentRoot(forFile: url)
 
             handlePremierePacketURL(url)
         case .failure(let error):
@@ -683,7 +714,7 @@ struct EpisodeImportPanelView: View {
         }
     }
 
-    private func handlePremierePacketURL(_ url: URL) {
+    private func handlePremierePacketURL(_ url: URL, reviewAfterStaging: Bool = false) {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer {
             if didAccess {
@@ -694,19 +725,27 @@ struct EpisodeImportPanelView: View {
         do {
             let data = try Data(contentsOf: url)
             let packet = try JSONDecoder().decode(PremiereImportPacket.self, from: data)
-            appState.editorProjectSlug = packet.projectSlug
-            appState.editorEpisodeSlug = packet.episodeSlug
 
-            let summary = engine.stagePremiereImportPacket(
-                packet,
-                homeNestSlug: appState.homeNestSlug,
-                nestBaseURL: appState.nestURL,
-                autoStartAvailableMedia: autoStartPremiereMedia
-            )
+            DispatchQueue.main.async {
+                appState.editorProjectSlug = packet.projectSlug
+                appState.editorEpisodeSlug = packet.episodeSlug
 
-            let timelineClipCount = packet.quipslyEpisodeProductionPatch?.timelineClips?.count ?? 0
-            let inactiveRangeCount = packet.quipslyEpisodeProductionPatch?.premiereDeactivatedSourceCandidates?.count ?? 0
-            premierePacketMessage = "Staged \(summary.staged) media item(s) for \(packet.projectSlug) / \(packet.episodeSlug): \(summary.ready) ready, \(summary.held) held, \(timelineClipCount) timeline clips, \(inactiveRangeCount) inactive source ranges."
+                let summary = engine.stagePremiereImportPacket(
+                    packet,
+                    homeNestSlug: appState.homeNestSlug,
+                    nestBaseURL: appState.nestURL,
+                    mediaCacheDir: QuipslyMediaWorkspace.proxyCacheRootURL(rootPath: appState.mediaWorkspacePath).path,
+                    autoStartAvailableMedia: autoStartPremiereMedia
+                )
+
+                let timelineClipCount = packet.quipslyEpisodeProductionPatch?.timelineClips?.count ?? 0
+                let inactiveRangeCount = packet.quipslyEpisodeProductionPatch?.premiereDeactivatedSourceCandidates?.count ?? 0
+                premierePacketMessage = "Staged \(summary.staged) media item(s) for \(packet.projectSlug) / \(packet.episodeSlug): \(summary.ready) ready, \(summary.held) held, \(timelineClipCount) timeline decisions, \(inactiveRangeCount) inactive source ranges."
+
+                if reviewAfterStaging {
+                    appState.selectedSection = .premiereDraftEdit
+                }
+            }
         } catch {
             premierePacketMessage = "Could not read Premiere packet at \(url.path): \(error.localizedDescription)"
         }
@@ -716,6 +755,7 @@ struct EpisodeImportPanelView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
+            mediaAccess.addRoot(url, label: "Premiere media recovery")
             let didAccess = url.startAccessingSecurityScopedResource()
             defer {
                 if didAccess {
@@ -764,7 +804,7 @@ private struct PremiereRelinkResultSummaryView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: result.ok ? "folder.badge.gearshape" : "exclamationmark.triangle")
-                    .foregroundStyle(result.ok ? .teal : .orange)
+                    .foregroundStyle(result.ok ? .quipslyClayTeal : .quipslyBurntOrange)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(result.ok ? "Missing media recovery scan" : "Recovery scan needs attention")
@@ -802,10 +842,128 @@ private struct PremiereRelinkResultSummaryView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.quipslyClayTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func recoveryMetric(_ label: String, _ value: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.caption.bold())
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct PremiereSourceMaterializationSummaryView: View {
+    let result: PremiereSourceMaterializationRunResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: result.ok ? iconName : "exclamationmark.triangle")
+                    .foregroundStyle(result.ok ? toneColor : .orange)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.caption.bold())
+                    Text(result.plainEnglishSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let summary = result.summary {
+                HStack(spacing: 12) {
+                    materializationMetric("Ready", summary.ready, color: .green)
+                    materializationMetric("Need action", summary.blockers, color: summary.blockers > 0 ? .orange : .green)
+                    materializationMetric("Download", summary.downloadNeeded, color: summary.downloadNeeded > 0 ? .blue : .secondary)
+                    materializationMetric("Missing", summary.missing, color: summary.missing > 0 ? .orange : .secondary)
+                }
+            }
+
+            if let downloads = result.requestedDownloads, !downloads.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Download requests")
+                        .font(.caption.bold())
+                    ForEach(downloads.prefix(4)) { download in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: download.ok ? "icloud.and.arrow.down.fill" : "icloud.slash")
+                                .foregroundStyle(download.ok ? .blue : .orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(download.originalName)
+                                    .font(.caption.bold())
+                                Text(download.message)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let items = result.items {
+                let blockers = items.filter { $0.status != "ready" }
+                if !blockers.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Source actions")
+                            .font(.caption.bold())
+                        ForEach(blockers.prefix(5)) { item in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: item.needsLocalDownload ? "icloud.and.arrow.down" : "folder.badge.questionmark")
+                                    .foregroundStyle(item.needsLocalDownload ? .blue : .orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(item.originalName) · \(item.status)")
+                                        .font(.caption.bold())
+                                    Text(item.action)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    if !item.path.isEmpty {
+                                        Text(item.path)
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let warnings = result.warnings, !warnings.isEmpty {
+                Text(warnings.prefix(2).joined(separator: " "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(toneColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var title: String {
+        guard result.ok else { return "Source readiness needs attention" }
+        if (result.summary?.blockers ?? 0) == 0 { return "Primary sources are locally ready" }
+        return "Primary sources need recovery"
+    }
+
+    private var iconName: String {
+        (result.summary?.blockers ?? 0) == 0 ? "externaldrive.badge.checkmark" : "externaldrive.badge.questionmark"
+    }
+
+    private var toneColor: Color {
+        (result.summary?.blockers ?? 0) == 0 ? .green : .orange
+    }
+
+    private func materializationMetric(_ label: String, _ value: Int, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(value)")
                 .font(.caption.bold())
@@ -833,7 +991,7 @@ private struct EpisodeImportJobRow: View {
             HStack(alignment: .top, spacing: 12) {
             Image(systemName: job.isFolder ? "folder" : job.role == .spineAudio ? "waveform" : "film")
                 .font(.title3)
-                .foregroundStyle(.teal)
+                .foregroundStyle(.quipslyClayTeal)
                     .frame(width: 28)
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -936,7 +1094,7 @@ private struct EpisodeImportJobRow: View {
                     Button {
                         onAddAfterLastClip()
                     } label: {
-                        Label("Add after last clip", systemImage: "text.append")
+                        Label("Add after last decision", systemImage: "text.append")
                     }
                 }
 
@@ -957,6 +1115,7 @@ private struct EpisodeImportJobRow: View {
         case .queued: .blue
         case .probing: .cyan
         case .proxying: .orange
+        case .proxyReady: .green
         case .uploading: .purple
         case .registered: .green
         case .failed: .red
@@ -994,8 +1153,8 @@ private struct TimelineAttachSummaryView: View {
         let track = result.trackId ?? "timeline"
         let start = result.startIn.map { String(format: "%.1fs", $0) } ?? "the requested time"
         let duration = result.duration.map { String(format: "%.1fs", $0) } ?? "unknown duration"
-        let duplicate = result.alreadyAttached == true ? " Existing clip reused." : ""
-        return "Clip \(result.clipId ?? "unknown") on \(track), starts at \(start), duration \(duration).\(duplicate)"
+        let duplicate = result.alreadyAttached == true ? " Existing decision reused." : ""
+        return "Decision \(result.clipId ?? "unknown") on \(track), starts at \(start), duration \(duration).\(duplicate)"
     }
 }
 

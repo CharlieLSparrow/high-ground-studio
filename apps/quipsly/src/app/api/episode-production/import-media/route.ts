@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
 import { attachAssetToNest, createWorkflowJob } from "@/lib/server/quipsly-core";
 import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
@@ -565,6 +566,22 @@ export async function POST(request: Request) {
       }, { status: 503 });
     }
 
+    const access = await resolveEpisodeProductionAccess({
+      request,
+      projectSlug,
+      action: "write",
+      prisma,
+    });
+
+    if (!access.allowed) {
+      return NextResponse.json({
+        ok: false,
+        code: access.code,
+        error: access.error,
+        actorSource: access.actor.source,
+      }, { status: access.status });
+    }
+
     if (isJsonRequest) {
       const originalName = String(body.originalName ?? body.title ?? rawSourceUrl).trim() || "Source clip";
       const kind = sanitizeExplicitKind(body.kind, inferKindFromSourceUrl(rawSourceUrl));
@@ -883,6 +900,23 @@ export async function PATCH(request: Request) {
         error: "Episode production persistence is not available in this deployment.",
       }, { status: 503 });
     }
+
+    const access = await resolveEpisodeProductionAccess({
+      request,
+      projectSlug,
+      action: "write",
+      prisma,
+    });
+
+    if (!access.allowed) {
+      return NextResponse.json({
+        ok: false,
+        code: access.code,
+        error: access.error,
+        actorSource: access.actor.source,
+      }, { status: access.status });
+    }
+
     const { production } = await ensureProjectAndProduction(prisma, projectSlug, episodeSlug);
     const currentJson = asRecord(production.productionJson) ?? {};
     const importedMedia = Array.isArray(currentJson.importedMedia) ? currentJson.importedMedia : [];

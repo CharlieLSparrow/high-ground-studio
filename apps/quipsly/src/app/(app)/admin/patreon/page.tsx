@@ -1,7 +1,9 @@
-import { getAdminInboxStats, getRecentInboxEvents, getRecentReconciliations } from "./actions";
+import { getAdminInboxStats, getRecentInboxEvents, getRecentReconciliations, getPendingBetaRequests } from "./actions";
 import { ProviderEventInbox } from "@/components/admin/ProviderEventInbox";
 import { ReconciliationLedger } from "@/components/admin/ReconciliationLedger";
-import { Database, RefreshCcw } from "lucide-react";
+import { ManualReviewInbox } from "@/components/admin/ManualReviewInbox";
+import { RunWorkerSyncButton } from "@/components/admin/RunWorkerSyncButton";
+import { Database } from "lucide-react";
 import { requireQuipslyAdminActor } from "@/lib/server/user-management";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +11,11 @@ export const dynamic = "force-dynamic";
 export default async function PatreonAdminDashboard() {
   await requireQuipslyAdminActor();
 
-  const [stats, events, reconciliations] = await Promise.all([
+  const [stats, events, reconciliations, betaRequests] = await Promise.all([
     getAdminInboxStats(),
     getRecentInboxEvents(),
     getRecentReconciliations(),
+    getPendingBetaRequests(),
   ]);
 
   return (
@@ -25,10 +28,7 @@ export default async function PatreonAdminDashboard() {
           </h1>
           <p className="text-slate-500 mt-1">Monitor the decoupled webhook inbox and reconciliation engine.</p>
         </div>
-        <button className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors">
-          <RefreshCcw className="h-4 w-4" />
-          Run Worker Sync
-        </button>
+        <RunWorkerSyncButton secret={process.env.PATREON_RECONCILE_SECRET} />
       </div>
 
       <div className="grid grid-cols-3 gap-6 mb-8">
@@ -45,6 +45,11 @@ export default async function PatreonAdminDashboard() {
         <div>
           <h2 className="text-lg font-bold text-slate-800 mb-4">2. The Ledger (State)</h2>
           <ReconciliationLedger reconciliations={reconciliations} />
+        </div>
+        
+        <div>
+          <h2 className="text-lg font-bold text-slate-800 mb-4">3. Manual Reviews (Exceptions)</h2>
+          <ManualReviewInbox requests={betaRequests} />
         </div>
       </div>
     </div>

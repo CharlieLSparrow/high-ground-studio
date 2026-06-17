@@ -52,4 +52,13 @@ export class PatreonApiClient {
       body: JSON.stringify(request),
     });
   }
+
+  /**
+   * Deletes a post from Patreon.
+   */
+  public async deletePost(postId: string): Promise<any> {
+    return this.fetchPatreon(`/posts/${postId}`, {
+      method: "DELETE",
+    });
+  }
 }

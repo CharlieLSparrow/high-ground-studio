@@ -134,6 +134,7 @@ export async function ensureInvitedStudioUserByEmail(input: {
   if (existing) {
     const data: Prisma.UserUpdateInput = {
       isActive: true,
+      emailVerified: existing.emailVerified ?? new Date(),
     };
     const name = input.name?.trim();
     if (name) data.name = name;
@@ -154,6 +155,7 @@ export async function ensureInvitedStudioUserByEmail(input: {
       name: input.name?.trim() || null,
       image: input.image || null,
       isActive: true,
+      emailVerified: new Date(),
     },
     include: userIdentityInclude,
   });
@@ -162,6 +164,14 @@ export async function ensureInvitedStudioUserByEmail(input: {
 }
 
 export async function ensureStudioUserFromGoogle(input: {
+  email: string;
+  name?: string | null;
+  image?: string | null;
+}): Promise<StudioUserIdentity> {
+  return ensureStudioUserFromAuthIdentity(input);
+}
+
+export async function ensureStudioUserFromAuthIdentity(input: {
   email: string;
   name?: string | null;
   image?: string | null;
@@ -229,4 +239,34 @@ export async function ensureStudioUserFromGoogle(input: {
   });
 
   return mapStudioUserIdentity(user);
+}
+
+export async function linkSocialAccount(userId: string, account: any): Promise<void> {
+  const prisma = getPrismaClient();
+
+  // NextAuth account objects have specific fields we want to capture.
+  const data = {
+    userId,
+    type: account.type || "oauth",
+    provider: account.provider,
+    providerAccountId: account.providerAccountId,
+    access_token: account.access_token || null,
+    refresh_token: account.refresh_token || null,
+    expires_at: account.expires_at || null,
+    token_type: account.token_type || null,
+    scope: account.scope || null,
+    id_token: account.id_token || null,
+    session_state: account.session_state || null,
+  };
+
+  await prisma.account.upsert({
+    where: {
+      provider_providerAccountId: {
+        provider: account.provider,
+        providerAccountId: account.providerAccountId,
+      },
+    },
+    update: data,
+    create: data,
+  });
 }

@@ -64,6 +64,15 @@ export function StoryBibleSidebar({
     Promise.all([fetchEntities(), fetchActions()]).finally(() => setIsLoading(false));
   }, [fetchEntities, fetchActions]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchEntities();
+      fetchActions();
+    };
+    window.addEventListener("quipsly:refresh-story-bible", handleRefresh);
+    return () => window.removeEventListener("quipsly:refresh-story-bible", handleRefresh);
+  }, [fetchEntities, fetchActions]);
+
   const handleProcessAction = async (actionId: string, status: "APPROVED" | "REJECTED") => {
     const previousActions = [...actions];
     setActions((prev) => prev.filter((a) => a.id !== actionId));

@@ -12,6 +12,7 @@ import { probeMediaFile } from './MediaProbeService';
 import { ProxyGenerator } from './ProxyGenerator';
 import { uploadAndRegisterEpisodeMedia } from './EpisodeMediaRegistrationService';
 import { configuredMediaBucketName } from './MediaVaultConfig';
+import { TranscriptionService } from './TranscriptionService';
 dotenv.config({ path: path.join(__dirname, '..', '..', '..', '.env') });
 
 const PORT = 4000;
@@ -22,6 +23,7 @@ const renderService = new RenderService();
 const cloudSync = new CloudSyncDaemon(path.join(process.cwd(), '..', '..', 'HighGroundMedia'));
 const visionLab = new VisionLabService(LOCAL_ENGINE_CAPABILITIES);
 const proxyGenerator = new ProxyGenerator();
+const transcriptionService = new TranscriptionService();
 
 console.log(`🚀 Unified Local Engine started on ws://localhost:${PORT}`);
 
@@ -220,6 +222,87 @@ async function runPremiereMediaRelink(payload: any) {
   });
 }
 
+async function runPremiereSourceMaterialization(payload: any) {
+  const repoRoot = findRepoRoot();
+  const scriptPath = path.join(repoRoot, 'scripts', 'quipsly', 'materialize-premiere-packet-media.mjs');
+  const packetPath = String(payload?.packetPath || '').trim();
+  const requestDownloads = payload?.requestDownloads === true;
+  const maxItems = Number(payload?.maxItems || 0);
+
+  if (!packetPath) {
+    return {
+      ok: false,
+      status: 'failed',
+      message: 'Choose a Premiere packet before checking source readiness.',
+    };
+  }
+
+  const args = [
+    scriptPath,
+    '--packet',
+    packetPath,
+    '--json',
+  ];
+  if (requestDownloads) args.push('--request-downloads');
+  if (Number.isFinite(maxItems) && maxItems > 0) args.push('--max-items', String(maxItems));
+
+  return new Promise<any>((resolve) => {
+    const child = spawn(process.execPath, args, {
+      cwd: repoRoot,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (error: Error) => {
+      resolve({
+        ok: false,
+        status: 'failed',
+        message: error.message,
+        stdout,
+        stderr,
+      });
+    });
+    child.on('close', (code: number | null) => {
+      const output = stdout.trim();
+      let parsed: any = null;
+      try {
+        parsed = output ? JSON.parse(output) : null;
+      } catch {
+        parsed = null;
+      }
+
+      if (code === 0 && parsed?.ok) {
+        const summary = parsed.summary ?? {};
+        resolve({
+          ...parsed,
+          status: summary.blockers > 0 ? 'needs-action' : 'ready',
+          message: requestDownloads
+            ? `Download requests sent for ${parsed.requestedDownloads?.length ?? 0} source file(s). Refresh after Finder/iCloud finishes.`
+            : `${summary.ready ?? 0}/${summary.total ?? 0} primary source file(s) ready; ${summary.blockers ?? 0} need action.`,
+          stdout,
+          stderr,
+        });
+      } else {
+        resolve({
+          ok: false,
+          status: 'failed',
+          message: parsed?.error || stderr.trim() || `Source readiness check exited with code ${code ?? 'unknown'}.`,
+          stdout,
+          stderr,
+        });
+      }
+    });
+  });
+}
+
 wss.on('connection', (ws: WebSocket) => {
   console.log('✅ Studio Web UI connected to Local Engine');
 
@@ -280,13 +363,18 @@ wss.on('connection', (ws: WebSocket) => {
               message: 'Generating Quipsly-managed proxy and thumbnail cache files.'
             });
 
-            const proxy = await proxyGenerator.generateProxyAndThumbnail(String(payload?.path ?? ''));
+            const proxy = await proxyGenerator.generateProxyAndThumbnail(String(payload?.path ?? ''), {
+              cacheDir: typeof payload?.mediaCacheDir === 'string' ? payload.mediaCacheDir : undefined,
+            });
+            const autoRegisterAfterProxy = payload?.autoRegisterAfterProxy !== false;
             broadcast('MEDIA_PROXY_RESULT', {
               ...payload,
-              status: proxy.error ? 'held' : 'uploading',
+              status: proxy.error ? 'held' : autoRegisterAfterProxy ? 'uploading' : 'proxy-ready',
               proxy,
               message: proxy.error
                 ? proxy.error
+                : !autoRegisterAfterProxy
+                  ? 'Proxy and thumbnail are ready locally. Upload/register was not started.'
                 : proxy.kind === 'audio'
                   ? 'Audio is ready for sync. No video proxy was needed.'
                   : 'Proxy and thumbnail are ready in the Quipsly media cache.'
@@ -352,6 +440,43 @@ wss.on('connection', (ws: WebSocket) => {
 
           const result = await runPremiereMediaRelink(payload ?? {});
           broadcast('PREMIERE_RELINK_RESULT', result);
+          break;
+        }
+        case 'MATERIALIZE_PREMIERE_PACKET_MEDIA': {
+          broadcast('PREMIERE_SOURCE_MATERIALIZATION_PROGRESS', {
+            ok: true,
+            status: 'running',
+            message: payload?.requestDownloads
+              ? 'Requesting local downloads for primary timeline source blockers...'
+              : 'Checking primary timeline source readiness...',
+          });
+
+          const result = await runPremiereSourceMaterialization(payload ?? {});
+          broadcast('PREMIERE_SOURCE_MATERIALIZATION_RESULT', result);
+          break;
+        }
+        case 'TRANSCRIBE_MEDIA': {
+          broadcast('TRANSCRIPTION_PROGRESS', {
+            path: payload?.path,
+            status: 'running',
+            message: 'Starting local transcription model...',
+          });
+          
+          try {
+            const srtPath = await transcriptionService.transcribeMedia(payload?.path);
+            broadcast('TRANSCRIPTION_RESULT', {
+              ok: true,
+              path: payload?.path,
+              srtPath,
+              message: 'Transcription complete.',
+            });
+          } catch (error: any) {
+            broadcast('TRANSCRIPTION_RESULT', {
+              ok: false,
+              path: payload?.path,
+              message: error.message,
+            });
+          }
           break;
         }
         case 'START_INGEST':
@@ -709,9 +834,22 @@ wss.on('connection', (ws: WebSocket) => {
           break;
         default:
           console.warn(`Unknown command type: ${type}`);
+          broadcast('ENGINE_COMMAND_ERROR', {
+            ok: false,
+            status: 'failed',
+            code: 'unknown-command',
+            command: type,
+            message: `Local Engine does not support command "${type}".`,
+          });
       }
     } catch (err: any) {
       console.error(`Error processing message: ${err.message}`);
+      broadcast('ENGINE_COMMAND_ERROR', {
+        ok: false,
+        status: 'failed',
+        code: 'command-processing-error',
+        message: err?.message ?? 'Local Engine could not process this command.',
+      });
     }
   });
 

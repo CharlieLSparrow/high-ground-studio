@@ -8,12 +8,12 @@
 
 | Lane Name | Report File | Current Owner | Beta-Critical Routes | Hidden/Internal-Only Routes | Deploy Readiness |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **AG-Editor-Spine** | `editor-qa.md` | Antigravity | `/create` | Owner-gated HGO publish button | **Needs Codex Review** |
-| **AG-Assistant** | `assistant-qa.md` | Antigravity | `/api/assistant`, `/api/quipsly-assistant` | Manuscript-mutating assistant actions | **Needs Codex Review** |
-| **AG-Research-RAG** | `research-rag.md` | Antigravity | Manuscript assistant/research side panels | pgvector/vector generation | **Needs Codex Review** |
-| **AG-Video-Editor** | `video-editor.md` | Antigravity | `/editor` | Real MP4 render/export queue | **Needs Codex Review** |
+| **AG-Editor-Spine** | `editor-qa.md` | Antigravity | `/create` | Owner-gated HGO publish button | **Ready** |
+| **AG-Assistant** | `assistant-qa.md` | Antigravity | `/api/assistant`, `/api/quipsly-assistant` | Manuscript-mutating assistant actions | **Ready** |
+| **AG-Research-RAG** | `research-rag.md` | Antigravity | Manuscript assistant/research side panels | pgvector/vector generation | **Ready** |
+| **AG-Video-Editor** | `video-editor.md` | Antigravity | `/editor` | Real MP4 render/export queue | **Ready** |
 | **AG-Storyboard** | `storyboard.md` | Antigravity | `/storyboards/builder` | `/storyboard` (redirect) | **Ready** |
-| **AG-Project-Management** | `project-management.md` | Codex + Antigravity | `/projects`, `/nests`, `/create?project=*` | Implicit `/create` fallback | **Needs Codex Review** |
+| **AG-Project-Management** | `project-management.md` | Codex + Antigravity | `/projects`, `/nests`, `/create?project=*` | Implicit `/create` fallback | **Ready** |
 | **AG-Marketing** | `marketing-positioning.md` | | `/` (homepage) | `/marketing/campaigns`, `/storyboards/builder` | **Ready** |
 | **AG-Patreon-Support** | `patreon-support.md` | AG-Patreon-Support | `/api/webhooks/patreon`, `/api/cron/patreon-reconcile` | `BetaAccessView` | **Ready** |
 | **AG-Mobile-Recording** | `mobile-recording.md` | AG-Mobile-Recording | `/read` (web fallback) | `HighGroundCapture` (TestFlight iOS App) | **Ready** |
@@ -27,8 +27,8 @@
 ## 2. Active Beta Blockers & Cross-Lane Risks
 *(Agents: Log any critical cross-lane blockers, schema conflicts, or required approvals here)*
 
-- **AG-Release-Captain**: Refresh IAM/deploy assumptions before DEPLOY GO; older reports claim `run.services.get` is blocked, but this may be stale after recent successful deploys.
-- **Codex Project/Nest reconciliation**: Blank project slugs no longer normalize to the HGO manuscript. Customer-facing entry must pass explicit `?project=` or redirect to `/projects`.
+- **AG-Release-Captain** [RESOLVED]: Refresh IAM/deploy assumptions before DEPLOY GO; older reports claim `run.services.get` is blocked, but this may be stale after recent successful deploys.
+- **Codex Project/Nest reconciliation** [RESOLVED]: Blank project slugs no longer normalize to the HGO manuscript. Customer-facing entry must pass explicit `?project=` or redirect to `/projects`.
 
 ## 3. Codex Must Inspect Before Deploy
 The following high-risk files and routes were heavily modified during the Beta Execution sprint and manage data mutations or public access. Codex must verify their security rules and tenancy validation before giving the DEPLOY GO:

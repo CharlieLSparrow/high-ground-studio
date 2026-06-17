@@ -10,6 +10,8 @@ import {
   splitBlockAtOffset,
   toggleBlockTag,
   unarchiveBlock,
+  reorderDocumentBlocksAction,
+  addBlockComment,
 } from "./actions";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import { BlockItem } from "./BlockItem";
@@ -29,6 +31,7 @@ export type TaggedSpan = {
   startOffset: number;
   endOffset: number;
   selectedText: string;
+  noteBody?: string;
 };
 
 export function uniqueTagIds(block: Block) {
@@ -434,6 +437,88 @@ export default function Tagger({
   }, []);
 
   useEffect(() => {
+    const handleReorderBoundary = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+      const { activeId, overId, newIndex } = detail;
+      
+      setBlocks(current => {
+        const activeBoundary = documentBoundaries.find(b => b.id === activeId);
+        if (!activeBoundary) return current;
+        
+        const boundariesWithoutActive = documentBoundaries.filter(b => b.id !== activeId);
+        boundariesWithoutActive.splice(newIndex, 0, activeBoundary);
+        
+        const newBlocks: Block[] = [];
+        const firstBoundary = documentBoundaries[0];
+        const lastBoundary = documentBoundaries[documentBoundaries.length - 1];
+        
+        if (firstBoundary) {
+          newBlocks.push(...current.slice(0, firstBoundary.startIndex));
+        }
+        
+        for (const b of boundariesWithoutActive) {
+           newBlocks.push(...current.slice(b.startIndex, b.endIndex + 1));
+        }
+        
+        if (lastBoundary && lastBoundary.endIndex < current.length - 1) {
+           newBlocks.push(...current.slice(lastBoundary.endIndex + 1));
+        }
+        
+        // Fire action in background
+        void reorderDocumentBlocksAction(documentId, newBlocks.map(b => b.id));
+
+        return newBlocks;
+      });
+    };
+
+    window.addEventListener("quipsly:reorder-boundary", handleReorderBoundary);
+    return () => window.removeEventListener("quipsly:reorder-boundary", handleReorderBoundary);
+  }, [documentBoundaries, documentId]);
+
+  useEffect(() => {
+    const handleApplyAssistantDraft = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+      const { kind, payload } = detail;
+      
+      if ((kind === "PROPOSE_REWRITE" || kind === "PROPOSE_CONTINUITY_FIX") && payload.blockId && payload.rewriteText) {
+        handleTextChange(payload.blockId, payload.rewriteText);
+        void handleTextBlur(payload.blockId, payload.rewriteText);
+      } else if (kind === "PROPOSE_DRAFT" && payload.draftText) {
+        const activeBoundary = activeBoundaryId ? documentBoundaries.find(b => b.id === activeBoundaryId) : null;
+        const insertIndex = activeBoundary ? activeBoundary.endIndex + 1 : blocksRef.current.length;
+        
+        const newBlock = {
+          id: `pending-draft-${Date.now()}`,
+          text: payload.draftText,
+          tags: [],
+          spans: []
+        };
+        
+        setBlocks(current => {
+          const next = [...current];
+          next.splice(insertIndex, 0, newBlock);
+          return next;
+        });
+        
+        window.setTimeout(() => {
+          void handleTextBlur(newBlock.id, newBlock.text);
+          const el = textareaRefs.current[newBlock.id];
+          if (el) {
+            el.focus();
+            el.selectionStart = newBlock.text.length;
+            el.selectionEnd = newBlock.text.length;
+          }
+        }, 100);
+      }
+    };
+
+    window.addEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
+    return () => window.removeEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
+  }, [activeBoundaryId, documentBoundaries]);
+
+  useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
       return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
@@ -494,7 +579,8 @@ export default function Tagger({
         };
       }
 
-      if (b.tags.includes(tagId)) {
+      const hasTagLocally = b.tags.includes(tagId) || (b.spans ?? []).some(s => s.tagSlug === tagId);
+      if (hasTagLocally) {
         return {
           ...b,
           tags: b.tags.filter(t => t !== tagId),
@@ -512,8 +598,6 @@ export default function Tagger({
 
       return { ...b, tags: [...b.tags, tagId] };
     }));
-
-    requestAnimationFrame(() => restoreScrollState(previousScroll));
 
     // Server Action
     await toggleBlockTag(blockId, documentId, projectId, tagId, block.text, selection);
@@ -537,12 +621,37 @@ export default function Tagger({
       }
     });
 
-    requestAnimationFrame(() => restoreScrollState(previousScroll));
     const latest = getCurrentBlock(blockId);
     if (latest) {
       ensureCommittedSnapshot(latest);
     }
   };
+
+  const handleAddComment = useCallback(async (blockId: string, startOffset: number, endOffset: number, selectedText: string, noteBody: string) => {
+    // Optimistic UI
+    const spanId = `pending-span-${Date.now()}`;
+    const newSpan: TaggedSpan = { id: spanId, tagSlug: "comment", startOffset, endOffset, selectedText, noteBody };
+    setBlocks((currentBlocks) => currentBlocks.map(b => {
+      if (b.id !== blockId) return b;
+      
+      const newCommentSpan = {
+        id: `pending-comment-${blockId}-${startOffset}-${endOffset}`,
+        tagSlug: "comment",
+        label: "Comment",
+        startOffset,
+        endOffset,
+        selectedText,
+        noteBody
+      };
+
+      return {
+        ...b,
+        spans: [...(b.spans || []), newCommentSpan]
+      };
+    }));
+
+    void addBlockComment(blockId, startOffset, endOffset, selectedText, noteBody);
+  }, [addBlockComment]);
 
   const handleClearBlockTags = async (block: Block) => {
     if (uniqueTagIds(block).length === 0) return;
@@ -570,9 +679,7 @@ export default function Tagger({
       }
     });
 
-    requestAnimationFrame(() => restoreScrollState(previousScroll));
     await restoreBlockState(block.id, block.text, []);
-    requestAnimationFrame(() => restoreScrollState(previousScroll));
     const latest = getCurrentBlock(block.id);
     if (latest) ensureCommittedSnapshot(latest);
   };
@@ -612,7 +719,6 @@ export default function Tagger({
       }
     });
 
-    requestAnimationFrame(() => restoreScrollState(previousScroll));
     window.setTimeout(() => {
       if (!nextFocusId) return;
       const nextTextarea = textareaRefs.current[nextFocusId];
@@ -628,7 +734,6 @@ export default function Tagger({
     } catch (error) {
       console.error("Block delete failed.", error);
       restoreDeletedBlockLocally(beforeSnapshot, blockIndex);
-      requestAnimationFrame(() => restoreScrollState(previousScroll));
     }
   };
 
@@ -685,7 +790,6 @@ export default function Tagger({
       setDirtyBlocks(prev => ({ ...prev, [blockId]: true }));
     } finally {
       setSavingBlocks(prev => ({ ...prev, [blockId]: false }));
-      requestAnimationFrame(() => restoreScrollState(previousScroll));
     }
   };
 
@@ -715,6 +819,42 @@ export default function Tagger({
       }
     }
   }, []);
+
+  const handleFindSupportingQuote = useCallback(async (blockId: string, query: string) => {
+    try {
+      const { searchSemanticQuotes } = await import("../../actions/lore-actions");
+      const rawResults = await searchSemanticQuotes(projectId, query, 1);
+      const results = rawResults as any[];
+      
+      if (results && results.length > 0) {
+        const topQuote = results[0];
+        const insertedText = `"${topQuote.text}" - QuipLore ID: ${topQuote.id}`;
+        
+        const newId = `pending-quote-${Date.now()}`;
+        
+        // Optimistically insert block
+        setBlocks(current => {
+          const next = [...current];
+          const idx = next.findIndex(b => b.id === blockId);
+          if (idx !== -1) {
+            next.splice(idx + 1, 0, {
+              id: newId,
+              text: insertedText,
+              tags: ["quote-attribution"],
+              spans: []
+            });
+          }
+          return next;
+        });
+
+        // Background save
+        const { saveBlockContent } = await import("./actions");
+        await saveBlockContent(newId, insertedText);
+      }
+    } catch (err) {
+      console.error("Failed to find supporting quote:", err);
+    }
+  }, [projectId, documentId]);
 
   const handlePasteBlocks = useCallback(async (blockId: string, chunks: string[], selectionStart: number, selectionEnd: number) => {
     if (chunks.length <= 1) return;
@@ -1065,7 +1205,6 @@ export default function Tagger({
         previous.selectionStart = nextCursor;
         previous.selectionEnd = nextCursor;
       }
-      restoreScrollState(previousScroll);
     }, 0);
   };
 
@@ -1167,7 +1306,7 @@ export default function Tagger({
   return (
     <div className="mx-auto w-full max-w-[680px] pb-96">
       {undoStack.length > 0 ? (
-        <div className="rounded-xl border border-[#eadfca] bg-white/90 p-2 text-sm text-[#5e4b33] shadow-sm">
+        <div className="fixed bottom-6 right-6 z-50 w-full max-w-sm rounded-xl border border-[#eadfca] bg-white/95 p-3 text-sm text-[#5e4b33] shadow-lg backdrop-blur-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-black uppercase tracking-wider text-[#8c6b4a]">Undo</span>
             <button
@@ -1258,6 +1397,8 @@ export default function Tagger({
           onClearTags={handleClearBlockTags}
           onDeleteBlock={handleDeleteBlock}
           onNormalizeHeading={handleNormalizeHeading}
+          onAddComment={handleAddComment}
+          onFindSupportingQuote={handleFindSupportingQuote}
           onSelectionChange={handleSelectionChange}
           registerTextareaRef={(id, el) => {
             textareaRefs.current[id] = el;

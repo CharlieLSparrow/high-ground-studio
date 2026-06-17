@@ -1,0 +1,5 @@
+curl -s "http://localhost:8080/import?path=/Users/wall-e/Library/CloudStorage/GoogleDrive-charlie%40highgroundodyssey.com/Shared%20drives/HighGroundDrive/Podcast/Episode%201/First%20Pod%20Ever.wav" ; sleep 3
+curl -s "http://localhost:8080/import?path=/Users/wall-e/Library/CloudStorage/GoogleDrive-charlie%40highgroundodyssey.com/Shared%20drives/HighGroundDrive/Podcast/Episode%201/HomerAudio.wav" ; sleep 3
+curl -s "http://localhost:8080/import?path=/Users/wall-e/Library/CloudStorage/GoogleDrive-charlie%40highgroundodyssey.com/Shared%20drives/HighGroundDrive/Podcast/Episode%201/MVI_3999.MP4" ; sleep 3
+curl -s "http://localhost:8080/import?path=/Users/wall-e/Library/CloudStorage/GoogleDrive-charlie%40highgroundodyssey.com/Shared%20drives/HighGroundDrive/Podcast/Episode%201/NewHomerExport.MP4" ; sleep 3
+curl -s "http://localhost:8080/import?path=/Users/wall-e/Library/CloudStorage/GoogleDrive-charlie%40highgroundodyssey.com/Shared%20drives/HighGroundDrive/Podcast/Episode%201/There%20is%20no%20try.mp4" ; sleep 3

@@ -76,7 +76,7 @@ export function ManuscriptClient({ initialCharacters }: { initialCharacters: any
             onClick={() => { setShowAssistant(!showAssistant); setShowResearch(false); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${showAssistant ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-600 border-[#e8dcc4] hover:bg-purple-50'}`}
           >
-            <Bot size={16} /> Assistant
+            <img src="/quipsly-app-icon.png" alt="" className="w-4 h-4 rounded-sm" /> Assistant
           </button>
           <div className="w-px h-6 bg-[#e8dcc4] mx-2" />
           <StudioNav />

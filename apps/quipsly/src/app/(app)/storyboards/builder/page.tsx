@@ -37,10 +37,36 @@ export default async function StoryboardBuilderPage() {
         include: {
           frames: {
             orderBy: { sortOrder: 'asc' }
+          },
+          scrollExperiences: {
+            include: {
+              sections: {
+                orderBy: { sortOrder: 'asc' },
+                include: {
+                  panelRefs: {
+                    orderBy: { sortOrder: 'asc' },
+                    include: {
+                      frame: true
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
       mediaAssets: {
+        orderBy: { createdAt: 'desc' }
+      },
+      documents: {
+        include: {
+          blocks: {
+            where: { archivedAt: null },
+            orderBy: { order: 'asc' }
+          }
+        }
+      },
+      episodeProductions: {
         orderBy: { createdAt: 'desc' }
       }
     },

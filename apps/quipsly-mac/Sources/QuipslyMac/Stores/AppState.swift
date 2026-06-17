@@ -1,8 +1,11 @@
 import Foundation
+import SwiftUI
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published var selectedSection: AppSection? = .dashboard
+    @Published var selectedSection: AppSection? {
+        didSet { defaults.set(selectedSection?.rawValue ?? "", forKey: Keys.selectedSection) }
+    }
     @Published var engineURL: String {
         didSet { defaults.set(engineURL, forKey: Keys.engineURL) }
     }
@@ -37,15 +40,24 @@ final class AppState: ObservableObject {
     }
     @Published var pendingMacCallbackDiagnosticState = ""
     @Published var lastMacCallbackDiagnosticLabel = "Not tested yet."
+    @Published var shouldOpenVisionLabWorkbench = false
     @Published var showExperimentalModules: Bool {
         didSet { defaults.set(showExperimentalModules, forKey: Keys.showExperimentalModules) }
     }
+    @Published var visionLabWorkbenchRequestID = UUID()
     @Published var selectedDatasetPath = ""
+
+    @AppStorage(Keys.mediaWorkspacePath)
+    var mediaWorkspacePath: String = QuipslyMediaWorkspace.defaultRootURL.path
+
+    @AppStorage(Keys.smokeEpisodeEditorSnapshotPath)
+    var smokeEpisodeEditorSnapshotPath: String = ""
 
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.selectedSection = AppSection(rawValue: defaults.string(forKey: Keys.selectedSection) ?? "") ?? .dashboard
         self.engineURL = defaults.string(forKey: Keys.engineURL) ?? "ws://localhost:4000"
         self.nestURL = AppState.normalizedNestBaseURL(defaults.string(forKey: Keys.nestURL) ?? "https://nest.quipsly.com")
         self.nestChatProjectSlug = defaults.string(forKey: Keys.nestChatProjectSlug) ?? "high-ground-odyssey-manuscript"
@@ -59,6 +71,34 @@ final class AppState: ObservableObject {
         self.activeNestSessionProfileEmail = NestSessionTokenStore.activeProfileEmail() ?? ""
         self.pendingNestNativeAuthState = defaults.string(forKey: Keys.pendingNestNativeAuthState) ?? ""
         self.showExperimentalModules = defaults.object(forKey: Keys.showExperimentalModules) as? Bool ?? true
+    }
+
+    func normalizeEditorRoute() {
+        let project = editorProjectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        let episode = editorEpisodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        editorProjectSlug = project.isEmpty ? Defaults.editorProjectSlug : project
+        editorEpisodeSlug = episode.isEmpty ? Defaults.editorEpisodeSlug : episode
+    }
+
+    func applySmokeEditorRouteIfNeeded() {
+        let project = defaults.string(forKey: Keys.smokeEpisodeEditorProjectSlug)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let episode = defaults.string(forKey: Keys.smokeEpisodeEditorEpisodeSlug)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        var changed = false
+        if !project.isEmpty, project != editorProjectSlug {
+            editorProjectSlug = project
+            changed = true
+        }
+        if !episode.isEmpty, episode != editorEpisodeSlug {
+            editorEpisodeSlug = episode
+            changed = true
+        }
+
+        if changed {
+            normalizeEditorRoute()
+        }
     }
 
     func beginNestNativeAuthState() -> String {
@@ -151,11 +191,11 @@ final class AppState: ObservableObject {
         lastNestSessionCheckLabel = verifiedLabel
     }
 
-    func recordVerifiedNestSession(email: String, name: String? = nil) {
+    func recordVerifiedNestSession(email: String, label: String? = nil) {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedEmail.isEmpty else { return }
 
-        NestSessionTokenStore.recordVerification(email: normalizedEmail, name: name)
+        NestSessionTokenStore.recordVerification(email: normalizedEmail, name: label)
         activeNestSessionProfileEmail = NestSessionTokenStore.activeProfileEmail() ?? activeNestSessionProfileEmail
         nestSessionProfiles = NestSessionTokenStore.profiles()
         lastNestSessionEmail = normalizedEmail
@@ -170,7 +210,9 @@ final class AppState: ObservableObject {
         }
 
         guard let refreshToken = NestSessionTokenStore.activeRefreshToken(), !refreshToken.isEmpty else {
-            return !nestSessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            nestSessionToken = ""
+            lastNestSessionCheckLabel = "Refresh needed \(Date.now.formatted(date: .abbreviated, time: .shortened)): sign in again."
+            return false
         }
 
         do {
@@ -182,6 +224,18 @@ final class AppState: ObservableObject {
             saveNestSession(credentials: credentials)
             return true
         } catch {
+            if
+                let sessionError = error as? NestSessionExchangeError,
+                ["invalid-refresh-token", "refresh-token-expired"].contains(sessionError.serverCode ?? "")
+            {
+                let staleEmail = activeNestSessionProfileEmail
+                if !staleEmail.isEmpty {
+                    NestSessionTokenStore.removeProfile(email: staleEmail)
+                }
+                nestSessionProfiles = NestSessionTokenStore.profiles()
+                activeNestSessionProfileEmail = NestSessionTokenStore.activeProfileEmail() ?? ""
+                nestSessionToken = NestSessionTokenStore.load()
+            }
             lastNestSessionCheckLabel = "Refresh failed \(Date.now.formatted(date: .abbreviated, time: .shortened)): \(error.localizedDescription)"
             return false
         }
@@ -267,6 +321,14 @@ final class AppState: ObservableObject {
         lastNestSessionCheckLabel = "Never checked"
     }
 
+    var mediaWorkspaceURL: URL {
+        QuipslyMediaWorkspace.rootURL(rootPath: mediaWorkspacePath)
+    }
+
+    func resetMediaWorkspacePath() {
+        mediaWorkspacePath = QuipslyMediaWorkspace.defaultRootURL.path
+    }
+
     func visibleSections(capabilities: LocalEngineCapabilities) -> [AppSection] {
         AppSection.allCases.filter { section in
             if section == .visionLab {
@@ -293,17 +355,71 @@ final class AppState: ObservableObject {
         components.fragment = nil
         return components.url?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? fallback
     }
+
+    private static func normalizedSlug(_ value: String?, fallback: String) -> String {
+        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    private static func normalizedSectionTarget(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: " ", with: "")
+    }
+
+    func requestVisionLabWorkbench() {
+        shouldOpenVisionLabWorkbench = true
+        visionLabWorkbenchRequestID = UUID()
+    }
+
+    func consumeVisionLabWorkbenchRequest() -> Bool {
+        guard shouldOpenVisionLabWorkbench else { return false }
+        shouldOpenVisionLabWorkbench = false
+        return true
+    }
+
+    private static func isVisionLabWorkbenchRequest(_ url: URL) -> Bool {
+        let pathTargets = url.pathComponents
+            .filter { $0 != "/" }
+            .map(normalizedSectionTarget)
+        let queryTargets = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .compactMap { item -> String? in
+                guard ["mode", "open", "target"].contains(item.name.lowercased()) else { return nil }
+                return item.value.map(normalizedSectionTarget)
+            } ?? []
+
+        return (pathTargets + queryTargets).contains { target in
+            target == "workbench" ||
+                target == "reefball" ||
+                target == "reefballworkbench"
+        }
+    }
 }
 
 private enum Keys {
+    static let selectedSection = "quipslyMac.selectedSection"
     static let engineURL = "quipslyMac.engineURL"
     static let nestURL = "quipslyMac.nestURL"
     static let nestChatProjectSlug = "quipslyMac.nestChatProjectSlug"
     static let editorProjectSlug = "quipslyMac.editorProjectSlug"
     static let editorEpisodeSlug = "quipslyMac.editorEpisodeSlug"
     static let homeNestSlug = "quipslyMac.homeNestSlug"
+    static let mediaWorkspacePath = "quipslyMac.mediaWorkspacePath"
     static let lastNestSessionEmail = "quipslyMac.lastNestSessionEmail"
     static let lastNestSessionCheckLabel = "quipslyMac.lastNestSessionCheckLabel"
     static let pendingNestNativeAuthState = "quipslyMac.pendingNestNativeAuthState"
     static let showExperimentalModules = "quipslyMac.showExperimentalModules"
+    static let selectedDatasetPath = "quipslyMac.selectedDatasetPath"
+    static let smokeEpisodeEditorSnapshotPath = "quipslyMac.smokeEpisodeEditorSnapshotPath"
+    static let smokeEpisodeEditorProjectSlug = "quipslyMac.smokeEpisodeEditorProjectSlug"
+    static let smokeEpisodeEditorEpisodeSlug = "quipslyMac.smokeEpisodeEditorEpisodeSlug"
+}
+
+private enum Defaults {
+    static let editorProjectSlug = "high-ground-odyssey-manuscript"
+    static let editorEpisodeSlug = "episode-4"
 }

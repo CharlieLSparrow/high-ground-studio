@@ -47,17 +47,19 @@ export function RecorderBottomBar({ projectSlug, episodeSlug }: { projectSlug: s
     timeLabelRef.current.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  if (bridge.hasNativeBridge) {
+    return null;
+  }
+
   return (
     <div 
       className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 pb-safe flex flex-col shadow-2xl z-50"
       role="region"
       aria-label="Recording Controls"
     >
-      {!bridge.hasNativeBridge && (
-        <div className="bg-yellow-900/40 text-yellow-500/90 text-[10px] uppercase tracking-wider text-center py-1.5 px-4 font-semibold border-b border-yellow-900/30">
-          ⚠️ Beta: Keep screen awake. Do not lock phone. Use Wi-Fi for long takes.
-        </div>
-      )}
+      <div className="bg-yellow-900/40 text-yellow-500/90 text-[10px] uppercase tracking-wider text-center py-1.5 px-4 font-semibold border-b border-yellow-900/30">
+        ⚠️ Beta: Keep screen awake. Do not lock phone. Use Wi-Fi for long takes.
+      </div>
       
       <div className="p-4 flex flex-col gap-4">
         {/* Time & Status display */}

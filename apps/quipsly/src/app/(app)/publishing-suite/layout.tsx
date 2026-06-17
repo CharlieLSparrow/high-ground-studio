@@ -28,6 +28,14 @@ export default function PublishingSuiteLayout({ children }: { children: React.Re
             <BarChart3 className="w-5 h-5 text-[#8c6b4a]" />
             <span className="font-bold text-sm">Analytics Nexus</span>
           </Link>
+          <div className="pt-2 mt-2 border-t border-[#e8dcc4]"></div>
+          <Link href="/publishing-suite/connections" className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#5e4b33] hover:bg-[#ebdcc8] hover:text-[#3d3122] transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#8c6b4a]">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <span className="font-bold text-sm">Channel Connections</span>
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-[#e8dcc4]">

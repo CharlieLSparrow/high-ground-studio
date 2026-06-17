@@ -4,13 +4,31 @@ import { Storage } from "@google-cloud/storage";
 // For local development, ensure GOOGLE_APPLICATION_CREDENTIALS is set in the environment.
 const storage = new Storage();
 
-// The user-defined bucket for the massive media vault
+const MEDIA_UPLOAD_RESUMABLE_THRESHOLD_BYTES = 8 * 1024 * 1024;
+
+export const MEDIA_BUCKET_ENV_NAMES = [
+  "QUIPSLY_MEDIA_BUCKET",
+  "HIGH_GROUND_MEDIA_BUCKET",
+  "GCS_BUCKET_NAME",
+  "NEXT_PUBLIC_GCS_BUCKET",
+] as const;
+
 export const BUCKET_NAME =
   process.env.QUIPSLY_MEDIA_BUCKET ||
   process.env.HIGH_GROUND_MEDIA_BUCKET ||
-  "high-ground-media-vault";
+  process.env.GCS_BUCKET_NAME ||
+  process.env.NEXT_PUBLIC_GCS_BUCKET ||
+  "";
 
-export function getMediaBucket(bucketName = BUCKET_NAME) {
+export function requireMediaBucketName() {
+  if (BUCKET_NAME) return BUCKET_NAME;
+
+  throw new Error(
+    `Missing media bucket. Set one of: ${MEDIA_BUCKET_ENV_NAMES.join(", ")}.`,
+  );
+}
+
+export function getMediaBucket(bucketName = requireMediaBucketName()) {
   return storage.bucket(bucketName);
 }
 
@@ -34,11 +52,12 @@ export async function uploadMediaBuffer(args: {
   contentType: string;
   metadata?: Record<string, string | null | undefined>;
 }) {
-  const bucket = getMediaBucket();
+  const bucketName = requireMediaBucketName();
+  const bucket = getMediaBucket(bucketName);
   const file = bucket.file(args.objectName);
 
   await file.save(args.buffer, {
-    resumable: false,
+    resumable: args.buffer.byteLength >= MEDIA_UPLOAD_RESUMABLE_THRESHOLD_BYTES,
     contentType: args.contentType,
     metadata: {
       cacheControl: "private, max-age=31536000",
@@ -48,10 +67,16 @@ export async function uploadMediaBuffer(args: {
     },
   });
 
+  const [metadata] = await file.getMetadata();
+
   return {
-    bucketName: BUCKET_NAME,
+    bucketName,
     objectName: args.objectName,
-    uri: toGcsUri(BUCKET_NAME, args.objectName),
+    uri: toGcsUri(bucketName, args.objectName),
+    sizeBytes: Number(metadata.size ?? args.buffer.byteLength),
+    contentType: metadata.contentType || args.contentType,
+    generation: String(metadata.generation ?? ""),
+    metageneration: String(metadata.metageneration ?? ""),
   };
 }
 

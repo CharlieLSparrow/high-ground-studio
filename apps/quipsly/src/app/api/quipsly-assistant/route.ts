@@ -31,6 +31,7 @@ type AssistantRequestBody = {
   activeViewName?: string;
   visibleBlocks?: AssistantBlockContext[];
   recentTags?: string[];
+  projectDocuments?: { id: string; title: string; sourceLabel?: string | null }[];
 };
 
 type NormalizedToolIntent = {
@@ -69,7 +70,7 @@ const assistantResponseSchema: Schema = {
         properties: {
           kind: {
             type: Type.STRING,
-            description: "One of suggest-tags, find-related-blocks, create-research-packet-note, summarize-selected-block, propose-output-plan, PROPOSE_ENTITY, PROPOSE_ENTITY_UPDATE.",
+            description: "One of suggest-tags, find-related-blocks, create-research-packet-note, summarize-selected-block, propose-output-plan, PROPOSE_ENTITY, PROPOSE_ENTITY_UPDATE, PROPOSE_DRAFT, PROPOSE_REWRITE, CHECK_CONTINUITY, PROPOSE_CONTINUITY_FIX.",
           },
           label: { type: Type.STRING },
           explanation: {
@@ -101,6 +102,11 @@ const SAFE_TOOL_KINDS = new Set([
   "propose-output-plan",
   "PROPOSE_ENTITY",
   "PROPOSE_ENTITY_UPDATE",
+  "PROPOSE_DRAFT",
+  "PROPOSE_REWRITE",
+  "CHECK_CONTINUITY",
+  "PROPOSE_CONTINUITY_FIX",
+  "open-document",
 ]);
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -146,6 +152,18 @@ function cleanBoundary(value: unknown): AssistantBoundaryContext | null {
   };
 }
 
+function cleanDocuments(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 50).map(raw => {
+    const doc = asRecord(raw);
+    return {
+      id: cleanText(doc.id, 80),
+      title: cleanText(doc.title, 180),
+      sourceLabel: cleanText(doc.sourceLabel, 80) || null,
+    };
+  }).filter(doc => doc.id && doc.title);
+}
+
 function inferOutputCandidates(context: {
   message: string;
   activeBoundary: AssistantBoundaryContext | null;
@@ -188,12 +206,13 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
   );
   const outputCandidates = inferOutputCandidates(context);
   const primaryOutput = outputCandidates[0];
+  const isOutputContext = !!primaryOutput;
 
   return {
     source: "local-fallback",
-    assistantMessage: boundaryLabel
-      ? `I can see ${boundaryLabel}. I will stay in research-assistant mode: organize, retrieve, compare, and propose changes for approval.`
-      : "I can help organize this project without taking over the writing. Ask me to find related material, suggest tags, summarize a selected block, or prepare a research packet.",
+    assistantMessage: isOutputContext
+      ? "I can help prepare output packets, draft outlines, or organize the project. Ask me to draft a new scene, find related material, suggest tags, or summarize a selected block."
+      : "I can help draft, rewrite, or organize this project. Ask me to draft a new scene, find related material, suggest tags, or summarize a selected block.",
     suggestions: [
       {
         title: hasStructure ? "Use the outline as the spine" : "Start with structure",
@@ -392,6 +411,7 @@ export async function POST(request: Request) {
       activeViewName: cleanText(body.activeViewName, 120) || "Everything Mode",
       visibleBlocks: cleanBlocks(body.visibleBlocks),
       recentTags: cleanTags(body.recentTags),
+      projectDocuments: cleanDocuments(body.projectDocuments),
     };
 
     if (!context.message) {
@@ -399,6 +419,19 @@ export async function POST(request: Request) {
     }
 
     let sessionId = context.sessionId;
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        ok: true,
+        sessionId,
+        ...localAssistantFallback(context),
+        warning: "GEMINI_API_KEY is not configured, so Quipsly used local fallback guidance.",
+      });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    let ragContextChunks: string[] = [];
 
     if (process.env.DATABASE_URL) {
       try {
@@ -435,23 +468,36 @@ export async function POST(request: Request) {
               sessionId = newSession.id;
             }
           }
+
+          // --- RAG PIPELINE (Semantic Lore Retrieval) ---
+          try {
+            const embeddingResponse = await ai.models.embedContent({
+              model: "text-embedding-004",
+              contents: context.message,
+            });
+            const embeddingVector = embeddingResponse.embeddings?.[0]?.values;
+            
+            if (embeddingVector && embeddingVector.length > 0) {
+              const vectorString = `[${embeddingVector.join(",")}]`;
+              // We use <=> for Cosine Distance because text-embedding-004 produces normalized vectors
+              const relevantChunks = await prisma.$queryRaw<Array<{ id: string, contentSnapshot: string }>>`
+                SELECT id, "contentSnapshot" 
+                FROM "RetrievalEmbedding"
+                WHERE "projectId" = ${project.id}
+                ORDER BY embedding <=> ${vectorString}::vector
+                LIMIT 5;
+              `;
+              ragContextChunks = relevantChunks.map(chunk => chunk.contentSnapshot);
+            }
+          } catch (ragError) {
+            console.error("[quipsly-assistant] RAG pipeline error:", ragError);
+          }
         }
       } catch (error) {
         console.error("[quipsly-assistant] DB error resolving session:", error);
       }
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({
-        ok: true,
-        sessionId,
-        ...localAssistantFallback(context),
-        warning: "GEMINI_API_KEY is not configured, so Quipsly used local fallback guidance.",
-      });
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
     const isScanRequest = context.message.startsWith("SCAN_SECTION_FOR_ENTITIES:");
     const prompt = [
       "You are a Quipsly: a creative research and organization assistant for writers, authors, academics, podcasters, and creators.",
@@ -469,7 +515,12 @@ export async function POST(request: Request) {
       "- PROPOSE_ENTITY (Propose creating a new entity in the Story Bible/Study Corpus)",
       "- PROPOSE_ENTITY_UPDATE (Propose updating an existing entity's attributes in the Story Bible/Study Corpus)",
       "- PROPOSE_DRAFT (Propose a rough draft of a new scene or block. Must include 'draftText' in payload.)",
-      "- PROPOSE_REWRITE (Propose a rewrite or alternate version of an existing block. Must include 'originalText' and 'rewriteText' in payload.)",
+      "- PROPOSE_REWRITE (Propose a rewrite or alternate version of an existing block. Must include 'blockId', 'originalText', and 'rewriteText' in payload.)",
+      "- CHECK_CONTINUITY (Flag a continuity error or inconsistency based on the Story Bible. Must include 'blockId', 'issueDescription', and 'violatingExcerpt' in payload.)",
+      "- PROPOSE_CONTINUITY_FIX (Propose a rewrite to fix a continuity error. Must include 'blockId', 'originalText', 'rewriteText', and 'issueDescription' in payload.)",
+      "- open-document (Suggest that the user open a different document in the project. Must include 'documentId' and 'documentTitle' in the payload.)",
+      "",
+      "IMPORTANT NEST CONTEXT: You are inside a multi-document Nest. You can see the 'projectDocuments' list in your context. You can suggest the user review or open other documents in the Nest if they are relevant to their request.",
       "",
       isScanRequest
         ? "The user has explicitly requested to scan the current section and extract entities. You must analyze the visible text block context, identify characters, settings, scenes, themes, and motifs, and return them as PROPOSE_ENTITY or PROPOSE_ENTITY_UPDATE tool intents."
@@ -484,6 +535,9 @@ export async function POST(request: Request) {
       "",
       "For EVERY tool intent you propose, you MUST explain 'why this suggestion?' in the explanation field.",
       "",
+      ragContextChunks.length > 0 ? "SEMANTIC RAG LORE CONTEXT (Automatically retrieved via pgvector similarity search based on the user's prompt):" : "",
+      ragContextChunks.length > 0 ? JSON.stringify(ragContextChunks, null, 2) : "",
+      "",
       "Current context:",
       JSON.stringify(context, null, 2),
     ].filter(Boolean).join("\n");
@@ -494,7 +548,7 @@ export async function POST(request: Request) {
       config: {
         responseMimeType: "application/json",
         responseSchema: assistantResponseSchema,
-        systemInstruction: "Be a cautious research assistant. Return structured JSON only. Do not directly author or mutate the user's manuscript.",
+        systemInstruction: "Be an empowering research and drafting assistant. Return structured JSON only. You may draft or rewrite content, but always propose changes via safe tool intents rather than directly mutating the manuscript.",
         temperature: 0.25,
       },
     });
@@ -516,7 +570,11 @@ export async function POST(request: Request) {
         const actionsToSave = payload.toolIntents.filter(
           (intent) =>
             intent.kind === "PROPOSE_ENTITY" ||
-            intent.kind === "PROPOSE_ENTITY_UPDATE"
+            intent.kind === "PROPOSE_ENTITY_UPDATE" ||
+            intent.kind === "PROPOSE_DRAFT" ||
+            intent.kind === "PROPOSE_REWRITE" ||
+            intent.kind === "CHECK_CONTINUITY" ||
+            intent.kind === "PROPOSE_CONTINUITY_FIX"
         );
 
         if (actionsToSave.length > 0) {

@@ -3,7 +3,8 @@ import { StripboardClient } from './stripboard-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StripboardPage({ searchParams }: { searchParams: { projectId?: string } }) {
+export default async function StripboardPage({ searchParams }: { searchParams: Promise<{ projectId?: string }> }) {
+  const params = await searchParams;
   const prisma = getPrismaClient();
 
   // Get current user
@@ -25,7 +26,7 @@ export default async function StripboardPage({ searchParams }: { searchParams: {
       })
     : [];
 
-  const selectedProjectId = searchParams.projectId || projects[0]?.id;
+  const selectedProjectId = params.projectId || projects[0]?.id;
 
   let scenes: any[] = [];
   let shootDays: any[] = [];

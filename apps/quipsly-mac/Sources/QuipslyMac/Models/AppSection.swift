@@ -2,6 +2,9 @@ import Foundation
 
 enum AppSection: String, CaseIterable, Hashable, Identifiable {
     case dashboard
+    case assumptions
+    case nestProjects
+    case manuscriptEditor
     case nestSession
     case mediaEngine
     case episodeEditor
@@ -18,6 +21,9 @@ enum AppSection: String, CaseIterable, Hashable, Identifiable {
     var title: String {
         switch self {
         case .dashboard: "Dashboard"
+        case .assumptions: "Assumptions"
+        case .nestProjects: "The Nest"
+        case .manuscriptEditor: "Text Editor"
         case .nestSession: "Nest Session"
         case .mediaEngine: "Media Engine"
         case .episodeEditor: "Episode Editor"
@@ -34,6 +40,9 @@ enum AppSection: String, CaseIterable, Hashable, Identifiable {
     var subtitle: String {
         switch self {
         case .dashboard: "Local cockpit"
+        case .assumptions: "Product bets"
+        case .nestProjects: "Projects and Nests"
+        case .manuscriptEditor: "Writing and study docs"
         case .nestSession: "Sign in once"
         case .mediaEngine: "Video, proxies, offload"
         case .episodeEditor: "Nest timeline shell"
@@ -50,6 +59,9 @@ enum AppSection: String, CaseIterable, Hashable, Identifiable {
     var symbol: String {
         switch self {
         case .dashboard: "gauge.with.dots.needle.67percent"
+        case .assumptions: "list.bullet.clipboard"
+        case .nestProjects: "square.grid.2x2"
+        case .manuscriptEditor: "doc.richtext"
         case .nestSession: "person.crop.circle.badge.checkmark"
         case .mediaEngine: "film.stack"
         case .episodeEditor: "timeline.selection"

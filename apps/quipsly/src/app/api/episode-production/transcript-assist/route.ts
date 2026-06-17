@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 
 const MAX_INLINE_MEDIA_BYTES = 18 * 1024 * 1024;
@@ -184,6 +185,22 @@ export async function POST(request: Request) {
 
     const generatedAt = new Date().toISOString();
     const prisma = getPrismaClient();
+    const access = await resolveEpisodeProductionAccess({
+      request,
+      projectSlug,
+      action: "write",
+      prisma,
+    });
+
+    if (!access.allowed) {
+      return NextResponse.json({
+        ok: false,
+        code: access.code,
+        error: access.error,
+        actorSource: access.actor.source,
+      }, { status: access.status });
+    }
+
     const { production } = await ensureProjectAndProduction(prisma, projectSlug, episodeSlug);
     const currentJson = asRecord(production.productionJson);
     const importedMedia = coerceArray<Record<string, unknown>>(currentJson.importedMedia);

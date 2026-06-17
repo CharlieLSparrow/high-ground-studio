@@ -9,6 +9,9 @@ import { QuipslyPanel } from "@/components/QuipslyPanel";
 import { SourceBadge } from "@/components/SourceBadge";
 import { StatPanel } from "@/components/StatPanel";
 import { VerificationBadge } from "@/components/VerificationBadge";
+import { ShareCardPreview } from "@/components/ShareCardPreview";
+import { StoryTrailViewer } from "@/components/StoryTrailViewer";
+import { VariantDiffViewer } from "@/components/VariantDiffViewer";
 import AdSenseBannerSlot from "@/components/monetization/AdSenseBannerSlot";
 import AffiliateBookCard from "@/components/monetization/AffiliateBookCard";
 import PatreonPledgeBanner from "@/components/monetization/PatreonPledgeBanner";
@@ -139,45 +142,9 @@ export default async function QuotePassportPage({
             </ul>
           </section>
 
-          <section className="text-stack">
-            <h2 className="panel-title">Variants and disputes</h2>
-            {passport.variants.length ? (
-              passport.variants.map((variant) => (
-                <div className="meta-item" key={variant.id}>
-                  <VerificationBadge status={variant.status} />
-                  <strong>{variant.text}</strong>
-                  <p>{variant.note}</p>
-                </div>
-              ))
-            ) : (
-              <p>No variants are attached to this seed record yet.</p>
-            )}
-          </section>
+          <VariantDiffViewer quote={passport.quote} variants={passport.variants} />
 
-          {story ? (
-            <section className="story-trail-block">
-              <span className="section-label">
-                <Feather size={14} aria-hidden="true" />
-                Story trail
-              </span>
-              <h2 className="panel-title">{story.title}</h2>
-              <p className="panel-copy">{story.deck}</p>
-              <ol className="story-beat-list">
-                {story.beats.map((beat) => (
-                  <li key={beat.id}>
-                    <strong>{beat.title}</strong>
-                    <p>{beat.body}</p>
-                    {beat.caution ? <small>{beat.caution}</small> : null}
-                  </li>
-                ))}
-              </ol>
-              <div className="meta-item">
-                <span>Video seed</span>
-                <strong>{story.recommendedRuntimeSeconds}s QuipLore short</strong>
-                <p>{story.videoSeed}</p>
-              </div>
-            </section>
-          ) : null}
+          {story ? <StoryTrailViewer story={story} /> : null}
         </article>
 
         <aside className="stack">
@@ -197,6 +164,8 @@ export default async function QuotePassportPage({
             state={passport.person.quipslyState}
             note={passport.quote.quipslyNote}
           />
+
+          <ShareCardPreview passport={passport} />
 
           <AdSenseBannerSlot slotId="quiplore-sidebar-ad" />
 

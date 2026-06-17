@@ -11,6 +11,8 @@ interface InteractionContextValue {
   setActivePanel: (groupId: string, panelId: string) => void;
   addInteraction: (interaction: Omit<ScrollInteraction, 'id' | 'createdAt'>) => void;
   toggleFavorite: (panelId: string, userId: string) => void;
+  toggleSelection: (panelId: string, userId: string) => void;
+  setRating: (panelId: string, userId: string, rating: number) => void;
 }
 
 const InteractionStateContext = createContext<InteractionContextValue | null>(null);
@@ -104,6 +106,60 @@ export function InteractionStateProvider({ children, experienceId }: { children:
     }
   }, [experienceId]);
 
+  const toggleSelection = useCallback(async (panelId: string, userId: string) => {
+    setLocalInteractions(prev => {
+      const existing = prev[panelId] || [];
+      const isSelected = existing.find(i => i.interactionType === 'SELECTION' && i.userId === userId);
+      
+      if (isSelected) {
+        return { ...prev, [panelId]: existing.filter(i => i.id !== isSelected.id) };
+      } else {
+        const sel: ScrollInteraction = {
+          id: `int_sel_${Date.now()}`,
+          experienceId,
+          panelId,
+          userId,
+          interactionType: 'SELECTION',
+          payload: { active: true },
+          createdAt: new Date().toISOString(),
+        };
+        return { ...prev, [panelId]: [...existing, sel] };
+      }
+    });
+
+    try {
+      const { toggleSelectionAction } = await import('@/app/review/actions');
+      await toggleSelectionAction(experienceId, panelId);
+    } catch (e) {
+      console.warn("Could not save selection to database", e);
+    }
+  }, [experienceId]);
+
+  const setRating = useCallback(async (panelId: string, userId: string, rating: number) => {
+    setLocalInteractions(prev => {
+      const existing = prev[panelId] || [];
+      const others = existing.filter(i => !(i.interactionType === 'RATING' && i.userId === userId));
+      
+      const rate: ScrollInteraction = {
+        id: `int_rate_${Date.now()}`,
+        experienceId,
+        panelId,
+        userId,
+        interactionType: 'RATING',
+        payload: { rating },
+        createdAt: new Date().toISOString(),
+      };
+      return { ...prev, [panelId]: [...others, rate] };
+    });
+
+    try {
+      const { setRatingAction } = await import('@/app/review/actions');
+      await setRatingAction(experienceId, panelId, rating);
+    } catch (e) {
+      console.warn("Could not save rating to database", e);
+    }
+  }, [experienceId]);
+
   const value = useMemo(() => ({
     viewerState,
     activePanelId,
@@ -112,7 +168,9 @@ export function InteractionStateProvider({ children, experienceId }: { children:
     setActivePanel,
     addInteraction,
     toggleFavorite,
-  }), [viewerState, activePanelId, activeGroupId, localInteractions, setActivePanel, addInteraction, toggleFavorite]);
+    toggleSelection,
+    setRating,
+  }), [viewerState, activePanelId, activeGroupId, localInteractions, setActivePanel, addInteraction, toggleFavorite, toggleSelection, setRating]);
 
   return (
     <InteractionStateContext.Provider value={value}>

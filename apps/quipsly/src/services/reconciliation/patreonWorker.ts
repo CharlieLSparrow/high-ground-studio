@@ -56,7 +56,7 @@ export async function processPatreonInboxEvents() {
 
       // 2. Out-of-order Delivery Protection (Anemic Webhook check)
       // Check if we've already processed a NEWER event for this exact email
-      const newerProcessedEvent = await prisma.membershipReconciliation.findFirst({
+      const newerProcessedEvent = await prisma.entitlementLedger.findFirst({
         where: {
           provider: "patreon",
           providerEmail: email,
@@ -76,10 +76,25 @@ export async function processPatreonInboxEvents() {
         continue;
       }
 
-      // 3. Find Quipsly User by Email
-      const user = await prisma.user.findUnique({
-        where: { primaryEmail: email.toLowerCase() }
-      });
+      // 3. Find Quipsly User by SocialAccount or Email
+      let user = null;
+      
+      const patreonId = payload.data?.id;
+      if (patreonId) {
+        const socialAccount = await prisma.socialAccount.findFirst({
+          where: { platform: "patreon", handle: patreonId },
+          include: { user: true }
+        });
+        if (socialAccount?.user) {
+          user = socialAccount.user;
+        }
+      }
+
+      if (!user && email) {
+        user = await prisma.user.findUnique({
+          where: { primaryEmail: email.toLowerCase() }
+        });
+      }
 
       const decision = evaluatePatreonBetaAccess({
         patronStatus,
@@ -144,7 +159,7 @@ export async function processPatreonInboxEvents() {
 }
 
 /**
- * Creates the actual MembershipReconciliation proposal.
+ * Creates the actual EntitlementLedger proposal.
  */
 async function createReconciliation(
   eventId: string,
@@ -172,7 +187,7 @@ async function createReconciliation(
       ? "manual-review"
       : "free-or-unverified";
 
-  await prisma.membershipReconciliation.create({
+  await prisma.entitlementLedger.create({
     data: {
       provider: "patreon",
       providerEmail: email,

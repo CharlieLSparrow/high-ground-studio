@@ -29,6 +29,7 @@ export type StudioProjectOption = {
   documentTitle?: string | null;
   nestKind: StudioNestKind;
   updatedAt?: Date | string | null;
+  collaborators?: { email: string; role: string }[];
 };
 
 export type StudioNestKind =
@@ -388,6 +389,10 @@ export async function listStudioProjectOptions(prisma: StudioPrismaClient): Prom
       description: true,
       sourceLabel: true,
       updatedAt: true,
+      accessGrants: {
+        where: { status: "ACTIVE" },
+        select: { email: true, role: true },
+      },
       documents: {
         select: {
           title: true,
@@ -408,5 +413,6 @@ export async function listStudioProjectOptions(prisma: StudioPrismaClient): Prom
     documentTitle: project.documents?.[0]?.title ?? null,
     nestKind: nestKindFromSourceLabel(project.sourceLabel),
     updatedAt: project.updatedAt,
+    collaborators: project.accessGrants,
   }));
 }

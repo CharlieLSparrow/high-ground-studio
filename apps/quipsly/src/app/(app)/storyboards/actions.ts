@@ -96,7 +96,7 @@ export async function updateStoryboardFrame(
     shotSize?: string;
     lens?: string;
     cameraMovement?: string;
-    estimatedDuration?: number;
+    estimatedDuration?: number | null;
     vfxNotes?: string;
     mediaClipId?: string | null;
   }
@@ -346,3 +346,318 @@ export async function compileStoryboardPublishPacket(storyboardId: string) {
     return { error: error.message };
   }
 }
+
+// Helpers for metadata parsing
+function parseStoryboardMeta(description: string | null) {
+  if (!description) return { docId: null, episodeId: null, cleanDesc: "" };
+  const docMatch = description.match(/\[LinkedDocument:\s*([^\]]+)\]/);
+  const epMatch = description.match(/\[LinkedEpisode:\s*([^\]]+)\]/);
+  
+  let cleanDesc = description;
+  if (docMatch) cleanDesc = cleanDesc.replace(/\[LinkedDocument:\s*([^\]]+)\]\s*/, "");
+  if (epMatch) cleanDesc = cleanDesc.replace(/\[LinkedEpisode:\s*([^\]]+)\]\s*/, "");
+  
+  return {
+    docId: docMatch ? docMatch[1] : null,
+    episodeId: epMatch ? epMatch[1] : null,
+    cleanDesc: cleanDesc.trim()
+  };
+}
+
+function parseLinkedBlock(vfxNotes: string | null) {
+  if (!vfxNotes) return { blockId: null, cleanNotes: "" };
+  const match = vfxNotes.match(/^\[Block:\s*([^\]]+)\]/);
+  if (match) {
+    return {
+      blockId: match[1],
+      cleanNotes: vfxNotes.replace(/^\[Block:\s*([^\]]+)\]\s*/, "")
+    };
+  }
+  return { blockId: null, cleanNotes: vfxNotes };
+}
+
+export async function importFramesFromLinkedDocument(storyboardId: string) {
+  const prisma = getPrismaClient();
+  try {
+    const storyboard = await (prisma as any).studioStoryboard.findUnique({
+      where: { id: storyboardId },
+      include: {
+        frames: {
+          orderBy: { sortOrder: 'asc' }
+        }
+      }
+    });
+
+    if (!storyboard) {
+      return { success: false, error: "Storyboard not found" };
+    }
+
+    const { docId } = parseStoryboardMeta(storyboard.description);
+    if (!docId) {
+      return { success: false, error: "No document is linked to this storyboard. Please link a document first." };
+    }
+
+    const document = await prisma.studioDocument.findUnique({
+      where: { id: docId },
+      include: {
+        blocks: {
+          where: { archivedAt: null },
+          orderBy: { order: "asc" }
+        }
+      }
+    });
+
+    if (!document) {
+      return { success: false, error: "Linked document not found or has been deleted." };
+    }
+
+    // Extract all block IDs currently linked to existing frames
+    const linkedBlockIds = new Set<string>();
+    storyboard.frames.forEach((f: any) => {
+      const { blockId } = parseLinkedBlock(f.vfxNotes);
+      if (blockId) {
+        linkedBlockIds.add(blockId);
+      }
+    });
+
+    // Find blocks that are not yet linked to any frame
+    const unlinkedBlocks = document.blocks.filter(b => !linkedBlockIds.has(b.id));
+
+    if (unlinkedBlocks.length === 0) {
+      return { success: true, importedCount: 0, message: "All script beats are already linked to storyboard frames." };
+    }
+
+    let nextSortOrder = storyboard.frames.length;
+    const createdFrames = [];
+
+    for (const block of unlinkedBlocks) {
+      const frameNumber = `1.${nextSortOrder + 1}`;
+      const frame = await (prisma as any).studioStoryboardFrame.create({
+        data: {
+          storyboardId,
+          sortOrder: nextSortOrder,
+          frameNumber,
+          action: `Visual action for block: ${block.body.slice(0, 60)}${block.body.length > 60 ? '...' : ''}`,
+          dialogue: block.body,
+          cameraInfo: "Static",
+          shotSize: "MCU",
+          vfxNotes: `[Block: ${block.id}]`,
+        }
+      });
+      createdFrames.push(frame);
+      nextSortOrder++;
+    }
+
+    // Fetch and return the updated frames list
+    const updatedFrames = await (prisma as any).studioStoryboardFrame.findMany({
+      where: { storyboardId },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    revalidatePath("/storyboards/builder");
+    return { success: true, importedCount: createdFrames.length, frames: updatedFrames };
+  } catch (error: any) {
+    console.error("Error importing script beats to storyboard frames:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function reorderFramesToMatchLinkedDocument(storyboardId: string) {
+  const prisma = getPrismaClient();
+  try {
+    const storyboard = await (prisma as any).studioStoryboard.findUnique({
+      where: { id: storyboardId },
+      include: {
+        frames: {
+          orderBy: { sortOrder: 'asc' }
+        }
+      }
+    });
+
+    if (!storyboard) {
+      return { success: false, error: "Storyboard not found" };
+    }
+
+    const { docId } = parseStoryboardMeta(storyboard.description);
+    if (!docId) {
+      return { success: false, error: "No document is linked to this storyboard." };
+    }
+
+    const document = await prisma.studioDocument.findUnique({
+      where: { id: docId },
+      include: {
+        blocks: {
+          where: { archivedAt: null },
+          orderBy: { order: "asc" }
+        }
+      }
+    });
+
+    if (!document) {
+      return { success: false, error: "Linked document not found." };
+    }
+
+    const blockIndexMap = new Map<string, number>();
+    document.blocks.forEach((block, index) => {
+      blockIndexMap.set(block.id, index);
+    });
+
+    const sortedFrames = [...storyboard.frames].sort((a: any, b: any) => {
+      const { blockId: aBlockId } = parseLinkedBlock(a.vfxNotes);
+      const { blockId: bBlockId } = parseLinkedBlock(b.vfxNotes);
+
+      const aIndex = aBlockId ? blockIndexMap.get(aBlockId) : undefined;
+      const bIndex = bBlockId ? blockIndexMap.get(bBlockId) : undefined;
+
+      if (aIndex !== undefined && bIndex !== undefined) {
+        return aIndex - bIndex;
+      }
+      if (aIndex !== undefined) {
+        return -1;
+      }
+      if (bIndex !== undefined) {
+        return 1;
+      }
+      return a.sortOrder - b.sortOrder;
+    });
+
+    // Update database in a transaction
+    await prisma.$transaction(
+      sortedFrames.map((frame: any, index: number) =>
+        (prisma as any).studioStoryboardFrame.update({
+          where: { id: frame.id },
+          data: { 
+            sortOrder: index,
+            frameNumber: `1.${index + 1}`
+          }
+        })
+      )
+    );
+
+    const updatedFrames = await (prisma as any).studioStoryboardFrame.findMany({
+      where: { storyboardId },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    revalidatePath("/storyboards/builder");
+    return { success: true, frames: updatedFrames };
+  } catch (error: any) {
+    console.error("Error reordering frames to match document blocks:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function createScrollExperienceFromStoryboard(storyboardId: string) {
+  const prisma = getPrismaClient();
+  try {
+    const storyboard = await (prisma as any).studioStoryboard.findUnique({
+      where: { id: storyboardId },
+      include: {
+        frames: {
+          orderBy: { sortOrder: 'asc' }
+        }
+      }
+    });
+
+    if (!storyboard) {
+      return { success: false, error: "Storyboard not found" };
+    }
+
+    const slugify = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    const title = `${storyboard.title} Scroll Experience`;
+    const slug = `${slugify(storyboard.title)}-scroll-${Date.now()}`;
+
+    // Create the experience and an initial section
+    const experience = await (prisma as any).studioScrollExperience.create({
+      data: {
+        projectId: storyboard.projectId,
+        storyboardId: storyboard.id,
+        title,
+        slug,
+        layout: "stacked",
+        sections: {
+          create: [
+            {
+              sortOrder: 0,
+              label: "Main Sequence",
+              panelRefs: {
+                create: storyboard.frames.map((frame: any, index: number) => ({
+                  frameId: frame.id,
+                  sortOrder: index,
+                }))
+              }
+            }
+          ]
+        }
+      },
+      include: {
+        sections: {
+          include: {
+            panelRefs: true
+          }
+        }
+      }
+    });
+
+    revalidatePath("/storyboards/builder");
+    return { success: true, experience };
+  } catch (error: any) {
+    console.error("Error creating scroll experience:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function createFrameFromExcerpt(storyboardId: string, dialogue: string) {
+  const prisma = getPrismaClient();
+  try {
+    const storyboard = await (prisma as any).studioStoryboard.findUnique({
+      where: { id: storyboardId },
+      select: { projectId: true }
+    });
+
+    if (!storyboard) {
+      return { success: false, error: "Storyboard not found" };
+    }
+
+    // Try to find a matching script beat (block) in the project
+    let vfxNotes = null;
+    const matchedBlock = await prisma.studioDocumentBlock.findFirst({
+      where: {
+        body: { contains: dialogue },
+        document: { projectId: storyboard.projectId }
+      }
+    });
+
+    if (matchedBlock) {
+      vfxNotes = `[Block: ${matchedBlock.id}]`;
+    }
+
+    const existingFrames = await (prisma as any).studioStoryboardFrame.findMany({
+      where: { storyboardId },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    const nextSortOrder = existingFrames.length;
+    const frameNumber = `1.${nextSortOrder + 1}`;
+
+    const frame = await (prisma as any).studioStoryboardFrame.create({
+      data: {
+        storyboardId,
+        sortOrder: nextSortOrder,
+        frameNumber,
+        action: "Describe the action for this excerpt...",
+        dialogue: dialogue,
+        cameraInfo: "Medium Shot",
+        vfxNotes,
+      }
+    });
+
+    revalidatePath("/storyboards/builder");
+    return { success: true, frame };
+  } catch (error: any) {
+    console.error("Failed to create frame from excerpt:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+

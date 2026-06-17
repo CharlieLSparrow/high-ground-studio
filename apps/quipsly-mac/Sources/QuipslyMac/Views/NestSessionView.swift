@@ -473,7 +473,7 @@ struct NestSessionView: View {
                 sessionStatus = "Verified as \(email) via \(source). Native Mac features can use Nest."
                 appState.recordVerifiedNestSession(
                     email: email,
-                    name: user?["name"] as? String
+                    label: user?["label"] as? String
                 )
             } else {
                 sessionStatus = error ?? "Nest session check returned \(statusCode). Sign in with browser, then retry."
@@ -552,7 +552,7 @@ struct NestSessionView: View {
 
             if (200...299).contains(statusCode), !email.isEmpty {
                 appendDiagnostic("PASS session-check: Nest verified \(email).")
-                appState.recordVerifiedNestSession(email: email, name: user?["name"] as? String)
+                appState.recordVerifiedNestSession(email: email, label: user?["label"] as? String)
             } else {
                 appendDiagnostic("FAIL session-check: \(error ?? "Nest returned \(statusCode).")")
             }

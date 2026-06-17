@@ -64,7 +64,7 @@ export function ArtistAssistantChat({
       <div className="bg-orange-50 dark:bg-orange-950/20 p-4 border-b border-orange-100 dark:border-orange-900/50 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center text-orange-600 dark:text-orange-400">
-            <Bot size={20} />
+            <img src="/quipsly-app-icon.png" alt="" className="w-5 h-5 rounded-sm" />
           </div>
           <div>
             <h3 className="font-bold text-zinc-900 dark:text-zinc-100">The Artist</h3>

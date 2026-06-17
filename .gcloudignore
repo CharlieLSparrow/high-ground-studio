@@ -58,6 +58,8 @@ dev.db
 # Local scratch, generated assets, and heavy non-build roots
 artifacts/
 scratch/
+DerivedData/
+**/DerivedData/
 tmp/
 .tmp/
 project_audit.json
@@ -69,6 +71,11 @@ downloads/
 Downloads/
 HighGroundMedia/
 apps/quipsly-mac/
+
+# Quipsly app source uses route-local `assets/` component folders. Keep those
+# while still excluding heavy top-level imported media/assets.
+!apps/quipsly/src/**/assets/
+!apps/quipsly/src/**/assets/**
 
 # Non-deploy app workspaces. Do not add apps/quipsly, apps/web,
 # apps/motion-lab, or apps/studio-collab here without checking Dockerfiles.

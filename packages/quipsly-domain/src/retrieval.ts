@@ -56,7 +56,25 @@ export type SourceLibrary = {
   readonly backends: readonly SourceBackend[];
 };
 
-export type SourceBackend = StudioProjectBackend | QuipslyLoreBackend;
+export type SourceBackend = StudioProjectBackend | QuipslyLoreBackend | SourceAwareBackend | SemanticLoreBackend;
+
+/**
+ * Scopes retrieval to the new semantic lore system (QuipLoreQuote).
+ */
+export type SemanticLoreBackend = {
+  readonly type: "semantic-lore";
+  readonly projectId: string;
+};
+
+/**
+ * Scopes retrieval to the immutable source-aware system (StudioSourceUnit).
+ */
+export type SourceAwareBackend = {
+  readonly type: "source-aware";
+  /** StudioProject.id — resolved at runtime */
+  readonly projectId: string;
+  readonly documentKinds?: readonly SourceDocumentKind[];
+};
 
 /**
  * Scopes retrieval to documents, blocks, spans, and knowledge nodes within a
@@ -95,7 +113,15 @@ export type RetrievalProvenance =
   | StudioSpanProvenance
   | StudioKnowledgeProvenance
   | QuipslyNodeProvenance
-  | SourceAwareProvenance;
+  | SourceAwareProvenance
+  | SemanticLoreProvenance;
+
+export type SemanticLoreProvenance = {
+  readonly origin: "semantic-lore";
+  readonly quoteId: string;
+  readonly workId?: string;
+  readonly sourceId?: string;
+};
 
 /**
  * Result originated from an external SourceDocument managed by the
@@ -414,6 +440,15 @@ export function isSourceAwareProvenance(
 }
 
 /**
+ * Type guard: is this provenance from the semantic lore reference system?
+ */
+export function isSemanticLoreProvenance(
+  p: RetrievalProvenance,
+): p is SemanticLoreProvenance {
+  return p.origin === "semantic-lore";
+}
+
+/**
  * Count distinct source origins in a set of results.
  */
 export function countSourcesCovered(
@@ -433,6 +468,9 @@ export function countSourcesCovered(
         break;
       case "source-aware":
         seen.add(`source:${r.provenance.sourceDocumentId}`);
+        break;
+      case "semantic-lore":
+        seen.add(`semantic:${r.provenance.quoteId}`);
         break;
     }
   }

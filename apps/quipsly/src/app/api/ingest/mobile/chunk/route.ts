@@ -13,6 +13,7 @@ type MobileIngestPrismaClient = ReturnType<typeof getPrismaClient> & {
         filename: string;
         url: string;
         mimeType: string | null;
+        sizeBytes?: bigint;
         isGlobal: boolean;
         isProxy: boolean;
         cloudProvider: string;
@@ -38,6 +39,20 @@ type MobileIngestPrismaClient = ReturnType<typeof getPrismaClient> & {
         title: string;
       };
     }) => Promise<{ id: string }>;
+    update: (input: {
+      where: { id: string };
+      data: { url: string };
+    }) => Promise<{ id: string }>;
+  };
+  studioEpisodeProduction: {
+    findFirst: (input: {
+      where: { slug: string; project: { slug: string } };
+      select: { id: string; timelineJson: unknown };
+    }) => Promise<{ id: string; timelineJson: unknown } | null>;
+    update: (input: {
+      where: { id: string };
+      data: { timelineJson: unknown };
+    }) => Promise<{ id: string }>;
   };
 };
 
@@ -49,6 +64,7 @@ type SessionManifest = {
   sourceType: string;
   trackId?: string | null;
   contentType?: string | null;
+  recordingSegmentsJson?: string | null;
   totalChunks: number;
   receivedChunks: number[];
   startedAt?: string | null;
@@ -58,6 +74,7 @@ type SessionManifest = {
 
 const INGEST_ROOT = path.join(tmpdir(), "quipsly-mobile-chunk-ingest");
 const MAX_PAYLOAD_CHUNK_BYTES = 120 * 1024 * 1024;
+const SOURCE_RECORDING_PREFIX = "recordings/source";
 
 function sanitizeSegment(value: string) {
   return (value || "")
@@ -95,6 +112,28 @@ function inferExtension(fileName: string, mimeType: string | null) {
   if (mimeType?.includes("audio/wav") || mimeType?.includes("audio/x-wav")) return "wav";
   const ext = path.extname(fileName).toLowerCase().replace(".", "");
   return ext && ext.length <= 8 ? ext : "mp4";
+}
+
+function inferContentType(fileName: string, rawContentType: string | null, sourceType: string) {
+  const normalized = rawContentType?.toLowerCase();
+  if (rawContentType && normalized && normalized !== "application/octet-stream") return rawContentType;
+
+  const ext = path.extname(fileName).toLowerCase();
+  if (ext === ".m4a" || ext === ".mp4a") return "audio/mp4";
+  if (ext === ".aac") return "audio/aac";
+  if (ext === ".wav") return "audio/wav";
+  if (ext === ".webm") return sourceType === "audio" ? "audio/webm" : "video/webm";
+  if (ext === ".mov") return "video/quicktime";
+  if (ext === ".mp4" || ext === ".m4v") return sourceType === "audio" ? "audio/mp4" : "video/mp4";
+  return sourceType === "audio" ? "audio/mp4" : "video/mp4";
+}
+
+function readFirstHeader(request: Request, names: string[]) {
+  for (const name of names) {
+    const value = request.headers.get(name);
+    if (value) return value;
+  }
+  return null;
 }
 
 function safeJsonError(message: string, status: number, details: string | null = null) {
@@ -161,9 +200,11 @@ export async function POST(request: Request) {
     const sourceType = request.headers.get("X-Source-Type") ?? "video";
     const trackId = request.headers.get("X-Track-Id");
     const fileName = request.headers.get("X-File-Name")?.trim() || "quipsly-upload.bin";
-    const contentType = request.headers.get("Content-Type") || "video/mp4";
-    const startedAt = request.headers.get("X-Recording-Started-At");
-    const stoppedAt = request.headers.get("X-Recording-Stopped-At");
+    const explicitContentType = request.headers.get("X-Content-Type");
+    const contentType = inferContentType(fileName, explicitContentType || request.headers.get("Content-Type"), sourceType);
+    const startedAt = readFirstHeader(request, ["X-Recording-Started-At", "X-Started-At"]);
+    const stoppedAt = readFirstHeader(request, ["X-Recording-Stopped-At", "X-Stopped-At"]);
+    const recordingSegmentsJson = request.headers.get("X-Recording-Segments");
 
     const safeProject = sanitizeSegment(projectSlug) || "project";
     const safeEpisode = sanitizeSegment(episodeSlug) || "episode";
@@ -185,6 +226,7 @@ export async function POST(request: Request) {
       sourceType,
       trackId,
       contentType,
+      recordingSegmentsJson,
       totalChunks,
       receivedChunks: [],
       startedAt,
@@ -202,6 +244,9 @@ export async function POST(request: Request) {
     }
     manifest.receivedChunks = uniqueInts(manifest.receivedChunks);
     manifest.contentType = contentType;
+    manifest.recordingSegmentsJson = recordingSegmentsJson ?? manifest.recordingSegmentsJson ?? null;
+    manifest.startedAt = startedAt ?? manifest.startedAt ?? null;
+    manifest.stoppedAt = stoppedAt ?? manifest.stoppedAt ?? null;
     await saveManifest(sessionDir, manifest);
 
     // Not all chunks received yet: return a normal progress ack.
@@ -235,30 +280,48 @@ export async function POST(request: Request) {
 
     const assembledBytes = await fs.readFile(assembledPath);
     const assembledSize = assembledBytes.byteLength;
+    const safeSession = sanitizeSegment(sessionId).slice(0, 80) || `session-${Date.now()}`;
     const safeName = `${safeTrack}-${Date.now()}-${safeProject}-${safeEpisode}.${extension}`;
-    const objectName = `field-kit/${safeProject}/${safeEpisode}/${safeName}`;
+    const objectName = `${SOURCE_RECORDING_PREFIX}/${safeProject}/${safeEpisode}/${safeSession}/${safeName}`;
 
     const baseFilePath = path.join(INGEST_ROOT, "raw", safeName);
-    let provider = "internal-local";
+    let provider = "gcs";
     let providerSourceId = assembledPath;
+    let verifiedStorage: {
+      bucketName?: string;
+      objectName?: string;
+      sizeBytes?: number;
+      contentType?: string;
+      generation?: string;
+      metageneration?: string;
+    } = {};
     try {
       const uploaded = await uploadMediaBuffer({
         objectName,
         buffer: assembledBytes,
-        contentType: contentType || "video/mp4",
+        contentType,
         metadata: {
           episodeSlug,
           fileName: safeName,
           projectSlug: safeProject,
+          quipslyKind: "source-recording",
+          recordingSessionId: sessionId,
+          recordingSegmentsJson: manifest.recordingSegmentsJson ?? "",
           sourceType,
           trackId: safeTrack,
-          startedAt: startedAt ?? "",
-          stoppedAt: stoppedAt ?? "",
+          startedAt: manifest.startedAt ?? "",
+          stoppedAt: manifest.stoppedAt ?? "",
         },
       });
       provider = "gcs";
       providerSourceId = uploaded.uri;
-    } catch {
+      verifiedStorage = uploaded;
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        console.error("[Field Kit Mobile Chunk API] GCS upload failed in production", error);
+        return safeJsonError("Cloud recording upload failed", 502, error instanceof Error ? error.message : null);
+      }
+      provider = "local-dev";
       await fs.mkdir(path.dirname(baseFilePath), { recursive: true });
       await fs.writeFile(baseFilePath, assembledBytes);
       providerSourceId = baseFilePath;
@@ -275,7 +338,7 @@ export async function POST(request: Request) {
         provider,
         providerSourceId,
         url: "/api/ingest/media/pending",
-        title: `Field Kit ${manifest.projectSlug}/${manifest.episodeSlug} ${sourceType}`,
+        title: `Source recording ${manifest.projectSlug}/${manifest.episodeSlug} ${safeTrack}`,
       },
     });
 
@@ -290,12 +353,67 @@ export async function POST(request: Request) {
         url: `/api/ingest/media/${source.id}`,
         mimeType: manifest.contentType ?? contentType,
         isGlobal: !Boolean(attachmentProjectId),
-        isProxy: true,
+        sizeBytes: BigInt(assembledSize),
+        isProxy: false,
         cloudProvider: provider,
         rawAssetId: source.id,
         ...(attachmentProjectId ? { projects: { connect: { id: attachmentProjectId } } } : {}),
       },
     });
+
+    if (manifest.projectSlug && manifest.episodeSlug) {
+      try {
+        const production = await prisma.studioEpisodeProduction.findFirst({
+          where: { slug: manifest.episodeSlug, project: { slug: manifest.projectSlug } },
+          select: { id: true, timelineJson: true },
+        });
+
+        if (production) {
+          const timelineJson = (production.timelineJson && typeof production.timelineJson === "object" && !Array.isArray(production.timelineJson))
+            ? (production.timelineJson as Record<string, any>)
+            : {};
+          
+          const importedMedia = Array.isArray(timelineJson.importedMedia) ? [...timelineJson.importedMedia] : [];
+          
+          importedMedia.push({
+            id: mediaAsset.id,
+            sourceId: source.id,
+            projectSlug: manifest.projectSlug,
+            episodeSlug: manifest.episodeSlug,
+            originalName: safeName,
+            contentType: manifest.contentType ?? contentType,
+            size: assembledSize,
+            kind: sourceType,
+            bucketName: verifiedStorage.bucketName ?? "",
+            objectName: verifiedStorage.objectName ?? "",
+            gcsUri: provider === "gcs" ? providerSourceId : "",
+            playbackUrl: `/api/ingest/media/${source.id}`,
+            importedAt: new Date().toISOString(),
+            source: "recorder-upload",
+            sync: {
+              status: "ready-to-sync",
+              recordingSegments: manifest.recordingSegmentsJson ? JSON.parse(manifest.recordingSegmentsJson) : [],
+            },
+            proxy: {
+              status: "not-required",
+            }
+          });
+
+          await prisma.studioEpisodeProduction.update({
+            where: { id: production.id },
+            data: {
+              timelineJson: {
+                ...timelineJson,
+                importedMedia,
+              }
+            }
+          });
+          console.log(`[Field Kit Mobile Chunk API] Bridged recording to Episode Production ${production.id}`);
+        }
+      } catch (err) {
+        console.error("[Field Kit Mobile Chunk API] Failed to bridge recording to Episode Production", err);
+      }
+    }
 
     await cleanupSession(sessionDir);
     return NextResponse.json({
@@ -308,6 +426,17 @@ export async function POST(request: Request) {
       episodeSlug,
       trackId,
       provider,
+      storage: {
+        verified: provider === "gcs",
+        ...verifiedStorage,
+      },
+      recording: {
+        sessionId,
+        sourceType,
+        startedAt: manifest.startedAt ?? null,
+        stoppedAt: manifest.stoppedAt ?? null,
+        segmentsJson: manifest.recordingSegmentsJson ?? null,
+      },
       sizeBytes: assembledSize,
     });
   } catch (error: unknown) {

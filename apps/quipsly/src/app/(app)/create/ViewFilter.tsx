@@ -2,13 +2,54 @@
 
 import { useMemo, useState } from "react";
 import { BookOpen, Filter, Layers, LayoutTemplate, X } from "lucide-react";
-import { DocumentBoundary, ViewDefinition } from "./types";
+import { DocumentBoundary, ViewDefinition, WorkbenchProjectDocumentSummary } from "./types";
 import { DEFAULT_VIEW } from "./Workspace";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   WORKFLOW_SYSTEM_DESCRIPTIONS,
   WORKFLOW_SYSTEM_LABELS,
   WORKFLOW_SYSTEM_SEQUENCE,
 } from "@/lib/studio/project-registry";
+
+function SortableOutlineItem({ boundary, isActive, isScrolled, isNested, onClick }: { boundary: DocumentBoundary, isActive: boolean, isScrolled: boolean, isNested: boolean, onClick: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: boundary.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={`flex w-full items-center gap-1 ${isNested ? "pl-6" : ""}`}>
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab hover:text-[#3d3122] text-[#8c6b4a] opacity-50 hover:opacity-100 transition-opacity p-1"
+        title="Drag to reorder"
+      >
+        <Layers size={14} />
+      </button>
+      <button
+        onClick={onClick}
+        aria-current={isActive ? "true" : undefined}
+        title={`${boundary.kind} outline`}
+        className={`flex min-w-0 flex-1 items-start justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${isActive ? "bg-[#3d3122] text-white shadow-sm" : isScrolled ? "bg-[#fff5df] text-[#5e4b33]" : "text-[#5e4b33] hover:bg-amber-50"}`}
+      >
+        <span className="min-w-0 flex-1 leading-snug flex items-center">
+          {isNested ? (
+            <span className={`mr-1 inline-block select-none ${isActive ? "text-white/75" : "text-[#8c6b4a]"}`}>-&gt;</span>
+          ) : null}
+          <span className="block truncate font-medium">{boundary.label}</span>
+        </span>
+        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase ${isActive ? "bg-white/15 text-white" : boundary.kind === "chapter" ? "bg-cyan-100 text-cyan-800" : "bg-rose-100 text-rose-800"}`}>
+          {boundary.kind === "episode" ? "EP" : "CH"}
+        </span>
+      </button>
+    </div>
+  );
+}
 
 export default function ViewFilter({
   activeView,
@@ -19,6 +60,9 @@ export default function ViewFilter({
   setActiveBoundaryId,
   scrolledBoundaryId,
   workflowSystem,
+  projectDocuments,
+  activeDocumentId,
+  projectSlug,
 }: {
   activeView: ViewDefinition;
   setActiveView: (view: ViewDefinition) => void;
@@ -28,11 +72,55 @@ export default function ViewFilter({
   setActiveBoundaryId: (boundaryId: string | null) => void;
   scrolledBoundaryId?: string | null;
   workflowSystem: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing";
+  projectDocuments?: WorkbenchProjectDocumentSummary[];
+  activeDocumentId?: string;
+  projectSlug?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const activeBoundary = documentBoundaries.find((boundary) => boundary.id === activeBoundaryId) ?? null;
   const chapterCount = documentBoundaries.filter((boundary) => boundary.kind === "chapter").length;
   const episodeCount = documentBoundaries.filter((boundary) => boundary.kind === "episode").length;
+
+  const libraryDocs = (projectDocuments || []).filter(d => 
+    d.sourceLabel === "nest-kind:study" || d.sourceLabel === "nest-kind:research" || d.title.toLowerCase().includes("study") || d.title.toLowerCase().includes("research") || d.title.toLowerCase().includes("library")
+  );
+  const draftDocs = (projectDocuments || []).filter(d => !libraryDocs.includes(d));
+
+  const [localBoundaries, setLocalBoundaries] = useState(documentBoundaries);
+
+  // Sync with upstream boundaries when they change (but preserve our local order if needed, 
+  // though for a mock we'll just resync to prove frontend functionality).
+  useMemo(() => {
+    setLocalBoundaries(documentBoundaries);
+  }, [documentBoundaries]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setLocalBoundaries((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        const next = arrayMove(items, oldIndex, newIndex);
+        
+        // Fire mock event so the user knows it worked
+        window.dispatchEvent(new CustomEvent("quipsly:reorder-boundary", { 
+          detail: { 
+            activeId: active.id, 
+            overId: over.id,
+            oldIndex,
+            newIndex
+          } 
+        }));
+        
+        return next;
+      });
+    }
+  };
 
   const hierarchicalOutline = useMemo(() => {
     const rows: Array<{
@@ -61,7 +149,7 @@ export default function ViewFilter({
     }
 
     return rows;
-  }, [documentBoundaries]);
+  }, [localBoundaries]);
 
   return (
     <>
@@ -91,6 +179,50 @@ export default function ViewFilter({
             <X size={20} />
           </button>
         </div>
+
+        {(projectDocuments && projectDocuments.length > 0) && (
+          <div className="mb-8">
+            <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+              <BookOpen size={12} />
+              Nest Documents
+            </h3>
+            <div className="space-y-4">
+              {draftDocs.length > 0 && (
+                <div>
+                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Drafts</h4>
+                  <div className="space-y-1">
+                    {draftDocs.map(doc => (
+                      <a
+                        key={doc.id}
+                        href={`/create?project=${encodeURIComponent(projectSlug || "")}&document=${encodeURIComponent(doc.id)}`}
+                        className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
+                      >
+                        {doc.title}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {libraryDocs.length > 0 && (
+                <div>
+                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Library</h4>
+                  <div className="space-y-1">
+                    {libraryDocs.map(doc => (
+                      <a
+                        key={doc.id}
+                        href={`/create?project=${encodeURIComponent(projectSlug || "")}&document=${encodeURIComponent(doc.id)}`}
+                        className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
+                      >
+                        {doc.title}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
@@ -192,36 +324,30 @@ export default function ViewFilter({
             Click a heading to focus from that heading until the next heading.
           </p>
           {documentBoundaries.length > 0 ? (
-            <div className="space-y-1">
-              {hierarchicalOutline.map(({ boundary, isNested }) => {
-                const isActive = activeBoundaryId === boundary.id;
-                const isScrolled = scrolledBoundaryId === boundary.id;
-                const spanLabel = `${boundary.startIndex + 1}-${boundary.endIndex + 1}`;
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={localBoundaries.map(b => b.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-1">
+                  {hierarchicalOutline.map(({ boundary, isNested }) => {
+                    const isActive = activeBoundaryId === boundary.id;
+                    const isScrolled = scrolledBoundaryId === boundary.id;
 
-                return (
-                  <button
-                    key={boundary.id}
-                    onClick={() => {
-                      setActiveBoundaryId(boundary.id);
-                      window.dispatchEvent(new CustomEvent("quipsly:focus-block", { detail: { blockId: boundary.id } }));
-                    }}
-                    aria-current={isActive ? "true" : undefined}
-                    title={`${boundary.kind} outline`}
-                    className={`flex w-full items-start justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${isActive ? "bg-[#3d3122] text-white shadow-sm" : isScrolled ? "bg-[#fff5df] text-[#5e4b33]" : "text-[#5e4b33] hover:bg-amber-50"} ${isNested ? "pl-6" : ""}`}
-                  >
-                    <span className="min-w-0 flex-1 leading-snug">
-                      {isNested ? (
-                        <span className={`mr-1 inline-block select-none ${isActive ? "text-white/75" : "text-[#8c6b4a]"}`}>-&gt;</span>
-                      ) : null}
-                      <span className="block truncate font-medium">{boundary.label}</span>
-                    </span>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase ${isActive ? "bg-white/15 text-white" : boundary.kind === "chapter" ? "bg-cyan-100 text-cyan-800" : "bg-rose-100 text-rose-800"}`}>
-                      {boundary.kind === "episode" ? "EP" : "CH"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                    return (
+                      <SortableOutlineItem
+                        key={boundary.id}
+                        boundary={boundary}
+                        isActive={isActive}
+                        isScrolled={isScrolled}
+                        isNested={isNested}
+                        onClick={() => {
+                          setActiveBoundaryId(boundary.id);
+                          window.dispatchEvent(new CustomEvent("quipsly:focus-block", { detail: { blockId: boundary.id } }));
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
           ) : (
             <div className="rounded-xl border border-dashed border-[#d9c7a5] bg-[#fffaf0] px-3 py-3 text-xs leading-5 text-[#8c6b4a]">
               No outline yet. Make a block titled something like <strong>Chapter 1</strong> or <strong>Episode 4</strong>, then tag that block as Chapter or Episode.

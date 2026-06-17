@@ -113,7 +113,7 @@ function AgentControlCenterContent() {
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center">
-                      <Bot className={`w-6 h-6 ${agent.status === 'RUNNING' ? 'text-blue-400' : 'text-emerald-400'}`} />
+                      <img src="/quipsly-app-icon.png" alt="" className={`w-6 h-6 rounded-md ${agent.status === 'RUNNING' ? 'ring-2 ring-blue-400' : 'ring-2 ring-emerald-400'}`} />
                     </div>
                     <div>
                       <h3 className="font-bold text-lg">{agent.name}</h3>

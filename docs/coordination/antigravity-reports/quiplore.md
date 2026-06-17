@@ -467,3 +467,162 @@ I replaced this direct database leak. The QuipLore endpoints now explicitly quer
 - Added public `/visual-library` route showing generated Quipsly companions from the shared manifest.
 - Linked Visual Library from the QuipLore home navigation and hero CTA.
 - This gives quote/product users a public view of the visual language behind quote cards, lorelists, and source passports.
+
+## 2026-06-08 05:11 local - AG-QuipLore
+
+Prompt summary:
+Advance QuipLore as the quote discovery and curation surface with concrete UI/content/data-contract improvements for quotes, sharing, social-ready cards, and API boundaries.
+
+Files changed:
+- `[NEW] apps/quiplore/src/components/ShareQuoteModal.tsx`
+- `[MODIFY] apps/quiplore/src/components/QuipCard.tsx`
+- `[MODIFY] apps/quiplore/src/app/api/og/quote/[slug]/route.tsx`
+- `[MODIFY] apps/quiplore/src/components/QuipslyPanel.tsx`
+- `[MODIFY] packages/quipsly-domain/src/index.ts`
+
+Files intentionally avoided:
+- Private Nest UI components and manuscript editors.
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed.
+
+Risks:
+- Exported OG image styling depends on the Next.js `ImageResponse` implementation matching Quipsly branding guidelines.
+- Dynamic selection of Cosplay Quipslys in `QuipslyPanel.tsx` relies on available static images in `/cosplay/quipsly_cosplay_N.png`.
+
+Recommended next handoff:
+- Codex/AG-Release-Captain to deploy the SaaS backend cleanup so real `api/public/*` data is accessible on Cloud Run.
+
+## 2026-06-08 05:47 local - AG-QuipLore
+
+Prompt summary:
+Take the initiative to build out good UX or solid infrastructure for QuipLore curation. Built a Pinterest-style Lorelist curation modal to handle quote saves.
+
+Files changed:
+- `[NEW] apps/quiplore/src/components/SaveToLorelistModal.tsx`
+- `[MODIFY] apps/quiplore/src/components/QuipCard.tsx`
+- `[MODIFY] apps/quiplore/src/components/QuipStreamExperience.tsx`
+
+Files intentionally avoided:
+- Backend Next.js API routes (Mocking Nests until Auth is ready).
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed.
+
+Risks:
+- Save actions currently use local state and simulated mock delays. The `SaveToLorelistModal.tsx` `onSave` hook will need to be wired to a real `POST /api/lorelists/items` Server Action once Auth and Nests are fully backed by the database.
+
+Recommended next handoff:
+- Codex/AG-Release-Captain to finalize cross-lane Auth/Nests API so QuipLore can persist these curated collections to the server.
+
+## 2026-06-08 14:38 local - AG-QuipLore
+
+Prompt summary:
+Take a bigger swing. Write a proposal and pivot to a frontend-safe mock implementation of Lorelist creation, respecting backend boundaries.
+
+Files changed:
+- `[NEW] apps/quiplore/src/app/hub/lorelist-builder/page.tsx`
+- `[NEW] apps/quiplore/src/components/LorelistCuratorExperience.tsx`
+- `[MODIFY] apps/quiplore/src/app/hub/page.tsx`
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed cleanly.
+
+Risks:
+- This is a frontend-safe mock that outputs the `LorelistProjection` payload to the console when "published". It will need a real `POST /api/lorelists` backend route once Nests and Auth are fully deployed.
+
+Recommended next handoff:
+- Codex to review the Lorelist Builder UX, and AG-Release-Captain to unlock the persistent data layer so the mock can be wired to real API routes.
+
+## 2026-06-08 15:14 local - AG-QuipLore
+
+Prompt summary:
+"Keep rolling then!" Built the Discovery Hub (`/explore`) to solve content fragmentation by providing a central visual directory for Themes, People, and Lorelists.
+
+Files changed:
+- `[NEW] apps/quiplore/src/app/explore/page.tsx`
+- `[MODIFY] apps/quiplore/src/components/AppShell.tsx`
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed cleanly.
+
+Risks:
+- Currently relies heavily on mock seed data. These components will need to be wired to the real QuipLore database context once deployed.
+
+Recommended next handoff:
+- Codex to review the UX and verify it serves as a suitable structural entrypoint for discovery.
+
+## 2026-06-08 15:25 local - AG-QuipLore
+
+Prompt summary:
+Build the Social Share Card Generator while treating the iteration as a masterclass across PM, Architect, and MLE disciplines.
+
+Files changed:
+- `[NEW] apps/quiplore/src/components/ShareCardPreview.tsx`
+- `[MODIFY] apps/quiplore/src/app/quotes/[slug]/page.tsx`
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed cleanly.
+
+Risks:
+- The "Download" action is a frontend-safe mock simulating the `html-to-image` pipeline. It does not actually download a file yet.
+
+Recommended next handoff:
+- Codex to review the UX and verify it establishes the foundation for QuipLore's viral growth loop.
+
+## 2026-06-08 16:18 local - AG-QuipLore
+
+Prompt summary:
+Replace the static AI Story Trail block with an Interactive Story Trail Viewer, treating the iteration as a masterclass across PM, Architect, and MLE disciplines.
+
+Files changed:
+- `[NEW] apps/quiplore/src/components/StoryTrailViewer.tsx`
+- `[MODIFY] apps/quiplore/src/app/quotes/[slug]/page.tsx`
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed cleanly.
+
+Risks:
+- Relies on the `QuoteStoryProjection` data structure remaining stable when Quipsly's backend starts serving real research packets.
+
+Recommended next handoff:
+- Codex to review the interactive UX and verify the pacing improves engagement.
+
+## 2026-06-09 12:05 local - AG-QuipLore
+
+Prompt summary:
+Replace the static AI Variants list with an Interactive Misquote Forensics Diff tool, treating the iteration as a masterclass across PM, Architect, and MLE disciplines.
+
+Files changed:
+- `[NEW] apps/quiplore/src/components/VariantDiffViewer.tsx`
+- `[MODIFY] apps/quiplore/src/app/quotes/[slug]/page.tsx`
+
+Validation run:
+- Local `pnpm --filter quiplore exec tsc --noEmit` passed cleanly.
+
+Risks:
+- Custom LCS DP diff algorithm runs client-side. It is O(N*M), which is perfectly fast for quote lengths but shouldn't be scaled up to entire manuscripts without moving to a Web Worker.
+
+Recommended next handoff:
+- Codex to review the interactive UX and test the forensic visual diffing.
+
+## 2026-06-08 15:24 local - AG-QuipLore
+
+Prompt summary: QuipLore integration planning pass. Define how Quipsly research packets, quote overlays, citations, and publishing packets should feed QuipLore without making QuipLore a clone of Nest. Prioritize quote passports, save/curate flows, feeds, and social publishing. (Written with an Architect/MLE educational framing for the user).
+
+Files changed:
+- `implementation_plan.md` (Artifact containing the detailed architectural and MLE proposal).
+
+Files intentionally avoided:
+- Prisma Schema (Pending approval for `pgvector` or Vertex AI vector paths).
+- `DestinationAdapters.ts` (Waiting for architectural approval on how the QuipLore adapter should parse markdown).
+
+Validation run:
+- N/A (Planning phase only)
+
+Risks:
+- Adding `pgvector` to Prisma requires a database migration that could fail if the Cloud SQL instance does not have the extension enabled.
+- Synchronous LLM calls during "Save to Lore" could block the UI and cause timeouts.
+
+Recommended next handoff:
+- User to review `implementation_plan.md` and decide on synchronous vs asynchronous MLE jobs, and whether Quote Passports are public by default.

@@ -8,6 +8,17 @@ substitutions:
   _QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS: "0"
 
 steps:
+  - id: scan-beta-blockers
+    name: 'node:20-alpine'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "=========================================================="
+        echo "🛡️ Running Beta Manifest Scan in Cloud Build..."
+        echo "=========================================================="
+        node scripts/scan-beta-blockers.mjs || exit 1
+
   - id: build-studio-image
     name: gcr.io/kaniko-project/executor:latest
     args:

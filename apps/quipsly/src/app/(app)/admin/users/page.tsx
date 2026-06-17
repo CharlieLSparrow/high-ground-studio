@@ -26,6 +26,7 @@ type PageSearchParams = {
   error?: string;
   actor?: string;
   callbackPath?: string;
+  inviteToken?: string;
 };
 
 function valueFromQuery(value?: string | string[]) {
@@ -77,6 +78,7 @@ export default async function UserManagementPage({
   const actor = valueFromQuery(query.actor);
   const error = valueFromQuery(query.error);
   const callbackPath = valueFromQuery(query.callbackPath);
+  const inviteToken = valueFromQuery(query.inviteToken);
   const { email: invitedEmail, projectSlug: invitedProjectSlug } = splitInviteValue(invited);
   const { email: revokedEmail, projectSlug: revokedProjectSlug } = splitInviteValue(revoked);
   const requestHeaders = await headers();
@@ -85,7 +87,9 @@ export default async function UserManagementPage({
   const origin = `${protocol}://${host}`;
   const inviteLink = `${origin}/api/auth/signin?callbackUrl=${encodeURIComponent("/projects")}`;
   const safeCallbackPath = callbackPath?.startsWith("/") && !callbackPath.startsWith("//") ? callbackPath : "";
-  const successInviteLink = `${origin}/api/auth/signin?callbackUrl=${encodeURIComponent(safeCallbackPath || "/projects")}`;
+  const successInviteLink = inviteToken
+    ? `${origin}/api/auth/signin?callbackUrl=${encodeURIComponent(safeCallbackPath || "/projects")}&inviteToken=${encodeURIComponent(inviteToken)}`
+    : `${origin}/api/auth/signin?callbackUrl=${encodeURIComponent(safeCallbackPath || "/projects")}`;
   const defaultRemoteEditorProjectSlug = "high-ground-odyssey-manuscript";
   const defaultRemoteEditorEpisodeSlug = "episode-4";
   const defaultRemoteEditorPath = `/editor?project=${encodeURIComponent(defaultRemoteEditorProjectSlug)}&episode=${encodeURIComponent(defaultRemoteEditorEpisodeSlug)}`;

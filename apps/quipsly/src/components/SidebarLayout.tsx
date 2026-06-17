@@ -2,8 +2,9 @@
 
 import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { signIn, signOut } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase/firebase";
+import { signOut as firebaseSignOut } from "firebase/auth";
 import {
   LayoutDashboard,
   Search,
@@ -194,13 +195,19 @@ function AccountSwitcher({
     currentUser?.image ||
     `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || "QuipslyUser")}`;
 
+  const router = useRouter();
+
   async function switchAccount() {
-    await signOut({ redirect: false });
-    await signIn("google", { callbackUrl: currentPath || "/projects" });
+    await fetch("/api/auth/session", { method: "DELETE" });
+    await firebaseSignOut(auth);
+    router.push(`/login?callbackUrl=${encodeURIComponent(currentPath || "/projects")}`);
   }
 
   async function signOutOnly() {
-    await signOut({ callbackUrl: "/" });
+    await fetch("/api/auth/session", { method: "DELETE" });
+    await firebaseSignOut(auth);
+    router.push("/");
+    router.refresh();
   }
 
   return (

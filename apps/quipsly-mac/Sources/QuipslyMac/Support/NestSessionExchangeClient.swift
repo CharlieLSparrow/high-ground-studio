@@ -20,7 +20,7 @@ struct NestSessionCredentials: Decodable {
 enum NestSessionExchangeError: LocalizedError {
     case invalidBaseURL
     case invalidResponse(String)
-    case serverError(String)
+    case serverError(code: String?, message: String)
 
     var errorDescription: String? {
         switch self {
@@ -28,9 +28,16 @@ enum NestSessionExchangeError: LocalizedError {
             return "The Nest base URL is invalid."
         case .invalidResponse(let message):
             return message
-        case .serverError(let message):
+        case .serverError(_, let message):
             return message
         }
+    }
+
+    var serverCode: String? {
+        if case .serverError(let code, _) = self {
+            return code
+        }
+        return nil
     }
 }
 
@@ -70,7 +77,10 @@ enum NestSessionExchangeClient {
 
         let token = NestSessionTokenStore.load()
         guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw NestSessionExchangeError.serverError("No active Nest profile is connected. Open Nest Session and sign in first.")
+            throw NestSessionExchangeError.serverError(
+                code: "mac-session-required",
+                message: "No active Nest profile is connected. Open Nest Session and sign in first."
+            )
         }
 
         var request = URLRequest(url: url)
@@ -87,8 +97,11 @@ enum NestSessionExchangeClient {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if !(200...299).contains(statusCode) {
-            let message = parseError(data: data) ?? "Nest returned \(statusCode) while preparing the embedded editor session."
-            throw NestSessionExchangeError.serverError(message)
+            let payload = parseErrorPayload(data: data)
+            throw NestSessionExchangeError.serverError(
+                code: payload.code,
+                message: payload.message ?? "Nest returned \(statusCode) while preparing the embedded editor session."
+            )
         }
 
         let envelope = try JSONDecoder().decode(NestWebSessionEnvelope.self, from: data)
@@ -121,8 +134,11 @@ enum NestSessionExchangeClient {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if !(200...299).contains(statusCode) {
-            let message = parseError(data: data) ?? "Nest returned \(statusCode). Sign in again."
-            throw NestSessionExchangeError.serverError(message)
+            let payload = parseErrorPayload(data: data)
+            throw NestSessionExchangeError.serverError(
+                code: payload.code,
+                message: payload.message ?? "Nest returned \(statusCode). Sign in again."
+            )
         }
 
         let envelope = try JSONDecoder().decode(NestSessionEnvelope.self, from: data)
@@ -145,14 +161,15 @@ enum NestSessionExchangeClient {
         return trimmed.isEmpty ? "https://nest.quipsly.com" : trimmed
     }
 
-    private static func parseError(data: Data) -> String? {
+    private static func parseErrorPayload(data: Data) -> (code: String?, message: String?) {
         guard
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let message = root["error"] as? String
         else {
-            return nil
+            return (nil, nil)
         }
-        return message
+
+        return (root["code"] as? String, message)
     }
 }
 

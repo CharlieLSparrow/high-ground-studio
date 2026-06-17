@@ -12,7 +12,8 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "QuipslyMac"
+            name: "QuipslyMac",
+            resources: [.process("Resources")]
         )
     ]
 )

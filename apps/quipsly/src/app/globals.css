@@ -419,6 +419,24 @@ button:disabled {
 .manuscript-prosemirror .manuscript-structure-block {
   border-left: 3px solid rgba(244, 240, 232, 0.34);
   padding-left: 0.75rem;
+  position: relative;
+}
+
+.manuscript-prosemirror [data-sidecar-artifact]::after {
+  content: attr(data-sidecar-artifact);
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.5rem 0 0.55rem;
+  border: 1px dashed rgba(159, 209, 139, 0.5);
+  border-radius: 0.35rem;
+  background: rgba(159, 209, 139, 0.12);
+  padding: 0.2rem 0.45rem;
+  color: var(--color-studio-tag);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-transform: uppercase;
 }
 
 .manuscript-prosemirror .manuscript-structure-chapter {

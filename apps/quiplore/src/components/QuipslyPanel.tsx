@@ -26,10 +26,12 @@ export function QuipslyPanel({
         <Feather size={14} aria-hidden="true" />
         Quipsly
       </div>
-      <div className="quipsly-image-frame" aria-hidden="true">
+      <div className="quipsly-image-frame" aria-hidden="true" style={{ width: "120px", height: "120px", overflow: "hidden", borderRadius: "50%", margin: "0 auto", border: "4px solid #fef3c7" }}>
+        {/* Dynamically select a cosplay quipsly based on the state/note to ensure it's stable but varied */}
         <img
-          alt=""
-          src="/illustrations/quipsly-character-states-brainstorm.png"
+          alt="Quipsly"
+          src={`/cosplay/quipsly_cosplay_${(stateCopy[state].length % 11) + 1}.png`}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       </div>
       <h2 className="panel-title">{stateCopy[state]}</h2>

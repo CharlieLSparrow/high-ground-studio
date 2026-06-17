@@ -1,0 +1,112 @@
+{
+  "activeSessionName": "episode-2-native-proof",
+  "projectTitle": "Episode 2 Native Edit",
+  "sequenceTitle": "Episode 2 Premiere Rescue",
+  "productionReady": false,
+  "productionReadinessDetail": "3 video lane(s) need generated proxies before editor playback. Do not fall back to raw originals.",
+  "counts": {
+    "lanes": 9,
+    "videoProxyReady": 4,
+    "videoBlocked": 3,
+    "audioReady": 2,
+    "sourcePlayers": 4,
+    "showDecisions": 1719,
+    "skipDecisions": 191
+  },
+  "packetPath": "/Users/wall-e/Dev/high-ground-studio/content/quipsly/premiere-imports/episode-2.json",
+  "blockedVideoLanes": [
+    {
+      "name": "Charlie Camera - CharlieVid1.MP4",
+      "role": "charlie_camera",
+      "kind": "video",
+      "ready": false,
+      "readiness": "Original protected",
+      "detail": "Original video is remembered outside the vault. Quipsly will not probe it until you grant access; attach or generate a full-length proxy for playback.",
+      "recoveryCategory": "protected",
+      "recoveryNextAction": "Next: attach an existing full-length proxy, or explicitly grant the source folder only when you are ready to generate/rebuild proxies from originals.",
+      "sourcePath": "/Users/wall-e/Desktop/Podcast/2/CharlieVid1.MP4",
+      "proxyPath": "",
+      "localStatus": {
+        "kind": "offline-placeholder",
+        "exists": true,
+        "logicalBytes": 15006014500,
+        "allocatedBytesApprox": 0,
+        "message": "Looks like a cloud/offline placeholder: large logical size, zero allocated bytes.",
+        "nextAction": "Download/replace this file before generating a proxy. Do not preview from it."
+      },
+      "showDecisionCount": 391,
+      "skipDecisionCount": 44,
+      "packetHealth": {
+        "exists": true,
+        "size": 15006014500,
+        "modifiedAt": "2026-02-05T16:06:51.000Z",
+        "iCloudHistory": false,
+        "needsLocalDownload": false,
+        "downloadHints": []
+      },
+      "packetDurationSeconds": 4218.756208
+    },
+    {
+      "name": "Homer Camera - video clip 235",
+      "role": "homer_camera",
+      "kind": "video",
+      "ready": false,
+      "readiness": "Missing source",
+      "detail": "Premiere packet references media that is not linked yet",
+      "recoveryCategory": "relink",
+      "recoveryNextAction": "Next: relink this lane to the whole original source file, or attach a full-length proxy that represents that source.",
+      "sourcePath": "/__quipsly_missing_media__/video clip 235",
+      "proxyPath": "",
+      "localStatus": {
+        "kind": "missing-placeholder",
+        "exists": false,
+        "logicalBytes": 0,
+        "allocatedBytesApprox": 0,
+        "message": "Premiere placeholder has no local file path.",
+        "nextAction": "Relink this lane to the original whole source, or attach a full-length proxy."
+      },
+      "showDecisionCount": 1,
+      "skipDecisionCount": 0
+    },
+    {
+      "name": "Unresolved Camera V2 - video clip 211",
+      "role": "unresolved_camera",
+      "kind": "video",
+      "ready": false,
+      "readiness": "Missing source",
+      "detail": "Premiere packet references media that is not linked yet",
+      "recoveryCategory": "relink",
+      "recoveryNextAction": "Next: relink this lane to the whole original source file, or attach a full-length proxy that represents that source.",
+      "sourcePath": "/__quipsly_missing_media__/video clip 211",
+      "proxyPath": "",
+      "localStatus": {
+        "kind": "missing-placeholder",
+        "exists": false,
+        "logicalBytes": 0,
+        "allocatedBytesApprox": 0,
+        "message": "Premiere placeholder has no local file path.",
+        "nextAction": "Relink this lane to the original whole source, or attach a full-length proxy."
+      },
+      "showDecisionCount": 1,
+      "skipDecisionCount": 0
+    }
+  ],
+  "readyLaneNames": [
+    "Unresolved Camera V2 - temp_video_352730263597350912.MP4",
+    "Source Clip V2,A3 - Title Sequence.mp4",
+    "Source Clip V3,A3 - Be a Goldfish.mp4",
+    "Source Clip V3,A3 - Darmok.mp4",
+    "Charlie Audio - CharlieFCEnhance.wav",
+    "Homer Audio - Homer Audio FinalCut Revamp.wav"
+  ],
+  "operatorSteps": [
+    "Download or replace Charlie Camera - CharlieVid1.MP4: /Users/wall-e/Desktop/Podcast/2/CharlieVid1.MP4",
+    "Relink or attach a full-length proxy for Homer Camera - video clip 235",
+    "Relink or attach a full-length proxy for Unresolved Camera V2 - video clip 211"
+  ],
+  "safeCommands": [
+    "script/agentctl.sh attach-proxy '<lane name>' '/path/to/full-length-proxy.mp4'",
+    "script/agentctl.sh relink-lane '<lane name>' '/path/to/whole-original-file.mp4'",
+    "script/agentctl.sh retry-proxies  # only after explicitly granting the originals folder in-app"
+  ]
+}

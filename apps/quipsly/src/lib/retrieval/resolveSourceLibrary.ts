@@ -37,6 +37,23 @@ export function resolveSourceLibrary(
     };
   }
 
+  if (librarySlug === "all-sources") {
+    return {
+      ...baseLibrary,
+      backends: [
+        ...baseLibrary.backends,
+        {
+          type: "source-aware",
+          projectId: context.activeProjectId,
+        },
+        {
+          type: "semantic-lore",
+          projectId: context.activeProjectId,
+        },
+      ],
+    };
+  }
+
   // Otherwise we pass the predefined backends through.
   // In the future, if a static backend needs projectId injected, we can map it here.
   return baseLibrary;

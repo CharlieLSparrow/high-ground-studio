@@ -56,7 +56,9 @@ export default function QuipslysPage() {
           <div className="grid gap-10 p-7 md:grid-cols-[1fr_420px] md:p-12">
             <div className="flex flex-col justify-center">
               <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#e8d0b5] bg-[#fff8ec] px-4 py-1.5 font-sans text-xs font-black uppercase tracking-[0.18em] text-[#a96735]">
-                <Feather className="h-3.5 w-3.5" />
+                <span className="h-4 w-4 overflow-hidden rounded border border-[#e8d0b5] bg-white shadow-sm inline-block">
+                  <img src="/quipsly-app-icon.png" alt="Quipsly" className="h-full w-full object-cover" />
+                </span>
                 Meet the Quipslys
               </div>
               <h1 className="mt-6 max-w-4xl font-serif text-5xl font-black leading-[0.95] tracking-tight md:text-7xl">

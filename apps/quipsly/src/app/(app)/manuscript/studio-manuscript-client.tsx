@@ -253,7 +253,8 @@ type ManuscriptSidePanelMode =
   | "backup"
   | "publish"
   | "assistant"
-  | "research";
+  | "research"
+  | "artifacts";
 
 type RecordingOutlineKind = ManuscriptStructureKind | "all";
 
@@ -291,6 +292,7 @@ const everydayManuscriptSidePanelModes = [
   { id: "quotes", label: "Quotes" },
   { id: "assistant", label: "Assistant (Beta)" },
   { id: "research", label: "Research (Beta)" },
+  { id: "artifacts", label: "Artifacts" },
 ] as const satisfies Array<{ id: ManuscriptSidePanelMode; label: string }>;
 
 const devManuscriptSidePanelModes = [
@@ -971,6 +973,8 @@ export function StudioManuscriptClient({
     hasConfirmedFullDraftJsonBackup,
     setHasConfirmedFullDraftJsonBackup,
   ] = useState(false);
+  const [sidecarArtifacts, setSidecarArtifacts] = useState<any[]>([]);
+  const [selectedSidecarArtifactBlockId, setSelectedSidecarArtifactBlockId] = useState<string | null>(null);
   const [message, setMessage] = useState(
     "Browser-local Manuscript Desk draft.",
   );
@@ -1026,6 +1030,32 @@ export function StudioManuscriptClient({
       setIsHydrated(true);
     }
   }, [editor, isHydrated]);
+
+  useEffect(() => {
+    // Fetch sidecar artifacts
+    // In a real app we would pass projectId/episodeSlug
+    fetch("/api/artifacts?projectId=default&episodeSlug=default")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.artifacts) {
+          setSidecarArtifacts(data.artifacts);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch sidecar artifacts", err));
+    
+    const intervalId = setInterval(() => {
+      fetch("/api/artifacts?projectId=default&episodeSlug=default")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.artifacts) {
+            setSidecarArtifacts(data.artifacts);
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!editor || !isHydrated) {
@@ -1694,7 +1724,17 @@ export function StudioManuscriptClient({
         domNode.removeAttribute("data-structure-regions");
         domNode.removeAttribute("data-structure-boundaries");
         domNode.removeAttribute("data-manuscript-boundary-heading");
+        domNode.removeAttribute("data-sidecar-artifact");
       });
+
+      const sidecarArtifactsByBlockId = new Map<string, any[]>();
+      for (const artifact of sidecarArtifacts) {
+        if (artifact.manuscriptBlockId) {
+          const arr = sidecarArtifactsByBlockId.get(artifact.manuscriptBlockId) ?? [];
+          arr.push(artifact);
+          sidecarArtifactsByBlockId.set(artifact.manuscriptBlockId, arr);
+        }
+      }
 
       const regionsByBlockId = new Map<
         string,
@@ -1846,6 +1886,14 @@ export function StudioManuscriptClient({
             }
           }
         }
+        
+        const artifacts = sidecarArtifactsByBlockId.get(blockId);
+        if (artifacts?.length) {
+          domNode.setAttribute(
+            "data-sidecar-artifact",
+            "Attached to manuscript block"
+          );
+        }
       });
     };
 
@@ -1882,9 +1930,12 @@ export function StudioManuscriptClient({
     editor,
     editorJson,
     filterVisualMode,
-    focusVisibleBlockIds,
+    focusVisibleBlockIds.contextBlockIds,
+    focusVisibleBlockIds.matchingBlockIds,
+    focusVisibleBlockIds.visibleBlockIds,
     structureBoundaryMarkers,
     structureRegionSummaries,
+    sidecarArtifacts,
   ]);
 
   useEffect(() => {
@@ -4889,9 +4940,14 @@ export function StudioManuscriptClient({
         (currentRegion ?? nextRegion)?.label.toLowerCase();
 
     return (
-      <article
+      <button
+        type="button"
+        onClick={() => {
+          if (currentRegion?.startBlockId) focusBlock(currentRegion.startBlockId);
+          else if (nextRegion?.startBlockId) focusBlock(nextRegion.startBlockId);
+        }}
         className={cn(
-          "manuscript-structure-rail-card",
+          "manuscript-structure-rail-card text-left transition hover:-translate-x-1 hover:shadow-md cursor-pointer",
           `manuscript-structure-rail-card-${kind}`,
         )}
         key={kind}
@@ -4912,7 +4968,7 @@ export function StudioManuscriptClient({
             Next {nextRegion.label}
           </span>
         ) : null}
-      </article>
+      </button>
     );
   }
 
@@ -5387,7 +5443,20 @@ export function StudioManuscriptClient({
                   )}
                 </div>
               ) : null}
-              <div className="manuscript-editor-body">
+              <div 
+                className="manuscript-editor-body"
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  const blockNode = target.closest('[data-sidecar-artifact="true"]');
+                  if (blockNode) {
+                    const blockId = blockNode.getAttribute("data-blockid");
+                    if (blockId) {
+                      setSelectedSidecarArtifactBlockId(blockId);
+                      setSidePanelMode("artifacts");
+                    }
+                  }
+                }}
+              >
                 <EditorContent editor={editor} />
               </div>
             </div>
@@ -8358,6 +8427,37 @@ export function StudioManuscriptClient({
                 )}
               </section>
             ) : null}
+
+            {sidePanelMode === "artifacts" ? (
+              <section className={cn(cardClassName, "mt-3.5 grid gap-3 p-3.5")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="m-0 text-[0.84rem] font-extrabold leading-snug text-studio-ink">
+                    Artifacts Viewer
+                  </h3>
+                </div>
+                {selectedSidecarArtifactBlockId ? (() => {
+                  const matchingArtifacts = sidecarArtifacts.filter(a => a.manuscriptBlockId === selectedSidecarArtifactBlockId);
+                  if (matchingArtifacts.length === 0) {
+                    return <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">No artifacts found for this block.</p>;
+                  }
+                  return matchingArtifacts.map((artifact, i) => (
+                    <div key={i} className="grid gap-2 rounded-lg border border-emerald-200/30 bg-emerald-50/10 p-2.5">
+                      <div className="font-bold text-[0.8rem] text-emerald-900">{artifact.role || "Artifact"}</div>
+                      {artifact.summary && <p className="m-0 text-[0.74rem] leading-relaxed text-emerald-800">{artifact.summary}</p>}
+                      {artifact.content && (
+                        <pre className="mt-2 max-h-[300px] overflow-x-auto overflow-y-auto whitespace-pre-wrap rounded bg-black/5 p-2 font-mono text-[10px] text-emerald-900">
+                          {typeof artifact.content === "string" ? artifact.content : JSON.stringify(artifact.content, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  ));
+                })() : (
+                  <p className="m-0 text-[0.78rem] leading-relaxed text-studio-muted">
+                    Click a highlighted block with dashed green borders in the manuscript to view its attached artifacts.
+                  </p>
+                )}
+              </section>
+            ) : null}
             </div>
 
             <footer
@@ -9226,12 +9326,12 @@ export function StudioManuscriptClient({
                   Cited quote
                 </button>
                 <button
-                  className={commandButtonClassName}
+                  className={cn(commandButtonClassName, "text-rose-600 hover:text-rose-700 font-bold")}
                   role="menuitem"
                   type="button"
                   onClick={clearSemanticHighlightFromContextMenu}
                 >
-                  Clear semantic
+                  Remove tag
                 </button>
               </div>
             </div>

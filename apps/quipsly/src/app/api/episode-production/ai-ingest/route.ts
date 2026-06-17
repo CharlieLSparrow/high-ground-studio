@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 
 type ImportedAssetInput = {
@@ -224,6 +225,20 @@ export async function POST(request: Request) {
       prisma = getPrismaClient();
       if (!(prisma as any).studioEpisodeProduction) {
         throw new Error("StudioEpisodeProduction model is not available in the generated Prisma client.");
+      }
+      const access = await resolveEpisodeProductionAccess({
+        request,
+        projectSlug,
+        action: "write",
+        prisma,
+      });
+      if (!access.allowed) {
+        return NextResponse.json({
+          ok: false,
+          code: access.code,
+          error: access.error,
+          actorSource: access.actor.source,
+        }, { status: access.status });
       }
       const ensured = await ensureProjectAndProduction(prisma, projectSlug, episodeSlug);
       production = ensured.production;

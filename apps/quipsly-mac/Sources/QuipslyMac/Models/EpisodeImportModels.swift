@@ -37,6 +37,7 @@ enum EpisodeImportJobStatus: String, Codable {
     case queued
     case probing
     case proxying
+    case proxyReady = "proxy-ready"
     case uploading
     case registered
     case failed
@@ -47,6 +48,7 @@ enum EpisodeImportJobStatus: String, Codable {
         case .queued: "Queued"
         case .probing: "Probing"
         case .proxying: "Proxying"
+        case .proxyReady: "Proxy ready"
         case .uploading: "Uploading"
         case .registered: "Registered"
         case .failed: "Failed"
@@ -119,6 +121,8 @@ struct EpisodeImportJob: Codable, Identifiable, Equatable {
     var registration: EpisodeMediaRegistration?
     var recordingSyncMetadata: EpisodeRecordingSyncMetadata?
     var timelineAttachResult: EpisodeTimelineAttachResult?
+    var autoRegisterAfterProxy: Bool?
+    var mediaCacheDir: String?
 
     init(
         id: String = UUID().uuidString,
@@ -136,7 +140,9 @@ struct EpisodeImportJob: Codable, Identifiable, Equatable {
         proxy: EpisodeMediaProxy? = nil,
         registration: EpisodeMediaRegistration? = nil,
         recordingSyncMetadata: EpisodeRecordingSyncMetadata? = nil,
-        timelineAttachResult: EpisodeTimelineAttachResult? = nil
+        timelineAttachResult: EpisodeTimelineAttachResult? = nil,
+        autoRegisterAfterProxy: Bool? = true,
+        mediaCacheDir: String? = nil
     ) {
         self.id = id
         self.path = path
@@ -155,6 +161,8 @@ struct EpisodeImportJob: Codable, Identifiable, Equatable {
         self.registration = registration
         self.recordingSyncMetadata = recordingSyncMetadata
         self.timelineAttachResult = timelineAttachResult
+        self.autoRegisterAfterProxy = autoRegisterAfterProxy
+        self.mediaCacheDir = mediaCacheDir
     }
 
     var enginePayload: [String: Any] {
@@ -171,10 +179,14 @@ struct EpisodeImportJob: Codable, Identifiable, Equatable {
             "status": status.rawValue,
             "queuedAt": queuedAt,
             "message": message ?? "",
+            "autoRegisterAfterProxy": autoRegisterAfterProxy ?? true,
         ]
 
         if let recordingSyncMetadata {
             payload["recordingSyncMetadata"] = recordingSyncMetadata.dictionaryValue
+        }
+        if let mediaCacheDir, !mediaCacheDir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["mediaCacheDir"] = mediaCacheDir
         }
 
         return payload
@@ -323,6 +335,69 @@ struct EpisodeTimelineAttachResult: Codable, Equatable {
     var errorCode: String?
     var errorDetail: String?
     var recoverable: Bool?
+}
+
+struct PremiereSourceMaterializationSummary: Codable, Equatable {
+    var total: Int
+    var ready: Int
+    var blockers: Int
+    var downloadNeeded: Int
+    var missing: Int
+    var blockedLocal: Int
+    var counts: [String: Int]?
+}
+
+struct PremiereSourceMaterializationItem: Codable, Identifiable, Equatable {
+    var assetId: String?
+    var originalName: String
+    var kind: String
+    var path: String
+    var status: String
+    var action: String
+    var exists: Bool
+    var size: Int?
+    var modifiedAt: String?
+    var iCloudHistory: Bool
+    var needsLocalDownload: Bool
+    var canRequestDownload: Bool
+
+    var id: String { assetId ?? "\(originalName)-\(path)" }
+}
+
+struct PremiereSourceDownloadRequestResult: Codable, Identifiable, Equatable {
+    var assetId: String?
+    var originalName: String
+    var path: String
+    var attempted: Bool
+    var ok: Bool
+    var status: Int?
+    var message: String
+
+    var id: String { assetId ?? "\(originalName)-\(path)" }
+}
+
+struct PremiereSourceMaterializationRunResult: Codable, Equatable {
+    var ok: Bool
+    var status: String?
+    var message: String?
+    var packetPath: String?
+    var projectSlug: String?
+    var episodeSlug: String?
+    var scope: String?
+    var mutatesPacket: Bool?
+    var requestDownloads: Bool?
+    var summary: PremiereSourceMaterializationSummary?
+    var items: [PremiereSourceMaterializationItem]?
+    var requestedDownloads: [PremiereSourceDownloadRequestResult]?
+    var warnings: [String]?
+    var error: String?
+
+    var plainEnglishSummary: String {
+        if let message, !message.isEmpty { return message }
+        if let error, !error.isEmpty { return error }
+        guard let summary else { return ok ? "Source readiness check complete." : "Source readiness check failed safely." }
+        return "\(summary.ready)/\(summary.total) primary source file(s) ready; \(summary.blockers) need action."
+    }
 }
 
 private extension EpisodeMediaProbe {

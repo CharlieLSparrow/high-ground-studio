@@ -701,6 +701,132 @@ function parseExportOutSeconds(sequenceBlock) {
   }
 }
 
+function buildQuipslyEditGraph(sequence, mediaById, projectSlug, episodeSlug, generatedAt) {
+  if (!sequence) return null;
+
+  const mediaTrackIds = new Map();
+  for (const clip of sequence.timelineClips) {
+    if (!mediaTrackIds.has(clip.assetId)) mediaTrackIds.set(clip.assetId, new Set());
+    mediaTrackIds.get(clip.assetId).add(clip.trackId);
+  }
+
+  const sources = (sequence.sourceUsage ?? []).map((usage) => {
+    const media = mediaById.get(usage.assetId);
+    return {
+      id: usage.assetId,
+      sourceAssetId: usage.assetId,
+      displayName: media?.originalName || media?.title || usage.mediaTitle || usage.assetId,
+      kind: media?.kind || usage.kind || "unknown",
+      role: media ? importRoleForMedia(media) : "episode-media",
+      trackIds: [...(mediaTrackIds.get(usage.assetId) ?? new Set())].sort(compareTrackIds),
+      duration: Number((media?.durationSeconds ?? Math.max(0, ...usage.mergedSourceRanges.map((range) => range.end))).toFixed(6)),
+      originalPath: media?.filePath ?? null,
+      localPath: media?.actualMediaFilePath || media?.filePath || null,
+      exists: media?.health?.exists ?? false,
+      generatedFrom: "premiere-prproj-import-v1",
+    };
+  });
+
+  const activeDecisions = sequence.timelineClips.map((clip) => ({
+    id: `decision-active-${stableId(sequence.id, clip.id)}`,
+    sourceAssetId: clip.assetId,
+    outputId: "program-16x9",
+    trackId: clip.trackId,
+    timelineStart: clip.startIn,
+    duration: clip.duration,
+    sourceStart: clip.sourceStart,
+    sourceEnd: clip.sourceEnd,
+    isActive: true,
+    kind: clip.kind,
+    label: clip.name,
+    generatedFrom: "premiere-active-clip-translated-to-quipsly-edit-decision",
+    premiere: clip.premiere ?? null,
+  }));
+
+  const inactiveDecisions = (sequence.candidateDeactivatedSourceRanges ?? [])
+    .filter((range) => range.deactivated)
+    .map((range) => {
+      const sameSource = activeDecisions
+        .filter((decision) => decision.sourceAssetId === range.assetId && decision.kind === range.kind)
+        .sort((left, right) => left.sourceStart - right.sourceStart || left.timelineStart - right.timelineStart);
+      const previous = [...sameSource]
+        .filter((decision) => decision.sourceEnd <= range.sourceStart + 0.001)
+        .sort((left, right) => right.sourceEnd - left.sourceEnd)[0];
+      const next = sameSource
+        .filter((decision) => decision.sourceStart >= range.sourceEnd - 0.001)
+        .sort((left, right) => left.sourceStart - right.sourceStart)[0];
+      const duration = Math.max(0.05, range.duration ?? Math.max(0.05, range.sourceEnd - range.sourceStart));
+      const timelineStart = previous
+        ? previous.timelineStart + previous.duration
+        : Math.max(0, (next?.timelineStart ?? 0) - duration);
+      const trackId = previous?.trackId || next?.trackId || (range.kind === "audio" ? "A1" : "V1");
+
+      return {
+        id: `decision-inactive-${stableId(sequence.id, range.id, trackId)}`,
+        sourceAssetId: range.assetId,
+        outputId: "program-16x9",
+        trackId,
+        timelineStart: Number(timelineStart.toFixed(6)),
+        duration: Number(duration.toFixed(6)),
+        sourceStart: range.sourceStart,
+        sourceEnd: range.sourceEnd,
+        isActive: false,
+        kind: range.kind,
+        label: range.confidence === "low" ? "Unused source edge" : "Skipped source range",
+        confidence: range.confidence ?? "unknown",
+        reason: range.reason ?? null,
+        generatedFrom: "premiere-omission-translated-to-quipsly-inactive-edit-decision",
+      };
+    });
+
+  const editDecisions = [...activeDecisions, ...inactiveDecisions].sort((left, right) => (
+    left.timelineStart - right.timelineStart
+    || compareTrackIds(left.trackId, right.trackId)
+    || Number(right.isActive) - Number(left.isActive)
+  ));
+
+  return {
+    schemaVersion: 1,
+    projectSlug,
+    episodeSlug,
+    source: "quipsly-edit-graph-from-premiere-prproj",
+    generatedAt,
+    importBoundary: "Premiere is translator evidence only; Quipsly edits source media with decisions.",
+    primarySequenceId: sequence.id,
+    primarySequenceName: sequence.name,
+    duration: Number((sequence.timelineDurationSeconds ?? 0).toFixed(6)),
+    sources,
+    syncMaps: sources.map((source) => ({
+      id: `sync-${stableId(sequence.id, source.sourceAssetId)}`,
+      sourceAssetId: source.sourceAssetId,
+      timelineAnchor: 0,
+      sourceAnchor: 0,
+      confidence: "premiere-sequence-derived",
+      generatedFrom: "premiere-prproj-import-v1",
+    })),
+    outputs: [
+      { id: "program-16x9", label: "Main edit", aspectRatio: "16:9", isPrimary: true },
+      { id: "shorts-9x16", label: "Shorts edit", aspectRatio: "9:16", isPrimary: false },
+    ],
+    editDecisions,
+    transforms: [],
+    legacyFragmentCount: sequence.timelineClips.length,
+    inactiveDecisionCount: inactiveDecisions.length,
+    activeDecisionCount: activeDecisions.length,
+  };
+}
+
+function compareTrackIds(left = "", right = "") {
+  return trackSortKey(left) - trackSortKey(right);
+}
+
+function trackSortKey(trackId = "") {
+  const upper = String(trackId).toUpperCase();
+  const prefix = upper.startsWith("V") ? 0 : upper.startsWith("A") ? 10_000 : 20_000;
+  const number = Number.parseInt(upper.replace(/^[A-Z]+/, ""), 10);
+  return prefix + (Number.isFinite(number) ? number : 0);
+}
+
 function buildSourceUsage(sequence, mediaById) {
   const usageByAssetId = new Map();
   const timelineGapsByTrackId = new Map();
@@ -874,6 +1000,7 @@ function buildPacket(args, xml) {
   const projectSlug = args.projectSlug;
   const importedMedia = buildImportedMediaPlaceholders(primarySequenceMedia, projectSlug, episodeSlug, generatedAt);
   const suggestedSpineAudioCandidates = chooseSuggestedSpineAudioCandidates(importedMedia, primarySequence);
+  const quipslyEditGraph = buildQuipslyEditGraph(primarySequence, mediaById, projectSlug, episodeSlug, generatedAt);
 
   return {
     payloadVersion: 1,
@@ -924,6 +1051,7 @@ function buildPacket(args, xml) {
       reason: "Skipped because this media is not used by the chosen primary sequence.",
     })),
     sequences,
+    quipslyEditGraph,
     quipslyEpisodeProductionPatch: primarySequence
       ? {
           episodeProductionPayloadVersion: 1,
@@ -947,6 +1075,7 @@ function buildPacket(args, xml) {
           spineAudioLabel: null,
           spineAudioSource: null,
           premiereSuggestedSpineAudioCandidates: suggestedSpineAudioCandidates,
+          quipslyEditGraph,
           timelineClips: primarySequence.timelineClips.map((clip) => ({
             id: clip.id,
             assetId: clip.assetId,

@@ -1,5 +1,7 @@
 # Quipsly Mac Local Editor Workflow
 
+> 2026-06-14 status note: this document describes the older `apps/quipsly-mac` hybrid Nest/local-engine workflow. It is still useful for auth, local-engine, GCS object paths, and Premiere rescue history, but it is not the current canonical direction for the standalone native video editor. For the current `apps/quipsly-video` direction, read `docs/coordination/native-video-editor-control-room.md` first.
+
 Status: current working model as of 2026-06-07.
 
 This document describes the intended split between the Nest web app, the native Mac app, the local engine, and the web editor while we build the real Episode Editor workflow.
@@ -508,3 +510,343 @@ Break-glass recovery:
 - Saving a pasted recovery code must not be treated as signed-in until `/api/mac/session-exchange` and `/api/mac/session-check` both succeed.
 
 The app bundle must register the `quipslymac` URL scheme. The durable launcher is `apps/quipsly-mac/script/build_and_run.sh`; `apps/quipsly-mac/scripts/build_and_run.sh` delegates to it so both entrypoints produce a bundle with the same callback registration.
+
+## Episode 1-3 Premiere rescue status - 2026-06-09
+
+Current local rescue truth for `high-ground-odyssey-manuscript`:
+
+- `episode-1` is locally source-clean and cache-clean. `NewHomerExport.MP4` is linked from the HighGroundDrive Google Drive path and cached through a symlink rather than copied, because the source is a 24 GB cloud file.
+- `episode-2` has one unresolved active source group: `V1 video clip 235`. `V2 video clip 211` was relinked to `Title Sequence.mp4` by same-track source/timeline continuity evidence and backed up before mutation.
+- `episode-3` has one unresolved active source group: `V1 video clip 598`. `video clip 1878` is linked/cached; the remaining opening V1 placeholder needs human confirmation or better Premiere metadata recovery.
+- All three episodes preserve inactive/deactivated Premiere ranges as known skipped decisions. They are not deleted.
+
+Useful commands from repo root:
+
+```bash
+# Refresh manifests and print the real render-readiness matrix.
+QUIPSLY_MAC_SKIP_BUILD=1 apps/quipsly-mac/script/render_readiness_matrix.sh --refresh high-ground-odyssey-manuscript episode-1 episode-2 episode-3
+
+# Refresh manifests and write the missing-source report with Spotlight/CloudStorage search.
+QUIPSLY_MAC_SKIP_BUILD=1 QUIPSLY_MISSING_SOURCE_SEARCH=1 apps/quipsly-mac/script/missing_source_report.sh --refresh high-ground-odyssey-manuscript episode-1 episode-2 episode-3
+
+# Dry-run safe source relinks from the latest report.
+apps/quipsly-mac/script/apply_missing_source_matches.sh
+
+# Apply only unambiguous filename or continuity matches from the latest report, writing a session backup first.
+apps/quipsly-mac/script/apply_missing_source_matches.sh --apply
+
+# Link playback cache paths without copying giant sources when symlinks are safer.
+apps/quipsly-mac/script/cache_playback_sources.sh --apply high-ground-odyssey-manuscript episode-1
+
+# Generate renderer-facing program plans from render-prep manifests.
+apps/quipsly-mac/script/smoke_render_program_plan.sh high-ground-odyssey-manuscript episode-1 episode-2 episode-3
+```
+
+Current render-plan bridge:
+
+- `apps/quipsly-mac/script/render_manifest_program_plan.mjs` writes `~/Library/Application Support/QuipslyMac/render-plans/<projectSlug>/<episodeSlug>/program-plan.json`.
+- The plan chooses the topmost active `V*` clip at each edit interval for the program picture.
+- The plan preserves active `A*` clips for the future mixer/render layer.
+- Inactive clips stay in the render-prep manifest and are intentionally skipped by the program plan.
+- A plan is `ok: true` when Play Edit export has no program-level blockers and has video segments. Source-review blockers may still exist when missing lower-track media is fully hidden by higher playable `V*` media.
+
+Validation last run:
+
+- `episode-1`: `ready-for-renderer`, `0 / 0` missing source, `0 / 0` cache needed, 115 preserved inactive cuts, program plan `ok: true`.
+- `episode-2`: `needs-media-review`, one missing source group `V1 video clip 235`, zero cache blockers, program plan is `ok: true`; this remains a source-review blocker only because the missing lower-track source is hidden by playable higher-track program media.
+- `episode-3`: `needs-media-review`, one missing source group `V1 video clip 598`, zero cache blockers, program plan is `ok: true`; this remains a source-review blocker only because the missing lower-track source is hidden by playable higher-track program media.
+
+## Program export vs source review - 2026-06-09
+
+The Mac Episode Editor now separates two kinds of missing media:
+
+- **Program export gaps**: the missing source would be the topmost visible `V*` program clip at some Play Edit interval, or an active `A*` source needed by export. These block Play Edit export and should be fixed before rendering.
+- **Source review gaps**: the missing source is still preserved in the full rescued Premiere decision graph, but is hidden by higher playable program media or otherwise not needed for the current Play Edit output. These should stay visible for cleanup, but they should not scare the editor or block proof renders.
+
+This distinction matters because Quipsly preserves the full edit, including deactivated cuts and lower-track source history. The editor should not pretend hidden Premiere leftovers are missing export media.
+
+Current UI contract:
+
+- `Render prep looks clean` means no active source gaps and no playback-cache blockers.
+- `Program export ready; source review incomplete` means Play Edit export has no program blockers, but preserved source-review groups still need human cleanup or confirmation.
+- `Needs program source before export` means the currently approved Play Edit output depends on missing source media.
+
+Renderer-facing commands:
+
+```bash
+# Build renderer-facing program plans for Episodes 1-3.
+apps/quipsly-mac/script/smoke_render_program_plan.sh high-ground-odyssey-manuscript episode-1 episode-2 episode-3
+
+# Produce a bounded proof render from a safe Episode 2 section.
+apps/quipsly-mac/script/smoke_render_program_proof.sh high-ground-odyssey-manuscript episode-2 53.56 3
+
+# Direct proof renderer usage, capped to 120 seconds for safety.
+node apps/quipsly-mac/script/render_program_proof.mjs high-ground-odyssey-manuscript episode-2 --start 53.56 --duration 3
+```
+
+Known large-media caveat:
+
+- Some opening episode media points to very large cloud-backed files. The proof renderer now fails quickly and calmly when `ffprobe` cannot read those sources inside the timeout. That is a real local-file/cloud-hydration issue, not a timeline data loss issue.
+
+## Native proof render affordance - 2026-06-09
+
+The Episode Editor toolbar now includes:
+
+- `Prep render`: writes the non-destructive render-prep manifest.
+- `Proof render`: renders a short bounded MP4 proof from the current Play Edit playhead using the renderer-facing program plan.
+- `Reveal proof`: opens the most recent proof MP4 in Finder after a render succeeds.
+
+The proof button is intentionally small-scope:
+
+- It is for quick confidence checks while editing.
+- It does not publish anything.
+- It is not the final full-resolution export pipeline.
+- It is disabled when Play Edit export has program-level source blockers.
+- It remains enabled when only source-review gaps exist, because those preserved lower-track gaps do not affect the current Play Edit picture.
+
+Validated visible Mac snapshot markers:
+
+- `renderProofSchema: local-proof-render-current-playhead-v1`
+- `renderProofButtonId: episode-editor-proof-render-button`
+- `renderProofRevealButtonId: episode-editor-reveal-proof-render-button`
+
+### Proof render safe-window behavior
+
+The native proof button uses the current playhead when the current program clip is local-friendly. If the playhead is parked on a giant symlinked/cloud-backed source, the app falls forward to the first topmost playable `V*` program decision whose resolved media target is under 1 GB.
+
+Current proof-start policy marker:
+
+- `prefer-current-playhead-else-first-small-program-media-v1`
+
+This prevented Episode 2 from trying to proof-render the huge opening source at `0:00`; the app selected `19.12s`, and the bounded proof render succeeded from that window.
+
+## Motion-aware proof render - 2026-06-09
+
+Program plans now carry clip `motion` metadata into video segments. Adjacent segments are only merged when their motion metadata matches, so a zoom/pan decision cannot accidentally leak across a neighboring cut.
+
+The proof renderer currently applies the first motion keyframe as a static transform:
+
+- `scale` becomes a zoom from the already-fit frame.
+- `x` / `y` shift the crop window after zoom.
+- `opacity` is preserved in metadata but not yet mixed into final compositing.
+
+This is not full animated keyframing yet. It is a deliberate first renderer contract so local proof exports can show basic zoom/pan decisions instead of treating motion metadata as decorative JSON.
+
+Validation performed:
+
+- Generated Episode 1-3 program plans after adding motion passthrough.
+- Rendered Episode 2 safe proof at `19.12s + 8s` successfully.
+- Temporarily injected a synthetic Episode 2 motion keyframe into the generated plan, rendered a 1s proof, confirmed `motionFragments: 1`, then restored the plan.
+
+## Guarded full-draft export mode - 2026-06-09
+
+`render_program_proof.mjs` now supports a guarded full-draft export path:
+
+```bash
+# Refuses safely unless explicitly confirmed when duration exceeds 120 seconds.
+node apps/quipsly-mac/script/render_program_proof.mjs high-ground-odyssey-manuscript episode-2 --full
+
+# Intentional full draft export, after the editor has verified media readiness.
+node apps/quipsly-mac/script/render_program_proof.mjs high-ground-odyssey-manuscript episode-2 --full --confirm-long-render
+```
+
+Rules:
+
+- Short proof windows remain the default editing confidence tool.
+- Full renders over 120 seconds require `--confirm-long-render`.
+- Full mode uses the program plan duration and writes `*-draft-export-*.mp4` unless `--output` is provided.
+- This is still a local draft export path, not the publishing workflow.
+
+Validation performed:
+
+- Episode 2 short proof still renders after adding full mode.
+- Episode 2 `--full` without confirmation fails before rendering with the expected guard message.
+
+### UI file checks must stay lightweight
+
+The Mac UI must not resolve cloud-backed symlink targets while building SwiftUI views. A resolved target check can block window creation before the editor appears.
+
+Current rule:
+
+- UI proof-start selection treats symlinked media as not proof-friendly without resolving the target.
+- Renderer scripts may inspect/ffprobe real paths because they run outside the UI render path and can fail calmly.
+- If a proof-render safety check ever needs deeper file inspection, move it to a background task or renderer preflight, not a SwiftUI body helper.
+
+The Episode Editor also exposes a safe `Copy full export` action. It copies the explicit guarded command instead of launching a long render from the toolbar.
+
+### Native proof duration default
+
+The native toolbar `Proof render` action now renders a 3-second local proof clip by default. Longer checks should use the renderer script directly or the future export panel.
+
+Reason: Episode 1 proved that even a technically valid safe window can be slow when media is cloud-backed or codec-heavy. The native button should feel like a confidence tap, not a surprise render job.
+
+## Native full draft export workflow - 2026-06-09
+
+The Episode Editor now has a real native long-render path, not just a Terminal handoff:
+
+- `Proof render`: renders a 3-second confidence MP4 from a safe local-friendly program window.
+- `Draft export...`: opens an explicit confirmation dialog, then runs the guarded full local draft export asynchronously.
+- `Reveal draft`: opens the latest completed full draft export in Finder.
+- `Copy full export`: remains as a fallback/operator command for terminal-driven export.
+
+The full draft export is still local-first and non-publishing:
+
+- It uses the current Play Edit program plan.
+- It requires user confirmation in the app.
+- It uses the renderer guard path (`--full --confirm-long-render`).
+- It is disabled when Play Edit has program-level source blockers.
+- Source-review-only gaps do not disable export, because they do not affect the current topmost Play Edit program output.
+
+Smoke markers added:
+
+- `renderDraftExportSchema: confirmed-local-full-draft-export-v1`
+- `renderDraftExportButtonId: episode-editor-draft-export-button`
+- `renderDraftExportRevealButtonId: episode-editor-reveal-draft-export-button`
+
+Validated visible state:
+
+- Episodes 1, 2, and 3 all load in the Mac editor.
+- Episodes 1, 2, and 3 all show the native draft export button enabled.
+- Episodes 2 and 3 retain source-review-only gap visibility without blocking export.
+
+### Local export guide in Episode Editor
+
+The Episode Editor workbench now shows a three-step local export guide under render readiness:
+
+1. `Proof render` creates a short confidence MP4 from the safe playhead window.
+2. `Draft export...` creates the full Play Edit output only after explicit confirmation.
+3. Publishing remains a later promotion step from saved local draft truth.
+
+This guide is intentionally redundant with the toolbar buttons. The point is to keep the real editing workflow calm: first prove a tiny clip, then export the full local draft, then promote/publish from an artifact the human can inspect. Inactive Premiere cuts remain preserved edit decisions, not deleted media.
+
+The app smoke snapshot asserts `localExportGuideSchema: proof-then-draft-local-export-guide-v1` so future UI cleanups do not accidentally hide the export path again.
+
+### Episode 1-3 rescue board
+
+The Episode Editor now shows an `Episode 1-3 rescue board` above the active local workbench. It is a batch readiness surface for the immediate re-edit/publish push:
+
+- Each card opens one recovered Premiere episode draft.
+- Each card shows whether the local session is loaded.
+- Loaded cards show clip count, skipped/inactive count, and program duration.
+- Export readiness is based on active Play Edit source availability, not source-review-only gaps.
+
+The board is deliberately not a new data model. It reads the same saved local episode sessions and keeps the user oriented while Episodes 1, 2, and 3 move from Premiere rescue toward Quipsly-native draft exports.
+
+The rescue board includes `Copy readiness`, which copies a short Markdown report for Episodes 1-3. Use it for handoff, daily planning, or agent coordination before full exports. It intentionally reports local readiness only: whether the recovered edit session is loaded, whether Play Edit export is blocked, source-review-only notes, clip counts, skipped cuts, and program duration.
+
+### Full-export dry-run stream probing
+
+Full draft exports and full dry runs use `streamProbeMode: path-only-full-render` by default. This is intentional. Episodes 1-3 include very large source files surfaced through Quipsly playback-cache symlinks, and strict stream probing can hang for tens of seconds on 18-22GB media before a render even starts.
+
+Current rule:
+
+- Proof renders inspect streams with `ffprobe` because they consume a small concrete window.
+- Real renders inspect streams before consuming media.
+- Full draft exports trust the Quipsly program plan for video/audio stream shape and let `ffmpeg` report the real render result. Dry runs verify source paths, program-plan assembly, fragment counts, and command shape without probing every huge source.
+- Set `QUIPSLY_RENDER_FULL_PROBE_STREAMS=1` if strict stream probing is needed for a diagnostic full-export pass.
+
+This avoids pre-render hangs on huge symlinked media while preserving proof-render stream checks and real `ffmpeg` result reports.
+
+### Draft export runner
+
+Use `apps/quipsly-mac/script/render_draft_export.sh` for observable full-draft exports from the local program plan.
+
+Examples:
+
+```bash
+apps/quipsly-mac/script/render_draft_export.sh high-ground-odyssey-manuscript episode-2 --dry-run
+apps/quipsly-mac/script/render_draft_export.sh high-ground-odyssey-manuscript episode-2 --background
+QUIPSLY_DRAFT_EXPORT_WIDTH=426 QUIPSLY_DRAFT_EXPORT_HEIGHT=240 QUIPSLY_DRAFT_EXPORT_FPS=12 apps/quipsly-mac/script/render_draft_export.sh high-ground-odyssey-manuscript episode-2 --background
+```
+
+The runner writes logs under `~/Library/Application Support/QuipslyMac/render-logs/<project>/<episode>/`. This keeps long exports observable and avoids foreground terminal lockup while the Mac editor continues evolving.
+
+### Chunked draft export status
+
+The full-draft export path now has a chunked renderer: `render_program_chunked_export.mjs` renders short Play Edit windows and concatenates the resulting MP4 chunks. This avoids the macOS argument-limit problem caused by trying to launch one ffmpeg process with hundreds of input fragments.
+
+Current proven state:
+
+- Episode 2 low-resolution chunk 0 renders and concatenates successfully.
+- `setsar=1` is required on every rendered video fragment so ffmpeg concat accepts mixed source aspect metadata.
+- Chunked child renders use `QUIPSLY_RENDER_SKIP_STREAM_PROBES=1` to avoid ffprobe hangs on huge/cloud-backed media.
+- Full Episode 2 low-resolution export progresses through chunks 0-2, then currently stalls around chunk 3 on a large source seek. The chunked exporter now supports `--chunk-timeout-ms` so future runs report that as a precise timed-out chunk instead of hanging indefinitely.
+
+Useful diagnostic command:
+
+```bash
+apps/quipsly-mac/script/render_program_chunked_export.mjs high-ground-odyssey-manuscript episode-2 --width 426 --height 240 --fps 12 --chunk-seconds 60 --max-chunks 1
+```
+
+Useful full low-resolution attempt:
+
+```bash
+apps/quipsly-mac/script/render_program_chunked_export.mjs high-ground-odyssey-manuscript episode-2 --width 426 --height 240 --fps 12 --chunk-seconds 60 --chunk-timeout-ms 180000
+```
+
+Next likely hardening target: identify slow/stuck chunks, pre-cache or proxy the source ranges they need, and let the Mac app show chunk export progress/problem chunks instead of hiding this in terminal logs.
+
+### Source readiness and cloud-placeholder media
+
+Program export readiness now has two layers:
+
+1. The render plan can be structurally valid: clips, active ranges, tracks, and source paths all line up.
+2. Each source file must also have local bytes available. A path can exist and report a large logical file size while still having `0B` allocated locally because it is a cloud placeholder or sparse file.
+
+Use this command before full Episode 1-3 exports:
+
+```bash
+node apps/quipsly-mac/script/render_program_source_readiness.mjs high-ground-odyssey-manuscript episode-1 episode-2 episode-3
+```
+
+For one episode, and to ask macOS/iCloud to materialize missing local bytes:
+
+```bash
+node apps/quipsly-mac/script/render_program_source_readiness.mjs high-ground-odyssey-manuscript episode-2 --download
+```
+
+The report is saved under:
+
+```text
+~/Library/Application Support/QuipslyMac/render-readiness/<projectSlug>/source-readiness-*.json
+```
+
+Current renderer behavior is intentionally fail-fast: if a required source has almost no local allocated bytes, `render_program_proof.mjs` exits with a plain download-needed error before spawning a long ffmpeg render. This prevents scary silent hangs and preserves the non-destructive Premiere rescue semantics.
+
+Chunked exports can now retry or diagnose exact chunks:
+
+```bash
+node apps/quipsly-mac/script/render_program_chunked_export.mjs high-ground-odyssey-manuscript episode-2 --only-chunk 3 --chunk-timeout-ms 30000
+node apps/quipsly-mac/script/render_program_chunked_export.mjs high-ground-odyssey-manuscript episode-2 --start-chunk 3 --max-chunks 2
+```
+
+Each chunk report includes `chunkSourceSummaries` with track IDs, source ranges, symlink targets, logical size, allocated size, and `localReadiness`.
+
+
+### Durable macOS media access
+
+Quipsly Mac should not keep asking for the same folder over and over. The production pattern is:
+
+1. Use `Local Files` as the user's media access vault.
+2. Grant durable roots such as `/Users/wall-e/Desktop/Podcast`, `/Users/wall-e/Library/CloudStorage`, external drives under `/Volumes`, camera dumps, or research photo folders.
+3. Store those grants as security-scoped bookmarks in `~/Library/Application Support/QuipslyMac/media-access-roots.json`.
+4. Restore those bookmarks on launch before import, relink, proxy, source-readiness, or render workflows run.
+5. Keep feature-specific file pickers as fallbacks, not the default way the app remembers where media lives.
+
+Whole-system access is different. Quipsly Mac cannot grant itself permanent full-disk access. For broad rescue work, the user must add the app in `System Settings > Privacy & Security > Full Disk Access`. For that grant to remain stable across real releases, the app should be signed with a durable signing identity. The local SwiftPM build script supports that through:
+
+```bash
+QUIPSLY_MAC_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" apps/quipsly-mac/script/build_and_run.sh --verify
+```
+
+If no signing identity is configured, the script uses ad-hoc signing so local development remains fast, but macOS privacy grants may be less stable across rebuilds. That is acceptable for development and not acceptable as the final beta distribution story.
+
+`fileproviderctl evaluate` is useful for diagnosing online-only files. If a blocker shows `provider: macos-file-provider`, `isDownloaded: false`, and `isKeepDownloaded: false`, Quipsly has permission to see the item but the provider has not downloaded the bytes. In Finder, reveal the resolved path and choose `Download Now` or `Make Available Offline`, then rerun the source-readiness audit. Do not keep retrying ffmpeg while the item still reports `0B` allocated.
+
+The source materialization watcher wraps the audit command for long downloads:
+
+```bash
+node apps/quipsly-mac/script/render_program_source_watch.mjs high-ground-odyssey-manuscript episode-1 episode-2 episode-3 --request --interval-seconds 30 --max-wait-seconds 1800
+```
+
+Use `--request` once to reveal/request blockers, then let the watcher print whether each File Provider item is `not requested`, `requested`, `downloading`, or fully local. The Episode Editor exposes this as `Copy watch` in the Source bytes audit row.

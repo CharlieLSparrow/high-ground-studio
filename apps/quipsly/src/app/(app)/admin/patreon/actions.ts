@@ -1,3 +1,5 @@
+"use server";
+
 import { getPrismaClient } from "@/lib/prisma";
 import { requireQuipslyAdminActor } from "@/lib/server/user-management";
 
@@ -22,8 +24,8 @@ export async function getAdminInboxStats() {
     ]);
 
     const [pendingReconciliations, appliedReconciliations] = await Promise.all([
-      prisma.membershipReconciliation.count({ where: { status: "pending" } }),
-      prisma.membershipReconciliation.count({ where: { status: "applied" } }),
+      prisma.entitlementLedger.count({ where: { status: "pending" } }),
+      prisma.entitlementLedger.count({ where: { status: "applied" } }),
     ]);
 
     return {
@@ -60,7 +62,7 @@ export async function getRecentReconciliations() {
 
   try {
     const prisma = getPrismaClient();
-    return await prisma.membershipReconciliation.findMany({
+    return await prisma.entitlementLedger.findMany({
       take: 10,
       orderBy: { createdAt: "desc" },
       include: {
@@ -70,5 +72,66 @@ export async function getRecentReconciliations() {
   } catch (error) {
     console.error("[patreon-admin] could not load reconciliations", error);
     return [];
+  }
+}
+
+export async function getPendingBetaRequests() {
+  await requireQuipslyAdminActor();
+
+  if (!process.env.DATABASE_URL) return [];
+
+  try {
+    const prisma = getPrismaClient();
+    
+    // We only want unresolved requests. Since we don't have a status field, 
+    // we fetch recent requests and filter out those that already have an ACTIVE beta membership.
+    const requests = await prisma.companySupportRequest.findMany({
+      where: { supportType: "beta_access_review" },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+
+    // Simple heuristic: if the user now has an active membership, we don't show the request.
+    const activeMemberships = await prisma.membership.findMany({
+      where: {
+        user: { primaryEmail: { in: requests.map(r => r.email) } },
+        status: "ACTIVE"
+      },
+      include: { user: true }
+    });
+
+    const activeEmails = new Set(activeMemberships.map(m => m.user.primaryEmail.toLowerCase()));
+    
+    return requests.filter(r => !activeEmails.has(r.email.toLowerCase()));
+  } catch (error) {
+    console.error("[patreon-admin] could not load beta requests", error);
+    return [];
+  }
+}
+
+export async function grantManualOverride(email: string, eventId: string) {
+  await requireQuipslyAdminActor();
+
+  try {
+    const prisma = getPrismaClient();
+    
+    // Create a pending reconciliation. The membershipGranter cron job will pick this up.
+    await prisma.entitlementLedger.create({
+      data: {
+        provider: "admin_override",
+        providerEmail: email,
+        proposedTier: "manual-override",
+        action: "grant",
+        status: "pending",
+        providerStatus: "manual_override",
+        eventId: eventId, // Pass the request ID as the event ID for tracing
+        note: `Manual override granted by admin`,
+      }
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[patreon-admin] could not grant override", error);
+    return { error: "Failed to grant override" };
   }
 }

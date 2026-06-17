@@ -93,6 +93,7 @@ struct PremiereImportPacket: Codable {
     var episodeSlug: String
     var summary: PremiereImportSummary?
     var media: [PremierePacketMedia]
+    var quipslyEditGraph: PremierePacketEditGraph?
     var quipslyEpisodeProductionPatch: PremierePacketProductionPatch?
 
     var availableMedia: [PremierePacketMedia] {
@@ -200,9 +201,83 @@ struct PremierePacketMediaHealth: Codable, Equatable {
 }
 
 struct PremierePacketProductionPatch: Codable {
+    var quipslyEditGraph: PremierePacketEditGraph?
     var timelineClips: [PremierePacketTimelineClip]?
     var premiereDeactivatedSourceCandidates: [PremierePacketDeactivatedRange]?
     var premiereSuggestedSpineAudioCandidates: [PremiereSpineCandidate]?
+}
+
+struct PremierePacketEditGraph: Codable, Equatable {
+    var schemaVersion: Int?
+    var projectSlug: String?
+    var episodeSlug: String?
+    var source: String?
+    var generatedAt: String?
+    var importBoundary: String?
+    var primarySequenceId: String?
+    var primarySequenceName: String?
+    var duration: Double?
+    var sources: [PremierePacketGraphSource]?
+    var syncMaps: [PremierePacketGraphSyncMap]?
+    var outputs: [PremierePacketGraphOutput]?
+    var editDecisions: [PremierePacketGraphEditDecision]?
+    var transforms: [PremierePacketGraphTransform]?
+    var legacyFragmentCount: Int?
+    var inactiveDecisionCount: Int?
+    var activeDecisionCount: Int?
+}
+
+struct PremierePacketGraphSource: Codable, Equatable {
+    var id: String?
+    var sourceAssetId: String?
+    var displayName: String?
+    var kind: String?
+    var role: String?
+    var trackIds: [String]?
+    var duration: Double?
+    var originalPath: String?
+    var localPath: String?
+    var exists: Bool?
+    var generatedFrom: String?
+}
+
+struct PremierePacketGraphSyncMap: Codable, Equatable {
+    var id: String?
+    var sourceAssetId: String?
+    var timelineAnchor: Double?
+    var sourceAnchor: Double?
+    var confidence: String?
+    var generatedFrom: String?
+}
+
+struct PremierePacketGraphOutput: Codable, Equatable {
+    var id: String?
+    var label: String?
+    var aspectRatio: String?
+    var isPrimary: Bool?
+}
+
+struct PremierePacketGraphEditDecision: Codable, Equatable {
+    var id: String?
+    var sourceAssetId: String?
+    var outputId: String?
+    var trackId: String?
+    var timelineStart: Double?
+    var duration: Double?
+    var sourceStart: Double?
+    var sourceEnd: Double?
+    var isActive: Bool?
+    var kind: String?
+    var label: String?
+    var confidence: String?
+    var reason: String?
+    var generatedFrom: String?
+}
+
+struct PremierePacketGraphTransform: Codable, Equatable {
+    var id: String?
+    var decisionId: String?
+    var outputId: String?
 }
 
 struct PremierePacketTimelineClip: Codable {
@@ -285,6 +360,7 @@ struct PremiereDraftEditPacket: Codable, Identifiable, Equatable {
     var assetMatches: [PremiereDraftAssetMatch]
     var timelineClips: [PremiereDraftTimelineClip]
     var deactivatedSourceRanges: [PremiereDraftDeactivatedRange]
+    var editGraph: PremierePacketEditGraph?
     var suggestedSpine: PremiereDraftSuggestedSpine?
     var warnings: [String]
 
@@ -401,6 +477,7 @@ struct PremiereDraftEditPacket: Codable, Identifiable, Equatable {
             assetMatches: assetMatches,
             timelineClips: clips,
             deactivatedSourceRanges: ranges,
+            editGraph: packet.quipslyEditGraph ?? packet.quipslyEpisodeProductionPatch?.quipslyEditGraph,
             suggestedSpine: suggestedSpine,
             warnings: warnings
         )

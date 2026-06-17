@@ -12,16 +12,34 @@ final class LocalEngineClient: ObservableObject {
     @Published private(set) var knownPremiereImportStatus = "Not refreshed yet"
     @Published private(set) var premiereRelinkStatus = "No recovery scan yet"
     @Published private(set) var lastPremiereRelinkResult: PremiereMediaRelinkRunResult?
+    @Published private(set) var premiereSourceMaterializationStatus = "No source readiness check yet"
+    @Published private(set) var lastPremiereSourceMaterializationResult: PremiereSourceMaterializationRunResult?
     @Published private(set) var premiereDraftSendMessages: [String: String] = [:]
     @Published private(set) var lastMessageAt: Date?
+    @Published private(set) var launchStatus = "Local engine has not been started by Quipsly Mac."
     @Published var lastError: String?
 
     private var webSocket: URLSessionWebSocketTask?
     private var endpoint = URL(string: "ws://localhost:4000")!
+    private var reconnectWorkItem: DispatchWorkItem?
+    private var reconnectAttempt = 0
+    private var managedEngineProcess: Process?
+    private var managedEnginePipe: Pipe?
+    private var isStartingManagedEngine = false
     private var stagedPremiereSourcePackets: [String: PremiereImportPacket] = [:]
 
+    deinit {
+        reconnectWorkItem?.cancel()
+        managedEnginePipe?.fileHandleForReading.readabilityHandler = nil
+        if managedEngineProcess?.isRunning == true {
+            managedEngineProcess?.terminate()
+        }
+    }
+
     func connect(to endpointString: String) {
-        disconnect()
+        reconnectWorkItem?.cancel()
+        webSocket?.cancel(with: .goingAway, reason: nil)
+        webSocket = nil
 
         guard let url = URL(string: endpointString) else {
             lastError = "Invalid local engine URL: \(endpointString)"
@@ -37,22 +55,28 @@ final class LocalEngineClient: ObservableObject {
         webSocket = task
         task.resume()
 
-        connectionState = .online
         send(type: "GET_STATUS")
         send(type: "GET_CAPABILITIES")
         send(type: "GET_VISION_LAB_STATUS")
         send(type: "GET_VISION_MANIFESTS")
-        receiveLoop()
+        receiveLoop(for: task)
     }
 
     func disconnect() {
+        reconnectWorkItem?.cancel()
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         connectionState = .offline
     }
 
     func refreshStatus() {
+        guard webSocket != nil, connectionState != .offline else {
+            connect(to: endpoint.absoluteString)
+            return
+        }
+
         send(type: "GET_STATUS")
+        send(type: "GET_CAPABILITIES")
         send(type: "GET_VISION_LAB_STATUS")
         send(type: "GET_VISION_MANIFESTS")
     }
@@ -73,7 +97,18 @@ final class LocalEngineClient: ObservableObject {
         send(type: "COMPUTE_VISION_CONTENT_HASHES")
     }
 
-    func queueEpisodeImport(path: String, isFolder: Bool, projectSlug: String, episodeSlug: String, homeNestSlug: String, nestBaseURL: String, role: EpisodeImportRole, recordingSyncMetadata: EpisodeRecordingSyncMetadata? = nil) {
+    func queueEpisodeImport(
+        path: String,
+        isFolder: Bool,
+        projectSlug: String,
+        episodeSlug: String,
+        homeNestSlug: String,
+        nestBaseURL: String,
+        role: EpisodeImportRole,
+        mediaCacheDir: String? = nil,
+        recordingSyncMetadata: EpisodeRecordingSyncMetadata? = nil,
+        autoRegisterAfterProxy: Bool = true
+    ) {
         let job = EpisodeImportJob(
             path: path,
             isFolder: isFolder,
@@ -83,7 +118,9 @@ final class LocalEngineClient: ObservableObject {
             nestBaseURL: nestBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
             role: role,
             message: "Queued from Quipsly Mac. Waiting for probe/proxy/upload processing.",
-            recordingSyncMetadata: recordingSyncMetadata
+            recordingSyncMetadata: recordingSyncMetadata,
+            autoRegisterAfterProxy: autoRegisterAfterProxy,
+            mediaCacheDir: mediaCacheDir?.trimmingCharacters(in: .whitespacesAndNewlines)
         )
 
         episodeImportJobs.insert(job, at: 0)
@@ -95,6 +132,7 @@ final class LocalEngineClient: ObservableObject {
         _ packet: PremiereImportPacket,
         homeNestSlug: String,
         nestBaseURL: String,
+        mediaCacheDir: String? = nil,
         autoStartAvailableMedia: Bool
     ) -> (staged: Int, ready: Int, held: Int) {
         for media in packet.media {
@@ -118,7 +156,8 @@ final class LocalEngineClient: ObservableObject {
                 status: media.isLocallyAvailable ? .queued : .held,
                 message: media.isLocallyAvailable
                     ? "Staged from Premiere packet. Ready for local probe/proxy/register."
-                    : "Held from Premiere packet. \(media.holdReason)"
+                    : "Held from Premiere packet. \(media.holdReason)",
+                mediaCacheDir: mediaCacheDir?.trimmingCharacters(in: .whitespacesAndNewlines)
             )
 
             job.displayName = media.displayName
@@ -143,6 +182,60 @@ final class LocalEngineClient: ObservableObject {
             guard let packet = stagedPremiereSourcePackets[record.id] else { return nil }
             return PremiereDraftEditPacket.build(packet: packet, importJobs: episodeImportJobs)
         }
+    }
+
+    func premiereDraftEdit(projectSlug: String, episodeSlug: String) -> PremiereDraftEditPacket? {
+        let safeProject = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeEpisode = episodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return premiereDraftEdits().first { draft in
+            draft.projectSlug == safeProject && draft.episodeSlug == safeEpisode
+        }
+    }
+
+    @discardableResult
+    func stageKnownPremierePacket(
+        episodeSlug: String,
+        homeNestSlug: String,
+        nestBaseURL: String,
+        mediaCacheDir: String? = nil,
+        autoStartAvailableMedia: Bool = false
+    ) -> Bool {
+        let safeEpisode = episodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = knownPremierePacketURL(for: safeEpisode) else {
+            lastError = "No recovered Premiere packet found for \(safeEpisode)."
+            return false
+        }
+
+        do {
+            let packet = try JSONDecoder().decode(PremiereImportPacket.self, from: Data(contentsOf: url))
+            stagePremiereImportPacket(
+                packet,
+                homeNestSlug: homeNestSlug,
+                nestBaseURL: nestBaseURL,
+                mediaCacheDir: mediaCacheDir,
+                autoStartAvailableMedia: autoStartAvailableMedia
+            )
+            lastError = nil
+            return true
+        } catch {
+            lastError = "Could not stage \(safeEpisode) Premiere packet: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func knownPremierePacketURL(for episodeSlug: String) -> URL? {
+        let safeEpisode = episodeSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !safeEpisode.isEmpty else { return nil }
+
+        for root in knownPremierePacketRootCandidates() {
+            let url = root.appendingPathComponent("\(safeEpisode).json")
+            if FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+
+        return nil
     }
 
     func runKnownPremiereImports(projectSlug: String, only episodeSlug: String? = nil) {
@@ -178,6 +271,34 @@ final class LocalEngineClient: ObservableObject {
             "packetPath": safePacketPath,
             "searchRoot": safeSearchRoot,
             "apply": apply,
+        ])
+    }
+
+    func inspectPremierePacketSources(packetPath: String, requestDownloads: Bool = false, maxItems: Int? = nil) {
+        let safePacketPath = packetPath.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !safePacketPath.isEmpty else {
+            premiereSourceMaterializationStatus = "Choose a Premiere packet before checking source readiness."
+            return
+        }
+
+        var payload: [String: Any] = [
+            "packetPath": safePacketPath,
+            "requestDownloads": requestDownloads,
+        ]
+        if let maxItems, maxItems > 0 {
+            payload["maxItems"] = maxItems
+        }
+
+        premiereSourceMaterializationStatus = requestDownloads
+            ? "Requesting local downloads for primary timeline source blockers..."
+            : "Checking primary timeline source readiness..."
+        send(type: "MATERIALIZE_PREMIERE_PACKET_MEDIA", payload: payload)
+    }
+
+    func transcribeMedia(path: String) {
+        send(type: "TRANSCRIBE_MEDIA", payload: [
+            "path": path
         ])
     }
 
@@ -268,13 +389,16 @@ final class LocalEngineClient: ObservableObject {
         }
     }
 
-    func retryEpisodeImport(_ job: EpisodeImportJob) {
+    func retryEpisodeImport(_ job: EpisodeImportJob, autoRegisterAfterProxy: Bool? = nil) {
         var retry = job
         retry.status = .queued
         retry.message = "Retry queued from Quipsly Mac."
         retry.probe = nil
         retry.proxy = nil
         retry.registration = nil
+        if let autoRegisterAfterProxy {
+            retry.autoRegisterAfterProxy = autoRegisterAfterProxy
+        }
 
         upsertEpisodeImportJob(retry)
         startEpisodeImportPipeline(retry)
@@ -423,8 +547,34 @@ final class LocalEngineClient: ObservableObject {
         return components.url
     }
 
+    private func knownPremierePacketRootCandidates() -> [URL] {
+        var candidates: [URL] = [
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Dev/high-ground-studio/content/quipsly/premiere-imports", isDirectory: true),
+        ]
+
+        var cursor = Bundle.main.bundleURL
+        for _ in 0..<8 {
+            let possible = cursor
+                .appendingPathComponent("content/quipsly/premiere-imports", isDirectory: true)
+            candidates.append(possible)
+            cursor.deleteLastPathComponent()
+        }
+
+        var seen = Set<String>()
+        return candidates.filter { url in
+            if seen.contains(url.path) { return false }
+            seen.insert(url.path)
+            return true
+        }
+    }
+
     func send(type: String, payload: [String: Any]? = nil) {
-        guard let webSocket else { return }
+        guard let webSocket else {
+            connectionState = .offline
+            scheduleReconnect()
+            return
+        }
 
         var envelope: [String: Any] = ["type": type]
         if let payload {
@@ -439,6 +589,8 @@ final class LocalEngineClient: ObservableObject {
                     DispatchQueue.main.async {
                         self?.lastError = error.localizedDescription
                         self?.connectionState = .offline
+                        self?.webSocket = nil
+                        self?.scheduleReconnect()
                     }
                 }
             }
@@ -447,26 +599,131 @@ final class LocalEngineClient: ObservableObject {
         }
     }
 
-    private func receiveLoop() {
-        webSocket?.receive { [weak self] result in
+    private func receiveLoop(for task: URLSessionWebSocketTask) {
+        task.receive { [weak self] result in
             guard let self else { return }
 
             switch result {
             case .success(let message):
                 DispatchQueue.main.async {
+                    guard self.webSocket === task else { return }
                     self.lastMessageAt = Date()
                     self.connectionState = .online
+                    self.reconnectAttempt = 0
+                    self.lastError = nil
                     self.handle(message)
                 }
-                self.receiveLoop()
+                self.receiveLoop(for: task)
 
             case .failure(let error):
                 DispatchQueue.main.async {
+                    guard self.webSocket === task else { return }
                     self.lastError = error.localizedDescription
                     self.connectionState = .offline
+                    self.webSocket = nil
+                    self.scheduleReconnect()
                 }
             }
         }
+    }
+
+    private func scheduleReconnect() {
+        reconnectWorkItem?.cancel()
+        startManagedLocalEngineIfNeeded()
+
+        reconnectAttempt += 1
+        let delay = min(pow(2.0, Double(min(reconnectAttempt, 4))), 15.0)
+        let endpointString = endpoint.absoluteString
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.connect(to: endpointString)
+        }
+        reconnectWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func startManagedLocalEngineIfNeeded() {
+        guard endpoint.isLocalEngineEndpoint else {
+            launchStatus = "External engine URL configured. Quipsly Mac will not start it automatically."
+            return
+        }
+
+        if managedEngineProcess?.isRunning == true || isStartingManagedEngine {
+            return
+        }
+
+        guard let localEngineDirectory = findLocalEngineDirectory() else {
+            launchStatus = "Could not find apps/local-engine. Open Settings and confirm this app is running from the High Ground Studio workspace."
+            return
+        }
+
+        isStartingManagedEngine = true
+        launchStatus = "Starting local engine from \(localEngineDirectory.path)."
+
+        let process = Process()
+        process.currentDirectoryURL = localEngineDirectory
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["pnpm", "dev"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        managedEnginePipe = pipe
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            let output = String(decoding: data, as: UTF8.self)
+                .split(separator: "\n")
+                .last
+                .map(String.init)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard let output, !output.isEmpty else { return }
+            DispatchQueue.main.async {
+                self?.launchStatus = output
+            }
+        }
+
+        process.terminationHandler = { [weak self] process in
+            DispatchQueue.main.async {
+                self?.managedEnginePipe?.fileHandleForReading.readabilityHandler = nil
+                self?.managedEngineProcess = nil
+                self?.isStartingManagedEngine = false
+                self?.launchStatus = "Local engine exited with status \(process.terminationStatus)."
+                self?.connectionState = .offline
+            }
+        }
+
+        do {
+            try process.run()
+            managedEngineProcess = process
+            isStartingManagedEngine = false
+        } catch {
+            isStartingManagedEngine = false
+            launchStatus = "Could not start local engine: \(error.localizedDescription)"
+        }
+    }
+
+    private func findLocalEngineDirectory() -> URL? {
+        let fileManager = FileManager.default
+        var candidates: [URL] = [
+            fileManager.homeDirectoryForCurrentUser
+                .appendingPathComponent("Dev/high-ground-studio/apps/local-engine", isDirectory: true),
+        ]
+
+        var cursor = Bundle.main.bundleURL
+        for _ in 0..<10 {
+            candidates.append(cursor.appendingPathComponent("apps/local-engine", isDirectory: true))
+            candidates.append(cursor.appendingPathComponent("../local-engine", isDirectory: true))
+            cursor.deleteLastPathComponent()
+        }
+
+        var seen = Set<String>()
+        return candidates.first { url in
+            let standardized = url.standardizedFileURL
+            guard !seen.contains(standardized.path) else { return false }
+            seen.insert(standardized.path)
+            return fileManager.fileExists(atPath: standardized.appendingPathComponent("package.json").path)
+        }?.standardizedFileURL
     }
 
     private func handle(_ message: URLSessionWebSocketTask.Message) {
@@ -514,11 +771,20 @@ final class LocalEngineClient: ObservableObject {
             case "MEDIA_PROXY_RESULT":
                 let job = try JSONDecoder().decode(EpisodeImportJob.self, from: payloadData).withDerivedRecordingEnd()
                 upsertEpisodeImportJob(job)
-                if job.proxy?.error == nil {
+                if job.proxy?.error == nil && job.autoRegisterAfterProxy != false {
                     send(type: "UPLOAD_REGISTER_EPISODE_MEDIA", payload: withNestSessionToken(job.registrationPayload))
                 }
             case "MEDIA_REGISTER_RESULT":
                 upsertEpisodeImportJob(try JSONDecoder().decode(EpisodeImportJob.self, from: payloadData))
+            case "ENGINE_COMMAND_ERROR":
+                if
+                    let root = try JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                    let message = root["message"] as? String
+                {
+                    lastError = message
+                } else {
+                    lastError = "Local Engine reported a command error."
+                }
             case "PREMIERE_IMPORT_PROGRESS", "PREMIERE_IMPORT_RESULT":
                 let result = try JSONDecoder().decode(KnownPremiereImportRunResult.self, from: payloadData)
                 knownPremiereImportStatus = result.message
@@ -540,6 +806,17 @@ final class LocalEngineClient: ObservableObject {
                     knownPremiereImportSummaries.removeAll { $0.episodeSlug == summary.episodeSlug }
                     knownPremiereImportSummaries.insert(summary, at: 0)
                 }
+            case "PREMIERE_SOURCE_MATERIALIZATION_PROGRESS":
+                if
+                    let root = try JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                    let message = root["message"] as? String
+                {
+                    premiereSourceMaterializationStatus = message
+                }
+            case "PREMIERE_SOURCE_MATERIALIZATION_RESULT":
+                let result = try JSONDecoder().decode(PremiereSourceMaterializationRunResult.self, from: payloadData)
+                lastPremiereSourceMaterializationResult = result
+                premiereSourceMaterializationStatus = result.plainEnglishSummary
             default:
                 break
             }
@@ -563,5 +840,16 @@ final class LocalEngineClient: ObservableObject {
         var nextPayload = payload
         nextPayload["nestSessionToken"] = token
         return nextPayload
+    }
+}
+
+private extension URL {
+    var isLocalEngineEndpoint: Bool {
+        guard ["ws", "wss", "http", "https"].contains((scheme ?? "").lowercased()) else {
+            return false
+        }
+
+        let localHosts = ["localhost", "127.0.0.1", "::1"]
+        return localHosts.contains((host ?? "").lowercased())
     }
 }

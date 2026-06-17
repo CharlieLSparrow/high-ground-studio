@@ -14,7 +14,7 @@ function safeCallbackUrl(value: unknown) {
 export default async function AccountSwitchPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ callbackUrl?: string }> | { callbackUrl?: string };
+  searchParams: Promise<{ callbackUrl?: string }>;
 }) {
   const params = await searchParams;
   const session = await auth();

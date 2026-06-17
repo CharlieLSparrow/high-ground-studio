@@ -5,6 +5,16 @@ REGION="${REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 PREVIEW_TAG="${PREVIEW_TAG:-quipsly-preview}"
 
+echo "=========================================================="
+echo "🛡️  Running Beta Manifest Scan before promotion..."
+echo "=========================================================="
+if ! node scripts/scan-beta-blockers.mjs; then
+  echo ""
+  echo "❌ ABORTING PROMOTION: Beta manifest scan failed. Please resolve blockers listed above." >&2
+  exit 1
+fi
+echo "=========================================================="
+
 echo "Current traffic before promotion:"
 scripts/release/quipsly-traffic.sh || true
 

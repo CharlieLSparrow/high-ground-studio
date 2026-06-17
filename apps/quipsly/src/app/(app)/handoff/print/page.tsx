@@ -3,8 +3,9 @@ import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HandoffPrintView({ searchParams }: { searchParams: { projectId: string } }) {
-  if (!searchParams.projectId) {
+export default async function HandoffPrintView({ searchParams }: { searchParams: Promise<{ projectId: string }> }) {
+  const params = await searchParams;
+  if (!params.projectId) {
     return notFound();
   }
 
@@ -12,7 +13,7 @@ export default async function HandoffPrintView({ searchParams }: { searchParams:
 
   // Fetch Breakdown and Storyboard Data
   const studioProject = await prisma.studioProject.findUnique({
-    where: { id: searchParams.projectId },
+    where: { id: params.projectId },
     include: {
       tags: {
         where: { category: 'production_breakdown' },

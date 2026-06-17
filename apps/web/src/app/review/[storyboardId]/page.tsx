@@ -31,53 +31,14 @@ export default async function StoryboardReviewPage(props: { params: Promise<{ st
     where: { experienceId: storyboard.id }
   });
 
-  // Transform StudioStoryboard into ScrollExperience JSON payload
-  const mainGroup: ScrollGroup = {
-    id: `group-${storyboard.id}`,
-    experienceId: storyboard.id,
-    title: storyboard.title,
-    order: 0,
-    layoutType: 'HORIZONTAL_CAROUSEL',
-    panels: storyboard.frames.map((frame, index) => ({
-      id: frame.id,
-      groupId: `group-${storyboard.id}`,
-      type: 'MEDIA',
-      sourceId: frame.id,
-      order: index,
-      content: {
-        // Map the real proxy image from the storyboard frame
-        imageUrl: frame.imageUrl || undefined,
-        text: frame.dialogue || frame.action || undefined,
-        caption: `Frame ${frame.frameNumber} • ${frame.shotSize} • ${frame.cameraInfo}`,
-      },
-      interactions: dbInteractions
-        .filter(int => int.panelId === frame.id)
-        .map(int => ({
-          id: int.id,
-          experienceId: int.experienceId,
-          panelId: int.panelId || undefined,
-          userId: int.userId || "guest",
-          interactionType: int.interactionType as any,
-          payload: int.payloadJson,
-          createdAt: int.createdAt.toISOString()
-        })),
-    })),
-  };
+  const { transformStoryboardToScrollExperience } = await import('@/components/scroll-experience/utils/transformStoryboardToScrollExperience');
 
-  const experience: ScrollExperience = {
-    id: storyboard.id,
-    projectId: storyboard.projectId,
-    title: storyboard.title,
-    description: storyboard.description || undefined,
-    type: 'STORYBOARD',
-    settings: {
-      theme: 'dark',
-      enableComments: true,
-      enableSelections: true,
-      requireCompletion: false,
-    },
-    groups: [mainGroup],
-  };
+  // We can pass different types via search params later, for now we default to STORYBOARD
+  // or maybe infer it from the query params?
+  // Let's grab ?type=COMIC or something from search params if it exists.
+  // Wait, page component doesn't get searchParams in this snippet easily without changing the signature.
+  // We'll just hardcode STORYBOARD for the base route, since mock simulator handles the rest.
+  const experience = transformStoryboardToScrollExperience(storyboard, dbInteractions, 'STORYBOARD');
 
   return (
     <div className="w-full h-[100dvh] bg-black overflow-hidden overscroll-none">

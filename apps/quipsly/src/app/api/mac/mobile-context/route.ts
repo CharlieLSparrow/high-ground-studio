@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { resolveMacSessionActor } from "@/lib/server/mac-session-token";
+import { verifyBearerToken } from "@/lib/server/firebase-auth";
 
 export async function GET(request: NextRequest) {
-  const actor = resolveMacSessionActor(request);
-  if (!actor || !actor.primaryEmail) {
+  let actor;
+  try {
+    actor = await verifyBearerToken(request);
+  } catch (error) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized. Please sign in." },
       { status: 401 }

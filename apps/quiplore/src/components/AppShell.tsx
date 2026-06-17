@@ -34,8 +34,16 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
 
         <nav className="nav-section" aria-label="Primary">
           <span className="nav-label">Explore</span>
-          <Link className="nav-link" href="/" title="Open QuipStream">
+          <Link className="nav-link" href="/explore" title="Discovery Hub">
             <Compass size={17} aria-hidden="true" />
+            <span>Discovery Hub</span>
+          </Link>
+          <Link className="nav-link" href="/hub" title="Your Hub">
+            <Archive size={17} aria-hidden="true" />
+            <span>Your Nest</span>
+          </Link>
+          <Link className="nav-link" href="/stream" title="Open QuipStream">
+            <ScrollText size={17} aria-hidden="true" />
             <span>QuipStream</span>
           </Link>
           <Link
@@ -65,11 +73,8 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
         </nav>
 
         <nav className="nav-section" aria-label="Platform">
-          <span className="nav-label">Quipsly</span>
-          <Link className="nav-link" href="/stream" title="Open full stream">
-            <Archive size={17} aria-hidden="true" />
-            <span>Full Stream</span>
-          </Link>
+          <span className="nav-label">Quipsly (Admin)</span>
+
           <Link
             className="nav-link"
             href="/research"

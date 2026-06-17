@@ -9,6 +9,8 @@ import { coreBlockCards } from "./registry/coreBlockCards";
 import ViewFilter from "./ViewFilter";
 import { DocumentBoundary, ViewDefinition, WorkbenchScopeProjectSummary } from "./types";
 import { QuipslyAssistantSidebar } from "@/components/QuipslyAssistantSidebar";
+import { useQuipslyAssistant } from "@/components/useQuipslyAssistant";
+import { AssistantProvider } from "@/components/AssistantContext";
 import {
   WORKFLOW_SYSTEM_DESCRIPTIONS,
   WORKFLOW_SYSTEM_LABELS,
@@ -125,6 +127,7 @@ export default function Workspace({
   workflowSystem,
   documentId,
   documentTitle,
+  projectDocuments = [],
   persistenceMode = "database",
   linkedProjects = [],
   availableProjects = [],
@@ -139,6 +142,7 @@ export default function Workspace({
   workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing",
   documentId: string,
   documentTitle?: string,
+  projectDocuments?: { id: string; title: string; sourceLabel: string | null; updatedAt: string | Date }[],
   persistenceMode?: "database" | "offline",
   linkedProjects?: WorkbenchScopeProjectSummary[],
   availableProjects?: { slug: string; name: string; nestKind?: string }[],
@@ -166,6 +170,9 @@ export default function Workspace({
         ]))
       }));
   }, [activeBoundary, documentBlocks]);
+
+
+
   const [publisherMode, setPublisherMode] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
   // Optional ad-hoc tag filters still exist as data plumbing, but the author-facing
@@ -174,6 +181,76 @@ export default function Workspace({
   const [views, setViews] = useState<ViewDefinition[]>(initialViews);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeProjectSlug = projectSlug ?? "";
+
+  const handleDocumentBlocksChange = (blocks: any[]) => {
+    setDocumentBlocks(blocks);
+    setSaveState("unsaved");
+  };
+
+  const handleApplyAction = (action: any) => {
+    if (action.kind === "PROPOSE_REWRITE") {
+      const p = action.payload || {};
+      const targetId = p.targetBlockId;
+      const newText = p.rewriteText;
+      if (!targetId || !newText) return;
+
+      const updatedBlocks = documentBlocks.map((block) => {
+        if (block.id === targetId) {
+          return { ...block, text: newText };
+        }
+        return block;
+      });
+      handleDocumentBlocksChange(updatedBlocks);
+    } else if (action.kind === "PROPOSE_DRAFT") {
+      const p = action.payload || {};
+      const targetId = p.targetBlockId;
+      const newText = p.draftText;
+      if (!newText) return;
+
+      const newBlock = {
+        id: `block-${Date.now().toString(36)}`,
+        text: newText,
+        tags: [],
+        spans: []
+      };
+
+      if (targetId) {
+        const targetIndex = documentBlocks.findIndex((b) => b.id === targetId);
+        if (targetIndex !== -1) {
+          const updatedBlocks = [
+            ...documentBlocks.slice(0, targetIndex + 1),
+            newBlock,
+            ...documentBlocks.slice(targetIndex + 1)
+          ];
+          handleDocumentBlocksChange(updatedBlocks);
+          return;
+        }
+      }
+      
+      // Fallback: insert at the end of the active boundary, or at the end of the document
+      if (activeBoundary) {
+        const updatedBlocks = [
+          ...documentBlocks.slice(0, activeBoundary.endIndex + 1),
+          newBlock,
+          ...documentBlocks.slice(activeBoundary.endIndex + 1)
+        ];
+        handleDocumentBlocksChange(updatedBlocks);
+      } else {
+        handleDocumentBlocksChange([...documentBlocks, newBlock]);
+      }
+    }
+  };
+
+  const assistant = useQuipslyAssistant({
+    projectSlug: activeProjectSlug,
+    documentId,
+    documentTitle,
+    projectDocuments,
+    activeBoundary,
+    activeView,
+    visibleBlocks: visibleAssistantBlocks,
+    onApplyAction: handleApplyAction,
+  });
   const resolvedNestKind = normalizeNestKind(projectNestKind);
   const resolvedWorkflowSystem = workflowSystem ?? workflowSystemForNestKind(resolvedNestKind);
   const activeWorkflowIndex = WORKFLOW_SYSTEM_SEQUENCE.indexOf(resolvedWorkflowSystem);
@@ -220,9 +297,7 @@ export default function Workspace({
     setDocumentBlocks(initialBlocks);
   }, [initialViews, initialBlocks]);
 
-  const handleDocumentBlocksChange = (nextBlocks: any[]) => {
-    setDocumentBlocks(nextBlocks);
-  };
+
 
   useEffect(() => {
     if (!activeBoundaryId) return;
@@ -297,6 +372,9 @@ export default function Workspace({
          setActiveBoundaryId={handleActiveBoundaryChange}
          scrolledBoundaryId={scrolledBoundaryId}
          workflowSystem={resolvedWorkflowSystem}
+         projectDocuments={projectDocuments}
+         activeDocumentId={documentId}
+         projectSlug={activeProjectSlug}
       />
       {/* Main editor area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 relative">
@@ -531,21 +609,23 @@ export default function Workspace({
           ) : null}
 
           <div className="bg-white p-4 md:p-12 rounded-2xl shadow-sm border border-[#e8dcc4] min-h-[800px]">
-            <EditorExtensionProvider customCards={coreBlockCards}>
-              <Tagger
-                key={`${activeProjectSlug}:${documentId}`}
-                activeView={activeView}
-                activeBoundaryId={activeBoundaryId}
-                documentBoundaries={documentBoundaries}
-                adHocTags={adHocTags}
-                initialBlocks={initialBlocks}
-                projectId={projectId}
-                documentId={documentId}
-                scrollContainerRef={scrollContainerRef}
-                onBlocksChange={handleDocumentBlocksChange}
-                onActiveScrollBoundaryChange={setScrolledBoundaryId}
-              />
-            </EditorExtensionProvider>
+            <AssistantProvider value={assistant}>
+              <EditorExtensionProvider customCards={coreBlockCards}>
+                <Tagger
+                  key={`${activeProjectSlug}:${documentId}`}
+                  activeView={activeView}
+                  activeBoundaryId={activeBoundaryId}
+                  documentBoundaries={documentBoundaries}
+                  adHocTags={adHocTags}
+                  initialBlocks={initialBlocks}
+                  projectId={projectId}
+                  documentId={documentId}
+                  scrollContainerRef={scrollContainerRef}
+                  onBlocksChange={handleDocumentBlocksChange}
+                  onActiveScrollBoundaryChange={setScrolledBoundaryId}
+                />
+              </EditorExtensionProvider>
+            </AssistantProvider>
           </div>
         </div>
       </div>
@@ -554,10 +634,12 @@ export default function Workspace({
         projectSlug={activeProjectSlug}
         documentId={documentId}
         documentTitle={documentTitle}
+        projectDocuments={projectDocuments}
         activeBoundary={activeBoundary}
         activeView={activeView}
         visibleBlocks={visibleAssistantBlocks}
         patreonHref={process.env.NEXT_PUBLIC_PATREON_URL}
+        assistant={assistant}
       />
     </div>
   );

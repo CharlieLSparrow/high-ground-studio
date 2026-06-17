@@ -52,8 +52,48 @@ export default async function EpisodePage(props: { params: Promise<{ slug?: stri
   const packet = await readHgoPublicEpisodePacket(slug);
   if (!packet) notFound();
 
+  const podcastEpisodeSchema = {
+    "@context": "https://schema.org",
+    "@type": "PodcastEpisode",
+    "name": packet.title,
+    "description": packet.summary,
+    "episodeNumber": packet.episodeNumber,
+    "url": `https://highgroundodyssey.com/episodes/${packet.slug}`,
+    ...(packet.media.audioUrl ? {
+      "associatedMedia": {
+        "@type": "MediaObject",
+        "contentUrl": packet.media.audioUrl,
+      },
+    } : {}),
+    "partOfSeries": {
+      "@type": "PodcastSeries",
+      "name": "High Ground Odyssey",
+      "url": "https://highgroundodyssey.com",
+    },
+  };
+
+  const videoObjectSchema = packet.media.youtubeId ? {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    "name": packet.title,
+    "description": packet.summary,
+    "thumbnailUrl": packet.media.heroImageUrl ?? `https://i.ytimg.com/vi/${packet.media.youtubeId}/maxresdefault.jpg`,
+    "uploadDate": packet.provenance.publishedAt,
+    "embedUrl": `https://www.youtube-nocookie.com/embed/${packet.media.youtubeId}`,
+  } : null;
+
   return (
     <main className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(podcastEpisodeSchema) }}
+      />
+      {videoObjectSchema && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(videoObjectSchema) }}
+        />
+      )}
       {packet.media.youtubeId ? (
         <EpisodeVideoEmbed packet={packet} />
       ) : (

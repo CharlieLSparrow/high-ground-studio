@@ -1,3 +1,4 @@
+import { syncBlocksToQuipslyNote } from "@/lib/server/bi-directional-sync";
 import type { ProjectionStatus } from "@high-ground/studio-domain";
 import { randomUUID } from "node:crypto";
 
@@ -632,6 +633,7 @@ export async function updateStudioWritingDeskBlock(
       return updated;
     });
 
+    syncBlocksToQuipslyNote(updatedBlock.documentId).catch(console.error);
     return {
       ok: true,
       message: "Draft block saved.",
@@ -736,6 +738,7 @@ export async function createStudioWritingDeskBlock(
       return block;
     });
 
+    syncBlocksToQuipslyNote(createdBlock.documentId).catch(console.error);
     return {
       ok: true,
       message: "Draft block added.",
@@ -775,7 +778,7 @@ export async function moveStudioWritingDeskBlock(
   try {
     await ensureWritingDeskDraftData(prisma);
 
-    const movedAt = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const document = await getWritingDeskDocument(tx);
       const block = await getWritingDeskBlock(
         tx,
@@ -802,7 +805,7 @@ export async function moveStudioWritingDeskBlock(
         input.direction === "up" ? currentIndex - 1 : currentIndex + 1;
 
       if (nextIndex < 0 || nextIndex >= activeBlocks.length) {
-        return new Date();
+        return { movedAt: new Date(), documentId: document.id };
       }
 
       const reorderedBlocks = [...activeBlocks];
@@ -825,14 +828,15 @@ export async function moveStudioWritingDeskBlock(
         },
       });
 
-      return new Date();
+      return { movedAt: new Date(), documentId: document.id };
     });
 
+    syncBlocksToQuipslyNote(result.documentId).catch(console.error);
     return {
       ok: true,
       message: "Draft block order updated.",
       blockStableId: input.blockStableId,
-      savedAt: movedAt.toISOString(),
+      savedAt: result.movedAt.toISOString(),
     };
   } catch (error) {
     console.error("Studio writing desk reorder failed.", error);
@@ -908,6 +912,7 @@ export async function archiveStudioWritingDeskBlock(
       return archived;
     });
 
+    syncBlocksToQuipslyNote(archivedBlock.documentId).catch(console.error);
     return {
       ok: true,
       message: "Draft block archived.",

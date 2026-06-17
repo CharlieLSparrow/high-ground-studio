@@ -3,7 +3,11 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import { Leaf, BookOpen, Heart, Sparkles, Wand2, FileText, HelpCircle, Map, Lock, Check, Video, Mic, Shield, Share2, Gift, Bookmark, Film, MessageSquare, ImageIcon } from "lucide-react";
-import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { MarketingQuipslyDemo } from "./components/MarketingQuipslyDemo";
+import { MarketingActionLedgerDemo } from "./components/MarketingActionLedgerDemo";
+import { MarketingLoreSearchDemo } from "./components/MarketingLoreSearchDemo";
 import {
   getGeneratedQuipslyArt,
   getGeneratedQuipslyArtByRole,
@@ -26,14 +30,17 @@ export default function QuipslyLandingPage() {
     quoteArt,
   ];
 
+  const router = useRouter();
+
   const handlePatreonSignIn = async () => {
     setStatus("loading");
     try {
-      await signIn("patreon", { callbackUrl: "/welcome" });
+      router.push("/login?callbackUrl=/welcome");
     } catch (err) {
       setStatus("error");
     }
   };
+
 
   return (
     <div className="min-h-screen bg-[#f6efe6] text-[#4a2e1c] font-serif selection:bg-[#f4dab0]/50 overflow-x-hidden relative">
@@ -148,10 +155,10 @@ export default function QuipslyLandingPage() {
           </div>
           <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight">Curing Systems Anxiety.</h2>
           <p className="text-xl text-[#8c552e] leading-relaxed font-sans">
-            Most Generative AI wants to do the human part of creativity—like writing your novel or designing your art—while leaving you to do all the tedious admin work. <strong>We think that's exactly backwards.</strong>
+            AI is an incredible tool for brainstorming and drafting, but too often it tries to take over the creative steering wheel. We believe technology shouldn't replace your voice—it should empower it. Quipsly gives you total transparency and precise tooling to organize your ideas, without ever shaming the drafting process.
           </p>
           <p className="text-xl text-[#8c552e] leading-relaxed font-sans">
-            Quipslys are built to cure <em>Systems Anxiety</em>. We love doing the heavy lifting, the deep digging, and the administrative organizing. We gather and organize the knowledge so you can create the wisdom. We are your golden-retriever research assistants—here to handle the citations, the lore bibles, and the tedious busywork so you can do what humans do best: write, dream, and create.
+            Quipslys are built to cure <em>Systems Anxiety</em>. We are your enthusiastic research assistants. We fetch citations, sync your media imports, assemble research packets, and organize the chaotic administrative side of your creative work so you have the freedom and clarity to do what humans do best: write, dream, and create.
           </p>
           <div className="pt-4 font-sans">
             <a href="/philosophy/systems-anxiety" className="inline-flex items-center justify-center font-bold text-[#a96735] hover:text-[#8c552e] underline underline-offset-4 transition-colors">
@@ -211,6 +218,12 @@ export default function QuipslyLandingPage() {
           </div>
         </section>
 
+        {/* Interactive Demos */}
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-8 px-4 items-center">
+          <MarketingQuipslyDemo />
+          <MarketingActionLedgerDemo />
+        </div>
+
         {/* Feature Narrative Grid */}
         <div id="features" className="max-w-7xl mx-auto mt-32">
           <div className="text-center mb-16 space-y-4">
@@ -226,9 +239,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-[#fdf5eb] flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Video className="w-7 h-7 text-[#a96735]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">YouTube & Video Prep.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">YouTube & Video Editing.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Import your raw clips, and we'll help you find the best moments. We'll sync them with your episode manuscript and help you map out edit markers so you can cut faster in Premiere or Final Cut.
+                Import and sync your raw media directly into your project. We'll help you log the best moments, organize a timeline, and build precision edit markers so you can jump into Premiere or Final Cut with your story already structured.
               </p>
             </div>
 
@@ -237,9 +250,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Mic className="w-7 h-7 text-[#617c4d]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Publishing Packets.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Podcast Production.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Write your show notes in one living manuscript. We'll help tag chapters, organize audio clips, and prepare the text metadata you need for a smooth publishing session.
+                Write your show notes in one living manuscript. We'll help you tag chapters, structure your recording sessions, and organize audio clips so you're always prepared when you step up to the mic.
               </p>
             </div>
 
@@ -248,9 +261,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <BookOpen className="w-7 h-7 text-[#dc982f]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Enthusiastic Researchers.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Research Packets.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Need a historical quote or a specific stat? We'll scour your archives and imported sources to find perfect examples and context, always returning with verified sources and exact citations.
+                Need a historical quote or a specific stat? We'll act as your enthusiastic research assistants, pulling verifiable examples and exact citations to build rich, accurate research packets for your writing.
               </p>
             </div>
 
@@ -259,9 +272,9 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Shield className="w-7 h-7 text-[#617c4d]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">You always hold the pen.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">You hold the pen.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                We are librarians first and co-drafters when invited. We can draft options, rewrite passages, and format references, but nothing becomes your final content until you inspect, edit, and approve it.
+                We are librarians first and co-drafters when invited. We can draft options, reshape passages, and format references, but nothing becomes your final content until you inspect, edit, and approve it.
               </p>
             </div>
 
@@ -281,12 +294,25 @@ export default function QuipslyLandingPage() {
               <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center mb-6 border border-[#e8d0b5] relative z-10 shadow-sm">
                 <Map className="w-7 h-7 text-[#c96b1c]" />
               </div>
-              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Living Manuscripts.</h3>
+              <h3 className="text-2xl font-bold text-[#3d2618] mb-3 relative z-10">Writing & Publishing.</h3>
               <p className="text-[#8c552e] leading-relaxed text-sm font-sans relative z-10">
-                Whether you're writing a book, an article, or a script, work in a living manuscript. Tag chapters, filter by lenses, and prepare your work for publishing—all within a unified, beautiful document.
+                Draft your articles, scripts, and books in a unified living manuscript. When you're ready, we'll help prepare beautiful publishing packets tailored for any platform.
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto mt-32 grid md:grid-cols-2 gap-16 px-4 items-center">
+          <div>
+            <h2 className="text-3xl md:text-5xl font-bold text-[#3d2618] tracking-tight mb-6">Photographic memory for your entire Nest.</h2>
+            <p className="text-lg text-[#8c552e] font-sans leading-relaxed mb-6">
+              When you ask your Quipsly a question, it doesn't just guess. It performs a semantic vector search across every document, pdf, transcript, and note in your project.
+            </p>
+            <p className="text-lg text-[#8c552e] font-sans leading-relaxed">
+              Instantly find the exact quote you need from a 400-page book you uploaded six months ago, or that one brilliant idea you jotted down in a random text file.
+            </p>
+          </div>
+          <MarketingLoreSearchDemo />
         </div>
 
         {/* Unified Platform Pitch */}
@@ -338,6 +364,15 @@ export default function QuipslyLandingPage() {
               <ImageIcon className="w-8 h-8 text-[#f4dab0]" />
               <span className="font-bold text-sm">Scroll Stories & Comics</span>
             </div>
+          </div>
+
+          <div className="relative z-10 mt-12 text-center">
+            <Link 
+              href="/outputs"
+              className="inline-flex items-center gap-2 bg-[#fdf5eb] text-[#a96735] border border-[#a96735]/30 px-6 py-3 rounded-xl font-bold hover:bg-[#a96735] hover:text-white transition-colors font-sans shadow-lg"
+            >
+              Explore the Publishing Engine
+            </Link>
           </div>
         </div>
 
@@ -479,7 +514,7 @@ export default function QuipslyLandingPage() {
                    <HelpCircle className="w-5 h-5 text-[#a96735]" /> Does Quipsly write for me?
                  </h4>
                  <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
-                   Yes, when you ask it to. A Quipsly can draft rough options, rewrite a section, or pull a sourced quote, but it will not silently replace your work or pretend a draft is final. We believe AI should cure administrative anxiety and help you shape ideas without stealing the pen.
+                   Yes, when you ask it to. A Quipsly can draft rough options, rewrite a section, or pull a sourced quote, but it will not silently replace your work or pretend a draft is final. We believe AI should empower your drafting process with transparency and tooling, not take the pen from you.
                  </p>
               </div>
               <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">
@@ -503,7 +538,7 @@ export default function QuipslyLandingPage() {
                    <HelpCircle className="w-5 h-5 text-[#a96735]" /> Can I use it for academic or research projects?
                  </h4>
                  <p className="mt-3 text-sm text-[#8c552e] font-sans leading-relaxed">
-                   Yes, that's what we do best! If you need a historical quote or a specific stat, we'll scour the archives to find perfect examples. We always return with verified sources and exact citations—we despise fake internet quotes!
+                   Yes, that's what we do best! If you need a historical quote or a specific stat, we'll build comprehensive research packets pulling verifiable examples. We always return with exact citations—we despise fake internet quotes!
                  </p>
               </div>
               <div className="bg-white border border-[#e8d0b5] rounded-2xl p-6 shadow-sm">

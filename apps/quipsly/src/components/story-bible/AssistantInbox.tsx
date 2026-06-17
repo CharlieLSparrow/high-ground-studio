@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { StudioAssistantAction } from "./types";
 import { Check, X, Sparkles, Loader2, AlertTriangle, ChevronRight } from "lucide-react";
+import { createTextQuoteSelector } from "@high-ground/quipsly-domain/source-aware";
 
 interface AssistantInboxProps {
   actions: StudioAssistantAction[];
@@ -31,6 +32,17 @@ export function AssistantInbox({
       setProcessingId(null);
     }
   };
+
+  const handleMentionHover = (snippet: string) => {
+    const selector = createTextQuoteSelector("current-document", snippet);
+    window.dispatchEvent(new CustomEvent("quipsly:source-overlay-preview", { detail: { selector } }));
+    window.dispatchEvent(new CustomEvent("quipsly:highlight-mention", { detail: { snippet } }));
+  };
+
+  const handleMentionLeave = () => {
+    window.dispatchEvent(new CustomEvent("quipsly:clear-highlight"));
+  };
+
 
   return (
     <div className="flex flex-col h-full bg-void">
@@ -122,9 +134,16 @@ export function AssistantInbox({
                   </p>
 
                   {excerpt && (
-                    <div className="mb-4 bg-black/40 rounded-xl p-3 border border-white/5 relative group">
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-flare/50 rounded-l-xl opacity-50 group-hover:opacity-100 transition-opacity" />
-                      <div className="text-[9px] uppercase font-black tracking-widest text-white/30 mb-1.5 pl-2">Source Provenance</div>
+                    <div 
+                      className="mb-4 bg-black/40 rounded-xl p-3 border border-white/5 relative group cursor-pointer"
+                      onMouseEnter={() => handleMentionHover(String(excerpt))}
+                      onMouseLeave={handleMentionLeave}
+                    >
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-flare/50 rounded-l-xl opacity-50 group-hover:bg-flare group-hover:opacity-100 transition-colors" />
+                      <div className="flex justify-between items-center mb-1.5 pl-2">
+                        <div className="text-[9px] uppercase font-black tracking-widest text-white/30 group-hover:text-white/50 transition-colors">Source Provenance</div>
+                        <div className="text-[8px] font-black uppercase tracking-widest text-flare/0 group-hover:text-flare/80 transition-colors">Hovering highlights manuscript</div>
+                      </div>
                       <div className="text-xs italic text-white/70 pl-2 leading-relaxed">
                         "{String(excerpt)}"
                       </div>

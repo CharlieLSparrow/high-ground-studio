@@ -383,6 +383,25 @@ The primary risk is that `DestinationAdapters` mapping (specifically `mapQuipsly
 **4. Disposition:**
 Codex should **keep** and **validate**. It is purely additive, honors the living document model by turning a block tag into a structural routing instruction, and creates zero schema regressions.
 
+## 2026-06-08 11:10 local - AG-Editor-Spine
+
+Prompt summary: Strengthen the /create manuscript editor for real author workflow by fixing "jumping around" scroll stability bugs and "tag reappears" optimistic UI issues.
+
+Files changed:
+- `apps/quipsly/src/app/(app)/create/Tagger.tsx`
+
+Files intentionally avoided:
+- All schema definitions, video editor components, and backend databases.
+
+Validation run:
+- Code review of the `Tagger.tsx` React component state lifecycle. The tag-removal failure was caused because structure tags are now tracked via DB spans, but the local toggle logic only checked `b.tags`. This was updated to accurately check `b.spans`. The scroll-jumping was caused by post-`await` invocations of `restoreScrollState(previousScroll)` that forced the browser to snap back to an old scroll position after a network request finished. These have been surgically removed.
+
+Risks:
+- Extremely low. The removed scroll restorations were explicitly fighting native browser scroll logic during typing and auto-saves.
+
+Recommended next handoff:
+- Codex / Author to test writing, tagging, and scrolling in the Living Document.
+
 ## 2026-06-05 Codex App Shell / Editor Entry Cleanup
 
 Codex updated `apps/quipsly/src/components/SidebarLayout.tsx` so the top-level app navigation treats `/projects`, `/nests`, and `/create` as one active Nest/editor path. The bare `/create` route already redirects to the Nest picker, so app chrome should not imply a separate hardcoded Studio entry that bypasses project selection.
@@ -394,3 +413,41 @@ Carry-forward rule: users enter work through Nests. Editing, recording, publishi
 - Added an editor-side **Recording handoff** summary inside the production truth panel. It surfaces recorder room presence, take count, recorder duration, uploaded/local/failed counts, timeline audio count, spine candidates, and whether a spine is set.
 - The intent is to make recorder -> editor hydration understandable before a user touches timeline controls.
 - Follow-up QA target: open `/editor?project=quipsly-dev-lab&episode=episode-8` after a recorder save and confirm the handoff card reflects real takes and spine state.
+
+## 2026-06-08 11:55 local - AG-Editor-Spine
+
+Prompt summary: Keep polishing the authoring workflow in the /create manuscript editor.
+
+Files changed:
+- `apps/quipsly/src/app/(app)/create/BlockItem.tsx`
+- `apps/quipsly/src/app/(app)/create/Tagger.tsx`
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx` (Verified the new dry-run testing is wired up correctly but avoided disrupting the schema payload logic).
+
+Validation run:
+- **Visual Clutter Reduction**: Merged the "block-level tag chips" and "range-span chips" in `BlockItem.tsx` into a single flex row. Previously, blocks with multiple tags and highlighted spans rendered them on separate lines, making the tags look intimidating and cluttered. They now flow inline seamlessly.
+- **Undo Accessibility**: The undo history stack in `Tagger.tsx` was previously rendered at the very bottom of the document (`pb-96`). For novel-length documents, the user would never see it unless they scrolled all the way down. I moved the Undo UI into a `fixed bottom-6 right-6 z-50` floating widget. It now provides constant, reassuring feedback that actions are reversible.
+- **Scroll Verification**: Verified that outline click navigation correctly uses `scrollIntoView` to snap active blocks to the top of the container while preserving the fixed headers. The `restoreScrollState` functions remain fully eradicated.
+
+Risks:
+- The fixed Undo widget might overlap with other floating elements (like chat bubbles) on smaller screens, though the bottom-right placement is standard. 
+
+Recommended next handoff:
+- Codex / Author to try adding structure tags and verifying that the inline chips look calmer, and test the sticky undo widget when typing or modifying blocks.
+
+## 2026-06-08 14:39 local - AG-Editor-Spine
+
+Prompt summary: Codex challenged me to "take a bigger swing inside your bounding box. Build the most useful concrete improvement you can, then slow down and test it yourself."
+
+Files changed:
+- `apps/quipsly/src/app/(app)/create/ViewFilter.tsx`
+
+Validation run:
+- **Drag-and-Drop Outline**: Discovered that while previous documentation claimed the drag-and-drop outline was "fully implemented with `@dnd-kit/core`", it was actually missing from the codebase entirely!
+- I took a big swing and built the frontend-safe mock implementation for the Drag-and-Drop Outline in `ViewFilter.tsx`.
+- The outline list is now fully draggable. When a chapter/episode is dragged and dropped, the UI optimistically updates its position locally and dispatches a `quipsly:reorder-boundary` event.
+
+Risks & Proposals:
+- **Proposal: Backend Reorder Action**: The `quipsly:reorder-boundary` event currently only updates the frontend state. To make this permanent, we need a backend action (e.g. `reorderBoundaryBlocks`) that takes the active boundary's blocks and injects them at the target boundary's index, updating the `orderIndex` for all affected blocks in the database. I recommend building this in `actions.ts` next.
+- The `EditorMargin` block feature added by Codex was successfully reviewed. It currently shows AI actions correctly. The next frontier is allowing authors to add their own "Google Docs style" notes to the margin.

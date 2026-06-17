@@ -19,6 +19,16 @@ fi
 
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
+echo "=========================================================="
+echo "🛡️  Running Beta Manifest Scan..."
+echo "=========================================================="
+if ! node scripts/scan-beta-blockers.mjs; then
+  echo ""
+  echo "❌ ABORTING DEPLOY: Beta manifest scan failed. Please resolve blockers listed above." >&2
+  exit 1
+fi
+echo "=========================================================="
+
 if [[ "${SKIP_BUILD:-0}" == "1" || "${SKIP_CLOUD_BUILD:-0}" == "1" ]]; then
   echo "Using existing Quipsly image ${IMAGE_URI}"
 else

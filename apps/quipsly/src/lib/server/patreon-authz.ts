@@ -4,6 +4,17 @@ import { QUIPSLY_BETA_PATREON_PLAN_SLUG } from "@/lib/patreon/betaAccess";
 import { hasAnyActiveStudioProjectAccessGrantForEmail } from "@/lib/server/studio-project-access";
 import { getStudioUserIdentityByEmail } from "./studio-user-identity";
 
+const DEFAULT_QUIPSLY_ADMIN_EMAILS = ["charlie@highgroundodyssey.com"];
+
+function configuredAdminEmails() {
+  return [
+    ...DEFAULT_QUIPSLY_ADMIN_EMAILS,
+    ...(process.env.QUIPSLY_ADMIN_EMAILS ?? "").split(","),
+  ]
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 /**
  * Validates if the given email has access to the Quipsly Beta.
  * Currently grants access to:
@@ -14,6 +25,11 @@ import { getStudioUserIdentityByEmail } from "./studio-user-identity";
 export async function hasQuipslyBetaAccess(email: string): Promise<boolean> {
   if (!email) return false;
   const normalizedEmail = email.trim().toLowerCase();
+
+  // Quipsly admins must never be locked out by Patreon/project-grant drift.
+  if (configuredAdminEmails().includes(normalizedEmail)) {
+    return true;
+  }
 
   // 1. Check Staff Status
   try {

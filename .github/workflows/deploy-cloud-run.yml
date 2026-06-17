@@ -155,7 +155,7 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Deploy web Cloud Run
+      - name: Deploy web Cloud Run Preview & Smoke
         env:
           GCLOUD_PROJECT: ${{ env.GCP_PROJECT }}
           WEB_CLOUD_RUN_PROJECT: ${{ env.GCP_PROJECT }}
@@ -163,6 +163,12 @@ jobs:
           WEB_IMAGE_TAG: ${{ github.sha }}
           WEB_IMAGE_BUILD_STRATEGY: docker
         run: pnpm web:cloudrun:deploy
+
+      - name: Promote Web Preview to Production
+        env:
+          PROJECT_ID: ${{ env.GCP_PROJECT }}
+          REGION: ${{ env.GCP_REGION }}
+        run: bash scripts/release/web-promote-preview.sh
 
   deploy-studio:
     name: Deploy studio

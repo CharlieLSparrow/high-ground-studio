@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
-import { resolveMacSessionActor } from "@/lib/server/mac-session-token";
+
 import {
   findStudioProjectForAccess,
   normalizeAccessEmail,
@@ -108,21 +108,25 @@ function chatUnavailableResponse() {
   });
 }
 
-async function resolveActor(request: NextRequest) {
+function cleanString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+async function resolveActor(_request: NextRequest) {
   const session = await auth();
-  const macActor = session?.user?.id ? null : resolveMacSessionActor(request);
   const overrideEmail = process.env.QUIPSLY_OWNER_OVERRIDE === "true"
     ? firstConfiguredOwnerEmail() || "owner-override@quipsly.local"
     : "";
   const email = normalizeAccessEmail(
     session?.user?.primaryEmail
       || session?.user?.email
-      || macActor?.primaryEmail
-      || macActor?.email
       || overrideEmail,
   );
-  const name = session?.user?.name || macActor?.name || email || "Quipsly Friend";
-  return { session, macActor, email, name };
+  return {
+    id: cleanString(session?.user?.id),
+    email,
+    name: cleanString(session?.user?.name, email),
+  };
 }
 
 async function normalizeBelieveSeedMessages(projectId?: string) {

@@ -34,6 +34,7 @@ const legacyDestinationMap: Record<string, PublishDestinationSlug> = {
   tiktok_v1: "tiktok",
   facebook_v1: "facebook",
   linkedin_v1: "linkedin",
+  quiplore: "quiplore",
 };
 
 const legacyStatusMap: Record<string, DestinationPublicationStatus> = {
@@ -41,6 +42,7 @@ const legacyStatusMap: Record<string, DestinationPublicationStatus> = {
   published: "published",
   scheduled: "queued",
   queued: "queued",
+  processing: "queued",
   staged: "packet-ready",
   ready: "packet-ready",
   "packet-ready": "packet-ready",
@@ -109,6 +111,13 @@ export function buildDefaultDestinationStates(
       destination: "patreon",
       status: "needs-review",
       notes: "Supporter post copy and access rules should be reviewed before publishing.",
+    },
+    {
+      destination: "quiplore",
+      status: hgoStatus,
+      notes: hgoStatus === "published"
+        ? "Quotes and citations have been parsed and indexed in the QuipLore library."
+        : "Pending approval to parse and index quotes/citation metadata in QuipLore library.",
     },
   ];
 }

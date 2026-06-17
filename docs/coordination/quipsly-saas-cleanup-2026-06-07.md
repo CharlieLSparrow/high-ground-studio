@@ -96,3 +96,39 @@ Nest Chat is now mounted across more project routes. A non-critical chat panel m
 Build: green.
 Obvious blocker fixed: Nest Chat 500 under database connection pressure.
 Deploy: not performed in this cleanup pass.
+
+## 2026-06-08 Production-Room Access Run
+
+Scope:
+
+- Align the editor, media import, sync diagnostics, AI ingest, transcript assist, and media-job writers around the same Nest access truth as collaboration.
+- Make the editor show whether the current production room is DB-backed, local-only, sign-in blocked, or access blocked.
+
+Changed:
+
+- Added `apps/quipsly/src/lib/server/episode-production-access.ts` as the shared actor/access resolver for normal embedded sessions and Quipsly Mac bearer/web-session tokens.
+- Updated `/api/episode-production` so unauthenticated or unauthorized requests return a non-mutating fallback state instead of silently claiming DB-backed saveability.
+- Updated `/api/episode-production/import-media`, `/sync-diagnostics`, `/ai-ingest`, `/transcript-assist`, and `/media-analysis-jobs` so production JSON writers return `401`/`403` before writing when the Nest session cannot write.
+- Updated `/editor` production truth UI to show Nest access, actor email, DB/local state, and local-only guidance.
+
+Validation:
+
+```bash
+pnpm --filter @high-ground/quipsly-domain typecheck
+pnpm --filter quipsly exec tsc --noEmit --incremental false
+pnpm --filter quipsly build
+```
+
+Result: PASS.
+
+Local smoke:
+
+- `GET /editor?project=high-ground-odyssey-manuscript&episode=episode-4` showed the Nest sign-in gate when no local browser session was present.
+- `POST /api/episode-production` without a session returned `mode: "fallback"`, `status: "auth-required"`, and did not return persisted timeline data.
+- `POST /api/episode-production/import-media` without a session returned `401`.
+- `POST /api/episode-production/media-analysis-jobs` without a session returned `401`.
+
+Follow-up:
+
+- Re-smoke `/editor` while signed in to confirm the new Nest access panel shows `DB-backed production` and the expected role/source.
+- Decide separately whether `/api/call-signaling` should stay guest-capable or move behind the same production-room access resolver.

@@ -193,6 +193,10 @@ export async function listProjectsVisibleToEmail(
           name: true,
           sourceLabel: true,
           updatedAt: true,
+          accessGrants: {
+            where: { status: "ACTIVE" },
+            select: { email: true, role: true },
+          },
         },
       },
     },
@@ -206,12 +210,14 @@ export async function listProjectsVisibleToEmail(
     sourceLabel: string | null;
     updatedAt: Date;
     role: StudioProjectAccessRole;
+    collaborators?: { email: string; role: StudioProjectAccessRole }[];
   }>();
 
   for (const row of rows) {
     byId.set(row.project.id, {
       ...row.project,
       role: row.role,
+      collaborators: row.project.accessGrants,
     });
   }
 

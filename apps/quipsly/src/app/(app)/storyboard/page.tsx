@@ -5,9 +5,10 @@ export const dynamic = 'force-dynamic';
 export default async function StoryboardSandboxPage({
   searchParams,
 }: {
-  searchParams: { project?: string };
+  searchParams: Promise<{ project?: string }>;
 }) {
-  const projectId = searchParams.project;
+  const params = await searchParams;
+  const projectId = params.project;
 
   if (projectId) {
     redirect(`/storyboards/builder?project=${projectId}`);

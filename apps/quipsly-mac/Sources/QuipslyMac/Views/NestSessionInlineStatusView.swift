@@ -10,7 +10,7 @@ struct NestSessionInlineStatusView: View {
 
     private var hasConnectedProfile: Bool {
         !appState.activeNestSessionProfileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !appState.nestSessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && NestSessionTokenStore.accessTokenLooksFresh(NestSessionTokenStore.activeProfile(), skewSeconds: 0)
     }
 
     var body: some View {

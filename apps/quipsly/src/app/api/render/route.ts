@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 
 export async function POST(req: Request) {
   try {
@@ -8,32 +10,62 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid timeline state" }, { status: 400 });
     }
 
-    // In a real production environment, we would use @remotion/lambda here:
-    // import { renderMediaOnLambda, getRenderProgress } from "@remotion/lambda/client";
-    //
-    // const renderId = await renderMediaOnLambda({
-    //   region: "us-east-1",
-    //   functionName: "remotion-render-function",
-    //   serveUrl: "https://.../remotion-bundle",
-    //   composition: "QuipslyMainTimeline",
-    //   inputProps: { timelineState },
-    //   codec: "h264",
-    //   imageFormat: "jpeg",
-    //   maxRetries: 1,
-    //   framesPerLambda: 20,
-    // });
+    // Extract loop clips that should become artifacts
+    const loopClips = Array.isArray(timelineState.loopClips) ? timelineState.loopClips : [];
+    const artifacts = loopClips
+      .filter((loop: any) => loop.manuscriptBlockId && loop.exportability === "exportable")
+      .map((loop: any) => ({
+        id: `artifact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        projectId: projectSlug,
+        episodeSlug,
+        manuscriptBlockId: loop.manuscriptBlockId,
+        destination: "manuscript-sidecar",
+        status: "published",
+        metadataJson: {
+          title: loop.title,
+          sourceType: loop.sourceType,
+          sourceUrl: loop.sourceUrl,
+          startSec: loop.startSec,
+          endSec: loop.endSec,
+          sourceLoopId: loop.id
+        },
+        publishedAt: new Date().toISOString()
+      }));
 
-    // Simulate latency
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    if (artifacts.length > 0) {
+      const artifactsDir = path.join(process.cwd(), "data", "artifacts");
+      if (!fs.existsSync(artifactsDir)) {
+        fs.mkdirSync(artifactsDir, { recursive: true });
+      }
+      
+      const sidecarPath = path.join(artifactsDir, "sidecar.json");
+      let existingArtifacts = [];
+      if (fs.existsSync(sidecarPath)) {
+        try {
+          existingArtifacts = JSON.parse(fs.readFileSync(sidecarPath, "utf-8"));
+        } catch (e) {
+          console.error("Failed to parse sidecar.json", e);
+        }
+      }
+      
+      // Append new artifacts
+      existingArtifacts.push(...artifacts);
+      fs.writeFileSync(sidecarPath, JSON.stringify(existingArtifacts, null, 2));
+    }
 
-    const renderId = `render-${Date.now()}`;
+    const { submitRenderJob } = await import("@/app/(app)/render-queue/actions");
+    const result = await submitRenderJob(`Render: ${episodeSlug}`, {
+      timelineState,
+      projectSlug,
+      episodeSlug
+    });
 
-    // Return the fake lambda render ID
     return NextResponse.json({
       success: true,
-      renderId,
+      renderId: result.jobId,
       status: "processing",
-      message: "Remotion Lambda render initiated."
+      artifacts,
+      message: "Render job submitted to background queue."
     });
 
   } catch (error: any) {

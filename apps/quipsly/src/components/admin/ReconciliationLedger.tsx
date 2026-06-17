@@ -1,14 +1,14 @@
 "use client";
 
-import { MembershipReconciliation, Membership, User } from "@prisma/client";
+import { EntitlementLedger, Membership, User } from "@prisma/client";
 import { formatDistanceToNow } from "date-fns";
 import { ShieldCheck, UserCircle, Zap } from "lucide-react";
 
-type ReconciliationWithRelations = MembershipReconciliation & {
+type EntitlementLedgerWithRelations = EntitlementLedger & {
   membership?: (Membership & { user: User }) | null;
 };
 
-export function ReconciliationLedger({ reconciliations }: { reconciliations: ReconciliationWithRelations[] }) {
+export function ReconciliationLedger({ reconciliations }: { reconciliations: EntitlementLedgerWithRelations[] }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
       <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">

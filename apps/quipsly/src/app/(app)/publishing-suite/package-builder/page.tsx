@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { PackageOpen, Youtube, CheckCircle2, AlertCircle, ArrowRight, Rss } from "lucide-react";
-import { getEpisodeCandidatesBySlugAction, approveEpisodeCandidateAction } from "@/app/(app)/create/actions";
+import { getEpisodeCandidatesBySlugAction, approveEpisodeCandidateAction, updateCandidatePacketAction, testPublishCandidateAction, retractEpisodeCandidateAction } from "@/app/(app)/create/actions";
 import { DashboardSkeleton, ContentBlockSkeleton } from "../components/LoadingSkeleton";
 import { DestinationStatusRail } from "../components/DestinationStatusRail";
 import {
@@ -20,7 +20,25 @@ export default function PackageBuilderPage() {
   const [activeTab, setActiveTab] = useState<"content" | "media" | "destinations">("content");
   const [isLoading, setIsLoading] = useState(true);
   const [approving, setApproving] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [retractingDestinations, setRetractingDestinations] = useState<Set<string>>(new Set());
+
+  // Edit states for candidate packet
+  const [editTitle, setEditTitle] = useState("");
+  const [editSummary, setEditSummary] = useState("");
+  const [editAudioUrl, setEditAudioUrl] = useState("");
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+  const [editThumbnailUrl, setEditThumbnailUrl] = useState("");
+  const [editYoutubeTags, setEditYoutubeTags] = useState("");
+  const [editYoutubeChapters, setEditYoutubeChapters] = useState("");
+  const [editPatreonTeaser, setEditPatreonTeaser] = useState("");
+  const [editPatreonIsMembersOnly, setEditPatreonIsMembersOnly] = useState(false);
+
+  // Dry run states
+  const [dryRunResult, setDryRunResult] = useState<any>(null);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [activeDryRunTab, setActiveDryRunTab] = useState<"podcast_rss" | "youtube_v3" | "patreon_v2" | "quiplore">("podcast_rss");
 
   const loadCandidates = async () => {
     setIsLoading(true);
@@ -48,24 +66,197 @@ export default function PackageBuilderPage() {
   const destinationStates = pkg ? buildCandidateDestinationStates(pkg) : [];
   const destinationSummary = summarizeDestinationStates(destinationStates);
 
+  const hgoState = destinationStates.find(d => d.destination === "high-ground-odyssey");
+  const youtubeState = destinationStates.find(d => d.destination === "youtube");
+  const patreonState = destinationStates.find(d => d.destination === "patreon");
+  const rssState = destinationStates.find(d => d.destination === "podcast-rss");
+  const quiploreState = destinationStates.find(d => d.destination === "quiplore");
+
+  // Populate edit fields when the selected candidate changes
+  useEffect(() => {
+    setDryRunResult(null); // Reset dry run checks
+    if (pkg) {
+      setEditTitle(pkg.packet?.title || pkg.projectionTitle || "");
+      setEditSummary(pkg.packet?.summary || "");
+      setEditAudioUrl(pkg.packet?.media?.audioUrl || "");
+      setEditVideoUrl(pkg.packet?.media?.videoUrl || "");
+      setEditThumbnailUrl(pkg.packet?.media?.thumbnailUrl || "");
+      setEditYoutubeTags((pkg.packet?.overrides?.youtube?.tags || []).join(", "));
+      setEditYoutubeChapters((pkg.packet?.overrides?.youtube?.chapterMarkers || []).join("\n"));
+      setEditPatreonTeaser(pkg.packet?.overrides?.patreon?.teaser || "");
+      setEditPatreonIsMembersOnly(!!pkg.packet?.overrides?.patreon?.isMembersOnly);
+    } else {
+      setEditTitle("");
+      setEditSummary("");
+      setEditAudioUrl("");
+      setEditVideoUrl("");
+      setEditThumbnailUrl("");
+      setEditYoutubeTags("");
+      setEditYoutubeChapters("");
+      setEditPatreonTeaser("");
+      setEditPatreonIsMembersOnly(false);
+    }
+  }, [selectedPkgId, pkg]);
+
+  const runDryRun = async () => {
+    if (!selectedPkgId || dryRunLoading) return;
+    setDryRunLoading(true);
+    setDryRunResult(null);
+    try {
+      // Auto-save form contents first
+      const tagsArray = editYoutubeTags
+        .split(",")
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      const chaptersArray = editYoutubeChapters
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      const saveRes = await updateCandidatePacketAction(selectedPkgId, {
+        title: editTitle,
+        summary: editSummary,
+        media: {
+          audioUrl: editAudioUrl,
+          videoUrl: editVideoUrl,
+          thumbnailUrl: editThumbnailUrl,
+        },
+        overrides: {
+          youtube: {
+            tags: tagsArray,
+            chapterMarkers: chaptersArray,
+          },
+          patreon: {
+            isMembersOnly: editPatreonIsMembersOnly,
+            teaser: editPatreonTeaser,
+          }
+        }
+      });
+
+      if (!saveRes.ok) {
+        alert(saveRes.error || "Failed to auto-save before dry-run validation.");
+        setDryRunLoading(false);
+        return;
+      }
+
+      const res = await testPublishCandidateAction(selectedPkgId);
+      if (res.ok) {
+        setDryRunResult(res);
+      } else {
+        alert(res.error || "Failed to execute pre-publish check.");
+      }
+    } catch (error: any) {
+      alert(error.message || "Failed to execute pre-publish check.");
+    } finally {
+      setDryRunLoading(false);
+    }
+  };
+
+  // Live validation on edited values
   useEffect(() => {
     setValidationErrors([]);
     if (pkg) {
       const errors: string[] = [];
-      if (pkg.packet?.title?.length < 5) {
+      if (editTitle.length < 5) {
         errors.push("Title is too short for optimal SEO and discovery.");
       }
-      if (!pkg.packet?.summary) {
+      if (!editSummary) {
         errors.push("Summary/meta description is required.");
       }
       setValidationErrors(errors);
     }
-  }, [selectedPkgId, pkg]);
+  }, [editTitle, editSummary, pkg]);
+
+  const handleSave = async () => {
+    if (!selectedPkgId || saving) return;
+    setSaving(true);
+    try {
+      const tagsArray = editYoutubeTags
+        .split(",")
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      const chaptersArray = editYoutubeChapters
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      const res = await updateCandidatePacketAction(selectedPkgId, {
+        title: editTitle,
+        summary: editSummary,
+        media: {
+          audioUrl: editAudioUrl,
+          videoUrl: editVideoUrl,
+          thumbnailUrl: editThumbnailUrl,
+        },
+        overrides: {
+          youtube: {
+            tags: tagsArray,
+            chapterMarkers: chaptersArray,
+          },
+          patreon: {
+            isMembersOnly: editPatreonIsMembersOnly,
+            teaser: editPatreonTeaser,
+          }
+        }
+      });
+
+      if (res.ok) {
+        alert("Changes saved successfully!");
+        // Reload list from the database to synchronize
+        const resList = await getEpisodeCandidatesBySlugAction(projectSlug);
+        if (resList.ok && resList.candidates) {
+          setCandidates(resList.candidates);
+        }
+      } else {
+        alert(res.error || "Failed to save changes.");
+      }
+    } catch (error: any) {
+      alert(error.message || "Failed to save changes.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleApprove = async () => {
-    if (!selectedPkgId || approving) return;
+    if (!selectedPkgId || approving || saving) return;
     setApproving(true);
     try {
+      // Auto-save edited values first
+      const tagsArray = editYoutubeTags
+        .split(",")
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      const chaptersArray = editYoutubeChapters
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      const saveRes = await updateCandidatePacketAction(selectedPkgId, {
+        title: editTitle,
+        summary: editSummary,
+        media: {
+          audioUrl: editAudioUrl,
+          videoUrl: editVideoUrl,
+          thumbnailUrl: editThumbnailUrl,
+        },
+        overrides: {
+          youtube: {
+            tags: tagsArray,
+            chapterMarkers: chaptersArray,
+          },
+          patreon: {
+            isMembersOnly: editPatreonIsMembersOnly,
+            teaser: editPatreonTeaser,
+          }
+        }
+      });
+
+      if (!saveRes.ok) {
+        alert(saveRes.error || "Failed to auto-save before publishing.");
+        setApproving(false);
+        return;
+      }
+
       const res = await approveEpisodeCandidateAction(selectedPkgId);
       if (res.ok) {
         alert(res.message || "Package approved and published live!");
@@ -77,6 +268,125 @@ export default function PackageBuilderPage() {
       alert("Failed to approve package.");
     }
     setApproving(false);
+  };
+
+  const handleRetract = async (destination: string) => {
+    if (!confirm(`Are you sure you want to retract from ${destination}?`)) {
+      return;
+    }
+
+    const nextSet = new Set(retractingDestinations);
+    nextSet.add(destination);
+    setRetractingDestinations(nextSet);
+
+    try {
+      const res = await retractEpisodeCandidateAction(selectedPkgId!, [destination]);
+      if (res.ok) {
+        alert(`Retraction for ${destination} enqueued successfully!`);
+        await loadCandidates();
+      } else {
+        alert(res.error || `Failed to retract from ${destination}.`);
+      }
+    } catch (error: any) {
+      alert(error.message || `Failed to retract from ${destination}.`);
+    } finally {
+      const cleanSet = new Set(retractingDestinations);
+      cleanSet.delete(destination);
+      setRetractingDestinations(cleanSet);
+    }
+  };
+
+  const handleRetractAll = async () => {
+    const publishedDests = destinationStates
+      .filter(d => d.status === "published")
+      .map(d => d.destination);
+    if (publishedDests.length === 0) {
+      alert("No destinations are currently published.");
+      return;
+    }
+    if (!confirm(`Are you sure you want to retract this episode from: ${publishedDests.join(", ")}?`)) {
+      return;
+    }
+
+    const nextSet = new Set(retractingDestinations);
+    publishedDests.forEach(d => nextSet.add(d));
+    setRetractingDestinations(nextSet);
+
+    try {
+      const res = await retractEpisodeCandidateAction(selectedPkgId!, publishedDests);
+      if (res.ok) {
+        alert("Retraction enqueued successfully. Destination statuses will update in the background.");
+        await loadCandidates();
+      } else {
+        alert(res.error || "Failed to trigger retraction.");
+      }
+    } catch (error: any) {
+      alert(error.message || "Failed to trigger retraction.");
+    } finally {
+      const cleanSet = new Set(retractingDestinations);
+      publishedDests.forEach(d => cleanSet.delete(d));
+      setRetractingDestinations(cleanSet);
+    }
+  };
+
+  // Auto-polling for active background sync/rollback jobs
+  useEffect(() => {
+    const hasActiveJobs = candidates.some(c => {
+      const states = buildCandidateDestinationStates(c);
+      return states.some(s => s.status === "queued");
+    });
+
+    if (!hasActiveJobs) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await getEpisodeCandidatesBySlugAction(projectSlug);
+        if (res.ok && res.candidates) {
+          setCandidates(res.candidates);
+        }
+      } catch (error) {
+        console.error("Polling candidates failed", error);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [candidates, projectSlug]);
+
+  const renderStatusBadge = (state: any) => {
+    const status = state?.status;
+    if (status === "published") {
+      return (
+        <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-100 text-emerald-800">
+          Live
+        </span>
+      );
+    }
+    if (status === "queued") {
+      return (
+        <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-800 animate-pulse">
+          Processing...
+        </span>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-100 text-rose-800">
+          Failed
+        </span>
+      );
+    }
+    if (status === "draft") {
+      return (
+        <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-gray-100 text-gray-800">
+          Takedown
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-800">
+        Staged
+      </span>
+    );
   };
 
   if (isLoading && candidates.length === 0) return <DashboardSkeleton />;
@@ -168,20 +478,38 @@ export default function PackageBuilderPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  {pkg.candidateStatus !== "published" ? (
+                  <div className="flex gap-2">
                     <button
-                      onClick={handleApprove}
-                      disabled={validationErrors.length > 0 || approving}
-                      className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition-all shadow-sm flex items-center gap-2 focus:ring-2 focus:ring-offset-2 focus:ring-amber-600"
+                      onClick={handleSave}
+                      disabled={saving || approving}
+                      className="px-4 py-2.5 bg-white border border-[#e8dcc4] hover:bg-[#fdfaf6] text-[#5e4b33] rounded-xl font-bold text-sm transition-all shadow-xs flex items-center gap-2 focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
-                      {approving ? "Publishing..." : "Approve & Publish live"}
+                      {saving ? "Saving..." : "Save Details"}
                     </button>
-                  ) : (
-                    <span className="px-4 py-2 bg-emerald-100 text-emerald-800 rounded-xl font-bold text-sm flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4" /> Published Live
-                    </span>
-                  )}
+                    {pkg.candidateStatus !== "published" ? (
+                      <button
+                        onClick={handleApprove}
+                        disabled={validationErrors.length > 0 || approving || saving}
+                        className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition-all shadow-sm flex items-center gap-2 focus:ring-2 focus:ring-offset-2 focus:ring-amber-600"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        {approving ? "Publishing..." : "Approve & Publish live"}
+                      </button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <span className="px-4 py-2.5 bg-emerald-100 text-emerald-800 rounded-xl font-bold text-sm flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4" /> Published Live
+                        </span>
+                        <button
+                          onClick={handleRetractAll}
+                          disabled={approving || saving}
+                          className="px-4 py-2.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-sm transition-all shadow-xs flex items-center gap-2 focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 cursor-pointer"
+                        >
+                          Takedown Episode
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   {validationErrors.length > 0 && (
                      <span className="text-xs text-red-600 font-bold flex items-center gap-1">
                        <AlertCircle className="w-3 h-3" /> Fix errors to approve
@@ -248,14 +576,26 @@ export default function PackageBuilderPage() {
                 {activeTab === "content" && (
                   <div className="space-y-8">
                     <div>
-                      <label htmlFor="pkg-summary" className="block text-sm font-bold uppercase tracking-wider text-[#8c6b4a] mb-3">Summary (Meta Description)</label>
+                      <label htmlFor="pkg-title" className="block text-sm font-bold uppercase tracking-wider text-[#8c6b4a] mb-2">Title Override</label>
+                      <input
+                        id="pkg-title"
+                        type="text"
+                        className="w-full p-4 rounded-xl border border-[#e8dcc4] bg-white text-sm text-[#3d3122] focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-shadow"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        placeholder="Enter custom title for publication target"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="pkg-summary" className="block text-sm font-bold uppercase tracking-wider text-[#8c6b4a] mb-2">Summary (Meta Description)</label>
                       <textarea
                         id="pkg-summary"
                         className="w-full p-4 rounded-xl border border-[#e8dcc4] bg-white text-sm text-[#3d3122] focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-shadow"
                         rows={3}
-                        value={pkg.packet?.summary || ""}
-                        readOnly
-                        aria-readonly="true"
+                        value={editSummary}
+                        onChange={(e) => setEditSummary(e.target.value)}
+                        placeholder="Enter public meta summary description"
                       />
                     </div>
 
@@ -292,24 +632,52 @@ export default function PackageBuilderPage() {
 
                 {activeTab === "media" && (
                   <div className="space-y-6">
-                     <div className="border border-[#e8dcc4] rounded-xl p-4 bg-white flex flex-col md:flex-row gap-6 items-center">
-                       <div className="w-32 h-32 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 flex items-center justify-center">
-                         {pkg.packet?.media?.thumbnailUrl ? (
-                           <img src={pkg.packet.media.thumbnailUrl} alt="Thumbnail preview" className="w-full h-full object-cover" />
+                     <div className="border border-[#e8dcc4] rounded-xl p-6 bg-white flex flex-col md:flex-row gap-6 items-start">
+                       <div className="w-32 h-32 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 flex items-center justify-center self-center">
+                         {editThumbnailUrl ? (
+                           <img src={editThumbnailUrl} alt="Thumbnail preview" className="w-full h-full object-cover" />
                          ) : (
                            <span className="text-xs italic text-[#8c6b4a]">No Thumbnail</span>
                          )}
                        </div>
-                       <div className="flex-1 w-full">
-                         <h3 className="font-bold text-[#3d3122]">Primary Thumbnail URL</h3>
-                         <input
-                           type="text"
-                           readOnly
-                           value={pkg.packet?.media?.thumbnailUrl || "No media thumbnail connected. Using default."}
-                           className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1 text-sm font-mono text-[#8c6b4a] mt-2 outline-none"
-                           aria-label="Thumbnail URL"
-                         />
-                         <p className="text-xs text-[#8c6b4a] mt-2">To configure media assets (e.g. dynamic audio recording file paths), edit your show prep settings.</p>
+                       <div className="flex-1 w-full space-y-4">
+                         <div>
+                           <label htmlFor="pkg-thumbnail-url" className="block text-xs font-bold text-[#8c6b4a] uppercase">Primary Thumbnail URL</label>
+                           <input
+                             id="pkg-thumbnail-url"
+                             type="text"
+                             value={editThumbnailUrl}
+                             onChange={(e) => setEditThumbnailUrl(e.target.value)}
+                             placeholder="https://example.com/thumbnail.jpg"
+                             className="w-full bg-white border border-[#e8dcc4] rounded-xl px-3 py-2 mt-1 text-sm font-mono text-[#3d3122] outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-shadow"
+                           />
+                         </div>
+
+                         <div>
+                           <label htmlFor="pkg-audio-url" className="block text-xs font-bold text-[#8c6b4a] uppercase">Public Podcast Audio URL (.mp3)</label>
+                           <input
+                             id="pkg-audio-url"
+                             type="text"
+                             value={editAudioUrl}
+                             onChange={(e) => setEditAudioUrl(e.target.value)}
+                             placeholder="https://example.com/podcast-episode.mp3"
+                             className="w-full bg-white border border-[#e8dcc4] rounded-xl px-3 py-2 mt-1 text-sm font-mono text-[#3d3122] outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-shadow"
+                           />
+                         </div>
+
+                         <div>
+                           <label htmlFor="pkg-video-url" className="block text-xs font-bold text-[#8c6b4a] uppercase">YouTube Watch Link / Video Source URL</label>
+                           <input
+                             id="pkg-video-url"
+                             type="text"
+                             value={editVideoUrl}
+                             onChange={(e) => setEditVideoUrl(e.target.value)}
+                             placeholder="https://youtube.com/watch?v=..."
+                             className="w-full bg-white border border-[#e8dcc4] rounded-xl px-3 py-2 mt-1 text-sm font-mono text-[#3d3122] outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-shadow"
+                           />
+                         </div>
+
+                         <p className="text-xs text-[#8c6b4a]">These media assets map directly to destination enclosures (e.g. RSS feeds and video adapters) on approval.</p>
                        </div>
                      </div>
                   </div>
@@ -323,31 +691,40 @@ export default function PackageBuilderPage() {
                         <PackageOpen className="w-5 h-5 text-amber-700 animate-pulse-slow" />
                         Distribution Pipeline Status
                       </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                         {/* 1. HGO */}
                         <div className="bg-white p-4 rounded-xl border border-[#e8dcc4] flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow">
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">HGO Site</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${pkg.candidateStatus === "published" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                                {pkg.candidateStatus === "published" ? "Live" : "Staged"}
-                              </span>
+                              {renderStatusBadge(hgoState)}
                             </div>
                             <h4 className="font-bold text-[#3d3122] text-sm">High Ground Odyssey</h4>
-                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal">Public episode rendering engine on highgroundodyssey.com</p>
+                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal font-medium">
+                              {hgoState?.notes || "Public episode rendering engine on highgroundodyssey.com"}
+                            </p>
                           </div>
-                          <div className="mt-4 pt-2 border-t border-gray-100">
-                            {pkg.candidateStatus === "published" ? (
+                          <div className="mt-4 pt-2 border-t border-gray-100 flex justify-between items-center gap-2">
+                            {hgoState?.status === "published" ? (
                               <a
                                 href={`https://highgroundodyssey.com/episodes/${pkg.projectionSlug}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs font-bold text-amber-700 hover:text-amber-800 inline-flex items-center gap-1 group"
                               >
-                                View Live Episode <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                                View Live <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                               </a>
                             ) : (
-                              <span className="text-xs font-medium text-gray-400 italic">Pending publish approval</span>
+                              <span className="text-xs font-medium text-gray-400 italic">Staged</span>
+                            )}
+                            {hgoState?.status === "published" && (
+                              <button
+                                onClick={() => handleRetract("high-ground-odyssey")}
+                                disabled={retractingDestinations.has("high-ground-odyssey")}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 disabled:bg-gray-100 text-rose-700 disabled:text-gray-400 rounded-md border border-rose-200 text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                {retractingDestinations.has("high-ground-odyssey") ? "Tearing down..." : "Takedown"}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -357,17 +734,17 @@ export default function PackageBuilderPage() {
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">YouTube</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${pkg.packet?.media?.videoUrl || pkg.packet?.media?.youtubeId ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-500"}`}>
-                                {pkg.packet?.media?.videoUrl || pkg.packet?.media?.youtubeId ? "Linked" : "No Video"}
-                              </span>
+                              {renderStatusBadge(youtubeState)}
                             </div>
                             <h4 className="font-bold text-[#3d3122] text-sm">Video Source</h4>
-                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal">YouTube upload and chapter marker synchronization</p>
+                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal font-medium">
+                              {youtubeState?.notes || "YouTube upload and chapter marker synchronization"}
+                            </p>
                           </div>
-                          <div className="mt-4 pt-2 border-t border-gray-100">
-                            {pkg.packet?.media?.videoUrl ? (
+                          <div className="mt-4 pt-2 border-t border-gray-100 flex justify-between items-center gap-2">
+                            {editVideoUrl ? (
                               <a
-                                href={pkg.packet.media.videoUrl}
+                                href={editVideoUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 group"
@@ -375,7 +752,16 @@ export default function PackageBuilderPage() {
                                 Watch Video <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                               </a>
                             ) : (
-                              <span className="text-xs font-medium text-gray-400 italic">No video link configured</span>
+                              <span className="text-xs font-medium text-gray-400 italic">No link</span>
+                            )}
+                            {youtubeState?.status === "published" && (
+                              <button
+                                onClick={() => handleRetract("youtube")}
+                                disabled={retractingDestinations.has("youtube")}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 disabled:bg-gray-100 text-rose-700 disabled:text-gray-400 rounded-md border border-rose-200 text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                {retractingDestinations.has("youtube") ? "Tearing down..." : "Takedown"}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -385,14 +771,14 @@ export default function PackageBuilderPage() {
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Patreon</span>
-                              <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px] font-bold uppercase">
-                                Connected
-                              </span>
+                              {renderStatusBadge(patreonState)}
                             </div>
                             <h4 className="font-bold text-[#3d3122] text-sm">Patreon CTA</h4>
-                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal">Campaign sponsor sign-in and members-only teaser text</p>
+                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal font-medium">
+                              {patreonState?.notes || (editPatreonIsMembersOnly ? `Members-Only Post (Teaser: ${editPatreonTeaser ? editPatreonTeaser.slice(0, 30) + '...' : 'none'})` : 'Campaign sponsor sign-in and public teaser')}
+                            </p>
                           </div>
-                          <div className="mt-4 pt-2 border-t border-gray-100">
+                          <div className="mt-4 pt-2 border-t border-gray-100 flex justify-between items-center gap-2">
                             <a
                               href="https://patreon.com/c/HighGroundOdyssey"
                               target="_blank"
@@ -401,6 +787,15 @@ export default function PackageBuilderPage() {
                             >
                               Go to Patreon <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                             </a>
+                            {patreonState?.status === "published" && (
+                              <button
+                                onClick={() => handleRetract("patreon")}
+                                disabled={retractingDestinations.has("patreon")}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 disabled:bg-gray-100 text-rose-700 disabled:text-gray-400 rounded-md border border-rose-200 text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                {retractingDestinations.has("patreon") ? "Tearing down..." : "Takedown"}
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -409,14 +804,14 @@ export default function PackageBuilderPage() {
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Podcast Feed</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${pkg.candidateStatus === "published" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>
-                                {pkg.candidateStatus === "published" ? "Active" : "Staged"}
-                              </span>
+                              {renderStatusBadge(rssState)}
                             </div>
                             <h4 className="font-bold text-[#3d3122] text-sm">Podcast RSS</h4>
-                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal">iTunes and Spotify compliant dynamic self-hosted RSS XML</p>
+                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal font-medium">
+                              {rssState?.notes || "iTunes and Spotify compliant dynamic self-hosted RSS XML"}
+                            </p>
                           </div>
-                          <div className="mt-4 pt-2 border-t border-gray-100">
+                          <div className="mt-4 pt-2 border-t border-gray-100 flex justify-between items-center gap-2">
                             <a
                               href={`/api/public/podcast/rss/${projectSlug}`}
                               target="_blank"
@@ -425,69 +820,303 @@ export default function PackageBuilderPage() {
                             >
                               Open XML Feed <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                             </a>
+                            {rssState?.status === "published" && (
+                              <button
+                                onClick={() => handleRetract("podcast-rss")}
+                                disabled={retractingDestinations.has("podcast-rss")}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 disabled:bg-gray-100 text-rose-700 disabled:text-gray-400 rounded-md border border-rose-200 text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                {retractingDestinations.has("podcast-rss") ? "Tearing down..." : "Takedown"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 5. QuipLore Semantic Library */}
+                        <div className="bg-white p-4 rounded-xl border border-[#e8dcc4] flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow">
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Semantic Lib</span>
+                              {renderStatusBadge(quiploreState)}
+                            </div>
+                            <h4 className="font-bold text-[#3d3122] text-sm">QuipLore Library</h4>
+                            <p className="text-[11px] text-[#8c6b4a] mt-1 leading-normal font-medium">
+                              {quiploreState?.notes || "Semantic quote parser, author references, and citation database index"}
+                            </p>
+                          </div>
+                          <div className="mt-4 pt-2 border-t border-gray-100 flex justify-between items-center gap-2">
+                            <a
+                              href="/stream"
+                              className="text-xs font-bold text-amber-700 hover:text-amber-800 inline-flex items-center gap-1 group"
+                            >
+                              View Quote Stream <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                            </a>
+                            {quiploreState?.status === "published" && (
+                              <button
+                                onClick={() => handleRetract("quiplore")}
+                                disabled={retractingDestinations.has("quiplore")}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 disabled:bg-gray-100 text-rose-700 disabled:text-gray-400 rounded-md border border-rose-200 text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                {retractingDestinations.has("quiplore") ? "Tearing down..." : "Takedown"}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* YouTube Preview */}
+                      {/* YouTube Override */}
                       <div className="border border-[#e8dcc4] rounded-xl bg-white overflow-hidden shadow-sm">
                         <div className="bg-red-50 p-3 border-b border-red-100 flex items-center gap-2">
                           <Youtube className="w-5 h-5 text-red-600" aria-hidden="true" />
                           <span className="font-bold text-red-900 text-sm">YouTube Override metadata</span>
                         </div>
                         <div className="p-4 space-y-4">
-                          {pkg.packet?.overrides?.youtube ? (
-                            <>
-                              <div>
-                                <label className="text-xs font-bold text-[#8c6b4a] uppercase">Tags</label>
-                                <div className="flex flex-wrap gap-2 mt-1">
-                                  {(pkg.packet.overrides.youtube.tags || []).map((t: string) => (
-                                    <span key={t} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-md">#{t}</span>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                 <label htmlFor="yt-chapters" className="text-xs font-bold text-[#8c6b4a] uppercase">Chapter Markers</label>
-                                 <textarea
-                                   id="yt-chapters"
-                                   className="w-full mt-1 p-2 border border-[#e8dcc4] rounded-lg text-xs font-mono focus:ring-2 focus:ring-red-500 outline-none"
-                                   rows={4}
-                                   readOnly
-                                   value={(pkg.packet.overrides.youtube.chapterMarkers || []).join("\n")}
-                                 />
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-center p-6 flex flex-col items-center text-[#8c6b4a]">
-                              <AlertCircle className="w-8 h-8 mb-2 opacity-50" aria-hidden="true" />
-                              <p className="text-sm font-medium">No YouTube overrides set.</p>
-                            </div>
-                          )}
+                          <div>
+                            <label htmlFor="yt-tags" className="text-xs font-bold text-[#8c6b4a] uppercase">Tags (comma-separated)</label>
+                            <input
+                              id="yt-tags"
+                              type="text"
+                              value={editYoutubeTags}
+                              onChange={(e) => setEditYoutubeTags(e.target.value)}
+                              placeholder="lessons, rule, show, writing"
+                              className="w-full mt-1 p-2 border border-[#e8dcc4] rounded-lg text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                            />
+                          </div>
+                          <div>
+                             <label htmlFor="yt-chapters" className="text-xs font-bold text-[#8c6b4a] uppercase">Chapter Markers (one per line, e.g. 00:00 Intro)</label>
+                             <textarea
+                               id="yt-chapters"
+                               className="w-full mt-1 p-2 border border-[#e8dcc4] rounded-lg text-xs font-mono focus:ring-2 focus:ring-red-500 outline-none"
+                               rows={4}
+                               value={editYoutubeChapters}
+                               onChange={(e) => setEditYoutubeChapters(e.target.value)}
+                               placeholder={"00:00 Introduction\n01:30 First Beat\n03:45 Conclusion"}
+                             />
+                          </div>
                         </div>
                       </div>
 
-                      {/* Podcast RSS Preview */}
+                      {/* Patreon Override */}
                       <div className="border border-[#e8dcc4] rounded-xl bg-white overflow-hidden shadow-sm">
-                        <div className="bg-blue-50 p-3 border-b border-blue-100 flex items-center gap-2">
-                          <Rss className="w-5 h-5 text-blue-600" aria-hidden="true" />
-                          <span className="font-bold text-blue-900 text-sm">Podcast RSS Feeds</span>
+                        <div className="bg-purple-50 p-3 border-b border-purple-100 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px] font-bold">P</span>
+                          <span className="font-bold text-purple-900 text-sm">Patreon Override metadata</span>
                         </div>
-                        <div className="p-4 space-y-4 text-xs text-[#5e4b33]">
-                          <p className="leading-relaxed">
-                            Your Dynamic XML Feed URL is live and self-hosted on this Nest:
-                          </p>
-                          <input
-                             type="text"
-                             readOnly
-                             value={typeof window !== "undefined" ? `${window.location.origin}/api/public/podcast/rss/${projectSlug}` : `/api/public/podcast/rss/${projectSlug}`}
-                             className="w-full bg-[#f8f3e6] border border-[#e8dcc4] rounded p-2 font-mono text-[10px] text-amber-800 outline-none"
-                          />
-                          <p className="leading-relaxed text-[#8c6b4a]">
-                            Feed dynamically queries all approved candidates where `candidateStatus = "published"`. Copy the URL above and feed it to Apple Podcasts or Spotify.
-                          </p>
+                        <div className="p-4 space-y-4">
+                          <div>
+                            <label htmlFor="patreon-teaser" className="text-xs font-bold text-[#8c6b4a] uppercase block mb-1">Teaser Text (Public Preview)</label>
+                            <textarea
+                              id="patreon-teaser"
+                              className="w-full p-2 border border-[#e8dcc4] rounded-lg text-xs focus:ring-2 focus:ring-purple-500 outline-none"
+                              rows={3}
+                              value={editPatreonTeaser}
+                              onChange={(e) => setEditPatreonTeaser(e.target.value)}
+                              placeholder="Preview description shown to non-patrons..."
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 pt-2">
+                            <input
+                              type="checkbox"
+                              id="patreon-members-only"
+                              checked={editPatreonIsMembersOnly}
+                              onChange={(e) => setEditPatreonIsMembersOnly(e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <label htmlFor="patreon-members-only" className="text-xs font-bold text-[#5e4b33] uppercase select-none">
+                              Gated (Members Only Post)
+                            </label>
+                          </div>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Podcast RSS Preview */}
+                    <div className="border border-[#e8dcc4] rounded-xl bg-white overflow-hidden shadow-sm">
+                      <div className="bg-blue-50 p-3 border-b border-blue-100 flex items-center gap-2">
+                        <Rss className="w-5 h-5 text-blue-600" aria-hidden="true" />
+                        <span className="font-bold text-blue-900 text-sm">Podcast RSS Feeds</span>
+                      </div>
+                      <div className="p-4 space-y-4 text-xs text-[#5e4b33]">
+                        <p className="leading-relaxed">
+                          Your Dynamic XML Feed URL is live and self-hosted on this Nest:
+                        </p>
+                        <input
+                           type="text"
+                           readOnly
+                           value={typeof window !== "undefined" ? `${window.location.origin}/api/public/podcast/rss/${projectSlug}` : `/api/public/podcast/rss/${projectSlug}`}
+                           className="w-full bg-[#f8f3e6] border border-[#e8dcc4] rounded p-2 font-mono text-[10px] text-amber-800 outline-none"
+                        />
+                        <p className="leading-relaxed text-[#8c6b4a]">
+                          Feed dynamically queries all approved candidates where `candidateStatus = "published"`. Copy the URL above and feed it to Apple Podcasts or Spotify.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Pre-Publish Dry Run Panel */}
+                    <div className="border border-[#e8dcc4] rounded-xl bg-white overflow-hidden shadow-sm">
+                      <div className="bg-amber-50 p-4 border-b border-amber-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-5 h-5 text-amber-700" />
+                          <div>
+                            <span className="font-bold text-amber-900 text-sm block">Pre-Publish Pipeline Check & Dry-Run</span>
+                            <span className="text-[11px] text-[#8c6b4a] block">Validate metadata standards and inspect platform payloads before going public</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={runDryRun}
+                          disabled={dryRunLoading}
+                          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 self-end"
+                        >
+                          {dryRunLoading ? "Running Checks..." : "Run Diagnostic Check"}
+                        </button>
+                      </div>
+
+                      <div className="p-4 space-y-4">
+                        {dryRunResult ? (
+                          <div className="space-y-4">
+                            {/* Validation results summarizer */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                              {/* 1. Podcast RSS */}
+                              <div className="p-3 rounded-xl border bg-[#fdfaf6] border-[#e8dcc4]">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-[#8c6b4a] uppercase">Podcast RSS</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${dryRunResult.validationResults.podcast_rss.isValid ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                                    {dryRunResult.validationResults.podcast_rss.isValid ? "Valid" : "Invalid"}
+                                  </span>
+                                </div>
+                                <ul className="text-[10px] space-y-1 mt-2">
+                                  {dryRunResult.validationResults.podcast_rss.errors.map((e: string, i: number) => (
+                                    <li key={i} className="text-red-700 font-medium flex items-center gap-1">• {e}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.podcast_rss.warnings.map((w: string, i: number) => (
+                                    <li key={i} className="text-amber-700 flex items-center gap-1">• {w}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.podcast_rss.errors.length === 0 && dryRunResult.validationResults.podcast_rss.warnings.length === 0 && (
+                                    <li className="text-emerald-700">✓ All RSS standards met.</li>
+                                  )}
+                                </ul>
+                              </div>
+
+                              {/* 2. YouTube */}
+                              <div className="p-3 rounded-xl border bg-[#fdfaf6] border-[#e8dcc4]">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-[#8c6b4a] uppercase">YouTube</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${dryRunResult.validationResults.youtube_v3.isValid ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                                    {dryRunResult.validationResults.youtube_v3.isValid ? "Valid" : "Invalid"}
+                                  </span>
+                                </div>
+                                <ul className="text-[10px] space-y-1 mt-2">
+                                  {dryRunResult.validationResults.youtube_v3.errors.map((e: string, i: number) => (
+                                    <li key={i} className="text-red-700 font-medium flex items-center gap-1">• {e}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.youtube_v3.warnings.map((w: string, i: number) => (
+                                    <li key={i} className="text-amber-700 flex items-center gap-1">• {w}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.youtube_v3.errors.length === 0 && dryRunResult.validationResults.youtube_v3.warnings.length === 0 && (
+                                    <li className="text-emerald-700">✓ All YouTube standards met.</li>
+                                  )}
+                                </ul>
+                              </div>
+
+                              {/* 3. Patreon */}
+                              <div className="p-3 rounded-xl border bg-[#fdfaf6] border-[#e8dcc4]">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-[#8c6b4a] uppercase">Patreon</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${dryRunResult.validationResults.patreon_v2.isValid ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                                    {dryRunResult.validationResults.patreon_v2.isValid ? "Valid" : "Invalid"}
+                                  </span>
+                                </div>
+                                <ul className="text-[10px] space-y-1 mt-2">
+                                  {dryRunResult.validationResults.patreon_v2.errors.map((e: string, i: number) => (
+                                    <li key={i} className="text-red-700 font-medium flex items-center gap-1">• {e}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.patreon_v2.warnings.map((w: string, i: number) => (
+                                    <li key={i} className="text-amber-700 flex items-center gap-1">• {w}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.patreon_v2.errors.length === 0 && dryRunResult.validationResults.patreon_v2.warnings.length === 0 && (
+                                    <li className="text-emerald-700">✓ All Patreon standards met.</li>
+                                  )}
+                                </ul>
+                              </div>
+
+                              {/* 4. QuipLore */}
+                              <div className="p-3 rounded-xl border bg-[#fdfaf6] border-[#e8dcc4]">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-[#8c6b4a] uppercase">QuipLore</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${dryRunResult.validationResults.quiplore?.isValid ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                                    {dryRunResult.validationResults.quiplore?.isValid ? "Valid" : "Invalid"}
+                                  </span>
+                                </div>
+                                <ul className="text-[10px] space-y-1 mt-2">
+                                  {dryRunResult.validationResults.quiplore?.errors.map((e: string, i: number) => (
+                                    <li key={i} className="text-red-700 font-medium flex items-center gap-1">• {e}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.quiplore?.warnings.map((w: string, i: number) => (
+                                    <li key={i} className="text-amber-700 flex items-center gap-1">• {w}</li>
+                                  ))}
+                                  {dryRunResult.validationResults.quiplore?.errors.length === 0 && dryRunResult.validationResults.quiplore?.warnings.length === 0 && (
+                                    <li className="text-emerald-700">✓ All QuipLore standards met.</li>
+                                  )}
+                                </ul>
+                              </div>
+                            </div>
+
+                            {/* Payload inspector tabs */}
+                            <div className="border border-[#e8dcc4] rounded-xl overflow-hidden bg-white shadow-2xs">
+                              <div className="flex border-b border-[#e8dcc4] bg-[#f8f3e6] px-2">
+                                {([
+                                  { id: "podcast_rss", label: "Podcast RSS XML Preview" },
+                                  { id: "youtube_v3", label: "YouTube JSON Payload" },
+                                  { id: "patreon_v2", label: "Patreon JSON Payload" },
+                                  { id: "quiplore", label: "QuipLore Semantic Payload" }
+                                ] as const).map(t => (
+                                  <button
+                                    key={t.id}
+                                    onClick={() => setActiveDryRunTab(t.id)}
+                                    className={`px-3 py-2 text-xs font-bold border-b-2 transition-all ${activeDryRunTab === t.id ? "border-amber-600 text-amber-700 bg-white" : "border-transparent text-[#8c6b4a] hover:text-[#3d3122]"}`}
+                                  >
+                                    {t.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="p-4 bg-gray-900 text-gray-100 max-h-[250px] overflow-y-auto font-mono text-[11px] leading-relaxed">
+                                {activeDryRunTab === "podcast_rss" && (
+                                  <pre className="whitespace-pre-wrap">
+{`<?xml version="1.0" encoding="UTF-8"?>
+<item>
+  <title>${dryRunResult.preparedPayloads.podcast_rss.title}</title>
+  <description><![CDATA[${dryRunResult.preparedPayloads.podcast_rss.description}]]></description>
+  <enclosure url="${dryRunResult.preparedPayloads.podcast_rss.enclosure || ""}" type="audio/mpeg" />
+  <guid isPermaLink="false">${dryRunResult.preparedPayloads.podcast_rss.guid}</guid>
+  <pubDate>${dryRunResult.preparedPayloads.podcast_rss.pubDate}</pubDate>
+</item>`}
+                                  </pre>
+                                )}
+                                {activeDryRunTab === "youtube_v3" && (
+                                  <pre className="whitespace-pre-wrap">
+                                    {JSON.stringify(dryRunResult.preparedPayloads.youtube_v3, null, 2)}
+                                  </pre>
+                                )}
+                                {activeDryRunTab === "patreon_v2" && (
+                                  <pre className="whitespace-pre-wrap">
+                                    {JSON.stringify(dryRunResult.preparedPayloads.patreon_v2, null, 2)}
+                                  </pre>
+                                )}
+                                {activeDryRunTab === "quiplore" && (
+                                  <pre className="whitespace-pre-wrap">
+                                    {JSON.stringify(dryRunResult.preparedPayloads.quiplore, null, 2)}
+                                  </pre>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center p-6 text-[#8c6b4a]">
+                            <p className="text-xs">No validation results ready. Click <strong className="text-[#3d3122]">Run Diagnostic Check</strong> to dry-run the publishing sequence.</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -1,0 +1,49 @@
+name: QuipslyStudio
+options:
+  bundleIdPrefix: com.highground
+packages:
+  QuipslyVideoCore:
+    path: Sources/QuipslyVideoCore
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    majorVersion: 11.0.0
+
+targets:
+  QuipslyMac:
+    type: application
+    platform: macOS
+    sources: [Sources/QuipslyMac, Sources/SharedUI]
+    dependencies:
+      - package: QuipslyVideoCore
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseVertexAI
+    settings:
+      base:
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyMac
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+
+  QuipslyiOS:
+    type: application
+    platform: iOS
+    sources: [Sources/QuipslyiOS, Sources/SharedUI]
+    dependencies:
+      - package: QuipslyVideoCore
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseVertexAI
+    settings:
+      base:
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        SWIFT_VERSION: "5.9"
+        PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyiOS
+        GENERATE_INFOPLIST_FILE: YES

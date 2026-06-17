@@ -28,6 +28,10 @@ export default function HubPage() {
             <Compass size={16} aria-hidden="true" />
             Discover more
           </Link>
+          <Link href="/hub/lorelist-builder" className="button">
+            <Library size={16} aria-hidden="true" />
+            Create Lorelist
+          </Link>
         </div>
       </div>
 

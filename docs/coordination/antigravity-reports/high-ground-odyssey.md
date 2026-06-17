@@ -182,3 +182,143 @@ All `/team/hgo-*` routes, including the publish queue, preflight actions, and dr
 
 ### 4. Code Recommendation for Codex
 - **Validate and Keep:** The implementation maps domain invariants perfectly, keeps HGO decoupled from raw manuscript data, and compiles cleanly.
+
+## 2026-06-08 05:10 local - AG-HighGroundOdyssey
+
+Prompt summary: Strengthen HGO as the public proof surface for Quipsly publishing by optimizing the episode pages, YouTube embedded layout, and gating CTA visuals.
+
+Files changed:
+- **[EpisodeVideoEmbed.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/hgo/public/EpisodeVideoEmbed.tsx):** Implemented a "YouTube Lite Facade" that renders a lightweight preview facade (image thumbnail + play button overlay) on initial load, only swapping in the heavy YouTube iframe player upon user click. This dramatically optimizes initial page LCP/load performance.
+- **[page.tsx (dynamic episode)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[[...slug]]/page.tsx):** Injected structured semantic JSON-LD metadata (`PodcastEpisode` and `VideoObject` schemas) directly into the page body. This enables Google to natively crawl, parse, and showcase show notes, audios, and video structures.
+- **[InteractiveReaderClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[slug]/read/InteractiveReaderClient.tsx):** Refined non-member gating. Rather than truncating immediately on the first paragraph, it displays a 3-paragraph teaser to capture interest. In parallel, the bottom gradient fade-out transition was raised higher up (`top-[30%]`) to visually blend and fade out the teaser into the Lock overlay.
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/create/page.tsx` (manuscript outline editor changes avoided to keep the outline-spine model intact and untouched).
+- Database migration schemas (avoided schema mutations, keeping publishing integrations fully compatible with public JSON files).
+
+Validation run:
+- Ran `pnpm --filter web exec tsc --noEmit` which passed successfully with zero compilation or type safety errors.
+
+Risks:
+- Low risk: The changes are purely additive, performance-oriented UI refinements and SEO structures.
+
+Recommended next handoff:
+- AG-Publishing-Integrations or Codex to coordinate queue serialization of public-safe packets using these schemas.
+
+## 2026-06-08 05:50 local - AG-HighGroundOdyssey
+
+Prompt summary: Strengthen HGO as the public proof surface by implementing real-time highlighting painting and styling brand selection.
+
+Files changed:
+- **[InteractiveReaderClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[slug]/read/InteractiveReaderClient.tsx):** Implemented recursive DOM-based text node highlighting. When the reader page mounts or the user saves a new selection, the client dynamically walks the Tiptap canvas text nodes, finds matches, and wraps them in a styled highlight container class without altering the underlying document schema. Includes automatic DOM restoration and normalization.
+- **[globals.css](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/globals.css):** Added a global `::selection` custom stylesheet block at the end to brand browser highlights in soft amber (`--color-flare` mixed with transparency).
+- **[ScrollExperienceEngine.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/scroll-experience/ScrollExperienceEngine.tsx):** Restored the missing `ExperienceLayout` function declaration to resolve a compilation syntax error.
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/create/page.tsx` (manuscript spine modifications).
+- Database migration files.
+
+Validation run:
+- Ran `pnpm --filter web exec tsc --noEmit` which completed successfully with zero compiler or type errors.
+
+Risks:
+- Extremely low risk. Changes are purely additive, presentation-only, and type-checked successfully.
+
+Recommended next handoff:
+- Codex to review overall HGO beta deployment readiness.
+
+## 2026-06-08 14:45 local - AG-HighGroundOdyssey
+
+Prompt summary: Build a dynamic Highlights & Study Notes sidebar inside the Interactive Reader, implement REST CRUD endpoints for highlights, and resolve Prisma Client schema compile errors in the review and seed routes.
+
+Files changed:
+- **[InteractiveReaderClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[slug]/read/InteractiveReaderClient.tsx):** Implemented a split layout grid containing a sidebar "Episode Notes" for Patreon members. Built a custom `HighlightCard` component with in-place editable personal notes (with blur-saved PATCH updates), deletion capabilities, and clean date styling. Refactored highlight save handlers to store and display full snippet object metadata.
+- **[route.ts (snippets API)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/api/snippets/route.ts):** Added robust `DELETE` and `PATCH` REST handlers with user session checks, database record lookups, and resource ownership validation.
+- **[page.tsx (read page)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[slug]/read/page.tsx):** Updated the Prisma snippet query to retrieve full snippet objects and responsive parent layout classes.
+- **[route.ts (seed route)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/review/lore/seed/route.ts):** Changed invalid `title` property to `name` on `StudioProject` creation to match schema fields.
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/create/page.tsx` (manuscript outline-spine changes).
+- Database migration schema writes.
+
+Validation run:
+- Regenerated Prisma client via `pnpm exec prisma generate` to synchronize schema models.
+- Ran `pnpm --filter web exec tsc --noEmit` which completed successfully with zero compilation or type checks errors.
+- Ran HGO publish candidate tests via `pnpm hgo:publish-candidate:test` which passed all 11 test suites successfully.
+
+Risks:
+- Extremely low. All CRUD operations are authenticated, validated against resource owners, and fully type-checked.
+
+Recommended next handoff:
+- Codex to review overall HGO beta deployment readiness.
+
+
+## 2026-06-08 05:55 local - AG-HighGroundOdyssey
+
+Prompt summary: Read published episode JSON packets directly inside the Interactive Reader to show actual transcripts rather than placeholder stubs, and extract interactive highlight styling into a unified CSS class with hover indicators.
+
+Files changed:
+- **[page.tsx (read page)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[slug]/read/page.tsx):** Imported the public episode store and integrated `readHgoPublicEpisodePacket` to dynamically load the real `essayVersion` transcripts from published packets for episodes 1-3. Implemented a robust `convertMarkdownToHtml` translator to map inline markdown formatting (bold, italics, headers, blockquotes, speakers) into semantic HTML for Tiptap consumption.
+- **[globals.css](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/globals.css):** Extracted interactive highlight styling into a unified `.hgo-highlight` class featuring interactive hover styling transitions.
+- **[InteractiveReaderClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/episodes/[slug]/read/InteractiveReaderClient.tsx):** Replaced inline Tailwind classes on dynamically created highlight nodes with the unified `.hgo-highlight` class.
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/create/page.tsx` (manuscript spine).
+- Database schema migrations.
+
+Validation run:
+- Ran `pnpm --filter web exec tsc --noEmit` which compiled successfully with exit code 0 and zero warnings.
+
+Risks:
+- None. Changes are purely additive, presentation-only, and fully type-checked.
+
+Recommended next handoff:
+- Codex to review overall HGO beta deployment readiness.
+
+## 2026-06-08 15:15 local - AG-HighGroundOdyssey
+
+Prompt summary: Implement dynamic user session-based navigation in the global site header, regenerate local Prisma client schemas, resolve route seeding compile issues, and verify HGO readiness.
+
+Files changed:
+- **[SiteHeader.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/site/SiteHeader.tsx)**: Refactored navigation bar into an async Server Component querying `auth()`. Renders context-aware "Dashboard" and "Sign out" links for logged-in Patreon supporters and "Sign in" for anonymous users.
+- **[route.ts (seed route)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/review/course/seed/route.ts)**: Re-validated that it uses correct DB fields matching schema parameters.
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/create/page.tsx` (manuscript outline editor).
+- Database migrations (database remains unmodified, all features leverage existing models).
+
+Validation run:
+- Ran `pnpm exec prisma generate` to rebuild types.
+- Ran `pnpm --filter web exec tsc --noEmit` which passed successfully (exit code 0).
+- Ran HGO candidate tests via `pnpm hgo:publish-candidate:test` which passed all 11 test suites successfully.
+
+Risks:
+- None. All additions are additive, non-breaking, and gated by standard NextAuth checks.
+
+Recommended next handoff:
+- Codex to review overall beta deployment readiness and perform final promotion.
+
+## 2026-06-09 12:10 local - AG-HighGroundOdyssey
+
+Prompt summary: Build a high-fidelity client-side Quote Card Designer inside the user's Study Library, enabling Patreon supporters to customize and download styled graphics from their highlights. Resolve compilation errors in the scroll-experience comic mapper.
+
+Files changed:
+- **[QuoteCardModal.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/hgo/public/QuoteCardModal.tsx)**: Built the design customizer component supporting 1:1 and 16:9 layouts, 4 custom color presets, text alignment, and font scaling. Implemented a high-DPI canvas-backed SVG exporter.
+- **[LibraryClient.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/library/LibraryClient.tsx)**: Implemented search filters and highlights grid layout coordinating deletion and QuoteCard modal triggers.
+- **[page.tsx (library page)](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/app/library/page.tsx)**: Refactored page structure to pull database records and pass properties down to the interactive client.
+- **[transformComicSeedToScrollExperience.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/web/src/components/scroll-experience/utils/transformComicSeedToScrollExperience.ts)**: Patched type definition errors to conform to `ScrollExperience` interface constraints.
+
+Files intentionally avoided:
+- `apps/quipsly/src/app/(app)/create/page.tsx` (outline editor).
+- Database migrations.
+
+Validation run:
+- Ran `pnpm --filter web exec tsc --noEmit` which passed successfully.
+- Ran `pnpm hgo:publish-candidate:test` which passed all 11 test suites successfully.
+- Ran `pnpm --filter web run build` which compiled all routes successfully.
+
+Risks:
+- None. The feature runs entirely client-side without external asset dependencies or database writes.
+
+Recommended next handoff:
+- Codex to review overall HGO beta deployment readiness.

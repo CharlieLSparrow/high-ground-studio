@@ -27,6 +27,7 @@ export type AccessibleStudioProjectSummary = {
   role: StudioProjectAccessRole;
   accessSource: "grant";
   updatedAt: Date;
+  collaborators?: { email: string; role: StudioProjectAccessRole }[];
 };
 
 type ProjectWithAccess = Awaited<ReturnType<typeof findStudioProjectForAccess>>;
@@ -225,6 +226,10 @@ export async function listAccessibleStudioProjectSummariesForEmail(
       project: {
         include: {
           workspace: true,
+          accessGrants: {
+            where: { status: "ACTIVE" },
+            select: { email: true, role: true },
+          },
         },
       },
     },
@@ -243,6 +248,7 @@ export async function listAccessibleStudioProjectSummariesForEmail(
     role: grant.role,
     accessSource: "grant",
     updatedAt: grant.project.updatedAt,
+    collaborators: grant.project.accessGrants,
   }));
 }
 

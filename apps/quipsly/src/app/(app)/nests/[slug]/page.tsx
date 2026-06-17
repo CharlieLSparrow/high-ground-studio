@@ -10,6 +10,7 @@ import {
   Film,
   FolderOpen,
   MessageCircle,
+  Microscope,
   Mic,
   PackageCheck,
   PanelsTopLeft,
@@ -30,6 +31,7 @@ import {
   resolveStudioProjectAccess,
   roleAllowsAction,
 } from "@/lib/server/studio-project-access";
+import { CreateDocumentButton } from "./CreateDocumentButton";
 import {
   PRIVATE_FICTION_ISSUE_SLUG,
   PRIVATE_FICTION_PROJECT_SLUG,
@@ -80,9 +82,9 @@ function workCopy(slug: string, kind: StudioNestKind) {
 
   if (slug === "marine-biology-research") {
     return [
-      "Attach research-photo batches, source folders, and dataset manifests to this shared Nest.",
-      "Capture organism IDs, visible evidence, uncertainty, reviewer notes, and provenance before any model work.",
-      "Use the future Mac Vision Lab for local-heavy image workflows when the data is organized enough to train safely.",
+      "Attach Chula Vista reef-ball tile photo batches, workbook rows, source folders, and dataset manifests to this shared Nest.",
+      "Capture organism IDs, coverage masks, visible evidence, uncertainty, reviewer notes, and provenance before any model work.",
+      "Use Quipsly Mac Vision Lab for HDD-backed manifests, hashes, previews, and future local-heavy image workflows.",
     ];
   }
 
@@ -201,7 +203,7 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
   const project = await findStudioProjectForAccess(slug, prisma);
   if (!project) notFound();
 
-  const [documents, grants] = await Promise.all([
+  const [documents, grants, assets, mediaBins] = await Promise.all([
     prisma.studioDocument.findMany({
       where: { projectId: project.id },
       select: {
@@ -215,6 +217,16 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
       take: 6,
     }),
     listStudioProjectAccessGrants(project.slug, prisma),
+    prisma.studioMediaAsset.findMany({
+      where: { projects: { some: { id: project.id } } },
+      take: 6,
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.mediaBin.findMany({
+      where: { projectId: project.id },
+      take: 6,
+      orderBy: { updatedAt: "desc" },
+    }),
   ]);
 
   const nestKind = nestKindFromSourceLabel(project.sourceLabel);
@@ -224,6 +236,7 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
   const canManage = access.role ? roleAllowsAction(access.role, "manage") : false;
   const activeCollaborators = grants.filter((grant) => grant.status === "ACTIVE");
   const episodeSlug = defaultEpisodeForNest(project.slug);
+  const hasVisualResearchLab = project.slug === "marine-biology-research" || nestKind === "gallery";
 
   return (
     <main className="min-h-full bg-[#fdfaf6] px-4 py-6 text-[#3d3122] md:px-8 md:py-10">
@@ -273,107 +286,170 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
                   </p>
                 </div>
               </div>
-              <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl border border-[#eadfca] bg-white p-3">
-                  <dt className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Documents</dt>
-                  <dd className="mt-1 font-serif text-2xl font-black">{documents.length}</dd>
+              <div className="mt-5 rounded-2xl border border-[#eadfca] bg-white p-4">
+                <dt className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Documents</dt>
+                <dd className="mt-1 font-serif text-2xl font-black">{documents.length}</dd>
+              </div>
+              <div className="mt-6 rounded-2xl border border-[#eadfca] bg-white p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Collaborators</h3>
+                  <span className="font-serif text-lg font-black text-[#3d3122]">{activeCollaborators.length}</span>
                 </div>
-                <div className="rounded-2xl border border-[#eadfca] bg-white p-3">
-                  <dt className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">People</dt>
-                  <dd className="mt-1 font-serif text-2xl font-black">{activeCollaborators.length}</dd>
-                </div>
-              </dl>
+                <ul className="space-y-3">
+                  {activeCollaborators.map(grant => (
+                    <li key={grant.email} className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e8dcc4] text-[10px] font-bold text-[#3d3122]">
+                        {grant.email.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <div className="truncate text-xs font-bold text-[#3d3122]">{grant.email}</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">{grant.role}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {canManage && (
+                  <Link
+                    href={`/nests/${encodeURIComponent(project.slug)}/access`}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#eadfca] bg-[#fffaf3] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a] transition hover:bg-[#fff8eb]"
+                  >
+                    Invite
+                  </Link>
+                )}
+              </div>
             </aside>
           </div>
         </header>
 
-        <section className="rounded-3xl border border-[#e8dcc4] bg-[#fffdf9] p-5 shadow-sm md:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.24em] text-[#a36f2e]">
-                First thing to do in this Nest
-              </div>
-              <h2 className="mt-2 font-serif text-3xl font-black text-[#3d3122]">
-                Open the document. Chat and collaborators are already attached.
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6b5b45]">
-                The document is the living work surface. Nest Chat follows this same Nest slug on manuscript, editor, recorder, and call routes, so conversations stay with the project instead of floating off into space like a poorly supervised raccoon.
-              </p>
+        {documents.length === 1 ? (
+          <section className="rounded-3xl border-2 border-emerald-100 bg-emerald-50/50 p-6 text-center shadow-sm md:p-10">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+              <Sparkles size={28} />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <h2 className="font-serif text-3xl font-black text-emerald-950 md:text-4xl">
+              Start Here: Open Welcome Document
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-emerald-900/80 md:text-base">
+              The document is the living work surface. Your new Nest has been seeded with an interactive tutorial tailored to this template. Learn the workflow by doing.
+            </p>
+            <div className="mt-8 flex justify-center">
               <Link
                 href={`/create?project=${encodeURIComponent(project.slug)}`}
-                className="inline-flex items-center gap-2 rounded-full bg-[#3d3122] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[#fffaf3] shadow-sm transition hover:-translate-y-0.5"
+                className="inline-flex items-center gap-3 rounded-full bg-emerald-900 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
               >
-                <BookOpen size={14} />
-                Open document
-              </Link>
-              <Link
-                href={`/nests/${encodeURIComponent(project.slug)}/access`}
-                className="inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a] shadow-sm transition hover:bg-[#fff8eb]"
-              >
-                <Users size={14} />
-                {canManage ? "Invite collaborator" : "View collaborators"}
+                <BookOpen size={18} />
+                Open Welcome Document
               </Link>
             </div>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-4">
-            {[
-              ["1", "Document", "Write, study, tag, and organize the work."],
-              ["2", "Chat", "Use the Nest Chat button in the bottom-right corner for the shared thread."],
-              ["3", "Media tools", "Open the editor or recorder when audio/video belongs to this Nest."],
-              ["4", "Access", canManage ? "Invite collaborators by email whenever you are ready." : "You can see collaborators; an owner handles invites."],
-            ].map(([step, title, body]) => (
-              <div key={step} className="rounded-2xl border border-[#eadfca] bg-white p-4">
-                <div className="mb-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#3d3122] text-xs font-black text-[#fffaf3]">
-                  {step}
+          </section>
+        ) : (
+          <section className="rounded-3xl border border-[#e8dcc4] bg-[#fffdf9] p-5 shadow-sm md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.24em] text-[#a36f2e]">
+                  First thing to do in this Nest
                 </div>
-                <h3 className="font-serif text-lg font-black text-[#3d3122]">{title}</h3>
-                <p className="mt-2 text-xs leading-5 text-[#7d6a50]">{body}</p>
+                <h2 className="mt-2 font-serif text-3xl font-black text-[#3d3122]">
+                  Open the document. Chat and collaborators are already attached.
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6b5b45]">
+                  The document is the living work surface. Nest Chat follows this same Nest slug on manuscript, editor, recorder, and call routes, so conversations stay with the project.
+                </p>
               </div>
-            ))}
-          </div>
-        </section>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/create?project=${encodeURIComponent(project.slug)}`}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#3d3122] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[#fffaf3] shadow-sm transition hover:-translate-y-0.5"
+                >
+                  <BookOpen size={14} />
+                  Open document
+                </Link>
+                <Link
+                  href={`/nests/${encodeURIComponent(project.slug)}/access`}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a] shadow-sm transition hover:bg-[#fff8eb]"
+                >
+                  <Users size={14} />
+                  {canManage ? "Invite collaborator" : "View collaborators"}
+                </Link>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-4">
+              {[
+                ["1", "Document", "Write, study, tag, and organize the work."],
+                ["2", "Chat", "Use the Nest Chat button in the bottom-right corner for the shared thread."],
+                ["3", "Media tools", "Open the editor or recorder when audio/video belongs to this Nest."],
+                ["4", "Access", canManage ? "Invite collaborators by email whenever you are ready." : "You can see collaborators; an owner handles invites."],
+              ].map(([step, title, body]) => (
+                <div key={step} className="rounded-2xl border border-[#eadfca] bg-white p-4">
+                  <div className="mb-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#3d3122] text-xs font-black text-[#fffaf3]">
+                    {step}
+                  </div>
+                  <h3 className="font-serif text-lg font-black text-[#3d3122]">{title}</h3>
+                  <p className="mt-2 text-xs leading-5 text-[#7d6a50]">{body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <ToolCard
-            href={`/create?project=${encodeURIComponent(project.slug)}`}
-            title={documentActionLabel(nestKind)}
-            description="The one living document spine: write, study, tag Chapter/Episode structure, annotate, and let Quipslys assist transparently."
-            icon={BookOpen}
-          />
-          <ToolCard
-            href={`/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`}
-            title="Open media editor"
-            description="Import audio/video, set spine audio, sync clips, build timelines, and prepare episode or social outputs attached to this Nest."
-            icon={Film}
-          />
-          <ToolCard
-            href={`/recorder?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`}
-            title="Open recorder"
-            description="Record or prepare live sessions with the manuscript nearby, then hydrate the editor from the same project/episode payload."
-            icon={Mic}
-          />
+          {nestKind === "home" ? (
+            <>
+              <ToolCard
+                href={`/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`}
+                title="Open media editor"
+                description="Import audio/video, set spine audio, sync clips, build timelines, and prepare episode or social outputs attached to this Nest."
+                icon={Film}
+              />
+              <ToolCard
+                href={`/recorder?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`}
+                title="Open recorder"
+                description="Record or prepare live sessions with the manuscript nearby, then hydrate the editor from the same project/episode payload."
+                icon={Mic}
+              />
+              <ToolCard
+                href={`/create?project=${encodeURIComponent(project.slug)}`}
+                title={documentActionLabel(nestKind)}
+                description="The one living document spine: write, study, tag Chapter/Episode structure, annotate, and let Quipslys assist transparently."
+                icon={BookOpen}
+              />
+            </>
+          ) : (
+            <>
+              <ToolCard
+                href={`/create?project=${encodeURIComponent(project.slug)}`}
+                title={documentActionLabel(nestKind)}
+                description="The one living document spine: write, study, tag Chapter/Episode structure, annotate, and let Quipslys assist transparently."
+                icon={BookOpen}
+              />
+              {hasVisualResearchLab ? (
+                <ToolCard
+                  href={`/nests/${encodeURIComponent(project.slug)}/visual-research`}
+                  title="Visual research lab"
+                  description="Connect image batches, local manifests, source metadata, visual labels, review state, mask annotations, and model-ready exports."
+                  icon={Microscope}
+                />
+              ) : null}
+              <ToolCard
+                href={`/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`}
+                title="Open media editor"
+                description="Import audio/video, set spine audio, sync clips, build timelines, and prepare episode or social outputs attached to this Nest."
+                icon={Film}
+              />
+              <ToolCard
+                href={`/recorder?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`}
+                title="Open recorder"
+                description="Record or prepare live sessions with the manuscript nearby, then hydrate the editor from the same project/episode payload."
+                icon={Mic}
+              />
+            </>
+          )}
           <ToolCard
             href={`/nests/${encodeURIComponent(project.slug)}/access`}
             title="Invite collaborators"
             description={canManage ? "Grant viewer/editor/owner access by email, even before the person creates an account." : "View who has access. Owners can invite or revoke collaborators."}
             icon={Users}
           />
-          <div className="rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-4 shadow-sm">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-2xl border border-[#eadfca] bg-white p-3 text-[#8c6b4a]">
-                <MessageCircle size={20} />
-              </div>
-              <h3 className="font-serif text-xl font-black text-[#3d3122]">Open Nest Chat</h3>
-            </div>
-            <p className="text-sm leading-6 text-[#6b5b45]">
-              Use the fixed Nest Chat button in the bottom-right corner. It stays attached to <strong>{project.slug}</strong> across document, editor, recorder, and call routes.
-            </p>
-            <div className="mt-4 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a]">
-              Bottom-right button
-            </div>
-          </div>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -426,20 +502,23 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
 
         <section className="grid gap-6 lg:grid-cols-2">
           <article className="rounded-3xl border border-[#e8dcc4] bg-white p-5 shadow-sm md:p-6">
-            <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3 text-[#8c6b4a]">
-                <FileText size={22} />
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3 text-[#8c6b4a]">
+                  <FileText size={22} />
+                </div>
+                <div>
+                  <h2 className="font-serif text-2xl font-black">Documents</h2>
+                  <p className="mt-1 text-sm text-[#7d6a50]">Open the living documents for this Nest.</p>
+                </div>
               </div>
-              <div>
-                <h2 className="font-serif text-2xl font-black">Documents</h2>
-                <p className="mt-1 text-sm text-[#7d6a50]">Open the current document spine for this Nest.</p>
-              </div>
+              {canWrite && <CreateDocumentButton projectSlug={project.slug} />}
             </div>
             <div className="space-y-3">
               {documents.map((document) => (
                 <Link
                   key={document.id}
-                  href={`/create?project=${encodeURIComponent(project.slug)}`}
+                  href={`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}`}
                   className="block rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-4 transition hover:border-[#d5b77d] hover:bg-[#fff8eb]"
                 >
                   <div className="font-serif text-xl font-black text-[#3d3122]">{document.title}</div>
@@ -464,6 +543,78 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
                 </div>
               ) : null}
             </div>
+          </article>
+
+          <article className="rounded-3xl border border-[#e8dcc4] bg-white p-5 shadow-sm md:p-6 lg:col-span-2">
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3 text-[#8c6b4a]">
+                  <Camera size={22} />
+                </div>
+                <div>
+                  <h2 className="font-serif text-2xl font-black">Assets & Media</h2>
+                  <p className="mt-1 text-sm text-[#7d6a50]">Photos, videos, and media bins attached to this Nest.</p>
+                </div>
+              </div>
+              {canWrite && (
+                <Link
+                  href={`/editor?project=${encodeURIComponent(project.slug)}`}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a] shadow-sm transition hover:bg-[#fff8eb]"
+                >
+                  <FolderOpen size={14} />
+                  Open Media Editor
+                </Link>
+              )}
+            </div>
+
+            {assets.length === 0 && mediaBins.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#eadfca] bg-[#fffaf3] p-5 text-sm leading-6 text-[#7d6a50]">
+                <h3 className="font-serif text-xl font-black text-[#3d3122]">No assets uploaded yet.</h3>
+                <p className="mt-2">
+                  Drop unsorted media files, photos, and camera proxy files into the Media Editor to attach them to this Nest.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    href={`/editor?project=${encodeURIComponent(project.slug)}`}
+                    className="inline-flex rounded-full bg-[#3d3122] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[#fffaf3] transition hover:-translate-y-0.5"
+                  >
+                    Open Media Editor
+                  </Link>
+                  <Link
+                    href={`/recorder?project=${encodeURIComponent(project.slug)}`}
+                    className="inline-flex rounded-full border border-[#eadfca] bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a] transition hover:bg-[#fff8eb]"
+                  >
+                    Record new video
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {mediaBins.map(bin => (
+                  <div key={bin.id} className="rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-4 transition hover:border-[#d5b77d] hover:bg-[#fff8eb]">
+                    <div className="mb-2 flex items-center gap-2 text-[#8c6b4a]">
+                      <FolderOpen size={16} />
+                      <span className="text-[10px] font-black uppercase tracking-[0.14em]">Media Bin</span>
+                    </div>
+                    <div className="font-serif text-lg font-black text-[#3d3122]">{bin.name}</div>
+                    <div className="mt-2 text-[11px] font-bold text-[#8c6b4a]">Updated {bin.updatedAt.toLocaleDateString()}</div>
+                  </div>
+                ))}
+                {assets.map(asset => (
+                  <div key={asset.id} className="rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-4 transition hover:border-[#d5b77d] hover:bg-[#fff8eb]">
+                    <div className="mb-2 flex items-center gap-2 text-[#8c6b4a]">
+                      {asset.mimeType?.includes('video') ? <Film size={16} /> : <Camera size={16} />}
+                      <span className="text-[10px] font-black uppercase tracking-[0.14em]">Asset</span>
+                    </div>
+                    <div className="truncate font-serif text-lg font-black text-[#3d3122]">{asset.filename}</div>
+                    <div className="mt-2 text-[11px] font-bold text-[#8c6b4a]">
+                      {asset.sizeBytes ? `${(Number(asset.sizeBytes) / 1024 / 1024).toFixed(1)} MB • ` : ''}
+                      {asset.createdAt.toLocaleDateString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </article>
 
           <article className="rounded-3xl border border-[#e8dcc4] bg-white p-5 shadow-sm md:p-6">

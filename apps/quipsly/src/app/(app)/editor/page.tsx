@@ -46,6 +46,10 @@ type EpisodeProductionState = {
   boundaryLabel: string;
   status: string;
   message?: string;
+  actorEmail?: string | null;
+  accessRole?: string | null;
+  accessSource?: string | null;
+  accessCode?: string | null;
   recordingRoomJson?: unknown;
   timelineJson?: unknown;
   transcriptJson?: unknown;
@@ -3258,6 +3262,11 @@ function CloudEditorContent() {
     );
   }, [timelineState.clips]);
 
+  const selectedClipIsPremiereRestorePreview = Boolean(
+    selectedClip
+    && (selectedClip.id.startsWith("premiere-restore-preview-") || selectedClip.name.startsWith("Restore preview -"))
+  );
+
   const timelineBackups = useMemo(() => {
     return normalizeTimelineBackups(productionState?.productionJson);
   }, [productionState?.productionJson]);
@@ -3665,7 +3674,12 @@ function CloudEditorContent() {
 
   const promotePremiereDraftEdit = useCallback(async (draft: PremiereDraftEdit) => {
     const confirmed = window.confirm(
-      `Promote this Premiere draft edit for ${draft.episodeSlug}?\n\nQuipsly will create a timeline backup first, then replace the active timeline with ${draft.timelineClipCount} draft clip(s).`
+      `Promote this Premiere draft edit for ${draft.episodeSlug}?\n\n` +
+      `WHAT WILL CHANGE:\n` +
+      `The active Quipsly timeline will be completely replaced by the ${draft.timelineClipCount} clips from this Premiere draft.\n` +
+      (premiereRestorePreviewClips.length > 0 ? `\nPREVIEW CLIPS INCLUDED:\n${premiereRestorePreviewClips.length} local restore preview clips currently on your timeline will be saved into the promoted timeline.\n` : "") +
+      `\nBACKUP & UNDO:\n` +
+      `A backup of your current active timeline will be saved to history first. You can restore this backup from the Mac app if you need to undo.`
     );
     if (!confirmed) return;
 
@@ -5043,6 +5057,22 @@ function CloudEditorContent() {
         ? "border-red-200 bg-red-50 text-red-800"
         : "border-slate-200 bg-slate-50 text-slate-700";
 
+  const productionAccessLabel = useMemo(() => {
+    if (!productionState) return "Checking";
+    if (productionState.mode !== "database") {
+      if (productionState.status === "auth-required") return "Sign-in required";
+      if (productionState.status === "access-denied") return "Access denied";
+      return "Local-only fallback";
+    }
+    return `${productionState.accessRole ?? "WRITE"} via ${productionState.accessSource ?? "Nest session"}`;
+  }, [productionState]);
+
+  const productionAccessTone = productionState?.mode === "database"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : productionState?.status === "auth-required" || productionState?.status === "access-denied"
+      ? "border-red-200 bg-red-50 text-red-900"
+      : "border-amber-200 bg-amber-50 text-amber-900";
+
   const productionDiagnostics = useMemo(() => {
     const clips = timelineState.clips;
     const audioClips = clips.filter((clip) => isAudioTrackId(clip.trackId) || clip.kind === "audio");
@@ -5336,6 +5366,15 @@ function CloudEditorContent() {
       };
     }
   }, [timelineState, productionState, importedMediaAssets, episodeSlug, resolvedProjectSlug]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window as any).webkit?.messageHandlers?.quipslyMacBridge) {
+      (window as any).webkit.messageHandlers.quipslyMacBridge.postMessage({
+        event: "playhead_update",
+        time: currentTime
+      });
+    }
+  }, [currentTime]);
 
   const timelineSaved = timelineSaveState === "saved" || timelineFingerprint === timelineSavedFingerprintRef.current;
   const selectedClipAsset = useMemo(() => {
@@ -5681,11 +5720,38 @@ function CloudEditorContent() {
             }`}>
               {productionState?.mode === "database"
                 ? `DB-backed production ${productionState.id.slice(0, 8)}`
-                : productionState?.message ?? "URL-backed production room until DB sync completes"}
+                : productionState?.message ?? "Local-only production room until Nest sync is available"}
+            </div>
+            <div className={`mt-2 rounded-lg border px-3 py-2 font-bold leading-5 ${productionAccessTone}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-black">Nest access</div>
+                  <div className="mt-1">{productionAccessLabel}</div>
+                  {productionState?.actorEmail && (
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] opacity-80">
+                      {productionState.actorEmail}
+                    </div>
+                  )}
+                </div>
+                <span className="shrink-0 rounded-full border border-current bg-white/70 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                  {productionState?.mode === "database" ? "DB" : "local"}
+                </span>
+              </div>
+              {productionState?.mode !== "database" && (
+                <div className="mt-2 rounded-md border border-current/20 bg-white/60 px-2 py-1 text-[11px]">
+                  Timeline edits can stay in this browser for review, but save, import, collaboration, and sync require a writable Nest session.
+                </div>
+              )}
             </div>
             <div className="mt-3 rounded-lg border border-[#ead6aa] bg-white/80 p-3 text-[11px] font-bold leading-5 text-[#5d4528]">
               <div className="font-black uppercase tracking-[0.18em] text-[#9a641e]">Production truth</div>
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                <span>Access</span>
+                <span className="text-right">{productionAccessLabel}</span>
+                <span>Actor</span>
+                <span className="truncate text-right" title={productionState?.actorEmail ?? undefined}>
+                  {productionState?.actorEmail ?? "Not connected"}
+                </span>
                 <span>Hydrated from</span>
                 <span className="text-right">{timelineHydrationSource}</span>
                 <span>Timeline</span>
@@ -5790,8 +5856,27 @@ function CloudEditorContent() {
                   <div className="font-black">Fix before final export</div>
                   <ul className="mt-1 space-y-1">
                     {productionDiagnostics.sourceProblemClips.slice(0, 4).map((clip) => (
-                      <li key={clip.id} className="truncate font-mono text-[10px]">
-                        {clip.trackId} {clip.name}: {describeClipSource(clip)}
+                      <li key={clip.id} className="flex items-center justify-between gap-2 font-mono text-[10px]">
+                        <span className="truncate" title={describeClipSource(clip)}>
+                          {clip.trackId} {clip.name}: {describeClipSource(clip)}
+                        </span>
+                        <select
+                          className="w-32 shrink-0 rounded border border-amber-300 bg-white px-1 py-0.5 text-[#5d4528]"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const asset = importedMediaAssets.find(a => a.id === e.target.value);
+                              if (asset) updateClipSource(clip.id, asset.playbackUrl || asset.id, asset.originalName);
+                            }
+                          }}
+                        >
+                          <option value="" disabled>Replace File...</option>
+                          {importedMediaAssets.map((asset) => (
+                            <option key={asset.id} value={asset.id}>
+                              {asset.originalName} ({asset.kind})
+                            </option>
+                          ))}
+                        </select>
                       </li>
                     ))}
                   </ul>
@@ -6500,8 +6585,9 @@ function CloudEditorContent() {
                                             );
                                           }}
                                           className="rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-black text-[9px] text-indigo-900 hover:bg-indigo-100"
+                                          title="Cue in Source Monitor (play all material, ignoring cuts)"
                                         >
-                                          {exactSourceCue ? "Cue range" : "Cue source"}
+                                          {exactSourceCue ? "Cue range in Source" : "Cue in Source Monitor"}
                                         </button>
                                         {matchingClip && (
                                           <button
@@ -6536,8 +6622,9 @@ function CloudEditorContent() {
                                               setMediaImportStatus(`Added a local restore preview for ${sourceName} at ${formatClock(previewStart)}. Review it, then save/promote intentionally if you want to keep it.`);
                                             }}
                                             className="rounded border border-indigo-300 bg-white px-2 py-0.5 font-black text-[9px] text-indigo-900 hover:bg-indigo-50"
+                                            title="Add this range back to the timeline and preview it"
                                           >
-                                            Preview restore
+                                            Preview Restore
                                           </button>
                                         )}
                                       </div>
@@ -6564,10 +6651,14 @@ function CloudEditorContent() {
                           </div>
                         )}
 
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => previewPremiereDraftEdit(draft)}
+                        <div className="mt-4 border-t border-[#e8dcc4] pt-3">
+                          <div className="mb-3 text-[11px] font-bold leading-5 text-[#6f5336]">
+                            <span className="font-black text-[#3d3122]">Promotion replaces the active timeline.</span> A backup of the current timeline will be saved to history, which you can restore from the Mac app. Local preview restore clips will be included in the promoted timeline.
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => previewPremiereDraftEdit(draft)}
                             disabled={draft.timelineClips.length === 0}
                             className="rounded-lg border border-[#d8b777] bg-[#fff8ec] px-3 py-2 font-black text-[#7b4f1f] hover:bg-[#f3e4c7] disabled:cursor-not-allowed disabled:bg-[#f3e4c7] disabled:text-[#8c6b4a]"
                           >
@@ -6610,6 +6701,7 @@ function CloudEditorContent() {
                           </span>
                         </div>
                       </div>
+                    </div>
                     );
                   })}
                 </div>
@@ -6873,6 +6965,7 @@ function CloudEditorContent() {
                           src={syncWizardTargetAsset.playbackUrl}
                           controls
                           preload="metadata"
+                          muted
                           className="mt-2 max-h-44 w-full rounded-lg bg-black"
                         />
                       )}
@@ -7399,6 +7492,78 @@ function CloudEditorContent() {
                   <>
               <div className="font-black uppercase tracking-[0.18em] text-[#9a641e]">Selected clip</div>
               <div className="mt-2 font-black text-[#3d3122]">{selectedClip.name}</div>
+              {selectedClipIsPremiereRestorePreview && (
+                <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-indigo-950">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-black">Premiere restore preview</div>
+                      <div className="mt-1 text-[11px] font-bold leading-5">
+                        This is a temporary recovered source range from the Premiere rescue flow. Review it, then either remove it or keep it by saving the timeline.
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-indigo-200 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                      temporary
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-1 rounded-md border border-indigo-100 bg-white/80 px-2 py-1 text-[11px] font-bold leading-5 text-[#3d3122]">
+                    <div className="flex justify-between gap-3">
+                      <span>Timeline in</span>
+                      <span className="font-mono">{formatClock(selectedClip.startIn)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Source range</span>
+                      <span className="font-mono">
+                        {formatClock(selectedClip.sourceStart)} - {formatClock(selectedClip.sourceEnd ?? selectedClip.sourceStart + selectedClip.duration)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentTime(selectedClip.startIn);
+                        setViewMode("timeline");
+                        setEditorMode("play-all");
+                        setIsPreviewPlaying(false);
+                        setMediaImportStatus(`Cued temporary restore preview "${selectedClip.name}" at ${formatClock(selectedClip.startIn)}.`);
+                      }}
+                      className="rounded-md border border-indigo-200 bg-white px-3 py-1.5 text-[11px] font-black text-indigo-900 hover:bg-indigo-100"
+                    >
+                      Cue preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const removedName = selectedClip.name;
+                        deleteClip(selectedClip.id);
+                        setSelectedClipId(null);
+                        setIsPreviewPlaying(false);
+                        setTimelineSaveStateSafe("conflict");
+                        setMediaImportStatus(`Removed temporary restore preview "${removedName}". Save the timeline to keep this cleanup.`);
+                      }}
+                      className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-[11px] font-black text-red-900 hover:bg-red-50"
+                    >
+                      Remove preview
+                    </button>
+                    {premiereRestorePreviewClips.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const removedCount = premiereRestorePreviewClips.length;
+                          for (const clip of premiereRestorePreviewClips) deleteClip(clip.id);
+                          setSelectedClipId(null);
+                          setIsPreviewPlaying(false);
+                          setTimelineSaveStateSafe("conflict");
+                          setMediaImportStatus(`Removed ${removedCount} temporary restore previews. Save the timeline to keep this cleanup.`);
+                        }}
+                        className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-black text-red-900 hover:bg-red-100"
+                      >
+                        Remove all previews
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className={`mt-2 rounded-lg border px-3 py-2 font-bold leading-5 ${healthStatusStyles(selectedHealth?.status ?? (isMissingProductionSource(selectedClip) ? "error" : "unchecked"))}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -8052,7 +8217,21 @@ function CloudEditorContent() {
                           Linked import
                         </span>
                       )}
+                      {selectedClipIsPremiereRestorePreview && (
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-indigo-900">
+                          Restore preview
+                        </span>
+                      )}
                     </div>
+                    {selectedClipIsPremiereRestorePreview && (
+                      <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] font-bold leading-5 text-indigo-950">
+                        <div className="font-black">Temporary Premiere rescue clip</div>
+                        <div className="mt-1">
+                          Source {formatClock(selectedClip.sourceStart)} - {formatClock(selectedClip.sourceEnd ?? selectedClip.sourceStart + selectedClip.duration)}.
+                          Review this range before saving it into the real episode edit.
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-2 text-xs font-bold leading-5 text-[#6f5336]">
                       {selectedClipAsset
                         ? `Using ${selectedClipAsset.originalName}.`
@@ -8206,14 +8385,16 @@ function CloudEditorContent() {
                      <button
                        onClick={() => startPlaybackMode("play-all")}
                        className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md transition-colors ${timelineState.editorMode === "play-all" ? "bg-amber-600 text-white" : "bg-[#2d2d2d] text-gray-400 hover:text-white"}`}
+                       title="Source Monitor: Play all source material, ignoring transcript cuts"
                      >
-                       Source review
+                       Source Monitor
                      </button>
                      <button
                        onClick={() => startPlaybackMode("play-edit")}
                        className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md transition-colors ${(timelineState.editorMode === "play-edit" || !timelineState.editorMode) ? "bg-amber-600 text-white" : "bg-[#2d2d2d] text-gray-400 hover:text-white"}`}
+                       title="Program Monitor: Play only the active edit, skipping deleted text"
                      >
-                       Active edit
+                       Program Monitor
                      </button>
                    </div>
                    <button
@@ -8280,20 +8461,26 @@ function CloudEditorContent() {
               <div className="p-4 bg-[#fdfaf6] border-b border-[#e8dcc4]">
                 <h2 className="font-bold text-lg text-[#3d3122]">Paper Edit</h2>
                 <p className="text-xs text-[#8c6b4a] font-medium mt-1">
-                  Select text to deactivate it from the active edit. Quipsly skips it during Play Active Edit, but keeps the source recoverable.
+                  <strong>Click a word</strong> to seek the playhead. <strong>Shift+Click a block</strong> to cut/restore it from the active edit. Quipsly skips cut text during Program Monitor playback.
                 </p>
               </div>
               <div className="p-8 overflow-y-auto flex-1 space-y-6 text-xl leading-loose font-serif text-[#5e4b33]">
                 {timelineState.transcript.map((block) => (
                   <span
                     key={block.id}
-                    onClick={() => toggleDeleteBlock(block.id)}
+                    onClick={(e) => {
+                      if (e.shiftKey) {
+                        e.stopPropagation();
+                        toggleDeleteBlock(block.id);
+                      }
+                    }}
                     className={`
-                      inline-block mr-2 px-1 cursor-pointer transition-all rounded relative
-                      ${block.deleted || block.deactivated ? 'line-through text-[#d4c1a0]' : 'hover:bg-amber-100/50'}
-                      ${block.deleted ? 'decoration-red-500/50 decoration-2' : ''}
-                      ${block.deactivated ? 'decoration-purple-500/50 decoration-2 decoration-dashed' : ''}
+                      inline-block mr-2 px-1 transition-all rounded relative
+                      ${block.deleted || block.deactivated ? 'line-through text-[#d4c1a0]' : ''}
+                      ${block.deleted ? 'decoration-red-500/50 decoration-2 cursor-pointer hover:bg-red-50' : ''}
+                      ${block.deactivated ? 'decoration-purple-500/50 decoration-2 decoration-dashed cursor-pointer hover:bg-purple-50' : ''}
                     `}
+                    title="Shift+Click to cut/restore this block"
                   >
                     {block.alert && !block.deleted && !block.deactivated && (
                       <span className="absolute -top-6 left-0 bg-red-500 text-white text-[10px] font-sans font-bold px-2.5 py-0.5 rounded-md shadow-sm whitespace-nowrap z-10">
@@ -8310,7 +8497,14 @@ function CloudEditorContent() {
                       return (
                         <span
                           key={word.id}
-                          className={isActive ? "rounded border border-amber-300 bg-amber-100 px-1 text-amber-900 shadow-sm" : undefined}
+                          onClick={(e) => {
+                            if (!e.shiftKey) {
+                              e.stopPropagation();
+                              setIsPreviewPlaying(false);
+                              setCurrentTime(word.start);
+                            }
+                          }}
+                          className={isActive ? "rounded border border-amber-300 bg-amber-100 px-1 text-amber-900 shadow-sm cursor-pointer" : "cursor-pointer hover:bg-amber-100/50 rounded px-1 transition-colors"}
                         >
                           {word.text}
                         </span>

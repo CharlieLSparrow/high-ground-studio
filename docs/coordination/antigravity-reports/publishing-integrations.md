@@ -548,3 +548,183 @@ Carry-forward rule: publishing UI should talk about public-safe packets, destina
 - Added reusable publishing destination status normalization and a destination status rail for publishing package candidates.
 - Calendar and analytics pages now render destination names through shared helpers instead of raw enum/string fragments.
 - Public HGO episode and home pages were checked: they are already packet-fed and render the latest episode from `listHgoPublicEpisodePackets()`.
+
+---
+
+## 2026-06-08 05:15 local - AG-Publishing-Integrations
+
+Prompt summary:
+Make Quipsly's output/publishing pipeline feel real by providing fully interactive form inputs, metadata overrides, audio/video links, YouTube chapters, and Patreon gated teasers in the Package Builder UI. Connect edits to updateCandidatePacketAction and ensure auto-saving on approval.
+
+Files changed:
+- [MODIFY] [page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx): Made form fields editable (Title, Summary, Thumbnail URL, Podcast Audio URL, YouTube Video URL, Tags, Chapter Markers, Patreon Teaser, and Gating Toggle), added "Save Details" button, enregistered automatic saving on publish approval, and wired live state badge displays.
+- [MODIFY] [StoryboardGridRenderer.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/storyboards/builder/StoryboardGridRenderer.tsx): Fixed a storyboard-specific TypeScript compilation type constraint warning (null to undefined assignment mismatch for `vfxNotes`).
+
+Files intentionally avoided:
+- [page.tsx (editor)](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/editor/page.tsx): Contains legacy syntax type warnings inside `/editor` route that were left untouched to respect project scope boundaries.
+
+Validation run:
+- Executed `pnpm hgo:publish-candidate:test`: 11/11 tests pass successfully.
+
+Risks:
+- High input lengths or empty overrides could trigger downstream UI rendering differences on HGO/RSS feeds; client-side validator warnings advise users on SEO title and summary requirements before publishing.
+
+Recommended next handoff:
+- Release Captain / DevOps to deploy the interactive package builder to staging and verify end-to-end RSS dynamic feed XML generation.
+
+---
+
+## 2026-06-08 05:45 local - AG-Publishing-Integrations
+
+Prompt summary:
+Expand the Package Builder UI infrastructure and UX with a Pre-Publish Dry-Run check panel and a prepared XML/JSON payload inspector, connected to a new server-side check action (`testPublishCandidateAction`).
+
+Files changed:
+- [MODIFY] [actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/create/actions.ts): Added `testPublishCandidateAction` to dynamically validate package candidates across destinations and generate payload outputs.
+- [MODIFY] [page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx): Added state controls, a diagnostic validation check button, errors/warnings display boxes, and a code tab switcher component to inspect RSS XML, YouTube JSON, and Patreon JSON payload structures live in the UI.
+
+Files intentionally avoided:
+- None.
+
+Validation run:
+- Typechecked app `quipsly` successfully: compiles clean with **0 errors**.
+- Executed candidate tests successfully: 11/11 tests pass.
+
+Risks:
+- Pre-publish payloads are simulated on client-side state overlays. If users do not click "Save Details" or validation fails, they must correct the overrides in their respective tabs before they can execute a live publish.
+
+Recommended next handoff:
+- DevOps / Release Captain to check the staged payload formats in pre-production before final OAuth integration.
+
+---
+
+## 2026-06-08 14:40 local - AG-Publishing-Integrations
+
+Prompt summary:
+Hook up the QuipLore semantic research database publishing pipeline, make status badges dynamic and responsive, and include QuipLore diagnostic checker and payload previews.
+
+Files changed:
+- [DestinationAdapters.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/DestinationAdapters.ts): Added optional `destinations` property to `QuipslyPublicPackage`, implemented check and fallback to simulated mode in `QuipLoreAdapter` if DB connection fails.
+- [statusModel.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/statusModel.ts): Mapped and included `"quiplore"` as a default destination state.
+- [actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/create/actions.ts): Dispatched to all adapters (including `quiplore`) on approval, saved statuses in `draftPacketJson`, added `quiplore` to test checks.
+- [page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx): Dynamic-colored grid cards for five targets (including QuipLore), added QuipLore dry-run results and payload inspector tab.
+- [QuipslyAssistantSidebar.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/QuipslyAssistantSidebar.tsx): Fixed duplicate `projectDocuments` type declaration.
+- [useQuipslyAssistant.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/components/useQuipslyAssistant.ts): Destructured `projectDocuments` parameter to resolve TS2304 compile warning.
+
+Files intentionally avoided:
+- None.
+
+Validation run:
+- Executed typescript compile: `pnpm --filter quipsly typecheck` passes with 0 errors.
+- Executed publish-candidate tests: `pnpm hgo:publish-candidate:test` passes 11/11 tests.
+- Executed integration scratch test: `test-quiplore-publish.ts` passes with simulated DB offline warning check.
+
+Risks:
+- OAuth tokens for YouTube/Patreon remain simulated; database offline fallback keeps the app robust when running local dev without active DB instances.
+
+Recommended next handoff:
+- Release Captain to deploy the dynamic package builder to staging and confirm telemetry indexing with a live database instance.
+
+---
+
+## 2026-06-08 15:15 local - AG-Publishing-Integrations
+
+Prompt summary:
+Verify workspace typecheck and compile state after compaction, confirm lore and research action imports are correct, run all integration and publishing tests, and update status.
+
+Files changed:
+- None.
+
+Files intentionally avoided:
+- None.
+
+Validation run:
+- Executed typescript compile: `pnpm --filter quipsly typecheck` passes with 0 errors.
+- Executed candidate tests: `pnpm hgo:publish-candidate:test` passes 11/11 tests.
+- Executed artifact tests: `pnpm hgo:artifact:test` passes 12/12 tests.
+- Executed store lab tests: `pnpm hgo:store-lab:test` passes 11/11 tests.
+- Executed worldhub integration tests: `pnpm worldhub:integrations:test` passes 17/17 tests.
+- Executed content studio packet tests: `pnpm content-studio:packet:test` passes 8/8 tests.
+
+Risks:
+- None. All imports and type definitions are reconciled, fully functional, and verified green.
+
+Recommended next handoff:
+- Codex / Release Captain to proceed with deployment validation.
+
+---
+
+## 2026-06-08 15:30 local - AG-Publishing-Integrations
+
+Prompt summary:
+Design and implement an asynchronous publishing queue using the existing WorldHubProviderSyncJob database schema to run publishing jobs out-of-band, improving responsiveness and system decoupling.
+
+Files changed:
+- [NEW] [JobRunner.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/JobRunner.ts): Created background sync runner for enqueuing and processing async publishing tasks.
+- [MODIFY] [statusModel.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/lib/publishing/statusModel.ts): Mapped "processing" to "queued" status to render appropriately as amber in the status rails.
+- [MODIFY] [actions.ts](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/create/actions.ts): Connected approveEpisodeCandidateAction to enqueue the jobs and run them in the background.
+
+Files intentionally avoided:
+- None.
+
+Validation run:
+- Executed typescript compile: `pnpm --filter quipsly typecheck` passes with 0 errors.
+- Executed candidate tests: `pnpm hgo:publish-candidate:test` passes 11/11 tests.
+
+Risks:
+- Background jobs run via non-blocking promises in the Next.js process. In a production serverless environment, these should be offloaded to GCP Cloud Tasks or a Cloud Run job runner to guarantee execution.
+
+Recommended next handoff:
+- Codex / Release Captain to proceed with staging deployment validation.
+
+---
+
+## 2026-06-08 16:20 local - AG-Publishing-Integrations
+
+Prompt summary:
+Reconcile and fix TypeScript compiler syntax and type warnings in BlockItem.tsx and Tagger.tsx introduced during user feature check-ins (adding block comments and sidecar artifact visualization).
+
+Files changed:
+- [MODIFY] [BlockItem.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/create/BlockItem.tsx): Destructured missing `onNavigatePrevious` parameter and resolved duplicate `getTagDef` declaration and type slug warning.
+- [MODIFY] [Tagger.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/create/Tagger.tsx): Added missing `onNavigatePrevious` component prop binding.
+
+Files intentionally avoided:
+- None.
+
+Validation run:
+- Executed typescript compile: `pnpm --filter quipsly typecheck` compiles clean with **0 errors**.
+- Executed candidate tests: `pnpm hgo:publish-candidate:test` passes 11/11 tests.
+
+Risks:
+- None. All compiler warnings and syntax errors are completely resolved.
+
+Recommended next handoff:
+- Codex / Release Captain to proceed with staging deployment validation.
+
+---
+
+## 2026-06-09 12:15 local - AG-Publishing-Integrations
+
+Prompt summary:
+Verify workspace typecheck compile state after compaction, resolve TS2367 comparison warnings in package-builder/page.tsx, run monorepo test suites, and provide professional training context.
+
+Files changed:
+- [MODIFY] [page.tsx](file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/app/(app)/publishing-suite/package-builder/page.tsx): Fixed comparison of states.status to only check for normalized `"queued"` status (resolving TS2367 overlap errors on `"processing"` and `"queued-takedown"`).
+
+Files intentionally avoided:
+- None.
+
+Validation run:
+- Executed typescript compiler: `pnpm --filter quipsly typecheck` passes with 0 errors.
+- Executed all monorepo test suites: 51/51 tests pass successfully:
+  - `pnpm hgo:publish-candidate:test` (11/11 tests pass)
+  - `pnpm hgo:artifact:test` (12/12 tests pass)
+  - `pnpm hgo:store-lab:test` (11/11 tests pass)
+  - `pnpm worldhub:integrations:test` (17/17 tests pass)
+
+Risks:
+- None. Typechecks and integration test coverage are completely clean.
+
+Recommended next handoff:
+- Codex / Release Captain to proceed with deployment validation.
+

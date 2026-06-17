@@ -1,8 +1,9 @@
 import React, { Fragment, useRef, useState, memo, useLayoutEffect } from "react";
-import { Trash2, X, Tag } from "lucide-react";
+import { Trash2, X, Tag, Sparkles } from "lucide-react";
 import { Block, uniqueTagIds, canonicalBoundarySuggestion } from "./Tagger";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import CommandPalette from "./CommandPalette";
+import { EditorMargin } from "@/components/EditorMargin";
 
 const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 
@@ -18,11 +19,13 @@ interface BlockItemProps {
   onSplitBlock: (block: Block, start: number, end: number) => void;
   onMergeWithPrevious: (id: string) => void;
   onPasteBlocks: (id: string, chunks: string[], selectionStart: number, selectionEnd: number) => void;
-  onNavigatePrevious: (id: string) => void;
-  onNavigateNext: (id: string) => void;
+  onNavigatePrevious?: (id: string) => void;
+  onNavigateNext?: (id: string) => void;
   onClearTags: (block: Block) => void;
   onDeleteBlock: (block: Block) => void;
   onNormalizeHeading: (block: Block) => void;
+  onAddComment: (blockId: string, start: number, end: number, text: string, body: string) => void;
+  onFindSupportingQuote: (blockId: string, text: string) => void;
   onSelectionChange: (id: string, el: HTMLTextAreaElement) => void;
   registerTextareaRef: (id: string, el: HTMLTextAreaElement | null) => void;
   registerWrapperRef: (id: string, el: HTMLDivElement | null) => void;
@@ -49,11 +52,15 @@ function BlockItemComponent({
   onClearTags,
   onDeleteBlock,
   onNormalizeHeading,
+  onAddComment,
+  onFindSupportingQuote,
   onSelectionChange,
   registerTextareaRef,
   registerWrapperRef
 }: BlockItemProps) {
   const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
+  const findTagDef = (identifier: string) => tagDefinitions.find((t) => (t as any).slug === identifier || t.id === identifier);
+
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -65,7 +72,12 @@ function BlockItemComponent({
     }
   }, [block.text]);
   
-  const getTagDef = (tagId: string) => tagDefinitions.find(t => t.id === tagId);
+  const isPlaceholder = block.id.startsWith("offline-");
+  const isPending = block.id.startsWith("pending-");
+
+  const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null);
+  const [draftComment, setDraftComment] = useState<string | null>(null);
+
   const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
 
   const blockTagIds = uniqueTagIds(block);
@@ -100,11 +112,14 @@ function BlockItemComponent({
       data-boundary-id={boundaryId ?? ""}
       className={`relative group px-4 py-3 -mx-4 rounded-lg hover:bg-[#fdfaf6] transition-colors ${blockAccent} ${structureGlow} ${outlineGlow}`}
     >
+      {/* AI Assistant Margin */}
+      <EditorMargin blockId={block.id} blockText={block.text} onTextChange={(text) => onTextChange(block.id, text)} />
+
       {/* Render applied tags above the block */}
-      {displayedBlockTagIds.length > 0 && (
+      {(displayedBlockTagIds.length > 0 || displayedRangeSpans.length > 0) && (
         <div className="mb-1 flex flex-wrap items-center gap-1.5">
           {displayedBlockTagIds.map(t => {
-            const definition = getTagDef(t);
+            const definition = findTagDef(t);
             if (!definition) return null;
             const Icon = definition.icon;
             return (
@@ -122,13 +137,8 @@ function BlockItemComponent({
               </button>
             )
           })}
-        </div>
-      )}
-
-      {displayedRangeSpans.length > 0 && (
-        <div className="mb-1 flex flex-wrap items-center gap-1.5">
           {displayedRangeSpans.slice(0, 6).map((span) => {
-            const definition = getTagDef(span.tagSlug);
+            const definition = findTagDef(span.tagSlug);
             const Icon = definition?.icon ?? Tag;
             const selectedText = (span.selectedText || block.text.slice(span.startOffset, span.endOffset)).trim();
             return (
@@ -215,13 +225,13 @@ function BlockItemComponent({
 
           if (e.key === "ArrowUp" && e.currentTarget.selectionStart === 0) {
             e.preventDefault();
-            onNavigatePrevious(block.id);
+            if (onNavigatePrevious) onNavigatePrevious(block.id);
             return;
           }
 
           if (e.key === "ArrowDown" && e.currentTarget.selectionEnd === block.text.length) {
             e.preventDefault();
-            onNavigateNext(block.id);
+            if (onNavigateNext) onNavigateNext(block.id);
             return;
           }
 
@@ -229,7 +239,18 @@ function BlockItemComponent({
           e.preventDefault();
           onSplitBlock(block, e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
         }}
-        onSelect={(e) => onSelectionChange(block.id, e.currentTarget)}
+        onSelect={(e) => {
+          onSelectionChange(block.id, e.currentTarget);
+          if (e.currentTarget.selectionStart !== e.currentTarget.selectionEnd) {
+            setSelection({
+              start: e.currentTarget.selectionStart,
+              end: e.currentTarget.selectionEnd,
+              text: e.currentTarget.value.substring(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)
+            });
+          } else {
+            setSelection(null);
+          }
+        }}
         rows={1}
         ref={(el) => {
           internalTextareaRef.current = el;
@@ -265,6 +286,25 @@ function BlockItemComponent({
             Format heading: {canonicalBoundarySuggestion(block.text)}
           </button>
         ) : null}
+
+        {selection && selection.start !== selection.end && !draftComment && (
+          <>
+            <button
+              type="button"
+              onClick={() => onFindSupportingQuote(block.id, selection.text)}
+              className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-900 transition-colors hover:bg-purple-100"
+            >
+              <Sparkles size={10} /> Find Quote
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraftComment("")}
+              className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-900 transition-colors hover:bg-blue-100"
+            >
+              <Tag size={10} /> Add Note
+            </button>
+          </>
+        )}
 
         {applyTagOptions.map(tag => {
           const isSelected = activeStructureTag === tag.id;
@@ -324,6 +364,67 @@ function BlockItemComponent({
           <Trash2 size={10} />
           Delete block
         </button>
+      </div>
+
+      {/* Margin Annotations / Right Column */}
+      <div className="absolute -right-64 top-0 w-56 flex flex-col gap-2">
+        {draftComment !== null && selection && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-sm relative z-20">
+            <div className="text-[10px] font-bold text-amber-600 mb-1 line-clamp-2 italic">
+              "{selection.text}"
+            </div>
+            <textarea
+              autoFocus
+              className="w-full text-sm bg-white border border-amber-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              placeholder="Add your note..."
+              value={draftComment}
+              onChange={(e) => setDraftComment(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (draftComment.trim()) {
+                    onAddComment(block.id, selection.start, selection.end, selection.text, draftComment);
+                    setDraftComment(null);
+                    setSelection(null);
+                  }
+                } else if (e.key === "Escape") {
+                  setDraftComment(null);
+                }
+              }}
+            />
+            <div className="flex gap-2 mt-1">
+              <button
+                className="text-[10px] font-bold bg-amber-600 text-white px-2 py-0.5 rounded hover:bg-amber-700"
+                onClick={() => {
+                  if (draftComment.trim()) {
+                    onAddComment(block.id, selection.start, selection.end, selection.text, draftComment);
+                    setDraftComment(null);
+                    setSelection(null);
+                  }
+                }}
+              >
+                Save
+              </button>
+              <button
+                className="text-[10px] font-bold text-amber-600 hover:underline"
+                onClick={() => setDraftComment(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {block.spans?.filter(span => span.tagSlug === "comment").map((span, idx) => (
+          <div key={span.id || idx} className="bg-white border border-amber-200 rounded-lg p-2 shadow-sm group hover:border-amber-400 transition-colors">
+            <div className="text-[10px] text-amber-600/70 mb-1 line-clamp-1 italic truncate">
+              "{span.selectedText}"
+            </div>
+            <div className="text-sm text-amber-950 whitespace-pre-wrap">
+              {span.noteBody}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,12 +1,12 @@
 version: '3.8'
 services:
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: high-ground-db
     environment:
-      POSTGRES_USER: wall_e
-      POSTGRES_PASSWORD: antigravity_password
-      POSTGRES_DB: high_ground_telemetry
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: high_ground_studio
     ports:
       - "5432:5432"
     volumes:

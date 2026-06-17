@@ -16,8 +16,8 @@ export const dynamic = "force-dynamic";
 export default async function CreatePage({
   searchParams
 }: {
-  searchParams?: Promise<{ project?: string; scope?: string | string[] }> | { project?: string; scope?: string | string[] }
-} = {}) {
+  searchParams: Promise<{ project?: string; document?: string; scope?: string | string[] }>
+}) {
   const params = await searchParams;
   const isDefaultFallback = typeof params?.project !== "string";
 
@@ -71,6 +71,7 @@ export default async function CreatePage({
     if (canWriteProject) {
       await seedTonightPack(projectSlug);
     }
+    const documentId = typeof params?.document === "string" ? params.document : undefined;
     state = await loadWorkbenchStateWithScope(projectSlug, scopeProjectSlugs);
   } catch (error) {
     console.warn(`Could not open Nest/project ${projectSlug}.`, error);
@@ -109,6 +110,7 @@ export default async function CreatePage({
     persistenceMode={state.persistenceMode}
     projectNestKind={state.projectNestKind}
     workflowSystem={state.workflowSystem}
+    projectDocuments={state.projectDocuments}
     availableProjects={availableProjects}
     linkedProjects={state.linkedProjects}
     isDefaultFallback={isDefaultFallback}

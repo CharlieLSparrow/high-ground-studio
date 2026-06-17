@@ -3,12 +3,41 @@
 import React, { useState } from 'react';
 import { Film, Clapperboard, Plus, Image as ImageIcon, AlignLeft, X } from 'lucide-react';
 import { createStoryboard, createStoryboardFrame, updateStoryboard, generateFrameImage, approveLedgerSuggestions } from '../actions';
+import { exportRoughCutBlueprintAction } from '../scroll-actions';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { StoryboardAssistantSuggestor } from './StoryboardAssistantSuggestor';
 import { ScrollytellingRenderer } from './ScrollytellingRenderer';
 import { ComicRenderer } from './ComicRenderer';
 import { StoryboardGridRenderer } from './StoryboardGridRenderer';
 import { useToast, useDebouncedCallback } from './hooks';
+
+export function parseStoryboardMeta(description: string | null) {
+  if (!description) return { docId: null, episodeId: null, cleanDesc: "" };
+  const docMatch = description.match(/\[LinkedDocument:\s*([^\]]+)\]/);
+  const epMatch = description.match(/\[LinkedEpisode:\s*([^\]]+)\]/);
+  
+  let cleanDesc = description;
+  if (docMatch) cleanDesc = cleanDesc.replace(/\[LinkedDocument:\s*([^\]]+)\]\s*/, "");
+  if (epMatch) cleanDesc = cleanDesc.replace(/\[LinkedEpisode:\s*([^\]]+)\]\s*/, "");
+  
+  return {
+    docId: docMatch ? docMatch[1] : null,
+    episodeId: epMatch ? epMatch[1] : null,
+    cleanDesc: cleanDesc.trim()
+  };
+}
+
+export function parseLinkedBlock(vfxNotes: string | null) {
+  if (!vfxNotes) return { blockId: null, cleanNotes: "" };
+  const match = vfxNotes.match(/^\[Block:\s*([^\]]+)\]/);
+  if (match) {
+    return {
+      blockId: match[1],
+      cleanNotes: vfxNotes.replace(/^\[Block:\s*([^\]]+)\]\s*/, "")
+    };
+  }
+  return { blockId: null, cleanNotes: vfxNotes };
+}
 
 const ASPECT_RATIOS = [
   { label: '16:9 (Standard Widescreen)', value: '16:9', className: 'aspect-video' },
@@ -29,7 +58,7 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
   const { toasts, showToast } = useToast();
 
   const [projects, setProjects] = useState<any[]>(initialProjects);
-
+  const [exportingBlueprintId, setExportingBlueprintId] = useState<string | null>(null);
   // Initialize active project based on URL or fallback to first project
   const [activeProject, setActiveProject] = useState(() => {
     if (projectSlug) {
@@ -42,7 +71,58 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
   const [generatingFrames, setGeneratingFrames] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'GRID' | 'SCROLL' | 'COMIC'>('GRID');
   const [compilingStoryboardId, setCompilingStoryboardId] = useState<string | null>(null);
+  const [buildingScrollId, setBuildingScrollId] = useState<string | null>(null);
+  const [importingStoryboardId, setImportingStoryboardId] = useState<string | null>(null);
+  const [reorderingStoryboardId, setReorderingStoryboardId] = useState<string | null>(null);
   const [compiledPacket, setCompiledPacket] = useState<any | null>(null);
+
+  const checkFrameOrderDrift = (storyboard: any) => {
+    if (!activeProject || !storyboard.frames || storyboard.frames.length <= 1) return false;
+    const { docId } = parseStoryboardMeta(storyboard.description);
+    if (!docId) return false;
+    const linkedDoc = activeProject.documents?.find((d: any) => d.id === docId);
+    if (!linkedDoc || !linkedDoc.blocks) return false;
+
+    const blockIndexMap = new Map<string, number>();
+    linkedDoc.blocks.forEach((block: any, index: number) => {
+      blockIndexMap.set(block.id, index);
+    });
+
+    const linkedFrameIndices = storyboard.frames
+      .map((f: any) => {
+        const { blockId } = parseLinkedBlock(f.vfxNotes);
+        return blockId ? blockIndexMap.get(blockId) : undefined;
+      })
+      .filter((idx: any) => idx !== undefined) as number[];
+
+    for (let i = 0; i < linkedFrameIndices.length - 1; i++) {
+      if (linkedFrameIndices[i] > linkedFrameIndices[i + 1]) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleReorderFrames = async (storyboardId: string) => {
+    setReorderingStoryboardId(storyboardId);
+    const { reorderFramesToMatchLinkedDocument } = await import('../actions');
+    const res = await reorderFramesToMatchLinkedDocument(storyboardId);
+    setReorderingStoryboardId(null);
+    if (res.success && res.frames) {
+      if (activeProject) {
+        const updatedStoryboards = activeProject.storyboards.map((s: any) => {
+          if (s.id === storyboardId) {
+            return { ...s, frames: res.frames };
+          }
+          return s;
+        });
+        setActiveProject({ ...activeProject, storyboards: updatedStoryboards });
+      }
+      showToast("Storyboard frames reordered to match manuscript outline!", "success");
+    } else {
+      showToast("Failed to reorder frames: " + res.error, "error");
+    }
+  };
 
   const handleCompilePacket = async (storyboardId: string) => {
     setCompilingStoryboardId(storyboardId);
@@ -54,6 +134,83 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
       showToast("Public packet compiled successfully!", "success");
     } else {
       showToast("Failed to compile packet: " + res.error, "error");
+    }
+  };
+
+  const handleBuildScroll = async (storyboardId: string) => {
+    setBuildingScrollId(storyboardId);
+    const { createScrollExperienceFromStoryboard } = await import('../actions');
+    const res = await createScrollExperienceFromStoryboard(storyboardId);
+    setBuildingScrollId(null);
+    if (res.success && res.experience) {
+      showToast("Scroll Experience built successfully!", "success");
+    } else {
+      showToast("Failed to build scroll experience: " + res.error, "error");
+    }
+  };
+
+  const handleExportBlueprint = async (experienceId: string) => {
+    setExportingBlueprintId(experienceId);
+    try {
+      const res = await exportRoughCutBlueprintAction(experienceId);
+      if (res.success && res.blueprint) {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(res.blueprint, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `blueprint-${experienceId}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        showToast("Export Complete: Rough Cut Blueprint JSON downloaded.", "success");
+      } else {
+        showToast("Error: " + (res.error || "Failed to export"), "error");
+      }
+    } catch (error: any) {
+      showToast("Error: " + error.message, "error");
+    } finally {
+      setExportingBlueprintId(null);
+    }
+  };
+
+  const handleImportScriptBeats = async (storyboardId: string) => {
+    setImportingStoryboardId(storyboardId);
+    const { importFramesFromLinkedDocument } = await import('../actions');
+    const res = await importFramesFromLinkedDocument(storyboardId);
+    setImportingStoryboardId(null);
+    if (res.success) {
+      if (res.importedCount !== undefined && res.importedCount > 0 && res.frames) {
+        if (activeProject) {
+          const updatedStoryboards = activeProject.storyboards.map((s: any) => {
+            if (s.id === storyboardId) {
+              return { ...s, frames: res.frames };
+            }
+            return s;
+          });
+          setActiveProject({ ...activeProject, storyboards: updatedStoryboards });
+        }
+        showToast(`Successfully synced and created ${res.importedCount} new frames from script beats!`, "success");
+      } else {
+        showToast(res.message || "All script beats are already synced.", "info");
+      }
+    } else {
+      showToast("Failed to sync script beats: " + res.error, "error");
+    }
+  };
+
+  const handleUpdateFrame = (frameId: string, updatedFields: any) => {
+    if (activeProject) {
+      const updatedStoryboards = activeProject.storyboards.map((s: any) => {
+        return {
+          ...s,
+          frames: s.frames.map((f: any) => {
+            if (f.id === frameId) {
+              return { ...f, ...updatedFields };
+            }
+            return f;
+          })
+        };
+      });
+      setActiveProject({ ...activeProject, storyboards: updatedStoryboards });
     }
   };
 
@@ -276,16 +433,21 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                 </div>
               )}
 
-              {activeProject.storyboards?.map((storyboard: any) => (
+              {activeProject.storyboards?.map((storyboard: any) => {
+                const { docId, episodeId, cleanDesc } = parseStoryboardMeta(storyboard.description);
+                const linkedDoc = activeProject.documents?.find((d: any) => d.id === docId);
+                const linkedEp = activeProject.episodeProductions?.find((e: any) => e.id === episodeId);
+
+                return (
                 <div key={storyboard.id} className="space-y-6">
                   <div className="flex items-center justify-between border-b-2 border-zinc-200 dark:border-zinc-800 pb-2">
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2 mb-1">
-                        {storyboard.episodeProductionId && (
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-sm">Episode Linked</span>
+                        {linkedEp && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-sm">Linked Episode: {linkedEp.slug || linkedEp.title}</span>
                         )}
-                        {storyboard.documentId && (
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">Document Linked</span>
+                        {linkedDoc && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm">Linked Document: {linkedDoc.title}</span>
                         )}
                       </div>
                       <input
@@ -341,8 +503,85 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                           >
                             {compilingStoryboardId === storyboard.id ? "Compiling..." : "Compile Packet"}
                           </button>
+                          <button
+                            onClick={() => handleBuildScroll(storyboard.id)}
+                            disabled={buildingScrollId === storyboard.id}
+                            aria-label="Build Scroll Experience"
+                            className="text-sm font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-500/10 hover:bg-purple-100 dark:hover:bg-purple-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 outline-none"
+                          >
+                            {buildingScrollId === storyboard.id ? "Building..." : "Build Scroll"}
+                          </button>
+                          <button
+                            onClick={() => handleExportBlueprint(storyboard.id)}
+                            disabled={exportingBlueprintId === storyboard.id}
+                            aria-label="Export Rough Cut Blueprint"
+                            className="text-sm font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 outline-none"
+                          >
+                            {exportingBlueprintId === storyboard.id ? "Exporting..." : "Export Blueprint"}
+                          </button>
                         </>
                       )}
+                      
+                      {docId && (
+                        <button
+                          onClick={() => handleImportScriptBeats(storyboard.id)}
+                          disabled={importingStoryboardId === storyboard.id}
+                          aria-label="Sync Script Beats"
+                          className="text-sm font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 outline-none"
+                        >
+                          {importingStoryboardId === storyboard.id ? "Syncing..." : "Sync Script Beats"}
+                        </button>
+                      )}
+                      
+                      {docId && checkFrameOrderDrift(storyboard) && (
+                        <button
+                          onClick={() => handleReorderFrames(storyboard.id)}
+                          disabled={reorderingStoryboardId === storyboard.id}
+                          aria-label="Sync Frame Order"
+                          className="text-sm font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 outline-none animate-pulse hover:animate-none"
+                          title="Script beats have been reordered. Click to reorder storyboard frames to match."
+                        >
+                          {reorderingStoryboardId === storyboard.id ? "Sorting..." : "⚠️ Sync Frame Order"}
+                        </button>
+                      )}
+                      
+                      {/* Document & Episode Links */}
+                      <select
+                        value={docId || ""}
+                        onChange={(e) => {
+                          const newDocId = e.target.value;
+                          let newMeta = "";
+                          if (newDocId) newMeta += `[LinkedDocument: ${newDocId}] `;
+                          if (episodeId) newMeta += `[LinkedEpisode: ${episodeId}] `;
+                          debouncedUpdateStoryboard(storyboard.id, { description: `${newMeta}${cleanDesc}` });
+                        }}
+                        aria-label="Link Document"
+                        className="text-xs border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-lg text-zinc-700 dark:text-zinc-300 py-1.5 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <option value="">Link Document...</option>
+                        {activeProject.documents?.map((d: any) => (
+                          <option key={d.id} value={d.id}>{d.title}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={episodeId || ""}
+                        onChange={(e) => {
+                          const newEpId = e.target.value;
+                          let newMeta = "";
+                          if (docId) newMeta += `[LinkedDocument: ${docId}] `;
+                          if (newEpId) newMeta += `[LinkedEpisode: ${newEpId}] `;
+                          debouncedUpdateStoryboard(storyboard.id, { description: `${newMeta}${cleanDesc}` });
+                        }}
+                        aria-label="Link Episode"
+                        className="text-xs border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-lg text-zinc-700 dark:text-zinc-300 py-1.5 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <option value="">Link Episode...</option>
+                        {activeProject.episodeProductions?.map((ep: any) => (
+                          <option key={ep.id} value={ep.id}>{ep.slug || ep.title}</option>
+                        ))}
+                      </select>
+
                       <select
                         defaultValue={storyboard.aspectRatio || '16:9'}
                         onChange={(e) => updateStoryboard(storyboard.id, { aspectRatio: e.target.value })}
@@ -357,25 +596,28 @@ export function StoryboardClient({ initialProjects, aiConfigStatus = "ready" }: 
                   </div>
 
                   {viewMode === 'SCROLL' && (
-                    <ScrollytellingRenderer frames={storyboard.frames} />
+                    <ScrollytellingRenderer experience={storyboard.scrollExperiences?.[0]} />
                   )}
 
                   {viewMode === 'COMIC' && (
                     <ComicRenderer frames={storyboard.frames} />
                   )}
 
-                   {viewMode === 'GRID' && (
+                  {viewMode === 'GRID' && (
                     <StoryboardGridRenderer
                       storyboard={storyboard}
                       mediaAssets={activeProject.mediaAssets || []}
+                      documents={activeProject.documents || []}
+                      episodeProductions={activeProject.episodeProductions || []}
                       generatingFrames={generatingFrames}
                       onGenerateFrame={handleGenerateFrame}
                       onAddFrame={() => handleAddFrame(storyboard.id, storyboard.frames?.length || 0)}
                       aiConfigStatus={aiConfigStatus}
+                      onUpdateFrame={handleUpdateFrame}
                     />
                   )}
                 </div>
-              ))}
+              )})}
             </div>
           </>
         )}

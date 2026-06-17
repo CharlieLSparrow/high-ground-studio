@@ -9,6 +9,7 @@ final class QuipslyWebViewState: ObservableObject {
     @Published var currentURL: URL?
     @Published var pageTitle = ""
     @Published var sessionGuidance: String?
+    @Published var webPlayhead: Double?
 
     fileprivate weak var webView: WKWebView?
 
@@ -42,10 +43,16 @@ struct QuipslyWebRouteView: View {
     var subtitle: String
     var showsSessionGuidance = true
     var useMacWebSession = true
+    var onPlayheadUpdate: ((Double) -> Void)? = nil
 
     @EnvironmentObject private var appState: AppState
     @StateObject private var webState = QuipslyWebViewState()
     @State private var reloadToken = 0
+
+    private var hasConnectedNestProfile: Bool {
+        !appState.activeNestSessionProfileEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && NestSessionTokenStore.accessTokenLooksFresh(NestSessionTokenStore.activeProfile(), skewSeconds: 0)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,6 +72,11 @@ struct QuipslyWebRouteView: View {
                     sessionGuidanceBanner(guidance)
                         .padding()
                 }
+            }
+        }
+        .onChange(of: webState.webPlayhead) { newValue in
+            if let newValue {
+                onPlayheadUpdate?(newValue)
             }
         }
     }
@@ -101,10 +113,16 @@ struct QuipslyWebRouteView: View {
                 Label("Reload", systemImage: "arrow.clockwise")
             }
 
-            Button {
-                signInWithBrowser()
-            } label: {
-                Label("Connect Mac Session", systemImage: "person.badge.key")
+            if useMacWebSession {
+                Button {
+                    if hasConnectedNestProfile {
+                        reloadToken += 1
+                    } else {
+                        signInWithBrowser()
+                    }
+                } label: {
+                    Label(hasConnectedNestProfile ? "Connect Mac Session" : "Sign in with Browser", systemImage: hasConnectedNestProfile ? "person.badge.key.fill" : "safari")
+                }
             }
 
             Button {
@@ -139,8 +157,12 @@ struct QuipslyWebRouteView: View {
             Button("Open Nest Session") {
                 appState.selectedSection = .nestSession
             }
-            Button("Sign in with browser") {
-                signInWithBrowser()
+            Button(hasConnectedNestProfile ? "Connect Mac Session" : "Sign in with browser") {
+                if hasConnectedNestProfile {
+                    reloadToken += 1
+                } else {
+                    signInWithBrowser()
+                }
             }
         }
         .padding()
@@ -179,6 +201,10 @@ struct QuipslyWebView: NSViewRepresentable {
         configuration.websiteDataStore = .default()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+        let contentController = WKUserContentController()
+        contentController.add(context.coordinator, name: "quipslyMacBridge")
+        configuration.userContentController = contentController
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
@@ -221,7 +247,7 @@ struct QuipslyWebView: NSViewRepresentable {
         state.sessionGuidance = sessionGuidance(for: webView.url, title: webView.title)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var state: QuipslyWebViewState
         var loadedURL: URL?
         var reloadToken = -1
@@ -262,6 +288,15 @@ struct QuipslyWebView: NSViewRepresentable {
                 } catch {
                     guard self.activeBootstrapKey == key else { return }
                     self.state.sessionGuidance = "Quipsly Mac could not prepare the embedded editor session: \(error.localizedDescription)"
+                }
+            }
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "quipslyMacBridge", let body = message.body as? [String: Any] else { return }
+            if let event = body["event"] as? String {
+                if event == "playhead_update", let time = body["time"] as? Double {
+                    state.webPlayhead = time
                 }
             }
         }

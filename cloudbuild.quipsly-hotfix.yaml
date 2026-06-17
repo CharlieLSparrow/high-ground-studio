@@ -1,0 +1,32 @@
+substitutions:
+  _REGION: us-central1
+  _ARTIFACT_REPOSITORY: high-ground-studio
+  _IMAGE_NAME: studio
+  _IMAGE_TAG: hotfix-manual
+  _NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
+  _STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
+  _QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS: "0"
+  _NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyDvcHtENDtiZCjBS46cW-qa91nHe5DjUkM"
+  _NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "quipsly-reef.firebaseapp.com"
+  _NEXT_PUBLIC_FIREBASE_PROJECT_ID: "quipsly-reef"
+  _NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "quipsly-reef.firebasestorage.app"
+  _NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "249115653261"
+  _NEXT_PUBLIC_FIREBASE_APP_ID: "1:249115653261:web:d49c566ebe99148cbddec4"
+
+steps:
+  - id: build-quipsly-hotfix-image
+    name: gcr.io/kaniko-project/executor:latest
+    args:
+      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+      - --cache=true
+      - --cache-ttl=168h
+      - --build-arg=NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL}
+      - --build-arg=STUDIO_COLLAB_URL=${_STUDIO_COLLAB_URL}
+      - --build-arg=QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=${_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=${_NEXT_PUBLIC_FIREBASE_API_KEY}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID}
+      - --dockerfile=apps/quipsly/Dockerfile

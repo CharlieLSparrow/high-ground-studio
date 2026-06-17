@@ -52,13 +52,54 @@ async function processMockJob(jobId: string) {
   job.status = "rendering";
   
   try {
+    const { getPrismaClient } = await import("@/lib/prisma");
+    const prisma = getPrismaClient();
+
+    // 1. Resolve asset URLs
+    const edl = job.edlPayload?.timelineState;
+    if (edl && Array.isArray(edl.clips)) {
+      for (const clip of edl.clips) {
+        if (clip.assetId) {
+          const asset = await prisma.studioAsset.findUnique({
+            where: { id: clip.assetId }
+          });
+          // Attach resolved URL so Remotion can render it
+          clip.resolvedUrl = asset?.url || null;
+        }
+      }
+    }
+
+    // 2. Render
     const result = await renderVideoFromEDL(jobId, job.edlPayload);
     if (result.success) {
       job.status = "completed";
       job.progress = 100;
       job.timeRemaining = "0s";
+
+      // 3. Update PublishCandidate if episodeSlug is available
+      if (job.edlPayload?.episodeSlug) {
+        const candidates = await prisma.hgoEpisodePublishCandidate.findMany({
+          where: { projectionSlug: job.edlPayload.episodeSlug }
+        });
+        
+        for (const candidate of candidates) {
+          try {
+            const packet = candidate.packetJson as any;
+            if (packet && packet.media) {
+              packet.media.videoUrl = result.outputLocation;
+              await prisma.hgoEpisodePublishCandidate.update({
+                where: { id: candidate.id },
+                data: { packetJson: packet }
+              });
+            }
+          } catch (e) {
+            console.error(`Failed to update candidate ${candidate.id}`, e);
+          }
+        }
+      }
     }
   } catch (err) {
+    console.error("Render failed", err);
     job.status = "failed";
   }
 }

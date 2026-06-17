@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
 
@@ -31,7 +32,23 @@ function payloadContentFingerprint(value: unknown) {
   return typeof record?.contentFingerprint === "string" ? record.contentFingerprint : "";
 }
 
-function fallback(projectSlug: string, episodeSlug: string, title: string, message: string) {
+function isUniqueConstraintError(error: unknown) {
+  return asRecord(error)?.code === "P2002";
+}
+
+function fallback(
+  projectSlug: string,
+  episodeSlug: string,
+  title: string,
+  message: string,
+  details: {
+    status?: string;
+    actorEmail?: string | null;
+    accessRole?: string | null;
+    accessSource?: string | null;
+    accessCode?: string | null;
+  } = {},
+) {
   return {
     ok: true,
     mode: "fallback",
@@ -40,8 +57,12 @@ function fallback(projectSlug: string, episodeSlug: string, title: string, messa
     slug: episodeSlug,
     title,
     boundaryLabel: title,
-    status: "fallback",
+    status: details.status ?? "fallback",
     message,
+    actorEmail: details.actorEmail ?? null,
+    accessRole: details.accessRole ?? null,
+    accessSource: details.accessSource ?? null,
+    accessCode: details.accessCode ?? null,
     recordingRoomJson: null,
     timelineJson: null,
     transcriptJson: null,
@@ -54,7 +75,7 @@ async function ensureProjectAndDocument(prisma: ReturnType<typeof getPrismaClien
   return lookupStudioProjectDocument(prisma, projectConfig(projectSlug).slug);
 }
 
-async function ensureProduction(body: any) {
+async function ensureProduction(body: any, request: Request) {
   const projectSlug = typeof body.projectSlug === "string" ? body.projectSlug.trim() : "";
   const episodeSlug = body.episodeSlug ?? "current-episode";
   const title = body.title ?? body.boundaryLabel ?? humanizeSlug(episodeSlug);
@@ -73,14 +94,30 @@ async function ensureProduction(body: any) {
   }
 
   try {
+    const access = await resolveEpisodeProductionAccess({
+      request,
+      projectSlug,
+      action: "write",
+      prisma,
+    });
+
+    if (!access.allowed) {
+      return fallback(projectSlug, episodeSlug, title, access.error, {
+        status: access.status === 401 ? "auth-required" : "access-denied",
+        actorEmail: access.actor.email,
+        accessRole: access.access?.role ?? null,
+        accessSource: access.access?.source ?? access.actor.source,
+        accessCode: access.code,
+      });
+    }
+
     const { project, document } = await ensureProjectAndDocument(prisma, projectSlug);
     const where = { projectId_slug: { projectId: project.id, slug: episodeSlug } };
     const existing = await prisma.studioEpisodeProduction.findUnique({ where });
 
-    const production = existing
-      ? action === "ensure"
-        ? await prisma.studioEpisodeProduction.update({
-          where: { id: existing.id },
+    async function updateExistingProduction(id: string, currentProductionJson: unknown) {
+      return prisma.studioEpisodeProduction.update({
+          where: { id },
           data: {
             title,
             boundaryLabel,
@@ -90,7 +127,7 @@ async function ensureProduction(body: any) {
             boundaryStartOrder: body.boundaryStartOrder ?? undefined,
             boundaryEndOrder: body.boundaryEndOrder ?? undefined,
             productionJson: {
-              ...(asRecord(existing.productionJson) ?? {}),
+              ...(asRecord(currentProductionJson) ?? {}),
               ...(body.productionJson ?? {}),
               source: "quipsly-api-episode-production.ensure",
               projectSlug,
@@ -98,9 +135,11 @@ async function ensureProduction(body: any) {
               title,
             },
           },
-        })
-        : existing
-      : await prisma.studioEpisodeProduction.create({
+        });
+    }
+
+    async function createProduction() {
+      return prisma.studioEpisodeProduction.create({
         data: {
           projectId: project.id,
           documentId: document.id,
@@ -121,6 +160,32 @@ async function ensureProduction(body: any) {
           },
         },
       });
+    }
+
+    let production = existing
+      ? action === "ensure"
+        ? await updateExistingProduction(existing.id, existing.productionJson)
+        : existing
+      : null;
+
+    if (!production) {
+      try {
+        production = await createProduction();
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
+
+        const racedExisting = await prisma.studioEpisodeProduction.findUnique({ where });
+        if (!racedExisting) {
+          throw error;
+        }
+
+        production = action === "ensure"
+          ? await updateExistingProduction(racedExisting.id, racedExisting.productionJson)
+          : racedExisting;
+      }
+    }
 
     return {
       ok: true,
@@ -132,6 +197,10 @@ async function ensureProduction(body: any) {
       title: production.title,
       boundaryLabel: production.boundaryLabel,
       status: production.status,
+      actorEmail: access.actor.email,
+      accessRole: access.access.role,
+      accessSource: access.access.source,
+      accessCode: null,
       recordingRoomJson: production.recordingRoomJson ?? null,
       timelineJson: production.timelineJson ?? null,
       transcriptJson: production.transcriptJson ?? null,
@@ -147,7 +216,7 @@ async function ensureProduction(body: any) {
 export async function POST(request: Request) {
   const body = await request.json();
   const action = body.action ?? "ensure";
-  const state = await ensureProduction(body);
+  const state = await ensureProduction(body, request);
 
   if (state.mode !== "database") {
     return NextResponse.json(state);

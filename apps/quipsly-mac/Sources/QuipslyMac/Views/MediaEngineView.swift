@@ -12,11 +12,39 @@ struct MediaEngineView: View {
                     description: "The future home for camera ingest, proxy generation, render prep, waveform sync, and safe offload. Native Mac gets the file and hardware access the browser should not pretend to own."
                 )
 
-            EpisodeImportPanelView()
+                SourceProxyQueueView()
 
-            EpisodeSyncPrepPanelView()
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: engine.connectionState.isOnline ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle")
+                            .foregroundStyle(engine.connectionState.isOnline ? .green : .orange)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Local engine lifecycle")
+                                .font(.headline)
+                            Text(engine.connectionState.isOnline ? "Online and ready for media jobs." : "Quipsly Mac is starting or reconnecting the local media engine.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            engine.refreshStatus()
+                        } label: {
+                            Label("Reconnect", systemImage: "arrow.clockwise")
+                        }
+                    }
 
-            VStack(alignment: .leading, spacing: 12) {
+                    Text(engine.launchStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .panelStyle()
+
+                EpisodeImportPanelView()
+
+                EpisodeSyncPrepPanelView()
+
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Current engine capabilities")
                         .font(.title2.bold())
                     CapabilityRow(title: "Media editing", enabled: engine.capabilities.mediaEditing)

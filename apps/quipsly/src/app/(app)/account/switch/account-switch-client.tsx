@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { signIn, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase/firebase";
+import { signOut as firebaseSignOut } from "firebase/auth";
 import { CheckCircle2, LogOut, RefreshCcw, ShieldCheck } from "lucide-react";
 
 type AccountSwitchClientProps = {
@@ -20,16 +22,21 @@ export function AccountSwitchClient({
   currentUser,
 }: AccountSwitchClientProps) {
   const [status, setStatus] = useState<"idle" | "switching" | "signing-out">("idle");
+  const router = useRouter();
 
   async function switchGoogleAccount() {
     setStatus("switching");
-    await signOut({ redirect: false });
-    await signIn("google", { callbackUrl });
+    await fetch("/api/auth/session", { method: "DELETE" });
+    await firebaseSignOut(auth);
+    router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
   async function signOutOnly() {
     setStatus("signing-out");
-    await signOut({ callbackUrl: "/projects" });
+    await fetch("/api/auth/session", { method: "DELETE" });
+    await firebaseSignOut(auth);
+    router.push("/projects");
+    router.refresh();
   }
 
   return (

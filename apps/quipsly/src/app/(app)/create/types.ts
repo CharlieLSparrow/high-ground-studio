@@ -43,6 +43,13 @@ export type WorkbenchScopeProjectSummary = {
   reason?: string;
 };
 
+export type WorkbenchProjectDocumentSummary = {
+  id: string;
+  title: string;
+  sourceLabel: string | null;
+  updatedAt: string | Date;
+};
+
 export type WorkbenchBaseState = {
   blocks: WorkbenchBlockPayload[];
   views: ViewDefinition[];
@@ -51,6 +58,7 @@ export type WorkbenchBaseState = {
   projectName: string;
   documentId: string;
   documentTitle?: string;
+  projectDocuments?: WorkbenchProjectDocumentSummary[];
   projectNestKind?: string;
   workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing";
   persistenceMode: "database" | "offline";

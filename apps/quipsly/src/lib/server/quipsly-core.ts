@@ -22,6 +22,7 @@ import type {
 } from "@high-ground/quipsly-domain/core";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { createInviteLoginToken } from "@/lib/server/invite-login-token";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import {
   ensureStudioProjectOwnerGrant,
@@ -190,6 +191,39 @@ export async function ensureActorHomeNest(input: {
   return ensureHomeNestForEmail(input.email, db(input.prisma));
 }
 
+export async function ensureBetaStarterNestForEmail(input: {
+  email: string;
+  prisma?: PrismaClient;
+}) {
+  const prisma = db(input.prisma);
+  const email = input.email;
+  if (!email) return null;
+
+  const { hasQuipslyBetaAccess } = await import("@/lib/server/patreon-authz");
+  const hasBetaAccess = await hasQuipslyBetaAccess(email);
+  if (!hasBetaAccess) return null;
+
+  const visibleProjects = await listProjectsVisibleToEmail(email, prisma);
+  const nonHomeNests = visibleProjects.filter((p) => {
+    const isHome = p.sourceLabel?.includes("nest-kind:home");
+    const canManage = p.role === "OWNER" || p.role === "EDITOR";
+    return !isHome && canManage;
+  });
+
+  if (nonHomeNests.length > 0) return null;
+
+  const { nest } = await createNestWithOwner({
+    prisma,
+    name: "Welcome to Quipsly Beta",
+    nestKind: "mixed",
+    documentTitle: "Welcome to Quipsly Beta",
+    ownerEmail: email,
+    description: "Your starter Nest. Feel free to explore and break things.",
+  });
+
+  return nest;
+}
+
 export async function listVisibleNestsForEmail(input: {
   email?: string | null;
   prisma?: PrismaClient;
@@ -243,6 +277,7 @@ export async function createNestWithOwner(input: {
     },
   });
 
+
   const document = await prisma.studioDocument.upsert({
     where: { stableId: config.documentStableId },
     create: {
@@ -259,6 +294,28 @@ export async function createNestWithOwner(input: {
       isPrivate: true,
     },
   });
+
+  const existingBlocksCount = await prisma.studioDocumentBlock.count({ where: { documentId: document.id } });
+  if (existingBlocksCount === 0) {
+    const createId = () => crypto.randomUUID();
+    await prisma.studioDocumentBlock.create({
+      data: {
+        documentId: document.id,
+        stableId: createId(),
+        body: `# ${title}`,
+        order: 0,
+      }
+    });
+    await prisma.studioDocumentBlock.create({
+      data: {
+        documentId: document.id,
+        stableId: createId(),
+        body: `Welcome to your new Nest! This is the primary living document.\n\nWrite notes, script lines, or chapters here. Try typing \`/\` to add media, insert a scene tag, or drop a quote from your research.`,
+        order: 1000,
+      }
+    });
+  }
+
 
   await ensureStudioProjectOwnerGrant({
     prisma,
@@ -442,6 +499,7 @@ export async function grantNestAccess(input: {
   const project = await getNestBySlug({ nestSlug: input.nestSlug, prisma });
   if (!project) throw new Error(`Nest not found: ${input.nestSlug}`);
   const email = input.email.toLowerCase().trim();
+  const inviteLogin = createInviteLoginToken();
 
   await ensureInvitedStudioUserByEmail({
     email,
@@ -481,22 +539,28 @@ export async function grantNestAccess(input: {
       projectId: project.id,
       email,
       role: input.role ?? "VIEWER",
-      status: "accepted",
+      status: "pending",
+      tokenHash: inviteLogin.tokenHash,
       invitedByEmail: input.invitedByEmail ?? null,
-      acceptedAt: new Date(),
+      acceptedAt: null,
       note: input.note ?? null,
     },
     update: {
       role: input.role ?? undefined,
-      status: "accepted",
-      acceptedAt: new Date(),
+      status: "pending",
+      tokenHash: inviteLogin.tokenHash,
+      acceptedAt: null,
       revokedAt: null,
+      invitedByEmail: input.invitedByEmail ?? undefined,
       note: input.note ?? undefined,
     },
   });
 
   return {
     grant,
+    inviteLoginToken: inviteLogin.token,
+    email,
+    projectSlug: project.slug,
     nest: project.nest,
   };
 }

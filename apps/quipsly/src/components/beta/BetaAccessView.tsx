@@ -33,7 +33,7 @@ export function BetaAccessView({ email }: { email: string }) {
           </div>
 
           <div className="text-center space-y-2">
-            <h1 className="text-2xl font-black text-[#3d3122] tracking-tight font-serif">Supporter Connected</h1>
+            <h1 className="text-2xl font-black text-[#3d3122] tracking-tight font-serif">Welcome, Supporter!</h1>
             <p className="text-sm font-bold text-[#8a7659]">{email}</p>
           </div>
 
@@ -41,9 +41,9 @@ export function BetaAccessView({ email }: { email: string }) {
             <div className="flex gap-3">
               <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-[#342618]">1. Authenticated</p>
+                <p className="text-sm font-bold text-[#342618]">1. Authentication Successful</p>
                 <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
-                  You successfully signed in. Your identity is verified.
+                  You’ve successfully signed in with Patreon. We securely verified your identity.
                 </p>
               </div>
             </div>
@@ -51,9 +51,9 @@ export function BetaAccessView({ email }: { email: string }) {
             <div className="flex gap-3">
               <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-[#342618]">2. Pending Reconciliation</p>
+                <p className="text-sm font-bold text-[#342618]">2. Waiting on Patreon</p>
                 <p className="text-xs text-[#6b5b45] mt-1 leading-relaxed">
-                  Any active paid Patreon tier qualifies for Quipsly beta. If you just pledged, our webhooks may need a few minutes to verify the paid supporter record and unlock your workspace.
+                  Any active paid Patreon tier qualifies for the Quipsly beta. If you just pledged, Patreon's servers might take a minute or two to securely send us your membership confirmation.
                 </p>
               </div>
             </div>
@@ -61,7 +61,7 @@ export function BetaAccessView({ email }: { email: string }) {
 
           <div className="text-center">
             <p className="text-xs text-[#8a7659] leading-relaxed">
-              Quipsly grants access from app-owned membership records, not directly from Patreon page loads. Ambiguous, gifted, trial, or unpaid states go to manual review so your workspace stays safe.
+              To keep your workspace completely safe, Quipsly only grants access after receiving an official, verified signal from Patreon. If you’re stuck here, you can click below to refresh or request a manual review.
             </p>
           </div>
 

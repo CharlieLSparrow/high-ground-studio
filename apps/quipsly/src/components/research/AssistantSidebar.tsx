@@ -1,6 +1,8 @@
 "use client";
 
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import type { ManuscriptResearchPacket, RetrievalResult } from "@high-ground/quipsly-domain/retrieval";
+import { saveQuoteToLore } from "../../app/actions/lore-actions";
 
 interface AssistantSidebarProps {
   projectId: string;
@@ -12,14 +14,106 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  packets?: ManuscriptResearchPacket[];
 };
 
-function makeMessage(role: ChatMessage["role"], content: string): ChatMessage {
+function makeMessage(role: ChatMessage["role"], content: string, packets?: ManuscriptResearchPacket[]): ChatMessage {
   return {
     id: `${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     role,
     content,
+    packets,
   };
+}
+
+function CitationCard({ result, projectId }: { result: RetrievalResult, projectId: string }) {
+  const prov = result.provenance;
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+
+  let originLabel = "Source";
+  let originIcon = "📄";
+  let metaText = "";
+
+  if (prov.origin === "studio-span") {
+    originLabel = "Active Document";
+    originIcon = "📝";
+    metaText = `Block: ${prov.blockStableId}`;
+  } else if (prov.origin === "studio-knowledge") {
+    originLabel = "Knowledge Node";
+    originIcon = "🧠";
+    metaText = `Type: ${prov.nodeType}`;
+  } else if (prov.origin === "quipsly-lore") {
+    originLabel = "Lore Graph";
+    originIcon = "🕸️";
+    metaText = `Slug: ${prov.nodeSlug}`;
+  } else if (prov.origin === "source-aware") {
+    originLabel = "Immutable Source";
+    originIcon = "🏛️";
+    metaText = `Selector: ${prov.selector.kind}`;
+  } else if (prov.origin === "semantic-lore") {
+    originLabel = "Semantic Lore";
+    originIcon = "📖";
+    metaText = `Quote: ${prov.quoteId}`;
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-1.5 rounded-xl border border-white/10 bg-black/40 p-3 text-left transition-colors hover:bg-black/60">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="line-clamp-1 text-xs font-semibold text-white/90">{result.title}</h4>
+        <span className="flex items-center gap-1 rounded-md bg-white/5 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white/60">
+          <span>{originIcon}</span> {originLabel}
+        </span>
+      </div>
+      <p className="text-xs leading-relaxed text-white/70 line-clamp-3">{result.content}</p>
+      {result.citation && (
+        <div className="mt-1 flex items-start gap-1.5 text-[10px] text-purple-300/80">
+          <span className="mt-0.5">↳</span>
+          <p className="line-clamp-2 italic">{result.citation}</p>
+        </div>
+      )}
+      <div className="text-[9px] text-white/40">{metaText}</div>
+      {prov.origin !== "semantic-lore" && (
+        <div className="mt-2 flex justify-end">
+          <button
+            onClick={async () => {
+              if (isSaving || isSaved) return;
+              setIsSaving(true);
+              try {
+                await saveQuoteToLore(projectId, result.content, result.citation || undefined, result.title);
+                setIsSaved(true);
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            disabled={isSaving || isSaved}
+            className="flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-[10px] font-medium text-white hover:bg-white/20 transition-colors disabled:opacity-50"
+          >
+            {isSaved ? "Saved to Lore ✓" : isSaving ? "Saving..." : "Save to Lore"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PacketViewer({ packet, projectId }: { packet: ManuscriptResearchPacket, projectId: string }) {
+  if (!packet.results.length) return null;
+  return (
+    <div className="mt-3 flex w-full flex-col gap-2">
+      <div className="flex items-center justify-between border-b border-white/10 pb-1">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">{packet.intent}</h3>
+        <span className="text-[10px] text-white/40">{packet.results.length} result(s)</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {packet.results.slice(0, 4).map((result) => (
+          <CitationCard key={result.resultId} result={result} projectId={projectId} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function AssistantSidebar({ projectId, documentId, cursorNodeId }: AssistantSidebarProps) {
@@ -58,12 +152,15 @@ export function AssistantSidebar({ projectId, documentId, cursorNodeId }: Assist
         }),
       });
 
-      const text = await response.text();
+      const data = await response.json();
       if (!response.ok) {
-        throw new Error(text || `Assistant request failed (${response.status})`);
+        throw new Error(data.message || `Assistant request failed (${response.status})`);
       }
 
-      setMessages((current) => [...current, makeMessage("assistant", text || "I did not find anything useful yet.")]);
+      setMessages((current) => [
+        ...current, 
+        makeMessage("assistant", data.message || "I did not find anything useful yet.", data.packets)
+      ]);
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -104,15 +201,18 @@ export function AssistantSidebar({ projectId, documentId, cursorNodeId }: Assist
         ) : null}
 
         {messages.map((message) => (
-          <div key={message.id} className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}>
+          <div key={message.id} className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start w-full"}`}>
             <div
-              className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+              className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 message.role === "user"
-                  ? "rounded-br-none bg-blue-600 text-white"
-                  : "rounded-bl-none border border-white/5 bg-white/10 text-white/90"
+                  ? "max-w-[85%] rounded-br-none bg-blue-600 text-white"
+                  : "w-full rounded-bl-none border border-white/5 bg-white/10 text-white/90"
               }`}
             >
               {message.content}
+              {message.packets && message.packets.map((packet, idx) => (
+                <PacketViewer key={`${packet.intent}-${idx}`} packet={packet} projectId={projectId} />
+              ))}
             </div>
           </div>
         ))}

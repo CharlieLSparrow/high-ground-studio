@@ -5,13 +5,12 @@ import { listMediaTags } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ClipLoggerPage({
-  params,
-  searchParams,
-}: {
-  params: { assetId: string };
-  searchParams?: { source?: string };
+export default async function ClipLoggerPage(props: {
+  params: Promise<{ assetId: string }>;
+  searchParams: Promise<{ source?: string }>;
 }) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const prisma = getPrismaClient();
 
   const [asset, mediaTagCatalog] = await Promise.all([

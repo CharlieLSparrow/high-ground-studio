@@ -120,7 +120,13 @@ export function EntityCard({ entity: initialEntity, onBack }: EntityCardProps) {
                 .map(([key, value]) => (
                 <div key={key} className="bg-white/[0.02] border border-white/5 rounded-xl p-3 flex flex-col gap-1">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-white/40">{key}</span>
-                  <span className="text-sm font-medium text-subject/90 break-words">{String(value)}</span>
+                  {typeof value === "object" && value !== null ? (
+                    <pre className="text-[10px] font-mono text-subject/70 whitespace-pre-wrap bg-black/20 p-2 rounded-md mt-1 overflow-x-auto">
+                      {JSON.stringify(value, null, 2)}
+                    </pre>
+                  ) : (
+                    <span className="text-sm font-medium text-subject/90 break-words">{String(value)}</span>
+                  )}
                 </div>
               ))}
             </div>

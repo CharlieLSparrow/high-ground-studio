@@ -1,0 +1,87 @@
+{
+  "attach": true,
+  "dryRun": false,
+  "failed": [],
+  "loaded": {
+    "detail": "active session is episode-3-premiere-rescue",
+    "name": "episode-3-premiere-rescue",
+    "ok": true,
+    "ready": true,
+    "response": "{\n  \"name\" : \"episode-3-premiere-rescue\",\n  \"status\" : \"load_session_commanded\"\n}"
+  },
+  "processed": [
+    {
+      "attach": "ok",
+      "attachReady": true,
+      "attachReadyDetail": "proxy visible in app state",
+      "attachResponse": "{\n  \"lane_id\" : \"3F5538FE-FBE7-4C95-957A-A254B5EB5DD4\",\n  \"path\" : \"\\/Users\\/wall-e\\/Library\\/Application Support\\/Quipsly\\/MediaVault\\/proxy\\/c14d1e9ac79b6b46\\/Percy_proxy.mp4\",\n  \"status\" : \"attach_proxy_commanded\"\n}",
+      "durationSeconds": 1169.5,
+      "generated": true,
+      "kind": "video",
+      "lane": "Reference Clip - Percy.mp4",
+      "laneId": "3F5538FE-FBE7-4C95-957A-A254B5EB5DD4",
+      "proxy": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/c14d1e9ac79b6b46/Percy_proxy.mp4",
+      "proxyBytes": 17152405,
+      "proxyExists": true,
+      "source": "/Users/wall-e/Desktop/Podcast/3/Percy.mp4",
+      "sourceBytes": 442785997
+    },
+    {
+      "attach": "ok",
+      "attachReady": true,
+      "attachReadyDetail": "proxy visible in app state",
+      "attachResponse": "{\n  \"lane_id\" : \"094DD4C2-4C17-4AD2-BF45-CF3A768D7C22\",\n  \"path\" : \"\\/Users\\/wall-e\\/Library\\/Application Support\\/Quipsly\\/MediaVault\\/proxy\\/1b63383a13f9f102\\/Untitled_1_-02_proxy.m4a\",\n  \"status\" : \"attach_proxy_commanded\"\n}",
+      "durationSeconds": 3832.028688,
+      "generated": true,
+      "kind": "audio",
+      "lane": "Audio A2 - Untitled_1 #02.wav",
+      "laneId": "094DD4C2-4C17-4AD2-BF45-CF3A768D7C22",
+      "proxy": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/1b63383a13f9f102/Untitled_1_-02_proxy.m4a",
+      "proxyBytes": 77209898,
+      "proxyExists": true,
+      "source": "/Users/wall-e/Desktop/Podcast/3/Untitled_1 #02.wav",
+      "sourceBytes": 737267438
+    }
+  ],
+  "saved": {
+    "name": "episode-3-premiere-rescue",
+    "ok": true,
+    "response": "{\n  \"name\" : \"episode-3-premiere-rescue\",\n  \"status\" : \"save_session_commanded\"\n}"
+  },
+  "sequenceTitle": "Episode 3 Premiere Rescue",
+  "session": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-3-premiere-rescue.quipsly-session.json",
+  "skipped": [
+    {
+      "lane": "Unresolved Camera V1 - video clip 1878",
+      "reason": "Premiere missing-media placeholder",
+      "source": "/__quipsly_missing_media__/video clip 1878"
+    },
+    {
+      "lane": "Unresolved Camera V1 - video clip 598",
+      "reason": "Premiere missing-media placeholder",
+      "source": "/__quipsly_missing_media__/video clip 598"
+    },
+    {
+      "durationSeconds": 208.8,
+      "lane": "Source Clip V3,A3 - I am your father.mp4",
+      "proxy": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/37216420c38e18a5/I_am_your_father_proxy.mp4",
+      "reason": "attached proxy already exists",
+      "source": "/Users/wall-e/Desktop/Podcast/3/I am your father.mp4",
+      "sourceBytes": 47771347
+    },
+    {
+      "durationSeconds": 4627.1225,
+      "lane": "Charlie Camera - CharliePod3.MP4",
+      "reason": "source exceeds max-source-bytes 1073741824",
+      "source": "/Users/wall-e/Desktop/Podcast/3/CharliePod3.MP4",
+      "sourceBytes": 49399384404
+    },
+    {
+      "durationSeconds": 5302.68,
+      "lane": "Reference Clip - temp_video_355297236743094272.MP4",
+      "reason": "source exceeds max-source-bytes 1073741824",
+      "source": "/Users/wall-e/Desktop/Podcast/3/temp_video_355297236743094272.MP4",
+      "sourceBytes": 34788204711
+    }
+  ]
+}

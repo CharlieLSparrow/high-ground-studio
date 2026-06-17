@@ -1,0 +1,171 @@
+{
+  "model": "quipslystudio-program-crop-presets",
+  "version": "2026-06-16.program-crop-presets.v1",
+  "truth": "Program crop presets write output metadata over whole synced source lanes. They never mutate, trim, duplicate, or destructively crop source media.",
+  "modes": {
+    "baseline": {
+      "label": "Fix whole camera",
+      "meaning": "Applies the crop recipe to the selected lane and current output format until changed by keyframes.",
+      "bestFor": [
+        "inconsistent filming",
+        "default face placement",
+        "camera-specific correction"
+      ]
+    },
+    "keyframe": {
+      "label": "Animate moment",
+      "meaning": "Writes the crop recipe at the shared playhead for timed punch-ins, reactions, or emphasis.",
+      "bestFor": [
+        "punch-ins",
+        "reaction emphasis",
+        "momentary reframes"
+      ]
+    }
+  },
+  "formats": {
+    "16:9": {
+      "label": "Wide episode master",
+      "notes": "Use for YouTube episodes, Patreon episode video, and episode pages."
+    },
+    "9:16": {
+      "label": "Vertical shorts",
+      "notes": "Use for YouTube Shorts, Instagram Reels, Facebook Reels, LinkedIn vertical clips, and mobile-first story exports."
+    }
+  },
+  "presets": [
+    {
+      "id": "centered",
+      "aliases": ["center", "safe-center"],
+      "label": "Centered",
+      "category": "core",
+      "formats": ["16:9", "9:16"],
+      "effect": "Center pan and keep at least a light safe zoom.",
+      "useWhen": "The speaker is close to framed correctly and needs a neutral reset."
+    },
+    {
+      "id": "tighter",
+      "aliases": ["tight", "punch-in", "punchin", "zoom-in", "zoomin"],
+      "label": "Tighter",
+      "category": "core",
+      "formats": ["16:9", "9:16"],
+      "effect": "Increase zoom moderately from the current crop.",
+      "useWhen": "The moment wants more energy or closer attention."
+    },
+    {
+      "id": "looser",
+      "aliases": ["loose", "wide", "zoom-out", "zoomout"],
+      "label": "Looser",
+      "category": "core",
+      "formats": ["16:9", "9:16"],
+      "effect": "Decrease zoom moderately from the current crop.",
+      "useWhen": "The framing feels too cramped."
+    },
+    {
+      "id": "headroom",
+      "aliases": ["head-room", "less-headroom", "up"],
+      "label": "Headroom",
+      "category": "core",
+      "formats": ["16:9", "9:16"],
+      "effect": "Move the crop upward and ensure a moderate safe zoom.",
+      "useWhen": "The face is sitting too low or there is too much empty space above."
+    },
+    {
+      "id": "left",
+      "aliases": ["nudge-left", "speaker-left"],
+      "label": "Nudge left",
+      "category": "core",
+      "formats": ["16:9", "9:16"],
+      "effect": "Move the crop left with a moderate safe zoom.",
+      "useWhen": "The speaker is off-center to the left."
+    },
+    {
+      "id": "right",
+      "aliases": ["nudge-right", "speaker-right"],
+      "label": "Nudge right",
+      "category": "core",
+      "formats": ["16:9", "9:16"],
+      "effect": "Move the crop right with a moderate safe zoom.",
+      "useWhen": "The speaker is off-center to the right."
+    },
+    {
+      "id": "solo-safe",
+      "aliases": ["solo", "talking-head", "speaker-safe"],
+      "label": "Solo safe",
+      "category": "episode",
+      "formats": ["16:9"],
+      "effect": "Center the solo speaker with light upward correction and safe zoom.",
+      "useWhen": "A single speaker should look clean in the wide episode master."
+    },
+    {
+      "id": "hide-desk",
+      "aliases": ["desk", "less-desk", "crop-desk"],
+      "label": "Hide desk",
+      "category": "episode",
+      "formats": ["16:9"],
+      "effect": "Move the crop upward and tighten enough to reduce desk or lower-frame clutter.",
+      "useWhen": "The camera captured too much desk, lap, floor, or distracting lower-frame content."
+    },
+    {
+      "id": "weight-left",
+      "aliases": ["left", "nudge-left", "speaker-left"],
+      "label": "Weight left",
+      "category": "episode",
+      "formats": ["16:9"],
+      "effect": "Favor left-side composition with safe zoom.",
+      "useWhen": "The wide frame needs room on the right for a two-shot, clip, graphic, or visual balance."
+    },
+    {
+      "id": "weight-right",
+      "aliases": ["right", "nudge-right", "speaker-right"],
+      "label": "Weight right",
+      "category": "episode",
+      "formats": ["16:9"],
+      "effect": "Favor right-side composition with safe zoom.",
+      "useWhen": "The wide frame needs room on the left for a two-shot, clip, graphic, or visual balance."
+    },
+    {
+      "id": "vertical-solo",
+      "aliases": ["shorts-solo", "reels-solo", "mobile-solo"],
+      "label": "Vertical solo",
+      "category": "shorts",
+      "formats": ["9:16"],
+      "effect": "Center and tighten the speaker for vertical mobile viewing.",
+      "useWhen": "One speaker should carry a short, reel, or story segment."
+    },
+    {
+      "id": "vertical-punch",
+      "aliases": ["shorts-punch", "big-punch"],
+      "label": "Vertical punch",
+      "category": "shorts",
+      "formats": ["9:16"],
+      "effect": "Add a larger zoom increase from the current crop.",
+      "useWhen": "A vertical short needs a stronger emphasis beat."
+    },
+    {
+      "id": "stack-top",
+      "aliases": ["top-speaker", "top"],
+      "label": "Stack top",
+      "category": "shorts",
+      "formats": ["9:16"],
+      "effect": "Prepare this lane for the upper slot in a stacked two-speaker vertical layout.",
+      "useWhen": "Both speakers are visible in a vertical short and this speaker belongs on top."
+    },
+    {
+      "id": "stack-bottom",
+      "aliases": ["bottom-speaker", "bottom"],
+      "label": "Stack bottom",
+      "category": "shorts",
+      "formats": ["9:16"],
+      "effect": "Prepare this lane for the lower slot in a stacked two-speaker vertical layout.",
+      "useWhen": "Both speakers are visible in a vertical short and this speaker belongs on the bottom."
+    }
+  ],
+  "agentExamples": [
+    "script/agentctl.sh program-crop-mode baseline",
+    "script/agentctl.sh program-crop-preset \"Charlie Camera\" 16:9 solo-safe baseline",
+    "script/agentctl.sh program-crop-preset \"Homer Camera\" 16:9 weight-right baseline",
+    "script/agentctl.sh program-crop-mode keyframe",
+    "script/agentctl.sh program-crop-preset \"Charlie Camera\" 9:16 vertical-solo baseline",
+    "script/agentctl.sh program-crop-preset \"Homer Camera\" 9:16 stack-bottom keyframe 42.0"
+  ]
+}
