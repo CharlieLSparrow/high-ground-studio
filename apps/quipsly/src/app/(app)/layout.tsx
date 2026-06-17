@@ -8,6 +8,7 @@ import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { canAccessStudio } from "@/lib/studio-authz";
 import { MAC_WEB_SESSION_COOKIE_NAME, verifyMacWebSessionToken } from "@/lib/server/mac-session-token";
 import { cookies } from "next/headers";
+import { hasAnyActiveStudioProjectAccessGrantForEmail } from "@/lib/server/studio-project-access";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
@@ -82,26 +83,23 @@ export default async function RootLayout({
 }>) {
   const session = await auth();
   const cookieStore = await cookies();
-  const macWebActor = session?.user
-    ? null
-    : verifyMacWebSessionToken(cookieStore.get(MAC_WEB_SESSION_COOKIE_NAME)?.value);
   const ownerOverride = process.env.QUIPSLY_OWNER_OVERRIDE === "true";
   const actorEmail =
     session?.user?.primaryEmail
     || session?.user?.email
-    || macWebActor?.primaryEmail
-    || macWebActor?.email
     || null;
-  const actorRoles = session?.user?.roles || macWebActor?.roles || [];
+  const actorRoles = session?.user?.roles || [];
   const isAdminBypass = isUserManagementAdminEmail(actorEmail);
+  const hasProjectAccessGrant = await hasAnyActiveStudioProjectAccessGrantForEmail(actorEmail);
   const hasAccess =
     ownerOverride
     || isAdminBypass
     || Boolean(session?.user && (session.user as any).hasBetaAccess)
-    || Boolean(macWebActor && canAccessStudio(actorRoles as any));
+    || Boolean(session?.user && canAccessStudio(actorRoles as any))
+    || hasProjectAccessGrant;
 
   // If they aren't logged in, redirect to the marketing/login page
-  if (!session?.user && !macWebActor && !ownerOverride) {
+  if (!session?.user && !ownerOverride) {
     return (
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
@@ -136,15 +134,7 @@ export default async function RootLayout({
                   isStaff: Boolean(session.user.isStaff),
                   hasBetaAccess: Boolean((session.user as any).hasBetaAccess),
                 }
-              : macWebActor
-                ? {
-                    email: macWebActor.primaryEmail || macWebActor.email || "",
-                    name: macWebActor.name || null,
-                    image: null,
-                    isStaff: canAccessStudio(macWebActor.roles as any),
-                    hasBetaAccess: hasAccess,
-                  }
-                : null
+              : null
           }
         >
           {children}

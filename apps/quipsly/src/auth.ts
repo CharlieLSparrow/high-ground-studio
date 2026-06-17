@@ -164,6 +164,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return `${baseUrl}/projects`;
         }
 
+        if (target.pathname === "/api/auth/error") {
+          return target.toString(); // allow error page to render instead of looping
+        }
+
         if (target.pathname === "/" || target.pathname.startsWith("/api/auth")) {
           return `${baseUrl}/projects`;
         }
