@@ -30,6 +30,30 @@ from shorts_local_export_board import build_board as build_local_board
 from shorts_platform_package_board import package_cards
 
 
+SHORTS_STRATEGY_BASIS = [
+    {
+        "source": "Descript Underlord",
+        "pattern": "AI assistant suggests edits, creates clips, rewrites for energy, adds captions, and supports feedback loops.",
+        "quipslyTranslation": "Make every AI suggestion inspectable as metadata with human review prompts, not a hidden edit.",
+    },
+    {
+        "source": "OpusClip",
+        "pattern": "Long-form video is analyzed for highlight moments, rearranged into coherent vertical shorts, polished with captions, relayout, transitions, and a call to action.",
+        "quipslyTranslation": "Score candidates by hook, coherence, platform fit, proof state, and explicit next edits instead of only export status.",
+    },
+    {
+        "source": "YouTube Shorts help",
+        "pattern": "Square or vertical videos up to three minutes can be Shorts, but over-one-minute Shorts with active Content ID claims are blocked globally.",
+        "quipslyTranslation": "Keep duration and claim-risk warnings visible before packaging YouTube Shorts.",
+    },
+    {
+        "source": "Creator-tool market pattern",
+        "pattern": "Riverside, CapCut, Captions, Canva, Adobe Express, Instagram, and YouTube tools compete on captions, templates, reframing, quick social export, and low-friction posting.",
+        "quipslyTranslation": "Use transparent recipes: proof file, crop, captions, hook, pacing, platform copy, receipt capture.",
+    },
+]
+
+
 def top_actions(plan_packet: dict[str, Any], limit: int = 8) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for plan in plan_packet.get("plans") or []:
@@ -155,8 +179,213 @@ def execution_counts(queue: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _ready_platforms(card: dict[str, Any]) -> list[str]:
+    platforms = ((card.get("platformReadiness") or {}).get("platforms") or {})
+    return [
+        str(name)
+        for name, detail in platforms.items()
+        if str((detail or {}).get("status") or "") == "ready"
+    ]
+
+
+def _review_platforms(card: dict[str, Any]) -> list[str]:
+    platforms = ((card.get("platformReadiness") or {}).get("platforms") or {})
+    return [
+        str(name)
+        for name, detail in platforms.items()
+        if str((detail or {}).get("status") or "") == "needs-review"
+    ]
+
+
+def _blocked_platforms(card: dict[str, Any]) -> list[str]:
+    platforms = ((card.get("platformReadiness") or {}).get("platforms") or {})
+    return [
+        str(name)
+        for name, detail in platforms.items()
+        if str((detail or {}).get("status") or "") == "blocked"
+    ]
+
+
+def _duration_band(duration: float) -> str:
+    if duration <= 0:
+        return "unknown"
+    if duration <= 20:
+        return "quick-punch"
+    if duration <= 45:
+        return "standard-short"
+    if duration <= 90:
+        return "deep-short"
+    if duration <= 180:
+        return "long-short"
+    return "too-long"
+
+
+def creator_quality_brief(card: dict[str, Any]) -> dict[str, Any]:
+    title = str(card.get("title") or card.get("id") or "Untitled short")
+    duration = float(card.get("durationSeconds") or 0)
+    hook = str(card.get("hookText") or "").strip()
+    overlay = str(card.get("overlayText") or "").strip()
+    exported = bool(card.get("primaryExportExists"))
+    ready_platforms = _ready_platforms(card)
+    review_platforms = _review_platforms(card)
+    blocked_platforms = _blocked_platforms(card)
+    growth_score = float(card.get("growthScore") or 0)
+    duration_band = _duration_band(duration)
+
+    strengths: list[str] = []
+    risks: list[str] = []
+    recipe: list[dict[str, str]] = []
+
+    if growth_score >= 70:
+        strengths.append("Strong candidate by current Quipsly growth score.")
+    elif growth_score >= 50:
+        strengths.append("Promising candidate that still needs sharper packaging.")
+    else:
+        risks.append("Low current growth score; polish only if the idea matters strategically.")
+
+    if exported:
+        strengths.append("A local exported file exists, so this can be watched and judged.")
+    else:
+        risks.append("No local export proof yet; quality claims are provisional.")
+        recipe.append(
+            {
+                "step": "Create local export proof",
+                "why": "A short is not production-ready until a real file can be watched and heard.",
+                "agentAction": "Run the export/select command from the execution queue, then inspect the file path.",
+            }
+        )
+
+    if hook:
+        strengths.append("Hook text exists.")
+    else:
+        risks.append("Opening hook is missing; first-second clarity is weak.")
+        recipe.append(
+            {
+                "step": "Write a first-second promise",
+                "why": "Short-form feeds punish unclear openings immediately.",
+                "agentAction": "Draft 3 hook options that name the tension, payoff, or useful idea without clickbait.",
+            }
+        )
+
+    if overlay:
+        strengths.append("Caption or overlay plan exists.")
+    else:
+        risks.append("Caption/overlay plan missing; sound-off viewing will be weaker.")
+        recipe.append(
+            {
+                "step": "Add caption-safe overlay plan",
+                "why": "Captions and readable text are table stakes for vertical feeds.",
+                "agentAction": "Create a concise overlay line and note any face-safe-zone risk.",
+            }
+        )
+
+    if duration_band in {"quick-punch", "standard-short"}:
+        strengths.append(f"Duration band is {duration_band}, which is easy to test in vertical feeds.")
+    elif duration_band == "deep-short":
+        risks.append("Longer than a quick punch; needs a stronger retention arc.")
+    elif duration_band == "long-short":
+        risks.append("Long-short territory; use only if payoff and pacing are clearly strong.")
+    elif duration_band == "too-long":
+        risks.append("Too long for the current shorts target.")
+    else:
+        risks.append("Duration is unknown.")
+
+    if ready_platforms:
+        strengths.append(f"Ready platforms: {', '.join(ready_platforms)}.")
+    if review_platforms:
+        recipe.append(
+            {
+                "step": "Review platform-native fit",
+                "why": f"Needs review for: {', '.join(review_platforms)}.",
+                "agentAction": "Write platform-specific copy and call out whether the clip belongs on each destination.",
+            }
+        )
+    if blocked_platforms:
+        risks.append(f"Blocked platforms: {', '.join(blocked_platforms)}.")
+
+    recipe.append(
+        {
+            "step": "Watch once like a stranger",
+            "why": "The real test is whether it makes sense with no episode context.",
+            "agentAction": "Summarize the first 3 seconds, payoff, confusing parts, crop risk, and whether the short earns a repost.",
+        }
+    )
+    recipe.append(
+        {
+            "step": "Package for the best first destination",
+            "why": "A good short still needs title/caption/context tailored to where it lands.",
+            "agentAction": "Choose the first platform, write native copy, and identify the receipt needed after posting.",
+        }
+    )
+
+    first_destination = "youtubeShorts"
+    if "linkedin" in ready_platforms:
+        first_destination = "linkedin"
+    elif ready_platforms:
+        first_destination = ready_platforms[0]
+
+    return {
+        "id": card.get("id") or card.get("shortId") or title,
+        "title": title,
+        "episodeKey": card.get("episodeKey") or "unknown-episode",
+        "growthScore": growth_score,
+        "growthTier": card.get("growthTier"),
+        "stage": card.get("stage"),
+        "durationSeconds": duration,
+        "durationBand": duration_band,
+        "firstDestination": first_destination,
+        "strengths": strengths,
+        "risks": risks,
+        "recipe": recipe,
+        "hookText": hook,
+        "overlayText": overlay,
+        "platformReadinessSummary": card.get("platformReadinessSummary"),
+        "commands": card.get("commands") or {},
+        "humanReviewPrompt": "Would I stop scrolling, understand the point without context, and feel rewarded by the ending?",
+        "agentReviewPrompt": "Inspect exported proof if present. Improve hook, captions, crop notes, platform copy, and receipt path without publishing.",
+    }
+
+
+def creator_quality_pack(cards: list[dict[str, Any]], limit: int = 10) -> dict[str, Any]:
+    ranked = sorted(
+        cards,
+        key=lambda card: (
+            float(card.get("growthScore") or 0),
+            len(_ready_platforms(card)),
+            1 if card.get("primaryExportExists") else 0,
+        ),
+        reverse=True,
+    )
+    briefs = [creator_quality_brief(card) for card in ranked[:limit]]
+    episodes: dict[str, int] = {}
+    first_destinations: dict[str, int] = {}
+    risk_counts: dict[str, int] = {}
+    for brief in briefs:
+        episode = str(brief.get("episodeKey") or "unknown-episode")
+        destination = str(brief.get("firstDestination") or "unknown")
+        episodes[episode] = episodes.get(episode, 0) + 1
+        first_destinations[destination] = first_destinations.get(destination, 0) + 1
+        for risk in brief.get("risks") or []:
+            risk_key = str(risk).split(";")[0].split(".")[0][:80]
+            risk_counts[risk_key] = risk_counts.get(risk_key, 0) + 1
+    return {
+        "packetType": "quipsly-shorts-creator-quality-pack",
+        "version": "2026-06-22.shorts-creator-quality-pack.v1",
+        "truth": "These briefs guide human and agent refinement. They are not publish approvals or performance guarantees.",
+        "researchBasis": SHORTS_STRATEGY_BASIS,
+        "briefCount": len(briefs),
+        "episodeCounts": episodes,
+        "firstDestinationCounts": first_destinations,
+        "riskCounts": risk_counts,
+        "briefs": briefs,
+    }
+
+
 def command_bundle(queue: list[dict[str, Any]]) -> list[str]:
     lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "",
         "# Quipsly shorts Mission Control command bundle",
         "# Review each command before running. These commands do not publish or approve by themselves.",
         "cd /Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio",
@@ -175,6 +404,39 @@ def command_bundle(queue: list[dict[str, Any]]) -> list[str]:
             ]
         )
     return lines
+
+
+def artifact_manifest(packet: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "packetType": "quipsly-shorts-mission-control-artifact-manifest",
+        "version": "2026-06-22.shorts-mission-control-artifact-manifest.v1",
+        "generatedAt": packet.get("generatedAt"),
+        "truth": "This manifest lists local proof and handoff artifacts. It is not a publication receipt.",
+        "paths": {
+            "missionControlJson": packet.get("json"),
+            "missionControlHtml": packet.get("html"),
+            "missionControlMarkdown": packet.get("markdown"),
+            "agentTaskPacketJson": packet.get("agentTaskPacketJson"),
+            "commandBundleShell": packet.get("commandBundleShell"),
+            "creatorQualityPackJson": packet.get("creatorQualityPackJson"),
+            "artifactManifestJson": packet.get("artifactManifestJson"),
+        },
+        "executionCounts": packet.get("executionCounts"),
+        "episodeCoverage": packet.get("episodeCoverage"),
+        "platformReadinessCoverage": packet.get("platformReadinessCoverage"),
+        "creatorQualitySummary": {
+            "briefCount": (packet.get("creatorQualityPack") or {}).get("briefCount"),
+            "episodeCounts": (packet.get("creatorQualityPack") or {}).get("episodeCounts"),
+            "firstDestinationCounts": (packet.get("creatorQualityPack") or {}).get("firstDestinationCounts"),
+        },
+        "safeUse": [
+            "Open the HTML or Markdown for human context.",
+            "Use the agent task packet for structured assistant handoff.",
+            "Use the creator quality pack for hook, caption, crop, and platform refinement.",
+            "Review command bundle contents before running anything.",
+            "Do not treat this manifest as publishing proof.",
+        ],
+    }
 
 
 def agent_task_packet(queue: list[dict[str, Any]], episode_work: list[dict[str, Any]], recipe: dict[str, Any]) -> dict[str, Any]:
@@ -219,6 +481,7 @@ def agent_task_packet(queue: list[dict[str, Any]], episode_work: list[dict[str, 
             "queueBackedActionCount": (recipe or {}).get("queueBackedActionCount"),
             "episodeSteps": len((recipe or {}).get("episodeSteps") or []),
         },
+        "creatorQualityPackExpected": True,
         "tasks": tasks,
     }
 
@@ -369,6 +632,7 @@ def build_packet(queue_path: str, state_path: str, output_dir: str, basename: st
     queue = execution_queue(next_short, actions, platform_cards)
     episode_work = episode_worklist(local.get("cards") or [], growth.get("cards") or [], queue)
     recipe = quality_recipe(local, growth, episode_work, queue)
+    creator_pack = creator_quality_pack(growth.get("cards") or [])
 
     return {
         "packetType": "quipsly-shorts-mission-control",
@@ -380,7 +644,10 @@ def build_packet(queue_path: str, state_path: str, output_dir: str, basename: st
         "markdown": os.path.join(output_dir, f"{basename}.md"),
         "agentTaskPacketJson": os.path.join(output_dir, f"{basename}-agent-task-packet.json"),
         "commandBundleShell": os.path.join(output_dir, f"{basename}-command-bundle.sh"),
+        "creatorQualityPackJson": os.path.join(output_dir, f"{basename}-creator-quality-pack.json"),
+        "artifactManifestJson": os.path.join(output_dir, f"{basename}-artifact-manifest.json"),
         "operatorFocus": "Make the next useful production move obvious: export real files, improve promising shorts, package platform-native copy, and keep Episode 1-3 coverage visible.",
+        "shortsStrategyBasis": SHORTS_STRATEGY_BASIS,
         "localExport": {
             "shortCount": local.get("shortCount"),
             "stageCounts": local.get("stageCounts"),
@@ -400,6 +667,7 @@ def build_packet(queue_path: str, state_path: str, output_dir: str, basename: st
         "executionCounts": execution_counts(queue),
         "episodeWorklist": episode_work,
         "qualityRecipe": recipe,
+        "creatorQualityPack": creator_pack,
         "agentTaskPacket": agent_task_packet(queue, episode_work, recipe),
         "commandBundle": command_bundle(queue),
         "topActions": actions,
@@ -460,6 +728,8 @@ def html_page(packet: dict[str, Any]) -> str:
     command_bundle_text = "\n".join(packet.get("commandBundle") or [])
     agent_task_path = packet.get("agentTaskPacketJson") or ""
     command_bundle_path = packet.get("commandBundleShell") or ""
+    creator_quality_path = packet.get("creatorQualityPackJson") or ""
+    artifact_manifest_path = packet.get("artifactManifestJson") or ""
     queue_cards = "".join(
         f"""
         <article class="action {esc(item.get('severity'))}">
@@ -483,6 +753,20 @@ def html_page(packet: dict[str, Any]) -> str:
         </article>
         """
         for card in packet.get("topPlatformCards") or []
+    )
+    creator_cards = "".join(
+        f"""
+        <article>
+          <p class="eyebrow">{esc(brief.get('episodeKey'))} / {esc(brief.get('growthTier'))} / {esc(brief.get('firstDestination'))}</p>
+          <h3>{esc(brief.get('title'))}</h3>
+          <p>Score: <strong>{esc(brief.get('growthScore'))}</strong> / {esc(brief.get('durationBand'))} / {esc(brief.get('platformReadinessSummary'))}</p>
+          <p><strong>Strengths:</strong> {esc('; '.join(brief.get('strengths') or []) or 'none')}</p>
+          <p><strong>Risks:</strong> {esc('; '.join(brief.get('risks') or []) or 'none')}</p>
+          <p><strong>Human check:</strong> {esc(brief.get('humanReviewPrompt'))}</p>
+          <code>{esc(chr(10).join(f"- {step.get('step')}: {step.get('agentAction')}" for step in (brief.get('recipe') or [])))}</code>
+        </article>
+        """
+        for brief in (packet.get("creatorQualityPack") or {}).get("briefs") or []
     )
     episode_work_cards = "".join(
         f"""
@@ -597,9 +881,16 @@ def html_page(packet: dict[str, Any]) -> str:
         <article><p class="eyebrow">Next export/review</p><h2>{esc(next_short.get('title') or 'No short found')}</h2><p>{esc(next_short.get('nextAction') or '')}</p></article>
         <article><p class="eyebrow">Top growth candidate</p><h2>{esc(top_candidate.get('title') or 'No candidate found')}</h2><p>Score: <strong>{esc(top_candidate.get('growthScore') or '')}</strong></p></article>
         <article><p class="eyebrow">Executable next steps</p><h2>{esc((packet.get('executionCounts') or {}).get('commandCount'))} commands</h2><p>{esc((packet.get('executionCounts') or {}).get('total'))} ranked queue items</p></article>
+        <article><p class="eyebrow">Creator quality pack</p><h2>{esc((packet.get('creatorQualityPack') or {}).get('briefCount'))} briefs</h2><p>{esc(creator_quality_path)}</p></article>
       </div>
       {episode_html}
       {platform_html}
+    </section>
+    <section class="panel">
+      <p class="eyebrow">Research-backed creator quality briefs</p>
+      <p>These are Quipsly-specific recipes for making the strongest candidates more watchable, legible, and platform-native before posting.</p>
+      <p><strong>Artifact:</strong> {esc(creator_quality_path)}</p>
+      <div class="grid">{creator_cards}</div>
     </section>
     <section class="panel">
       <p class="eyebrow">Episode worklist</p>
@@ -635,6 +926,7 @@ def html_page(packet: dict[str, Any]) -> str:
       <p class="eyebrow">Agent task packet</p>
       <p>Structured handoff for Codex, Quipsly, or another helper. It contains proof expectations and explicitly excludes publish/approval authority.</p>
       <p><strong>Artifact:</strong> {esc(agent_task_path)}</p>
+      <p><strong>Manifest:</strong> {esc(artifact_manifest_path)}</p>
       <code>{esc(agent_task_json)}</code>
     </section>
     <section class="panel">
@@ -674,6 +966,8 @@ def markdown_page(packet: dict[str, Any]) -> str:
         f"- Execution queue: `{(packet.get('executionCounts') or {}).get('total')}` items, `{(packet.get('executionCounts') or {}).get('commandCount')}` commands",
         f"- Agent task packet: `{packet.get('agentTaskPacketJson')}`",
         f"- Command bundle: `{packet.get('commandBundleShell')}`",
+        f"- Creator quality pack: `{packet.get('creatorQualityPackJson')}`",
+        f"- Artifact manifest: `{packet.get('artifactManifestJson')}`",
         "",
         *markdown_episode_coverage(packet.get("episodeCoverage")),
         "",
@@ -717,6 +1011,33 @@ def markdown_page(packet: dict[str, Any]) -> str:
                 "",
             ]
         )
+    lines.extend(["## Research-backed creator quality briefs", ""])
+    for brief in (packet.get("creatorQualityPack") or {}).get("briefs") or []:
+        lines.extend(
+            [
+                f"### {brief.get('title')}",
+                "",
+                f"- Episode: `{brief.get('episodeKey')}`",
+                f"- Growth score: `{brief.get('growthScore')}`",
+                f"- First destination: `{brief.get('firstDestination')}`",
+                f"- Duration band: `{brief.get('durationBand')}`",
+                f"- Platform readiness: {brief.get('platformReadinessSummary')}",
+                f"- Strengths: {'; '.join(brief.get('strengths') or []) or 'none'}",
+                f"- Risks: {'; '.join(brief.get('risks') or []) or 'none'}",
+                f"- Human check: {brief.get('humanReviewPrompt')}",
+                "",
+                "Recipe:",
+                "",
+            ]
+        )
+        for step in brief.get("recipe") or []:
+            lines.extend(
+                [
+                    f"- `{step.get('step')}`: {step.get('agentAction')}",
+                    f"  - Why: {step.get('why')}",
+                ]
+            )
+        lines.append("")
     lines.extend(["## Per-episode recipe", ""])
     for step in (packet.get("qualityRecipe") or {}).get("episodeSteps") or []:
         lines.extend(
@@ -842,6 +1163,8 @@ def main(argv: list[str]) -> int:
     packet = build_packet(queue_path, state_path, output_dir, basename)
     write_json(packet["agentTaskPacketJson"], packet.get("agentTaskPacket") or {})
     write_text(packet["commandBundleShell"], "\n".join(packet.get("commandBundle") or []))
+    write_json(packet["creatorQualityPackJson"], packet.get("creatorQualityPack") or {})
+    write_json(packet["artifactManifestJson"], artifact_manifest(packet))
     emit_packet_outputs(packet, html_page(packet), markdown_page(packet), mode)
     return 0
 
