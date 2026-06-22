@@ -50,7 +50,7 @@ async function run() {
     try {
       // Here we would use the @google-cloud/storage SDK to upload the raw file via resumable upload.
       // await bucket.upload(sourcePath, { resumable: true });
-      uploadSuccessful = true; 
+      uploadSuccessful = true;
       console.log(`✅ Raw file safely uploaded to GCS.`);
     } catch (err) {
       console.error(`❌ Cloud upload failed for ${file}: ${err.message}`);
@@ -61,7 +61,7 @@ async function run() {
     if (uploadSuccessful) {
       console.log(`Verifying cloud checksum before deletion... (mocked)`);
       const checksumMatches = true; // Mock strict verification
-      
+
       if (checksumMatches) {
         console.log(`🗑️ 100% Verified. Safely auto-deleting raw file off SD Card to save space.`);
         // In a real scenario, uncomment this once GCS is actually connected:

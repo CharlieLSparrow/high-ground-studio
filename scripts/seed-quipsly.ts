@@ -42,7 +42,7 @@ async function main() {
         payloadJson: JSON.parse(JSON.stringify(person)),
       },
     });
-    
+
     // Edges for Person -> Theme
     for (const themeId of person.themeIds) {
       await prisma.quipLoreEdge.create({

@@ -44,7 +44,7 @@ function extractLatestReport(content, fileName) {
       currentReport.content.push(line);
     }
   }
-  
+
   if (currentReport) {
     reports.push(currentReport);
   }
@@ -63,7 +63,7 @@ async function run() {
 
   console.log('🦅 Generating Flock Summary...');
   const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.md'));
-  
+
   let allLatestReports = [];
 
   for (const file of files) {

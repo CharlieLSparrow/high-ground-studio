@@ -129,13 +129,13 @@ async function main() {
           contentHash: contentHash,
         }
       });
-      
+
       // Update Manuscript's last snapshot timestamp
       await prisma.studioManuscript.update({
         where: { id: manuscript.id },
         data: { lastSnapshotAt: snapshot.createdAt }
       });
-      
+
       console.log(`Created new Manuscript Snapshot! ID: ${snapshot.id}`);
       console.log(`Ingested ${issueSeed.acts?.length || 0} Acts and ${issueSeed.panels?.length || 0} Panels into draftJson.`);
     } else {

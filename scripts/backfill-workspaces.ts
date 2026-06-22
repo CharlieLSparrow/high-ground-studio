@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   console.log('Starting workspace backfill...');
-  
+
   // Find workspaces without an organization
   const orphanedWorkspaces = await prisma.studioWorkspace.findMany({
     where: { organizationId: null }

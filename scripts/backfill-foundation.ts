@@ -70,7 +70,7 @@ async function main() {
   });
 
   console.log(`Found ${orphanedWorkspaces.length} orphaned workspaces.`);
-  
+
   if (orphanedWorkspaces.length > 0) {
     if (isDryRun) {
       console.log(`[DRY RUN] Would update ${orphanedWorkspaces.length} workspaces to organization ${organizationId}.`);
@@ -96,7 +96,7 @@ async function main() {
     } else {
       const updatedProjects = await prisma.studioProject.updateMany({
         where: { createdByUserId: null },
-        data: { 
+        data: {
           createdByUserId: primaryUser.id,
           updatedByUserId: primaryUser.id,
         },

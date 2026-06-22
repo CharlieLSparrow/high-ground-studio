@@ -40,10 +40,10 @@ async function main() {
       // By including the author, work, and tags, the vector space becomes much richer.
       const authorStr = quote.author ? `Author: ${quote.author.name}` : "";
       const workStr = quote.work ? `Work: ${quote.work.title}` : "";
-      const tagsStr = quote.tags.length > 0 
-        ? `Themes: ${quote.tags.map(t => t.name).join(", ")}` 
+      const tagsStr = quote.tags.length > 0
+        ? `Themes: ${quote.tags.map(t => t.name).join(", ")}`
         : "";
-      
+
       const contentSnapshot = `
 ${authorStr}
 ${workStr}
