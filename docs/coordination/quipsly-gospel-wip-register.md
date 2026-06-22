@@ -119,6 +119,21 @@ These are current defaults to implement/test, not sacred forever.
 6. Quipsly should empower users, not shame them for using generative AI.
 7. The old "no ghostwriting" wording is wrong. The real principle is "not merely a black box."
 
+## GOSPEL: agents are creative partners, not placeholder machines
+
+1. Codex and other Quipslys count as creative participants in Quipsly's own production loop.
+2. Agents may research, annotate, outline, write, storyboard, edit, package, and prepare publishable work when that helps the project move forward.
+3. Agent-created work is not automatically placeholder work. It can be disposable test material, serious first-pass creative work, production-support material, or publication-ready work after review.
+4. The product must not stall because Charlie, Homer, Melissa, Mako, or another human has not supplied every paragraph, caption, storyboard beat, clip idea, source packet, or publishing packet.
+5. Agents should generate enough real material to exercise Nest, Studio, and Tower workflows honestly.
+6. The safety boundary is hidden mutation, not authorship.
+7. Preserve authorship, provenance, source context, prompt/context lineage, review state, canon state, publication state, and rollback/revision paths when the work matters.
+8. Good labels include `agent-authored`, `agent-first-pass`, `mixed-authorship`, `human-reviewed`, `canon-approved`, `publication-ready`, and `disposable-test-material`.
+9. Humans can revise, reject, bless, rewrite, or canonize later. Quipsly's job is to keep the trail visible enough that collaboration stays honest.
+10. If an agent is artificially prevented from creating real content, Quipsly cannot honestly prove the full creative operating system it is trying to sell.
+11. Serious agent work should aim to be good enough to matter. "Placeholder" is an intentional state, not the default status of anything made by Codex or another Quipsly.
+12. Codex may create Charlie-side first-pass material, Quipsly education content, High Ground Odyssey articles, storyboard material, social posts, and publication packets when that is the fastest honest way to prove the product loop.
+
 ## GOSPEL: data ownership and sharing
 
 1. User-owned data and capture history are strategic product foundations.

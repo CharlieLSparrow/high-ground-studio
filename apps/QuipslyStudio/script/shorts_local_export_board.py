@@ -15,8 +15,11 @@ from typing import Any
 from shorts_board_common import (
     classify_short,
     emit_packet_outputs,
+    episode_coverage,
     esc,
+    html_episode_coverage,
     load_json,
+    markdown_episode_coverage,
     now_iso,
     stage_rank,
     unique_shorts,
@@ -62,6 +65,7 @@ def build_board(queue_path: str, state_path: str, output_dir: str, basename: str
         "localExportedFileCount": len(local_files),
         "missingExportCount": len(missing_exports),
         "qualityReviewCount": len(quality_review),
+        "episodeCoverage": episode_coverage(cards),
         "nextShort": next_card,
         "cards": cards,
         "sourceStateHints": {
@@ -93,6 +97,7 @@ def html_page(board: dict[str, Any]) -> str:
                 <p>{esc(card.get('nextAction'))}</p>
                 <dl>
                   <div><dt>Duration</dt><dd>{esc(card.get('durationSeconds'))}s</dd></div>
+                  <div><dt>Episode</dt><dd>{esc(card.get('episodeLabel'))} ({esc(card.get('episodeInference'))})</dd></div>
                   <div><dt>Segments</dt><dd>{esc(card.get('segmentCount'))}</dd></div>
                   <div><dt>Export</dt><dd>{esc(exists)} - {esc(primary)}</dd></div>
                   <div><dt>Review</dt><dd>{esc(card.get('reviewStatus'))}</dd></div>
@@ -111,6 +116,7 @@ def html_page(board: dict[str, Any]) -> str:
         )
 
     next_command = ""
+    episode_html = html_episode_coverage(board.get("episodeCoverage"))
     if next_card:
         commands = next_card.get("commands") or {}
         if next_card.get("stage") in {"missing-export", "export-path-missing-file"}:
@@ -191,6 +197,12 @@ def html_page(board: dict[str, Any]) -> str:
     }}
     .counts strong {{ display: block; font-size: 2rem; color: var(--gold); }}
     .counts span {{ color: var(--muted); font-size: 0.82rem; }}
+    .episode-coverage {{ margin-top: 18px; }}
+    .episode-coverage-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .episode-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(125, 187, 100, 0.07); }}
+    .episode-coverage strong {{ display: block; color: var(--moss); text-transform: uppercase; letter-spacing: 0.08em; }}
+    .episode-coverage span, .episode-coverage small {{ display: block; color: var(--muted); }}
+    .coverage-warning {{ color: var(--gold); margin: 8px 0 0; }}
     .next {{
       margin-top: 22px;
       border-left: 4px solid var(--moss);
@@ -226,6 +238,7 @@ def html_page(board: dict[str, Any]) -> str:
       <h1>Make the shorts real files.</h1>
       <p>{esc(board.get('operatorFocus'))}</p>
       <div class="counts">{count_cards}</div>
+      {episode_html}
       <section class="next">
         <p class="eyebrow">Next practical move</p>
         <h2>{esc(next_card.get('title') if next_card else 'No shorts found')}</h2>
@@ -259,6 +272,7 @@ def markdown_page(board: dict[str, Any]) -> str:
     ]
     for key, value in sorted((board.get("stageCounts") or {}).items(), key=lambda item: stage_rank(item[0])):
         lines.append(f"- `{key}`: `{value}`")
+    lines.extend(["", *markdown_episode_coverage(board.get("episodeCoverage"))])
     next_card = board.get("nextShort") or {}
     if next_card:
         commands = next_card.get("commands") or {}
@@ -288,6 +302,7 @@ def markdown_page(board: dict[str, Any]) -> str:
         lines.extend([
             f"### {card.get('title')}",
             "",
+            f"- Episode: `{card.get('episodeKey')}` (`{card.get('episodeInference')}`)",
             f"- Stage: `{card.get('stage')}`",
             f"- Duration: `{card.get('durationSeconds')}s`",
             f"- Segments: `{card.get('segmentCount')}`",

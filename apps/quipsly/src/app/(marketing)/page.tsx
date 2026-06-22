@@ -8,6 +8,7 @@ import Link from "next/link";
 import { MarketingQuipslyDemo } from "./components/MarketingQuipslyDemo";
 import { MarketingActionLedgerDemo } from "./components/MarketingActionLedgerDemo";
 import { MarketingLoreSearchDemo } from "./components/MarketingLoreSearchDemo";
+import { PillarsDemo } from "./components/PillarsDemo";
 import {
   getGeneratedQuipslyArt,
   getGeneratedQuipslyArtByRole,
@@ -158,7 +159,7 @@ export default function QuipslyLandingPage() {
             AI is an incredible tool for brainstorming and drafting, but too often it tries to take over the creative steering wheel. We believe technology shouldn't replace your voice—it should empower it. Quipsly gives you total transparency and precise tooling to organize your ideas, without ever shaming the drafting process.
           </p>
           <p className="text-xl text-[#8c552e] leading-relaxed font-sans">
-            Quipslys are built to cure <em>Systems Anxiety</em>. We are your enthusiastic research assistants. We fetch citations, sync your media imports, assemble research packets, and organize the chaotic administrative side of your creative work so you have the freedom and clarity to do what humans do best: write, dream, and create.
+            Quipslys are built to quiet <em>Systems Anxiety</em>. We are your enthusiastic research assistants. We fetch citations, sync your media imports, assemble research packets, and organize the chaotic administrative side of your creative work so you have the freedom and clarity to do what humans do best: write, dream, and create.
           </p>
           <div className="pt-4 font-sans">
             <a href="/philosophy/systems-anxiety" className="inline-flex items-center justify-center font-bold text-[#a96735] hover:text-[#8c552e] underline underline-offset-4 transition-colors">
@@ -314,6 +315,8 @@ export default function QuipslyLandingPage() {
           </div>
           <MarketingLoreSearchDemo />
         </div>
+
+        <PillarsDemo />
 
         {/* Unified Platform Pitch */}
         <div className="max-w-7xl mx-auto mt-32 bg-[#3d2618] text-[#fdf5eb] rounded-[3rem] p-12 lg:p-16 relative overflow-hidden shadow-2xl">

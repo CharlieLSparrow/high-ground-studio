@@ -43,6 +43,7 @@ Usage:
   script/shortsctl.sh growth-quality-board [--json|--html|--md] [/absolute/output/folder] [basename]
   script/shortsctl.sh platform-package-board [--json|--html|--md] [/absolute/output/folder] [basename]
   script/shortsctl.sh improvement-plan [--json|--html|--md] [/absolute/output/folder] [basename]
+  script/shortsctl.sh mission-control [--json|--html|--md] [/absolute/output/folder] [basename]
 
 This wrapper is intentionally small so shorts-quality tooling can be committed
 and reused without depending on the broad agentctl command surface.
@@ -116,19 +117,23 @@ case "$cmd" in
     ;;
   local-export-board)
     shift
-    run_board "shorts_local_export_board.py" "episode-1-shorts-local-export-board" "$@"
+    run_board "shorts_local_export_board.py" "episodes-1-3-shorts-local-export-board" "$@"
     ;;
   growth-quality-board)
     shift
-    run_board "shorts_growth_quality_board.py" "episode-1-shorts-growth-quality-board" "$@"
+    run_board "shorts_growth_quality_board.py" "episodes-1-3-shorts-growth-quality-board" "$@"
     ;;
   platform-package-board)
     shift
-    run_board "shorts_platform_package_board.py" "episode-1-shorts-platform-package-board" "$@"
+    run_board "shorts_platform_package_board.py" "episodes-1-3-shorts-platform-package-board" "$@"
     ;;
   improvement-plan)
     shift
-    run_board "shorts_improvement_plan.py" "episode-1-shorts-improvement-plan" "$@"
+    run_board "shorts_improvement_plan.py" "episodes-1-3-shorts-improvement-plan" "$@"
+    ;;
+  mission-control)
+    shift
+    run_board "shorts_mission_control.py" "episodes-1-3-shorts-mission-control" "$@"
     ;;
   -h|--help|help|"")
     usage

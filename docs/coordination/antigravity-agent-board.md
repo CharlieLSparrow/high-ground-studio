@@ -89,6 +89,7 @@ Every active lane has exactly one report file. Do not create new report files or
 
 - Do not mutate real manuscript content without explicit user approval.
 - Schema edits, route deletions, access changes, and deploy pipeline changes require Codex/user approval before implementation.
+- Follow `docs/quipsly/quipsly-content-partner-doctrine.md`: Quipslys may create serious publishable-intent drafts, packets, edits, examples, and research when a workflow needs living material. Do not call serious agent work a placeholder just because an agent made it. Preserve authorship, provenance, review state, and receipt truth.
 - Do not change `/create` assistant files unless the assigned lane is assistant QA or Codex asks for a targeted patch.
 - Do not hardcode project slugs beyond the shared project registry.
 - Keep media/video work connected through `projectSlug` and `episodeSlug`.

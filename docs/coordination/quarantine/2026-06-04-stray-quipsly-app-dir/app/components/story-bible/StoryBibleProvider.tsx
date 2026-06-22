@@ -81,7 +81,7 @@ export const StoryBibleProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const undoAction = useCallback((actionId: string) => {
     const action = actions.find(a => a.id === actionId);
     if (!action) return;
-    
+
     if (action.type === 'PROPOSE_ENTITY' && action.payload?.id) {
        deleteEntity((action.payload as StoryEntity).id);
     }

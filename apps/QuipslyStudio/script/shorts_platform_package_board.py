@@ -12,7 +12,14 @@ import re
 import sys
 from typing import Any
 
-from shorts_board_common import emit_packet_outputs, esc
+from shorts_board_common import (
+    emit_packet_outputs,
+    esc,
+    html_episode_coverage,
+    html_platform_readiness_coverage,
+    markdown_episode_coverage,
+    markdown_platform_readiness_coverage,
+)
 from shorts_growth_quality_board import build_board
 
 
@@ -221,10 +228,15 @@ def package_cards(board: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "id": card.get("id"),
                 "title": card.get("title"),
+                "episodeKey": card.get("episodeKey"),
+                "episodeLabel": card.get("episodeLabel"),
+                "episodeInference": card.get("episodeInference"),
                 "growthScore": card.get("growthScore"),
                 "growthTier": card.get("growthTier"),
                 "stage": card.get("stage"),
                 "nextGrowthAction": card.get("nextGrowthAction"),
+                "platformReadiness": card.get("platformReadiness"),
+                "platformReadinessSummary": card.get("platformReadinessSummary"),
                 "primaryExportPath": card.get("primaryExportPath"),
                 "primaryExportExists": card.get("primaryExportExists"),
                 "hookVariants": hook_variants(card),
@@ -237,6 +249,8 @@ def package_cards(board: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def html_page(packet: dict[str, Any]) -> str:
+    episode_html = html_episode_coverage(packet.get("episodeCoverage"))
+    platform_html = html_platform_readiness_coverage(packet.get("platformReadinessCoverage"))
     rows: list[str] = []
     for card in packet.get("cards") or []:
         hook_html = "".join(
@@ -253,10 +267,11 @@ def html_page(packet: dict[str, Any]) -> str:
               <header>
                 <div class="score"><strong>{esc(card.get('growthScore'))}</strong><span>{esc(card.get('growthTier'))}</span></div>
                 <div>
-                  <p class="eyebrow">{esc(card.get('stage'))}</p>
-                  <h2>{esc(card.get('title'))}</h2>
-                  <p>{esc(card.get('nextGrowthAction'))}</p>
-                </div>
+                <p class="eyebrow">{esc(card.get('stage'))}</p>
+                <h2>{esc(card.get('title'))}</h2>
+                <p>{esc(card.get('nextGrowthAction'))}</p>
+                <p><strong>Platform readiness:</strong> {esc(card.get('platformReadinessSummary'))}</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -319,6 +334,17 @@ def html_page(packet: dict[str, Any]) -> str:
     h1 {{ margin: 0; font-size: clamp(2.4rem, 6vw, 4.9rem); line-height: .93; letter-spacing: -.07em; }}
     h2, h3 {{ margin: 0 0 8px; }}
     p, li {{ color: var(--muted); }}
+    .episode-coverage {{ margin-top: 18px; }}
+    .episode-coverage-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .episode-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(143,201,116,.07); }}
+    .episode-coverage strong {{ display: block; color: var(--moss); text-transform: uppercase; letter-spacing: .08em; }}
+    .episode-coverage span, .episode-coverage small {{ display: block; color: var(--muted); }}
+    .coverage-warning {{ color: var(--gold); margin: 8px 0 0; }}
+    .platform-readiness-coverage {{ margin-top: 18px; }}
+    .platform-readiness-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .platform-readiness-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(90,191,211,.07); }}
+    .platform-readiness-coverage strong {{ display: block; color: var(--blue); letter-spacing: .03em; }}
+    .platform-readiness-coverage span, .platform-readiness-coverage small {{ display: block; color: var(--muted); }}
     .card {{ padding: 20px; margin-top: 16px; }}
     header {{ display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; }}
     .score {{ display: grid; place-items: center; padding: 12px; min-height: 88px; border-radius: 22px; background: rgba(242,202,77,.1); border: 1px solid rgba(242,202,77,.24); text-align: center; }}
@@ -338,6 +364,8 @@ def html_page(packet: dict[str, Any]) -> str:
       <p class="eyebrow">Quipsly Studio - platform package board</p>
       <h1>Make the short feel native before it ships.</h1>
       <p>Draft hooks, captions, titles, descriptions, hashtags, and platform notes for the best candidates. The top current candidate is <strong>{esc(top.get('title') or 'none')}</strong>.</p>
+      {episode_html}
+      {platform_html}
     </section>
     {''.join(rows)}
   </main>
@@ -352,6 +380,10 @@ def markdown_page(packet: dict[str, Any]) -> str:
         "",
         "Draft hooks, titles, captions, descriptions, hashtags, and practical fixes for social shorts.",
         "",
+        *markdown_episode_coverage(packet.get("episodeCoverage")),
+        "",
+        *markdown_platform_readiness_coverage(packet.get("platformReadinessCoverage")),
+        "",
     ]
     for card in packet.get("cards") or []:
         youtube = ((card.get("platformCopy") or {}).get("youtubeShorts") or {})
@@ -359,8 +391,10 @@ def markdown_page(packet: dict[str, Any]) -> str:
         lines.extend([
             f"## {card.get('growthScore')} - {card.get('title')}",
             "",
+            f"- Episode: `{card.get('episodeKey')}` (`{card.get('episodeInference')}`)",
             f"- Tier: `{card.get('growthTier')}`",
             f"- Stage: `{card.get('stage')}`",
+            f"- Platform readiness: `{card.get('platformReadinessSummary')}`",
             f"- Export: `{card.get('primaryExportPath') or 'none yet'}`",
             "",
             "### Hook tests",
@@ -414,6 +448,8 @@ def main(argv: list[str]) -> int:
         "json": os.path.join(output_dir, f"{basename}.json"),
         "html": os.path.join(output_dir, f"{basename}.html"),
         "markdown": os.path.join(output_dir, f"{basename}.md"),
+        "episodeCoverage": growth_board.get("episodeCoverage"),
+        "platformReadinessCoverage": growth_board.get("platformReadinessCoverage"),
         "cards": package_cards(growth_board),
     }
     emit_packet_outputs(packet, html_page(packet), markdown_page(packet), mode)

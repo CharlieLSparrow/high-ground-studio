@@ -20,7 +20,7 @@ public struct AgentCommandRequest: Identifiable {
 @MainActor
 public class AgentServer: ObservableObject {
     public static let shared = AgentServer()
-    
+
     @Published public var commandToExecute: String = ""
     @Published public var importFilePath: String? = nil
     @Published public var editLaneId: String? = nil
@@ -41,28 +41,28 @@ public class AgentServer: ObservableObject {
     @Published public var commandSerial: Int = 0
 
     private var pendingCommandRequests: [AgentCommandRequest] = []
-    
+
     private var listener: NWListener?
     public let port: UInt16 = 8080
-    
+
     public init() {
         start()
     }
-    
+
     public func start() {
         guard listener == nil else { return }
-        
+
         do {
             let port = NWEndpoint.Port(integerLiteral: self.port)
             let parameters = NWParameters.tcp
             listener = try NWListener(using: parameters, on: port)
-            
+
             listener?.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in
                     self?.handleConnection(connection)
                 }
             }
-            
+
             listener?.start(queue: .global(qos: .userInitiated))
             print("AgentServer listening on port \(self.port)")
         } catch {
@@ -73,10 +73,10 @@ public class AgentServer: ObservableObject {
             ])
         }
     }
-    
+
     private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .userInitiated))
-        
+
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, context, isComplete, error in
             print("AgentServer: connection.receive triggered! error=\(String(describing: error)), data size=\(data?.count ?? 0)")
             guard let data = data, let requestString = String(data: data, encoding: .utf8) else {
@@ -98,7 +98,7 @@ public class AgentServer: ObservableObject {
                 }
                 return
             }
-            
+
             switch request.path {
             case "/", "/health":
                 Task { @MainActor in
@@ -115,6 +115,10 @@ public class AgentServer: ObservableObject {
             case "/agent_capabilities":
                 Task { @MainActor in
                     self?.sendJSON(connection, object: self?.agentCapabilitiesPayload() ?? ["status": "unavailable"])
+                }
+            case "/codex_editor_handoff":
+                Task { @MainActor in
+                    self?.sendJSON(connection, object: self?.codexEditorHandoffPayload() ?? ["status": "unavailable"])
                 }
             case "/demo":
                 Task { @MainActor in
@@ -297,6 +301,223 @@ public class AgentServer: ObservableObject {
                         "mode": mode
                     ])
                 }
+            case "/nest_seed_context":
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_seed_context")
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_seed_context_commanded",
+                        "truth": "Seeded Nest context is scaffolding and remains needs-human-review."
+                    ])
+                }
+            case "/nest_ensure_writing_document":
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_ensure_writing_document")
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_ensure_writing_document_commanded",
+                        "truth": "The authored writing layer is separate from seeded/imported context."
+                    ])
+                }
+            case "/nest_writing_queue":
+                Task { @MainActor in
+                    if let readiness = (self?.lastStatus?["nest"] as? [String: Any])?["writingReadiness"] as? [String: Any] {
+                        self?.sendJSON(connection, object: readiness)
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-nest-writing-readiness-v1",
+                            "status": "no_state_yet",
+                            "nextActionQueue": [],
+                            "seriousAgentWorkAllowed": true,
+                            "creativePartnerTruth": "Codex and Quipslys may create serious first-pass writing when the workflow needs real material. The app should preserve authorship, provenance, review state, and canon boundaries instead of treating agent work as fake placeholder content.",
+                            "nextDraftSuggestion": [
+                                "title": "Episode 1 - Next High Ground Odyssey beat",
+                                "tags": ["book", "writing", "episode-1", "agent-first-pass"],
+                                "authorship": "agent-authored",
+                                "reviewStatus": "agent-first-pass",
+                                "truth": "Use this only after a session is loaded. It is serious first-pass material until reviewed, not disposable fixture text.",
+                                "cliShortcut": "script/agentctl.sh nest-serious-draft \"Episode 1 - Next High Ground Odyssey beat\" \"<draft text>\" episode-1",
+                                "fileShortcut": "script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-first-pass.md episode-1",
+                                "towerPublicationPacketPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet.md"
+                            ],
+                            "safeCommandsAfterSessionLoad": [
+                                "GET /nest_ensure_writing_document",
+                                "GET /nest_seed_context",
+                                "GET /nest_append_block?title=<title>&text=<text>&tags=book,writing,episode-1&role=writing&episode=episode-1&authorship=agent-authored&provenance=<why>&review_status=agent-first-pass"
+                            ],
+                            "hint": "Open QuipslyStudio, load a session, and call /nest_writing_queue again."
+                        ])
+                    }
+                }
+            case "/nest_writing_packet":
+                Task { @MainActor in
+                    if let packet = self?.lastStatus?["nestWritingPacket"] as? [String: Any] {
+                        self?.sendJSON(connection, object: packet)
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-nest-writing-packet-state",
+                            "status": "no_state_yet",
+                            "seriousAgentWorkAllowed": true,
+                            "creativePartnerTruth": "A missing packet does not mean agents must wait for a human to produce content. It means the app has not yet exposed current Nest writing state. Load a session, inspect writing readiness, then create or review serious first-pass material with visible provenance.",
+                            "safeCommandsAfterSessionLoad": [
+                                "GET /nest_writing_queue",
+                                "GET /nest_writing_packet_generate?directory=<absolute-output-folder>&basename=<name>"
+                            ],
+                            "hint": "Open QuipslyStudio, load a session, and call /nest_writing_packet again."
+                        ])
+                    }
+                }
+            case "/nest_writing_packet_generate":
+                let directory = request.query["directory"] ?? ""
+                let basename = request.query["basename"] ?? "quipsly-nest-writing"
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_writing_packet_generate", values: [
+                        "directory": directory,
+                        "basename": basename
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_writing_packet_generate_commanded",
+                        "directory": directory,
+                        "basename": basename
+                    ])
+                }
+            case "/nest_writing_next_action":
+                let index = request.query["index"] ?? "1"
+                let kind = request.query["kind"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_writing_next_action", values: [
+                        "index": index,
+                        "kind": kind
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_writing_next_action_commanded",
+                        "index": index,
+                        "kind": kind,
+                        "observeNext": "GET /nest_writing_queue"
+                    ])
+                }
+            case "/nest_append_block":
+                let title = request.query["title"] ?? ""
+                let text = request.query["text"] ?? ""
+                let tags = request.query["tags"] ?? ""
+                let role = request.query["role"] ?? "writing"
+                let episode = request.query["episode"] ?? ""
+                let authorship = request.query["authorship"] ?? "agent-authored"
+                let provenance = request.query["provenance"] ?? "Added through QuipslyStudio agent/write capture. Review before canon promotion."
+                let reviewStatus = request.query["review_status"] ?? "agent-first-pass"
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_append_block", values: [
+                        "title": title,
+                        "text": text,
+                        "tags": tags,
+                        "role": role,
+                        "episode": episode,
+                        "authorship": authorship,
+                        "provenance": provenance,
+                        "review_status": reviewStatus
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_append_block_commanded",
+                        "title": title,
+                        "role": role,
+                        "episode": episode,
+                        "authorship": authorship,
+                        "reviewStatus": reviewStatus,
+                        "truth": "Appends an authored Nest block with explicit authorship/provenance/review state. Agent-authored work may be serious first-pass material; this command does not canonize or publish it."
+                    ])
+                }
+            case "/nest_mark_block":
+                let status = request.query["status"] ?? "needs-human-review"
+                let note = request.query["note"] ?? "Marked by agent through Nest review-state route."
+                let blockId = request.query["block_id"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_mark_block", values: [
+                        "status": status,
+                        "note": note,
+                        "block_id": blockId
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_mark_block_commanded",
+                        "reviewStatus": status,
+                        "note": note,
+                        "blockId": blockId
+                    ])
+                }
+            case "/nest_select_block":
+                let blockId = request.query["block_id"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_select_block", values: [
+                        "block_id": blockId
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_select_block_commanded",
+                        "blockId": blockId
+                    ])
+                }
+            case "/nest_update_block":
+                let blockId = request.query["block_id"] ?? ""
+                let role = request.query["role"] ?? ""
+                let tags = request.query["tags"] ?? ""
+                let episode = request.query["episode"] ?? ""
+                let chapter = request.query["chapter"] ?? ""
+                let note = request.query["note"] ?? "Structured by agent through Nest structure route."
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_update_block", values: [
+                        "block_id": blockId,
+                        "role": role,
+                        "tags": tags,
+                        "episode": episode,
+                        "chapter": chapter,
+                        "note": note
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_update_block_commanded",
+                        "blockId": blockId,
+                        "role": role,
+                        "tags": tags,
+                        "episode": episode,
+                        "chapter": chapter,
+                        "note": note
+                    ])
+                }
+            case "/nest_replace_block_text":
+                let blockId = request.query["block_id"] ?? ""
+                let text = request.query["text"] ?? ""
+                let note = request.query["note"] ?? "Revised by agent through Nest text route."
+                let reviewStatus = request.query["review_status"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("nest_replace_block_text", values: [
+                        "block_id": blockId,
+                        "text": text,
+                        "note": note,
+                        "review_status": reviewStatus
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "nest_replace_block_text_commanded",
+                        "blockId": blockId,
+                        "reviewStatus": reviewStatus,
+                        "note": note
+                    ])
+                }
+            case "/production_command_center":
+                let mode = request.query["mode"] ?? "fast"
+                let shouldOpen = request.query["open"] ?? "false"
+                Task { @MainActor in
+                    self?.enqueueCommand("production_command_center", values: [
+                        "mode": mode,
+                        "open": shouldOpen
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "production_command_center_commanded",
+                        "mode": mode,
+                        "open": shouldOpen
+                    ])
+                }
+            case "/production_command_center_open":
+                Task { @MainActor in
+                    self?.enqueueCommand("production_command_center_open")
+                    self?.sendJSON(connection, object: [
+                        "status": "production_command_center_open_commanded"
+                    ])
+                }
             case "/timeline_zoom":
                 Task { @MainActor in
                     var values: [String: String] = [:]
@@ -448,6 +669,151 @@ public class AgentServer: ObservableObject {
                         "format": request.query["format"] ?? ""
                     ])
                 }
+            case "/edit_pass":
+                Task { @MainActor in
+                    var values: [String: String] = [
+                        "label": request.query["label"] ?? request.query["name"] ?? "Codex editing pass",
+                        "actor": request.query["actor"] ?? "Codex",
+                        "actor_type": request.query["actor_type"] ?? request.query["actorType"] ?? "agent",
+                        "pass_number": request.query["pass_number"] ?? request.query["pass"] ?? "1",
+                        "goal": request.query["goal"] ?? "Create a useful edit while improving the editor.",
+                        "status": request.query["status"] ?? "active"
+                    ]
+                    for key in ["note"] {
+                        if let value = request.query[key], !value.isEmpty {
+                            values[key] = value
+                        }
+                    }
+                    self?.enqueueCommand("edit_pass", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "edit_pass_commanded",
+                        "truth": "Marks the current sequence editing-pass context. It does not mutate media, decisions, or exports.",
+                        "label": values["label"] ?? "",
+                        "actor": values["actor"] ?? "",
+                        "pass_number": values["pass_number"] ?? ""
+                    ])
+                }
+            case "/program_ambiguity_report":
+                Task { @MainActor in
+                    var values: [String: String] = [:]
+                    if let sampleLimit = request.query["sample_limit"] ?? request.query["limit"], !sampleLimit.isEmpty {
+                        values["sample_limit"] = sampleLimit
+                    }
+                    self?.enqueueCommand("program_ambiguity_report", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "program_ambiguity_report_commanded",
+                        "truth": "Builds an on-demand review map of overlapping SHOW decisions. It does not mutate media, decisions, exports, or publication state.",
+                        "sample_limit": values["sample_limit"] ?? ""
+                    ])
+                }
+            case "/program_ambiguity_review":
+                Task { @MainActor in
+                    var values: [String: String] = [
+                        "mode": request.query["mode"] ?? "next"
+                    ]
+                    if let sampleLimit = request.query["sample_limit"] ?? request.query["limit"], !sampleLimit.isEmpty {
+                        values["sample_limit"] = sampleLimit
+                    }
+                    self?.enqueueCommand("program_ambiguity_review", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "program_ambiguity_review_commanded",
+                        "mode": values["mode"] ?? "next",
+                        "truth": "Navigates to a sampled overlapping SHOW review point. It does not mutate media, decisions, exports, or publication state.",
+                        "sample_limit": values["sample_limit"] ?? ""
+                    ])
+                }
+            case "/program_ambiguity_resolve":
+                Task { @MainActor in
+                    let choice = request.query["choice"] ?? request.query["source"] ?? "first"
+                    var values = ["choice": choice]
+                    if let advance = request.query["advance"], !advance.isEmpty {
+                        values["advance"] = advance
+                    }
+                    self?.enqueueCommand("program_ambiguity_resolve", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "program_ambiguity_resolve_commanded",
+                        "choice": choice,
+                        "advance": values["advance"] ?? "",
+                        "truth": "Resolves the selected sampled overlap interval with explicit SHOW/SKIP metadata. Whole source media and proxies stay untouched."
+                    ])
+                }
+            case "/program_ambiguity_batch":
+                Task { @MainActor in
+                    var values: [String: String] = [
+                        "mode": request.query["mode"] ?? "preview"
+                    ]
+                    if let maxCount = request.query["max_count"] ?? request.query["count"], !maxCount.isEmpty {
+                        values["max_count"] = maxCount
+                    }
+                    if let minConfidence = request.query["min_confidence"] ?? request.query["confidence"], !minConfidence.isEmpty {
+                        values["min_confidence"] = minConfidence
+                    }
+                    self?.enqueueCommand("program_ambiguity_batch", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "program_ambiguity_batch_commanded",
+                        "mode": values["mode"] ?? "preview",
+                        "max_count": values["max_count"] ?? "",
+                        "min_confidence": values["min_confidence"] ?? "",
+                        "truth": "Preview mode does not mutate edit metadata. Apply mode only runs bounded recommendations above threshold, using SHOW/SKIP metadata over whole source lanes."
+                    ])
+                }
+            case "/program_ambiguity_manual_review":
+                let note = request.query["note"] ?? request.query["reason"] ?? request.query["text"] ?? ""
+                guard !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_manual_review_note"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    var values: [String: String] = [
+                        "choice": request.query["choice"] ?? request.query["source"] ?? "manual_review",
+                        "note": note,
+                        "actor": request.query["actor"] ?? "Codex",
+                        "actor_type": request.query["actor_type"] ?? request.query["actorType"] ?? "agent",
+                        "apply": request.query["apply"] ?? "0",
+                        "category": request.query["category"] ?? "program-ambiguity-manual-review"
+                    ]
+                    if let status = request.query["status"], !status.isEmpty {
+                        values["status"] = status
+                    }
+                    self?.enqueueCommand("program_ambiguity_manual_review", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "program_ambiguity_manual_review_commanded",
+                        "choice": values["choice"] ?? "",
+                        "apply": values["apply"] ?? "0",
+                        "truth": "Records an inspectable low-confidence review receipt. It only changes SHOW/SKIP metadata when apply=1 and an explicit choice is supplied."
+                    ])
+                }
+            case "/correction_note":
+                let note = request.query["note"] ?? request.query["text"] ?? ""
+                guard !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_correction_note"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    var values: [String: String] = [
+                        "note": note,
+                        "actor": request.query["actor"] ?? "Codex",
+                        "actor_type": request.query["actor_type"] ?? request.query["actorType"] ?? "agent",
+                        "category": request.query["category"] ?? "edit-correction",
+                        "status": request.query["status"] ?? "open"
+                    ]
+                    for key in ["lane_id", "tag_id", "time", "before_json", "after_json"] {
+                        if let value = request.query[key], !value.isEmpty {
+                            values[key] = value
+                        }
+                    }
+                    self?.enqueueCommand("correction_note", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "correction_note_commanded",
+                        "truth": "Records an inspectable edit/correction note on the loaded sequence. It does not mutate media, decisions, or exports.",
+                        "category": values["category"] ?? "",
+                        "actor": values["actor"] ?? ""
+                    ])
+                }
             case "/source_window":
                 guard let laneId = request.query["lane_id"], !laneId.isEmpty else {
                     Task { @MainActor in
@@ -549,6 +915,41 @@ public class AgentServer: ObservableObject {
                         "id": id
                     ])
                 }
+            case "/transcript_word":
+                let mode = request.query["mode"] ?? "current"
+                let segmentId = request.query["segment_id"] ?? request.query["id"] ?? ""
+                let index = request.query["index"] ?? ""
+                Task { @MainActor in
+                    var values: [String: String] = ["mode": mode]
+                    if !segmentId.isEmpty {
+                        values["segment_id"] = segmentId
+                    }
+                    if !index.isEmpty {
+                        values["index"] = index
+                    }
+                    self?.enqueueCommand("transcript_word", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "transcript_word_commanded",
+                        "mode": mode,
+                        "segment_id": segmentId,
+                        "index": index
+                    ])
+                }
+            case "/transcript_search":
+                let query = request.query["query"] ?? request.query["q"] ?? ""
+                let mode = request.query["mode"] ?? "next"
+                Task { @MainActor in
+                    self?.enqueueCommand("transcript_search", values: [
+                        "query": query,
+                        "mode": mode
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "transcript_search_commanded",
+                        "query": query,
+                        "mode": mode,
+                        "truth": "Searches the timed transcript spine and moves selection/playhead. It does not mutate media, edit decisions, exports, or publication state."
+                    ])
+                }
             case "/transcript_apply_to_short":
                 let field = request.query["field"] ?? "caption"
                 Task { @MainActor in
@@ -556,6 +957,30 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: [
                         "status": "transcript_apply_to_short_commanded",
                         "field": field
+                    ])
+                }
+            case "/transcript_create_short":
+                let mode = request.query["mode"] ?? "current"
+                let title = request.query["title"] ?? ""
+                let paddingBefore = request.query["padding_before"] ?? request.query["before"] ?? "1"
+                let paddingAfter = request.query["padding_after"] ?? request.query["after"] ?? "2"
+                let actor = request.query["actor"] ?? ""
+                let actorType = request.query["actor_type"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("transcript_create_short", values: [
+                        "mode": mode,
+                        "title": title,
+                        "padding_before": paddingBefore,
+                        "padding_after": paddingAfter,
+                        "actor": actor,
+                        "actor_type": actorType
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "transcript_create_short_commanded",
+                        "mode": mode,
+                        "title": title,
+                        "padding_before": paddingBefore,
+                        "padding_after": paddingAfter
                     ])
                 }
             case "/shorts_queue_add_selected":
@@ -604,6 +1029,41 @@ public class AgentServer: ObservableObject {
                         "id": id
                     ])
                 }
+            case "/shorts_queue_select":
+                let id = request.query["id"] ?? ""
+                let title = request.query["title"] ?? ""
+                let index = request.query["index"] ?? request.query["rank"] ?? ""
+                guard !id.isEmpty || !title.isEmpty || !index.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_short_selector"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_queue_select", values: [
+                        "id": id,
+                        "title": title,
+                        "index": index
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_queue_select_commanded",
+                        "id": id,
+                        "title": title,
+                        "index": index
+                    ])
+                }
+            case "/shorts_review_next":
+                let status = request.query["status"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_review_next", values: [
+                        "status": status
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_review_next_commanded",
+                        "preferredStatus": status,
+                        "truth": "Selects the next reviewable short, switches to the shorts workbench, and scrubs the shared playhead. It does not approve or publish anything."
+                    ])
+                }
             case "/shorts_queue_update_selected":
                 let field = request.query["field"] ?? ""
                 let value = request.query["value"] ?? ""
@@ -621,6 +1081,113 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: [
                         "status": "shorts_queue_update_selected_commanded",
                         "field": field
+                    ])
+                }
+            case "/shorts_overlay_burn_in":
+                let decision = request.query["decision"] ?? "hold"
+                let note = request.query["note"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_overlay_burn_in", values: [
+                        "decision": decision,
+                        "note": note
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_overlay_burn_in_commanded",
+                        "decision": decision,
+                        "truth": "Appends a selected-short text burn-in audit note. Approval affects future export pixels only; hold keeps overlay/caption text as metadata or platform copy."
+                    ])
+                }
+            case "/shorts_listen_through":
+                let note = request.query["note"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_listen_through", values: [
+                        "note": note
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_listen_through_commanded",
+                        "truth": "Appends selected-short listen-through proof for audio, pacing, and awkward-cut sanity. It does not change media, edits, exports, or publication receipts."
+                    ])
+                }
+            case "/shorts_visual_review":
+                let sheet = request.query["sheet"] ?? ""
+                let source = request.query["source"] ?? ""
+                let note = request.query["note"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_visual_review", values: [
+                        "sheet": sheet,
+                        "source": source,
+                        "note": note
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_visual_review_commanded",
+                        "sheet": sheet,
+                        "source": source,
+                        "truth": "Appends selected-short visual evidence for crop/framing/sync sanity. It does not mark the short keep/refine/reject or approve publication."
+                    ])
+                }
+            case "/shorts_text_review":
+                let decision = request.query["decision"] ?? "approve"
+                let note = request.query["note"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_text_review", values: [
+                        "decision": decision,
+                        "note": note
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_text_review_commanded",
+                        "decision": decision,
+                        "truth": "Appends selected-short caption/on-video/platform copy review proof. It does not burn text into pixels unless the separate burn-in policy is approved."
+                    ])
+                }
+            case "/shorts_review_selected":
+                let status = request.query["status"] ?? ""
+                let notes = request.query["notes"] ?? ""
+                guard !status.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_short_review_status"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_review_selected", values: [
+                        "status": status,
+                        "notes": notes
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_review_selected_commanded",
+                        "reviewStatus": status,
+                        "truth": "Review status changes short recipe metadata only; source media and episode decisions remain untouched."
+                    ])
+                }
+            case "/shorts_review":
+                let id = request.query["id"] ?? ""
+                let status = request.query["status"] ?? ""
+                let notes = request.query["notes"] ?? ""
+                guard !id.isEmpty, !status.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_short_id_or_review_status"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_review", values: [
+                        "id": id,
+                        "status": status,
+                        "notes": notes
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_review_commanded",
+                        "id": id,
+                        "reviewStatus": status,
+                        "truth": "Review status changes short recipe metadata in the currently loaded session only; source media and episode decisions remain untouched."
+                    ])
+                }
+            case "/shorts_queue_append_selected_segment":
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_queue_append_selected_segment", values: [:])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_queue_append_selected_segment_commanded",
+                        "truth": "Adds the selected SHOW decision as another recipe segment; source media remains untouched."
                     ])
                 }
             case "/shorts_preview_selected":
@@ -697,6 +1264,25 @@ public class AgentServer: ObservableObject {
                         "status": "lane_role_commanded",
                         "lane_id": laneId,
                         "role": role
+                    ])
+                }
+            case "/lane_production_ignore":
+                guard let laneId = request.query["lane_id"], !laneId.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_lane_id"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                let ignoreValue = request.query["ignore"] ?? "1"
+                Task { @MainActor in
+                    self?.enqueueCommand("lane_production_ignore", values: [
+                        "lane_id": laneId,
+                        "ignore": ignoreValue
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "lane_production_ignore_commanded",
+                        "lane_id": laneId,
+                        "ignore": ignoreValue
                     ])
                 }
             case "/save_session":
@@ -876,6 +1462,19 @@ public class AgentServer: ObservableObject {
                         "basename": request.query["basename"] ?? "quipsly-publish"
                     ])
                 }
+            case "/vertical_slice_packet_generate":
+                let directory = request.query["directory"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("vertical_slice_packet_generate", values: [
+                        "directory": directory,
+                        "basename": request.query["basename"] ?? "quipsly-vertical-slice"
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "vertical_slice_packet_generate_commanded",
+                        "directory": directory,
+                        "basename": request.query["basename"] ?? "quipsly-vertical-slice"
+                    ])
+                }
             case "/social_shorts_packet_generate":
                 let directory = request.query["directory"] ?? ""
                 Task { @MainActor in
@@ -900,6 +1499,19 @@ public class AgentServer: ObservableObject {
                         "status": "social_publication_queue_generate_commanded",
                         "directory": directory,
                         "basename": request.query["basename"] ?? "quipsly-social-publication"
+                    ])
+                }
+            case "/reviewed_social_queue_generate":
+                let directory = request.query["directory"] ?? ""
+                Task { @MainActor in
+                    self?.enqueueCommand("reviewed_social_queue_generate", values: [
+                        "directory": directory,
+                        "basename": request.query["basename"] ?? "quipsly-reviewed-social"
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "reviewed_social_queue_generate_commanded",
+                        "directory": directory,
+                        "basename": request.query["basename"] ?? "quipsly-reviewed-social"
                     ])
                 }
             case "/social_ready_packet_generate":
@@ -939,6 +1551,87 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: [
                         "status": "social_master_queue_load_commanded",
                         "path": path
+                    ])
+                }
+            case "/social_master_queue_load_latest":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_load_latest")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_load_latest_commanded"
+                    ])
+                }
+            case "/social_master_queue_promote_receipts":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_promote_receipts")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_promote_receipts_commanded"
+                    ])
+                }
+            case "/social_master_queue_copy_receipt_commands":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_copy_receipt_commands")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_copy_receipt_commands_commanded"
+                    ])
+                }
+            case "/social_master_queue_copy_receipt_command":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_copy_receipt_command")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_copy_receipt_command_commanded"
+                    ])
+                }
+            case "/social_master_queue_copy_posting_session":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_copy_posting_session")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_copy_posting_session_commanded"
+                    ])
+                }
+            case "/social_master_queue_posting_run_packet":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_posting_run_packet")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_posting_run_packet_commanded"
+                    ])
+                }
+            case "/social_master_queue_open_posting_run_packet":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_open_posting_run_packet")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_open_posting_run_packet_commanded"
+                    ])
+                }
+            case "/social_master_queue_reveal_posting_run_packet":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_reveal_posting_run_packet")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_reveal_posting_run_packet_commanded"
+                    ])
+                }
+            case "/social_master_queue_select_receipt_platform":
+                let platform = request.query["platform"] ?? ""
+                guard !platform.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_social_master_queue_receipt_platform"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_select_receipt_platform", values: [
+                        "platform": platform,
+                        "status": request.query["status"] ?? ""
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_select_receipt_platform_commanded",
+                        "platform": platform
+                    ])
+                }
+            case "/social_master_queue_select_next_posting_platform":
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_select_next_posting_platform")
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_select_next_posting_platform_commanded"
                     ])
                 }
             case "/social_master_queue_select":
@@ -995,6 +1688,21 @@ public class AgentServer: ObservableObject {
                         "rank": values["rank"] ?? "",
                         "platform": values["platform"] ?? "",
                         "public_url": publicURL
+                    ])
+                }
+            case "/social_master_queue_receipt_batch":
+                let rows = request.query["rows"] ?? request.query["text"] ?? ""
+                guard !rows.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_social_master_queue_receipt_batch_rows"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("social_master_queue_receipt_batch", values: ["rows": rows])
+                    self?.sendJSON(connection, object: [
+                        "status": "social_master_queue_receipt_batch_commanded",
+                        "rowLength": "\(rows.count)"
                     ])
                 }
             case "/podcast_packet_generate":
@@ -1178,6 +1886,31 @@ public class AgentServer: ObservableObject {
                         "action": action
                     ])
                 }
+            case "/apply_edit_plan":
+                guard let path = request.query["path"],
+                      !path.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_edit_plan_path"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    var values: [String: String] = [
+                        "path": path
+                    ]
+                    if let saveName = request.query["save_name"], !saveName.isEmpty {
+                        values["save_name"] = saveName
+                    }
+                    if let backupName = request.query["backup_name"], !backupName.isEmpty {
+                        values["backup_name"] = backupName
+                    }
+                    self?.enqueueCommand("apply_edit_plan", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "edit_plan_commanded",
+                        "path": path,
+                        "save_name": values["save_name"] ?? ""
+                    ])
+                }
             case "/sync_audio":
                 Task { @MainActor in
                     self?.enqueueCommand("sync_audio")
@@ -1312,6 +2045,40 @@ public class AgentServer: ObservableObject {
                         ])
                     }
                 }
+            case "/publication_receipt_cockpit":
+                Task { @MainActor in
+                    if let cockpit = self?.lastStatus?["publicationReceiptCockpit"] as? [String: Any] {
+                        self?.sendJSON(connection, object: cockpit)
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-publication-receipt-cockpit",
+                            "status": "no_state_yet",
+                            "hint": "Open QuipslyStudio, load a session, and call /publication_receipt_cockpit again."
+                        ])
+                    }
+                }
+            case "/publication_next_receipt":
+                Task { @MainActor in
+                    if let cockpit = self?.lastStatus?["publicationReceiptCockpit"] as? [String: Any],
+                       let actionCard = cockpit["nextReceiptActionCard"] as? [String: Any],
+                       !actionCard.isEmpty {
+                        self?.sendJSON(connection, object: actionCard)
+                    } else if let cockpit = self?.lastStatus?["publicationReceiptCockpit"] as? [String: Any] {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-tower-next-receipt-action-card",
+                            "status": cockpit["status"] ?? "no_next_receipt",
+                            "publicationComplete": cockpit["publicationComplete"] ?? false,
+                            "nextAction": cockpit["nextAction"] ?? "No next receipt action card is currently available.",
+                            "truth": "No live next receipt action card is available from the current publication receipt cockpit state."
+                        ])
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-tower-next-receipt-action-card",
+                            "status": "no_state_yet",
+                            "hint": "Open QuipslyStudio, load a session, and call /publication_next_receipt again."
+                        ])
+                    }
+                }
             case "/publication_mission_control":
                 Task { @MainActor in
                     if let missionControl = self?.lastStatus?["publicationMissionControl"] as? [String: Any] {
@@ -1321,6 +2088,31 @@ public class AgentServer: ObservableObject {
                             "model": "quipsly-publication-mission-control",
                             "status": "no_state_yet",
                             "hint": "Open QuipslyStudio, load a session, and call /publication_mission_control again."
+                        ])
+                    }
+                }
+            case "/episode_spine", "/vertical_slice", "/nest_studio_tower":
+                Task { @MainActor in
+                    if let spine = (self?.lastStatus?["verticalSlice"] as? [String: Any])
+                        ?? (self?.lastStatus?["episodeSpine"] as? [String: Any]) {
+                        self?.sendJSON(connection, object: spine)
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-episode-spine-loop",
+                            "status": "no_state_yet",
+                            "hint": "Open QuipslyStudio, load a session, and call /vertical_slice again."
+                        ])
+                    }
+                }
+            case "/vertical_slice_packet":
+                Task { @MainActor in
+                    if let packet = self?.lastStatus?["verticalSlicePacket"] as? [String: Any] {
+                        self?.sendJSON(connection, object: packet)
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-vertical-slice-packet-state",
+                            "status": "no_state_yet",
+                            "hint": "Open QuipslyStudio, load a session, and call /vertical_slice_packet again."
                         ])
                     }
                 }
@@ -1341,27 +2133,33 @@ public class AgentServer: ObservableObject {
                     let socialQueue = status["socialMasterQueue"] as? [String: Any] ?? [:]
                     let socialReadiness = socialQueue["postingReadiness"] as? [String: Any] ?? [:]
                     let selectedSocialPacket = socialQueue["selectedPostingPacket"] as? [String: Any] ?? [:]
+                    let episodeHandoff = handoff["episode16x9"] ?? handoff["episode"] ?? handoff["episodeMaster"] ?? [:]
+                    let socialHandoff = handoff["social9x16"] ?? [:]
+                    let podcastHandoff = handoff["podcastAudio"] ?? handoff["podcast"] ?? [:]
 
                     self?.sendJSON(connection, object: [
                         "model": "quipsly-publication-operator-brief",
-                        "version": "2026-06-17.publication-operator-brief.v1",
+                        "version": "2026-06-18.publication-operator-brief.v2",
                         "status": missionControl["status"] ?? handoff["status"] ?? "loaded",
                         "purpose": "One read-only human/Codex publishing brief for 16:9 episode, 9:16 socials, podcast audio, and receipt proof.",
                         "episode": [
-                            "handoff": handoff["episode"] ?? handoff["episodeMaster"] ?? [:],
+                            "handoff": episodeHandoff,
                             "missionDeliverables": missionControl["deliverables"] ?? [],
+                            "copyReceiptCommands": "script/agentctl.sh episode-copy-receipt-commands",
                             "nextCommand": "script/agentctl.sh publication-mission-control"
                         ],
                         "socialShorts": [
+                            "handoff": socialHandoff,
                             "postingReadiness": socialReadiness,
                             "selectedPostingPacket": selectedSocialPacket,
-                            "loadCommand": "script/agentctl.sh episode1-socials-load",
-                            "firstWaveCommand": "script/agentctl.sh episode1-socials-first-wave",
+                            "loadLatestReviewedQueue": "script/agentctl.sh social-master-queue-load-latest",
+                            "generateSelectedPostingRunPacket": "script/agentctl.sh social-master-posting-run-packet",
                             "selectedPacketCommand": "script/agentctl.sh selected-social-posting-packet",
                             "proofPolicy": "Do not call a social post complete until its public or scheduled URL is captured with social-master-queue-receipt."
                         ],
                         "podcast": [
-                            "handoff": handoff["podcast"] ?? handoff["podcastAudio"] ?? [:],
+                            "handoff": podcastHandoff,
+                            "copyReceiptCommands": "script/agentctl.sh podcast-copy-receipt-commands",
                             "nextCommand": "script/agentctl.sh podcast-ready-packet-generate /absolute/podcast-manifest.json /absolute/output/folder episode-audio --zip"
                         ],
                         "receiptProof": [
@@ -1371,14 +2169,104 @@ public class AgentServer: ObservableObject {
                             "captureEpisodeCommandTemplate": "script/agentctl.sh episode-receipt-capture YouTube published <public-or-scheduled-url> <provider-id-or-scheduled-id> \"manual receipt\"",
                             "capturePodcastCommandTemplate": "script/agentctl.sh podcast-receipt-capture Spotify published <public-or-scheduled-url> <provider-id-or-scheduled-id> \"manual receipt\""
                         ],
+                        "releaseChecklist": [
+                            [
+                                "step": 1,
+                                "label": "Inspect Mission Control",
+                                "command": "script/agentctl.sh publication-mission-control",
+                                "doneWhen": "status is ready-for-platform-posting and readyLaneCount equals laneCount.",
+                                "risk": "read-only"
+                            ],
+                            [
+                                "step": 2,
+                                "label": "Open the release folder",
+                                "command": "script/agentctl.sh publication-reveal-release",
+                                "doneWhen": "The operator can access the 16:9 master, publish packet, upload bundle, cockpit markdown, and receipt log.",
+                                "risk": "read-only"
+                            ],
+                            [
+                                "step": 3,
+                                "label": "Upload or schedule YouTube and Patreon",
+                                "command": "script/agentctl.sh episode-copy-receipt-commands",
+                                "doneWhen": "The 16:9 episode master has a real public or scheduled URL/provider id for YouTube and Patreon.",
+                                "risk": "manual-platform-work"
+                            ],
+                            [
+                                "step": 4,
+                                "label": "Work selected social posting packet",
+                                "command": "script/agentctl.sh selected-social-posting-packet",
+                                "doneWhen": "Each chosen short has been watched, posted or scheduled, and has a receipt URL/provider id captured.",
+                                "risk": "manual-platform-work"
+                            ],
+                            [
+                                "step": 5,
+                                "label": "Upload podcast audio through host/RSS",
+                                "command": "script/agentctl.sh podcast-copy-receipt-commands",
+                                "doneWhen": "Spotify and Apple Podcasts have real public or scheduled URLs/provider ids captured.",
+                                "risk": "manual-platform-work"
+                            ],
+                            [
+                                "step": 6,
+                                "label": "Recheck missing receipts",
+                                "command": "script/agentctl.sh missing-publication-receipts",
+                                "doneWhen": "missingCount is 0.",
+                                "risk": "read-only"
+                            ],
+                            [
+                                "step": 7,
+                                "label": "Confirm release complete",
+                                "command": "script/agentctl.sh publication-mission-control",
+                                "doneWhen": "status is publication-proof-complete and publicationComplete is true.",
+                                "risk": "read-only"
+                            ]
+                        ],
                         "safeOperatorOrder": [
                             "1. Run script/agentctl.sh publication-operator-brief.",
-                            "2. For Episode 1 socials, run script/agentctl.sh episode1-socials-load then script/agentctl.sh episode1-socials-first-wave.",
-                            "3. Watch a first-wave clip once before posting.",
-                            "4. Copy platform text, post or schedule manually, then capture the receipt URL.",
-                            "5. Re-run script/agentctl.sh missing-publication-receipts before calling the release complete."
+                            "2. Verify Mission Control says ready-for-platform-posting.",
+                            "3. Work 16:9 episode, social shorts, and podcast audio from their explicit packet paths.",
+                            "4. Upload or schedule manually/API-assisted only when the packet and artifact are ready.",
+                            "5. Capture every real public/scheduled URL or provider id back into Quipsly.",
+                            "6. Re-run script/agentctl.sh missing-publication-receipts before calling the release complete."
                         ],
                         "sourcePolicy": "Read-only brief. It references derivative exports, handoff files, and receipt commands; it does not upload, schedule, mutate source media, or mark receipts complete."
+                    ])
+                }
+            case "/publication_operator_runbook":
+                Task { @MainActor in
+                    guard let status = self?.lastStatus else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-publication-operator-runbook",
+                            "status": "no_state_yet",
+                            "hint": "Open QuipslyStudio, load a session or social queue, and call /publication_operator_runbook again."
+                        ])
+                        return
+                    }
+
+                    let missionControl = status["publicationMissionControl"] as? [String: Any] ?? [:]
+                    let handoff = status["publicationReadyHandoff"] as? [String: Any] ?? [:]
+                    let missingReceipts = status["missingPublicationReceipts"] as? [String: Any] ?? [:]
+                    self?.sendJSON(connection, object: [
+                        "model": "quipsly-publication-operator-runbook",
+                        "version": "2026-06-18.publication-operator-runbook.v1",
+                        "status": missionControl["status"] ?? "loaded",
+                        "summary": missionControl["summary"] ?? [:],
+                        "episode16x9": handoff["episode16x9"] ?? [:],
+                        "social9x16": handoff["social9x16"] ?? [:],
+                        "podcastAudio": handoff["podcastAudio"] ?? [:],
+                        "receiptProof": [
+                            "missing": missingReceipts,
+                            "reviewCommand": "script/agentctl.sh missing-publication-receipts"
+                        ],
+                        "orderedCommands": [
+                            "script/agentctl.sh publication-mission-control",
+                            "script/agentctl.sh publication-reveal-release",
+                            "script/agentctl.sh episode-copy-receipt-commands",
+                            "script/agentctl.sh selected-social-posting-packet",
+                            "script/agentctl.sh podcast-copy-receipt-commands",
+                            "script/agentctl.sh missing-publication-receipts"
+                        ],
+                        "completionRule": "The release is not complete until Mission Control reports publication-proof-complete and missing publication receipts is 0.",
+                        "sourcePolicy": "Read-only runbook. It does not upload, schedule, mutate source media, or mark receipts complete."
                     ])
                 }
             case "/publication_reveal_release_folder":
@@ -1403,6 +2291,22 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: [
                         "status": "publication_copy_missing_receipts_commanded",
                         "missingReceiptsUrl": "/missing_publication_receipts"
+                    ])
+                }
+            case "/episode_copy_receipt_commands":
+                Task { @MainActor in
+                    self?.enqueueCommand("episode_copy_receipt_commands")
+                    self?.sendJSON(connection, object: [
+                        "status": "episode_copy_receipt_commands_commanded",
+                        "sourcePolicy": "Clipboard-only helper. It copies YouTube/Patreon receipt command templates and does not upload, publish, or mark receipts complete."
+                    ])
+                }
+            case "/podcast_copy_receipt_commands":
+                Task { @MainActor in
+                    self?.enqueueCommand("podcast_copy_receipt_commands")
+                    self?.sendJSON(connection, object: [
+                        "status": "podcast_copy_receipt_commands_commanded",
+                        "sourcePolicy": "Clipboard-only helper. It copies Spotify/Apple receipt command templates and does not upload, publish, or mark receipts complete."
                     ])
                 }
             case "/editor_snapshot":
@@ -1624,13 +2528,13 @@ public class AgentServer: ObservableObject {
             }
         }
     }
-    
+
     private nonisolated func parseRequest(_ requestString: String) -> AgentHTTPRequest? {
         let lines = requestString.components(separatedBy: "\r\n")
         guard let firstLine = lines.first else { return nil }
         let parts = firstLine.components(separatedBy: " ")
         guard parts.count >= 2 else { return nil }
-        
+
         let target = parts[1]
         let components = URLComponents(string: "http://127.0.0.1\(target)")
         var query: [String: String] = [:]
@@ -1640,14 +2544,14 @@ public class AgentServer: ObservableObject {
             // so normalize it here for local agent commands that pass file paths and lane names.
             query[item.name] = (item.value ?? "").replacingOccurrences(of: "+", with: " ")
         }
-        
+
         return AgentHTTPRequest(
             method: parts[0],
             path: components?.path ?? target,
             query: query
         )
     }
-    
+
     private func sendJSON(_ connection: NWConnection, object: Any, statusCode: Int = 200, reason: String = "OK") {
         let bodyData: Data
         if JSONSerialization.isValidJSONObject(object),
@@ -1656,13 +2560,13 @@ public class AgentServer: ObservableObject {
         } else {
             bodyData = #"{"error":"serialization_failed"}"#.data(using: .utf8)!
         }
-        
+
         let header = "HTTP/1.1 \(statusCode) \(reason)\r\n" +
             "Content-Type: application/json; charset=utf-8\r\n" +
             "Connection: close\r\n" +
             "Access-Control-Allow-Origin: http://127.0.0.1\r\n" +
             "\r\n"
-        
+
         print("AgentServer: sending JSON response")
         var data = header.data(using: .utf8)!
         data.append(bodyData)
@@ -1801,7 +2705,7 @@ public class AgentServer: ObservableObject {
             .replacingOccurrences(of: "-", with: " ")
             .replacingOccurrences(of: "_", with: " ")
     }
-    
+
     private func healthPayload() -> [String: Any] {
         [
             "status": "ok",
@@ -1811,7 +2715,7 @@ public class AgentServer: ObservableObject {
             "agentManualUrl": "http://127.0.0.1:\(port)/agent_manual"
         ]
     }
-    
+
     private func commandsPayload() -> [String: Any] {
         [
             "status": "ok",
@@ -1820,6 +2724,7 @@ public class AgentServer: ObservableObject {
                 "GET /commands",
                 "GET /agent_manual",
                 "GET /agent_capabilities",
+                "GET /codex_editor_handoff",
                 "GET /demo",
                 "GET /premiere_packet?path=<absolute-packet-json-path>",
                 "GET /import?path=<absolute-file-path>",
@@ -1835,30 +2740,57 @@ public class AgentServer: ObservableObject {
                 "GET /delete_selected_tag",
                 "GET /focus_monitors",
                 "GET /focus_timeline",
-                "GET /left_workbench?mode=inspector|shorts|transcript|closed",
+                "GET /left_workbench?mode=nest|inspector|shorts|transcript|publish|agent|closed",
+                "GET /nest_seed_context",
+                "GET /nest_writing_queue",
+                "GET /nest_writing_packet",
+                "GET /nest_writing_packet_generate?directory=<absolute-output-folder>&basename=<name>",
+                "GET /nest_writing_next_action?index=<one-based-row-index>&kind=<optional-kind-or-label>",
+                "GET /nest_append_block?title=<title>&text=<text>&tags=<comma-tags>&role=writing&episode=<episode-slug>",
+                "CLI script/agentctl.sh nest-serious-draft \"Title\" \"Draft text\" episode-1 \"book,writing,episode-1,agent-first-pass\" \"why this draft exists\"",
+                "CLI script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-first-pass.md episode-1",
                 "GET /timeline_zoom?mode=fit|cut|precision|frame|in|out|set&scale=<pixels-per-second>",
                 "GET /select_lane?lane_id=<uuid-or-name>",
                 "GET /format?value=16:9|9:16",
                 "GET /program_crop_mode?mode=baseline|keyframe",
                 "GET /program_crop?lane_id=<uuid-or-name>&format=16:9|9:16&pan_x=<minus1-to-1>&pan_y=<minus1-to-1>&zoom=<1-to-4>",
-                "GET /program_crop_preset?lane_id=<uuid-or-name>&format=16:9|9:16&preset=centered|tighter|looser|headroom|left|right|solo-safe|hide-desk|weight-left|weight-right|vertical-solo|vertical-punch|stack-top|stack-bottom&mode=baseline|keyframe&time=<seconds>",
+                "GET /program_crop_preset?lane_id=<uuid-or-name>&format=16:9|9:16&preset=centered|tighter|looser|headroom|upper-third|left|right|solo-safe|hide-desk|weight-left|weight-right|vertical-solo|vertical-punch|stack-top|stack-bottom&mode=baseline|keyframe&time=<seconds>",
                 "GET /program_crop_keyframe?lane_id=<uuid-or-name>&format=16:9|9:16&time=<sequence-seconds>&pan_x=<minus1-to-1>&pan_y=<minus1-to-1>&zoom=<1-to-4>",
                 "GET /program_crop_keyframe?lane_id=<uuid-or-name>&format=16:9|9:16&time=<sequence-seconds>&pan_x_delta=<value>&pan_y_delta=<value>&zoom_delta=<value>",
                 "GET /program_crop_clear_keyframes?lane_id=<uuid-or-name>&format=16:9|9:16",
+                "GET /program_ambiguity_report?sample_limit=<optional-count>",
+                "GET /program_ambiguity_review?mode=first|previous|next|last|nearest&sample_limit=<optional-count>",
+                "GET /program_ambiguity_resolve?choice=first|second|third|first_clip|second_clip|skip|<lane-id-or-name>&advance=next",
+                "GET /program_ambiguity_batch?mode=preview|apply&max_count=<small-count>&min_confidence=<0-to-1>",
+                "GET /program_ambiguity_manual_review?choice=<choice>&note=<why>&actor=<name>&actor_type=human|agent&apply=0|1",
+                "GET /edit_pass?label=<name>&actor=<name>&actor_type=human|agent&pass_number=<n>&goal=<text>&status=active|review|complete",
+                "GET /correction_note?note=<text>&actor=<name>&actor_type=human|agent&category=edit-correction|framing|cut-choice|shorts",
                 "GET /source_window?lane_id=<uuid-or-name>&action=show|cut&duration=<seconds>",
                 "GET /switch_selected_decision?action=charlie|homer|both|skip|charlieClip|homerClip",
                 "GET /transcript_seed_demo",
-                "GET /transcript_import?path=<absolute-srt-or-vtt-path>&format=auto|srt|vtt",
+                "GET /transcript_import?path=<absolute-srt-vtt-or-json-path>&format=auto|srt|vtt|json",
                 "GET /transcript_generate?lane_id=<optional-uuid-or-name>&command_path=<optional-executable-that-prints-srt-or-vtt>",
+                "GET /transcript_search?query=<text>&mode=first|next|previous|current",
                 "GET /transcript_select?mode=first|at_playhead|next|previous&id=<optional-transcript-segment-id>",
+                "GET /transcript_word?mode=current|next|previous|first|last&segment_id=<optional-transcript-segment-id>&index=<optional-word-index>",
+                "GET /transcript_create_short?mode=current|selected|first|next|previous&padding_before=<seconds>&padding_after=<seconds>&title=<optional>&actor=<name>&actor_type=human|agent",
                 "GET /transcript_apply_to_short?field=caption|overlay|hook",
                 "GET /transcript_clear",
                 "GET /transcript_clear_jobs",
                 "GET /shorts_queue",
                 "GET /shorts_queue_add_selected?title=<optional-title>",
                 "GET /shorts_queue_add_range?start=<sequence-seconds>&end=<sequence-seconds>&title=<optional-title>",
+                "GET /shorts_queue_append_selected_segment",
+                "GET /shorts_queue_select?id=<short-clip-id>|title=<text>|index=<zero-or-one-based-index>",
+                "GET /shorts_review_next?status=<optional-status>",
                 "GET /shorts_queue_remove?id=<short-clip-id>",
                 "GET /shorts_queue_update_selected?field=title|hook|caption|overlay|notes|review_status|export_status&value=<text>",
+                "GET /shorts_overlay_burn_in?decision=approve|hold&note=<optional-review-note>",
+                "GET /shorts_listen_through?note=<optional-review-note>",
+                "GET /shorts_visual_review?sheet=<absolute-contact-sheet-path>&source=<absolute-derivative-path>&note=<optional-review-note>",
+                "GET /shorts_text_review?decision=approve|rewrite&note=<optional-review-note>",
+                "GET /shorts_review_selected?status=keep|refine|reject&notes=<optional>",
+                "GET /shorts_review?id=<short-clip-id>&status=keep|refine|reject&notes=<optional>",
                 "GET /shorts_preview_selected?play=true|false",
                 "GET /shorts_range_selected?boundary=start|end&time=<sequence-seconds>|delta=<seconds>",
                 "GET /shorts_export_selected?directory=<absolute-output-folder>&basename=<name>",
@@ -1886,12 +2818,17 @@ public class AgentServer: ObservableObject {
                 "GET /publish_connector_worker",
                 "GET /publish_connector_worker_dry_run?platform=YouTube%20Shorts&lane_id=social-short-clips&worker_path=<absolute-executable-worker-path>",
                 "GET /publish_connector_workers_dry_run_all?platform=<optional>&lane_id=<optional>",
+                "GET /publication_next_receipt",
                 "GET /publish_ledger_generate",
                 "GET /publish_packet",
                 "GET /publish_packet_generate?directory=<absolute-output-folder>&basename=<name>",
+                "GET /vertical_slice",
+                "GET /vertical_slice_packet",
+                "GET /vertical_slice_packet_generate?directory=<absolute-output-folder>&basename=<name>",
                 "GET /social_shorts_packet",
                 "GET /social_shorts_packet_generate?directory=<absolute-output-folder>&basename=<name>",
                 "GET /social_publication_queue_generate?directory=<absolute-output-folder>&basename=<name>",
+                "GET /reviewed_social_queue_generate?directory=<absolute-output-folder>&basename=<name>",
                 "GET /social_ready_packet_generate?queue_path=<absolute-social-queue-json>&output=<absolute-output-folder>&basename=<name>&top_count=12&zip=1",
                 "GET /social_master_queue",
                 "GET /social_master_queue_first_wave",
@@ -1905,10 +2842,64 @@ public class AgentServer: ObservableObject {
                 "GET /social_master_queue_artifact?action=open|reveal|copy_handoff|copy_platform_copy&key=clipPath|thumbnailPath|captionSrtPath|platformCopyPath",
                 "GET /social_master_queue_receipt?rank=<candidate-rank>&platform=YouTube%20Shorts&status=published&public_url=<url>&provider_receipt_id=<id>&notes=<text>",
                 "GET /publication_operator_brief",
+                "GET /publication_operator_runbook",
                 "GET /publication_mission_control",
+                "GET /episode_spine",
+                "GET /publication_receipt_cockpit",
+                "CLI script/agentctl.sh publication-writing-packet",
+                "CLI script/agentctl.sh publication-writing-packet --json",
+                "CLI script/agentctl.sh publication-writing-packet-v2",
+                "CLI script/agentctl.sh publication-writing-packet-v2 --json",
+                "CLI script/agentctl.sh publication-destination-copy",
+                "CLI script/agentctl.sh publication-destination-copy --json",
+                "CLI script/agentctl.sh episode1-publication-action-queue",
+                "CLI script/agentctl.sh episode1-publication-action-queue --json",
+                "CLI script/agentctl.sh episode1-studio-artifact-proof-requirements",
+                "CLI script/agentctl.sh episode1-studio-artifact-proof-requirements --json",
+                "CLI script/agentctl.sh episode1-studio-proof-attachment-queue",
+                "CLI script/agentctl.sh episode1-studio-proof-attachment-queue --json",
+                "CLI script/agentctl.sh episode1-studio-proof-attach /absolute/release-manifest-or-folder [/absolute/output.json]",
+                "CLI script/agentctl.sh episode1-studio-proof-attach-latest [/absolute/output.json]",
+                "CLI script/agentctl.sh episode1-vertical-slice-refresh",
+                "CLI script/agentctl.sh episode1-vertical-slice-refresh [/absolute/output.json]",
+                "CLI script/agentctl.sh episode1-vertical-slice-brief",
+                "CLI script/agentctl.sh episode1-vertical-slice-brief --json",
+                "CLI script/agentctl.sh episode1-vertical-slice-next",
+                "CLI script/agentctl.sh episode1-vertical-slice-next --json",
+                "CLI script/agentctl.sh episode1-writing-tower-readiness",
+                "CLI script/agentctl.sh episode1-writing-tower-readiness --json",
+                "CLI script/agentctl.sh episode1-writing-provenance",
+                "CLI script/agentctl.sh episode1-writing-provenance --json",
+                "CLI script/agentctl.sh episode1-writing-draft-v2",
+                "CLI script/agentctl.sh episode1-writing-draft-v2 --json",
+                "CLI script/agentctl.sh episode1-writing-current",
+                "CLI script/agentctl.sh episode1-writing-current --json",
+                "CLI script/agentctl.sh episode1-writing-loop-status",
+                "CLI script/agentctl.sh episode1-writing-loop-status --json",
+                "CLI script/agentctl.sh episode1-writing-nest-intake",
+                "CLI script/agentctl.sh episode1-writing-nest-intake --json",
+                "CLI script/agentctl.sh episode1-writing-nest-queue",
+                "CLI script/agentctl.sh episode1-writing-nest-queue --json",
+                "CLI script/agentctl.sh episode1-writing-nest-ingest-receipt",
+                "CLI script/agentctl.sh episode1-writing-nest-ingest-receipt --json",
+                "CLI script/agentctl.sh episode1-writing-human-handoff",
+                "CLI script/agentctl.sh episode1-writing-human-handoff --json",
+                "CLI script/agentctl.sh episode1-writing-compare",
+                "CLI script/agentctl.sh episode1-writing-compare --json",
+                "CLI script/agentctl.sh episode1-writing-handoff",
+                "CLI script/agentctl.sh episode1-writing-handoff --json",
+                "CLI script/agentctl.sh episode1-writing-review-checklist",
+                "CLI script/agentctl.sh episode1-writing-review-checklist --json",
+                "CLI script/agentctl.sh episode1-writing-review-bundle",
+                "CLI script/agentctl.sh episode1-writing-review-bundle --json",
+                "CLI script/agentctl.sh episode1-writing-review-ledger --json",
+                "CLI script/agentctl.sh episode1-writing-review-status --json",
+                "CLI script/agentctl.sh episode1-writing-review-decision needs-agent-revision Codex \"what should change next\"",
                 "GET /publication_reveal_release_folder",
                 "GET /publication_copy_mission_control",
                 "GET /publication_copy_missing_receipts",
+                "GET /episode_copy_receipt_commands",
+                "GET /podcast_copy_receipt_commands",
                 "GET /podcast_packet",
                 "GET /podcast_packet_generate?directory=<absolute-output-folder>&basename=<name>",
                 "GET /podcast_ready_packet_generate?manifest_path=<absolute-podcast-manifest-json>&output=<absolute-output-folder>&basename=<name>&zip=1",
@@ -1956,7 +2947,7 @@ public class AgentServer: ObservableObject {
                 [
                     "step": 3,
                     "name": "Execute",
-                    "endpoint": "GET /select_lane, /select_decision, /source_window, /trim_selected, /timeline_zoom, /format",
+                    "endpoint": "GET /select_lane, /select_decision, /source_window, /trim_selected, /timeline_zoom, /format, /program_crop, /correction_note",
                     "proof": "Actions return command acknowledgements. They mutate only selection, view state, or non-destructive edit metadata unless clearly labeled otherwise."
                 ],
                 [
@@ -1979,7 +2970,7 @@ public class AgentServer: ObservableObject {
                 ],
                 [
                     "risk": "non-destructive-edit",
-                    "examples": ["/source_window", "/select_decision?mode=at_playhead&scope=video", "/trim_selected", "/nudge_selected", "/delete_selected_tag"],
+                    "examples": ["/source_window", "/select_decision?mode=at_playhead&scope=video", "/trim_selected", "/nudge_selected", "/delete_selected_tag", "/program_crop", "/program_crop_keyframe", "/correction_note"],
                     "rule": "May change metadata overlays only. Must re-observe state afterward."
                 ],
                 [
@@ -1992,6 +2983,7 @@ public class AgentServer: ObservableObject {
                 "capabilityParity": "Capture the agentCapabilityParity item involved so training data knows which human workflow the action belongs to.",
                 "episodeState": "Capture /state snapshots before and after actions.",
                 "actionLedger": "Capture endpoint, parameters, response, and resulting proof snapshot.",
+                "correctionNotes": "Capture optional human/agent correction notes at the playhead so first-cut quality can improve without forcing reviewers to document every tiny edit.",
                 "commandAcknowledgementRule": "Do not treat *_commanded responses as final state. Re-observe /state or /editor_snapshot before claiming completion.",
                 "humanParity": "If a human can do an important edit through the UI, an agent should get a semantic command and state echo for the same concept.",
                 "forbiddenShortcut": "Do not train agents to click by screen coordinates when semantic editor truth exists."
@@ -2000,8 +2992,91 @@ public class AgentServer: ObservableObject {
                 "GET /editor_snapshot",
                 "GET /state",
                 "GET /agent_capabilities",
+                "GET /codex_editor_handoff",
                 "GET /commands"
             ]
+        ]
+    }
+
+    private func codexEditorHandoffPayload() -> [String: Any] {
+        guard let status = lastStatus else {
+            return [
+                "status": "no_state_yet",
+                "packetType": "quipslystudio-codex-editor-handoff",
+                "activeNativeEditor": "apps/QuipslyStudio",
+                "legacyReferenceOnly": ["apps/quipsly-mac", "apps/quipsly-video"],
+                "hint": "Open QuipslyStudio, load a native editor session, then call /codex_editor_handoff again.",
+                "operatorLoop": "observe_state_choose_semantic_action_execute_reobserve"
+            ]
+        }
+
+        return [
+            "status": "ok",
+            "packetType": "quipslystudio-codex-editor-handoff",
+            "payloadVersion": 1,
+            "generatedAt": ISO8601DateFormatter().string(from: Date()),
+            "truth": "This packet gives Codex current editor truth and safe actions. It is not a substitute for re-observing /state after each command.",
+            "activeNativeEditor": "apps/QuipslyStudio",
+            "legacyReferenceOnly": ["apps/quipsly-mac", "apps/quipsly-video"],
+            "coreInvariants": [
+                "one shared playhead drives Program Output, Source Grove, and Episode Spine",
+                "whole synced source lanes remain intact",
+                "SHOW and SKIP are reversible metadata overlays",
+                "proxy-first editing protects originals",
+                "prepared artifacts are not posted artifacts",
+                "publication requires human or provider proof"
+            ],
+            "currentContext": status["agentCurrentContext"] ?? [:],
+            "proofSnapshot": status["editorProofSnapshot"] ?? [:],
+            "capabilities": status["agentCapabilityParity"] ?? [],
+            "currentSafeActions": status["agentCurrentSafeActions"] ?? [],
+            "publicationReadyHandoff": status["publicationReadyHandoff"] ?? [:],
+            "socialMasterQueue": status["socialMasterQueue"] ?? [:],
+            "agentAccess": [
+                "observeBeforeEdit": [
+                    "GET /state",
+                    "GET /editor_snapshot",
+                    "GET /agent_capabilities",
+                    "GET /codex_editor_handoff"
+                ],
+                "semanticSurfaces": [
+                    "quipsly.editor.monitorWall",
+                    "quipsly.sourceWall",
+                    "quipsly.editor.timeline",
+                    "quipsly.publish.codexEditorHandoffPanel",
+                    "quipsly.publish.copyCodexEditorHandoff",
+                    "quipsly.publish.testFlightReadinessPanel",
+                    "quipsly.ship.artifactTruthPanel",
+                    "quipsly.ship.outputReadinessDeck"
+                ],
+                "requiredPostEditChecks": [
+                    "re-read GET /state after every command acknowledgement",
+                    "confirm Program Output reflects SHOW/SKIP decisions",
+                    "confirm Source Grove remains whole-source review context",
+                    "confirm shorts remain tied to Episode Spine ranges",
+                    "confirm Ship still separates prepared approved posted and proved"
+                ],
+                "interactionRule": "Prefer semantic endpoints and accessibility identifiers over pixel-only clicks. If only pixels are available, observe before and after every action."
+            ],
+            "codexSafeActions": [
+                "observe current app state",
+                "scrub and inspect",
+                "select lane or decision",
+                "add or adjust reversible SHOW/SKIP metadata",
+                "prepare output packets",
+                "copy destination matrix",
+                "copy human approval packet",
+                "list missing receipts",
+                "write handoff notes"
+            ],
+            "humanOrProviderRequiredActions": [
+                "approve posting",
+                "post to YouTube Patreon Instagram Facebook LinkedIn Spotify or Apple",
+                "capture receipt without a real URL scheduled URL or provider ID",
+                "claim published",
+                "claim TestFlight ready before signed archive and collaborator install proof"
+            ],
+            "nextBestCodexMove": "Use currentSafeActions and proofSnapshot to choose the next semantic command, execute it, then re-observe /state before claiming success."
         ]
     }
 
@@ -2019,6 +3094,7 @@ public class AgentServer: ObservableObject {
             "purpose": "Expose human-editor workflow parity for agents, automation, and future model training.",
             "agentAccessibilityModel": status["agentAccessibilityModel"] ?? "semantic_commands_with_state_echo",
             "agentInterfaceModel": status["agentInterfaceModel"] ?? "observe_state_choose_semantic_action_execute_reobserve",
+            "codexEditorHandoffUrl": "http://127.0.0.1:\(port)/codex_editor_handoff",
             "capabilities": status["agentCapabilityParity"] ?? [],
             "currentSafeActions": status["agentCurrentSafeActions"] ?? [],
             "currentContext": status["agentCurrentContext"] ?? [:],
@@ -2026,9 +3102,9 @@ public class AgentServer: ObservableObject {
             "rule": "If a human can perform a serious editor workflow, agents need matching observation fields, semantic commands, and proof fields before we train against it."
         ]
     }
-    
+
     public var lastStatus: [String: Any]? = nil
-    
+
     public func writeStatus(_ status: [String: Any]) {
         var enriched = status
         enriched["agentServer"] = "running"
@@ -2036,6 +3112,7 @@ public class AgentServer: ObservableObject {
         enriched["commandsUrl"] = "http://127.0.0.1:\(port)/commands"
         enriched["agentManualUrl"] = "http://127.0.0.1:\(port)/agent_manual"
         enriched["agentCapabilitiesUrl"] = "http://127.0.0.1:\(port)/agent_capabilities"
+        enriched["codexEditorHandoffUrl"] = "http://127.0.0.1:\(port)/codex_editor_handoff"
         self.lastStatus = enriched
     }
 

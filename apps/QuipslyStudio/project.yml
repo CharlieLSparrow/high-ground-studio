@@ -23,7 +23,7 @@ targets:
         product: FirebaseVertexAI
     settings:
       base:
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyMac
         GENERATE_INFOPLIST_FILE: YES
@@ -43,7 +43,7 @@ targets:
         product: FirebaseVertexAI
     settings:
       base:
-        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyiOS
         GENERATE_INFOPLIST_FILE: YES

@@ -38,16 +38,16 @@ export function StoryTrailViewer({ story }: { readonly story: QuoteStoryProjecti
         {/* Progress Bars */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "1.5rem" }}>
           {story.beats.map((_, i) => (
-            <div 
-              key={i} 
-              style={{ 
-                height: "4px", 
-                flexGrow: 1, 
+            <div
+              key={i}
+              style={{
+                height: "4px",
+                flexGrow: 1,
                 backgroundColor: i <= currentIndex ? "#ad6b35" : "#e2b17b",
                 borderRadius: "2px",
                 opacity: i <= currentIndex ? 1 : 0.4,
                 transition: "all 0.3s ease"
-              }} 
+              }}
             />
           ))}
         </div>
@@ -62,8 +62,8 @@ export function StoryTrailViewer({ story }: { readonly story: QuoteStoryProjecti
           </p>
 
           {beat.caution && (
-            <div style={{ 
-              marginTop: "1.5rem", padding: "1rem", backgroundColor: "#fffbeb", 
+            <div style={{
+              marginTop: "1.5rem", padding: "1rem", backgroundColor: "#fffbeb",
               borderLeft: "4px solid #f59e0b", borderRadius: "0 8px 8px 0",
               display: "flex", gap: "0.5rem"
             }}>
@@ -77,22 +77,22 @@ export function StoryTrailViewer({ story }: { readonly story: QuoteStoryProjecti
 
         {/* Controls */}
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2rem", alignItems: "center" }}>
-          <button 
-            className="button" 
-            onClick={handlePrev} 
+          <button
+            className="button"
+            onClick={handlePrev}
             disabled={isFirst}
             style={{ opacity: isFirst ? 0.5 : 1 }}
           >
             <ChevronLeft size={16} /> Previous
           </button>
-          
+
           <span style={{ fontSize: "12px", color: "#ad6b35", fontWeight: "bold" }}>
             Part {currentIndex + 1} of {story.beats.length}
           </span>
-          
-          <button 
-            className="button primary" 
-            onClick={handleNext} 
+
+          <button
+            className="button primary"
+            onClick={handleNext}
             disabled={isLast}
             style={{ opacity: isLast ? 0.5 : 1 }}
           >

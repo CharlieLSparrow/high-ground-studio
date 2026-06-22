@@ -141,7 +141,7 @@ Expected output:
 When updating secret mounts, include the full set:
 
 ```bash
---set-secrets=AUTH_SECRET=studio-auth-secret:latest,GOOGLE_CLIENT_SECRET=studio-google-client-secret:latest,STUDIO_ALLOWED_EMAILS=studio-allowed-emails:latest,DATABASE_URL=studio-database-url:latest,GEMINI_API_KEY=studio-gemini-api-key:latest,PATREON_CLIENT_ID=studio-patreon-client-id:latest,PATREON_CLIENT_SECRET=studio-patreon-client-secret:latest
+--set-secrets=AUTH_SECRET=studio-auth-secret:latest,GOOGLE_CLIENT_SECRET=studio-google-client-secret:latest,STUDIO_ALLOWED_EMAILS=studio-allowed-emails:latest,DATABASE_URL=studio-database-url:latest,GEMINI_API_KEY=studio-gemini-api-key:latest,PATREON_CLIENT_ID=studio-patreon-client-id:latest,PATREON_CLIENT_SECRET=studio-patreon-client-secret:latest,NEXTAUTH_SECRET=studio-nextauth-secret:latest,PATREON_WEBHOOK_SECRET=studio-patreon-webhook-secret:latest,PATREON_RECONCILE_SECRET=studio-patreon-reconcile-secret:latest
 ```
 
 Runtime env should also include:

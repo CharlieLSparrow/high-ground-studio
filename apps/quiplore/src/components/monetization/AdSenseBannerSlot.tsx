@@ -26,8 +26,8 @@ export default function AdSenseBannerSlot({ slotId, format = "auto" }: AdSenseBa
 
   if (!isEnabled || !adsenseClient) {
     return (
-      <div 
-        className="panel" 
+      <div
+        className="panel"
         style={{
           display: "flex",
           flexDirection: "column",
@@ -50,8 +50,8 @@ export default function AdSenseBannerSlot({ slotId, format = "auto" }: AdSenseBa
   }
 
   return (
-    <div 
-      className="panel" 
+    <div
+      className="panel"
       style={{
         display: "flex",
         justifyContent: "center",

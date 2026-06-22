@@ -666,12 +666,12 @@ Carry-forward rule: research UX should feel like expert librarians with receipts
 
 ## AG-Research-RAG
 
-Files changed: 
+Files changed:
 - `packages/quipsly-domain/src/retrieval.ts` (added `SourceAwareBackend` interface)
 - `apps/quipsly/src/lib/retrieval/resolveSourceLibrary.ts` (injected `source-aware` backend for the `all-sources` library)
 - `apps/quipsly/src/lib/retrieval/search.ts` (implemented `source-aware` backend logic for both `searchQuotes` and `searchExamples` using `StudioSourceUnit`)
 
-Files avoided: 
+Files avoided:
 - Schema changes (Codex already provided `StudioSourceUnit`)
 - Vector DB integration (deferred in favor of SQL `contains` fallback for beta readiness)
 - `buildContextPacket` (left focused purely on active manuscript context for now)

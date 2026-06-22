@@ -1,0 +1,11 @@
+specVersion: "v1"
+serviceId: "quiplore"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "quiplore_db"
+      cloudSql:
+        instanceId: "quiplore-instance"
+connectorDirs: ["./connector"]

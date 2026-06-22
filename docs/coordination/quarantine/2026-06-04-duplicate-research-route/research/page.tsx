@@ -6,12 +6,12 @@ import { QuoteVerificationTable } from "@/components/research/QuoteVerificationT
 import { AuthorRelationshipGraph } from "@/components/research/AuthorRelationshipGraph";
 import { TelemetryMetrics } from "@/components/research/TelemetryMetrics";
 import { SourceMaterialViewer } from "@/components/research/SourceMaterialViewer";
-import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  Network, 
-  LineChart, 
-  BookOpen, 
+import {
+  LayoutDashboard,
+  CheckSquare,
+  Network,
+  LineChart,
+  BookOpen,
   Settings,
   Search,
   Bell,
@@ -29,7 +29,7 @@ export default function ResearchPortalPage({
 }) {
   const [view, setView] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  
+
   // Basic mock routing for the demo without needing Next router
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -61,9 +61,9 @@ export default function ResearchPortalPage({
 
   return (
     <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 overflow-hidden font-sans selection:bg-amber-500/30">
-      
+
       {/* Sidebar */}
-      <aside 
+      <aside
         className={`${sidebarOpen ? 'w-64' : 'w-20'} shrink-0 border-r border-zinc-800 bg-zinc-950 flex flex-col transition-all duration-300 ease-in-out relative z-20`}
         aria-label="Primary Navigation"
       >
@@ -78,7 +78,7 @@ export default function ResearchPortalPage({
             <div className="w-full flex justify-center text-amber-500 font-bold text-xl">Q</div>
           )}
         </div>
-        
+
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           <NavItem onClick={() => handleNav("dashboard")} active={view === "dashboard"} icon={<LayoutDashboard size={18} />} label="Dashboard" collapsed={!sidebarOpen} />
           <NavItem onClick={() => handleNav("verification")} active={view === "verification"} icon={<CheckSquare size={18} />} label="Verification Queue" badge="14" collapsed={!sidebarOpen} />
@@ -92,7 +92,7 @@ export default function ResearchPortalPage({
         </div>
 
         {/* Collapse toggle */}
-        <button 
+        <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="absolute -right-3 top-20 bg-zinc-800 border border-zinc-700 rounded-full p-1 text-zinc-400 hover:text-white shadow-md focus:outline-none focus:ring-2 focus:ring-amber-500"
           aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
@@ -105,13 +105,13 @@ export default function ResearchPortalPage({
       <main className="flex-1 flex flex-col h-full min-w-0 bg-[#0a0a0c]">
         {/* Top Header */}
         <header className="h-16 border-b border-zinc-800/50 flex items-center justify-between px-6 bg-zinc-950/80 backdrop-blur-md z-10 shrink-0">
-          
+
           <div className="flex items-center gap-6 flex-1 min-w-0">
             {/* Mobile menu toggle (hidden on desktop in this mockup, but good practice) */}
             <button className="lg:hidden text-zinc-400 hover:text-white focus:outline-none">
               <Menu size={20} />
             </button>
-            
+
             {/* Breadcrumbs */}
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center text-sm text-zinc-500 font-medium">
               <ol className="flex items-center space-x-2">
@@ -130,23 +130,23 @@ export default function ResearchPortalPage({
 
             <div className="hidden md:flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-full px-4 py-2 w-full max-w-md ml-auto transition-colors focus-within:border-amber-500/50 focus-within:bg-zinc-900/80">
               <Search size={16} className="text-zinc-500 shrink-0" aria-hidden="true" />
-              <input 
-                type="search" 
-                placeholder="Search quotes, authors, or manuscripts... (Cmd+K)" 
+              <input
+                type="search"
+                placeholder="Search quotes, authors, or manuscripts... (Cmd+K)"
                 className="bg-transparent border-none outline-none text-sm w-full text-zinc-200 placeholder:text-zinc-600 focus:ring-0"
               />
             </div>
           </div>
 
           <div className="flex items-center gap-5 ml-6 shrink-0">
-            <button 
+            <button
               className="relative p-2 text-zinc-400 hover:text-amber-400 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 rounded-full"
               aria-label="View notifications (1 unread)"
             >
               <Bell size={18} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full shadow-[0_0_8px_rgba(245,158,11,0.6)]"></span>
             </button>
-            <button 
+            <button
               className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center text-sm font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
               aria-label="User profile menu"
             >
@@ -172,27 +172,27 @@ export default function ResearchPortalPage({
   );
 }
 
-function NavItem({ 
-  onClick, 
-  active, 
-  icon, 
-  label, 
-  badge, 
-  collapsed 
-}: { 
-  onClick: () => void; 
-  active: boolean; 
-  icon: React.ReactNode; 
-  label: string; 
+function NavItem({
+  onClick,
+  active,
+  icon,
+  label,
+  badge,
+  collapsed
+}: {
+  onClick: () => void;
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
   badge?: string;
   collapsed?: boolean;
 }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       className={`w-full flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-3'} py-2.5 rounded-lg text-sm transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-amber-500 ${
-        active 
-          ? "bg-amber-500/10 text-amber-500 font-medium" 
+        active
+          ? "bg-amber-500/10 text-amber-500 font-medium"
           : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
       }`}
       title={collapsed ? label : undefined}

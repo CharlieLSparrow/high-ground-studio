@@ -21,7 +21,7 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
   const [segments, setSegments] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
       if (idx === currentIndex) {
         video.currentTime = seg.startSeconds;
         video.play().catch(e => console.log("Autoplay prevented:", e));
-        
+
         const handleTimeUpdate = () => {
           if (video.currentTime >= seg.endSeconds) {
             video.currentTime = seg.startSeconds;
@@ -96,7 +96,7 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
   return (
     <div className="h-screen w-full bg-black overflow-hidden relative touch-none">
       {/* Feed Container */}
-      <div 
+      <div
         className="h-full w-full transition-transform duration-500 ease-out flex flex-col"
         style={{ transform: `translateY(-${currentIndex * 100}vh)` }}
       >
@@ -107,22 +107,22 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
 	          const isYouTube = source.provider === "youtube" && source.providerSourceId;
 	          const is360 = source.provider === "internal" && seg.cameraJson && source.url;
 	          const isActive = idx === currentIndex;
-	          
+
 	          return (
             <div key={seg.id} className="h-screen w-full flex-shrink-0 relative">
               {/* Video Player layer */}
               <div className="absolute inset-0 bg-black flex items-center justify-center z-0">
 	                {isYouTube ? (
 	                   // MVP YouTube Player
-	                   <iframe 
+	                   <iframe
 	                      className="w-full h-full scale-[1.3] pointer-events-none"
-	                      src={`https://www.youtube.com/embed/${source.providerSourceId}?autoplay=${isActive ? 1 : 0}&start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&controls=0&mute=0&loop=1&playsinline=1`} 
-	                      frameBorder="0" 
+	                      src={`https://www.youtube.com/embed/${source.providerSourceId}?autoplay=${isActive ? 1 : 0}&start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&controls=0&mute=0&loop=1&playsinline=1`}
+	                      frameBorder="0"
 	                      allow="autoplay"
 	                   ></iframe>
 	                ) : is360 ? (
 	                  isActive && (
-	                    <ConsumerViewer360 
+	                    <ConsumerViewer360
 	                      videoUrl={source.url}
 	                      startSeconds={startSeconds}
 	                      endSeconds={endSeconds}
@@ -131,9 +131,9 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
 	                  )
 	                ) : (
 	                  // Native HTML5 Player (Fallback for 2D internal)
-	                  <video 
+	                  <video
 	                    ref={el => { videoRefs.current[idx] = el; }}
-	                    src={source.url ?? ""} 
+	                    src={source.url ?? ""}
 	                    className="w-full h-full object-cover"
 	                    playsInline
                     loop
@@ -146,7 +146,7 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
 
               {/* UI Overlay Layer */}
               <div className="absolute inset-0 z-20 flex flex-col justify-end p-6 pb-12 pointer-events-none">
-                
+
                 <div className="flex justify-between items-end">
                   {/* Left info column */}
                   <div className="flex flex-col gap-2 max-w-[80%] pointer-events-auto">
@@ -184,14 +184,14 @@ export function VideoSwipeFeed({ listId }: { listId?: string }) {
 
       {/* Navigation Controls Overlay */}
       <div className="absolute right-6 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-50">
-        <button 
+        <button
           onClick={handlePrev}
           disabled={currentIndex === 0}
           className="bg-black/40 backdrop-blur-md p-3 rounded-full disabled:opacity-30 hover:bg-white/20 transition-colors text-white"
         >
           <ChevronUp size={24} />
         </button>
-        <button 
+        <button
           onClick={handleNext}
           disabled={currentIndex === segments.length - 1}
           className="bg-black/40 backdrop-blur-md p-3 rounded-full disabled:opacity-30 hover:bg-white/20 transition-colors text-white"

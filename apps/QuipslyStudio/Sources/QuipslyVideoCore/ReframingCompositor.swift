@@ -28,7 +28,7 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
     private var commandQueue: MTLCommandQueue?
     private var computePipelineState: MTLComputePipelineState?
     private var textureCache: CVMetalTextureCache?
-    
+
     private let ciContext = CIContext(options: [.workingColorSpace: NSNull()])
 
     struct ReframingUniforms {
@@ -117,15 +117,15 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
             }
         }
     }
-    
+
     private func render2D(request: AVAsynchronousVideoCompositionRequest, sourceBuffer: CVPixelBuffer, destinationBuffer: CVPixelBuffer, keyframes: [FramingKeyframe], timeSecs: Double) {
         // Find interpolated scale, offsetX, offsetY
         // For 2D, we interpret fov as scale, yaw as pan, pitch as tilt
-        
+
         var fov: Double = 90.0
         var yaw: Double = 0.0
         var pitch: Double = 0.0
-        
+
         if keyframes.isEmpty {
             // Default
         } else if keyframes.count == 1 {
@@ -149,7 +149,7 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
                     if timeSecs >= k1.time && timeSecs < k2.time {
                         let duration = k2.time - k1.time
                         var t = duration > 0 ? (timeSecs - k1.time) / duration : 0.0
-                        
+
                         // We can apply interpolation mode here if needed, but keeping it simple for 2D fallback:
                         switch k1.interpolation {
                         case .hold:
@@ -159,7 +159,7 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
                         case .bezier:
                             t = t * t * (3.0 - 2.0 * t) // Ease in out
                         }
-                        
+
                         fov = k1.fov + (k2.fov - k1.fov) * t
                         yaw = k1.yaw + (k2.yaw - k1.yaw) * t
                         pitch = k1.pitch + (k2.pitch - k1.pitch) * t
@@ -168,45 +168,45 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
                 }
             }
         }
-        
+
         let sourceImage = CIImage(cvPixelBuffer: sourceBuffer)
-        
+
         let sourceWidth = CGFloat(CVPixelBufferGetWidth(sourceBuffer))
         let sourceHeight = CGFloat(CVPixelBufferGetHeight(sourceBuffer))
         let destWidth = CGFloat(CVPixelBufferGetWidth(destinationBuffer))
         let destHeight = CGFloat(CVPixelBufferGetHeight(destinationBuffer))
-        
+
         // Base aspect fit/fill to match destination
         let widthRatio = destWidth / sourceWidth
         let heightRatio = destHeight / sourceHeight
         let baseScale = max(widthRatio, heightRatio) // Aspect fill
-        
+
         // Map FOV to scale (90 is 1.0x, 30 is 3.0x, 150 is 0.6x)
         let scale = 90.0 / max(fov, 1.0)
-        
+
         // Map yaw to offsetX (0 is 0.5, -180 is 0.0, 180 is 1.0)
         let offsetX = 0.5 + (yaw / 360.0)
-        
+
         // Map pitch to offsetY (0 is 0.5, -90 is 0.0, 90 is 1.0)
         let offsetY = 0.5 + (pitch / 180.0)
-        
+
         // Apply user scale (zoom)
         let finalScale = baseScale * CGFloat(scale)
-        
+
         // User pan/tilt: offsetX/offsetY are 0...1 (0.5 is center)
         // We map 0...1 to moving the image left/right and up/down.
         let moveX = (CGFloat(0.5 - offsetX) * destWidth * 2.0)
         let moveY = (CGFloat(offsetY - 0.5) * destHeight * 2.0) // Invert Y for CIImage origin at bottom-left
-        
+
         let tx = (destWidth - sourceWidth * finalScale) / 2.0 + moveX
         let ty = (destHeight - sourceHeight * finalScale) / 2.0 + moveY
-        
+
         let transform = CGAffineTransform(translationX: tx, y: ty).scaledBy(x: finalScale, y: finalScale)
-        
+
         let transformedImage = sourceImage.transformed(by: transform)
-        
+
         ciContext.render(transformedImage, to: destinationBuffer, bounds: CGRect(x: 0, y: 0, width: destWidth, height: destHeight), colorSpace: nil)
-        
+
         request.finish(withComposedVideoFrame: destinationBuffer)
     }
 
@@ -315,7 +315,7 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
                 break
             }
         }
-        
+
         if k1.interpolation == .hold {
             return (getFov(k1), makeRotationMatrix(yaw: getYaw(k1), pitch: getPitch(k1), roll: getRoll(k1)))
         }
@@ -348,7 +348,7 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
         var dpitch = (pitch2 - pitch1).truncatingRemainder(dividingBy: 2 * .pi)
         if dpitch > .pi { dpitch -= 2 * .pi }
         else if dpitch < -.pi { dpitch += 2 * .pi }
-        
+
         var droll = (roll2 - roll1).truncatingRemainder(dividingBy: 2 * .pi)
         if droll > .pi { droll -= 2 * .pi }
         else if droll < -.pi { droll += 2 * .pi }
@@ -379,7 +379,7 @@ public class ReframingCompositor: NSObject, AVVideoCompositing {
             simd_float3(0, cp, sp),
             simd_float3(0, -sp, cp)
         )
-        
+
         let R_z = simd_float3x3(
             simd_float3(cr, -sr, 0),
             simd_float3(sr, cr, 0),

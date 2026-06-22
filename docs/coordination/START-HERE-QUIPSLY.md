@@ -56,6 +56,44 @@ If a task does not help this loop, it may still be valuable, but it should not d
 - Proxies are normal editing media; huge originals are not normal monitor-wall playback media.
 - Transcript/text is a primary editing handle, not the only source of truth.
 - AI may draft, write, rewrite, suggest, and organize, but Quipsly should preserve provenance and user agency.
+- Codex and other Quipslys count as creative partners in Quipsly's own dogfooding loop, not merely test-data generators.
+- Agent-authored work may be serious publishable first-pass work when it helps prove the Nest -> Studio -> Tower workflow.
+- Do not call agent-created material "placeholder" unless it is intentionally disposable test material.
+- Do not let the product stall because a human has not supplied enough content. Codex and other Quipslys may create the first-pass content needed to prove the workflow.
+- The safety line is not "AI must not write." The safety line is visible authorship, provenance, review state, reversibility, canon boundaries, and publication receipts.
+
+## Creative partner operating rule
+
+Do not wait for Charlie, Homer, Melissa, Mako, or another human to supply every usable paragraph, article, storyboard beat, caption, short idea, or research packet before Quipsly can prove the workflow.
+
+If the loop needs content, Codex and other Quipslys may create serious first-pass material intended for review or publication. That work should not be dismissed as placeholder by default.
+
+The required behavior is:
+
+- label authorship honestly: `agent-authored`, `human-authored`, or `mixed-authorship`;
+- label intent honestly: disposable fixture, exploratory draft, serious first pass, review-ready, approved, canonical, scheduled, or published;
+- preserve source context, prompts, notes, and uncertainty when claims matter;
+- keep changes inspectable, revisable, rejectable, and recoverable;
+- move real work through Nest, Studio, and Tower instead of blocking on empty inputs.
+
+Quipsly is not anti-AI-writing. Quipsly is anti-invisible-mutation, anti-fake-provenance, and anti-lost-thread.
+
+## Content partner rule
+
+For Quipsly dogfooding, Codex is a working creative partner.
+
+That means Codex may create serious first-pass chapters, articles, scripts,
+show notes, social packets, storyboard beats, research packets, teaching
+materials, publication pages, captions, and metadata when the workflow needs
+real content to move.
+
+Do not wait for Charlie, Homer, Melissa, Mako, or another human to supply every
+input before proceeding. Do not treat Codex-created material as lesser by
+default. Preserve authorship, intent, context, review state, canon state, and
+publication state so the team can inspect and change it later.
+
+The product needs this rule because a creative operating system cannot prove
+itself with empty rooms and pretend examples. It has to carry real work.
 
 ## Current repo reality
 

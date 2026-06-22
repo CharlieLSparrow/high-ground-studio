@@ -18,7 +18,7 @@ interface ConsumerViewer360Props {
 
 export function ConsumerViewer360({ videoUrl, startSeconds, endSeconds, initialCameraAngles }: ConsumerViewer360Props) {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-  
+
   useEffect(() => {
     const vid = document.createElement('video');
     vid.src = videoUrl;
@@ -29,7 +29,7 @@ export function ConsumerViewer360({ videoUrl, startSeconds, endSeconds, initialC
 
     vid.currentTime = startSeconds;
     vid.play().catch(e => console.log("360 Autoplay prevented", e));
-    
+
     const handleTimeUpdate = () => {
       if (vid.currentTime >= endSeconds) {
         vid.currentTime = startSeconds;
@@ -53,11 +53,11 @@ export function ConsumerViewer360({ videoUrl, startSeconds, endSeconds, initialC
   return (
     <Canvas camera={{ position: [0, 0, 0.1], zoom: initialCameraAngles?.zoom || 1 }} className="absolute inset-0 cursor-move">
       <AmbientLight intensity={1} />
-      <OrbitControls 
+      <OrbitControls
         enableZoom={false} // Disable zoom in consumer feed
-        enablePan={false} 
-        enableDamping={true} 
-        dampingFactor={0.05} 
+        enablePan={false}
+        enableDamping={true}
+        dampingFactor={0.05}
         rotateSpeed={0.5}
         target={[0, 0, 0]}
       />

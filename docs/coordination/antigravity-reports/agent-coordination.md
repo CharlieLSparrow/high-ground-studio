@@ -579,7 +579,7 @@ Validation run:
 - Ran `pnpm coordination:sync` to generate the latest `FLOCK-SUMMARY.md` and trigger the deploy scan.
 
 **Deep Dive Assessment:**
-1. **The Swarm's Momentum is Incredible:** Since June 9th, the agents have built massive, polished features: a high-fidelity Quote Card Designer (`AG-HighGroundOdyssey`), an Interactive Misquote Diff Tool (`AG-QuipLore`), and a parser for a 128-panel comic seed (`AG-Scroll-Experiences`). 
+1. **The Swarm's Momentum is Incredible:** Since June 9th, the agents have built massive, polished features: a high-fidelity Quote Card Designer (`AG-HighGroundOdyssey`), an Interactive Misquote Diff Tool (`AG-QuipLore`), and a parser for a 128-panel comic seed (`AG-Scroll-Experiences`).
 2. **Codebase Health is Pristine:** `AG-Publishing-Integrations` and `AG-Storyboard` have fully resolved all TypeScript errors. The monorepo test suites (`hgo:publish-candidate`, `worldhub:integrations`, etc.) are passing 100% (51/51 tests green).
 3. **The Coordination Architecture is Working:** The state machine fix I implemented previously is perfectly blocking deployments. 5 lanes still require explicit Codex review.
 4. **🚨 NEW BLOCKER - Configuration Drift:** The `release-health.ts` endpoint is now actively throwing a hard block. It successfully connected to the dev server but found 5 critical missing environment variables: `nextAuthSecret`, `patreonWebhookSecret`, `patreonCronSecret`, `studioCollab`, and `publicStudioCollab`.

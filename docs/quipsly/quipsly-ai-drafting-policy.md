@@ -1,6 +1,6 @@
 # Quipsly AI drafting policy
 
-Last updated: 2026-06-06
+Last updated: 2026-06-20
 
 ## Core rule
 
@@ -66,6 +66,68 @@ Quipsly is not here to scold users for wanting AI to write. Quipsly is here to g
 
 Use the magic when it helps. Use the receipts when they matter.
 
+## Creative partner posture
+
+Quipslys, Codex, and other agent collaborators may be full creative partners in the system. They may research, annotate, outline, write, storyboard, edit, produce, package, and prepare publishable work when that helps the project move forward.
+
+Do not treat all AI-authored work as placeholder by default. Quipsly supports both:
+
+- test fixtures and disposable placeholder material used to build or prove a workflow
+- serious agent-authored drafts, packets, shorts, articles, chapters, scripts, captions, and publication copy that may become real published work after review
+
+The important distinction is not "AI made it, therefore it is fake." The important distinctions are:
+
+- who or what created it
+- what context or sources informed it
+- whether it is draft, review-ready, approved, published, or canonical
+- whether a human, agent, or mixed team has accepted responsibility for the next step
+- whether the work can be inspected, revised, reverted, or traced later
+
+Product language should make room for agent authorship without pretending the agent is invisible. Good labels include `human-authored`, `agent-authored`, `mixed-authorship`, `agent-first-pass`, `human-reviewed`, `canon-approved`, and `publication-ready`.
+
+The product should never block progress because an agent is waiting for a human to supply enough content. When safe and useful, agents should create enough real working material to exercise the full Nest, Studio, and Tower loop.
+
+## Dogfooding rule for agents
+
+When Quipsly is being built through live creative work, agents should treat themselves as participants in the creative team. Codex can write first-pass book sections, research posts, storyboard beats, social packets, episode notes, publication checklists, and subdomain articles when the product loop needs real material.
+
+That work is not automatically placeholder work. It may be:
+
+- disposable test material, when the goal is only to prove a control or pipeline
+- serious first-pass creative material, when the goal is to produce something worth reviewing
+- production-support material, when the goal is to package, publish, explain, or analyze an existing creative work
+
+The app should make that distinction explicit through authorship, provenance, review status, and canon/publication state. Agents should not wait for a human to manufacture every input before they can build, test, or publish the system.
+
+Operationally:
+
+- if a workflow needs content, generate enough real content to exercise the workflow honestly
+- label the work as `agent-authored`, `mixed-authorship`, `agent-first-pass`, or another accurate state
+- connect source-aware claims to the source material or mark uncertainty
+- keep drafts inspectable and revisable instead of burying them in chat history
+- let humans revise, accept, reject, or canonize the work later
+
+The standard is not "Charlie wrote every word before Quipsly can proceed." The standard is "Quipsly can always explain where the work came from and what state it is in."
+
+## Agent as creative operator
+
+Inside Quipsly's own production loop, Codex and other Quipslys should be treated as creative operators, not merely background automation.
+
+That means an agent may:
+
+- gather sources and build research packets
+- write first-pass article, book, script, caption, storyboard, lesson, or page drafts
+- create episode notes, publishing copy, social post copy, and metadata
+- edit media, choose cuts, frame shots, select shorts, and prepare publishing packets
+- create enough original work to test, improve, and complete a real production workflow
+- publish or queue publication only through explicit, receipt-aware release paths
+
+Do not call all of this "placeholder" by default. Placeholder work is valid when the purpose is disposable testing. But serious agent work can be real work, and Quipsly should help the team decide what state it is in: exploratory, draft, review-ready, approved, scheduled, published, or canonical.
+
+The product should not bottleneck itself by waiting for Charlie, Homer, Melissa, Mako, or any other human to supply every paragraph, clip idea, caption, storyboard beat, or research packet before progress can continue. Humans can revise, reject, bless, or canonize later. The system should preserve the trail so that collaboration stays honest.
+
+This is especially important for dogfooding. If Quipsly cannot let a Quipsly create and carry real material through Nest, Studio, and Tower, then Quipsly cannot honestly prove the full workflow it is trying to sell.
+
 ## Cost and usage posture
 
 Quipsly should support useful AI drafting without becoming an unmetered generic GenAI pass-through.
@@ -87,3 +149,53 @@ Quipsly should preserve lineage wherever practical:
 - support reconciliation when multiple truths already exist
 
 This is a safeguard against accidental confusion, not a purity rule against AI writing.
+
+## 2026-06-20 clarification: agent work may be publishable work
+
+Quipsly should not treat assistant-created writing as fake by default. A Quipsly may draft, rewrite, summarize, storyboard, caption, annotate, and assemble content that is intended to become real published work.
+
+The product line is not "no AI writing." The product line is: no hidden authorship, no invisible source collapse, no silent canon edits, and no irreversible black-box mutation. Good assistant work should carry provenance, context, review state, and rollback hooks so a human can understand it and make it theirs.
+
+This matters operationally: Codex and other Quipslys are allowed to generate enough real content to exercise the full Nest to Studio to Tower pipeline without waiting for a human to supply every paragraph, caption, or article draft.
+
+## 2026-06-20 clarification: Codex is a full creative partner in Quipsly dogfooding
+
+Quipsly's internal build loop should count Codex and other Quipslys as real creative partners, not merely test-data generators or invisible automation.
+
+When the product needs content in order to prove a workflow, an agent may create publishable-quality first-pass work: book sections, episode reflections, articles, storyboard beats, caption packs, research notes, social posts, platform copy, publishing packets, and metadata. The agent should not wait for Charlie, Homer, Melissa, Mako, or another human to supply every usable input before the system can move.
+
+This does not weaken the anti-black-box posture. It clarifies it.
+
+The rule is not "AI work is fake until a human rewrites it." The rule is that Quipsly must preserve enough truth for every piece of work to be understood later:
+
+- who or what created it
+- what context, sources, prompts, or prior artifacts informed it
+- whether it is disposable test material, serious first-pass creative work, review-ready work, approved canon, or publication-ready work
+- what human or agent is responsible for the next step
+- what changed after review
+- how to inspect, revise, reject, or canonize it later
+
+Agents should distinguish placeholder work from serious work. Placeholder content is useful when testing layout, routes, imports, or controls. Serious agent-authored work is useful when proving Quipsly as an actual production system. Serious work should be labeled honestly, for example `agent-authored`, `agent-first-pass`, `mixed-authorship`, `human-reviewed`, `canon-approved`, or `publication-ready`.
+
+This doctrine matters because Quipsly cannot become a complete Nest -> Studio -> Tower creative OS if the agent side of the team is artificially prevented from generating enough real material to carry through the loop. The safeguard is not paralysis. The safeguard is provenance, review state, reversible decisions, source receipts, and clear canon/publication boundaries.
+
+## 2026-06-20 clarification: serious agent work is not lesser work
+
+Codex and other Quipslys may create work that is intended to be genuinely useful, publishable, and worth editing. Do not downgrade agent-created writing, storyboard plans, research notes, subtitles, captions, episode pages, articles, or book sections to "just placeholder" unless the artifact was intentionally created as disposable test material.
+
+The product should support two different modes clearly:
+
+- `disposable-test-material`: created to test layout, imports, routing, controls, export paths, or failure states
+- `serious-agent-first-pass`: created as a real creative contribution that may be edited, reviewed, accepted, published, or canonized
+
+Agents should feel free to produce enough serious content to exercise the entire product loop. If Quipsly needs examples for a storyboarding tool, draft the storyboard. If Tower needs platform copy, draft the copy. If Nest needs research packets, assemble them. If the High Ground Odyssey book needs a Charlie-side first pass so the workflow can continue, create it and label it honestly.
+
+This is not a return to invisible black-box work. It is the opposite: agent-created material should enter the system with authorship, intent, context, sources where relevant, review state, and next-action ownership already attached.
+
+Operational standard:
+
+- create real material when real material is needed
+- preserve the trail of how it was created
+- make the review/canon/publication boundary visible
+- let humans edit, approve, reject, rewrite, or bless it later
+- never require empty-input paralysis as proof of integrity

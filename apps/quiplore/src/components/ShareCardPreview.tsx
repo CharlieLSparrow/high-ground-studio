@@ -30,15 +30,15 @@ export function ShareCardPreview({ passport }: { readonly passport: QuotePasspor
           Social Share Card
         </span>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button 
-            className={`button ${isSquare ? "primary" : ""}`} 
+          <button
+            className={`button ${isSquare ? "primary" : ""}`}
             style={{ padding: "4px 8px", fontSize: "12px", minHeight: "28px" }}
             onClick={() => setFormat("square")}
           >
             Square
           </button>
-          <button 
-            className={`button ${!isSquare ? "primary" : ""}`} 
+          <button
+            className={`button ${!isSquare ? "primary" : ""}`}
             style={{ padding: "4px 8px", fontSize: "12px", minHeight: "28px" }}
             onClick={() => setFormat("wide")}
           >
@@ -48,7 +48,7 @@ export function ShareCardPreview({ passport }: { readonly passport: QuotePasspor
       </div>
 
       {/* The "Canvas" - This is what would be converted to an image via html-to-image */}
-      <div 
+      <div
         id="share-card-canvas"
         style={{
           width: "100%",
@@ -70,9 +70,9 @@ export function ShareCardPreview({ passport }: { readonly passport: QuotePasspor
         <div style={{ position: "absolute", bottom: "-20%", right: "-10%", width: "60%", height: "60%", borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 70%)", opacity: 0.5 }} />
 
         <div style={{ zIndex: 1 }}>
-          <div style={{ 
-            display: "inline-flex", alignItems: "center", gap: "6px", 
-            backgroundColor: "rgba(255,255,255,0.7)", padding: "4px 10px", 
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: "6px",
+            backgroundColor: "rgba(255,255,255,0.7)", padding: "4px 10px",
             borderRadius: "20px", fontSize: "12px", fontWeight: "bold",
             color: passport.quote.verificationStatus === "verified" ? "#166534" : "#92400e",
             marginBottom: "1rem"
@@ -81,9 +81,9 @@ export function ShareCardPreview({ passport }: { readonly passport: QuotePasspor
             {passport.quote.verificationStatus === "verified" ? "Verified Quote" : "Unverified Quote"}
           </div>
 
-          <blockquote style={{ 
-            fontSize: isSquare ? "1.5rem" : "1.8rem", 
-            fontWeight: "bold", 
+          <blockquote style={{
+            fontSize: isSquare ? "1.5rem" : "1.8rem",
+            fontWeight: "bold",
             color: "#4c331b",
             lineHeight: 1.3,
             margin: 0
@@ -110,8 +110,8 @@ export function ShareCardPreview({ passport }: { readonly passport: QuotePasspor
       </div>
 
       <div style={{ marginTop: "1rem" }}>
-        <button 
-          className="button primary" 
+        <button
+          className="button primary"
           style={{ width: "100%", justifyContent: "center" }}
           onClick={handleDownload}
           disabled={isDownloading}

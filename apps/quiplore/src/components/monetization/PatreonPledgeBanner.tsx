@@ -19,7 +19,7 @@ export default function PatreonPledgeBanner() {
       </span>
 
       <h3 className="panel-title" style={{ margin: 0 }}>Support QuipLore</h3>
-      
+
       <p className="panel-copy" style={{ fontSize: "12px", margin: 0 }}>
         QuipLore is an independent historical quotes dictionary. Help us maintain our reference indexes and keep the passports free.
       </p>
@@ -36,7 +36,7 @@ export default function PatreonPledgeBanner() {
             Become a Patron
           </a>
         )}
-        
+
         {stripeUrl && (
           <a
             href={stripeUrl}

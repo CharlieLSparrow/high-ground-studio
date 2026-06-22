@@ -1312,6 +1312,7 @@ model StudioOutputPacket {
   createdByEmail   String?
   approvedByEmail  String?
   approvedAt       DateTime?
+  publishAt        DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

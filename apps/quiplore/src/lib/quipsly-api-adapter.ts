@@ -1,9 +1,9 @@
 /**
  * Quipsly Public API Adapter
- * 
+ *
  * Defines the contract boundary between the QuipLore consumer frontend
  * and the Quipsly curation backend.
- * 
+ *
  * IMPORTANT: This adapter ONLY fetches from `/api/public/*` routes.
  * It must never attempt to read private manuscript or nest endpoints.
  */
@@ -26,7 +26,7 @@ export const QuipslyApiAdapter = {
       return json.data;
     } catch (e) {
       console.warn("Quipsly API unreachable, falling back to local domain seed.", e);
-      // Fallback is handled directly by the frontend action if this throws, 
+      // Fallback is handled directly by the frontend action if this throws,
       // ensuring QuipLore always stays up even if Quipsly is down.
       throw e;
     }

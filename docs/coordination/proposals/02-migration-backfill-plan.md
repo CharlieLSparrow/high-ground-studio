@@ -19,10 +19,10 @@ The foundation schema pass was reviewed and validated using `pnpm prisma validat
 
 ## 2. Safest Deployment & Backfill Sequence
 
-Because the new fields (`organizationId`, `createdByUserId`, `updatedByUserId`) are **nullable** (`String?`), we can perform a zero-downtime, non-destructive migration. 
+Because the new fields (`organizationId`, `createdByUserId`, `updatedByUserId`) are **nullable** (`String?`), we can perform a zero-downtime, non-destructive migration.
 
 ### Phase 1: Local Preparation
-1. **Generate Migration**: Run `pnpm prisma migrate dev --name add_foundation_and_assistant_persistence` to generate a formal SQL migration rather than relying on `db push`. 
+1. **Generate Migration**: Run `pnpm prisma migrate dev --name add_foundation_and_assistant_persistence` to generate a formal SQL migration rather than relying on `db push`.
 2. **Draft Backfill Script**: Create `scripts/backfill-tenant-ownership.ts`. This script will:
    - Identify active users without an `Organization` and create one for them.
    - Iterate over existing `StudioWorkspace` records and assign them to the appropriate `Organization`.

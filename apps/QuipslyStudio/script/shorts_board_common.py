@@ -17,6 +17,19 @@ EXPORT_PATTERNS = [
     re.compile(r"Exported(?:\s+short)?:\s*(.+\.mp4)\b", re.IGNORECASE),
 ]
 
+EPISODE_PATTERNS = [
+    re.compile(r"\bepisode[-_\s]*(\d+)\b", re.IGNORECASE),
+    re.compile(r"\bep[-_\s]*(\d+)\b", re.IGNORECASE),
+]
+
+PLATFORM_READINESS_RESEARCH_BASIS = [
+    "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+    "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+    "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+    "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+    "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic.",
+]
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
@@ -216,6 +229,357 @@ def command_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
+def episode_key_from_text(value: str) -> str:
+    for pattern in EPISODE_PATTERNS:
+        match = pattern.search(value)
+        if match:
+            return f"episode-{int(match.group(1))}"
+    return ""
+
+
+def infer_episode(row: dict[str, Any], short_id: str, title: str, paths: list[str]) -> dict[str, str]:
+    explicit = first_text(
+        row,
+        [
+            "episodeSlug",
+            "episodeKey",
+            "episodeId",
+            "episode",
+            "sourceEpisode",
+            "sourceEpisodeSlug",
+            "episodeTitle",
+        ],
+        "",
+    )
+    if explicit:
+        key = episode_key_from_text(explicit) or slugify(explicit)
+        return {
+            "episodeKey": key,
+            "episodeLabel": explicit,
+            "episodeInference": "explicit-field",
+        }
+
+    candidates = [short_id, title, *paths, *extract_strings(row.get("notes")), *extract_strings(row.get("publishNotes"))]
+    for candidate in candidates:
+        key = episode_key_from_text(candidate)
+        if key:
+            return {
+                "episodeKey": key,
+                "episodeLabel": key.replace("-", " ").title(),
+                "episodeInference": "inferred-from-text",
+            }
+
+    return {
+        "episodeKey": "unknown-episode",
+        "episodeLabel": "Unknown episode",
+        "episodeInference": "missing",
+    }
+
+
+def episode_coverage(cards: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    exported_counts: dict[str, int] = {}
+    review_counts: dict[str, int] = {}
+    reviewable_stages = {
+        "exported-needs-visual-review",
+        "exported-needs-listen-through",
+        "needs-text-review",
+        "ready-for-local-quality-decision",
+        "ready-for-social-queue",
+    }
+    for card in cards:
+        key = str(card.get("episodeKey") or "unknown-episode")
+        counts[key] = counts.get(key, 0) + 1
+        if card.get("primaryExportExists"):
+            exported_counts[key] = exported_counts.get(key, 0) + 1
+        if str(card.get("stage") or "") in reviewable_stages:
+            review_counts[key] = review_counts.get(key, 0) + 1
+
+    return {
+        "episodeCount": len(counts),
+        "unknownEpisodeCount": counts.get("unknown-episode", 0),
+        "episodes": [
+            {
+                "episodeKey": key,
+                "shortCount": counts[key],
+                "localExportedFileCount": exported_counts.get(key, 0),
+                "reviewableCount": review_counts.get(key, 0),
+            }
+            for key in sorted(counts)
+        ],
+    }
+
+
+def markdown_episode_coverage(coverage: dict[str, Any] | None) -> list[str]:
+    lines = ["## Episode coverage", ""]
+    episodes = (coverage or {}).get("episodes") or []
+    if not episodes:
+        lines.append("- `none`: no episode coverage detected")
+        return lines
+
+    for item in episodes:
+        lines.append(
+            f"- `{item.get('episodeKey')}`: `{item.get('shortCount')}` shorts, "
+            f"`{item.get('localExportedFileCount')}` exported files, "
+            f"`{item.get('reviewableCount')}` reviewable"
+        )
+    unknown_count = (coverage or {}).get("unknownEpisodeCount") or 0
+    if unknown_count:
+        lines.append(f"- `needs-triage`: `{unknown_count}` shorts do not have reliable episode provenance yet")
+    return lines
+
+
+def html_episode_coverage(coverage: dict[str, Any] | None) -> str:
+    episodes = (coverage or {}).get("episodes") or []
+    if not episodes:
+        return """
+        <section class="episode-coverage">
+          <p class="eyebrow">Episode coverage</p>
+          <article><strong>0</strong><span>No episode coverage detected</span></article>
+        </section>
+        """
+
+    cards = "".join(
+        f"""
+        <article>
+          <strong>{esc(item.get('episodeKey'))}</strong>
+          <span>{esc(item.get('shortCount'))} shorts</span>
+          <small>{esc(item.get('localExportedFileCount'))} exported / {esc(item.get('reviewableCount'))} reviewable</small>
+        </article>
+        """
+        for item in episodes
+    )
+    unknown_count = (coverage or {}).get("unknownEpisodeCount") or 0
+    warning = (
+        f"<p class=\"coverage-warning\">{esc(unknown_count)} shorts need episode provenance triage.</p>"
+        if unknown_count
+        else ""
+    )
+    return f"""
+    <section class="episode-coverage">
+      <p class="eyebrow">Episode coverage</p>
+      <div class="episode-coverage-grid">{cards}</div>
+      {warning}
+    </section>
+    """
+
+
+def _readiness_entry(blockers: list[str], warnings: list[str], next_action: str) -> dict[str, Any]:
+    if blockers:
+        status = "blocked"
+    elif warnings:
+        status = "needs-review"
+    else:
+        status = "ready"
+    return {
+        "status": status,
+        "blockers": blockers,
+        "warnings": warnings,
+        "nextAction": next_action,
+    }
+
+
+def platform_readiness(card: dict[str, Any]) -> dict[str, Any]:
+    duration = float(card.get("durationSeconds") or 0)
+    has_export = bool(card.get("primaryExportExists"))
+    has_hook = bool(str(card.get("hookText") or "").strip())
+    has_overlay = bool(str(card.get("overlayText") or "").strip())
+    episode_known = str(card.get("episodeKey") or "") not in {"", "unknown-episode"}
+    stage = str(card.get("stage") or "")
+    title = str(card.get("title") or "")
+    next_growth = str(card.get("nextGrowthAction") or "")
+    text_blob = " ".join([title, str(card.get("hookText") or ""), str(card.get("overlayText") or ""), next_growth]).lower()
+    professional_words = {
+        "leadership",
+        "coaching",
+        "mentor",
+        "work",
+        "systems",
+        "learning",
+        "research",
+        "teach",
+        "steward",
+        "attention",
+        "identity",
+        "growth",
+        "creative",
+    }
+    has_professional_angle = any(word in text_blob for word in professional_words)
+
+    vertical_blockers = []
+    if not has_export:
+        vertical_blockers.append("local export file missing")
+    if duration <= 0:
+        vertical_blockers.append("duration unknown")
+    if duration > 180:
+        vertical_blockers.append("longer than current 3-minute short-form target")
+
+    caption_warnings = []
+    if not has_hook:
+        caption_warnings.append("opening hook missing")
+    if not has_overlay:
+        caption_warnings.append("caption or overlay plan missing")
+    if stage == "exported-needs-visual-review":
+        caption_warnings.append("visual crop/safe-zone review still needed")
+    if stage == "exported-needs-listen-through":
+        caption_warnings.append("audio listen-through still needed")
+
+    youtube_warnings = list(caption_warnings)
+    if duration > 60:
+        youtube_warnings.append("over 60 seconds: verify music/copyright claims before relying on Shorts distribution")
+
+    reels_warnings = list(caption_warnings)
+    if duration > 90:
+        reels_warnings.append("over 90 seconds: only use if pacing and payoff justify it")
+
+    tiktok_warnings = list(caption_warnings)
+    if duration > 60:
+        tiktok_warnings.append("over 60 seconds: hook and retention need to be unusually strong")
+
+    linkedin_warnings = list(caption_warnings)
+    if not has_professional_angle:
+        linkedin_warnings.append("professional/work/learning angle is not obvious yet")
+    if duration > 90:
+        linkedin_warnings.append("consider a tighter edit for professional-feed attention")
+
+    patreon_warnings = []
+    if not episode_known:
+        patreon_warnings.append("episode provenance is unclear")
+    if not has_hook:
+        patreon_warnings.append("supporter teaser framing is missing")
+    if stage in {"exported-needs-visual-review", "exported-needs-listen-through"}:
+        patreon_warnings.append("finish local watch/listen before posting to supporters")
+
+    hgo_warnings = []
+    if not episode_known:
+        hgo_warnings.append("episode provenance is required for HighGroundOdyssey embeds")
+    if not has_hook:
+        hgo_warnings.append("embed teaser or title hook is missing")
+
+    platforms = {
+        "youtubeShorts": _readiness_entry(
+            list(vertical_blockers),
+            youtube_warnings,
+            "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+        ),
+        "instagramReels": _readiness_entry(
+            list(vertical_blockers),
+            reels_warnings,
+            "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+        ),
+        "facebookReels": _readiness_entry(
+            list(vertical_blockers),
+            reels_warnings,
+            "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+        ),
+        "tiktokStyle": _readiness_entry(
+            list(vertical_blockers),
+            tiktok_warnings,
+            "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+        ),
+        "linkedin": _readiness_entry(
+            list(vertical_blockers),
+            linkedin_warnings,
+            "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+        ),
+        "patreonTeaser": _readiness_entry(
+            [] if has_export else ["local export file missing"],
+            patreon_warnings,
+            "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+        ),
+        "highGroundOdysseyEmbed": _readiness_entry(
+            [] if has_export and episode_known else [
+                *([] if has_export else ["local export file missing"]),
+                *([] if episode_known else ["episode provenance missing"]),
+            ],
+            hgo_warnings,
+            "Attach to the episode page with clear provenance and a useful teaser line.",
+        ),
+    }
+
+    counts: dict[str, int] = {}
+    for item in platforms.values():
+        status = str(item.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "basis": PLATFORM_READINESS_RESEARCH_BASIS,
+        "counts": counts,
+        "platforms": platforms,
+    }
+
+
+def platform_readiness_summary(readiness: dict[str, Any] | None) -> str:
+    counts = (readiness or {}).get("counts") or {}
+    ready = counts.get("ready", 0)
+    review = counts.get("needs-review", 0)
+    blocked = counts.get("blocked", 0)
+    return f"{ready} ready / {review} needs review / {blocked} blocked"
+
+
+def platform_readiness_coverage(cards: list[dict[str, Any]]) -> dict[str, Any]:
+    platforms: dict[str, dict[str, int]] = {}
+    for card in cards:
+        readiness = card.get("platformReadiness") or {}
+        for platform, detail in (readiness.get("platforms") or {}).items():
+            counts = platforms.setdefault(str(platform), {"ready": 0, "needs-review": 0, "blocked": 0})
+            status = str(detail.get("status") or "needs-review")
+            counts[status] = counts.get(status, 0) + 1
+    rows = [
+        {
+            "platform": platform,
+            "ready": counts.get("ready", 0),
+            "needsReview": counts.get("needs-review", 0),
+            "blocked": counts.get("blocked", 0),
+        }
+        for platform, counts in sorted(platforms.items())
+    ]
+    return {
+        "platformCount": len(rows),
+        "platforms": rows,
+    }
+
+
+def markdown_platform_readiness_coverage(coverage: dict[str, Any] | None) -> list[str]:
+    lines = ["## Platform readiness coverage", ""]
+    platforms = (coverage or {}).get("platforms") or []
+    if not platforms:
+        lines.append("- `none`: no platform readiness data detected")
+        return lines
+    for item in platforms:
+        lines.append(
+            f"- `{item.get('platform')}`: `{item.get('ready')}` ready, "
+            f"`{item.get('needsReview')}` needs review, `{item.get('blocked')}` blocked"
+        )
+    return lines
+
+
+def html_platform_readiness_coverage(coverage: dict[str, Any] | None) -> str:
+    platforms = (coverage or {}).get("platforms") or []
+    if not platforms:
+        return """
+        <section class="platform-readiness-coverage">
+          <p class="eyebrow">Platform readiness</p>
+          <article><strong>0</strong><span>No platform readiness data detected</span></article>
+        </section>
+        """
+    cards = "".join(
+        f"""
+        <article>
+          <strong>{esc(item.get('platform'))}</strong>
+          <span>{esc(item.get('ready'))} ready</span>
+          <small>{esc(item.get('needsReview'))} review / {esc(item.get('blocked'))} blocked</small>
+        </article>
+        """
+        for item in platforms
+    )
+    return f"""
+    <section class="platform-readiness-coverage">
+      <p class="eyebrow">Platform readiness</p>
+      <div class="platform-readiness-grid">{cards}</div>
+    </section>
+    """
+
+
 def classify_short(row: dict[str, Any], output_dir: str, index: int) -> dict[str, Any]:
     short_id = first_text(row, ["id", "shortId", "clipId", "uuid"], f"short-{index}")
     title = first_text(row, ["title", "name", "label"], f"Short {index}")
@@ -230,6 +594,7 @@ def classify_short(row: dict[str, Any], output_dir: str, index: int) -> dict[str
     primary_exists = bool(primary_path and os.path.exists(primary_path))
     primary_size = os.path.getsize(primary_path) if primary_exists else 0
     duration = duration_seconds(row)
+    episode = infer_episode(row, short_id, title, paths)
     lower = json.dumps(row, sort_keys=True, default=str).lower()
 
     rejected = any(word in review_status.lower() for word in ["reject", "rejected"])
@@ -291,6 +656,7 @@ def classify_short(row: dict[str, Any], output_dir: str, index: int) -> dict[str
         "index": index,
         "stage": stage,
         "nextAction": next_action,
+        **episode,
         "reviewStatus": review_status,
         "exportStatus": export_status,
         "visualReviewStatus": visual_status,

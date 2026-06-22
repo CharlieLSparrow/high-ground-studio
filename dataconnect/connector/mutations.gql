@@ -1,0 +1,75 @@
+# Mutations for Admin Data Ingestion
+# Admin SDK bypasses @auth rules, so we set to NO_ACCESS to prevent client usage
+mutation InsertQuoteWithVector(
+  $slug: String!
+  $text: String!
+  $personId: String!
+  $sourceWorkId: String!
+  $verificationStatus: String!
+  $confidence: Float!
+  $contextNote: String!
+) @auth(level: NO_ACCESS) {
+  quote_insert(data: {
+    slug: $slug,
+    text: $text,
+    personId: $personId,
+    sourceWorkId: $sourceWorkId,
+    verificationStatus: $verificationStatus,
+    confidence: $confidence,
+    contextNote: $contextNote,
+    textEmbedding_embed: {
+      model: "textembedding-gecko@003",
+      text: $text
+    }
+  })
+}
+
+mutation InsertStoryTrail(
+  $quoteId: String!
+  $slug: String!
+  $title: String!
+  $deck: String!
+) @auth(level: NO_ACCESS) {
+  storyTrail_insert(data: {
+    quoteId: $quoteId,
+    slug: $slug,
+    title: $title,
+    deck: $deck
+  })
+}
+
+mutation InsertStoryBeat(
+  $storyTrailId: String!
+  $orderIndex: Int!
+  $title: String!
+  $body: String!
+) @auth(level: NO_ACCESS) {
+  storyBeat_insert(data: {
+    storyTrailId: $storyTrailId,
+    orderIndex: $orderIndex,
+    title: $title,
+    body: $body
+  })
+}
+
+mutation InsertQuoteWithRawVector(
+  $slug: String!
+  $text: String!
+  $personId: String!
+  $sourceWorkId: String!
+  $verificationStatus: String!
+  $confidence: Float!
+  $contextNote: String!
+  $textEmbedding: Vector!
+) @auth(level: NO_ACCESS) {
+  quote_insert(data: {
+    slug: $slug,
+    text: $text,
+    personId: $personId,
+    sourceWorkId: $sourceWorkId,
+    verificationStatus: $verificationStatus,
+    confidence: $confidence,
+    contextNote: $contextNote,
+    textEmbedding: $textEmbedding
+  })
+}

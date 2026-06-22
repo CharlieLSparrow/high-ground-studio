@@ -468,7 +468,7 @@ Codex strengthened the Nest/project system for beta entry:
    - "Home Vault": Explicitly prioritizing the `homeNestRow` as the primary unsorted upload location.
    - "My Nests": All user-owned nests rendered cleanly via the new `ProjectCard`.
    - "Shared with me": All collaborator nests clearly separated.
-2. **Nest Dashboard (`/nests/[slug]`)**: 
+2. **Nest Dashboard (`/nests/[slug]`)**:
    - Replaced the generic "Open Document" wall with a massive "Start Here: Open Welcome Document" CTA if `documents.length === 1`, explicitly steering new beta users to the interactive seed.
    - Restructured the sidebar to display an explicit list of active collaborator emails and roles (`grant.email`, `grant.role`) instead of just a raw count.
    - Restructured the `ToolCard` layout. If the Nest is a `home` nest, Media Editor and Recorder are prioritized at the top of the grid, as the Home Vault is primarily an asset ingestion engine.
@@ -497,7 +497,7 @@ Codex strengthened the Nest/project system for beta entry:
 - `apps/quipsly/src/app/(app)/create/BlockItem.tsx` (Refactored)
 
 **What changed:**
-1. **State Extraction:** Extracted all Assistant local state, fetching logic, and ledger syncing from `QuipslyAssistantSidebar` into a new `useQuipslyAssistant` hook and `AssistantContext.tsx`. 
+1. **State Extraction:** Extracted all Assistant local state, fetching logic, and ledger syncing from `QuipslyAssistantSidebar` into a new `useQuipslyAssistant` hook and `AssistantContext.tsx`.
 2. **Global Access:** Wrapped the `Workspace` (specifically the `Tagger` editor) in the `<AssistantProvider>`, making assistant proposals globally available to all block components.
 3. **Editor Margin UI:** Added `EditorMargin.tsx` to `BlockItem.tsx`. It conditionally renders a glowing spark icon in the margin when Quipsly has generated block-specific structural cleanup suggestions or text rewrites.
 4. **Inline Popover Review:** Clicking the margin spark opens `QuipslyAssistantPopover`, allowing the author to approve/dismiss drafts and suggestions directly in the editor, syncing instantly with the Sidebar state.
@@ -562,7 +562,7 @@ Codex strengthened the Nest/project system for beta entry:
   - `apps/quipsly/src/app/(app)/nests/[slug]/page.tsx`
   - `apps/quipsly/src/app/(app)/nests/[slug]/actions.ts` (Created)
   - `apps/quipsly/src/app/(app)/nests/[slug]/CreateDocumentButton.tsx` (Created)
-- **What Was Done:** 
+- **What Was Done:**
   1. Fixed a bug in the Nest Dashboard (`nests/[slug]/page.tsx`) where clicking a document always routed the user to the Nest's first/default document instead of preserving the explicit `&document=${document.id}` parameter.
   2. Implemented the "Create New Document" capability directly inside the Nest Dashboard, allowing users to easily spawn new documents for research/study purposes within the same Nest. This pushes the Nest paradigm closer to a "grown-up SaaS" hub.
   3. Validated TypeScript build successfully.

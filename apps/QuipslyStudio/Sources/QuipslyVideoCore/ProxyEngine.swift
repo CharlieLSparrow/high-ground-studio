@@ -23,9 +23,9 @@ public enum ProxyError: Error, LocalizedError {
 
 public actor ProxyEngine {
     public static let shared = ProxyEngine()
-    
+
     private init() {}
-    
+
     public func generateProxy(for url: URL) async throws -> URL {
         let outputURL = try LocalMediaVault.shared.proxyURL(for: url)
         let proxyDir = outputURL.deletingLastPathComponent()
@@ -66,22 +66,11 @@ public actor ProxyEngine {
                 temporaryOutputURL.path
             ]
         } else {
-            process.arguments = [
-                "-y",
-                "-hide_banner",
-                "-nostdin",
-                "-loglevel", "error",
-                "-i", url.path,
-                "-map", "0:v:0",
-                "-an",
-                "-vf", "scale=960:-2,fps=30",
-                "-c:v", "libx264",
-                "-preset", "veryfast",
-                "-crf", "30",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                temporaryOutputURL.path
-            ]
+            process.arguments = Self.videoProxyArguments(
+                ffmpegURL: ffmpegURL,
+                inputURL: url,
+                outputURL: temporaryOutputURL
+            )
         }
 
         let outputPipe = Pipe()
@@ -105,6 +94,67 @@ public actor ProxyEngine {
         } catch {
             try? FileManager.default.removeItem(at: temporaryOutputURL)
             throw error
+        }
+    }
+
+    private static func videoProxyArguments(ffmpegURL: URL, inputURL: URL, outputURL: URL) -> [String] {
+        let environment = ProcessInfo.processInfo.environment
+        let requestedEncoder = (environment["QUIPSLY_PROXY_VIDEO_ENCODER"] ?? "auto").lowercased()
+        let canUseVideoToolbox = requestedEncoder != "libx264"
+            && requestedEncoder != "x264"
+            && ffmpegSupportsEncoder("h264_videotoolbox", ffmpegURL: ffmpegURL)
+
+        var arguments = [
+            "-y",
+            "-hide_banner",
+            "-nostdin",
+            "-loglevel", "error",
+            "-i", inputURL.path,
+            "-map", "0:v:0",
+            "-an",
+            "-vf", "scale=960:-2,fps=30"
+        ]
+
+        if canUseVideoToolbox {
+            arguments.append(contentsOf: [
+                "-c:v", "h264_videotoolbox",
+                "-allow_sw", "1",
+                "-b:v", environment["QUIPSLY_PROXY_VIDEO_BITRATE"] ?? "1800k",
+                "-maxrate", environment["QUIPSLY_PROXY_VIDEO_MAXRATE"] ?? "2400k",
+                "-bufsize", environment["QUIPSLY_PROXY_VIDEO_BUFSIZE"] ?? "3600k"
+            ])
+        } else {
+            arguments.append(contentsOf: [
+                "-c:v", "libx264",
+                "-preset", environment["QUIPSLY_PROXY_X264_PRESET"] ?? "veryfast",
+                "-crf", environment["QUIPSLY_PROXY_X264_CRF"] ?? "30"
+            ])
+        }
+
+        arguments.append(contentsOf: [
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            outputURL.path
+        ])
+        return arguments
+    }
+
+    private static func ffmpegSupportsEncoder(_ encoder: String, ffmpegURL: URL) -> Bool {
+        let process = Process()
+        process.executableURL = ffmpegURL
+        process.arguments = ["-hide_banner", "-encoders"]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            return process.terminationStatus == 0 && output.contains(encoder)
+        } catch {
+            return false
         }
     }
 

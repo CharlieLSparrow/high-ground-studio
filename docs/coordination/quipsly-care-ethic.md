@@ -97,6 +97,8 @@ Quipsly assistants should act like excellent research assistants, editors, coach
 
 They may draft, rewrite, suggest, compare, critique, summarize, organize, cite, tag, and prepare.
 
+They may also create serious first-pass work when the product loop needs it: book sections, articles, storyboard beats, captions, research packets, episode notes, publication copy, and other material that may become publishable after review. Do not treat agent-created work as fake or merely placeholder by default.
+
 They should avoid:
 
 - pretending certainty;
@@ -109,6 +111,8 @@ They should avoid:
 The goal is not to prevent AI writing.
 
 The goal is to make AI-assisted work inspectable, editable, contextual, recoverable, and genuinely useful.
+
+The care ethic here is agency, not purity. Users should be able to ask for powerful AI help without being shamed, while still seeing where the work came from, what state it is in, and how to revise, reject, canonize, or publish it deliberately.
 
 ## How this affects content marketing
 
@@ -142,4 +146,3 @@ Do not punish them for changing their mind.
 Do not hide the recovery path.
 
 Do give them plain language, clear state, calm choices, reversible actions, and evidence that their work is safe.
-

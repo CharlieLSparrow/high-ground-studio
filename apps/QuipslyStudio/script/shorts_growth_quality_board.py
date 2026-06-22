@@ -19,8 +19,16 @@ from shorts_board_common import (
     command_quote,
     duration_seconds,
     emit_packet_outputs,
+    episode_coverage,
     esc,
+    html_episode_coverage,
+    html_platform_readiness_coverage,
     load_json,
+    markdown_episode_coverage,
+    markdown_platform_readiness_coverage,
+    platform_readiness,
+    platform_readiness_coverage,
+    platform_readiness_summary,
     stage_rank,
     unique_shorts,
 )
@@ -294,6 +302,8 @@ def build_board(queue_path: str, state_path: str, output_dir: str, basename: str
         commands = local_card.get("commands") or {}
         local_card.update(score)
         local_card["nextGrowthAction"] = next_growth_action(local_card, score, output_dir)
+        local_card["platformReadiness"] = platform_readiness(local_card)
+        local_card["platformReadinessSummary"] = platform_readiness_summary(local_card.get("platformReadiness"))
         local_card["commands"] = {
             **commands,
             "writeHook": f"script/agentctl.sh shorts-select id {command_quote(local_card['id'])} && script/agentctl.sh shorts-update-selected hook {command_quote('Replace with a sharper opening hook.')}",
@@ -321,6 +331,8 @@ def build_board(queue_path: str, state_path: str, output_dir: str, basename: str
         "truth": "Growth score is a practical heuristic, not a promise of performance. Use it to choose what to polish next.",
         "shortCount": len(cards),
         "tierCounts": tier_counts,
+        "episodeCoverage": episode_coverage(cards),
+        "platformReadinessCoverage": platform_readiness_coverage(cards),
         "topCandidate": top,
         "cards": cards,
         "researchFeaturePrinciples": [
@@ -337,6 +349,8 @@ def build_board(queue_path: str, state_path: str, output_dir: str, basename: str
 
 
 def html_page(board: dict[str, Any]) -> str:
+    episode_html = html_episode_coverage(board.get("episodeCoverage"))
+    platform_html = html_platform_readiness_coverage(board.get("platformReadinessCoverage"))
     tier_cards = "".join(
         f"<article><strong>{esc(value)}</strong><span>{esc(key)}</span></article>"
         for key, value in sorted((board.get("tierCounts") or {}).items())
@@ -370,7 +384,8 @@ def html_page(board: dict[str, Any]) -> str:
               <div>
                 <p class="eyebrow">{esc(card.get('stage'))}</p>
                 <h2>{esc(card.get('title'))}</h2>
-                <p>{esc(card.get('nextGrowthAction'))}</p>
+                <p><strong>{esc(card.get('episodeLabel'))}</strong> - {esc(card.get('nextGrowthAction'))}</p>
+                <p><strong>Platform readiness:</strong> {esc(card.get('platformReadinessSummary'))}</p>
                 <div class="subs">{subs_html}</div>
                 <ul>{notes_html}</ul>
               </div>
@@ -429,6 +444,17 @@ def html_page(board: dict[str, Any]) -> str:
     .counts article {{ border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: rgba(255,255,255,.04); }}
     .counts strong {{ display: block; color: var(--gold); font-size: 2.1rem; }}
     .counts span {{ color: var(--muted); }}
+    .episode-coverage {{ margin-top: 18px; }}
+    .episode-coverage-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .episode-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(140,197,110,.07); }}
+    .episode-coverage strong {{ display: block; color: var(--moss); text-transform: uppercase; letter-spacing: .08em; }}
+    .episode-coverage span, .episode-coverage small {{ display: block; color: var(--muted); }}
+    .coverage-warning {{ color: var(--gold); margin: 8px 0 0; }}
+    .platform-readiness-coverage {{ margin-top: 18px; }}
+    .platform-readiness-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .platform-readiness-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(94,198,213,.07); }}
+    .platform-readiness-coverage strong {{ display: block; color: var(--cyan); letter-spacing: .03em; }}
+    .platform-readiness-coverage span, .platform-readiness-coverage small {{ display: block; color: var(--muted); }}
     .shorts {{ display: grid; gap: 16px; margin-top: 22px; }}
     .short {{ display: grid; grid-template-columns: 100px minmax(0, 1fr) minmax(280px, .85fr); gap: 18px; padding: 18px; }}
     .score {{ display: grid; place-items: center; align-content: center; border-radius: 22px; background: rgba(244,211,94,.1); border: 1px solid rgba(244,211,94,.22); }}
@@ -451,6 +477,8 @@ def html_page(board: dict[str, Any]) -> str:
       <h1>Pick clips for attention, not just completion.</h1>
       <p>Score the queue for hook, pacing, vertical presentation, audio confidence, platform packaging, and standalone clarity. This is a compass, not a prophecy.</p>
       <div class="counts">{tier_cards}</div>
+      {episode_html}
+      {platform_html}
       <p class="eyebrow">Top candidate</p>
       <h2>{esc(top.get('title') if top else 'No candidates found')}</h2>
       <p>{esc(top.get('nextGrowthAction') if top else 'Create or import short candidates first.')}</p>
@@ -477,15 +505,19 @@ def markdown_page(board: dict[str, Any]) -> str:
     ]
     for key, value in sorted((board.get("tierCounts") or {}).items()):
         lines.append(f"- `{key}`: `{value}`")
+    lines.extend(["", *markdown_episode_coverage(board.get("episodeCoverage"))])
+    lines.extend(["", *markdown_platform_readiness_coverage(board.get("platformReadinessCoverage"))])
     lines.extend(["", "## Ranked candidates", ""])
     for card in board.get("cards") or []:
         commands = card.get("commands") or {}
         lines.extend([
             f"### {card.get('growthScore')} - {card.get('title')}",
             "",
+            f"- Episode: `{card.get('episodeKey')}` (`{card.get('episodeInference')}`)",
             f"- Tier: `{card.get('growthTier')}`",
             f"- Stage: `{card.get('stage')}`",
             f"- Next: {card.get('nextGrowthAction')}",
+            f"- Platform readiness: `{card.get('platformReadinessSummary')}`",
             f"- Missing: `{', '.join(card.get('missingQualitySignals') or []) or 'none'}`",
             "",
             "```bash",

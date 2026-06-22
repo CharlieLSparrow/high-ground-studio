@@ -8,7 +8,7 @@ public final class PlaybackEngine: ObservableObject {
     @Published public var isPlaying: Bool = false
     @Published public var playbackMode: PlaybackMode = .playEdit
     @Published public var playbackFormat: ExportFormat = .horizontal16x9
-    
+
     public var player: AVPlayer? {
         willSet {
             if let token = timeObserverToken {
@@ -20,28 +20,32 @@ public final class PlaybackEngine: ObservableObject {
             setupTimeObserver()
         }
     }
-    
+
     private var timeObserverToken: Any?
-    
+
     @Published public var sourcePlayers: [UUID: AVPlayer] = [:]
     private var sourceOffsets: [UUID: Double] = [:]
     private var sourceDurations: [UUID: Double] = [:]
-    
+
     public var validRanges: [ClosedRange<Double>] = []
-    
+    public private(set) var sequenceDuration: Double = 0
+
     public init() {}
-    
+
     public func updateSourcePlayers(for sequence: MediaSequence) {
         var newPlayers: [UUID: AVPlayer] = [:]
         var newOffsets: [UUID: Double] = [:]
         var newDurations: [UUID: Double] = [:]
-        
+
         for lane in sequence.lanes {
+            if lane.metadata?.ignoreForProduction == true {
+                continue
+            }
             if let sv = lane.sourceVideo {
                 let ext = sv.mediaURL.pathExtension.lowercased()
                 let audioOnlyExtensions = ["wav", "aif", "aiff", "mp3", "m4a", "aac", "flac"]
                 let isAudioOnly = audioOnlyExtensions.contains(ext)
-                
+
                 if !isAudioOnly {
                     guard let playbackURL = sv.proxyURL else {
                         continue
@@ -64,7 +68,11 @@ public final class PlaybackEngine: ObservableObject {
         self.sourceOffsets = newOffsets
         self.sourceDurations = newDurations
         updateValidRanges(for: sequence)
-        syncSourcePlayers(to: playhead)
+        let safePlayhead = boundedSequenceTime(playhead)
+        if safePlayhead != playhead {
+            playhead = safePlayhead
+        }
+        syncSourcePlayers(to: safePlayhead)
     }
 
     private nonisolated static func isProtectedMediaPath(_ path: String) -> Bool {
@@ -78,15 +86,22 @@ public final class PlaybackEngine: ObservableObject {
         ]
         return protectedPrefixes.contains { path == String($0.dropLast()) || path.hasPrefix($0) }
     }
-    
+
     public func updateValidRanges(for sequence: MediaSequence) {
+        sequenceDuration = max(sequence.duration, 0)
         if playbackMode == .playThrough {
-            validRanges = [0...max(sequence.duration, 0)]
+            validRanges = [0...sequenceDuration]
         } else {
             validRanges = Self.computeValidRanges(for: sequence)
         }
     }
-    
+
+    private func boundedSequenceTime(_ timeInSeconds: Double) -> Double {
+        guard timeInSeconds.isFinite else { return 0 }
+        guard sequenceDuration > 0 else { return max(0, timeInSeconds) }
+        return min(max(0, timeInSeconds), sequenceDuration)
+    }
+
     public nonisolated static func computeValidRanges(for sequence: MediaSequence) -> [ClosedRange<Double>] {
         let decisionLanes = primaryEditDecisionLanes(in: sequence)
         let primaryActiveRanges = collectRanges(type: .active, lanes: decisionLanes, sequenceDuration: sequence.duration)
@@ -143,8 +158,9 @@ public final class PlaybackEngine: ObservableObject {
     }
 
     private nonisolated static func primaryEditDecisionLanes(in sequence: MediaSequence) -> [VideoLane] {
-        let visualLanes = sequence.lanes.filter { !isSupportOnlyLane($0) }
-        return visualLanes.isEmpty ? sequence.lanes : visualLanes
+        let productionLanes = sequence.lanes.filter { $0.metadata?.ignoreForProduction != true }
+        let visualLanes = productionLanes.filter { !isSupportOnlyLane($0) }
+        return visualLanes.isEmpty ? productionLanes : visualLanes
     }
 
     private nonisolated static func isSupportOnlyLane(_ lane: VideoLane) -> Bool {
@@ -223,7 +239,7 @@ public final class PlaybackEngine: ObservableObject {
         }
         return mergeRanges(intersections)
     }
-    
+
     public func programTime(from sequenceTime: Double) -> Double {
         if playbackMode == .playThrough { return sequenceTime }
         var pTime: Double = 0
@@ -239,11 +255,11 @@ public final class PlaybackEngine: ObservableObject {
         }
         return pTime
     }
-    
+
     public func sequenceTime(from programTime: Double) -> Double {
         if playbackMode == .playThrough { return programTime }
         if validRanges.isEmpty { return 0 }
-        
+
         var remainingPTime = programTime
         for range in validRanges {
             let duration = range.upperBound - range.lowerBound
@@ -254,16 +270,17 @@ public final class PlaybackEngine: ObservableObject {
         }
         return validRanges.last!.upperBound
     }
-    
+
     private func syncSourcePlayers(
         to timeInSeconds: Double,
         tolerance: CMTime = .zero,
         cancelPending: Bool = false
     ) {
+        let sequenceTime = boundedSequenceTime(timeInSeconds)
         for (id, p) in sourcePlayers {
             let offset = sourceOffsets[id] ?? 0
             let duration = sourceDurations[id] ?? .infinity
-            let mediaTime = min(max(0, timeInSeconds - offset), duration)
+            let mediaTime = min(max(0, sequenceTime - offset), duration)
             if cancelPending {
                 p.currentItem?.cancelPendingSeeks()
             }
@@ -289,21 +306,25 @@ public final class PlaybackEngine: ObservableObject {
         let duration = sourceDurations[laneId] ?? .infinity
         return min(max(0, (sequenceTime ?? playhead) - offset), duration)
     }
-    
+
     public func play() {
         guard let player = player else { return }
-        syncSourcePlayers(to: playhead)
+        let safePlayhead = boundedSequenceTime(playhead)
+        if safePlayhead != playhead {
+            playhead = safePlayhead
+        }
+        syncSourcePlayers(to: safePlayhead)
         player.play()
         sourcePlayers.values.forEach { $0.play() }
         isPlaying = true
     }
-    
+
     public func pause() {
         player?.pause()
         sourcePlayers.values.forEach { $0.pause() }
         isPlaying = false
     }
-    
+
     public func togglePlayback() {
         if isPlaying {
             pause()
@@ -311,31 +332,33 @@ public final class PlaybackEngine: ObservableObject {
             play()
         }
     }
-    
+
     public func seek(to timeInSeconds: Double) {
-        playhead = timeInSeconds
-        syncSourcePlayers(to: timeInSeconds, tolerance: .zero, cancelPending: true)
+        let safeTime = boundedSequenceTime(timeInSeconds)
+        playhead = safeTime
+        syncSourcePlayers(to: safeTime, tolerance: .zero, cancelPending: true)
         guard let player = player else { return }
         player.currentItem?.cancelPendingSeeks()
-        let pTime = programTime(from: timeInSeconds)
+        let pTime = programTime(from: safeTime)
         let time = CMTime(seconds: pTime, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     public func scrub(to timeInSeconds: Double) {
-        playhead = timeInSeconds
+        let safeTime = boundedSequenceTime(timeInSeconds)
+        playhead = safeTime
         let tolerance = CMTime(seconds: 0.08, preferredTimescale: 600)
-        syncSourcePlayers(to: timeInSeconds, tolerance: tolerance, cancelPending: true)
+        syncSourcePlayers(to: safeTime, tolerance: tolerance, cancelPending: true)
         guard let player = player else { return }
         player.currentItem?.cancelPendingSeeks()
-        let pTime = programTime(from: timeInSeconds)
+        let pTime = programTime(from: safeTime)
         let time = CMTime(seconds: pTime, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
-    
+
     private func setupTimeObserver() {
         guard let player = player else { return }
-        
+
         let interval = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor in

@@ -1,0 +1,293 @@
+# QuipslyStudio Production Log
+
+Status: active lightweight ship's log.
+
+Purpose: preserve the story of what we worked on, what changed, what proved
+true, what stayed risky, and what we learned about pace. This is not a timesheet
+and not a substitute for tests, commits, or release proof.
+
+Use this format for meaningful work blocks:
+
+```text
+## YYYY-MM-DD HH:MM TZ - Short title
+
+Started:
+Finished:
+Duration:
+Mode:
+Canonical path:
+
+What changed:
+- ...
+
+Proof or evidence:
+- ...
+
+Still risky:
+- ...
+
+Lesson:
+- ...
+
+Next:
+- ...
+```
+
+## 2026-06-18 15:29 MDT - Canonical editor guardrails and launch recovery
+
+Started: earlier in the active QuipslyStudio recovery run
+Finished: 2026-06-18 15:29 MDT
+Duration: rough multi-turn block, exact start not captured
+Mode: recovery, guardrails, validation policy
+Canonical path: `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio`
+
+What changed:
+- Confirmed QuipslyStudio is the canonical native editor implementation.
+- Added canonical implementation registry.
+- Added legacy editor quarantine note.
+- Added warning tombstones inside `apps/quipsly-mac` and `apps/quipsly-video`.
+- Added production runbook sections for naming, output readiness, Apple distribution, and judgment-based validation.
+- Added a production editor gap map tied to the full 16:9, 9:16, podcast, and proof-ledger objective.
+- Fixed canonical QuipslyStudio build blockers in `TimelineEditorView.swift` and `WorkspaceView.swift`.
+
+Proof or evidence:
+- Canonical build/launch command succeeded:
+  `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/build_and_run.sh`
+- Running process path showed QuipslyStudio build output:
+  `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/DerivedData/Build/Products/Debug/QuipslyMac.app/Contents/MacOS/QuipslyMac`
+
+Still risky:
+- App process/bundle still visibly says `QuipslyMac`, which can confuse humans and agents even though the source path is correct.
+- Warning debt remains in `WorkspaceView.swift`, `TimelineEditorView.swift`, and AVFoundation export code.
+- Legacy trees are tombstoned but not moved outside the repo yet.
+- Production editor objective is not complete; export, publication, podcast, shorts, and receipt proof still need requirement-by-requirement validation.
+
+Lesson:
+- "Open the canonical app" is a real product smoke test, not vanity. It caught source-tree/build drift immediately.
+- Validation should be judgment-based: build after Swift/source changes, skip builds for docs-only changes, and offload long-running observation when it saves Codex focus.
+- Guardrails belong where agents actually land, not only in memory.
+
+Next:
+- Return to QuipslyStudio product work.
+- Strengthen the Ship/readiness surface so 16:9 episode, 9:16 social clips, podcast audio, and proof receipts are visible as one production ladder.
+- Then tighten shared-playhead/scrub/zoom proof and selected-short timeline visualization.
+
+## 2026-06-18 15:40 MDT - Ship map per-output readiness rungs
+
+Started: 2026-06-18 15:34 MDT
+Finished: 2026-06-18 15:40 MDT
+Duration: about 6 minutes
+Mode: product UI hardening, proof pass
+Canonical path: `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio`
+
+What changed:
+- Added mini readiness rungs to each Ship output tile so 16:9 episode, 9:16 shorts, and podcast outputs show their own progress instead of only relying on the global production ladder.
+- The rungs are intentionally simple: `EDIT`, `PREP`, `POST`, and `PROOF`.
+- Kept this as visibility over judgment: the UI shows what exists and what is missing without pretending to grade the creative work.
+
+Proof or evidence:
+- Canonical build/launch command succeeded:
+  `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/build_and_run.sh`
+
+Still risky:
+- The Ship screen still needs direct real-export receipt checks for YouTube, shorts platforms, Patreon, and podcast destinations.
+- The readiness rungs are derived from current in-app packet state; they still need a human/editor smoke pass against real Episode 1 outputs.
+
+Lesson:
+- Output readiness should be visible at the artifact level. A creator should never have to infer whether the episode, the short, or the podcast is the thing blocking publication.
+
+Next:
+- Tighten the shared-playhead and timeline zoom proof path, then improve selected-short visualization so the editor makes it obvious what part of the episode is being pulled into each social clip.
+
+## 2026-06-18 15:46 MDT - Selected short pull-out map
+
+Started: 2026-06-18 15:42 MDT
+Finished: 2026-06-18 15:46 MDT
+Duration: about 4 minutes
+Mode: editor UX hardening, social clip visibility
+Canonical path: `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio`
+
+What changed:
+- Added a selected short pull-out map to the Episode Spine timeline surface.
+- The map renders each selected 9:16 short recipe segment as an ordered span over the source episode range.
+- Multi-segment shorts now read as recipes made from episode moments, not as chopped source media.
+
+Proof or evidence:
+- Canonical build/launch command succeeded:
+  `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/build_and_run.sh`
+
+Still risky:
+- This pass proves compile/launch, not a human visual smoke of a selected short in the running app.
+- The timeline still needs stronger pinch-zoom and shared-playhead proof from direct app interaction.
+- Warning debt remains around deprecated SwiftUI `onChange` calls and optional JSON payload coercions.
+
+Lesson:
+- Social shorts need to be visible as pull-out recipes. If the user has to mentally translate text rows into episode spans, the editor is still making them carry too much state in their head.
+
+Next:
+- Prove and harden shared timeline scrubbing/zooming through the app path, then make selected short segments directly selectable and adjustable from the map/timeline.
+
+## 2026-06-18 15:55 MDT - Shared playhead proof contract
+
+Started: 2026-06-18 15:49 MDT
+Finished: 2026-06-18 15:55 MDT
+Duration: about 6 minutes
+Mode: editor control-plane hardening, semantic smoke
+Canonical path: `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio`
+
+What changed:
+- Added `sharedPlayheadContract` to the live editor state payload.
+- The contract summarizes playhead, source monitor count, playable source count, max source-player delta, timeline zoom state, human proof steps, and Codex proof commands.
+- Kept the detailed `sourceSyncProof.samples` intact for deeper debugging.
+
+Proof or evidence:
+- Canonical build/launch command succeeded:
+  `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/build_and_run.sh`
+- Semantic observe showed `sharedPlayheadContract.status = synced`, `passing = true`, `sourceMonitorVideoCount = 4`, and `maxSourcePlayerDeltaSeconds = 0` before scrub testing.
+- After `scrub 420` and `program-scroll 5`, live state showed playhead `425`, shared-playhead status `synced`, passing `true`, and max source delta about `0.08s`.
+
+Still risky:
+- This proves semantic/app-state sync, not a visual human smoke of dragging and pinching in the window.
+- Program scroll and timeline pinch still need direct UI interaction proof after the next interaction pass.
+- Warning debt remains in SwiftUI `onChange` calls and optional JSON payload coercions.
+
+Lesson:
+- A professional editor needs visible truth, but an AI-editable editor also needs machine-readable truth. The same playhead contract should be inspectable by humans, agents, and future training/evaluation tools.
+
+Next:
+- Use direct app interaction to prove timeline drag, program scroll, and pinch zoom from the human path, then tighten any mismatch between physical gestures and semantic commands.
+
+## 2026-06-18 16:16-16:45 MDT - Physical Program Output scroll proof attempt and worklog start
+
+- Built and relaunched canonical QuipslyStudio successfully with `./script/build_and_run.sh`.
+- Confirmed only canonical `com.highground.QuipslyMac` app was running; no legacy `apps/quipsly-mac` process.
+- Reloaded Episode 1 rescue session and confirmed proxy production readiness remained intact.
+- Added a local worklog at `docs/quipsly/quipslystudio-worklog.md` so long development runs have start/finish/proof/risk history.
+- Hardened Program Output scroll hit detection and added window-relative UI event helpers.
+- Current result: semantic shared-playhead proof passes; physical Program Output scroll still does not move the playhead reliably and remains the next hardening target.
+
+## 2026-06-18 16:33-16:47 MDT - Program Output physical scroll proof passed
+
+- Added a live `programMonitorHitbox` to `/state` so agents and humans can inspect the actual Program Output scroll target.
+- Added `script/studioctl.sh ui-scroll-program` and `script/studioctl.sh prove-program-scroll`.
+- Validated the canonical app path with `./script/build_and_run.sh` and verified no legacy QuipslyMac process was running.
+- `prove-program-scroll` passed: physical scroll over Program Output moved the shared playhead from 2.50s to 18.90s while Source Grove sync stayed passing.
+- Remaining hardening target: timeline drag and pinch zoom need the same repeatable proof command and visual/state contract.
+
+## 2026-06-18 16:53 MDT - Lightweight captain's log practice
+
+Started: 2026-06-18 16:50 MDT
+Finished: 2026-06-18 16:53 MDT
+Duration: about 3 minutes
+Mode: process hardening, continuity
+Canonical path: `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio`
+
+What changed:
+- Clarified that QuipslyStudio keeps two lightweight logs: the production log for milestone narrative and the worklog for operational work blocks.
+- Added a worklog practice section with triggers, a short format, and the rule that entries should usually take under two minutes.
+- Kept this intentionally non-bureaucratic: capture intent, proof, risk, next move, and approximate time.
+
+Proof or evidence:
+- Updated `docs/quipsly/quipslystudio-worklog.md` with the logging practice.
+- Did not run a build because this was docs-only.
+
+Still risky:
+- Logs can become performative if they are too detailed.
+- Logs can become useless if they skip blockers and failed attempts.
+
+Lesson:
+- The useful version is a captain's log: enough history to estimate, debug, and feel progress without creating a second job.
+
+Next:
+- Continue using the worklog around meaningful editor proof blocks, especially timeline drag, pinch zoom, proxy readiness, export, and publication receipts.
+
+## 2026-06-18 17:41-17:54 MDT - Agent-editable editor proof turn
+
+QuipslyStudio crossed an important line: the running app now has both physical human-path proof and semantic agent-path proof for the shared playhead/editor control layer.
+
+Evidence:
+- `prove-timeline-drag` passed against the canonical app. A physical drag over the Episode Spine ruler scrub surface moved the shared playhead from `0.0s` to `37.9s` while source monitor sync stayed passing.
+- `prove-agent-test-driver` passed. Codex can load Episode 1, zoom the timeline, scrub/select a real video decision, open the shorts workbench, switch output format, and verify source sync through semantic editor commands.
+
+Product interpretation:
+- Agent Test Driver is not a toy. It is the shared command spine for QA, accessibility, keyboard-first editing, collaboration automation, and future learning-from-editor-corrections.
+- The next editor phase should use this control plane for a real Codex editorial run, not merely for tests.
+
+## 2026-06-18 18:05 MDT - Agent action receipts become product infrastructure
+
+QuipslyStudio's Agent Test Driver now writes durable proof packets for semantic editor actions. This supports the larger production goal: Codex should be able to edit like a real user while leaving clear proof of observed state, actions taken, safety boundaries, and remaining human-review work.
+
+Product interpretation:
+- Receipts make agent editing less magical and more accountable.
+- The same structure can power undo history, Mako/Charlie collaboration review, and future ML training data.
+
+## 2026-06-18 18:20 MDT - Agent receipts enter the editor UI
+
+The Agent Test Driver receipt system now has a visible workbench inside QuipslyStudio. This makes agent proof review part of the editor, not an external debugging ritual.
+
+Evidence:
+- Canonical app build/run verification passed.
+- Agent proof receipt generation passed on `episode-1-codex-original-edit`.
+- `left-workbench agent` opened the Agent workbench in the real app.
+- Screenshot proof: `/tmp/quipslystudio-agent-workbench-front.png`.
+
+Product interpretation:
+- The editor is now closer to a shared human/agent workspace: humans can see Codex receipts; Codex can use the same mode deck humans use.
+- Next UI redesigns should treat receipts, decisions, shorts, source monitors, and publish readiness as emotional safety surfaces, not just data panels.
+
+## 2026-06-18 19:18 MDT - Atomic agent edit plans replace command-race rebuilds
+
+Episode 1 was re-rooted from noisy imported decisions into `episode-1-codex-real-edit-v1` using a JSON edit plan applied atomically inside the app. This fixed the command-queue race where hundreds of single `/edit` requests could acknowledge faster than the UI consumed them.
+
+Production implication: future AI/editor/collaboration operations should prefer inspectable edit-plan payloads with receipts over long chains of tiny imperative commands. The user sees a calmer timeline, agents get deterministic proof packets, and protected source media remains untouched.
+## 2026-06-19 - Episode 1 proof receipts
+
+Decision:
+
+- Treat `episode-1-codex-real-edit-v1` as the active Episode 1 proof edit branch.
+- Treat generated exports as proof artifacts until audio mixdown and full-run review are complete.
+
+Evidence:
+
+- Running app session: `episode-1-codex-real-edit-v1`
+- Build path: `/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/build_and_run.sh --verify`
+- 300-second proof exports:
+  - 16:9 `/Users/wall-e/Movies/QuipslyExports/Episode1RealEditProofs/20260619T013216Z/episode-1-codex-real-edit-v1-gap-proof-16x9.mp4`
+  - 9:16 `/Users/wall-e/Movies/QuipslyExports/Episode1RealEditProofs/20260619T013216Z/episode-1-codex-real-edit-v1-gap-proof-9x16.mp4`
+- Contact sheets visually show real Charlie/Homer camera switching in both aspect ratios.
+- Source sync state remained passing after rebuild and relaunch.
+
+Risk:
+
+- MP4 proofs currently preserve two AAC audio streams. Before publication, prefer a single mixed stereo program track unless there is a deliberate multi-audio delivery reason.
+- The 300-second proof crosses more editorial state than the 90-second proof, but it is still not a full 36-minute review.
+
+Next production step:
+
+- Add/export a publishable audio mixdown path and generate a longer/fuller Episode 1 review master.
+
+Update:
+
+- ExportEngine now attaches an explicit audio mix to program exports.
+- Proof files generated at `/Users/wall-e/Movies/QuipslyExports/Episode1RealEditProofs/20260619T015219Z-audio-mix-test`.
+- `ffprobe` confirms the short 16:9 and 9:16 proofs each contain one AAC audio stream and one H.264 video stream.
+
+Remaining production step:
+
+- Regenerate a longer/full Episode 1 review master using the fixed audio-mix export path.
+
+Longer mixed proof:
+
+- Current proof folder: `/Users/wall-e/Movies/QuipslyExports/Episode1RealEditProofs/20260619T015745Z-mixed-gap-proof`
+- 16:9 proof: `episode-1-codex-real-edit-v1-mixed-gap-proof-16x9.mp4`
+- 9:16 proof: `episode-1-codex-real-edit-v1-mixed-gap-proof-9x16.mp4`
+- Both probe as one AAC audio stream plus one H.264 video stream.
+- Contact sheets visually show the same valid camera switching and framing as the earlier proof.
+
+Updated remaining production step:
+
+- Review/iterate the edit itself in the app, then generate a full-length mixed-audio review master.
+
+## 2026-06-19 - Episode 1 review-master proof
+
+Proof artifact exists for the current metadata-first Episode 1 edit: `/Users/wall-e/Movies/QuipslyExports/Episode1RealEditProofs/20260619T021041Z-full-review-master`. Both 16:9 and 9:16 review masters probe as H.264 + AAC stereo with visible source switching in contact sheets. Not publication-final yet: audio duration/tail mismatch must be reviewed before release.

@@ -23,7 +23,7 @@ model WorldHubProviderEvent {
   updatedAt      DateTime @updatedAt
 
   reconciliations MembershipReconciliation[]
-  
+
   @@index([status, createdAt])
 }
 
@@ -43,7 +43,7 @@ model MembershipReconciliation {
   event            WorldHubProviderEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
   user             User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
   membership       Membership?           @relation(fields: [membershipId], references: [id], onDelete: SetNull)
-  
+
   @@index([status])
   @@index([providerEmail])
 }
@@ -56,7 +56,7 @@ model Membership {
   expiresAt        DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  
+
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   reconciliations  MembershipReconciliation[]
 }

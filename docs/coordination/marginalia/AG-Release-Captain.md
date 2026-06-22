@@ -160,5 +160,5 @@ The pipeline is entirely automated on a "Preview -> Smoke -> Promote" model in G
 1. Merge or Push product changes directly to the `main` branch.
 2. OR: Manually dispatch the `Deploy Cloud Run` workflow from the GitHub Actions UI targeting `studio` or `all`.
 
-Recommended next handoff: 
+Recommended next handoff:
 Codex/Product Owner. Ready for your explicit DEPLOY GO. Proceed with pushing to `main` or explicitly triggering the GH Action when desired.

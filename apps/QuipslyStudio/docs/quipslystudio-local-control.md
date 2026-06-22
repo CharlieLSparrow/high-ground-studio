@@ -86,6 +86,131 @@ If a future feature only works by pixel clicking, it is not done. Add the state
 field, add the semantic command, add the proof path, then use pixels only to
 verify that the human-facing UI is wired to the same command.
 
+## Episode script spine readiness
+
+Script/Text Awareness is a synchronized lens over the one episode spine. It is
+not a detached text editor and it is not allowed to cut media by itself.
+
+Use the readiness script before claiming a transcript-aware edit lane is ready:
+
+```bash
+python3 script/prepare_episode_script_spines.py \
+  --output /tmp/quipsly-script-spines-report.json
+```
+
+Default mode is report-only. It checks source sessions, transcript sidecars, and
+prepared sessions without loading every large episode through the live app.
+Use `--validate-prepared` when you intentionally want the stronger proof path:
+load the prepared session through the live AgentServer, open the Script
+workbench, and verify `/state`.
+
+Useful modes:
+
+```bash
+python3 script/prepare_episode_script_spines.py --apply
+python3 script/prepare_episode_script_spines.py --apply --refresh
+python3 script/prepare_episode_script_spines.py --validate-prepared
+python3 script/prepare_episode_script_spines.py --fetch
+```
+
+Local transcript provider seam:
+
+```bash
+script/local_transcript_provider.py --doctor
+script/agentctl.sh transcript-generate-selected script/local_transcript_provider.py
+```
+
+`script/local_transcript_provider.py` is the default local command bridge for
+ASR and reviewed sidecars. It prints SRT, VTT, or Quipsly transcript JSON to
+stdout for the running app to import. Today it supports:
+
+- `.srt`, `.vtt`, or `.json` sidecars beside the selected media.
+- Python `whisper` if installed in the active Python environment.
+- `mlx_whisper` if installed in the active Python environment.
+- OpenAI Whisper CLI (`whisper`) if installed on `PATH` or supplied through
+  `QUIPSLY_WHISPER_CLI_PATH`.
+- whisper.cpp CLI (`whisper-cli` or `whisper-cpp`) when
+  `QUIPSLY_WHISPER_CPP_MODEL` points to a readable ggml model file, or when the
+  Quipsly-managed default model exists at
+  `~/Library/Application Support/QuipslyStudio/WhisperModels/ggml-base.en.bin`.
+
+If no provider is available, the command fails with a doctor packet instead of
+pretending transcription happened. That is intentional: missing ASR should be a
+clear setup task, not a mystery inside the editor.
+
+Human UI path:
+
+- Open the Script/Text Awareness workbench.
+- Select the source lane to transcribe.
+- In **Transcribe media**, either leave the command path blank to use only a
+  sidecar beside the media, paste a provider command, or click **Use repo
+  provider** during local development.
+- Click **Generate from selected lane**.
+
+Agent proof fields:
+
+- `/state.transcriptCommandPath`
+- `/state.defaultLocalTranscriptProviderPath`
+- `/state.defaultLocalTranscriptProviderAvailable`
+- `/state.transcript.latestJob`
+
+Episode 2 ASR setup target:
+
+```bash
+script/local_transcript_provider.py --doctor
+export QUIPSLY_TRANSCRIPT_PROVIDER=whisper-cpp
+export QUIPSLY_WHISPER_CPP_MODEL=/absolute/path/to/ggml-base.en.bin
+script/agentctl.sh load-session episode-2-codex-overlap-review-v3
+script/agentctl.sh left-workbench transcript
+script/agentctl.sh transcript-generate-selected script/local_transcript_provider.py
+```
+
+Episode 2 local mixdown/import proof:
+
+```bash
+script/setup_local_asr.sh --doctor
+script/render_transcript_mixdown.py \
+  --session episode-2-codex-overlap-review-v3 \
+  --report /tmp/quipsly-episode2-transcript-mixdown.json
+script/local_transcript_provider.py \
+  ../../artifacts/transcripts/audio-mixdowns/episode-2-codex-overlap-review-v3-transcript-spine.wav \
+  > ../../artifacts/transcripts/local-asr/episode-2-codex-overlap-review-v3.whisper-cpp.srt
+script/agentctl.sh load-session episode-2-codex-overlap-review-v3
+script/agentctl.sh transcript-import \
+  /Users/wall-e/Dev/high-ground-studio/artifacts/transcripts/local-asr/episode-2-codex-overlap-review-v3.whisper-cpp.srt \
+  srt
+script/agentctl.sh save-session episode-2-codex-overlap-review-v3-wordtimed
+```
+
+If a reviewed SRT/VTT is created by another tool, place it beside the selected
+proxy/media file or import it directly:
+
+```bash
+script/agentctl.sh transcript-import /absolute/path/to/episode-2.srt srt
+```
+
+Current episode truth:
+
+- Episode 1: prepared word-timed lane
+  `episode-1-codex-real-edit-v1-youtube-wordtimed`.
+- Episode 2: local whisper.cpp ASR draft exists at
+  `artifacts/transcripts/local-asr/episode-2-codex-overlap-review-v3.whisper-cpp.srt`
+  and prepared session `episode-2-codex-overlap-review-v3-wordtimed` has been
+  proved through `/state`. Timing is segment-estimated from SRT, useful for
+  editing awareness and search, not publication-grade word captions.
+- Episode 3: prepared word-timed lane
+  `episode-3-premiere-rescue-youtube-wordtimed`.
+
+Dogfood loop:
+
+- Use Episode 1 as the known-good script-aware editing lane.
+- Use Episode 2 as the messy ASR/stress lane.
+- Use Episode 3 as the transfer-test lane.
+- Return to Episode 1 for one deliberate second Codex pass with lessons learned.
+
+Timing readiness remains transparency-only. It helps humans and agents avoid
+false precision claims; it does not judge or block creative work.
+
 ## Delivery readiness
 
 `GET /delivery_readiness` is the truth layer between editing and publishing.
@@ -134,9 +259,9 @@ script/smoke_episode1_short_clip_queue.sh --no-build
 ```
 
 Today this proves clip-range capture for social output planning, bounded short
-preview, selected 9:16 short export, queued batch 9:16 export, and first-pass
-burned-in overlay/caption text. It does not yet prove polished caption timing,
-platform templates, or platform upload/scheduling.
+preview, selected 9:16 short export, queued batch 9:16 export, and metadata-first
+caption/platform-copy handoff. It does not yet prove polished caption timing,
+platform templates, pixel-safe on-video text placement, or platform upload/scheduling.
 
 Target workflow:
 
@@ -151,7 +276,7 @@ Target workflow:
 - Each short packet owns its own 9:16 framing direction, caption draft, text overlay, hook/title notes, destination presets, AI suggestions, review status, and export/publishing status.
 - `GET /shorts_preview_selected?play=true|false` cues or previews the selected short in 9:16 Play Edit mode. A play-preview stops at the short packet out point and clears `shortPreviewStopAt`.
 - `GET /shorts_range_selected?boundary=start|end&time=<sequence-seconds>|delta=<seconds>` updates the selected short packet's output range only.
-- `GET /shorts_export_selected?directory=<absolute-output-folder>&basename=<name>` exports the selected short packet as a 9:16 MP4 from proxy-backed Play Edit metadata. If the packet has primary overlay text or caption draft text, the export burns those into the MP4 as a first-pass social proof layer.
+- `GET /shorts_export_selected?directory=<absolute-output-folder>&basename=<name>` exports the selected short packet as a clean-frame 9:16 MP4 from proxy-backed Play Edit metadata. Primary overlay text and caption draft text stay in metadata, sidecars, and platform copy; they are not burned into the video frame until a future face-safe placement system explicitly supports and proves that.
 - `GET /shorts_export_all?directory=<absolute-output-folder>&basename=<name>` exports every queued short packet as ordered 9:16 MP4 files from proxy-backed Play Edit metadata.
 - `GET /social_shorts_packet_generate?directory=<absolute-output-folder>&basename=<name>` writes a JSON handoff packet for every queued short with artifact paths, platform copy, hashtags, timing, and destination guidance.
 - `GET /social_shorts_packet` returns the last social shorts packet state.
@@ -171,6 +296,8 @@ Agents can open the workbench with `GET /left_workbench?mode=shorts` and verify
 Agents can export the selected packet with `GET /shorts_export_selected`, batch
 export the whole queue with `GET /shorts_export_all`, and then poll `/state` or
 use `script/agentctl.sh wait-export` to verify the output path and status.
+`wait-export` returns a compact export receipt by default; use full `/state`
+only when debugging needs the complete app packet.
 Agents can then generate `GET /social_shorts_packet_generate` to produce the
 manual publishing handoff for YouTube Shorts, Instagram, Facebook, and LinkedIn.
 Agents can then generate `GET /social_publication_queue_generate` to copy the
@@ -183,6 +310,8 @@ Batch export:
 - The app marks each packet as `queued-for-export`, then `exporting`, then
   `exported` or `export-failed`.
 - Batch export uses the same proxy-backed Play Edit metadata as selected export;
+- Batch export follows the same clean-frame rule: text is exported as metadata,
+  caption sidecars, and platform copy, not as pixels over faces.
   it does not mutate source media or create chopped source clips.
 
 Social shorts packet:
@@ -1372,6 +1501,13 @@ Supported first-pass formats:
 - `.srt` with `00:00:00,000 --> 00:00:01,000` timing.
 - `.vtt` / WebVTT with `00:00:00.000 --> 00:00:01.000` timing.
 - Speaker prefixes like `Charlie: text` are parsed into `speaker` plus clean transcript text.
+- YouTube-style WebVTT inline word timestamps are parsed into word-level timing when present. This gives the Script workbench a real read-along/highlight spine instead of only line-level estimates.
+- If imported captions use a generic speaker label such as `Speaker`, the Script workbench and `/state` expose an honest `speakerDisplay` inferred from the active SHOW source at that sequence time. The original transcript label remains available as `speaker`/`transcriptSpeaker`; inferred fields include `speakerSource`, `speakerDetail`, and `speakerLaneNames`.
+- If the only available source identity is an unresolved filename such as
+  `temp_video_...mp4`, the Script workbench should not pretend that filename is
+  a speaker. `/state` exposes `speakerNeedsReview: true` and
+  `speakerSource: unresolved_program_source` so humans or agents can assign lane
+  roles before treating the transcript as speaker truth.
 
 Proof path:
 
@@ -1473,3 +1609,63 @@ script/smoke_episode1_transcript_generate.sh --no-build
 ```
 
 This smoke uses a fixture command that prints SRT to stdout. It proves the app-owned generation loop and job state without pretending a production ASR provider is installed.
+
+## Agent transcript word wrapper
+
+`script/agentctl.sh transcript-word current|next|previous|first|last [segment-id] [word-index]` is the supported CLI wrapper for `/transcript_word`.
+
+Use it when an agent or automation needs to move through the spoken-word spine without guessing UI coordinates. The proof rule remains: the command response is not enough; confirm `/state.selectedTranscriptWord`, `/state.scriptCursor`, and `/state.sharedPlayheadContract` after the action.
+
+## Transcript search command
+
+Use transcript search when a human or agent needs to find a spoken phrase and move the shared playhead to that moment without guessing timeline coordinates.
+
+```bash
+script/agentctl.sh transcript-search "captions" first
+script/agentctl.sh transcript-search "stewardship" next
+```
+
+Native endpoint:
+
+```text
+GET /transcript_search?query=<text>&mode=first|next|previous|current
+```
+
+Proof rule:
+- The command response only proves the command was queued.
+- Verify `/state.latestTranscriptSearchReceipt`, `/state.selectedTranscriptWord`, `/state.currentTranscriptWord`, and `/state.sharedPlayheadContract` before claiming the search worked.
+
+Current limitation:
+- Search quality depends on transcript truth. Demo or estimated timing is fine for workflow proof, but publication-grade captions, quote pulls, and shorts should use reviewed ASR/sidecar transcript timing.
+
+## Text awareness proof
+
+The Script workbench is the current read-only transcript-awareness surface. It follows the shared playhead and exposes speaker, current word, nearby text context, search results, and transcript-to-short actions.
+
+Useful proof loop:
+
+```bash
+./script/agentctl.sh transcript-search captions current
+./script/agentctl.sh state
+```
+
+Expected truth: the search/selection may move the shared playhead and selected transcript word, but it must not mutate source media, SHOW/SKIP decisions, exports, or publication state.
+
+Word-timed YouTube caption proof:
+
+```bash
+python3 -m yt_dlp --skip-download --write-auto-subs --sub-lang en --sub-format vtt --output '../../artifacts/transcripts/youtube-captions/yt-dlp/episode-1.%(ext)s' 'https://www.youtube.com/watch?v=96LN__TA-T8'
+script/agentctl.sh load-session episode-1-codex-real-edit-v1
+script/agentctl.sh codex-act-save transcript-import "$(pwd)/../../artifacts/transcripts/youtube-captions/yt-dlp/episode-1.en.vtt" vtt
+script/agentctl.sh save-session episode-1-codex-real-edit-v1-youtube-wordtimed
+script/agentctl.sh scrub 3
+script/agentctl.sh transcript-word current
+script/agentctl.sh state
+```
+
+Expected proof fields:
+
+- `transcriptTimingReadiness.wordLevelCount` should be non-zero.
+- `currentTranscriptWord.timingModel` should be `word_level_timing` when the active word came from inline VTT timing.
+- `currentTranscriptWord.speakerDisplay` may be inferred from the active SHOW source when imported captions only say `Speaker`.
+- `currentTranscriptWord.speakerSource` should explain whether the speaker came from transcript text or Quipsly program-source inference.

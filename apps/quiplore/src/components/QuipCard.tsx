@@ -43,25 +43,25 @@ export function QuipCard({
           <ExternalLink size={15} aria-hidden="true" />
           Passport
         </Link>
-        <button 
-          className="button" 
-          type="button" 
+        <button
+          className="button"
+          type="button"
           title="Save to Nest coming soon (local save only)"
         >
           <Bookmark size={15} aria-hidden="true" />
           Save
         </button>
-        <button 
-          className="button" 
+        <button
+          className="button"
           type="button"
           onClick={() => setSaveModalOpen(true)}
         >
           <ListPlus size={15} aria-hidden="true" />
           Add
         </button>
-        <button 
-          className="button" 
-          type="button" 
+        <button
+          className="button"
+          type="button"
           onClick={() => setShareModalOpen(true)}
         >
           <Share2 size={15} aria-hidden="true" />
@@ -71,7 +71,7 @@ export function QuipCard({
       {/* We pass a mock passport if real passport is missing to avoid breaking legacy usages */}
       {shareModalOpen && (
         <ShareQuoteModal
-          passport={card as any} 
+          passport={card as any}
           isOpen={shareModalOpen}
           onClose={() => setShareModalOpen(false)}
         />

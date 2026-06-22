@@ -74,9 +74,9 @@ export interface ProposeRelationshipAction extends BaseAssistantAction {
   payload: Relationship;
 }
 
-export type AssistantAction = 
-  | ProposeEntityAction 
-  | ProposeEntityUpdateAction 
+export type AssistantAction =
+  | ProposeEntityAction
+  | ProposeEntityUpdateAction
   | ProposeRelationshipAction;
 
 // More types to hit our structural goals

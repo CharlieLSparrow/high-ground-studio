@@ -92,6 +92,11 @@ scratch/
 **/.agents/
 **/.codex/
 *.py
+!apps/QuipslyStudio/script/*.py
+!apps/QuipslyStudio/script/publish_workers/
+!apps/QuipslyStudio/script/publish_workers/*.py
+__pycache__/
+*.py[cod]
 fix_*.js
 content/
 !apps/web/content/

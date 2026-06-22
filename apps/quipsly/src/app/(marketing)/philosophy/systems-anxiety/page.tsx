@@ -82,7 +82,7 @@ export default function SystemsAnxietyPage() {
             </p>
 
             <p>
-              Quipslys exist to cure Systems Anxiety. They are your loyal, indefatigable research assistants. They want to scurry around the margins of your work, fetching references, tracking down the exact page number of that quote you half-remember, and sketching the storyboards for your script so you can visualize the shot before you ever pick up a camera.
+              Quipslys exist to quiet Systems Anxiety. They are your loyal, indefatigable research assistants. They want to scurry around the margins of your work, fetching references, tracking down the exact page number of that quote you half-remember, and sketching the storyboards for your script so you can visualize the shot before you ever pick up a camera.
             </p>
 
             <p className="font-bold text-[#3d2618] text-xl">

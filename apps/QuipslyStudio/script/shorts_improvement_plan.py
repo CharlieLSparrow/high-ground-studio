@@ -12,7 +12,14 @@ import os
 import sys
 from typing import Any
 
-from shorts_board_common import emit_packet_outputs, esc
+from shorts_board_common import (
+    emit_packet_outputs,
+    esc,
+    html_episode_coverage,
+    html_platform_readiness_coverage,
+    markdown_episode_coverage,
+    markdown_platform_readiness_coverage,
+)
 from shorts_growth_quality_board import build_board as build_growth_board
 from shorts_platform_package_board import package_cards
 
@@ -214,6 +221,31 @@ def platform_actions(card: dict[str, Any], packaged: dict[str, Any]) -> list[dic
     return actions
 
 
+def platform_readiness_actions(card: dict[str, Any]) -> list[dict[str, Any]]:
+    readiness = card.get("platformReadiness") or {}
+    platforms = readiness.get("platforms") or {}
+    actions: list[dict[str, Any]] = []
+    for name, detail in platforms.items():
+        status = str(detail.get("status") or "")
+        if status == "ready":
+            continue
+        severity = "high" if status == "blocked" else "medium"
+        blockers = "; ".join(detail.get("blockers") or [])
+        warnings = "; ".join(detail.get("warnings") or [])
+        why = blockers or warnings or "Platform readiness needs review."
+        actions.append(
+            action(
+                "platform-readiness",
+                severity,
+                f"Resolve {name} readiness",
+                why,
+                (card.get("commands") or {}).get("select") or "",
+                detail.get("nextAction") or "Review platform package.",
+            )
+        )
+    return actions[:3]
+
+
 def build_candidate_plan(card: dict[str, Any], packaged: dict[str, Any]) -> dict[str, Any]:
     actions: list[dict[str, Any]] = []
     maybe_export = export_action(card)
@@ -224,6 +256,7 @@ def build_candidate_plan(card: dict[str, Any], packaged: dict[str, Any]) -> dict
     actions.extend(visual_actions(card))
     actions.extend(audio_actions(card))
     actions.extend(platform_actions(card, packaged))
+    actions.extend(platform_readiness_actions(card))
     if not actions:
         actions.append(
             action(
@@ -239,9 +272,14 @@ def build_candidate_plan(card: dict[str, Any], packaged: dict[str, Any]) -> dict
     return {
         "id": card.get("id"),
         "title": card.get("title"),
+        "episodeKey": card.get("episodeKey"),
+        "episodeLabel": card.get("episodeLabel"),
+        "episodeInference": card.get("episodeInference"),
         "growthScore": card.get("growthScore"),
         "growthTier": card.get("growthTier"),
         "stage": card.get("stage"),
+        "platformReadiness": card.get("platformReadiness"),
+        "platformReadinessSummary": card.get("platformReadinessSummary"),
         "primaryExportPath": card.get("primaryExportPath"),
         "primaryExportExists": card.get("primaryExportExists"),
         "topAction": actions[0],
@@ -271,18 +309,24 @@ def build_plan(queue_path: str, state_path: str, output_dir: str, basename: str)
         counts[severity] = counts.get(severity, 0) + 1
     return {
         "packetType": "quipsly-shorts-improvement-plan",
-        "version": "2026-06-21.shorts-improvement-plan.v1",
+        "version": "2026-06-21.shorts-improvement-plan.v2",
         "truth": "This is an actionable improvement plan. It proposes changes but does not mutate Studio state, publish, schedule, upload, or approve.",
         "json": json_path,
         "html": html_path,
         "markdown": md_path,
         "candidateCount": len(plans),
         "topActionCounts": counts,
+        "episodeCoverage": growth.get("episodeCoverage"),
+        "platformReadinessCoverage": growth.get("platformReadinessCoverage"),
+        "topPlan": plans[0] if plans else None,
+        "cards": plans,
         "plans": plans,
     }
 
 
 def html_page(packet: dict[str, Any]) -> str:
+    episode_html = html_episode_coverage(packet.get("episodeCoverage"))
+    platform_html = html_platform_readiness_coverage(packet.get("platformReadinessCoverage"))
     rows: list[str] = []
     for plan in packet.get("plans") or []:
         action_rows = "".join(
@@ -307,6 +351,7 @@ def html_page(packet: dict[str, Any]) -> str:
                   <p class="eyebrow">{esc(plan.get('stage'))}</p>
                   <h2>{esc(plan.get('title'))}</h2>
                   <p>Top move: <strong>{esc(top.get('label'))}</strong></p>
+                  <p>Platform readiness: <strong>{esc(plan.get('platformReadinessSummary'))}</strong></p>
                 </div>
               </header>
               <div class="actions">{action_rows}</div>
@@ -357,6 +402,17 @@ def html_page(packet: dict[str, Any]) -> str:
     .counts article {{ border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: rgba(255,255,255,.04); }}
     .counts strong {{ display: block; color: var(--gold); font-size: 2rem; }}
     .counts span {{ color: var(--muted); }}
+    .episode-coverage {{ margin-top: 18px; }}
+    .episode-coverage-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .episode-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(143,201,116,.07); }}
+    .episode-coverage strong {{ display: block; color: var(--moss); text-transform: uppercase; letter-spacing: .08em; }}
+    .episode-coverage span, .episode-coverage small {{ display: block; color: var(--muted); }}
+    .coverage-warning {{ color: var(--gold); margin: 8px 0 0; }}
+    .platform-readiness-coverage {{ margin-top: 18px; }}
+    .platform-readiness-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }}
+    .platform-readiness-coverage article {{ border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(94,198,213,.07); }}
+    .platform-readiness-coverage strong {{ display: block; color: #5ec6d5; letter-spacing: .03em; }}
+    .platform-readiness-coverage span, .platform-readiness-coverage small {{ display: block; color: var(--muted); }}
     .candidate {{ padding: 18px; margin-top: 16px; }}
     header {{ display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; }}
     .score {{ display: grid; place-items: center; min-height: 88px; border-radius: 22px; background: rgba(244,211,94,.1); border: 1px solid rgba(244,211,94,.24); text-align: center; }}
@@ -378,6 +434,8 @@ def html_page(packet: dict[str, Any]) -> str:
       <h1>Make the next edit obvious.</h1>
       <p>Ranked actions for improving short quality before publication: export, hook, timing, visual crop, captions, audio, and platform package.</p>
       <div class="counts">{count_html}</div>
+      {episode_html}
+      {platform_html}
     </section>
     {''.join(rows)}
   </main>
@@ -392,14 +450,20 @@ def markdown_page(packet: dict[str, Any]) -> str:
         "",
         packet.get("truth", ""),
         "",
+        *markdown_episode_coverage(packet.get("episodeCoverage")),
+        "",
+        *markdown_platform_readiness_coverage(packet.get("platformReadinessCoverage")),
+        "",
     ]
     for plan in packet.get("plans") or []:
         lines.extend(
             [
                 f"## {plan.get('growthScore')} - {plan.get('title')}",
                 "",
+                f"- Episode: `{plan.get('episodeKey')}` (`{plan.get('episodeInference')}`)",
                 f"- Tier: `{plan.get('growthTier')}`",
                 f"- Stage: `{plan.get('stage')}`",
+                f"- Platform readiness: `{plan.get('platformReadinessSummary')}`",
                 f"- Export: `{plan.get('primaryExportPath') or 'none yet'}`",
                 "",
             ]

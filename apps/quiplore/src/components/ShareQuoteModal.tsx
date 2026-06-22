@@ -56,16 +56,16 @@ export function ShareQuoteModal({
 
         <div className="share-modal-body" style={bodyStyle}>
           <div className="format-toggle" style={toggleStyle}>
-            <button 
-              className={`button ${format === "wide" ? "active" : ""}`} 
+            <button
+              className={`button ${format === "wide" ? "active" : ""}`}
               onClick={() => setFormat("wide")}
               style={{...btnStyle, ...(format === "wide" ? activeBtnStyle : {})}}
             >
               <Twitter size={16} style={{marginRight: "8px"}} />
               X / Landscape
             </button>
-            <button 
-              className={`button ${format === "square" ? "active" : ""}`} 
+            <button
+              className={`button ${format === "square" ? "active" : ""}`}
               onClick={() => setFormat("square")}
               style={{...btnStyle, ...(format === "square" ? activeBtnStyle : {})}}
             >
@@ -76,17 +76,17 @@ export function ShareQuoteModal({
 
           <div className="preview-container" style={previewContainerStyle}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src={imageUrl} 
-              alt="Quote Share Preview" 
+            <img
+              src={imageUrl}
+              alt="Quote Share Preview"
               style={{
-                width: "100%", 
-                height: "auto", 
-                maxHeight: "300px", 
+                width: "100%",
+                height: "auto",
+                maxHeight: "300px",
                 objectFit: "contain",
                 border: "1px solid #ddd",
                 borderRadius: "8px"
-              }} 
+              }}
             />
           </div>
         </div>

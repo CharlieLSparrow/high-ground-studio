@@ -9,7 +9,7 @@ enum ProgramCropEditMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .baseline: return "Baseline"
+        case .baseline: return "Base frame"
         case .keyframe: return "Keyframe"
         }
     }
@@ -96,47 +96,33 @@ struct InspectorSidebarView: View {
     @State private var cropNudgeStrength: ProgramCropNudgeStrength = .normal
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            inspectorHeader
-            formatCard
-            framingCard
-            programCropCard
-            Spacer(minLength: 0)
-            doctrineFooter
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                inspectorHeader
+                formatCard
+                framingCard
+                programCropCard
+                doctrineFooter
+            }
+            .padding(16)
         }
-        .padding(16)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.36),
-                    Color(red: 0.055, green: 0.057, blue: 0.055).opacity(0.96)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .background(QuipslyStudioTheme.sidePanelGradient)
     }
 
     private var inspectorHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("INSPECTOR")
-                .font(.caption2)
-                .fontWeight(.black)
-                .tracking(1.8)
-                .foregroundStyle(Color.yellow.opacity(0.84))
-            Text("Frame the edit")
-                .font(.headline)
-                .fontWeight(.black)
-            Text("Output choices and keyframes edit metadata. Source media stays untouched.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        QuipslySectionHeader(
+            eyebrow: "Frame Bench",
+            title: "Base Framing",
+            detail: "Set each source track's default composition first. Then add keyframes only where the moment wants emphasis.",
+            systemImage: "viewfinder",
+            tint: QuipslyStudioTheme.creek,
+            compact: true
+        )
     }
 
     private var formatCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Output format", systemImage: "rectangle.on.rectangle")
+            Label("Output shape", systemImage: "rectangle.on.rectangle")
                 .font(.caption)
                 .fontWeight(.bold)
                 .foregroundStyle(.secondary)
@@ -150,15 +136,15 @@ struct InspectorSidebarView: View {
                 rebuildPlayer()
             }
 
-            Text(playbackEngine.playbackFormat == .horizontal16x9 ? "Wide master for YouTube and episode pages." : "Vertical reframed output for shorts, reels, and mobile stories.")
+            Text(playbackEngine.playbackFormat == .horizontal16x9 ? "Wide master for YouTube, Patreon, episode pages, and long-form publishing." : "Vertical output for Shorts, Reels, and mobile stories. Crop once, refine when the moment asks.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .padding(12)
-        .background(Color.white.opacity(0.045))
+        .background(QuipslyStudioTheme.livingPanelGradient)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(QuipslyStudioTheme.quietStroke, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
@@ -187,16 +173,16 @@ struct InspectorSidebarView: View {
                 .frame(maxWidth: 98)
             }
 
-            framingSlider("Yaw", value: $yaw, range: -180...180, tint: .cyan)
-            framingSlider("Pitch", value: $pitch, range: -90...90, tint: .blue)
-            framingSlider("Roll", value: $roll, range: -180...180, tint: .orange)
-            framingSlider("FOV", value: $fov, range: 30...150, tint: .yellow)
+            framingSlider("Yaw", value: $yaw, range: -180...180, tint: QuipslyStudioTheme.creek)
+            framingSlider("Pitch", value: $pitch, range: -90...90, tint: QuipslyStudioTheme.fern)
+            framingSlider("Roll", value: $roll, range: -180...180, tint: QuipslyStudioTheme.clay)
+            framingSlider("FOV", value: $fov, range: 30...150, tint: QuipslyStudioTheme.honey)
         }
         .padding(12)
-        .background(Color.white.opacity(0.045))
+        .background(QuipslyStudioTheme.livingPanelGradient)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(QuipslyStudioTheme.quietStroke, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
@@ -204,7 +190,7 @@ struct InspectorSidebarView: View {
     private var programCropCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Position + zoom", systemImage: "crop")
+                Label("Base framing", systemImage: "person.crop.rectangle")
                     .font(.caption)
                     .fontWeight(.bold)
                     .foregroundStyle(.secondary)
@@ -212,20 +198,17 @@ struct InspectorSidebarView: View {
                 Text(playbackEngine.playbackFormat.rawValue)
                     .font(.caption2.monospacedDigit())
                     .fontWeight(.black)
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
             }
 
             if let selectedLane {
                 let activeCrop = editableProgramCrop
 
-                Text(selectedLane.name)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .lineLimit(2)
+                selectedLaneHeader(selectedLane, activeCrop: activeCrop)
 
                 cropStackStrip
 
-                Text("Baseline corrects inconsistent filming for this whole source lane. Keyframes add intentional moves over time. Both are metadata over the same synced source, not cropped media.")
+                Text("Base framing corrects inconsistent filming for this whole source lane. Keyframes add intentional movement over time. Both are metadata over synced source, not cropped media.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -239,27 +222,27 @@ struct InspectorSidebarView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .help("Baseline fixes the whole lane. Keyframe writes the crop at the shared playhead.")
+                .help("Base frame fixes the whole lane. Keyframe writes the crop at the shared playhead.")
 
                 Text(programCropEditMode.helperText)
                     .font(.caption2)
                     .fontWeight(.semibold)
-                    .foregroundStyle(programCropEditMode == .baseline ? Color.cyan.opacity(0.88) : Color.yellow.opacity(0.9))
+                    .foregroundStyle(programCropEditMode == .baseline ? QuipslyStudioTheme.creek.opacity(0.88) : QuipslyStudioTheme.honey.opacity(0.9))
 
                 cropGestureModeHint
 
                 HStack(spacing: 6) {
-                    cropValuePill("Baseline", programCrop, .cyan)
-                    cropValuePill("Playhead", programCropAtPlayhead, .yellow)
+                    cropValuePill("Base", programCrop, QuipslyStudioTheme.creek)
+                    cropValuePill("Playhead", programCropAtPlayhead, QuipslyStudioTheme.honey)
                 }
 
-                cropSlider("Pan X", value: activeCrop.panX, range: -1...1, tint: .cyan) { value in
+                cropSlider("Pan X", value: activeCrop.panX, range: -1...1, tint: QuipslyStudioTheme.creek) { value in
                     applyEditableProgramCrop(ProgramCropAdjustment(panX: value, panY: activeCrop.panY, zoom: activeCrop.zoom))
                 }
-                cropSlider("Pan Y", value: activeCrop.panY, range: -1...1, tint: .blue) { value in
+                cropSlider("Pan Y", value: activeCrop.panY, range: -1...1, tint: QuipslyStudioTheme.lichen) { value in
                     applyEditableProgramCrop(ProgramCropAdjustment(panX: activeCrop.panX, panY: value, zoom: activeCrop.zoom))
                 }
-                cropSlider("Zoom", value: activeCrop.zoom, range: 1...4, tint: .yellow) { value in
+                cropSlider("Zoom", value: activeCrop.zoom, range: 1...4, tint: QuipslyStudioTheme.honey) { value in
                     applyEditableProgramCrop(ProgramCropAdjustment(panX: activeCrop.panX, panY: activeCrop.panY, zoom: value))
                 }
 
@@ -268,13 +251,13 @@ struct InspectorSidebarView: View {
                 cropNudgePad(activeCrop)
 
                 HStack(spacing: 8) {
-                    Button(programCropEditMode == .baseline ? "Reset baseline" : "Reset keyframe") {
+                    Button(programCropEditMode == .baseline ? "Center base" : "Center keyframe") {
                         applyEditableProgramCrop(ProgramCropAdjustment())
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .help(programCropEditMode == .baseline
-                        ? "Reset baseline crop for the selected lane and current format."
+                        ? "Center the base frame for the selected lane and current format."
                         : "Write a neutral crop keyframe at the shared playhead.")
 
                     Button("Keyframe playhead") {
@@ -295,12 +278,12 @@ struct InspectorSidebarView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button("Use playhead as baseline") {
+                    Button("Use playhead as base") {
                         updateProgramCrop(programCropAtPlayhead)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Copy the current interpolated playhead crop to the whole-lane baseline for this format.")
+                    .help("Copy the current interpolated playhead crop to the whole-lane base frame for this format.")
 
                     Button("Clear keyframes") {
                         clearProgramCropKeyframes()
@@ -308,7 +291,7 @@ struct InspectorSidebarView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(programCropKeyframeCount == 0)
-                    .help("Remove all crop keyframes for this lane and current format. Baseline crop stays intact.")
+                    .help("Remove all crop keyframes for this lane and current format. Base framing stays intact.")
 
                     Spacer()
 
@@ -328,10 +311,10 @@ struct InspectorSidebarView: View {
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.045))
+        .background(QuipslyStudioTheme.mossGlassGradient)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(QuipslyStudioTheme.quietStroke, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
@@ -347,17 +330,78 @@ struct InspectorSidebarView: View {
 
     private var cropStackStrip: some View {
         HStack(spacing: 5) {
-            cropStackStep("auto fit", .green)
+            cropStackStep("auto fit", QuipslyStudioTheme.moss)
             Image(systemName: "chevron.right")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            cropStackStep("baseline", .cyan)
+            cropStackStep("base frame", QuipslyStudioTheme.creek)
             Image(systemName: "chevron.right")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            cropStackStep("keyframes", .yellow)
+            cropStackStep("keyframes", QuipslyStudioTheme.honey)
         }
-        .help("Quipsly first auto-fits the source, then applies your whole-lane baseline, then applies timed keyframes.")
+        .help("Quipsly first auto-fits the source, then applies your whole-lane base frame, then applies timed keyframes.")
+    }
+
+    private func selectedLaneHeader(_ lane: VideoLane, activeCrop: ProgramCropAdjustment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(lane.name)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .lineLimit(2)
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: programCropEditMode == .baseline ? "camera.metering.center.weighted" : "point.topleft.down.curvedto.point.bottomright.up")
+                    .font(.caption)
+                    .foregroundStyle(programCropEditMode == .baseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey)
+                    .frame(width: 18, height: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(programCropEditMode == .baseline ? "Setting the track's default frame" : "Adding a timed framing move")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(programCropEditMode == .baseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey)
+                    Text(programCropEditMode == .baseline
+                         ? "Use this before cutting when the camera was dark, off-center, too wide, or just emotionally wrong."
+                         : "Keyframes should be the exception: punch-ins, reactions, emphasis, or fixing one awkward moment.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(9)
+            .background((programCropEditMode == .baseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey).opacity(0.085))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke((programCropEditMode == .baseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey).opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            HStack(spacing: 6) {
+                baseFramingStatusPill("X", String(format: "%.2f", activeCrop.panX), QuipslyStudioTheme.creek)
+                baseFramingStatusPill("Y", String(format: "%.2f", activeCrop.panY), QuipslyStudioTheme.lichen)
+                baseFramingStatusPill("Zoom", String(format: "%.2fx", activeCrop.zoom), QuipslyStudioTheme.honey)
+            }
+        }
+    }
+
+    private func baseFramingStatusPill(_ label: String, _ value: String, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(color)
+            Text(value)
+                .font(.caption2.monospacedDigit())
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.08))
+        .clipShape(Capsule())
     }
 
     private var cropGestureModeHint: some View {
@@ -365,27 +409,27 @@ struct InspectorSidebarView: View {
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: isBaseline ? "camera.metering.center.weighted" : "point.topleft.down.curvedto.point.bottomright.up")
                 .font(.caption)
-                .foregroundStyle(isBaseline ? Color.cyan : Color.yellow)
+                .foregroundStyle(isBaseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey)
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(isBaseline ? "Program monitor drag fixes the whole camera" : "Program monitor drag writes a keyframe")
+                Text(isBaseline ? "Program monitor drag fixes the base frame" : "Program monitor drag writes a keyframe")
                     .font(.caption2)
                     .fontWeight(.black)
-                    .foregroundStyle(isBaseline ? Color.cyan.opacity(0.9) : Color.yellow.opacity(0.92))
+                    .foregroundStyle(isBaseline ? QuipslyStudioTheme.creek.opacity(0.9) : QuipslyStudioTheme.honey.opacity(0.92))
                 Text(isBaseline
                     ? "Use this first when the recording was framed wrong everywhere. Then switch to keyframes for punch-ins."
-                    : "Use this for emphasis, reactions, and motion at the shared playhead. Baseline stays underneath it.")
+                    : "Use this for emphasis, reactions, and motion at the shared playhead. Base framing stays underneath it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(8)
-        .background((isBaseline ? Color.cyan : Color.yellow).opacity(0.08))
+        .background((isBaseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey).opacity(0.08))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke((isBaseline ? Color.cyan : Color.yellow).opacity(0.18), lineWidth: 1)
+                .stroke((isBaseline ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey).opacity(0.18), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .help("Drag or pinch the Program Output monitor. The selected Position + zoom mode decides whether it changes the whole lane baseline or writes a timed keyframe.")
@@ -398,14 +442,14 @@ struct InspectorSidebarView: View {
                 systemImage: "camera.metering.center.weighted",
                 title: "Fix whole camera",
                 detail: "Use when framing was off for the whole recording.",
-                tint: .cyan
+                tint: QuipslyStudioTheme.creek
             )
             cropModeCard(
                 mode: .keyframe,
                 systemImage: "point.topleft.down.curvedto.point.bottomright.up",
                 title: "Animate moment",
                 detail: "Use for punch-ins, reactions, and emphasis.",
-                tint: .yellow
+                tint: QuipslyStudioTheme.honey
             )
         }
     }
@@ -491,11 +535,12 @@ struct InspectorSidebarView: View {
                 Text(programCropEditMode == .baseline ? "fix the camera" : "spice this moment")
                     .font(.caption2)
                     .fontWeight(.semibold)
-                    .foregroundStyle(programCropEditMode == .baseline ? Color.cyan.opacity(0.88) : Color.yellow.opacity(0.9))
+                    .foregroundStyle(programCropEditMode == .baseline ? QuipslyStudioTheme.creek.opacity(0.88) : QuipslyStudioTheme.honey.opacity(0.9))
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                 cropPresetButton("Centered", systemImage: "scope", crop: ProgramCropAdjustment(panX: 0, panY: 0, zoom: max(1.08, crop.zoom)))
+                cropPresetButton("Upper third", systemImage: "person.crop.rectangle.badge.plus", crop: upperThirdCrop(from: crop))
                 cropPresetButton("Tighter", systemImage: "plus.magnifyingglass", crop: crop.adjusted(zoomDelta: 0.18))
                 cropPresetButton("Looser", systemImage: "minus.magnifyingglass", crop: crop.adjusted(zoomDelta: -0.18))
                 cropPresetButton("Headroom", systemImage: "arrow.up.to.line.compact", crop: ProgramCropAdjustment(panX: crop.panX, panY: -0.18, zoom: max(1.18, crop.zoom)))
@@ -504,14 +549,14 @@ struct InspectorSidebarView: View {
             }
 
             Text(programCropEditMode == .baseline
-                ? "Baseline presets are for cameras that were framed weirdly all day."
+                ? "Base presets are for cameras that were framed weirdly all day."
                 : "Keyframe presets are for punch-ins, reactions, and visual emphasis at the playhead.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
-        .background(Color.white.opacity(0.045))
+        .background(QuipslyStudioTheme.panelLift.opacity(0.44))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -529,6 +574,13 @@ struct InspectorSidebarView: View {
         .help("\(title) \(programCropEditMode.title.lowercased()) crop for the selected lane and current output format.")
     }
 
+    private func upperThirdCrop(from crop: ProgramCropAdjustment) -> ProgramCropAdjustment {
+        if playbackEngine.playbackFormat == .horizontal16x9 {
+            return ProgramCropAdjustment(panX: crop.panX == 0 ? 0.03 : crop.panX, panY: -0.24, zoom: max(1.26, crop.zoom))
+        }
+        return ProgramCropAdjustment(panX: crop.panX == 0 ? 0.04 : crop.panX, panY: -0.18, zoom: max(1.42, crop.zoom))
+    }
+
     @ViewBuilder
     private func podcastFramingPad(_ crop: ProgramCropAdjustment) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -541,7 +593,7 @@ struct InspectorSidebarView: View {
                 Text(playbackEngine.playbackFormat == .horizontal16x9 ? "episode" : "short")
                     .font(.caption2)
                     .fontWeight(.black)
-                    .foregroundStyle(playbackEngine.playbackFormat == .horizontal16x9 ? .cyan : .yellow)
+                    .foregroundStyle(playbackEngine.playbackFormat == .horizontal16x9 ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey)
             }
 
             Text("Applies to \(playbackEngine.playbackFormat.rawValue) only. Switch formats to set the wide episode and vertical shorts separately.")
@@ -551,6 +603,11 @@ struct InspectorSidebarView: View {
 
             if playbackEngine.playbackFormat == .horizontal16x9 {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                    cropPresetButton(
+                        "Upper third",
+                        systemImage: "person.crop.rectangle.badge.plus",
+                        crop: upperThirdCrop(from: crop)
+                    )
                     cropPresetButton(
                         "Solo safe",
                         systemImage: "person.crop.rectangle",
@@ -575,6 +632,11 @@ struct InspectorSidebarView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     cropPresetButton(
+                        "Upper third",
+                        systemImage: "person.crop.rectangle.badge.plus",
+                        crop: upperThirdCrop(from: crop)
+                    )
+                    cropPresetButton(
                         "Vertical solo",
                         systemImage: "iphone",
                         crop: ProgramCropAdjustment(panX: 0, panY: -0.06, zoom: max(1.35, crop.zoom))
@@ -598,7 +660,7 @@ struct InspectorSidebarView: View {
             }
         }
         .padding(10)
-        .background(Color.white.opacity(0.045))
+        .background(QuipslyStudioTheme.panelLift.opacity(0.34))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .help("Podcast framing presets write crop metadata for the selected lane and current output format.")
     }
@@ -740,14 +802,14 @@ struct InspectorSidebarView: View {
             Label("Non-destructive", systemImage: "bolt.shield")
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundStyle(.green)
+                .foregroundStyle(QuipslyStudioTheme.moss)
             Text("This panel writes edit intent: framing, format, and keyframe metadata. It does not mutate the camera file.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
-        .background(Color.green.opacity(0.07))
+        .background(QuipslyStudioTheme.moss.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
