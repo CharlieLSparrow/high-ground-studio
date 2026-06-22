@@ -1,0 +1,60 @@
+{
+  "blockedClaims": [
+    "Capturing this in Nest does not canonize it.",
+    "Capturing this in Nest does not publish it.",
+    "Capturing this in Nest does not hide agent authorship.",
+    "Capturing this in Nest does not replace human review."
+  ],
+  "episodeSlug": "episode-1",
+  "humanReviewPrompt": [
+    "Does this sound like High Ground Odyssey enough to become the working draft?",
+    "What lived Charlie/Homer examples should be added before canon approval?",
+    "Should the public page mention Quipsly directly, lightly, or not yet?",
+    "Does this draft match the actual Episode 1 recording once Studio context is active?"
+  ],
+  "liveNestIngestReceipt": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-receipts/episode-1-writing-v2-nest-ingest-receipt.json",
+  "liveNestIngestStatus": "verified-live-nest-ingested",
+  "nestBlock": {
+    "authorship": "agent-authored",
+    "canonStatus": "not-canon-approved",
+    "creator": "Codex",
+    "episode": "episode-1",
+    "provenance": "Agent-authored second-pass draft created to dogfood the Nest -> Studio -> Tower loop after content-partner doctrine clarification.",
+    "publicationStatus": "not-published",
+    "receiptStatus": "no-external-receipts",
+    "reviewStatus": "needs-human-review",
+    "role": "writing",
+    "tags": [
+      "book",
+      "writing",
+      "episode-1",
+      "agent-second-pass",
+      "needs-human-review",
+      "current-candidate"
+    ],
+    "title": "Episode 1 - The Wednesday Rule - Second Pass"
+  },
+  "operatorCommands": {
+    "appendQueuedDraftToLiveNest": "script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule - Second Pass\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md episode-1 \"book,writing,episode-1,agent-second-pass,needs-human-review,current-candidate\" \"agent second-pass draft created after content partner doctrine clarification\"",
+    "verifyQueuedDraftInLiveNest": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json"
+  },
+  "packetType": "quipsly-nest-writing-intake",
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "safeIngestCommand": "script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule - Second Pass\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md episode-1 \"book,writing,episode-1,agent-second-pass,needs-human-review,current-candidate\" \"agent second-pass draft created after content partner doctrine clarification\"",
+  "sourceArtifactId": "episode-1-agent-second-pass-draft",
+  "sourcePath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+  "status": "live-nest-ingest-verified-needs-human-review",
+  "successReceiptCommand": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json",
+  "supportingArtifacts": {
+    "comparison": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-packets/episode-1-writing-v1-v2-comparison.md",
+    "currentCandidate": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-writing-current-candidate.json",
+    "localNestQueue": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-queue/episode-1-writing-v2-queue.json",
+    "provenance": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/provenance-packets/episode-1-writing-provenance.json",
+    "reviewLedger": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl",
+    "towerPacketV2": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet-v2.md"
+  },
+  "targetDocumentIntent": "High Ground Odyssey manuscript and episode context",
+  "targetLens": "Nest",
+  "title": "Episode 1 - The Wednesday Rule - Second Pass",
+  "truth": "This intake packet now has a live Nest ingest receipt for the v2 writing candidate. It does not canon-approve or publish the draft."
+}

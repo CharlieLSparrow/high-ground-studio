@@ -1,0 +1,75 @@
+{
+  "blockedClaims": [
+    "This receipt check does not canon-approve the draft.",
+    "This receipt check does not publish, schedule, export, upload, or capture external receipts.",
+    "String-match verification is a bridge until live Nest exposes stable structured block receipts."
+  ],
+  "episodeSlug": "episode-1",
+  "evidenceSources": [
+    "nest_writing_packet",
+    "state.nest"
+  ],
+  "expectedAuthorship": "agent-authored",
+  "expectedCommandProvenance": "agent second-pass draft created after content partner doctrine clarification",
+  "expectedProvenance": "Agent-authored second-pass draft created to dogfood the Nest -> Studio -> Tower loop after content-partner doctrine clarification.",
+  "expectedReviewStatus": "needs-human-review",
+  "expectedSourceAnchor": "# Episode 1 - The Wednesday Rule Authorship: agent-authored second pass Review status: needs-human-review Intended use: serious reviewable manuscript/article/podcast-context material for the Quipsly Nest -> Studio -> Tow",
+  "expectedSourcePath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+  "expectedTags": [
+    "book",
+    "writing",
+    "episode-1",
+    "agent-second-pass",
+    "needs-human-review",
+    "current-candidate"
+  ],
+  "expectedTitle": "Episode 1 - The Wednesday Rule - Second Pass",
+  "generatedAt": "2026-06-20T10:05:43-06:00",
+  "livePacketParsed": true,
+  "livePacketReceived": true,
+  "liveStateParsed": true,
+  "liveStateReceived": true,
+  "matchedNeedles": [
+    "agent-authored",
+    "needs-human-review",
+    "# Episode 1 - The Wednesday Rule Authorship: agent-authored second pass Review status: needs-human-review Intended use: serious reviewable manuscript/article/podcast-context material for the Quipsly Nest -> Studio -> Tow",
+    "book",
+    "writing",
+    "episode-1",
+    "agent-second-pass",
+    "needs-human-review",
+    "current-candidate"
+  ],
+  "matchedProvenance": [
+    "agent second-pass draft created after content partner doctrine clarification"
+  ],
+  "matchingLiveBlockCount": 1,
+  "matchingLiveBlocks": [
+    {
+      "episodeSlug": "episode-1",
+      "id": "FD0BA71F-9C26-45C3-8208-522DA008E3FC",
+      "reviewStatus": "needs-human-review",
+      "role": "writing",
+      "selectCommand": "script/agentctl.sh nest-select-block FD0BA71F-9C26-45C3-8208-522DA008E3FC",
+      "textIdentityMatched": true
+    }
+  ],
+  "missingNeedles": [],
+  "packetType": "quipsly-nest-ingest-receipt-check",
+  "parseError": null,
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "provenanceVerified": true,
+  "queuedItemId": "episode-1-v2-agent-draft-to-nest",
+  "sourceQueue": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-queue/episode-1-writing-v2-queue.json",
+  "stateParseError": null,
+  "status": "verified-live-nest-ingested",
+  "strongerProofWanted": [
+    "Live Nest packet exposes a stable block id for the ingested draft.",
+    "Live Nest packet exposes structured tags/authorship/reviewStatus fields per block.",
+    "Receipt records the exact append command response and post-ingest packet path."
+  ],
+  "titleProofPolicy": "Nest blocks currently persist text/provenance/tags/review state but not a separate block title field. Title visibility is useful, but source text identity is stronger proof for this model.",
+  "titleVisibleInLiveState": false,
+  "truth": "This receipt check compares the local Episode 1 Nest queue item to live Nest state. It prefers the Nest writing packet and falls back to /state.nest while the app exposes command-applied writing state there. It can prove expected strings are visible in live state, but it does not approve canon, publish, or replace stronger structured receipts.",
+  "version": "2026-06-20.nest-ingest-receipt.v1"
+}

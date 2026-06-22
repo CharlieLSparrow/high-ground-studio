@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quipsly shorts local export board</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111712;
+      --panel: #192219;
+      --panel-2: #223020;
+      --ink: #f4efd8;
+      --muted: #b9ad91;
+      --gold: #f1c84d;
+      --moss: #7dbb64;
+      --clay: #c97946;
+      --red: #e26363;
+      --line: rgba(244, 239, 216, 0.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(125, 187, 100, 0.18), transparent 28rem),
+        radial-gradient(circle at 85% 0%, rgba(241, 200, 77, 0.12), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 42px 24px 64px; }
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 30px;
+      background: linear-gradient(135deg, rgba(25, 34, 25, 0.94), rgba(34, 48, 32, 0.84));
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+    h1 { margin: 0; font-size: clamp(2.2rem, 6vw, 4.6rem); line-height: 0.94; letter-spacing: -0.06em; }
+    h2 { margin: 0 0 6px; font-size: 1.1rem; }
+    p { color: var(--muted); max-width: 760px; }
+    code {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.28);
+      color: #fff7c4;
+      border: 1px solid rgba(241, 200, 77, 0.18);
+      font-size: 0.8rem;
+    }
+    .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0; }
+    .counts article {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 18px;
+      padding: 14px;
+    }
+    .counts strong { display: block; font-size: 2rem; color: var(--gold); }
+    .counts span { color: var(--muted); font-size: 0.82rem; }
+    .next {
+      margin-top: 22px;
+      border-left: 4px solid var(--moss);
+      padding: 14px 16px;
+      background: rgba(125, 187, 100, 0.08);
+      border-radius: 16px;
+    }
+    .shorts { display: grid; gap: 16px; margin-top: 22px; }
+    .short {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+      gap: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 18px;
+      background: rgba(25, 34, 25, 0.82);
+    }
+    .missing-export, .export-path-missing-file { border-color: rgba(226, 99, 99, 0.5); }
+    .exported-needs-visual-review, .exported-needs-listen-through, .needs-text-review { border-color: rgba(241, 200, 77, 0.45); }
+    .ready-for-social-queue { border-color: rgba(125, 187, 100, 0.55); }
+    dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0 0; }
+    dt { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .commands { display: grid; gap: 8px; align-content: start; }
+    label { color: var(--moss); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.7rem; }
+    @media (max-width: 860px) { .short { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Quipsly Studio - local shorts export</p>
+      <h1>Make the shorts real files.</h1>
+      <p>Output first: export usable local files, watch them, listen to them, improve the edit, then hand off to publishing.</p>
+      <div class="counts"><article><strong>1</strong><span>exported-needs-visual-review</span></article><article><strong>11</strong><span>exported-needs-listen-through</span></article></div>
+      <section class="next">
+        <p class="eyebrow">Next practical move</p>
+        <h2>Learning Why, Not Just What</h2>
+        <p>Generate a contact sheet or preview the short before deciding.</p>
+        <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4&#x27;</code>
+      </section>
+    </section>
+    <section class="shorts">
+      
+            <section class="short exported-needs-visual-review">
+              <div>
+                <p class="eyebrow">exported-needs-visual-review</p>
+                <h2>Learning Why, Not Just What</h2>
+                <p>Generate a contact sheet or preview the short before deciding.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>40.833s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>refine</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4&#x27; 40.83</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;701461B7-CB8F-4732-8F4F-D54698C77F23&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Test Short - Wednesday Rule moment</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>8.133s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>refine</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4&#x27; 8.13</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;FC28A75E-451B-4D74-9636-2E842805F106&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Farm Work Teaches Stewardship</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>22.648s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>refine</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4&#x27; 22.65</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;18BC489A-7439-4DA5-B967-9726443A008D&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Mutual Mentorship</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>39.998s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>refine</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4&#x27; 40.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;B5387438-09BF-41BD-9BDA-4765C75C36E2&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Record From Anywhere</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>45.0s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>refine</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4&#x27; 45.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Parkinson&#x27;s Awareness Goal</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>45.0s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>ready-for-human-review</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4&#x27; 45.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;7EA786A2-FA74-4D73-AE55-8A23D03AA3FC&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Don&#x27;t Downplay Yourself</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>45.0s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>ready-for-human-review</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4&#x27; 45.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;50F4E987-F34E-4DBA-976A-42C80055DFB9&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Identity Changes Behavior</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>45.0s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>ready-for-human-review</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4&#x27; 45.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;C4C017E7-C630-4C0D-9AF6-95496916ED8C&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Write Things Worth Reading</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>45.0s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>refine</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4&#x27; 45.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;975A2C70-695D-4D9E-BAAE-A47BA3277590&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 01 - 04:27</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>40.832s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4&#x27; 40.83</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;0F028DF4-76EF-4245-9349-1EE266C1AAEB&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 02 - 08:19</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>45.0s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4&#x27; 45.00</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;33FDE8CC-9080-4EC1-9294-1F03D0EEF61F&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 03 - 26:13</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>41.499s</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4&#x27; 41.50</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;D9526D0B-311E-46D4-B127-824D713EA2F2&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+    </section>
+  </main>
+</body>
+</html>

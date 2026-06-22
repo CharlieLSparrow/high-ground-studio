@@ -1,0 +1,130 @@
+{
+  "packetType": "quipsly-writing-tower-readiness",
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "episodeSlug": "episode-1",
+  "title": "The Wednesday Rule",
+  "updatedAt": "2026-06-20T00:00:00-06:00",
+  "sourceTowerPacket": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet-v2.md",
+  "destinationCopyPacket": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+  "publicationActionQueue": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/tower-readiness/episode-1-publication-action-queue.json",
+  "studioProofRequirements": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-studio-artifact-proof-requirements.json",
+  "studioProofAttachmentQueue": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-studio-proof-attachment-queue.json",
+  "sourceWritingStatus": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-writing-loop-status.json",
+  "overallStatus": "review-ready-not-publication-ready",
+  "whyNotPublicationReady": [
+    "Human review has not canon-approved the v2 writing candidate.",
+    "Nest ingestion is planned but not proven complete.",
+    "Studio Episode 1 edit/export proof is not attached to this writing packet yet.",
+    "No external publication receipts exist.",
+    "Final destination-specific copy has not been approved by a human reviewer."
+  ],
+  "contentPartnerPolicy": {
+    "agentCreatedWorkAllowed": true,
+    "seriousAgentWorkIsNotPlaceholder": true,
+    "rule": "Codex and Quipslys may create serious publishable-intent copy, packets, and supporting content. Tower blocks publication claims until review, canon, destination approval, and receipts are explicit; it does not block creation because the creator was an agent."
+  },
+  "destinationReadiness": [
+    {
+      "destination": "HighGroundOdyssey.com episode/article page",
+      "status": "copy-draft-ready-needs-human-review",
+      "preparedArtifact": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+      "missingBeforePublish": [
+        "canon-approved writing decision",
+        "final episode embed/media reference",
+        "human approval of Quipsly mention level",
+        "published page URL receipt"
+      ]
+    },
+    {
+      "destination": "YouTube long-form description support",
+      "status": "copy-draft-ready-needs-media-context",
+      "preparedArtifact": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+      "missingBeforePublish": [
+        "Studio long-form export or canonical YouTube upload target",
+        "final title/description approval",
+        "public or scheduled YouTube URL receipt"
+      ]
+    },
+    {
+      "destination": "Patreon post",
+      "status": "copy-draft-ready-needs-business-decision",
+      "preparedArtifact": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+      "missingBeforePublish": [
+        "decision whether Episode 1 support copy belongs on Patreon",
+        "tier/visibility decision",
+        "Patreon post URL or provider receipt"
+      ]
+    },
+    {
+      "destination": "Social posts",
+      "status": "seed-copy-ready-needs-short-assets",
+      "preparedArtifact": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+      "missingBeforePublish": [
+        "Studio 9:16 shorts exports or selected clips",
+        "platform-specific caption approval",
+        "posted or scheduled URL receipts"
+      ]
+    },
+    {
+      "destination": "Podcast/RSS episode page",
+      "status": "concept-copy-ready-needs-audio-export",
+      "preparedArtifact": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet-v2.md",
+      "missingBeforePublish": [
+        "podcast audio export",
+        "RSS/podcast host target",
+        "podcast item URL receipt"
+      ]
+    }
+  ],
+  "receiptTargets": [
+    {
+      "id": "hgo-page-episode-1-writing-v2",
+      "destination": "HighGroundOdyssey.com",
+      "requiredReceipt": "published page URL"
+    },
+    {
+      "id": "youtube-long-episode-1-description-v2",
+      "destination": "YouTube",
+      "requiredReceipt": "public or scheduled video URL"
+    },
+    {
+      "id": "patreon-episode-1-post-v2",
+      "destination": "Patreon",
+      "requiredReceipt": "post URL or provider id"
+    },
+    {
+      "id": "social-episode-1-writing-copy-v2",
+      "destination": "YouTube Shorts / Instagram / Facebook / LinkedIn",
+      "requiredReceipt": "per-platform post URLs or scheduled-provider ids"
+    },
+    {
+      "id": "podcast-episode-1-audio-v2",
+      "destination": "Podcast/RSS",
+      "requiredReceipt": "podcast item URL or RSS guid"
+    }
+  ],
+  "operatorCommands": {
+    "inspectTowerReadiness": "script/agentctl.sh episode1-writing-tower-readiness --json",
+    "inspectWritingStatus": "script/agentctl.sh episode1-writing-loop-status --json",
+    "inspectTowerPacketV2": "script/agentctl.sh publication-writing-packet-v2 --json",
+    "inspectDestinationCopy": "script/agentctl.sh publication-destination-copy --json",
+    "inspectPublicationActionQueue": "script/agentctl.sh episode1-publication-action-queue --json",
+    "inspectStudioProofRequirements": "script/agentctl.sh episode1-studio-artifact-proof-requirements --json",
+    "inspectStudioProofAttachmentQueue": "script/agentctl.sh episode1-studio-proof-attachment-queue --json",
+    "inspectHumanHandoff": "script/agentctl.sh episode1-writing-human-handoff --json",
+    "inspectReviewLedger": "script/agentctl.sh episode1-writing-review-ledger --json",
+    "generateStudioProofAttachmentPacket": "script/agentctl.sh episode1-studio-proof-attach /absolute/release-manifest-or-folder [/absolute/output.json]",
+    "generateLatestStudioProofAttachmentPacket": "script/agentctl.sh episode1-studio-proof-attach-latest [/absolute/output.json]",
+    "inspectVerticalSliceBrief": "script/agentctl.sh episode1-vertical-slice-brief --json",
+    "refreshVerticalSliceBrief": "script/agentctl.sh episode1-vertical-slice-refresh [/absolute/output.json]",
+    "inspectVerticalSliceNextAction": "script/agentctl.sh episode1-vertical-slice-next --json",
+    "refreshThenInspectVerticalSliceNextAction": "script/agentctl.sh episode1-vertical-slice-refresh && script/agentctl.sh episode1-vertical-slice-next --json"
+  },
+  "blockedClaims": [
+    "Do not call this publication-ready yet.",
+    "Do not claim any destination has been published without receipt rows.",
+    "Do not treat copy-draft-ready as media-export-ready.",
+    "Do not treat agent review as human canon approval."
+  ],
+  "truth": "This Tower readiness packet describes destination readiness and receipt targets for Episode 1 writing/publication copy. It does not publish, schedule, approve canon, export media, or capture external receipts."
+}

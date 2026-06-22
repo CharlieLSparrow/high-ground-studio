@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Episode 1 Current Next Fast Board</title>
+  <style>
+    :root { --bg:#efe5d1; --paper:#fff9ed; --ink:#2c241d; --muted:#75685a; --line:rgba(72,51,33,.17); --fern:#2f7656; --clay:#a34d38; --gold:#d4a62d; --river:#2e6f84; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:radial-gradient(circle at 12% 4%,rgba(212,166,45,.22),transparent 28rem),radial-gradient(circle at 90% 0%,rgba(47,118,86,.18),transparent 32rem),linear-gradient(135deg,#fbf6ea,var(--bg)); font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(1240px,calc(100% - 34px)); margin:0 auto; padding:34px 0 72px; }
+    section { background:rgba(255,249,237,.96); border:1px solid var(--line); border-radius:28px; padding:24px; margin:16px 0; box-shadow:0 22px 64px rgba(50,35,22,.13); }
+    .hero { border-left:10px solid var(--fern); }
+    .kicker { color:#a97524; font-size:.72rem; font-weight:950; letter-spacing:.2em; text-transform:uppercase; }
+    h1 { margin:8px 0 12px; font-size:clamp(2.1rem,5vw,4.4rem); line-height:.94; letter-spacing:-.06em; }
+    h2 { margin:8px 0; letter-spacing:-.035em; }
+    p,li { color:var(--muted); line-height:1.48; }
+    code { display:block; margin-top:6px; white-space:pre-wrap; overflow-wrap:anywhere; color:#4a382a; font-size:.78rem; }
+    .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(370px,.72fr); gap:16px; align-items:start; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:10px; }
+    .card,.lane,.fresh,.command { border:1px solid var(--line); border-radius:18px; padding:12px; background:rgba(67,49,33,.055); }
+    .card strong { display:block; font-size:1.7rem; color:var(--ink); }
+    .action { border-left:8px solid var(--gold); }
+    .command { display:flex; justify-content:space-between; gap:12px; align-items:center; margin:10px 0; }
+    .fresh { margin:10px 0; }
+    .lane { margin:10px 0; }
+    .lane span { color:#a97524; font-size:.72rem; font-weight:950; letter-spacing:.16em; text-transform:uppercase; }
+    button { border:0; border-radius:999px; padding:8px 12px; font-weight:950; background:#3b2d21; color:#fff6e8; cursor:pointer; }
+    button.copied { background:var(--fern); }
+    .truth { border-left:8px solid var(--river); }
+    .danger { border-left:8px solid var(--clay); }
+    @media (max-width:920px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <span class="kicker">Quipsly fast current-next</span>
+    <h1>Read the board. Do the next honest thing.</h1>
+    <p>This fast board reads cached Quipsly truth artifacts only. It does not refresh evidence, mutate review ledgers, approve media, canonize writing, publish, upload, schedule, or capture receipts.</p>
+    <p><strong>Mako edits. Quipsly remembers. Codex learns. Tower proves.</strong></p>
+  </section>
+  <section class="action">
+    <span class="kicker">Recommended next action</span>
+    <h2>Studio: selected-segment-needs-real-review</h2>
+    <p>Open the selected review handoff, watch/listen to the current segment, and record draft notes before touching the official ledger.</p>
+    <p><strong>Why:</strong> The official ledger is still pending and the durable draft review packet is incomplete.</p>
+    <code>script/agentctl.sh episode1-selected-review-handoff --html</code>
+  </section>
+  <section>
+    <span class="kicker">Selected review state</span>
+    <h2>segment-005 · 1:00:00 - 1:14:04</h2>
+    <div class="cards">
+      <div class="card"><span>Official pending</span><strong>15</strong></div>
+      <div class="card"><span>Official reviewed</span><strong>0</strong></div>
+      <div class="card"><span>Official issues</span><strong>0</strong></div>
+      <div class="card"><span>Draft entries</span><strong>0</strong></div>
+      <div class="card"><span>Checks</span><strong>0/8</strong></div>
+      <div class="card"><span>Answers</span><strong>0/5</strong></div>
+    </div>
+  </section>
+  <section class="action">
+    <span class="kicker">Mako editor outcome</span>
+    <h2>no-editor-outcome-yet</h2>
+    <p>Open the Mako review brief and capture an editor-shaped note after actual review.</p>
+  </section>
+  <div class="grid">
+    <section>
+      <span class="kicker">Lanes</span>
+      <h2>Nest, Studio, Tower, Agent</h2>
+      
+        <article class="lane">
+          <span>Nest</span>
+          <strong>live-nest-ingest-verified-needs-human-review</strong>
+          <p>Inspect the Nest queue and either approve live ingest or revise the v2 candidate before canon claims.</p>
+          <code>script/agentctl.sh episode1-writing-nest-queue --json</code>
+        </article>
+        
+        <article class="lane">
+          <span>Studio</span>
+          <strong>tail-candidate-selected-needs-watch-listen-review</strong>
+          <p>Open the selected review handoff, then use it to enter the guided session, record durable draft responses, and only then consider the official review ledger command.</p>
+          <code>script/agentctl.sh episode1-selected-review-handoff --html</code>
+        </article>
+        
+        <article class="lane">
+          <span>Tower</span>
+          <strong>review-ready-not-publication-ready</strong>
+          <p>Review destination-specific copy</p>
+          <code>script/agentctl.sh episode1-publication-action-queue --json</code>
+        </article>
+        
+        <article class="lane">
+          <span>Agent</span>
+          <strong>command-surfaces-growing-needs-runtime-proof</strong>
+          <p>Use this generated brief as the first coordination checkpoint; prove runtime behavior only when validation is intentionally run.</p>
+          <code>script/agentctl.sh episode1-vertical-slice-brief --json</code>
+        </article>
+        
+    </section>
+    <section>
+      <span class="kicker">Commands</span>
+      <h2>Safe controls</h2>
+      
+        <div class="command">
+          <div>
+            <strong>openFastBoard</strong>
+            <code>script/agentctl.sh episode1-current-next --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-current-next --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>readFastJson</strong>
+            <code>script/agentctl.sh episode1-current-next --json</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-current-next --json">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>openMakoReviewBrief</strong>
+            <code>script/agentctl.sh episode1-mako-review-brief --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-mako-review-brief --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>addMakoEditorNote</strong>
+            <code>script/agentctl.sh episode1-mako-review-note needs-edit crop 01:02:30 &quot;Crop/framing note.&quot;</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-mako-review-note needs-edit crop 01:02:30 &quot;Crop/framing note.&quot;">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>openHandoff</strong>
+            <code>script/agentctl.sh episode1-selected-review-handoff --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-selected-review-handoff --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>openGuidedSession</strong>
+            <code>script/agentctl.sh episode1-selected-review-session --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-selected-review-session --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>openWorksheet</strong>
+            <code>script/agentctl.sh episode1-selected-review-worksheet --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-selected-review-worksheet --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>openDraftResponses</strong>
+            <code>script/agentctl.sh episode1-selected-review-session-draft --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-selected-review-session-draft --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>refreshFullEvidence</strong>
+            <code>script/agentctl.sh episode1-vertical-slice-refresh &amp;&amp; script/agentctl.sh episode1-current-next --html</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-vertical-slice-refresh &amp;&amp; script/agentctl.sh episode1-current-next --html">Copy</button>
+        </div>
+        
+        <div class="command">
+          <div>
+            <strong>officialLedgerCommandAfterActualReview</strong>
+            <code>script/agentctl.sh episode1-selected-watch-review-mark all:segment-005 reviewed &quot;Reviewer Name&quot; &quot;Actually watched/listened to 1:00:00 - 1:14:04 across selected artifacts; quality flags reviewed.&quot;</code>
+          </div>
+          <button data-copy="script/agentctl.sh episode1-selected-watch-review-mark all:segment-005 reviewed &quot;Reviewer Name&quot; &quot;Actually watched/listened to 1:00:00 - 1:14:04 across selected artifacts; quality flags reviewed.&quot;">Copy</button>
+        </div>
+        
+    </section>
+  </div>
+  <section class="truth">
+    <span class="kicker">Freshness</span>
+    <h2>Cached source packets</h2>
+    
+        <div class="fresh">
+          <strong>verticalSliceBrief</strong>
+          <span>loaded · 13h 54m</span>
+          <code>/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-vertical-slice-brief.json</code>
+        </div>
+        
+        <div class="fresh">
+          <strong>selectedReviewHandoff</strong>
+          <span>loaded · 13h 28m</span>
+          <code>/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-selected-review-handoff.json</code>
+        </div>
+        
+        <div class="fresh">
+          <strong>selectedReviewDraft</strong>
+          <span>loaded · 13h 28m</span>
+          <code>/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-selected-review-session-draft.json</code>
+        </div>
+        
+        <div class="fresh">
+          <strong>selectedReviewProgress</strong>
+          <span>loaded · 13h 54m</span>
+          <code>/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-selected-watch-review-progress.json</code>
+        </div>
+        
+  </section>
+  <section class="danger">
+    <span class="kicker">Blocked claims</span>
+    <h2>Do not say these yet</h2>
+    <ul><li>Do not call Episode 1 artifact-ready until selected watch/listen review is complete.</li><li>Do not claim artifact-ready until all required review items are reviewed and final watch/listen decision is recorded.</li><li>Do not claim artifact-ready until watch/listen review is completed against the selected artifact set.</li><li>Do not claim canon approval until the review ledger records it.</li><li>Do not claim live Nest ingestion until a live receipt proves it.</li><li>Do not claim publication readiness until Studio review, destination copy, writing/canon state, selected shorts, queue state, and receipt targets are reviewed.</li><li>Do not claim publication-ready until Tower destination copy, schedule, and receipt targets are reviewed.</li><li>Do not claim publication-ready until artifact review is completed.</li><li>Do not claim publication-ready until destination copy, writing/canon state, selected shorts, schedule/queue state, and receipt targets are reviewed.</li><li>Do not claim published until external URLs or provider ids are captured as receipts.</li><li>Do not claim published until external URLs or provider ids are captured.</li><li>Do not claim published until external receipt proof exists.</li><li>Do not claim published until external receipts exist.</li><li>Do not hide that the current candidate is agent-authored.</li><li>Do not rely on chat memory when a packet or command can expose current state.</li><li>Do not split Nest, Studio, and Tower into disconnected silos.</li><li>Do not treat candidate generation, machine sanity, contact sheets, or this handoff packet as approval.</li><li>Do not treat command discoverability as runtime proof.</li><li>Do not treat draft responses as official review ledger mutations.</li><li>Full-length Episode 1 artifacts have metadata proof, but real watch/listen review is still needed.</li></ul>
+  </section>
+</main>
+<script>
+  document.querySelectorAll('[data-copy]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(button.dataset.copy || '');
+      button.classList.add('copied');
+      button.textContent = 'Copied';
+      setTimeout(() => { button.classList.remove('copied'); button.textContent = 'Copy'; }, 1300);
+    });
+  });
+</script>
+</body>
+</html>

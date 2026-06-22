@@ -1,0 +1,122 @@
+{
+  "currentRecommendation": {
+    "action": "Open the selected review handoff, watch/listen to the current segment, and record draft notes before touching the official ledger.",
+    "command": "script/agentctl.sh episode1-selected-review-handoff --html",
+    "humanDecisionNeeded": true,
+    "lens": "Studio",
+    "status": "selected-segment-needs-real-review",
+    "why": "The official ledger is still pending and the durable draft review packet is incomplete."
+  },
+  "editingPassSteps": [
+    {
+      "id": "watch-program",
+      "label": "Watch the selected segment in Program Output.",
+      "plainEnglish": "Treat this like an edit review. Does the episode feel watchable, coherent, and not weirdly paced?"
+    },
+    {
+      "id": "check-vertical",
+      "label": "Check the 9:16 cut for face placement and caption safety.",
+      "plainEnglish": "If the crop puts words or faces in awkward places, leave a note instead of fighting the ledger."
+    },
+    {
+      "id": "listen-audio",
+      "label": "Listen for comfort, clipping, obvious level problems, or distracting noise.",
+      "plainEnglish": "Audio can pass even if it is imperfect; the question is whether a real viewer/listener will bounce."
+    },
+    {
+      "id": "mark-friction",
+      "label": "Drop notes where the tool slows you down.",
+      "plainEnglish": "Quipsly is learning the workflow too. If the editor makes review harder, that is a product bug."
+    },
+    {
+      "id": "finish-pass",
+      "label": "End with one outcome: looks good, needs edit, or blocked.",
+      "plainEnglish": "The system will translate that into official review state later. The human job is judgment."
+    }
+  ],
+  "episodeSlug": "episode-1",
+  "generatedAt": "2026-06-21T07:37:16-06:00",
+  "html": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-mako-review-brief.html",
+  "json": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-mako-review-brief.json",
+  "makoEditorOutcome": {
+    "countsByCategory": {},
+    "countsByOutcome": {},
+    "latestStructuredNote": null,
+    "noteCount": 0,
+    "recommendation": "Do an editor pass first. Watch, listen, crop-check, then leave a plain-English outcome note.",
+    "status": "no-editor-outcome-yet",
+    "structuredNoteCount": 0
+  },
+  "makoNotes": [],
+  "markdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-mako-review-brief.md",
+  "northStar": "Mako edits. Quipsly remembers. Codex learns. Tower proves.",
+  "packetType": "quipsly-episode1-mako-review-brief",
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "reviewState": {
+    "answeredQuestions": 0,
+    "checkedDraftItems": 0,
+    "draftEntryCount": 0,
+    "draftReadyToConsiderOfficialLedgerCommand": false,
+    "officialReviewIssues": 0,
+    "officialReviewPending": 15,
+    "officialReviewReviewed": 0,
+    "segment": {
+      "durationSeconds": 843.833,
+      "endSeconds": 4443.833,
+      "label": "1:00:00 - 1:14:04",
+      "segmentId": "segment-005",
+      "startSeconds": 3600.0
+    },
+    "totalChecklistItems": 8,
+    "totalQuestions": 5
+  },
+  "reviewerPromise": "You are not being asked to operate a review bureaucracy. Watch the work, adjust or note what feels wrong, and let Quipsly keep the receipts underneath.",
+  "safeCommands": {
+    "addAudioNeedsEdit": "script/agentctl.sh episode1-mako-review-note needs-edit audio 01:02:30 \"Audio comfort note.\"",
+    "addBlocked": "script/agentctl.sh episode1-mako-review-note blocked media segment-005 \"Blocked because...\"",
+    "addCropNeedsEdit": "script/agentctl.sh episode1-mako-review-note needs-edit crop 01:02:30 \"Crop/framing note.\"",
+    "addLooksGood": "script/agentctl.sh episode1-mako-review-note looks-good overall segment-005 \"Looks good from editor review.\"",
+    "addQuickNote": "script/agentctl.sh episode1-mako-review-note note tool general \"What I noticed while editing/reviewing.\"",
+    "openFastBoard": "script/agentctl.sh episode1-current-next --html",
+    "openGuidedSession": "script/agentctl.sh episode1-selected-review-session --html",
+    "openThisBrief": "script/agentctl.sh episode1-mako-review-brief --html",
+    "openWorksheet": "script/agentctl.sh episode1-selected-review-worksheet --html"
+  },
+  "segment": {
+    "durationSeconds": 843.833,
+    "endSeconds": 4443.833,
+    "label": "1:00:00 - 1:14:04",
+    "segmentId": "segment-005",
+    "startSeconds": 3600.0
+  },
+  "sourcePackets": {
+    "currentNext": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-current-next-fast.json",
+    "selectedReviewDraft": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-selected-review-session-draft.json",
+    "selectedReviewHandoff": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-selected-review-handoff.json",
+    "selectedReviewWorksheet": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-selected-review-worksheet.json"
+  },
+  "suggestedOutcomes": [
+    {
+      "label": "Looks good",
+      "meaning": "The segment feels publishable from this pass."
+    },
+    {
+      "label": "Needs edit",
+      "meaning": "The content is usable but needs cut, crop, audio, caption, or pacing changes."
+    },
+    {
+      "label": "Blocked",
+      "meaning": "Something prevents fair review, such as missing media, wrong export, broken audio, or unusable playback."
+    }
+  ],
+  "truth": "This is an editor-facing review brief. It does not mutate the official review ledger, approve artifacts, publish, schedule, upload, or capture receipts.",
+  "underlyingReviewPrompts": [
+    "Open the guided review session.",
+    "Watch every selected video review clip and listen to the selected audio review clip.",
+    "Use the per-row draft-response commands to record what was actually reviewed.",
+    "Answer the human review questions in the durable draft response ledger.",
+    "If there is a problem, copy an issue command instead of marking reviewed.",
+    "Only after real review and durable notes should the official review ledger command be considered."
+  ],
+  "version": "2026-06-20.mako-review-brief.v1"
+}

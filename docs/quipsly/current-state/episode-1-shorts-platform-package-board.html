@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quipsly shorts platform package board</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101610;
+      --panel: #18241a;
+      --ink: #f8efd5;
+      --muted: #baaf96;
+      --gold: #f2ca4d;
+      --moss: #8fc974;
+      --blue: #5abfd3;
+      --line: rgba(248,239,213,.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(143,201,116,.2), transparent 25rem),
+        radial-gradient(circle at 90% 8%, rgba(242,202,77,.14), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1240px; margin: 0 auto; padding: 42px 24px 70px; }
+    .hero, .card { border: 1px solid var(--line); background: rgba(24,36,26,.88); border-radius: 28px; box-shadow: 0 28px 90px rgba(0,0,0,.28); }
+    .hero { padding: 32px; margin-bottom: 18px; }
+    .eyebrow { margin: 0 0 8px; color: var(--gold); text-transform: uppercase; letter-spacing: .22em; font-size: .72rem; font-weight: 900; }
+    h1 { margin: 0; font-size: clamp(2.4rem, 6vw, 4.9rem); line-height: .93; letter-spacing: -.07em; }
+    h2, h3 { margin: 0 0 8px; }
+    p, li { color: var(--muted); }
+    .card { padding: 20px; margin-top: 16px; }
+    header { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; }
+    .score { display: grid; place-items: center; padding: 12px; min-height: 88px; border-radius: 22px; background: rgba(242,202,77,.1); border: 1px solid rgba(242,202,77,.24); text-align: center; }
+    .score strong { color: var(--gold); font-size: 2.4rem; line-height: 1; }
+    .score span { color: var(--muted); font-size: .74rem; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+    article { border: 1px solid var(--line); border-radius: 20px; padding: 14px; background: rgba(255,255,255,.035); }
+    small { display: block; color: var(--moss); margin-top: 3px; }
+    .tags { color: var(--blue); font-weight: 700; }
+    code { display: block; white-space: pre-wrap; word-break: break-word; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.32); color: #fff6bd; border: 1px solid rgba(242,202,77,.18); font-size: .8rem; }
+    @media (max-width: 860px) { .grid, header { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Quipsly Studio - platform package board</p>
+      <h1>Make the short feel native before it ships.</h1>
+      <p>Draft hooks, captions, titles, descriptions, hashtags, and platform notes for the best candidates. The top current candidate is <strong>Farm Work Teaches Stewardship</strong>.</p>
+    </section>
+    
+            <section class="card">
+              <header>
+                <div class="score"><strong>95.2</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Farm Work Teaches Stewardship</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: The farm lesson was not just the chore It was learning why...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Farm Work Teaches Stewardship<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Farm Work Teaches Stewardship<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Farm Work Teaches Stewardship<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> The farm lesson was not just the chore It was learning...</p>
+                  <p>The farm lesson was not just the chore. It was learning why the work mattered.
+
+A short moment from High Ground Odyssey about farm, work, teaches.</p>
+                  <p class="tags">#Farm #Work #Teaches #Stewardship #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>The farm lesson was not just the chore. It was learning why the work mattered.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Farm #Work #Teaches #Stewardship #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;18BC489A-7439-4DA5-B967-9726443A008D&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;farm-work-teaches-stewardship&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>92.0</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-visual-review</p>
+                  <h2>Learning Why, Not Just What</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Good mentor does more than explain the task They make sure you...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Learning Why Not Just What<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Learning Why Not Just What<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Learning Why Not Just What<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Good mentor does more than explain the task They make sure...</p>
+                  <p>A good mentor does more than explain the task. They make sure you understand why.
+
+A short moment from High Ground Odyssey about learning, good, mentor.</p>
+                  <p class="tags">#Learning #Good #Mentor #Does #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>A good mentor does more than explain the task. They make sure you understand why.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Learning #Good #Mentor #Does #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Generate a contact sheet and check crop, headroom, and caption safe zones.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;701461B7-CB8F-4732-8F4F-D54698C77F23&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;learning-why-not-just-what&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>89.6</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Test Short - Wednesday Rule moment</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: What if one simple rule changed the whole conversation<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Test Short Wednesday Rule moment<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Test Short Wednesday Rule moment<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Test Short Wednesday Rule moment<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> What if one simple rule changed the whole conversation</p>
+                  <p>What if one simple rule changed the whole conversation?
+
+A short moment from High Ground Odyssey about test, short, wednesday.</p>
+                  <p class="tags">#Test #Short #Wednesday #Rule #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>What if one simple rule changed the whole conversation?
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Test #Short #Wednesday #Rule #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li><li>Make sure the clip has enough context to stand alone.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;FC28A75E-451B-4D74-9636-2E842805F106&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;test-short-wednesday-rule-moment&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>86.4</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Write Things Worth Reading</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: If you do not want to be forgotten write things worth reading...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Write Things Worth Reading<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Write Things Worth Reading<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Write Things Worth Reading<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> If you do not want to be forgotten write things worth...</p>
+                  <p>If you do not want to be forgotten, write things worth reading or do things worth writing.
+
+A short moment from High Ground Odyssey about write, things, worth.</p>
+                  <p class="tags">#Write #Things #Worth #Reading #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>If you do not want to be forgotten, write things worth reading or do things worth writing.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Write #Things #Worth #Reading #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;975A2C70-695D-4D9E-BAAE-A47BA3277590&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;write-things-worth-reading&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>86.2</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Mutual Mentorship</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: The best mentoring relationship can work both directions<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Mutual Mentorship<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Mutual Mentorship<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Mutual Mentorship<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> The best mentoring relationship can work both directions</p>
+                  <p>The best mentoring relationship can work both directions.
+
+A short moment from High Ground Odyssey about mutual, mentorship, best.</p>
+                  <p class="tags">#Mutual #Mentorship #Best #Mentoring #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>The best mentoring relationship can work both directions.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Mutual #Mentorship #Best #Mentoring #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;B5387438-09BF-41BD-9BDA-4765C75C36E2&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;mutual-mentorship&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>85.6</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Record From Anywhere</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: The show needs to work even when the hosts are remote traveling...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Record From Anywhere<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Record From Anywhere<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Record From Anywhere<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> The show needs to work even when the hosts are remote...</p>
+                  <p>The show needs to work even when the hosts are remote, traveling, and improvising.
+
+A short moment from High Ground Odyssey about record, anywhere, show.</p>
+                  <p class="tags">#Record #Anywhere #Show #Needs #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>The show needs to work even when the hosts are remote, traveling, and improvising.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Record #Anywhere #Show #Needs #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;record-from-anywhere&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>85.6</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Identity Changes Behavior</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Saying am the kind of person who does this changes the decision...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Identity Changes Behavior<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Identity Changes Behavior<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Identity Changes Behavior<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Saying am the kind of person who does this changes the...</p>
+                  <p>Saying “I am the kind of person who does this” changes the decision before the decision arrives.
+
+A short moment from High Ground Odyssey about identity, changes, behavior.</p>
+                  <p class="tags">#Identity #Changes #Behavior #Saying #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Saying “I am the kind of person who does this” changes the decision before the decision arrives.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Identity #Changes #Behavior #Saying #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;C4C017E7-C630-4C0D-9AF6-95496916ED8C&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;identity-changes-behavior&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>81.7</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Parkinson&#x27;s Awareness Goal</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: If our channel can raise awareness for Parkinson&#x27;s research that is goal...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Parkinson&#x27;s Awareness Goal<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Parkinson&#x27;s Awareness Goal<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Parkinson&#x27;s Awareness Goal<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> If our channel can raise awareness for Parkinson&#x27;s research that is...</p>
+                  <p>If our channel can raise awareness for Parkinson&#x27;s research, that is a goal worth chasing.
+
+A short moment from High Ground Odyssey about parkinson&#x27;s, awareness, goal.</p>
+                  <p class="tags">#Parkinson&#x27;S #Awareness #Goal #Channel #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>If our channel can raise awareness for Parkinson&#x27;s research, that is a goal worth chasing.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Parkinson&#x27;S #Awareness #Goal #Channel #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;7EA786A2-FA74-4D73-AE55-8A23D03AA3FC&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;parkinson-s-awareness-goal&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>81.7</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Don&#x27;t Downplay Yourself</h2>
+                  <p>Add or approve a readable caption/overlay plan.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Sometimes someone needs to remind you that you were already rock star<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Don&#x27;t Downplay Yourself<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Don&#x27;t Downplay Yourself<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Don&#x27;t Downplay Yourself<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Sometimes someone needs to remind you that you were already rock...</p>
+                  <p>Sometimes someone needs to remind you that you were already a rock star.
+
+A short moment from High Ground Odyssey about don&#x27;t, downplay, yourself.</p>
+                  <p class="tags">#Don&#x27;T #Downplay #Yourself #Sometimes #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Sometimes someone needs to remind you that you were already a rock star.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Don&#x27;T #Downplay #Yourself #Sometimes #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;50F4E987-F34E-4DBA-976A-42C80055DFB9&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;don-t-downplay-yourself&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Episode 1 Review Candidate 01 - 04:27</h2>
+                  <p>Write a sharper opening hook before packaging.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;0F028DF4-76EF-4245-9349-1EE266C1AAEB&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;episode-1-review-candidate-01-04-27&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Episode 1 Review Candidate 03 - 26:13</h2>
+                  <p>Write a sharper opening hook before packaging.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;D9526D0B-311E-46D4-B127-824D713EA2F2&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;episode-1-review-candidate-03-26-13&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>74.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Episode 1 Review Candidate 02 - 08:19</h2>
+                  <p>Write a sharper opening hook before packaging.</p>
+                </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;33FDE8CC-9080-4EC1-9294-1F03D0EEF61F&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;episode-1-review-candidate-02-08-19&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+  </main>
+</body>
+</html>

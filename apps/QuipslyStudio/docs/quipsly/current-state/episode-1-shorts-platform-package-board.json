@@ -1,0 +1,1509 @@
+{
+  "cards": [
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4' 22.65",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'farm-work-teaches-stewardship'",
+        "keep": "script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D'",
+        "writeHook": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 95.2,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "The farm lesson was not just the chore It was learning why...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Farm Work Teaches Stewardship",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Farm Work Teaches Stewardship",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Farm Work Teaches Stewardship",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "18BC489A-7439-4DA5-B967-9726443A008D",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "The farm lesson was not just the chore. It was learning why the work mattered.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Farm",
+            "#Work",
+            "#Teaches",
+            "#Stewardship",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "The farm lesson was not just the chore. It was learning why the work mattered.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Farm",
+            "#Work",
+            "#Teaches",
+            "#Stewardship",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "The farm lesson was not just the chore. It was learning why the work mattered.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Farm",
+            "#Work",
+            "#Teaches",
+            "#Stewardship",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Farm Work Teaches Stewardship. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 22.648,
+          "growthScore": 95.2,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "The farm lesson was not just the chore. It was learning why the work mattered.\n\nA short moment from High Ground Odyssey about farm, work, teaches.",
+          "hashtags": [
+            "#Farm",
+            "#Work",
+            "#Teaches",
+            "#Stewardship",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "The farm lesson was not just the chore It was learning..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Farm Work Teaches Stewardship"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' 40.83",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'learning-why-not-just-what'",
+        "keep": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23'",
+        "writeHook": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 92.0,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Good mentor does more than explain the task They make sure you...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Learning Why Not Just What",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Learning Why Not Just What",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Learning Why Not Just What",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "701461B7-CB8F-4732-8F4F-D54698C77F23",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Generate a contact sheet and check crop, headroom, and caption safe zones."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "A good mentor does more than explain the task. They make sure you understand why.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Learning",
+            "#Good",
+            "#Mentor",
+            "#Does",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "A good mentor does more than explain the task. They make sure you understand why.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Learning",
+            "#Good",
+            "#Mentor",
+            "#Does",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "A good mentor does more than explain the task. They make sure you understand why.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Learning",
+            "#Good",
+            "#Mentor",
+            "#Does",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Learning Why, Not Just What. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 40.833,
+          "growthScore": 92.0,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "A good mentor does more than explain the task. They make sure you understand why.\n\nA short moment from High Ground Odyssey about learning, good, mentor.",
+          "hashtags": [
+            "#Learning",
+            "#Good",
+            "#Mentor",
+            "#Does",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Good mentor does more than explain the task They make sure..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4",
+      "stage": "exported-needs-visual-review",
+      "title": "Learning Why, Not Just What"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' 8.13",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'test-short-wednesday-rule-moment'",
+        "keep": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106'",
+        "writeHook": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 89.6,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "What if one simple rule changed the whole conversation",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Test Short Wednesday Rule moment",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Test Short Wednesday Rule moment",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Test Short Wednesday Rule moment",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "FC28A75E-451B-4D74-9636-2E842805F106",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points.",
+        "Make sure the clip has enough context to stand alone."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "What if one simple rule changed the whole conversation?\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Test",
+            "#Short",
+            "#Wednesday",
+            "#Rule",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "What if one simple rule changed the whole conversation?\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Test",
+            "#Short",
+            "#Wednesday",
+            "#Rule",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "What if one simple rule changed the whole conversation?\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Test",
+            "#Short",
+            "#Wednesday",
+            "#Rule",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Test Short - Wednesday Rule moment. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 8.133,
+          "growthScore": 89.6,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "What if one simple rule changed the whole conversation?\n\nA short moment from High Ground Odyssey about test, short, wednesday.",
+          "hashtags": [
+            "#Test",
+            "#Short",
+            "#Wednesday",
+            "#Rule",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "What if one simple rule changed the whole conversation"
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Test Short - Wednesday Rule moment"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'write-things-worth-reading'",
+        "keep": "script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590'",
+        "writeHook": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 86.4,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "If you do not want to be forgotten write things worth reading...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Write Things Worth Reading",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Write Things Worth Reading",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Write Things Worth Reading",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "975A2C70-695D-4D9E-BAAE-A47BA3277590",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "If you do not want to be forgotten, write things worth reading or do things worth writing.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Write",
+            "#Things",
+            "#Worth",
+            "#Reading",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "If you do not want to be forgotten, write things worth reading or do things worth writing.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Write",
+            "#Things",
+            "#Worth",
+            "#Reading",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "If you do not want to be forgotten, write things worth reading or do things worth writing.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Write",
+            "#Things",
+            "#Worth",
+            "#Reading",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Write Things Worth Reading. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 45.0,
+          "growthScore": 86.4,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "If you do not want to be forgotten, write things worth reading or do things worth writing.\n\nA short moment from High Ground Odyssey about write, things, worth.",
+          "hashtags": [
+            "#Write",
+            "#Things",
+            "#Worth",
+            "#Reading",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "If you do not want to be forgotten write things worth..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Write Things Worth Reading"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4' 40.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'mutual-mentorship'",
+        "keep": "script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2'",
+        "writeHook": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 86.2,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "The best mentoring relationship can work both directions",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Mutual Mentorship",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Mutual Mentorship",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Mutual Mentorship",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "B5387438-09BF-41BD-9BDA-4765C75C36E2",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "The best mentoring relationship can work both directions.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Mutual",
+            "#Mentorship",
+            "#Best",
+            "#Mentoring",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "The best mentoring relationship can work both directions.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Mutual",
+            "#Mentorship",
+            "#Best",
+            "#Mentoring",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "The best mentoring relationship can work both directions.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Mutual",
+            "#Mentorship",
+            "#Best",
+            "#Mentoring",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Mutual Mentorship. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 39.998,
+          "growthScore": 86.2,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "The best mentoring relationship can work both directions.\n\nA short moment from High Ground Odyssey about mutual, mentorship, best.",
+          "hashtags": [
+            "#Mutual",
+            "#Mentorship",
+            "#Best",
+            "#Mentoring",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "The best mentoring relationship can work both directions"
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Mutual Mentorship"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'record-from-anywhere'",
+        "keep": "script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4'",
+        "writeHook": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 85.6,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "The show needs to work even when the hosts are remote traveling...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Record From Anywhere",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Record From Anywhere",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Record From Anywhere",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "The show needs to work even when the hosts are remote, traveling, and improvising.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Record",
+            "#Anywhere",
+            "#Show",
+            "#Needs",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "The show needs to work even when the hosts are remote, traveling, and improvising.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Record",
+            "#Anywhere",
+            "#Show",
+            "#Needs",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "The show needs to work even when the hosts are remote, traveling, and improvising.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Record",
+            "#Anywhere",
+            "#Show",
+            "#Needs",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Record From Anywhere. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 45.0,
+          "growthScore": 85.6,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "The show needs to work even when the hosts are remote, traveling, and improvising.\n\nA short moment from High Ground Odyssey about record, anywhere, show.",
+          "hashtags": [
+            "#Record",
+            "#Anywhere",
+            "#Show",
+            "#Needs",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "The show needs to work even when the hosts are remote..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Record From Anywhere"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'identity-changes-behavior'",
+        "keep": "script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C'",
+        "writeHook": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 85.6,
+      "growthTier": "strong-post-candidate",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Saying am the kind of person who does this changes the decision...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Identity Changes Behavior",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Identity Changes Behavior",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Identity Changes Behavior",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "C4C017E7-C630-4C0D-9AF6-95496916ED8C",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Saying \u201cI am the kind of person who does this\u201d changes the decision before the decision arrives.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Identity",
+            "#Changes",
+            "#Behavior",
+            "#Saying",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Saying \u201cI am the kind of person who does this\u201d changes the decision before the decision arrives.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Identity",
+            "#Changes",
+            "#Behavior",
+            "#Saying",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Saying \u201cI am the kind of person who does this\u201d changes the decision before the decision arrives.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Identity",
+            "#Changes",
+            "#Behavior",
+            "#Saying",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Identity Changes Behavior. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 45.0,
+          "growthScore": 85.6,
+          "growthTier": "strong-post-candidate"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Saying \u201cI am the kind of person who does this\u201d changes the decision before the decision arrives.\n\nA short moment from High Ground Odyssey about identity, changes, behavior.",
+          "hashtags": [
+            "#Identity",
+            "#Changes",
+            "#Behavior",
+            "#Saying",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Saying am the kind of person who does this changes the..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Identity Changes Behavior"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'parkinson-s-awareness-goal'",
+        "keep": "script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC'",
+        "writeHook": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 81.7,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "If our channel can raise awareness for Parkinson's research that is goal...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Parkinson's Awareness Goal",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Parkinson's Awareness Goal",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Parkinson's Awareness Goal",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "7EA786A2-FA74-4D73-AE55-8A23D03AA3FC",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "If our channel can raise awareness for Parkinson's research, that is a goal worth chasing.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Parkinson'S",
+            "#Awareness",
+            "#Goal",
+            "#Channel",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "If our channel can raise awareness for Parkinson's research, that is a goal worth chasing.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Parkinson'S",
+            "#Awareness",
+            "#Goal",
+            "#Channel",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "If our channel can raise awareness for Parkinson's research, that is a goal worth chasing.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Parkinson'S",
+            "#Awareness",
+            "#Goal",
+            "#Channel",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Parkinson's Awareness Goal. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 45.0,
+          "growthScore": 81.7,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "If our channel can raise awareness for Parkinson's research, that is a goal worth chasing.\n\nA short moment from High Ground Odyssey about parkinson's, awareness, goal.",
+          "hashtags": [
+            "#Parkinson'S",
+            "#Awareness",
+            "#Goal",
+            "#Channel",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "If our channel can raise awareness for Parkinson's research that is..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Parkinson's Awareness Goal"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'don-t-downplay-yourself'",
+        "keep": "script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9'",
+        "writeHook": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 81.7,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Sometimes someone needs to remind you that you were already rock star",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Don't Downplay Yourself",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Don't Downplay Yourself",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Don't Downplay Yourself",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "50F4E987-F34E-4DBA-976A-42C80055DFB9",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Add or approve a readable caption/overlay plan.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Sometimes someone needs to remind you that you were already a rock star.\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Don'T",
+            "#Downplay",
+            "#Yourself",
+            "#Sometimes",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Sometimes someone needs to remind you that you were already a rock star.\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Don'T",
+            "#Downplay",
+            "#Yourself",
+            "#Sometimes",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Sometimes someone needs to remind you that you were already a rock star.\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Don'T",
+            "#Downplay",
+            "#Yourself",
+            "#Sometimes",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Don't Downplay Yourself. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 45.0,
+          "growthScore": 81.7,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Sometimes someone needs to remind you that you were already a rock star.\n\nA short moment from High Ground Odyssey about don't, downplay, yourself.",
+          "hashtags": [
+            "#Don'T",
+            "#Downplay",
+            "#Yourself",
+            "#Sometimes",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Sometimes someone needs to remind you that you were already rock..."
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Don't Downplay Yourself"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4' 40.83",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-01-04-27'",
+        "keep": "script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB'",
+        "writeHook": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "0F028DF4-76EF-4245-9349-1EE266C1AAEB",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 1 Review Candidate 01 - 04:27. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 40.832,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 1 Review Candidate 01 - 04:27"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4' 41.50",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-03-26-13'",
+        "keep": "script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2'",
+        "writeHook": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "D9526D0B-311E-46D4-B127-824D713EA2F2",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 1 Review Candidate 03 - 26:13. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 41.499,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 1 Review Candidate 03 - 26:13"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19'",
+        "keep": "script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F'",
+        "writeHook": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "growthScore": 74.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "33FDE8CC-9080-4EC1-9294-1F03D0EEF61F",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 1 Review Candidate 02 - 08:19. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 45.0,
+          "growthScore": 74.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 1 Review Candidate 02 - 08:19"
+    }
+  ],
+  "generatedAt": "2026-06-21T11:31:51-06:00",
+  "html": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-platform-package-board.html",
+  "json": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-platform-package-board.json",
+  "markdown": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-platform-package-board.md",
+  "packetType": "quipsly-shorts-platform-package-board",
+  "researchBasis": [
+    "Riverside-style social-ready clips, aspect ratios, layouts, and captions.",
+    "Descript-style templates, captions, generated B-roll, brand styling, and social aspect ratios.",
+    "OpusClip-style candidate ranking and hook/flow/engagement/trend thinking.",
+    "CapCut-style caption timing and manual subtitle correction as a first-class workflow."
+  ],
+  "truth": "This board drafts packaging. It does not publish, schedule, upload, approve, or guarantee performance.",
+  "version": "2026-06-21.shorts-platform-package-board.v1"
+}

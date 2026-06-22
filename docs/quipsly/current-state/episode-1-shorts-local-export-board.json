@@ -1,0 +1,482 @@
+{
+  "basename": "episode-1-shorts-local-export-board",
+  "cards": [
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' 40.83",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'learning-why-not-just-what'",
+        "keep": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 40.833,
+      "exportStatus": "exported",
+      "id": "701461B7-CB8F-4732-8F4F-D54698C77F23",
+      "index": 3,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Generate a contact sheet or preview the short before deciding.",
+      "primaryExportBytes": 31165451,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4",
+      "reviewStatus": "refine",
+      "segmentCount": 1,
+      "stage": "exported-needs-visual-review",
+      "textReviewStatus": "unknown",
+      "title": "Learning Why, Not Just What",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' 8.13",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'test-short-wednesday-rule-moment'",
+        "keep": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 8.133,
+      "exportStatus": "exported",
+      "id": "FC28A75E-451B-4D74-9636-2E842805F106",
+      "index": 1,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 7696090,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4",
+      "reviewStatus": "refine",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Test Short - Wednesday Rule moment",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4' 22.65",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'farm-work-teaches-stewardship'",
+        "keep": "script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 22.648,
+      "exportStatus": "exported",
+      "id": "18BC489A-7439-4DA5-B967-9726443A008D",
+      "index": 2,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 17456943,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4",
+      "reviewStatus": "refine",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Farm Work Teaches Stewardship",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4' 40.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'mutual-mentorship'",
+        "keep": "script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 39.998,
+      "exportStatus": "exported",
+      "id": "B5387438-09BF-41BD-9BDA-4765C75C36E2",
+      "index": 4,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 33457029,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4",
+      "reviewStatus": "refine",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Mutual Mentorship",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'record-from-anywhere'",
+        "keep": "script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 45.0,
+      "exportStatus": "exported",
+      "id": "0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4",
+      "index": 5,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 48147222,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4",
+      "reviewStatus": "refine",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Record From Anywhere",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'parkinson-s-awareness-goal'",
+        "keep": "script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 45.0,
+      "exportStatus": "exported",
+      "id": "7EA786A2-FA74-4D73-AE55-8A23D03AA3FC",
+      "index": 6,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 44732322,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4",
+      "reviewStatus": "ready-for-human-review",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Parkinson's Awareness Goal",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'don-t-downplay-yourself'",
+        "keep": "script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 45.0,
+      "exportStatus": "exported",
+      "id": "50F4E987-F34E-4DBA-976A-42C80055DFB9",
+      "index": 7,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 41804252,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4",
+      "reviewStatus": "ready-for-human-review",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Don't Downplay Yourself",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'identity-changes-behavior'",
+        "keep": "script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 45.0,
+      "exportStatus": "exported",
+      "id": "C4C017E7-C630-4C0D-9AF6-95496916ED8C",
+      "index": 8,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 40005516,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4",
+      "reviewStatus": "ready-for-human-review",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Identity Changes Behavior",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4",
+        "/Users/wall-e/Movies/QuipslyExports/Episode1Tower/2026-06-19-episode1-spine-release/episode1-the-wednesday-rule-09-Write-Things-Worth-Reading-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'write-things-worth-reading'",
+        "keep": "script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 45.0,
+      "exportStatus": "exported",
+      "id": "975A2C70-695D-4D9E-BAAE-A47BA3277590",
+      "index": 9,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 20604565,
+      "primaryExportExists": true,
+      "primaryExportPath": "/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4",
+      "reviewStatus": "refine",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Write Things Worth Reading",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4' 40.83",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-01-04-27'",
+        "keep": "script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 40.832,
+      "exportStatus": "exported",
+      "id": "0F028DF4-76EF-4245-9349-1EE266C1AAEB",
+      "index": 10,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 54676889,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Episode 1 Review Candidate 01 - 04:27",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4' 45.00",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19'",
+        "keep": "script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 45.0,
+      "exportStatus": "exported",
+      "id": "33FDE8CC-9080-4EC1-9294-1F03D0EEF61F",
+      "index": 11,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 59212494,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Episode 1 Review Candidate 02 - 08:19",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4"
+      ],
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4' 41.50",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4'",
+        "exportLocal": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-03-26-13'",
+        "keep": "script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2'"
+      },
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "durationSeconds": 41.499,
+      "exportStatus": "exported",
+      "id": "D9526D0B-311E-46D4-B127-824D713EA2F2",
+      "index": 12,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "primaryExportBytes": 53665109,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "title": "Episode 1 Review Candidate 03 - 26:13",
+      "visualReviewStatus": "unknown"
+    }
+  ],
+  "generatedAt": "2026-06-21T18:02:14-06:00",
+  "html": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-shorts-local-export-board.html",
+  "json": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-shorts-local-export-board.json",
+  "localExportedFileCount": 12,
+  "markdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-shorts-local-export-board.md",
+  "missingExportCount": 0,
+  "nextShort": {
+    "allExportedPaths": [
+      "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4"
+    ],
+    "commands": {
+      "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' 40.83",
+      "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4'",
+      "exportLocal": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'learning-why-not-just-what'",
+      "keep": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' keep 'Kept after local export review.'",
+      "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+      "refine": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' refine 'Needs one concrete improvement after local review.'",
+      "select": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23'"
+    },
+    "destinations": [
+      "YouTube Shorts",
+      "Instagram",
+      "Facebook",
+      "LinkedIn"
+    ],
+    "durationSeconds": 40.833,
+    "exportStatus": "exported",
+    "id": "701461B7-CB8F-4732-8F4F-D54698C77F23",
+    "index": 3,
+    "listenThroughStatus": "unknown",
+    "nextAction": "Generate a contact sheet or preview the short before deciding.",
+    "primaryExportBytes": 31165451,
+    "primaryExportExists": true,
+    "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4",
+    "reviewStatus": "refine",
+    "segmentCount": 1,
+    "stage": "exported-needs-visual-review",
+    "textReviewStatus": "unknown",
+    "title": "Learning Why, Not Just What",
+    "visualReviewStatus": "unknown"
+  },
+  "operatorFocus": "Output first: export usable local files, watch them, listen to them, improve the edit, then hand off to publishing.",
+  "outputDirectory": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state",
+  "packetType": "quipsly-shorts-local-export-board",
+  "qualityReviewCount": 12,
+  "shortCount": 12,
+  "sourceStateHints": {
+    "exportStatus": "completed",
+    "selectedShortId": null
+  },
+  "stageCounts": {
+    "exported-needs-listen-through": 11,
+    "exported-needs-visual-review": 1
+  },
+  "truth": "This board does not approve, publish, schedule, upload, or mutate review state. It exists to make local export and quality review obvious.",
+  "version": "2026-06-21.shorts-local-export-board.v1"
+}

@@ -10217,6 +10217,7 @@ struct WorkspaceView: View {
 
     private func selectedShortCreatorQualityCard(_ clip: ShortClipCandidate) -> some View {
         let brief = shortCreatorQualityBrief(for: clip)
+        let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
         let proofColor = brief.exportProofReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -10240,9 +10241,155 @@ struct WorkspaceView: View {
 
             HStack(spacing: 6) {
                 shortQualityPill("Score", "\(brief.score)/100", brief.score >= 82 ? QuipslyStudioTheme.moss : (brief.score >= 62 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
+                shortQualityPill("Attention", "\(brief.attentionScore)/100", brief.attentionScore >= 84 ? QuipslyStudioTheme.moss : (brief.attentionScore >= 68 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
+                shortQualityPill("Publish", brief.publishReadiness.label, brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
                 shortQualityPill("Primary", brief.primaryPlatform, QuipslyStudioTheme.creek)
                 shortQualityPill("Band", brief.durationBand, QuipslyStudioTheme.honey)
                 shortQualityPill("Proof", brief.exportProofLabel, proofColor)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                shortEditorLabel("Quality packet")
+                Text(packetSummary.headline)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(packetSummary.reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(packetSummary.safeActionLabel)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Evidence: \(packetSummary.evidenceLevel)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Next: \(packetSummary.nextSafeAction)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Agent instruction: \(packetSummary.agentInstruction)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(8)
+            .background(QuipslyStudioTheme.creek.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 4) {
+                shortEditorLabel("Publish readiness")
+                Text(brief.publishReadiness.summary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Tower handoff: \(brief.publishReadiness.handoffMode)")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(brief.publishReadiness.blockerSummary)
+                    .font(.caption2)
+                    .foregroundStyle(brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss.opacity(0.95) : QuipslyStudioTheme.clay.opacity(0.95))
+                    .fixedSize(horizontal: false, vertical: true)
+                if !brief.publishReadiness.missing.isEmpty {
+                    Text("Missing: \(brief.publishReadiness.missing.prefix(4).joined(separator: ", "))")
+                        .font(.caption2)
+                        .foregroundStyle(QuipslyStudioTheme.clay)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(brief.publishReadiness.nextAction)
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(8)
+            .background((brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 5) {
+                shortEditorLabel("Attention signals")
+                ForEach(Array(brief.attentionSignals.prefix(3).enumerated()), id: \.offset) { _, signal in
+                    HStack(alignment: .top, spacing: 7) {
+                        Text("\(signal.score)")
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .foregroundStyle(signal.score >= 84 ? QuipslyStudioTheme.moss : (signal.score >= 68 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
+                            .frame(width: 30, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(signal.name): \(signal.label)")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .lineLimit(1)
+                            Text(signal.nextAction)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(7)
+                    .background(.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                shortEditorLabel("Next platform fixes")
+                ForEach(Array(ShortCreatorQuality.platformAttentionFixes(for: clip, brief: brief).prefix(2).enumerated()), id: \.offset) { _, fix in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
+                            Text(fix.platform)
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .lineLimit(1)
+                            Text(fix.priority.uppercased())
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .foregroundStyle(QuipslyStudioTheme.honey)
+                        }
+                        Text(fix.title)
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                        Text(fix.nextAction)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(7)
+                    .background(QuipslyStudioTheme.honey.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                shortEditorLabel("Posting checklist")
+                ForEach(Array(ShortCreatorQuality.platformChecklistItems(for: clip, brief: brief).prefix(4).enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 7) {
+                        Image(systemName: item.status == "ready" ? "checkmark.circle.fill" : (item.status == "missing" ? "exclamationmark.circle.fill" : "eye.circle.fill"))
+                            .foregroundStyle(item.status == "ready" ? QuipslyStudioTheme.moss : (item.status == "missing" ? QuipslyStudioTheme.clay : QuipslyStudioTheme.honey))
+                            .font(.caption2)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.label)
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .lineLimit(1)
+                            Text(item.nextAction)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(7)
+                    .background(.white.opacity(0.045))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -10576,6 +10723,9 @@ struct WorkspaceView: View {
 
     private func shortPlatformPackPayload(for clip: ShortClipCandidate, brief: ShortCreatorQualityBrief) -> [String: Any] {
         let drafts = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief)
+        let platformAttentionFixes = ShortCreatorQuality.platformAttentionFixes(for: clip, brief: brief)
+        let platformChecklistItems = ShortCreatorQuality.platformChecklistItems(for: clip, brief: brief)
+        let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
         let outputPath = selectedShortPlatformPackOutputURL(for: clip).path
         let sequenceTitle = projectStore.activeSequence?.title ?? ""
         let saveCommand = ShortCreatorQualityCommand.savePlatformPackJSON.agentRoute
@@ -10605,6 +10755,56 @@ struct WorkspaceView: View {
             "primaryPlatformNextAction": brief.primaryPlatformFit?.nextAction ?? "",
             "qualityScore": brief.score,
             "readinessLabel": brief.readinessLabel,
+            "qualityPacketSummary": [
+                "headline": packetSummary.headline,
+                "status": packetSummary.status,
+                "evidenceLevel": packetSummary.evidenceLevel,
+                "reason": packetSummary.reason,
+                "safeActionLabel": packetSummary.safeActionLabel,
+                "nextSafeAction": packetSummary.nextSafeAction,
+                "agentInstruction": packetSummary.agentInstruction
+            ] as [String: Any],
+            "attentionScore": brief.attentionScore,
+            "attentionLabel": brief.attentionLabel,
+            "attentionSignals": brief.attentionSignals.map { signal in
+                [
+                    "id": signal.id,
+                    "name": signal.name,
+                    "score": signal.score,
+                    "label": signal.label,
+                    "rationale": signal.rationale,
+                    "nextAction": signal.nextAction
+                ] as [String: Any]
+            },
+            "publishReadiness": [
+                "label": brief.publishReadiness.label,
+                "summary": brief.publishReadiness.summary,
+                "canQueue": brief.publishReadiness.canQueue,
+                "missing": brief.publishReadiness.missing,
+                "blockerSummary": brief.publishReadiness.blockerSummary,
+                "nextAction": brief.publishReadiness.nextAction,
+                "handoffMode": brief.publishReadiness.handoffMode,
+                "towerInstruction": brief.publishReadiness.towerInstruction
+            ] as [String: Any],
+            "platformAttentionFixes": platformAttentionFixes.map { fix in
+                [
+                    "platform": fix.platform,
+                    "priority": fix.priority,
+                    "title": fix.title,
+                    "rationale": fix.rationale,
+                    "nextAction": fix.nextAction
+                ] as [String: Any]
+            },
+            "platformChecklist": platformChecklistItems.map { item in
+                [
+                    "id": item.id,
+                    "platform": item.platform,
+                    "label": item.label,
+                    "detail": item.detail,
+                    "status": item.status,
+                    "nextAction": item.nextAction
+                ] as [String: Any]
+            },
             "recommendedReviewStatus": brief.recommendedReviewStatus,
             "platformFits": brief.platformFits.map { fit in
                 [
@@ -10645,7 +10845,8 @@ struct WorkspaceView: View {
                 "Watch the exported proof file before publishing.",
                 "Confirm the crop does not cover faces or important text.",
                 "Review title, caption, hashtags, and platform fit before scheduling.",
-                "Capture platform receipt URLs after posting or scheduling."
+                "Capture platform receipt URLs after posting or scheduling.",
+                brief.publishReadiness.towerInstruction
             ],
             "contract": "Metadata-only platform package. Review before publishing. Does not mutate source media, timeline decisions, exports, or receipts."
         ]
@@ -32477,8 +32678,18 @@ struct WorkspaceView: View {
 
     private func shortCreatorQualityPayload(for clip: ShortClipCandidate) -> [String: Any] {
         let brief = shortCreatorQualityBrief(for: clip)
+        let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
         return [
             "summary": brief.summary,
+            "qualityPacketSummary": [
+                "headline": packetSummary.headline,
+                "status": packetSummary.status,
+                "evidenceLevel": packetSummary.evidenceLevel,
+                "reason": packetSummary.reason,
+                "safeActionLabel": packetSummary.safeActionLabel,
+                "nextSafeAction": packetSummary.nextSafeAction,
+                "agentInstruction": packetSummary.agentInstruction
+            ] as [String: Any],
             "firstDestination": brief.firstDestination,
             "primaryPlatform": brief.primaryPlatform,
             "primaryPlatformScore": brief.primaryPlatformFit?.score ?? 0,
@@ -32486,6 +32697,25 @@ struct WorkspaceView: View {
             "primaryPlatformTitleDraft": ShortCreatorQuality.platformTitleDraft(for: clip, firstDestination: brief.primaryPlatform),
             "primaryPlatformCaptionDraft": ShortCreatorQuality.platformCaptionDraft(for: clip, firstDestination: brief.primaryPlatform),
             "primaryPlatformHashtags": ShortCreatorQuality.platformHashtags(for: clip, firstDestination: brief.primaryPlatform),
+            "platformAttentionFixes": ShortCreatorQuality.platformAttentionFixes(for: clip, brief: brief).map { fix in
+                [
+                    "platform": fix.platform,
+                    "priority": fix.priority,
+                    "title": fix.title,
+                    "rationale": fix.rationale,
+                    "nextAction": fix.nextAction
+                ] as [String: Any]
+            },
+            "platformChecklist": ShortCreatorQuality.platformChecklistItems(for: clip, brief: brief).map { item in
+                [
+                    "id": item.id,
+                    "platform": item.platform,
+                    "label": item.label,
+                    "detail": item.detail,
+                    "status": item.status,
+                    "nextAction": item.nextAction
+                ] as [String: Any]
+            },
             "platformPresetDrafts": ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief).map { preset in
                 [
                     "platform": preset.platform,
@@ -32507,6 +32737,28 @@ struct WorkspaceView: View {
             "exportProofReady": brief.exportProofReady,
             "score": brief.score,
             "readinessLabel": brief.readinessLabel,
+            "attentionScore": brief.attentionScore,
+            "attentionLabel": brief.attentionLabel,
+            "attentionSignals": brief.attentionSignals.map { signal in
+                [
+                    "id": signal.id,
+                    "name": signal.name,
+                    "score": signal.score,
+                    "label": signal.label,
+                    "rationale": signal.rationale,
+                    "nextAction": signal.nextAction
+                ] as [String: Any]
+            },
+            "publishReadiness": [
+                "label": brief.publishReadiness.label,
+                "summary": brief.publishReadiness.summary,
+                "canQueue": brief.publishReadiness.canQueue,
+                "missing": brief.publishReadiness.missing,
+                "blockerSummary": brief.publishReadiness.blockerSummary,
+                "nextAction": brief.publishReadiness.nextAction,
+                "handoffMode": brief.publishReadiness.handoffMode,
+                "towerInstruction": brief.publishReadiness.towerInstruction
+            ] as [String: Any],
             "recommendedReviewStatus": brief.recommendedReviewStatus,
             "platformFits": brief.platformFits.map { fit in
                 [
