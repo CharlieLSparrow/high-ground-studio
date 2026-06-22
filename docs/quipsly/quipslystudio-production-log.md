@@ -291,3 +291,34 @@ Updated remaining production step:
 ## 2026-06-19 - Episode 1 review-master proof
 
 Proof artifact exists for the current metadata-first Episode 1 edit: `/Users/wall-e/Movies/QuipslyExports/Episode1RealEditProofs/20260619T021041Z-full-review-master`. Both 16:9 and 9:16 review masters probe as H.264 + AAC stereo with visible source switching in contact sheets. Not publication-final yet: audio duration/tail mismatch must be reviewed before release.
+
+## 2026-06-22 - App-owned proxy shorts export path verified
+
+QuipslyStudio's queued-shorts export path now uses an app-owned proxy-first FFmpeg bridge instead of the fragile AVFoundation batch path that could wedge the app/agent server. The Mac app writes an explicit export request JSON, launches `script/shorts_proxy_export.py`, exposes progress/manifest paths through `/state`, and marks each short from the resulting manifest.
+
+Evidence:
+
+- Build/launch verification: `apps/QuipslyStudio/script/build_and_run.sh --verify` passed.
+- Helper preflight: `python3 -m py_compile script/shorts_proxy_export.py` passed.
+- Agent server stayed responsive: `script/agentctl.sh health` returned `status: ok` before and after export validation.
+- Clean app-owned Desktop proof folder: `/Users/wall-e/Desktop/Quipsly-App-Owned-Shorts-Export-Verified-20260622-081914`.
+- Episode 1 queued export: 12/12 non-empty MP4 files, manifest status `completed`, failed `0`.
+- Episode 2 queued export: 9/9 non-empty MP4 files, manifest status `completed`, failed `0`.
+- Episode 3 queued export: 5/5 non-empty MP4 files, manifest status `completed`, failed `0`.
+- Total app-owned export proof: 26 MP4 files, 80,838,827 bytes, with one manifest per episode.
+- Manifest source policy: `proxy-only; original media untouched`.
+- `/state.exportState` includes `manifestPath`, `progressPath`, `bridgeProgress`, `currentItem`, `currentOutputPath`, artifact states, stalled status, and `isExporting` truth.
+
+Important correction discovered during validation:
+
+- `load-session` is asynchronous. Running export immediately after a load command can race and export the previously active session. `script/agentctl.sh load-session-wait <session> [timeout]` was added so future automation waits until `/state.activeSessionName` matches the expected session before exporting.
+
+Product interpretation:
+
+- Final master export can remain strict about unresolved source recovery, but proxy shorts export should not be blocked by unrelated missing Premiere placeholder lanes. The short-export gate now allows production-ready sessions or sessions with available proxy editing; the manifest still reports exact per-short failures if a specific recipe needs missing media.
+
+Remaining hardening candidates:
+
+- Convert selected-short export to the same proxy bridge or add an explicit fallback when AVFoundation fails.
+- Add cancel/retry controls around bridge exports.
+- Add a dedicated manifest/recovery viewer in the UI rather than showing only compact path rows.

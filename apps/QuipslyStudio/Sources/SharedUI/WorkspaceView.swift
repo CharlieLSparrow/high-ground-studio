@@ -732,6 +732,8 @@ struct WorkspaceView: View {
     @State private var exportProofSeconds: Double? = nil
     @State private var exportSessionName: String = ""
     @State private var exportStateRefreshTask: Task<Void, Never>? = nil
+    @State private var exportProgressPath: String = ""
+    @State private var exportManifestPath: String = ""
     @State private var deliveryPacketStatus: String = "idle"
     @State private var deliveryPacketOutputPath: String = ""
     @State private var deliveryPacketErrorMessage: String = ""
@@ -3516,8 +3518,8 @@ struct WorkspaceView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if exportEngine.isExporting {
-                    ProgressView(value: exportEngine.exportProgress)
+                if exportStatus == "running" {
+                    ProgressView(value: normalizedExportProgress)
                         .frame(width: 150)
                 }
             }
@@ -3537,6 +3539,32 @@ struct WorkspaceView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                    }
+                }
+                if !exportManifestPath.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        Text("Manifest")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                        Text(exportManifestPath)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                if !exportProgressPath.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform.path.ecg")
+                            .foregroundStyle(.secondary)
+                        Text("Progress")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                        Text(exportProgressPath)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
                 #if os(macOS)
@@ -31594,7 +31622,7 @@ struct WorkspaceView: View {
         }
 
         let readiness = mediaReadinessSummary()
-        guard readiness.isProductionReady else {
+        guard readiness.isProductionReady || readiness.hasAvailableProxyEditing else {
             lastMediaAction = "Short export blocked: \(readiness.detail)"
             blockExportStatus(kind: "selected-short-9x16", reason: readiness.detail)
             updateAgentState()
@@ -32125,7 +32153,7 @@ struct WorkspaceView: View {
         }
 
         let readiness = mediaReadinessSummary()
-        guard readiness.isProductionReady else {
+        guard readiness.isProductionReady || readiness.hasAvailableProxyEditing else {
             lastMediaAction = "Batch short export blocked: \(readiness.detail)"
             blockExportStatus(kind: "queued-shorts-9x16", reason: readiness.detail)
             updateAgentState()
@@ -32178,8 +32206,78 @@ struct WorkspaceView: View {
             return
         }
 
+        struct ProxyExportRangeRequest: Encodable {
+            let start: Double
+            let duration: Double
+        }
+
+        struct ProxyExportClipRequest: Encodable {
+            let id: UUID
+            let title: String
+            let outputPath: String
+            let ranges: [ProxyExportRangeRequest]
+        }
+
+        struct ProxyShortExportRequest: Encodable {
+            let schemaVersion: Int
+            let model: String
+            let batchId: String
+            let sessionName: String
+            let outputDirectory: String
+            let basename: String
+            let manifestPath: String
+            let progressPath: String
+            let sourcePolicy: String
+            let sequence: MediaSequence
+            let clips: [ProxyExportClipRequest]
+        }
+
         let outputURLs = jobs.map(\.outputURL)
         let outputById = Dictionary(uniqueKeysWithValues: jobs.map { ($0.clip.id, $0.outputURL.path) })
+        let batchId = UUID().uuidString
+        let requestDirectory = defaultLocalExportDirectory()
+            .appendingPathComponent("export-requests", isDirectory: true)
+            .appendingPathComponent(batchId, isDirectory: true)
+        let requestURL = requestDirectory.appendingPathComponent("queued-shorts-export-request.json")
+        let progressURL = requestDirectory.appendingPathComponent("queued-shorts-export-progress.json")
+        let manifestURL = outputDirectory.appendingPathComponent("\(cleanBasename)-shorts-export-manifest.json")
+        do {
+            try FileManager.default.createDirectory(at: requestDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+            let request = ProxyShortExportRequest(
+                schemaVersion: 1,
+                model: "quipsly-proxy-short-export-request",
+                batchId: batchId,
+                sessionName: normalizedActiveSessionName(),
+                outputDirectory: outputDirectory.path,
+                basename: cleanBasename,
+                manifestPath: manifestURL.path,
+                progressPath: progressURL.path,
+                sourcePolicy: "proxy-only; original media untouched",
+                sequence: sequence,
+                clips: jobs.map { job in
+                    ProxyExportClipRequest(
+                        id: job.clip.id,
+                        title: job.clip.title,
+                        outputPath: job.outputURL.path,
+                        ranges: job.sequenceRanges.map { range in
+                            ProxyExportRangeRequest(start: range.start, duration: range.duration)
+                        }
+                    )
+                }
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(request).write(to: requestURL, options: .atomic)
+        } catch {
+            let blockReason = "Batch short export blocked while writing proxy export request: \(error.localizedDescription)"
+            lastMediaAction = blockReason
+            blockExportStatus(kind: "queued-shorts-9x16-proxy-bridge", reason: blockReason)
+            updateAgentState()
+            return
+        }
+
         for index in sequence.shortClipQueue.indices {
             let clipId = sequence.shortClipQueue[index].id
             sequence.shortClipQueue[index].exportStatus = "queued-for-export"
@@ -32193,66 +32291,202 @@ struct WorkspaceView: View {
         scheduleAutosave(reason: "queued batch short export")
 
         let proofSeconds = jobs.reduce(0) { $0 + max(0, $1.proofDuration) }
-        beginExportStatus(kind: "queued-shorts-9x16", outputURLs: outputURLs, proofSeconds: proofSeconds)
+        beginExportStatus(
+            kind: "queued-shorts-9x16-proxy-bridge",
+            outputURLs: outputURLs,
+            proofSeconds: proofSeconds,
+            progressPath: progressURL,
+            manifestPath: manifestURL
+        )
         playbackEngine.playbackFormat = .vertical9x16
-        lastMediaAction = "Batch short export started: \(jobs.count) queued packet(s)"
+        lastMediaAction = "Batch short proxy export started: \(jobs.count) queued packet(s)"
         updateAgentState()
 
         Task {
-            var completedURLs: [URL] = []
             do {
-                for job in jobs {
-                    await MainActor.run {
-                        markShortClipExportResult(
-                            id: job.clip.id,
-                            status: "exporting",
-                            note: "Batch export started: \(job.outputURL.path)"
-                        )
-                    }
-
-                    try await ExportEngine.shared.export(
-                        sequence: sequence,
-                        to: job.outputURL,
-                        format: .vertical9x16,
-                        allowExternalOriginalMedia: false,
-                        allowedOriginalMediaRootPath: nil,
-                        sequenceRanges: job.sequenceRanges,
-                        primaryOverlayText: burnedInPrimaryOverlayText(for: job.clip),
-                        captionText: burnedInCaptionText(for: job.clip)
-                    )
-
-                    completedURLs.append(job.outputURL)
-                    await MainActor.run {
-                        markShortClipExportResult(
-                            id: job.clip.id,
-                            status: "exported",
-                            note: shortExportSuccessNote(outputURL: job.outputURL, clip: job.clip)
-                        )
-                    }
-                }
+                try await runProxyShortExportBridge(requestURL: requestURL)
 
                 await MainActor.run {
-                    completeExportStatus(outputURLs: completedURLs)
-                    lastMediaAction = "Batch short export completed: \(completedURLs.count) file(s)"
+                    let manifestClips = proxyShortExportManifestClips(at: manifestURL)
+                    var completedURLs: [URL] = []
+                    for job in jobs {
+                        let manifestClip = manifestClips[job.clip.id.uuidString]
+                        let status = manifestClip?["status"] as? String ?? ""
+                        let outputPath = manifestClip?["outputPath"] as? String ?? job.outputURL.path
+                        if status == "exported", FileManager.default.fileExists(atPath: outputPath) {
+                            completedURLs.append(URL(fileURLWithPath: outputPath))
+                            markShortClipExportResult(
+                                id: job.clip.id,
+                                status: "exported",
+                                note: "\(shortExportSuccessNote(outputURL: URL(fileURLWithPath: outputPath), clip: job.clip))\nBatch manifest: \(manifestURL.path)"
+                            )
+                        } else {
+                            let error = manifestClip?["error"] as? String ?? "Proxy export did not create an output file."
+                            markShortClipExportResult(
+                                id: job.clip.id,
+                                status: "export-failed",
+                                note: "Batch proxy export failed: \(error)\nBatch manifest: \(manifestURL.path)"
+                            )
+                        }
+                    }
+
+                    if completedURLs.count == jobs.count {
+                        completeExportStatus(outputURLs: completedURLs)
+                    } else {
+                        exportStatus = "failed"
+                        exportErrorMessage = "Proxy batch export completed with \(completedURLs.count)/\(jobs.count) successful artifact(s). See manifest: \(manifestURL.path)"
+                        exportCompletedAt = Date()
+                        stopExportStateRefreshLoop()
+                    }
+                    lastMediaAction = "Batch short proxy export completed: \(completedURLs.count)/\(jobs.count) file(s)"
                     updateAgentState()
                 }
             } catch {
                 await MainActor.run {
-                    if let failedJob = jobs.first(where: { !completedURLs.contains($0.outputURL) }) {
+                    let manifestClips = proxyShortExportManifestClips(at: manifestURL)
+                    let completedIds = Set(manifestClips.compactMap { key, value -> UUID? in
+                        guard (value["status"] as? String) == "exported" else { return nil }
+                        return UUID(uuidString: key)
+                    })
+                    if let failedJob = jobs.first(where: { !completedIds.contains($0.clip.id) }) {
                         markShortClipExportResult(
                             id: failedJob.clip.id,
                             status: "export-failed",
-                            note: "Batch export failed: \(error.localizedDescription)"
+                            note: "Batch proxy export failed: \(error.localizedDescription)\nBatch manifest: \(manifestURL.path)"
                         )
                     }
                     failExportStatus(error: error)
-                    lastMediaAction = "Batch short export failed after \(completedURLs.count) file(s): \(error.localizedDescription)"
+                    lastMediaAction = "Batch short proxy export failed: \(error.localizedDescription)"
                     errorMessage = lastMediaAction
                     showErrorAlert = true
                     updateAgentState()
                 }
             }
         }
+    }
+
+    private func runProxyShortExportBridge(requestURL: URL) async throws {
+        let scriptURL = try proxyShortExportScriptURL()
+        try await Task.detached(priority: .userInitiated) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+            process.arguments = [scriptURL.path, requestURL.path]
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+            process.waitUntilExit()
+
+            let stdoutText = String(
+                data: stdout.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            let stderrText = String(
+                data: stderr.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+
+            guard process.terminationStatus == 0 else {
+                let detail = [stderrText, stdoutText]
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n")
+                throw NSError(
+                    domain: "QuipslyProxyShortExport",
+                    code: Int(process.terminationStatus),
+                    userInfo: [
+                        NSLocalizedDescriptionKey: detail.isEmpty
+                            ? "Proxy short export failed with exit code \(process.terminationStatus)."
+                            : detail
+                    ]
+                )
+            }
+        }.value
+    }
+
+    private func proxyShortExportScriptURL() throws -> URL {
+        let fileManager = FileManager.default
+        var roots: [URL] = [
+            URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true),
+            Bundle.main.bundleURL,
+        ]
+        if let resourceURL = Bundle.main.resourceURL {
+            roots.append(resourceURL)
+        }
+
+        var candidates: [URL] = []
+        for root in roots {
+            var current = root
+            for _ in 0..<8 {
+                candidates.append(current.appendingPathComponent("script/shorts_proxy_export.py"))
+                candidates.append(current.appendingPathComponent("apps/QuipslyStudio/script/shorts_proxy_export.py"))
+                let parent = current.deletingLastPathComponent()
+                if parent.path == current.path {
+                    break
+                }
+                current = parent
+            }
+        }
+
+        if let found = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) {
+            return found
+        }
+
+        throw NSError(
+            domain: "QuipslyProxyShortExport",
+            code: 404,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Could not find app-owned shorts_proxy_export.py. Checked \(candidates.map(\.path).joined(separator: ", "))"
+            ]
+        )
+    }
+
+    private func proxyShortExportManifestClips(at manifestURL: URL) -> [String: [String: Any]] {
+        guard let data = try? Data(contentsOf: manifestURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let clips = object["clips"] as? [[String: Any]] else {
+            return [:]
+        }
+
+        var result: [String: [String: Any]] = [:]
+        for clip in clips {
+            guard let id = clip["id"] as? String, !id.isEmpty else { continue }
+            result[id] = clip
+        }
+        return result
+    }
+
+    private func proxyExportProgressPayload() -> [String: Any] {
+        guard !exportProgressPath.isEmpty,
+              let data = try? Data(contentsOf: URL(fileURLWithPath: exportProgressPath)),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [
+                "status": exportStatus == "running" ? "waiting_for_progress" : exportStatus,
+                "progress": NSNull(),
+                "completed": NSNull(),
+                "total": NSNull(),
+                "currentTitle": "",
+                "currentOutputPath": "",
+                "updatedAt": ""
+            ]
+        }
+        return object
+    }
+
+    private func proxyExportProgressFraction() -> Float? {
+        let payload = proxyExportProgressPayload()
+        if let value = payload["progress"] as? Double, value.isFinite {
+            return Float(max(0, min(1, value)))
+        }
+        if let completed = payload["completed"] as? Int,
+           let total = payload["total"] as? Int,
+           total > 0 {
+            return Float(max(0, min(1, Double(completed) / Double(total))))
+        }
+        return nil
     }
 
     private func selectedShortSequenceRange(_ clip: ShortClipCandidate) -> (start: Double, end: Double, duration: Double)? {
@@ -32585,7 +32819,7 @@ struct WorkspaceView: View {
             "model": "short-clip-queue",
             "version": "2026-06-17.short-clip-queue.recipe-v2",
             "count": sequence.shortClipQueue.count,
-            "canBatchExport": !sequence.shortClipQueue.isEmpty && !exportEngine.isExporting,
+            "canBatchExport": !sequence.shortClipQueue.isEmpty && !exportEngine.isExporting && exportStatus != "running",
             "batchExportEndpoint": "GET /shorts_export_all?directory=<absolute-output-folder>&basename=<name>",
             "recommendedBatchCommand": "script/agentctl.sh shorts-export-all /absolute/output/folder optional-basename",
             "truth": "Cuts are output recipes over sequence time, not chopped media files.",
@@ -41379,7 +41613,13 @@ struct WorkspaceView: View {
         }
     }
 
-    private func beginExportStatus(kind: String, outputURLs: [URL], proofSeconds: Double?) {
+    private func beginExportStatus(
+        kind: String,
+        outputURLs: [URL],
+        proofSeconds: Double?,
+        progressPath: URL? = nil,
+        manifestPath: URL? = nil
+    ) {
         exportStatus = "running"
         exportKind = kind
         exportOutputPaths = outputURLs.map(\.path)
@@ -41388,6 +41628,8 @@ struct WorkspaceView: View {
         exportCompletedAt = nil
         exportProofSeconds = proofSeconds
         exportSessionName = normalizedActiveSessionName()
+        exportProgressPath = progressPath?.path ?? ""
+        exportManifestPath = manifestPath?.path ?? ""
         startExportStateRefreshLoop()
     }
 
@@ -41409,6 +41651,8 @@ struct WorkspaceView: View {
         exportCompletedAt = Date()
         exportProofSeconds = nil
         exportSessionName = normalizedActiveSessionName()
+        exportProgressPath = ""
+        exportManifestPath = ""
         stopExportStateRefreshLoop()
     }
 
@@ -41429,6 +41673,8 @@ struct WorkspaceView: View {
         exportCompletedAt = nil
         exportProofSeconds = nil
         exportSessionName = ""
+        exportProgressPath = ""
+        exportManifestPath = ""
         stopExportStateRefreshLoop()
     }
 
@@ -41455,6 +41701,7 @@ struct WorkspaceView: View {
     private func exportStatePayload() -> [String: Any] {
         let formatter = ISO8601DateFormatter()
         let health = exportHealthPayload()
+        let bridgeProgress = proxyExportProgressPayload()
         return [
             "status": exportStatus,
             "healthStatus": health["status"] ?? exportStatus,
@@ -41465,6 +41712,11 @@ struct WorkspaceView: View {
             "sessionName": exportSessionName,
             "formats": exportStateFormats(),
             "outputPaths": exportOutputPaths,
+            "manifestPath": exportManifestPath,
+            "progressPath": exportProgressPath,
+            "bridgeProgress": bridgeProgress,
+            "currentItem": bridgeProgress["currentTitle"] ?? "",
+            "currentOutputPath": bridgeProgress["currentOutputPath"] ?? "",
             "artifactStates": exportArtifactStatePayloads(),
             "artifactSummary": exportArtifactSummaryPayload(),
             "error": exportErrorMessage,
@@ -41472,7 +41724,7 @@ struct WorkspaceView: View {
             "completedAt": exportCompletedAt.map { formatter.string(from: $0) } ?? "",
             "proofSeconds": exportProofSeconds ?? NSNull(),
             "progress": normalizedExportProgress,
-            "isExporting": exportEngine.isExporting,
+            "isExporting": exportEngine.isExporting || exportStatus == "running",
             "sourcePolicy": "proxy-first; originals stay untouched unless explicitly granted"
         ]
     }
@@ -41490,6 +41742,19 @@ struct WorkspaceView: View {
         }
 
         let elapsed = exportStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let bridgeProgress = proxyExportProgressPayload()
+        if exportKind.contains("proxy-bridge"),
+           let status = bridgeProgress["status"] as? String,
+           ["running", "completed", "failed", "waiting_for_progress"].contains(status) {
+            return [
+                "status": status == "failed" ? "failed" : "running",
+                "stalled": false,
+                "reason": "",
+                "nextAction": status == "failed"
+                    ? "Open the proxy export manifest and fix the reported file or codec issue before retrying."
+                    : "Proxy bridge is rendering in a separate process; inspect bridgeProgress for current item and artifactStates for outputs."
+            ]
+        }
         let artifactStates = exportArtifactStatePayloads()
         let hasReadyOrWritingArtifact = artifactStates.contains { state in
             let status = state["status"] as? String
@@ -41645,6 +41910,9 @@ struct WorkspaceView: View {
         case "idle", "blocked":
             return 0.0
         default:
+            if let proxyProgress = proxyExportProgressFraction() {
+                return proxyProgress
+            }
             return exportEngine.exportProgress
         }
     }
@@ -41735,10 +42003,22 @@ struct WorkspaceView: View {
         }
         if exportStatus == "running" {
             let artifactDetail = exportArtifactHumanSummary(states: exportArtifactStatePayloads())
+            let bridgeProgress = proxyExportProgressPayload()
+            let currentTitle = bridgeProgress["currentTitle"] as? String ?? ""
+            let completed = bridgeProgress["completed"] as? Int
+            let total = bridgeProgress["total"] as? Int
+            let progressDetail: String
+            if let completed, let total, total > 0 {
+                progressDetail = currentTitle.isEmpty
+                    ? "Proxy bridge progress: \(completed)/\(total)."
+                    : "Proxy bridge progress: \(completed)/\(total), now rendering \(currentTitle)."
+            } else {
+                progressDetail = ""
+            }
             let base = exportProofSeconds.map {
                 String(format: "%.1fs proxy export proof is rendering. Originals stay untouched.", $0)
             } ?? "Rendering proxy-backed release outputs. Originals stay untouched."
-            return "\(base) \(artifactDetail)"
+            return "\(base) \(progressDetail) \(artifactDetail)"
         }
         if exportStatus == "failed" || exportStatus == "blocked" {
             return exportErrorMessage.isEmpty ? "Open Details for the current production readiness blockers." : exportErrorMessage

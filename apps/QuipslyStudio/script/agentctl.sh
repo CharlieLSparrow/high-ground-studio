@@ -228,6 +228,7 @@ Usage:
   script/agentctl.sh publish-upload-packet RECEIPT_ID
   script/agentctl.sh save-session episode-2-native
   script/agentctl.sh load-session episode-2-native
+  script/agentctl.sh load-session-wait episode-2-native [timeout-seconds]
   script/agentctl.sh vault-state
   script/agentctl.sh sessions
   script/agentctl.sh playback edit set
@@ -416,6 +417,46 @@ urlencode() {
 get() {
   curl --fail --silent --show-error "$BASE_URL$1"
   printf '\n'
+}
+
+wait_active_session() {
+  local expected="${1:-}"
+  local timeout="${2:-30}"
+  python3 - "$BASE_URL" "$expected" "$timeout" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base_url, expected, timeout = sys.argv[1], sys.argv[2], float(sys.argv[3])
+deadline = time.time() + timeout
+last = {}
+
+while time.time() < deadline:
+    try:
+        with urllib.request.urlopen(base_url.rstrip("/") + "/state", timeout=2) as response:
+            last = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        last = {"error": str(exc)}
+    if last.get("activeSessionName") == expected:
+        print(json.dumps({
+            "status": "active_session_ready",
+            "activeSessionName": last.get("activeSessionName"),
+            "shortCount": (last.get("shortClipQueue") or {}).get("count"),
+            "productionReady": last.get("productionReady"),
+            "productionReadinessDetail": last.get("productionReadinessDetail"),
+        }, indent=2, sort_keys=True))
+        raise SystemExit(0)
+    time.sleep(0.25)
+
+print(json.dumps({
+    "status": "active_session_timeout",
+    "expected": expected,
+    "lastActiveSessionName": last.get("activeSessionName"),
+    "lastError": last.get("error", ""),
+}, indent=2, sort_keys=True), file=sys.stderr)
+raise SystemExit(1)
+PY
 }
 
 ship_map_smoke() {
@@ -13066,6 +13107,12 @@ PY
   load-session)
     name="${2:-autosave}"
     get "/load_session?name=$(urlencode "$name")"
+    ;;
+  load-session-wait)
+    name="${2:-autosave}"
+    timeout="${3:-30}"
+    get "/load_session?name=$(urlencode "$name")" >/dev/null
+    wait_active_session "$name" "$timeout"
     ;;
   vault-state)
     get "/vault_state"
