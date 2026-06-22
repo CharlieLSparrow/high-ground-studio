@@ -326,6 +326,7 @@ Usage:
   script/agentctl.sh shorts-append-selected-segment
   script/agentctl.sh shorts-update-selected hook "Opening hook"
   script/agentctl.sh shorts-quality-action fill-hook|draft-copy|draft-platform-pack|copy-platform-pack-json|save-platform-pack-json|copy-polish-prompt|needs-refine
+  script/agentctl.sh shorts-platform-pack-index save|copy
   script/agentctl.sh shorts-overlay-burn-in request_review|approve_top_canopy|hold ["optional note"]
   script/agentctl.sh shorts-listen-through ["optional note"]
   script/agentctl.sh shorts-text-review approve|rewrite ["optional note"]
@@ -12392,6 +12393,10 @@ else:
       exit 2
     fi
     get "/shorts_quality_action?action=$(urlencode "$action")"
+    ;;
+  shorts-platform-pack-index|shorts-pack-index|shorts-sequence-platform-pack)
+    action="${2:-save}"
+    get "/shorts_platform_pack_index?action=$(urlencode "$action")"
     ;;
   shorts-overlay-burn-in|shorts-text-burn-in)
     shorts_overlay_burn_in "${2:-}" "${3:-}"

@@ -10536,6 +10536,41 @@ struct WorkspaceView: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Episode queue handoff")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .tracking(0.4)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                Text("Package every queued short in this episode into one metadata-only Tower handoff index, then refresh the local Episode 1-3 series manifest. This does not publish, approve, or touch source media.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 7) {
+                    Button {
+                        copyActiveSequencePlatformPackIndexJSON()
+                    } label: {
+                        Label("Copy episode index", systemImage: "doc.on.doc")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                    }
+                    Button {
+                        saveActiveSequencePlatformPackIndexJSON()
+                    } label: {
+                        Label("Save episode + series index", systemImage: "tray.and.arrow.down")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(7)
+            .background(QuipslyStudioTheme.moss.opacity(0.06))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(QuipslyStudioTheme.moss.opacity(0.13), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 
@@ -10618,13 +10653,31 @@ struct WorkspaceView: View {
 
     private func selectedShortPlatformPackOutputURL(for clip: ShortClipCandidate) -> URL {
         let safeTitle = sanitizedExportBasename(clip.title.isEmpty ? "selected-short" : clip.title).lowercased()
+        return activeSequencePlatformPackDirectoryURL()
+            .appendingPathComponent("\(safeTitle)-\(clip.id.uuidString.prefix(8))-platform-pack.json")
+    }
+
+    private func activeSequencePlatformPackDirectoryURL() -> URL {
         let sequenceSlug = projectStore.activeSequence.map { sanitizedExportBasename($0.title).lowercased() } ?? "no-sequence"
-        let baseURL = URL(fileURLWithPath: NSHomeDirectory())
+        return shortsPlatformPacksRootURL()
+            .appendingPathComponent(sequenceSlug, isDirectory: true)
+    }
+
+    private func shortsPlatformPacksRootURL() -> URL {
+        URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("Movies", isDirectory: true)
             .appendingPathComponent("QuipslyStudio", isDirectory: true)
             .appendingPathComponent("ShortsPlatformPacks", isDirectory: true)
-            .appendingPathComponent(sequenceSlug, isDirectory: true)
-        return baseURL.appendingPathComponent("\(safeTitle)-\(clip.id.uuidString.prefix(8))-platform-pack.json")
+    }
+
+    private func activeSequencePlatformPackIndexOutputURL() -> URL {
+        activeSequencePlatformPackDirectoryURL()
+            .appendingPathComponent("platform-pack-index.json")
+    }
+
+    private func seriesPlatformPackManifestOutputURL() -> URL {
+        shortsPlatformPacksRootURL()
+            .appendingPathComponent("high-ground-odyssey-shorts-series-manifest.json")
     }
 
     private func writeSelectedShortPlatformPackJSON(_ clip: ShortClipCandidate) -> String? {
@@ -10635,14 +10688,247 @@ struct WorkspaceView: View {
                 at: outputURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try jsonString(from: shortPlatformPackPayload(for: clip, brief: brief))
-                .data(using: .utf8)?
-                .write(to: outputURL, options: .atomic)
+            guard let data = jsonString(from: shortPlatformPackPayload(for: clip, brief: brief)).data(using: .utf8) else {
+                lastMediaAction = "Platform pack save failed: JSON encoding returned no data"
+                updateAgentState()
+                return nil
+            }
+            try data.write(to: outputURL, options: .atomic)
             return outputURL.path
         } catch {
             lastMediaAction = "Platform pack save failed: \(error.localizedDescription)"
             updateAgentState()
             return nil
+        }
+    }
+
+    private func activeSequencePlatformPackIndexPayload() -> [String: Any]? {
+        guard let sequence = projectStore.activeSequence else { return nil }
+        let packetPairs = sequence.shortClipQueue.map { clip in
+            (
+                clip: clip,
+                brief: shortCreatorQualityBrief(for: clip)
+            )
+        }
+        let packets = packetPairs.map { pair in
+            shortPlatformPackPayload(for: pair.clip, brief: pair.brief)
+        }
+        let readyCount = packetPairs.filter { $0.brief.isReadyForPackaging }.count
+        let needsReviewCount = packetPairs.filter { $0.brief.recommendedReviewStatus != "ready-for-human-review" }.count
+        let primaryPlatforms = Dictionary(grouping: packetPairs, by: { $0.brief.primaryPlatform })
+            .mapValues { $0.count }
+            .sorted { lhs, rhs in
+                if lhs.value == rhs.value { return lhs.key < rhs.key }
+                return lhs.value > rhs.value
+            }
+            .map { ["platform": $0.key, "count": $0.value] as [String: Any] }
+
+        return [
+            "kind": "quipsly-sequence-platform-pack-index",
+            "version": 1,
+            "createdAt": ISO8601DateFormatter().string(from: Date()),
+            "source": [
+                "app": "Quipsly Studio",
+                "model": "metadata-first active-sequence short platform pack index",
+                "sequenceTitle": sequence.title,
+                "recipeModel": "ordered-sequence-segments",
+                "timeBase": "sequence-seconds"
+            ] as [String: Any],
+            "sequenceTitle": sequence.title,
+            "durationSeconds": sequence.duration,
+            "shortCount": sequence.shortClipQueue.count,
+            "readyForPackagingCount": readyCount,
+            "needsReviewCount": needsReviewCount,
+            "primaryPlatformDistribution": primaryPlatforms,
+            "suggestedOutputPath": activeSequencePlatformPackIndexOutputURL().path,
+            "packets": packets,
+            "safeActions": [
+                [
+                    "id": "copy-active-sequence-platform-pack-index",
+                    "route": "GET /shorts_platform_pack_index?action=copy",
+                    "effect": "Copy the full active-sequence index without mutating shorts, timeline decisions, source media, exports, or receipts."
+                ],
+                [
+                    "id": "save-active-sequence-platform-pack-index",
+                    "route": "GET /shorts_platform_pack_index?action=save",
+                    "effect": "Write the full active-sequence index to a local JSON file for Tower/publication handoff."
+                ]
+            ],
+            "humanNextActions": [
+                "Open the saved index beside the exported short proofs.",
+                "Review every packet before scheduling or posting.",
+                "Use the index as a checklist, not a publishing receipt.",
+                "Capture real platform receipt URLs after each post or schedule action."
+            ],
+            "contract": "Metadata-only active-sequence platform-pack index. It does not publish, approve, mutate source media, move timeline decisions, create exports, or claim receipts."
+        ]
+    }
+
+    private func seriesPlatformPackManifestPayload() -> [String: Any] {
+        let rootURL = shortsPlatformPacksRootURL()
+        let manifestURL = seriesPlatformPackManifestOutputURL()
+        let fileManager = FileManager.default
+
+        func intValue(_ value: Any?) -> Int {
+            if let int = value as? Int { return int }
+            if let number = value as? NSNumber { return number.intValue }
+            if let string = value as? String, let int = Int(string) { return int }
+            return 0
+        }
+
+        let indexRecords: [[String: Any]] = ((try? fileManager.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? [])
+            .filter { url in
+                let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+                return values?.isDirectory == true
+            }
+            .compactMap { folderURL -> [String: Any]? in
+                let indexURL = folderURL.appendingPathComponent("platform-pack-index.json")
+                guard fileManager.fileExists(atPath: indexURL.path),
+                      let data = try? Data(contentsOf: indexURL),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return nil }
+
+                let sequenceTitle = json["sequenceTitle"] as? String ?? folderURL.lastPathComponent
+                let packets = json["packets"] as? [[String: Any]] ?? []
+                let shortCount = max(intValue(json["shortCount"]), packets.count)
+                return [
+                    "sequenceTitle": sequenceTitle,
+                    "folder": folderURL.lastPathComponent,
+                    "indexPath": indexURL.path,
+                    "shortCount": shortCount,
+                    "readyForPackagingCount": intValue(json["readyForPackagingCount"]),
+                    "needsReviewCount": intValue(json["needsReviewCount"]),
+                    "primaryPlatformDistribution": json["primaryPlatformDistribution"] ?? [],
+                    "createdAt": json["createdAt"] as? String ?? "",
+                    "contract": json["contract"] as? String ?? "Metadata-only episode platform-pack index."
+                ] as [String: Any]
+            }
+            .sorted { lhs, rhs in
+                (lhs["sequenceTitle"] as? String ?? "") < (rhs["sequenceTitle"] as? String ?? "")
+            }
+
+        return [
+            "kind": "quipsly-shorts-series-platform-pack-manifest",
+            "version": 1,
+            "createdAt": ISO8601DateFormatter().string(from: Date()),
+            "seriesTitle": "High Ground Odyssey shorts proof run",
+            "manifestPath": manifestURL.path,
+            "rootPath": rootURL.path,
+            "episodeIndexCount": indexRecords.count,
+            "totalShortCount": indexRecords.reduce(0) { $0 + intValue($1["shortCount"]) },
+            "readyForPackagingCount": indexRecords.reduce(0) { $0 + intValue($1["readyForPackagingCount"]) },
+            "needsReviewCount": indexRecords.reduce(0) { $0 + intValue($1["needsReviewCount"]) },
+            "episodeIndexes": indexRecords,
+            "expectedProofScope": [
+                "episode-1-premiere-rescue",
+                "episode-2-native-proof",
+                "episode-3-premiere-rescue"
+            ],
+            "humanNextActions": [
+                "Save a platform-pack index for each episode after reviewing the short queue.",
+                "Open this series manifest to see which episode indexes exist.",
+                "Use episode indexes as Tower/publication checklists, not as posting receipts.",
+                "Capture receipt URLs separately after posts are scheduled or published."
+            ],
+            "contract": "Metadata-only series manifest for episode short platform packs. It does not publish, approve, mutate source media, create exports, move timeline decisions, or claim receipts."
+        ]
+    }
+
+    private func writeSeriesPlatformPackManifestJSON(updateStatus: Bool = true) -> String? {
+        let payload = seriesPlatformPackManifestPayload()
+        let outputURL = seriesPlatformPackManifestOutputURL()
+        do {
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            guard let data = jsonString(from: payload).data(using: .utf8) else {
+                if updateStatus {
+                    lastMediaAction = "Series platform manifest save failed: JSON encoding returned no data"
+                    updateAgentState()
+                }
+                return nil
+            }
+            try data.write(to: outputURL, options: .atomic)
+            return outputURL.path
+        } catch {
+            if updateStatus {
+                lastMediaAction = "Series platform manifest save failed: \(error.localizedDescription)"
+                updateAgentState()
+            }
+            return nil
+        }
+    }
+
+    private func writeActiveSequencePlatformPackIndexJSON() -> String? {
+        guard let payload = activeSequencePlatformPackIndexPayload() else {
+            lastMediaAction = "Platform pack index blocked: no active sequence"
+            updateAgentState()
+            return nil
+        }
+        let outputURL = activeSequencePlatformPackIndexOutputURL()
+        do {
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            guard let data = jsonString(from: payload).data(using: .utf8) else {
+                lastMediaAction = "Platform pack index save failed: JSON encoding returned no data"
+                updateAgentState()
+                return nil
+            }
+            try data.write(to: outputURL, options: .atomic)
+            return outputURL.path
+        } catch {
+            lastMediaAction = "Platform pack index save failed: \(error.localizedDescription)"
+            updateAgentState()
+            return nil
+        }
+    }
+
+    private func copyActiveSequencePlatformPackIndexJSON() {
+        guard let payload = activeSequencePlatformPackIndexPayload() else {
+            lastMediaAction = "Platform pack index copy blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(jsonString(from: payload), forType: .string)
+        #endif
+        let count = projectStore.activeSequence?.shortClipQueue.count ?? 0
+        lastMediaAction = "Copied active-sequence platform pack index JSON for \(count) short recipe(s)"
+        updateAgentState()
+    }
+
+    private func saveActiveSequencePlatformPackIndexJSON() {
+        guard let path = writeActiveSequencePlatformPackIndexJSON() else { return }
+        let seriesManifestPath = writeSeriesPlatformPackManifestJSON(updateStatus: false)
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+        #endif
+        if let seriesManifestPath {
+            lastMediaAction = "Saved active-sequence platform pack index JSON: \(path). Updated series manifest: \(seriesManifestPath)"
+        } else {
+            lastMediaAction = "Saved active-sequence platform pack index JSON: \(path). Series manifest was not updated."
+        }
+        updateAgentState()
+    }
+
+    private func applyActiveSequencePlatformPackIndexAction(_ rawAction: String?) {
+        switch (rawAction ?? "save").lowercased() {
+        case "copy", "copy-json", "clipboard":
+            copyActiveSequencePlatformPackIndexJSON()
+        case "save", "write", "export", "save-json", "":
+            saveActiveSequencePlatformPackIndexJSON()
+        default:
+            lastMediaAction = "Unknown platform pack index action: \(rawAction ?? "")"
+            updateAgentState()
         }
     }
 
@@ -21854,6 +22140,74 @@ struct WorkspaceView: View {
         ]
     }
 
+    private func sequencePlatformPackIndexStatePayload(for sequence: MediaSequence?) -> [String: Any] {
+        guard let sequence else {
+            return [
+                "model": "quipsly-sequence-platform-pack-index-state",
+                "version": "2026-06-21.sequence-platform-pack-index-state.v1",
+                "status": "no_sequence",
+                "shortCount": 0,
+                "readyForPackagingCount": 0,
+                "needsReviewCount": 0,
+                "suggestedOutputPath": "",
+                "seriesManifestSuggestedOutputPath": seriesPlatformPackManifestOutputURL().path,
+                "saveCommand": "script/agentctl.sh shorts-platform-pack-index save",
+                "copyCommand": "script/agentctl.sh shorts-platform-pack-index copy",
+                "saveEndpoint": "GET /shorts_platform_pack_index?action=save",
+                "copyEndpoint": "GET /shorts_platform_pack_index?action=copy",
+                "nextAction": "Load a native edit session before creating a platform-pack index.",
+                "truth": "This state summarizes the batch shorts handoff. It is not a publishing receipt."
+            ]
+        }
+
+        let briefPairs = sequence.shortClipQueue.map { clip in
+            (clip: clip, brief: shortCreatorQualityBrief(for: clip))
+        }
+        let readyCount = briefPairs.filter { $0.brief.isReadyForPackaging }.count
+        let needsReviewCount = briefPairs.filter { $0.brief.recommendedReviewStatus != "ready-for-human-review" }.count
+        let primaryPlatforms = Dictionary(grouping: briefPairs, by: { $0.brief.primaryPlatform })
+            .mapValues { $0.count }
+            .sorted { lhs, rhs in
+                if lhs.value == rhs.value { return lhs.key < rhs.key }
+                return lhs.value > rhs.value
+            }
+            .map { ["platform": $0.key, "count": $0.value] as [String: Any] }
+
+        let status: String
+        let nextAction: String
+        if sequence.shortClipQueue.isEmpty {
+            status = "empty_queue"
+            nextAction = "Create or import short recipes before generating a platform-pack index."
+        } else if needsReviewCount > 0 {
+            status = "needs_review"
+            nextAction = "Review weak packets, then save the sequence platform-pack index for Tower handoff."
+        } else {
+            status = "ready_to_package"
+            nextAction = "Save the sequence platform-pack index, then review the generated JSON beside exported proofs."
+        }
+
+        return [
+            "model": "quipsly-sequence-platform-pack-index-state",
+            "version": "2026-06-21.sequence-platform-pack-index-state.v1",
+            "status": status,
+            "sequenceTitle": sequence.title,
+            "shortCount": sequence.shortClipQueue.count,
+            "readyForPackagingCount": readyCount,
+            "needsReviewCount": needsReviewCount,
+            "primaryPlatformDistribution": primaryPlatforms,
+            "suggestedOutputPath": activeSequencePlatformPackIndexOutputURL().path,
+            "seriesManifestSuggestedOutputPath": seriesPlatformPackManifestOutputURL().path,
+            "saveCommand": "script/agentctl.sh shorts-platform-pack-index save",
+            "copyCommand": "script/agentctl.sh shorts-platform-pack-index copy",
+            "saveEndpoint": "GET /shorts_platform_pack_index?action=save",
+            "copyEndpoint": "GET /shorts_platform_pack_index?action=copy",
+            "nextAction": nextAction,
+            "contract": "Metadata-only batch handoff for active-sequence shorts. Does not publish, approve, mutate source media, create exports, move timeline decisions, or claim receipts.",
+            "seriesManifestTruth": "Saving an episode index also refreshes a local series manifest that can list Episode 1-3 indexes as they are produced.",
+            "truth": "Use this as a Tower/publication checklist input after human review, not as proof that platforms were posted."
+        ]
+    }
+
     private func shortReviewNavigatorPayload(for sequence: MediaSequence?) -> [String: Any] {
         guard let sequence else {
             return [
@@ -32143,6 +32497,11 @@ struct WorkspaceView: View {
             },
             "platformPackPayload": shortPlatformPackPayload(for: clip, brief: brief),
             "platformPackSuggestedOutputPath": selectedShortPlatformPackOutputURL(for: clip).path,
+            "sequencePlatformPackIndexSuggestedOutputPath": activeSequencePlatformPackIndexOutputURL().path,
+            "sequencePlatformPackIndexActions": [
+                "save": "GET /shorts_platform_pack_index?action=save",
+                "copy": "GET /shorts_platform_pack_index?action=copy"
+            ],
             "durationBand": brief.durationBand,
             "exportProofLabel": brief.exportProofLabel,
             "exportProofReady": brief.exportProofReady,
@@ -35985,6 +36344,8 @@ struct WorkspaceView: View {
             )
         case "shorts_quality_action":
             applySelectedShortQualityAction(request.values["action"])
+        case "shorts_platform_pack_index_action":
+            applyActiveSequencePlatformPackIndexAction(request.values["action"])
         case "shorts_overlay_burn_in":
             applySelectedShortOverlayBurnInDecision(
                 decision: request.values["decision"],
@@ -36328,6 +36689,7 @@ struct WorkspaceView: View {
                 "shortClipQueue": shortClipQueuePayload(for: nil),
                 "shortClipQueueCount": 0,
                 "shortReviewCounts": shortReviewCountsPayload(for: nil),
+                "sequencePlatformPackIndex": sequencePlatformPackIndexStatePayload(for: nil),
                 "selectedShortClipId": selectedShortClipId?.uuidString ?? "",
                 "selectedShortClip": [:],
                 "selectedShortProof": selectedShortProofPayload(for: nil),
@@ -36566,6 +36928,7 @@ struct WorkspaceView: View {
             "shortClipQueue": shortClipQueuePayload(for: sequence),
             "shortClipQueueCount": sequence.shortClipQueue.count,
             "shortReviewCounts": shortReviewCountsPayload(for: sequence),
+            "sequencePlatformPackIndex": sequencePlatformPackIndexStatePayload(for: sequence),
             "selectedShortClipId": selectedShortClipId?.uuidString ?? "",
             "selectedShortClip": selectedShortClipPayload(for: sequence),
             "selectedShortProof": selectedShortProofPayload(for: sequence),
@@ -39083,6 +39446,14 @@ struct WorkspaceView: View {
                 risk: "read-only",
                 explanation: "Shows the next evidence-building action for social shorts without scoring quality or approving publication.",
                 enabled: sequenceLoaded
+            ),
+            agentActionPayload(
+                id: "save-sequence-platform-pack-index",
+                label: "Save episode shorts platform-pack index",
+                endpoint: "GET /shorts_platform_pack_index?action=save",
+                risk: "metadata-export",
+                explanation: "Writes one metadata-only JSON index for every short recipe in the active sequence so Tower/publication work can review a complete episode queue. It does not publish, approve, export media, move decisions, or claim receipts.",
+                enabled: sequenceLoaded && !(projectStore.activeSequence?.shortClipQueue.isEmpty ?? true)
             ),
             agentActionPayload(
                 id: "focus-monitors",
