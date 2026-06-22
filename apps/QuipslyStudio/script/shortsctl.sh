@@ -63,13 +63,14 @@ PY
 }
 
 run_board() {
-  local script_name default_basename mode output_dir basename tmp_queue tmp_state
+  local script_name default_basename default_output_dir mode output_dir basename tmp_queue tmp_state
   script_name="${1:-}"
   default_basename="${2:-}"
   shift 2
 
+  default_output_dir="$(cd "$ROOT_DIR/../.." && pwd)/docs/quipsly/current-state"
   mode="--md"
-  output_dir="$(cd "$ROOT_DIR/../.." && pwd)/docs/quipsly/current-state"
+  output_dir="$default_output_dir"
   basename="$default_basename"
 
   while [[ $# -gt 0 ]]; do
@@ -82,7 +83,7 @@ run_board() {
         return 0
         ;;
       *)
-        if [[ "$output_dir" == "$(cd "$ROOT_DIR/../.." && pwd)/docs/quipsly/current-state" ]]; then
+        if [[ "$output_dir" == "$default_output_dir" ]]; then
           output_dir="${1:-}"
         elif [[ "$basename" == "$default_basename" ]]; then
           basename="${1:-}"

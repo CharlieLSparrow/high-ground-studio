@@ -18,12 +18,11 @@ from shorts_board_common import (
     classify_short,
     command_quote,
     duration_seconds,
+    emit_packet_outputs,
     esc,
     load_json,
     stage_rank,
     unique_shorts,
-    write_json,
-    write_text,
 )
 
 
@@ -510,15 +509,7 @@ def main(argv: list[str]) -> int:
     queue_path, state_path, output_dir, basename = argv[1:5]
     mode = argv[5] if len(argv) > 5 else "--md"
     board = build_board(queue_path, state_path, output_dir, basename)
-    write_json(board["json"], board)
-    write_text(board["html"], html_page(board))
-    write_text(board["markdown"], markdown_page(board))
-    if mode == "--json":
-        print(json.dumps(board, indent=2, sort_keys=True))
-    elif mode == "--html":
-        print(board["html"])
-    else:
-        print(board["markdown"])
+    emit_packet_outputs(board, html_page(board), markdown_page(board), mode)
     return 0
 
 

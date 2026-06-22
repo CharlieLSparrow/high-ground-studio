@@ -8,12 +8,11 @@ mutate Studio state by itself.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from typing import Any
 
-from shorts_board_common import esc, write_json, write_text
+from shorts_board_common import emit_packet_outputs, esc
 from shorts_growth_quality_board import build_board as build_growth_board
 from shorts_platform_package_board import package_cards
 
@@ -433,15 +432,7 @@ def main(argv: list[str]) -> int:
     queue_path, state_path, output_dir, basename = argv[1:5]
     mode = argv[5] if len(argv) > 5 else "--md"
     packet = build_plan(queue_path, state_path, output_dir, basename)
-    write_json(packet["json"], packet)
-    write_text(packet["html"], html_page(packet))
-    write_text(packet["markdown"], markdown_page(packet))
-    if mode == "--json":
-        print(json.dumps(packet, indent=2, sort_keys=True))
-    elif mode == "--html":
-        print(packet["html"])
-    else:
-        print(packet["markdown"])
+    emit_packet_outputs(packet, html_page(packet), markdown_page(packet), mode)
     return 0
 
 

@@ -7,13 +7,12 @@ quality notes that make each export more likely to work in a vertical feed.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
 from typing import Any
 
-from shorts_board_common import esc, write_json, write_text
+from shorts_board_common import emit_packet_outputs, esc
 from shorts_growth_quality_board import build_board
 
 
@@ -417,15 +416,7 @@ def main(argv: list[str]) -> int:
         "markdown": os.path.join(output_dir, f"{basename}.md"),
         "cards": package_cards(growth_board),
     }
-    write_json(packet["json"], packet)
-    write_text(packet["html"], html_page(packet))
-    write_text(packet["markdown"], markdown_page(packet))
-    if mode == "--json":
-        print(json.dumps(packet, indent=2, sort_keys=True))
-    elif mode == "--html":
-        print(packet["html"])
-    else:
-        print(packet["markdown"])
+    emit_packet_outputs(packet, html_page(packet), markdown_page(packet), mode)
     return 0
 
 

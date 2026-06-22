@@ -42,6 +42,18 @@ def write_json(path: str, payload: dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def emit_packet_outputs(packet: dict[str, Any], html_text: str, markdown_text: str, mode: str) -> None:
+    write_json(packet["json"], packet)
+    write_text(packet["html"], html_text)
+    write_text(packet["markdown"], markdown_text)
+    if mode == "--json":
+        print(json.dumps(packet, indent=2, sort_keys=True))
+    elif mode == "--html":
+        print(packet["html"])
+    else:
+        print(packet["markdown"])
+
+
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
