@@ -10215,6 +10215,618 @@ struct WorkspaceView: View {
         .help("Short recipes are metadata over the long sequence timeline. Use Add SHOW decision for multi-segment social edits.")
     }
 
+    private func selectedShortCreatorQualityCard(_ clip: ShortClipCandidate) -> some View {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let proofColor = brief.exportProofReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 7) {
+                Image(systemName: brief.risks.isEmpty ? "sparkles" : "sparkles.square.filled.on.square")
+                    .foregroundStyle(brief.risks.isEmpty ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .frame(width: 22, height: 22)
+                    .background((brief.risks.isEmpty ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey).opacity(0.14))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Creator quality brief")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text(brief.summary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+
+            HStack(spacing: 6) {
+                shortQualityPill("Score", "\(brief.score)/100", brief.score >= 82 ? QuipslyStudioTheme.moss : (brief.score >= 62 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
+                shortQualityPill("Primary", brief.primaryPlatform, QuipslyStudioTheme.creek)
+                shortQualityPill("Band", brief.durationBand, QuipslyStudioTheme.honey)
+                shortQualityPill("Proof", brief.exportProofLabel, proofColor)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                shortEditorLabel("Best platform bets")
+                ForEach(Array(brief.platformFits.prefix(3).enumerated()), id: \.offset) { _, fit in
+                    shortPlatformFitRow(fit)
+                }
+            }
+
+            shortPlatformPackagePreview(clip, brief: brief)
+
+            HStack(spacing: 6) {
+                Button {
+                    fillSelectedShortHookFromQualityBrief(clip)
+                } label: {
+                    Label("Fill hook", systemImage: "quote.opening")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(!clip.hookText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Write a starter hook into this short's metadata only. It does not edit pixels, timeline, or source media.")
+
+                Button {
+                    draftSelectedShortPlatformCopyFromQualityBrief(clip)
+                } label: {
+                    Label("Draft copy", systemImage: "text.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .help("Create platform/caption metadata for this selected short. Existing copy is preserved in notes instead of silently overwritten.")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            HStack(spacing: 6) {
+                Button {
+                    copySelectedShortAgentPolishPrompt(clip)
+                } label: {
+                    Label("Copy polish prompt", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
+                .help("Copy an agent-safe prompt for improving this short's hook, caption, crop notes, and platform packaging without publishing.")
+
+                Button {
+                    markSelectedShortForQualityRefine(clip)
+                } label: {
+                    Label("Needs refine", systemImage: "slider.horizontal.3")
+                        .frame(maxWidth: .infinity)
+                }
+                .help("Mark this short Refine and record the current quality risks in metadata.")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button {
+                draftSelectedShortPlatformPackFromQualityBrief(clip)
+            } label: {
+                Label("Draft platform pack", systemImage: "square.grid.2x2")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Create or complete destination presets for the top platform fits. Existing title, caption, and hashtags are preserved.")
+
+            Button {
+                copySelectedShortPlatformPackJSON(clip)
+            } label: {
+                Label("Copy platform pack JSON", systemImage: "curlybraces.square")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Copy the exact platform-pack preview payload. This is safe for agents and handoff; it does not mutate the short.")
+
+            Button {
+                saveSelectedShortPlatformPackJSON(clip)
+            } label: {
+                Label("Save platform pack JSON", systemImage: "square.and.arrow.down")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Write the exact platform-pack preview payload to a local handoff JSON file and copy the path.")
+
+            if !brief.strengths.isEmpty {
+                shortQualityChecklist(
+                    title: "Working",
+                    icon: "checkmark.circle.fill",
+                    color: QuipslyStudioTheme.moss,
+                    items: brief.strengths
+                )
+            }
+
+            if !brief.risks.isEmpty {
+                shortQualityChecklist(
+                    title: "Needs attention",
+                    icon: "exclamationmark.triangle.fill",
+                    color: QuipslyStudioTheme.honey,
+                    items: brief.risks
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                shortEditorLabel("Next quality pass")
+                ForEach(Array(brief.actions.enumerated()), id: \.offset) { index, action in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("\(index + 1)")
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .foregroundStyle(QuipslyStudioTheme.night)
+                            .frame(width: 18, height: 18)
+                            .background(QuipslyStudioTheme.honey)
+                            .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(action.title)
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(QuipslyStudioTheme.moonMilk)
+                            Text(action.detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: 7) {
+                shortPromptBlock("Human check", brief.humanPrompt, QuipslyStudioTheme.moss)
+                shortPromptBlock("Agent check", brief.agentPrompt, QuipslyStudioTheme.creek)
+            }
+        }
+        .padding(8)
+        .background(
+            LinearGradient(
+                colors: [
+                    QuipslyStudioTheme.creek.opacity(0.10),
+                    QuipslyStudioTheme.moss.opacity(0.08),
+                    Color.black.opacity(0.16)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(QuipslyStudioTheme.creek.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .help("Transparent social-packaging guidance for this selected short. It never publishes or edits source media by itself.")
+    }
+
+    private func shortCreatorQualityBrief(for clip: ShortClipCandidate) -> ShortCreatorQualityBrief {
+        let exportRanges = projectStore.activeSequence.map { shortClipExportRanges(for: clip, in: $0) } ?? []
+        let exportDuration = exportRanges.isEmpty ? clip.duration : exportRanges.reduce(0) { $0 + $1.duration }
+        let exportPath = lastExportedShortPath(for: clip) ?? ""
+        let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
+        let presets = clip.destinationPresets.isEmpty
+            ? clip.destinations.map { ShortDestinationPreset(platform: $0, title: clip.title) }
+            : clip.destinationPresets
+        return ShortCreatorQuality.makeBrief(
+            for: clip,
+            exportDuration: exportDuration,
+            exportExists: exportExists,
+            presets: presets
+        )
+    }
+
+    private func shortQualityPill(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .tracking(0.5)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption2)
+                .fontWeight(.bold)
+                .lineLimit(1)
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private func shortQualityChecklist(title: String, icon: String, color: Color, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: icon)
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(color)
+            ForEach(Array(items.prefix(4).enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .top, spacing: 5) {
+                    Circle()
+                        .fill(color.opacity(0.80))
+                        .frame(width: 5, height: 5)
+                        .padding(.top, 5)
+                    Text(item)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func shortPlatformFitRow(_ fit: ShortCreatorPlatformFit) -> some View {
+        let color = fit.score >= 82
+            ? QuipslyStudioTheme.moss
+            : (fit.score >= 64 ? QuipslyStudioTheme.honey : (fit.score >= 45 ? QuipslyStudioTheme.creek : QuipslyStudioTheme.sage))
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(fit.platform)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(fit.score)")
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.black)
+                    .foregroundStyle(color)
+                Text(fit.label.uppercased())
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.black)
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+            }
+            Text(fit.rationale)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(fit.nextAction)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(QuipslyStudioTheme.moonMilk.opacity(0.86))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(7)
+        .background(color.opacity(0.07))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(color.opacity(0.14), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func shortPlatformPackagePreview(_ clip: ShortClipCandidate, brief: ShortCreatorQualityBrief) -> some View {
+        let drafts = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief, limit: 3)
+
+        return VStack(alignment: .leading, spacing: 5) {
+            shortEditorLabel("Platform pack preview")
+            ForEach(Array(drafts.enumerated()), id: \.offset) { _, draft in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(draft.platform)
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(draft.status.uppercased())
+                            .font(.caption2.monospacedDigit())
+                            .fontWeight(.black)
+                            .foregroundStyle(QuipslyStudioTheme.creek)
+                    }
+                    Text(draft.title)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .lineLimit(2)
+                    Text(draft.caption)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                    if !draft.hashtags.isEmpty {
+                        Text(draft.hashtags.map { "#\($0)" }.joined(separator: " "))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(QuipslyStudioTheme.honey.opacity(0.9))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(7)
+                .background(QuipslyStudioTheme.creek.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(QuipslyStudioTheme.creek.opacity(0.13), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+    }
+
+    private func shortPlatformPackPayload(for clip: ShortClipCandidate, brief: ShortCreatorQualityBrief) -> [String: Any] {
+        let drafts = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief)
+        let outputPath = selectedShortPlatformPackOutputURL(for: clip).path
+        let sequenceTitle = projectStore.activeSequence?.title ?? ""
+        let saveCommand = ShortCreatorQualityCommand.savePlatformPackJSON.agentRoute
+        let copyCommand = ShortCreatorQualityCommand.copyPlatformPackJSON.agentRoute
+        let draftCommand = ShortCreatorQualityCommand.draftPlatformPack.agentRoute
+        return [
+            "kind": "quipsly-short-platform-pack",
+            "version": 1,
+            "createdAt": ISO8601DateFormatter().string(from: Date()),
+            "source": [
+                "app": "Quipsly Studio",
+                "model": "metadata-first short platform package",
+                "sequenceTitle": sequenceTitle,
+                "recipeModel": "ordered-sequence-segments",
+                "timeBase": "sequence-seconds"
+            ] as [String: Any],
+            "shortId": clip.id.uuidString,
+            "shortTitle": clip.title,
+            "shortFormat": clip.format.rawValue,
+            "shortDestinations": clip.destinations,
+            "shortStatus": clip.status,
+            "reviewStatus": clip.reviewStatus,
+            "exportStatus": clip.exportStatus,
+            "suggestedOutputPath": outputPath,
+            "primaryPlatform": brief.primaryPlatform,
+            "primaryPlatformScore": brief.primaryPlatformFit?.score ?? 0,
+            "primaryPlatformNextAction": brief.primaryPlatformFit?.nextAction ?? "",
+            "qualityScore": brief.score,
+            "readinessLabel": brief.readinessLabel,
+            "recommendedReviewStatus": brief.recommendedReviewStatus,
+            "platformFits": brief.platformFits.map { fit in
+                [
+                    "platform": fit.platform,
+                    "score": fit.score,
+                    "label": fit.label,
+                    "rationale": fit.rationale,
+                    "nextAction": fit.nextAction
+                ] as [String: Any]
+            },
+            "destinationPresetDrafts": drafts.map { preset in
+                [
+                    "platform": preset.platform,
+                    "title": preset.title,
+                    "caption": preset.caption,
+                    "hashtags": preset.hashtags,
+                    "status": preset.status
+                ] as [String: Any]
+            },
+            "safeActions": [
+                [
+                    "id": "copy-platform-pack-json",
+                    "route": copyCommand,
+                    "effect": "Copy this packet payload without mutating the selected short."
+                ],
+                [
+                    "id": "save-platform-pack-json",
+                    "route": saveCommand,
+                    "effect": "Write this packet to the suggested local output path."
+                ],
+                [
+                    "id": "draft-platform-pack",
+                    "route": draftCommand,
+                    "effect": "Create or complete destination presets from this packet, preserving existing human-written fields."
+                ]
+            ],
+            "humanNextActions": [
+                "Watch the exported proof file before publishing.",
+                "Confirm the crop does not cover faces or important text.",
+                "Review title, caption, hashtags, and platform fit before scheduling.",
+                "Capture platform receipt URLs after posting or scheduling."
+            ],
+            "contract": "Metadata-only platform package. Review before publishing. Does not mutate source media, timeline decisions, exports, or receipts."
+        ]
+    }
+
+    private func selectedShortPlatformPackOutputURL(for clip: ShortClipCandidate) -> URL {
+        let safeTitle = sanitizedExportBasename(clip.title.isEmpty ? "selected-short" : clip.title).lowercased()
+        let sequenceSlug = projectStore.activeSequence.map { sanitizedExportBasename($0.title).lowercased() } ?? "no-sequence"
+        let baseURL = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Movies", isDirectory: true)
+            .appendingPathComponent("QuipslyStudio", isDirectory: true)
+            .appendingPathComponent("ShortsPlatformPacks", isDirectory: true)
+            .appendingPathComponent(sequenceSlug, isDirectory: true)
+        return baseURL.appendingPathComponent("\(safeTitle)-\(clip.id.uuidString.prefix(8))-platform-pack.json")
+    }
+
+    private func writeSelectedShortPlatformPackJSON(_ clip: ShortClipCandidate) -> String? {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let outputURL = selectedShortPlatformPackOutputURL(for: clip)
+        do {
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try jsonString(from: shortPlatformPackPayload(for: clip, brief: brief))
+                .data(using: .utf8)?
+                .write(to: outputURL, options: .atomic)
+            return outputURL.path
+        } catch {
+            lastMediaAction = "Platform pack save failed: \(error.localizedDescription)"
+            updateAgentState()
+            return nil
+        }
+    }
+
+    private func shortPromptBlock(_ title: String, _ text: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .tracking(0.5)
+                .foregroundStyle(color)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(7)
+        .background(color.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func fillSelectedShortHookFromQualityBrief(_ clip: ShortClipCandidate) {
+        let draft = ShortCreatorQuality.hookDraft(for: clip)
+        updateSelectedShortClip { short in
+            guard short.hookText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                short.notes = appendLine(
+                    "Quality assistant suggested hook, but existing hook was preserved: \(draft)",
+                    to: short.notes
+                )
+                return
+            }
+            short.hookText = draft
+            short.notes = appendLine(
+                "Quality assistant filled missing hook from selected-short brief.",
+                to: short.notes
+            )
+        }
+    }
+
+    private func draftSelectedShortPlatformCopyFromQualityBrief(_ clip: ShortClipCandidate) {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let draftPreset = ShortCreatorQuality.destinationPresetDraft(for: clip, platform: brief.primaryPlatform)
+        updateSelectedShortClip { short in
+            if short.captionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                short.captionDraft = draftPreset.caption
+            } else {
+                short.publishNotes = appendLine(
+                    "Alternate \(brief.primaryPlatform) copy draft: \(draftPreset.caption)",
+                    to: short.publishNotes
+                )
+            }
+
+            upsertShortDestinationPreset(draftPreset, into: &short)
+
+            short.publishNotes = appendLine(
+                "Quality assistant drafted \(brief.primaryPlatform) title, caption, hashtags, and destination preset as metadata. Review before publishing.",
+                to: short.publishNotes
+            )
+        }
+    }
+
+    private func draftSelectedShortPlatformPackFromQualityBrief(_ clip: ShortClipCandidate) {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let draftPresets = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief)
+        updateSelectedShortClip { short in
+            var draftedPlatforms: [String] = []
+            for draftPreset in draftPresets {
+                upsertShortDestinationPreset(draftPreset, into: &short)
+                if let fit = brief.platformFits.first(where: { $0.platform == draftPreset.platform }) {
+                    draftedPlatforms.append("\(fit.platform) \(fit.score)/100 \(fit.label)")
+                } else {
+                    draftedPlatforms.append(draftPreset.platform)
+                }
+            }
+            short.publishNotes = appendLine(
+                "Quality assistant drafted platform pack: \(draftedPlatforms.joined(separator: " | ")). Review before publishing.",
+                to: short.publishNotes
+            )
+        }
+    }
+
+    private func upsertShortDestinationPreset(_ draft: ShortDestinationPreset, into short: inout ShortClipCandidate) {
+        let normalizedDestination = draft.platform.lowercased()
+        if let index = short.destinationPresets.firstIndex(where: { preset in
+            normalizedDestination.contains(preset.platform.lowercased())
+                || preset.platform.lowercased().contains(normalizedDestination)
+        }) {
+            if short.destinationPresets[index].title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                short.destinationPresets[index].title = draft.title
+            }
+            if short.destinationPresets[index].caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                short.destinationPresets[index].caption = draft.caption
+            }
+            let existingTags = Set(short.destinationPresets[index].hashtags.map { $0.lowercased() })
+            let newTags = draft.hashtags.filter { !existingTags.contains($0.lowercased()) }
+            if !newTags.isEmpty {
+                short.destinationPresets[index].hashtags.append(contentsOf: newTags)
+            }
+            if short.destinationPresets[index].status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || short.destinationPresets[index].status == "draft" {
+                short.destinationPresets[index].status = "drafted"
+            }
+        } else {
+            short.destinationPresets.append(draft)
+        }
+    }
+
+    private func copySelectedShortAgentPolishPrompt(_ clip: ShortClipCandidate) {
+        let prompt = ShortCreatorQuality.agentPolishPrompt(
+            for: clip,
+            brief: shortCreatorQualityBrief(for: clip),
+            exportPath: lastExportedShortPath(for: clip) ?? "No exported proof yet"
+        )
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(prompt, forType: .string)
+        #endif
+        lastMediaAction = "Copied short polish prompt: \(clip.title)"
+        updateAgentState()
+    }
+
+    private func copySelectedShortPlatformPackJSON(_ clip: ShortClipCandidate) {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let payload = shortPlatformPackPayload(for: clip, brief: brief)
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(jsonString(from: payload), forType: .string)
+        #endif
+        lastMediaAction = "Copied platform pack JSON: \(clip.title)"
+        updateAgentState()
+    }
+
+    private func saveSelectedShortPlatformPackJSON(_ clip: ShortClipCandidate) {
+        guard let path = writeSelectedShortPlatformPackJSON(clip) else { return }
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+        #endif
+        lastMediaAction = "Saved platform pack JSON: \(path)"
+        updateAgentState()
+    }
+
+    private func markSelectedShortForQualityRefine(_ clip: ShortClipCandidate) {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let riskSummary = brief.risks.isEmpty
+            ? "Refine requested after creator quality review."
+            : "Refine requested after creator quality review: \(brief.risks.joined(separator: " | "))"
+        updateSelectedShortClip { short in
+            short.reviewStatus = "refine"
+            short.publishNotes = appendLine(riskSummary, to: short.publishNotes)
+        }
+    }
+
+    private func applySelectedShortQualityAction(_ rawAction: String?) {
+        guard let clip = selectedShortClipValue() else {
+            lastMediaAction = "Short quality action blocked: no selected short recipe"
+            updateAgentState()
+            return
+        }
+
+        guard let command = ShortCreatorQualityCommand.parse(rawAction) else {
+            lastMediaAction = "Unknown short quality action: \(rawAction ?? "")"
+            updateAgentState()
+            return
+        }
+
+        switch command {
+        case .fillHook:
+            fillSelectedShortHookFromQualityBrief(clip)
+        case .draftCopy:
+            draftSelectedShortPlatformCopyFromQualityBrief(clip)
+        case .draftPlatformPack:
+            draftSelectedShortPlatformPackFromQualityBrief(clip)
+        case .copyPlatformPackJSON:
+            copySelectedShortPlatformPackJSON(clip)
+        case .savePlatformPackJSON:
+            saveSelectedShortPlatformPackJSON(clip)
+        case .copyPolishPrompt:
+            copySelectedShortAgentPolishPrompt(clip)
+        case .needsRefine:
+            markSelectedShortForQualityRefine(clip)
+        }
+    }
+
     private func shortSegmentListView(_ clip: ShortClipCandidate) -> some View {
         let sequence = projectStore.activeSequence
         let segments = sequence.map { shortClipSegments(for: clip, in: $0) } ?? []
@@ -10370,6 +10982,8 @@ struct WorkspaceView: View {
             }
 
             selectedShortRecipeTruthCard(clip)
+
+            selectedShortCreatorQualityCard(clip)
 
             shortReviewDecisionButtons(clip)
 
@@ -31507,6 +32121,60 @@ struct WorkspaceView: View {
         ]
     }
 
+    private func shortCreatorQualityPayload(for clip: ShortClipCandidate) -> [String: Any] {
+        let brief = shortCreatorQualityBrief(for: clip)
+        return [
+            "summary": brief.summary,
+            "firstDestination": brief.firstDestination,
+            "primaryPlatform": brief.primaryPlatform,
+            "primaryPlatformScore": brief.primaryPlatformFit?.score ?? 0,
+            "primaryPlatformNextAction": brief.primaryPlatformFit?.nextAction ?? "",
+            "primaryPlatformTitleDraft": ShortCreatorQuality.platformTitleDraft(for: clip, firstDestination: brief.primaryPlatform),
+            "primaryPlatformCaptionDraft": ShortCreatorQuality.platformCaptionDraft(for: clip, firstDestination: brief.primaryPlatform),
+            "primaryPlatformHashtags": ShortCreatorQuality.platformHashtags(for: clip, firstDestination: brief.primaryPlatform),
+            "platformPresetDrafts": ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief).map { preset in
+                [
+                    "platform": preset.platform,
+                    "title": preset.title,
+                    "caption": preset.caption,
+                    "hashtags": preset.hashtags,
+                    "status": preset.status
+                ] as [String: Any]
+            },
+            "platformPackPayload": shortPlatformPackPayload(for: clip, brief: brief),
+            "platformPackSuggestedOutputPath": selectedShortPlatformPackOutputURL(for: clip).path,
+            "durationBand": brief.durationBand,
+            "exportProofLabel": brief.exportProofLabel,
+            "exportProofReady": brief.exportProofReady,
+            "score": brief.score,
+            "readinessLabel": brief.readinessLabel,
+            "recommendedReviewStatus": brief.recommendedReviewStatus,
+            "platformFits": brief.platformFits.map { fit in
+                [
+                    "platform": fit.platform,
+                    "score": fit.score,
+                    "label": fit.label,
+                    "rationale": fit.rationale,
+                    "nextAction": fit.nextAction
+                ] as [String: Any]
+            },
+            "isReadyForPackaging": brief.isReadyForPackaging,
+            "strengths": brief.strengths,
+            "risks": brief.risks,
+            "actions": brief.actions.map { action in
+                [
+                    "title": action.title,
+                    "detail": action.detail
+                ] as [String: Any]
+            },
+            "humanPrompt": brief.humanPrompt,
+            "agentPrompt": brief.agentPrompt,
+            "safeActionCommands": ShortCreatorQualityCommand.safeActionCommands,
+            "safeActions": ShortCreatorQualityCommand.allCases.map { $0.payload },
+            "contract": "Quality helpers only update selected-short metadata or copy prompts. They do not publish, move timeline decisions, or mutate source media."
+        ]
+    }
+
     private func selectedShortClipPayload(for sequence: MediaSequence) -> [String: Any] {
         guard let selectedShortClipId,
               let clip = sequence.shortClipQueue.first(where: { $0.id == selectedShortClipId }) else {
@@ -31566,6 +32234,7 @@ struct WorkspaceView: View {
             "exportStatus": clip.exportStatus,
             "lastExportedPath": exportPath,
             "lastExportExists": exportExists,
+            "creatorQuality": shortCreatorQualityPayload(for: clip),
             "expectedExportPath": expectedExportTarget.path,
             "expectedExportDirectory": expectedExportTarget.directory,
             "expectedExportBasename": expectedExportTarget.basename,
@@ -31702,6 +32371,7 @@ struct WorkspaceView: View {
             },
             "nextSafeActions": [
                 "GET /shorts_preview_selected?play=true|false",
+                "GET /shorts_quality_action?action=fill-hook|draft-copy|copy-polish-prompt|needs-refine",
                 "GET /shorts_range_selected?boundary=start|end&time=<sequence-seconds>|delta=<seconds>",
                 "GET /shorts_queue_append_selected_segment",
                 "GET /shorts_overlay_burn_in?decision=request_review|approve_top_canopy|hold&note=<optional-review-note>",
@@ -35313,6 +35983,8 @@ struct WorkspaceView: View {
                 field: request.values["field"],
                 value: request.values["value"]
             )
+        case "shorts_quality_action":
+            applySelectedShortQualityAction(request.values["action"])
         case "shorts_overlay_burn_in":
             applySelectedShortOverlayBurnInDecision(
                 decision: request.values["decision"],

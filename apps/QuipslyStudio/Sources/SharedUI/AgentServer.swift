@@ -1083,6 +1083,24 @@ public class AgentServer: ObservableObject {
                         "field": field
                     ])
                 }
+            case "/shorts_quality_action":
+                let action = request.query["action"] ?? ""
+                guard !action.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_short_quality_action"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("shorts_quality_action", values: [
+                        "action": action
+                    ])
+                    self?.sendJSON(connection, object: [
+                        "status": "shorts_quality_action_commanded",
+                        "action": action,
+                        "truth": "Runs a selected-short quality helper against metadata only. It does not publish, move timeline decisions, or mutate source media."
+                    ])
+                }
             case "/shorts_overlay_burn_in":
                 let decision = request.query["decision"] ?? "hold"
                 let note = request.query["note"] ?? ""
@@ -2785,6 +2803,7 @@ public class AgentServer: ObservableObject {
                 "GET /shorts_review_next?status=<optional-status>",
                 "GET /shorts_queue_remove?id=<short-clip-id>",
                 "GET /shorts_queue_update_selected?field=title|hook|caption|overlay|notes|review_status|export_status&value=<text>",
+                "GET /shorts_quality_action?action=fill-hook|draft-copy|draft-platform-pack|copy-platform-pack-json|save-platform-pack-json|copy-polish-prompt|needs-refine",
                 "GET /shorts_overlay_burn_in?decision=approve|hold&note=<optional-review-note>",
                 "GET /shorts_listen_through?note=<optional-review-note>",
                 "GET /shorts_visual_review?sheet=<absolute-contact-sheet-path>&source=<absolute-derivative-path>&note=<optional-review-note>",
