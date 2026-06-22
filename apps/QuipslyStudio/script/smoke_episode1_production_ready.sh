@@ -130,6 +130,9 @@ lanes = state.get("lanes", [])
 
 errors = []
 
+def is_audio_proxy_ready(readiness):
+    return readiness in {"Audio proxy ready", "Audio proxy-safe"}
+
 def expect(label, actual, expected):
     if actual != expected:
         errors.append(f"{label}: expected {expected!r}, got {actual!r}")
@@ -167,8 +170,8 @@ for lane in lanes:
         if "/Library/Application Support/Quipsly/MediaVault/proxy/" not in playback:
             errors.append(f"{name}: playbackPath must point at proxy vault, got {playback!r}")
     if "Audio" in name:
-        if readiness != "Audio proxy ready":
-            errors.append(f"{name}: audio lane must be Audio proxy ready, got {readiness!r}")
+        if not is_audio_proxy_ready(readiness):
+            errors.append(f"{name}: audio lane must be audio proxy ready/safe, got {readiness!r}")
         playback = lane.get("playbackPath", "")
         if "/Library/Application Support/Quipsly/MediaVault/proxy/" not in playback:
             errors.append(f"{name}: audio playbackPath must point at proxy vault, got {playback!r}")

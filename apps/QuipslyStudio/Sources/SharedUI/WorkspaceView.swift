@@ -8215,7 +8215,7 @@ struct WorkspaceView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(!canQueueSelected)
-                .help(canQueueSelected ? "Create a 9:16 recipe from the selected SHOW decision." : "Select a SHOW decision before creating a short recipe.")
+                .help(canQueueSelected ? "Create a 9:16 recipe from the selected visible decision." : "Select a visible decision before creating a short recipe.")
 
                 Button {
                     exportQueuedShortClipsForAgent(directoryPath: nil, basename: nil)
@@ -8229,7 +8229,7 @@ struct WorkspaceView: View {
             }
 
             if queue.isEmpty {
-                Text("No short recipes yet. Select a strong SHOW moment, then add it as a 9:16 recipe. This stores metadata only; it does not cut media.")
+                Text("No short recipes yet. Select a strong visible moment, then add it as a 9:16 recipe. This stores metadata only; it does not cut media.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
@@ -8280,10 +8280,10 @@ struct WorkspaceView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("Cuts recipes", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
+                    Label("Short recipes", systemImage: "rectangle.portrait.on.rectangle.portrait.angled")
                         .font(.headline)
                         .fontWeight(.black)
-                    Text("Turn the episode spine into 9:16 pull-outs. One short can be one strong moment or several ordered SHOW decisions collapsed together.")
+                    Text("Turn the episode spine into 9:16 pull-outs. One short can be one strong moment or several ordered visible spans collapsed together.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -8300,13 +8300,13 @@ struct WorkspaceView: View {
                 Button {
                     addSelectedDecisionToShortQueue(title: nil)
                 } label: {
-                    Label("Add recipe from selected SHOW", systemImage: "plus.circle.fill")
+                    Label("Add recipe from selected visible span", systemImage: "plus.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(!canQueueSelected)
-                .help(canQueueSelected ? "Create a short recipe from the selected SHOW decision." : "Select a SHOW decision in the timeline first.")
+                .help(canQueueSelected ? "Create a short recipe from the selected visible decision." : "Select a visible decision in the timeline first.")
 
                 Button {
                     exportQueuedShortClipsForAgent(directoryPath: nil, basename: nil)
@@ -8377,10 +8377,10 @@ struct WorkspaceView: View {
                         Image(systemName: "sparkles.rectangle.stack")
                             .font(.title2)
                             .foregroundStyle(QuipslyStudioTheme.moss)
-                        Text("Start by selecting a strong SHOW moment in the timeline, then add it as a recipe.")
+                        Text("Start by selecting a strong visible moment in the timeline, then add it as a recipe.")
                             .font(.caption)
                             .fontWeight(.semibold)
-                        Text("A short can be one continuous segment or a multi-segment recipe. Add more SHOW segments when the final social clip should jump between moments.")
+                        Text("A short can be one continuous segment or a multi-segment recipe. Add more visible segments when the final social clip should jump between moments.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -8482,9 +8482,9 @@ struct WorkspaceView: View {
                     .foregroundStyle(QuipslyStudioTheme.honey)
             }
 
-            shortRecipeStep("1", "Select a honey SHOW decision on the episode spine.")
+            shortRecipeStep("1", "Select a gold visible decision on the episode spine.")
             shortRecipeStep("2", "Create a short recipe from that moment.")
-            shortRecipeStep("3", "Append more SHOW segments if the short should jump between moments.")
+            shortRecipeStep("3", "Append more visible segments if the short should jump between moments.")
             shortRecipeStep("4", "Tune caption, overlay, crop, and export for each platform.")
         }
         .padding(10)
@@ -8522,7 +8522,7 @@ struct WorkspaceView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 4) {
-                shortMentalModelRow(color: QuipslyStudioTheme.honey, title: "Honey on timeline", detail: "SHOW decisions the episode can display.")
+                shortMentalModelRow(color: QuipslyStudioTheme.honey, title: "Gold on timeline", detail: "Visible decisions the episode can display.")
                 shortMentalModelRow(color: QuipslyStudioTheme.moss, title: "Moss rail", detail: "Selected short pull-out across one or many moments.")
                 shortMentalModelRow(color: QuipslyStudioTheme.clay, title: "Clay gaps", detail: "Skipped in Play Edit unless a future recipe explicitly changes that.")
             }
@@ -10107,10 +10107,10 @@ struct WorkspaceView: View {
         let count = max(1, clip.segments.count)
         let total = projectStore.activeSequence.map { shortClipExportRanges(for: clip, in: $0).reduce(0) { $0 + $1.duration } } ?? clip.duration
         if total <= 0 {
-            return "Needs a SHOW segment. This recipe currently sits inside skipped Play Edit gaps, so it has no renderable social output yet."
+            return "Needs a visible segment. This recipe currently sits inside skipped Play Edit gaps, so it has no renderable social output yet."
         }
         if count == 1 {
-            return "One continuous recipe segment. Add more SHOW segments when a short needs multiple moments collapsed together."
+            return "One continuous recipe segment. Add more visible segments when a short needs multiple moments collapsed together."
         }
         return String(format: "%d ordered recipe segments collapse into one 9:16 derivative short. Export duration after skipped-gap collapse: %.2fs.", count, total)
     }
@@ -10240,7 +10240,7 @@ struct WorkspaceView: View {
                 .stroke(QuipslyStudioTheme.moss.opacity(0.22), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .help("Short recipes are metadata over the long sequence timeline. Use Add SHOW decision for multi-segment social edits.")
+        .help("Short recipes are metadata over the long sequence timeline. Use Add visible decision for multi-segment social edits.")
     }
 
     private func selectedShortCreatorQualityCard(_ clip: ShortClipCandidate) -> some View {

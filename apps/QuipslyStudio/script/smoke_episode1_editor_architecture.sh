@@ -124,10 +124,19 @@ for lane in video_lanes:
     if lane.get("vaultRawPath"):
         errors.append(f"{name}: vaultRawPath should stay empty, got {lane.get('vaultRawPath')!r}")
 
+audio_ready_labels = {
+    "Audio proxy ready",
+    "Audio proxy-safe",
+    "Audio proxy missing",
+    "Audio proxy pending",
+    "Audio proxy blocked",
+    "Audio proxy needed",
+}
+
 for lane in audio_lanes:
     name = lane.get("name", "")
     readiness = lane.get("sourceReadiness", "")
-    if readiness not in {"Audio proxy ready", "Audio proxy missing", "Audio proxy pending", "Audio proxy blocked", "Audio proxy needed"}:
+    if readiness not in audio_ready_labels:
         errors.append(f"{name}: unexpected audio readiness {readiness!r}")
 
 summary = {

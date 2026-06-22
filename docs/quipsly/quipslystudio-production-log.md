@@ -322,3 +322,29 @@ Remaining hardening candidates:
 - Convert selected-short export to the same proxy bridge or add an explicit fallback when AVFoundation fails.
 - Add cancel/retry controls around bridge exports.
 - Add a dedicated manifest/recovery viewer in the UI rather than showing only compact path rows.
+
+### 2026-06-22 - Episode 1 editor loop proof and agent accessibility pass
+
+Goal: make Episode 1 editing loop publication-real and human/agent usable.
+
+Changed:
+- Added `/editor_loop_proof` plus `script/agentctl.sh editor-loop-proof` as compact read-only agent proof.
+- Updated Episode 1 architecture/production smoke contracts to accept current `Audio proxy-safe` readiness.
+- Tightened main timeline/shorts language from hidden SHOW jargon toward visible user terms: gold visible spans, red clay skipped spans, green short recipe rails.
+- Kept SHOW/SKIP as model terms where appropriate.
+
+Validated:
+- `./script/build_and_run.sh --verify` passed.
+- `script/smoke_episode1_editor_architecture.sh --no-build` passed.
+- `script/smoke_episode1_production_ready.sh --no-build` passed.
+- `script/smoke_episode1_transports.sh` passed: Play Edit 33 ranges, Play Through 1 range, restored Play Edit 33 ranges.
+- `script/smoke_episode1_scrub_monitor_sync.sh` passed: 3 source players, max source delta 0.001-0.002s.
+- `script/smoke_episode1_program_scroll.sh` passed: Program Output scroll moved the shared playhead and kept source delta ~0.000708s.
+- `script/smoke_episode1_timeline_zoom.sh` passed: fit/cut/frame/set/in/out kept monitor sync.
+- `script/smoke_episode1_selected_decision_precision.sh` passed: nudge/trim/restore kept counts stable.
+- `script/smoke_episode1_short_clip_queue.sh` passed.
+
+Notes:
+- Compact proof endpoint is intentionally read-only and should become the default agent preflight.
+- Endpoint currently reports source monitor counts, but detailed source-player deltas are still proven by smoke scripts; future pass can persist/expose last sync proof in compact state.
+- Visual design is clearer, not final. Next UX pass should further reduce visible SHOW/SKIP jargon and improve left/sidebar density.

@@ -120,6 +120,10 @@ public class AgentServer: ObservableObject {
                 Task { @MainActor in
                     self?.sendJSON(connection, object: self?.codexEditorHandoffPayload() ?? ["status": "unavailable"])
                 }
+            case "/editor_loop_proof":
+                Task { @MainActor in
+                    self?.sendJSON(connection, object: self?.editorLoopProofPayload() ?? ["status": "unavailable"])
+                }
             case "/demo":
                 Task { @MainActor in
                     self?.enqueueCommand("load_demo")
@@ -2755,6 +2759,7 @@ public class AgentServer: ObservableObject {
                 "GET /agent_manual",
                 "GET /agent_capabilities",
                 "GET /codex_editor_handoff",
+                "GET /editor_loop_proof",
                 "GET /demo",
                 "GET /premiere_packet?path=<absolute-packet-json-path>",
                 "GET /import?path=<absolute-file-path>",
@@ -3021,6 +3026,7 @@ public class AgentServer: ObservableObject {
                 "forbiddenShortcut": "Do not train agents to click by screen coordinates when semantic editor truth exists."
             ],
             "proofEndpoints": [
+                "GET /editor_loop_proof",
                 "GET /editor_snapshot",
                 "GET /state",
                 "GET /agent_capabilities",
@@ -3112,6 +3118,94 @@ public class AgentServer: ObservableObject {
         ]
     }
 
+    private func editorLoopProofPayload() -> [String: Any] {
+        guard let status = lastStatus else {
+            return [
+                "status": "no_state_yet",
+                "model": "quipslystudio-editor-loop-proof",
+                "hint": "Open QuipslyStudio, load Episode 1, then call /editor_loop_proof again.",
+                "truth": "This compact proof endpoint is read-only. It exists so humans and agents can verify the editing loop without scraping pixels or parsing the full /state payload."
+            ]
+        }
+
+        let selectedDecision = status["selectedDecision"] as? [String: Any] ?? [:]
+        let selectedShort = status["selectedShortClip"] as? [String: Any] ?? [:]
+        let shortQueue = status["shortClipQueue"] as? [String: Any] ?? [:]
+        let sourceProof = status["sourceMonitorSyncProof"] as? [String: Any] ?? [:]
+        let programTruth = status["programOutputTruth"] as? [String: Any] ?? [:]
+        let workingSet = status["workingSetTruth"] as? [String: Any] ?? [:]
+
+        let sharedPlayhead: [String: Any] = [
+            "sequenceTime": status["playhead"] ?? status["playheadSeconds"] ?? 0,
+            "playbackMode": status["playbackMode"] ?? "",
+            "timelinePixelsPerSecond": status["timelinePixelsPerSecond"] ?? "",
+            "timelineFitToWindow": status["timelineFitToWindow"] ?? "",
+            "lastMediaAction": status["lastMediaAction"] ?? ""
+        ]
+
+        let syncProof: [String: Any] = [
+            "sourceMonitorVideoCount": status["sourceMonitorVideoCount"] ?? sourceProof["sourceMonitorVideoCount"] ?? 0,
+            "sourcePlayerCount": sourceProof["sourcePlayerCount"] ?? 0,
+            "maxSourcePlayerDelta": sourceProof["maxSourcePlayerDelta"] ?? "",
+            "programOutput": status["programTitle"] ?? programTruth["title"] ?? "",
+            "programMode": status["programMode"] ?? status["playbackMode"] ?? ""
+        ]
+
+        let laneTruth: [String: Any] = [
+            "laneCount": status["laneCount"] ?? 0,
+            "videoProxyReadyCount": status["videoProxyReadyCount"] ?? 0,
+            "videoBlockedCount": status["videoBlockedCount"] ?? 0,
+            "audioReadyCount": status["audioReadyCount"] ?? 0,
+            "workingSetStatus": workingSet["status"] ?? "",
+            "workingSetSummary": workingSet["summary"] ?? ""
+        ]
+
+        let decisionTruth: [String: Any] = [
+            "showDecisionCount": status["showDecisionCount"] ?? 0,
+            "skipDecisionCount": status["skipDecisionCount"] ?? 0,
+            "validRangeCount": status["validRangeCount"] ?? 0,
+            "selectedLaneName": selectedDecision["laneName"] ?? selectedDecision["selectedLaneName"] ?? "",
+            "selectedTagType": selectedDecision["tagType"] ?? selectedDecision["selectedTagType"] ?? "",
+            "selectedTagStart": selectedDecision["start"] ?? selectedDecision["selectedTagStart"] ?? "",
+            "selectedTagDuration": selectedDecision["duration"] ?? selectedDecision["selectedTagDuration"] ?? ""
+        ]
+
+        let shortTruth: [String: Any] = [
+            "shortRecipeCount": status["shortClipQueueCount"] ?? shortQueue["count"] ?? 0,
+            "selectedShortTitle": selectedShort["title"] ?? "",
+            "selectedShortId": selectedShort["id"] ?? "",
+            "truth": shortQueue["truth"] ?? "Shorts are output recipes over sequence time; they do not chop source media."
+        ]
+
+        let agentCanUse: [String: Any] = [
+            "observe": "script/agentctl.sh editor-loop-proof",
+            "scrub": "script/agentctl.sh scrub <seconds>",
+            "programScroll": "script/agentctl.sh program-scroll <delta-seconds>",
+            "zoom": "script/agentctl.sh timeline-zoom precision|frame|fit|set <px-per-sec>",
+            "selectDecision": "script/agentctl.sh select-decision at_playhead video",
+            "sourceWindow": "script/agentctl.sh source-window \"Charlie Camera\" show 10",
+            "switchSelected": "script/agentctl.sh switch-selected charlie|homer|both|skip",
+            "shorts": "script/agentctl.sh shorts-select index 1 && script/agentctl.sh shorts-range-selected start delta -0.1"
+        ]
+
+        let payload: [String: Any] = [
+            "status": "ok",
+            "model": "quipslystudio-editor-loop-proof",
+            "version": "2026-06-22.editor-loop-proof.v1",
+            "generatedAt": ISO8601DateFormatter().string(from: Date()),
+            "activeSessionName": status["activeSessionName"] ?? "",
+            "coreInvariant": "Whole synced sources stay intact. Gold/red edit decisions and green short recipes are metadata over one shared sequence-time playhead.",
+            "sharedPlayhead": sharedPlayhead,
+            "syncProof": syncProof,
+            "laneTruth": laneTruth,
+            "decisionTruth": decisionTruth,
+            "shortTruth": shortTruth,
+            "agentCanUse": agentCanUse,
+            "sourcePolicy": "Read-only proof. It does not touch originals, proxies, timeline decisions, exports, or publication receipts."
+        ]
+        return payload
+    }
+
     private func agentCapabilitiesPayload() -> [String: Any] {
         guard let status = lastStatus else {
             return [
@@ -3127,6 +3221,7 @@ public class AgentServer: ObservableObject {
             "agentAccessibilityModel": status["agentAccessibilityModel"] ?? "semantic_commands_with_state_echo",
             "agentInterfaceModel": status["agentInterfaceModel"] ?? "observe_state_choose_semantic_action_execute_reobserve",
             "codexEditorHandoffUrl": "http://127.0.0.1:\(port)/codex_editor_handoff",
+            "editorLoopProofUrl": "http://127.0.0.1:\(port)/editor_loop_proof",
             "capabilities": status["agentCapabilityParity"] ?? [],
             "currentSafeActions": status["agentCurrentSafeActions"] ?? [],
             "currentContext": status["agentCurrentContext"] ?? [:],

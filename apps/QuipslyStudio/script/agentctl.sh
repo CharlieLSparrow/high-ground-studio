@@ -44,6 +44,7 @@ Usage:
   script/agentctl.sh agent-manual
   script/agentctl.sh agent-capabilities
   script/agentctl.sh codex-handoff
+  script/agentctl.sh editor-loop-proof
   script/agentctl.sh codex-observe
   script/agentctl.sh codex-observe-save [output-folder]
   script/agentctl.sh codex-act-save [--output output-folder] <agentctl-command> [args...]
@@ -7243,6 +7244,9 @@ case "$command" in
     ;;
   codex-handoff)
     get "/codex_editor_handoff"
+    ;;
+  editor-loop-proof)
+    get "/editor_loop_proof"
     ;;
   codex-observe)
     codex_observe

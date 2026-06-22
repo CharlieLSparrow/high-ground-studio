@@ -607,7 +607,7 @@ struct TimelineEditorView: View {
                     .fontWeight(.black)
                     .tracking(1.9)
                     .foregroundStyle(QuipslyStudioTheme.honey.opacity(0.88))
-                Text("Whole synced source lanes stay intact. Honey is visible in Play Edit, clay becomes quiet space, and moss rails mark selected short recipes.")
+                Text("Whole synced source lanes stay intact. Gold spans play, red clay spans skip, and green rails mark selected short recipes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -632,13 +632,13 @@ struct TimelineEditorView: View {
                 )
                 legendPill(
                     title: "Visible",
-                    detail: "honey = Program shows",
+                    detail: "gold = Play Edit shows",
                     color: QuipslyStudioTheme.honey,
                     systemImage: "eye.fill"
                 )
                 legendPill(
                     title: "Quiet gaps",
-                    detail: "clay = Play Edit skips",
+                    detail: "red clay = Play Edit skips",
                     color: QuipslyStudioTheme.clay,
                     systemImage: "forward.end.fill"
                 )
@@ -650,7 +650,7 @@ struct TimelineEditorView: View {
                 )
                 legendPill(
                     title: "Short recipe",
-                    detail: "moss = shorts recipe",
+                    detail: "green = social pull-out",
                     color: QuipslyStudioTheme.moss,
                     systemImage: "rectangle.portrait.on.rectangle.portrait.angled"
                 )
@@ -1829,7 +1829,7 @@ struct TimelineLaneView: View {
     private func sourceLaneTruthOverlay(sourceVideo sv: SourceVideo) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Label("Whole source lane", systemImage: laneKindIcon)
+                Label("Whole synced source", systemImage: laneKindIcon)
                     .font(.caption2)
                     .fontWeight(.bold)
                     .foregroundStyle(QuipslyStudioTheme.creek.opacity(0.92))
@@ -1849,14 +1849,14 @@ struct TimelineLaneView: View {
                     count: showDecisionCount,
                     systemImage: "eye.fill",
                     color: QuipslyStudioTheme.honey,
-                    help: "Honey count: visible Play Edit decisions on this whole source lane."
+                    help: "Gold count: visible Play Edit decisions on this whole source lane."
                 )
 
                 laneDecisionGlyphCount(
                     count: skipDecisionCount,
                     systemImage: "forward.end.fill",
                     color: QuipslyStudioTheme.clay,
-                    help: "Clay count: quiet gap decisions on this whole source lane."
+                    help: "Red clay count: skipped-gap decisions on this whole source lane."
                 )
 
                 Spacer(minLength: 0)
@@ -1900,7 +1900,7 @@ struct TimelineLaneView: View {
     }
 
     private var denseDecisionBadge: some View {
-        Text("map view · \(showDecisionCount) honey · \(skipDecisionCount) clay")
+        Text("map view · \(showDecisionCount) visible · \(skipDecisionCount) skipped")
             .font(.caption2)
             .fontWeight(.bold)
             .foregroundStyle(.primary)
@@ -1949,7 +1949,7 @@ struct TimelineLaneView: View {
             RoundedRectangle(cornerRadius: 7)
                 .stroke(QuipslyStudioTheme.sage.opacity(0.16), lineWidth: 1)
         )
-        .help("Creek is the whole synced source. Honey appears in Play Edit. Clay marks quiet gaps. None of this cuts the source file.")
+        .help("Blue-green is the whole synced source. Gold appears in Play Edit. Red clay marks skipped gaps. None of this cuts the source file.")
     }
 
     @ViewBuilder
@@ -2214,13 +2214,13 @@ struct TimelineSidebarLaneView: View {
                     "\(lane.tags.filter { $0.type == .active }.count)",
                     systemImage: "eye.fill",
                     color: QuipslyStudioTheme.honey,
-                    help: "Honey count: visible Play Edit decisions."
+                    help: "Gold count: visible Play Edit decisions."
                 )
                 laneCountChip(
                     "\(lane.tags.filter { $0.type == .cut }.count)",
                     systemImage: "forward.end.fill",
                     color: QuipslyStudioTheme.clay,
-                    help: "Clay count: quiet gap decisions."
+                    help: "Red clay count: skipped-gap decisions."
                 )
                 if let tracks = lane.metadata?.trackIds, !tracks.isEmpty {
                     Text(tracks.joined(separator: ","))
