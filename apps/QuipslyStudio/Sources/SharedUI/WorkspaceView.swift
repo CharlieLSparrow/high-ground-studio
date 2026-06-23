@@ -698,6 +698,28 @@ private struct AgentProofReceipt: Identifiable {
     }
 }
 
+@MainActor
+private final class WorkspaceAgentCommandBridge: ObservableObject {
+    static let shared = WorkspaceAgentCommandBridge()
+
+    @Published private(set) var serial: Int = 0
+
+    private var pendingRequests: [AgentCommandRequest] = []
+
+    private init() {}
+
+    func enqueue(_ request: AgentCommandRequest) {
+        pendingRequests.append(request)
+        serial += 1
+    }
+
+    func drain() -> [AgentCommandRequest] {
+        let requests = pendingRequests
+        pendingRequests = []
+        return requests
+    }
+}
+
 struct WorkspaceView: View {
     @ObservedObject var playbackEngine: PlaybackEngine
     @ObservedObject var projectStore: ProjectStore
@@ -749,6 +771,8 @@ struct WorkspaceView: View {
     @State private var selectedTagId: UUID? = nil
     @State private var lastAgentPlayheadUpdate: Double = -1
     @State private var lastDrainedAgentCommandSerial: Int = 0
+    @State private var agentCommandConsumerId = UUID()
+    @StateObject private var agentCommandBridge = WorkspaceAgentCommandBridge.shared
     @State private var lastSessionPath: String? = nil
     @State private var lastMediaAction: String? = nil
     @AppStorage("quipsly.nativeEditor.activeSessionName") private var activeSessionName: String = "autosave"
@@ -1588,12 +1612,31 @@ struct WorkspaceView: View {
         .onChange(of: agentServer.commandSerial) { _ in
             handleAgentCommandDispatch(fallbackToLegacy: false)
         }
+        .onReceive(agentServer.$commandSerial) { _ in
+            handleAgentCommandDispatch(fallbackToLegacy: false)
+        }
+        .onReceive(agentCommandBridge.$serial) { _ in
+            handleAgentCommandDispatch(fallbackToLegacy: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .quipslyAgentCommandQueued)) { _ in
+            handleAgentCommandDispatch(fallbackToLegacy: false)
+        }
         .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
             handleAgentCommandDispatch(fallbackToLegacy: false)
             refreshProxyJobSnapshotIfNeeded()
         }
+        .task {
+            while !Task.isCancelled {
+                handleAgentCommandDispatch(fallbackToLegacy: false)
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
         #if os(macOS)
         .onAppear {
+            agentServer.claimCommandConsumer(agentCommandConsumerId)
+            agentServer.registerCommandExecutor { request in
+                WorkspaceAgentCommandBridge.shared.enqueue(request)
+            }
             installKeyboardMonitorIfNeeded()
             installProgramScrollMonitorIfNeeded()
             refreshProxyJobSnapshotIfNeeded(force: true)
@@ -11493,7 +11536,25 @@ struct WorkspaceView: View {
                 duration: item.duration,
                 index: index
             )
-        }
+            }
+    }
+
+    private struct ShortVerticalFramingTarget: Identifiable {
+        let id: UUID
+        let segmentId: UUID
+        let sourceTagId: UUID?
+        let lane: VideoLane
+        let segmentTitle: String
+        let segmentIndex: Int
+        let sequenceStart: Double
+        let sequenceEnd: Double
+        let duration: Double
+        let baseline: ProgramCropAdjustment
+        let atStart: ProgramCropAdjustment
+        let keyframeCount: Int
+        let readinessLabel: String
+        let readinessDetail: String
+        let isReady: Bool
     }
 
     private func selectedShortEditorPanel(_ clip: ShortClipCandidate) -> some View {
@@ -11518,6 +11579,8 @@ struct WorkspaceView: View {
             selectedShortCreatorQualityCard(clip)
 
             selectedShortPublicationPassportCard(clip)
+
+            selectedShortVerticalFramingCard(clip)
 
             shortReviewDecisionButtons(clip)
 
@@ -11699,6 +11762,280 @@ struct WorkspaceView: View {
                 .stroke(QuipslyStudioTheme.honey.opacity(0.22), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func selectedShortVerticalFramingCard(_ clip: ShortClipCandidate) -> some View {
+        let sequence = projectStore.activeSequence
+        let targets = sequence.map { shortVerticalFramingTargets(for: clip, in: $0) } ?? []
+        let visibleTargets = Array(targets.prefix(4))
+        let hasMoreTargets = targets.count > visibleTargets.count
+
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "crop")
+                    .font(.caption)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Vertical framing")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text("Fix the 9:16 view for the whole source lane this short uses. The short stays a recipe; originals stay untouched.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text(targets.isEmpty ? "NEEDS SOURCE" : "\(targets.count) TARGET\(targets.count == 1 ? "" : "S")")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .tracking(0.6)
+                    .foregroundStyle(targets.isEmpty ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background((targets.isEmpty ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss).opacity(0.13))
+                    .clipShape(Capsule())
+            }
+
+            if targets.isEmpty {
+                Text("This recipe does not yet point to a playable SHOW source lane. Cue the short, select the source decision, then add/append the SHOW decision so framing has a real target.")
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    Button {
+                        previewSelectedShortClip(play: false)
+                    } label: {
+                        Label("Cue short", systemImage: "scope")
+                    }
+                    Button {
+                        previewSelectedShortClip(play: true)
+                    } label: {
+                        Label("Preview", systemImage: "play.fill")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+            } else {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(visibleTargets) { target in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(target.segmentTitle.isEmpty ? "Segment \(target.segmentIndex + 1)" : target.segmentTitle)
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                Text(String(format: "%.2fs -> %.2fs", target.sequenceStart, target.sequenceEnd))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Text(target.lane.name)
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(target.isReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                                .lineLimit(2)
+
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 5) {
+                                shortFramingFact("Base", String(format: "X %.2f Y %.2f", target.baseline.panX, target.baseline.panY))
+                                shortFramingFact("Zoom", String(format: "%.2fx", target.baseline.zoom))
+                                shortFramingFact("Keys", "\(target.keyframeCount)")
+                            }
+
+                            HStack(spacing: 5) {
+                                Button("Cue") {
+                                    cueShortVerticalFramingTarget(target, play: false)
+                                }
+                                .help("Move the shared playhead to this segment and select its source lane.")
+
+                                Button("Solo base") {
+                                    applyShortVerticalFramingPreset(target, preset: "vertical-solo", mode: "baseline")
+                                }
+                                .help("Set the lane's 9:16 baseline framing to a safe solo speaker crop.")
+
+                                Button("Upper third") {
+                                    applyShortVerticalFramingPreset(target, preset: "upper-third", mode: "baseline")
+                                }
+                                .help("Set the lane's 9:16 baseline framing with head/eyes higher in frame.")
+
+                                Button("Keyframe in") {
+                                    applyShortVerticalFramingPreset(target, preset: "vertical-punch", mode: "keyframe")
+                                }
+                                .help("Add a 9:16 punch-in keyframe at this short segment's in point.")
+                            }
+                            .buttonStyle(.bordered)
+                            .font(.caption)
+                        }
+                        .padding(7)
+                        .background(target.isReady ? QuipslyStudioTheme.moss.opacity(0.08) : QuipslyStudioTheme.honey.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke((target.isReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey).opacity(0.18), lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    if hasMoreTargets {
+                        Text("+ \(targets.count - visibleTargets.count) more framing target(s). Use the segment list to cue them, or let the agent inspect the full selectedShortProof.verticalFraming payload.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(
+            LinearGradient(
+                colors: [
+                    QuipslyStudioTheme.moss.opacity(0.10),
+                    QuipslyStudioTheme.cedar.opacity(0.08),
+                    QuipslyStudioTheme.night.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(QuipslyStudioTheme.moss.opacity(0.20), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func shortFramingFact(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .tracking(0.5)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption2.monospacedDigit())
+                .fontWeight(.semibold)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(QuipslyStudioTheme.panelLift.opacity(0.18))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    private func shortVerticalFramingTargets(
+        for clip: ShortClipCandidate,
+        in sequence: MediaSequence
+    ) -> [ShortVerticalFramingTarget] {
+        shortClipSegments(for: clip, in: sequence).enumerated().compactMap { index, item in
+            guard let lane = shortSourceLane(for: item.segment, clip: clip, at: item.start, in: sequence) else {
+                return nil
+            }
+            let readiness = sourceReadiness(for: lane)
+            let baseline = lane.metadata?.programCrop9x16 ?? ProgramCropAdjustment()
+            let keyframes = programCropKeyframes(for: lane, format: .vertical9x16)
+            let atStart = ProgramCropAdjustment.interpolated(
+                baseline: baseline,
+                keyframes: keyframes,
+                at: item.start
+            )
+
+            return ShortVerticalFramingTarget(
+                id: item.segment.id,
+                segmentId: item.segment.id,
+                sourceTagId: item.segment.sourceTagId ?? clip.sourceTagId,
+                lane: lane,
+                segmentTitle: item.segment.title.isEmpty ? "Segment \(index + 1)" : item.segment.title,
+                segmentIndex: index,
+                sequenceStart: item.start,
+                sequenceEnd: item.end,
+                duration: item.duration,
+                baseline: baseline,
+                atStart: atStart,
+                keyframeCount: keyframes.count,
+                readinessLabel: readiness.label,
+                readinessDetail: readiness.detail,
+                isReady: readiness.isReady
+            )
+        }
+    }
+
+    private func shortSourceLane(
+        for segment: ShortClipSegment,
+        clip: ShortClipCandidate,
+        at sequenceTime: Double,
+        in sequence: MediaSequence
+    ) -> VideoLane? {
+        if let laneId = segment.sourceLaneId ?? clip.sourceLaneId,
+           let lane = sequence.lanes.first(where: { $0.id == laneId }) {
+            return lane
+        }
+
+        if let tagId = segment.sourceTagId ?? clip.sourceTagId,
+           let lane = sequence.lanes.first(where: { lane in
+               lane.tags.contains { $0.id == tagId }
+           }) {
+            return lane
+        }
+
+        let playable = playableProgramLanes(in: sequence)
+        if let activeLane = playable.first(where: { laneDecisionCovers($0, sequenceTime: sequenceTime, type: .active) }) {
+            return activeLane
+        }
+
+        let primary = primaryProgramLanes(in: sequence)
+        if let activeLane = primary.first(where: { laneDecisionCovers($0, sequenceTime: sequenceTime, type: .active) }) {
+            return activeLane
+        }
+
+        return playable.first ?? primary.first
+    }
+
+    private func laneDecisionCovers(_ lane: VideoLane, sequenceTime: Double, type: TagType? = nil) -> Bool {
+        let localTime = sequenceTime - (lane.sourceVideo?.offset ?? 0)
+        return lane.tags.contains { tag in
+            if let type, tag.type != type { return false }
+            guard tag.type == .active || tag.type == .cut else { return false }
+            return localTime >= tag.startTime && localTime < tag.startTime + tag.duration
+        }
+    }
+
+    private func cueShortVerticalFramingTarget(_ target: ShortVerticalFramingTarget, play: Bool) {
+        selectedLaneId = target.lane.id
+        selectedTagId = target.sourceTagId
+        playbackEngine.playbackMode = .playEdit
+        playbackEngine.playbackFormat = .vertical9x16
+        playbackEngine.scrub(to: target.sequenceStart)
+        rebuildPlayer(resumeAfterRebuild: play)
+        if play {
+            playbackEngine.play()
+        } else {
+            playbackEngine.pause()
+        }
+        lastMediaAction = String(
+            format: "Cued 9:16 framing for %@ at %.2fs",
+            target.lane.name,
+            target.sequenceStart
+        )
+        updateAgentState()
+    }
+
+    private func applyShortVerticalFramingPreset(
+        _ target: ShortVerticalFramingTarget,
+        preset: String,
+        mode: String
+    ) {
+        selectedLaneId = target.lane.id
+        selectedTagId = target.sourceTagId
+        playbackEngine.playbackFormat = .vertical9x16
+        playbackEngine.scrub(to: target.sequenceStart)
+        applyProgramCropPreset(
+            laneId: target.lane.id.uuidString,
+            format: ExportFormat.vertical9x16.rawValue,
+            preset: preset,
+            mode: mode,
+            time: target.sequenceStart
+        )
     }
 
     private func selectedShortPublicationPassportCard(_ clip: ShortClipCandidate) -> some View {
@@ -31769,6 +32106,9 @@ struct WorkspaceView: View {
         selectedShortIdHint: String? = nil,
         selectedShortTitleHint: String? = nil
     ) {
+        lastMediaAction = "Short export requested: resolving active sequence"
+        updateAgentState()
+
         guard var sequence = projectStore.activeSequence else {
             lastMediaAction = "Short export blocked: no active sequence"
             blockExportStatus(kind: "selected-short-9x16", reason: "No active sequence loaded.")
@@ -31796,6 +32136,9 @@ struct WorkspaceView: View {
         }
         selectedShortClipId = sequence.shortClipQueue[index].id
 
+        lastMediaAction = "Short export checkpoint: checking media readiness for \(sequence.shortClipQueue[index].title)"
+        updateAgentState()
+
         let readiness = mediaReadinessSummary()
         guard readiness.isProductionReady || readiness.hasAvailableProxyEditing else {
             lastMediaAction = "Short export blocked: \(readiness.detail)"
@@ -31805,6 +32148,9 @@ struct WorkspaceView: View {
         }
 
         let clip = sequence.shortClipQueue[index]
+        lastMediaAction = "Short export checkpoint: building export ranges for \(clip.title)"
+        updateAgentState()
+
         let exportRanges = shortClipExportRanges(for: clip, in: sequence)
         let exportDuration = exportRanges.reduce(0) { $0 + $1.duration }
         guard exportDuration.isFinite, exportDuration > 0 else {
@@ -31830,14 +32176,15 @@ struct WorkspaceView: View {
         )
         let outputURL = outputDirectory.appendingPathComponent("\(cleanBasename)-9x16-short.mp4")
 
+        lastMediaAction = "Short export checkpoint: staging \(clip.title) export request to \(outputURL.path)"
+        updateAgentState()
+
         sequence.shortClipQueue[index].exportStatus = "exporting"
         sequence.shortClipQueue[index].publishNotes = appendLine(
             "Export started: \(outputURL.path)",
             to: sequence.shortClipQueue[index].publishNotes
         )
         sequence.shortClipQueue[index].updatedAt = Date()
-        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Export Short Clip")
-        scheduleAutosave(reason: "started short export")
 
         struct ProxyExportRangeRequest: Encodable {
             let start: Double
@@ -31872,10 +32219,13 @@ struct WorkspaceView: View {
         let requestURL = requestDirectory.appendingPathComponent("selected-short-export-request.json")
         let progressURL = requestDirectory.appendingPathComponent("selected-short-export-progress.json")
         let manifestURL = outputDirectory.appendingPathComponent("\(cleanBasename)-short-export-manifest.json")
+        let exportSequence = proxyShortExportSequence(from: sequence, clips: [sequence.shortClipQueue[index]])
 
         do {
             try FileManager.default.createDirectory(at: requestDirectory, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+            lastMediaAction = "Short export checkpoint: writing lean proxy request for \(clip.title)"
+            updateAgentState()
             let request = ProxyShortExportRequest(
                 schemaVersion: 1,
                 model: "quipsly-proxy-short-export-request",
@@ -31886,7 +32236,7 @@ struct WorkspaceView: View {
                 manifestPath: manifestURL.path,
                 progressPath: progressURL.path,
                 sourcePolicy: "proxy-only; original media untouched",
-                sequence: sequence,
+                sequence: exportSequence,
                 clips: [
                     ProxyExportClipRequest(
                         id: clip.id,
@@ -31902,6 +32252,8 @@ struct WorkspaceView: View {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             try encoder.encode(request).write(to: requestURL, options: .atomic)
+            lastMediaAction = "Short export checkpoint: proxy request written to \(requestURL.path)"
+            updateAgentState()
         } catch {
             let blockReason = "Short export blocked while writing proxy export request: \(error.localizedDescription)"
             lastMediaAction = blockReason
@@ -31919,70 +32271,28 @@ struct WorkspaceView: View {
         )
         playbackEngine.playbackFormat = .vertical9x16
         lastMediaAction = "Short export started: \(clip.title)"
-        updateAgentState()
 
-        Task {
-            do {
-                try await runProxyShortExportBridge(requestURL: requestURL)
-
-                await MainActor.run {
-                    let manifestClip = proxyShortExportManifestClips(at: manifestURL)[clip.id.uuidString]
-                    let status = manifestClip?["status"] as? String ?? ""
-                    let outputPath = manifestClip?["outputPath"] as? String ?? outputURL.path
-                    if status == "exported", FileManager.default.fileExists(atPath: outputPath) {
-                        let completedURL = URL(fileURLWithPath: outputPath)
-                        markShortClipExportResult(
-                            id: clip.id,
-                            status: "exported",
-                            note: "\(shortExportSuccessNote(outputURL: completedURL, clip: clip))\nProxy manifest: \(manifestURL.path)"
-                        )
-                        completeExportStatus(outputURLs: [completedURL])
-                        lastMediaAction = "Short proxy export completed: \(completedURL.path)"
-                    } else {
-                        let error = manifestClip?["error"] as? String ?? "Proxy export did not create an output file."
-                        markShortClipExportResult(
-                            id: clip.id,
-                            status: "export-failed",
-                            note: "Proxy export failed: \(error)\nProxy manifest: \(manifestURL.path)"
-                        )
-                        exportStatus = "failed"
-                        exportErrorMessage = "Selected short proxy export failed: \(error). See manifest: \(manifestURL.path)"
-                        exportCompletedAt = Date()
-                        stopExportStateRefreshLoop()
-                        lastMediaAction = "Short proxy export failed: \(error)"
-                    }
-                    updateAgentState()
-                }
-            } catch {
-                await MainActor.run {
-                    let manifestClip = proxyShortExportManifestClips(at: manifestURL)[clip.id.uuidString]
-                    if let status = manifestClip?["status"] as? String,
-                       status == "exported",
-                       let outputPath = manifestClip?["outputPath"] as? String,
-                       FileManager.default.fileExists(atPath: outputPath) {
-                        let completedURL = URL(fileURLWithPath: outputPath)
-                        markShortClipExportResult(
-                            id: clip.id,
-                            status: "exported",
-                            note: "\(shortExportSuccessNote(outputURL: completedURL, clip: clip))\nProxy manifest: \(manifestURL.path)"
-                        )
-                        completeExportStatus(outputURLs: [completedURL])
-                        lastMediaAction = "Short proxy export completed after bridge warning: \(completedURL.path)"
-                        updateAgentState()
-                        return
-                    }
-                    markShortClipExportResult(
-                        id: clip.id,
-                        status: "export-failed",
-                        note: "Proxy export failed: \(error.localizedDescription)\nProxy manifest: \(manifestURL.path)"
-                    )
-                    failExportStatus(error: error)
-                    lastMediaAction = "Short proxy export failed: \(error.localizedDescription)"
-                    errorMessage = lastMediaAction
-                    showErrorAlert = true
-                    updateAgentState()
-                }
-            }
+        do {
+            try launchProxyShortExportBridgeDetached(
+                requestURL: requestURL,
+                logURL: requestDirectory.appendingPathComponent("selected-short-export-bridge.log")
+            )
+            scheduleProxyShortExportManifestWatch(
+                manifestURL: manifestURL,
+                clipId: clip.id,
+                label: clip.title
+            )
+        } catch {
+            failExportStatus(error: error)
+            lastMediaAction = "Short proxy export failed to launch: \(error.localizedDescription)"
+            errorMessage = lastMediaAction
+            showErrorAlert = true
+            updateAgentState()
+            markShortClipExportResult(
+                id: clip.id,
+                status: "export-failed",
+                note: "Proxy export failed to launch: \(error.localizedDescription)\nProxy manifest: \(manifestURL.path)"
+            )
         }
     }
 
@@ -32517,6 +32827,7 @@ struct WorkspaceView: View {
         let requestURL = requestDirectory.appendingPathComponent("queued-shorts-export-request.json")
         let progressURL = requestDirectory.appendingPathComponent("queued-shorts-export-progress.json")
         let manifestURL = outputDirectory.appendingPathComponent("\(cleanBasename)-shorts-export-manifest.json")
+        let exportSequence = proxyShortExportSequence(from: sequence, clips: jobs.map(\.clip))
         do {
             try FileManager.default.createDirectory(at: requestDirectory, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
@@ -32530,7 +32841,7 @@ struct WorkspaceView: View {
                 manifestPath: manifestURL.path,
                 progressPath: progressURL.path,
                 sourcePolicy: "proxy-only; original media untouched",
-                sequence: sequence,
+                sequence: exportSequence,
                 clips: jobs.map { job in
                     ProxyExportClipRequest(
                         id: job.clip.id,
@@ -32576,7 +32887,6 @@ struct WorkspaceView: View {
         )
         playbackEngine.playbackFormat = .vertical9x16
         lastMediaAction = "Batch short proxy export started: \(jobs.count) queued packet(s)"
-        updateAgentState()
 
         Task {
             do {
@@ -32683,6 +32993,51 @@ struct WorkspaceView: View {
         }.value
     }
 
+    private func launchProxyShortExportBridgeDetached(requestURL: URL, logURL: URL) throws {
+        let scriptURL = try proxyShortExportScriptURL()
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !fileManager.fileExists(atPath: logURL.path) {
+            fileManager.createFile(atPath: logURL.path, contents: nil)
+        }
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        try logHandle.seekToEnd()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [scriptURL.path, requestURL.path]
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+        process.terminationHandler = { _ in
+            Task { @MainActor in
+                try? logHandle.close()
+                refreshRunningProxyExportStatusFromManifest()
+                updateAgentState()
+            }
+        }
+        try process.run()
+    }
+
+    private func proxyShortExportSequence(
+        from sequence: MediaSequence,
+        clips: [ShortClipCandidate]
+    ) -> MediaSequence {
+        MediaSequence(
+            id: sequence.id,
+            title: sequence.title,
+            orientationTrack: sequence.orientationTrack,
+            verticalOrientationTrack: sequence.verticalOrientationTrack,
+            lanes: sequence.lanes,
+            shortClipQueue: clips,
+            transcriptSegments: [],
+            transcriptJobs: [],
+            editCorrectionNotes: [],
+            editActionLedger: [],
+            publishReceipts: [],
+            editPassContext: sequence.editPassContext
+        )
+    }
+
     private func proxyShortExportScriptURL() throws -> URL {
         let fileManager = FileManager.default
         var roots: [URL] = [
@@ -32733,6 +33088,49 @@ struct WorkspaceView: View {
             result[id] = clip
         }
         return result
+    }
+
+    private func scheduleProxyShortExportManifestWatch(
+        manifestURL: URL,
+        clipId: UUID,
+        label: String
+    ) {
+        Task.detached(priority: .background) {
+            for _ in 0..<120 {
+                if Self.proxyShortExportManifestIsTerminal(manifestURL) {
+                    await MainActor.run {
+                        if refreshProxyShortExportStatusFromManifest(
+                            manifestURL: manifestURL,
+                            expectedClipId: clipId
+                        ) {
+                            updateAgentState()
+                        }
+                    }
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            await MainActor.run {
+                if exportStatus == "running" {
+                    exportStatus = "failed"
+                    exportErrorMessage = "Proxy export did not finish within the agent watch window. Check manifest: \(manifestURL.path)"
+                    exportCompletedAt = Date()
+                    stopExportStateRefreshLoop()
+                    lastMediaAction = "Short proxy export watch timed out: \(label)"
+                    updateAgentState()
+                }
+            }
+        }
+    }
+
+    nonisolated private static func proxyShortExportManifestIsTerminal(_ manifestURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: manifestURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = object["status"] as? String else {
+            return false
+        }
+        return status == "completed" || status == "failed"
     }
 
     private func proxyExportProgressPayload() -> [String: Any] {
@@ -32857,6 +33255,34 @@ struct WorkspaceView: View {
         scheduleAutosave(reason: "updated short export status")
     }
 
+    private func markShortClipExportResultFromManifest(
+        id: UUID,
+        status clipStatus: String,
+        outputPath: String,
+        manifestPath: String
+    ) {
+        guard var sequence = projectStore.activeSequence,
+              let index = sequence.shortClipQueue.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let exportLine = "Exported 9:16 short: \(outputPath)"
+        let manifestLine = "Proxy export manifest: \(manifestPath)"
+        var publishNotes = sequence.shortClipQueue[index].publishNotes
+        if !publishNotes.contains(exportLine) {
+            publishNotes = appendLine(exportLine, to: publishNotes)
+        }
+        if !publishNotes.contains(manifestLine) {
+            publishNotes = appendLine(manifestLine, to: publishNotes)
+        }
+
+        sequence.shortClipQueue[index].exportStatus = clipStatus
+        sequence.shortClipQueue[index].publishNotes = publishNotes
+        sequence.shortClipQueue[index].updatedAt = Date()
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Update Short Export Manifest Result")
+        scheduleAutosave(reason: "updated short export manifest result")
+    }
+
     private func appendLine(_ line: String, to existing: String) -> String {
         let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? line : "\(trimmed)\n\(line)"
@@ -32968,6 +33394,25 @@ struct WorkspaceView: View {
             .appendingPathComponent("\(basename)\(suffix).mp4")
             .path
         return (directory, basename, expectedPath)
+    }
+
+    private func shortEpisodeSourceRangePayload(
+        start: Double,
+        end: Double,
+        duration: Double,
+        segmentCount: Int
+    ) -> [String: Any] {
+        [
+            "timeBase": "episode-sequence-seconds",
+            "start": start,
+            "end": end,
+            "duration": duration,
+            "label": String(format: "%.2fs - %.2fs (%.2fs)", start, end, duration),
+            "segmentCount": segmentCount,
+            "mapsToDecisionTimeline": true,
+            "mapsToWholeSyncedSources": true,
+            "truth": "This is where the short lives on the episode spine. It is not a chopped source file."
+        ]
     }
 
     private func shellQuoted(_ value: String) -> String {
@@ -33121,6 +33566,24 @@ struct WorkspaceView: View {
                     "endTime": sequenceEnd,
                     "sequenceStartTime": sequenceStart,
                     "sequenceEndTime": sequenceEnd,
+                    "sourceRange": shortEpisodeSourceRangePayload(
+                        start: sequenceStart,
+                        end: sequenceEnd,
+                        duration: recipeDuration,
+                        segmentCount: segments.count
+                    ),
+                    "episodeSourceRange": shortEpisodeSourceRangePayload(
+                        start: sequenceStart,
+                        end: sequenceEnd,
+                        duration: recipeDuration,
+                        segmentCount: segments.count
+                    ),
+                    "episodeTimelineRange": shortEpisodeSourceRangePayload(
+                        start: sequenceStart,
+                        end: sequenceEnd,
+                        duration: recipeDuration,
+                        segmentCount: segments.count
+                    ),
                     "sourceLocalStartTime": clip.startTime,
                     "sourceLocalEndTime": clip.startTime + clip.duration,
                     "segments": segments.enumerated().map { segmentIndex, item in
@@ -33154,7 +33617,9 @@ struct WorkspaceView: View {
                     "exportStatus": clip.exportStatus,
                     "lastExportedPath": exportPath,
                     "lastExportExists": exportExists,
+                    "creatorQuality": shortCreatorQualityPayload(for: clip),
                     "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
+                    "verticalFraming": shortVerticalFramingPayload(for: clip, in: sequence),
                     "expectedExportPath": expectedExportTarget.path,
                     "expectedExportDirectory": expectedExportTarget.directory,
                     "expectedExportBasename": expectedExportTarget.basename,
@@ -33351,6 +33816,91 @@ struct WorkspaceView: View {
         ]
     }
 
+    private func shortVerticalFramingPayload(for clip: ShortClipCandidate, in sequence: MediaSequence) -> [String: Any] {
+        let targets = shortVerticalFramingTargets(for: clip, in: sequence)
+        let status = targets.isEmpty ? "needs-source-context" : "inspectable"
+        let readyCount = targets.filter(\.isReady).count
+        let targetPayloads = targets.map { target in
+            shortVerticalFramingTargetPayload(target)
+        }
+
+        return [
+            "model": "quipsly-short-vertical-framing",
+            "version": "2026-06-22.short-vertical-framing.v1",
+            "status": status,
+            "format": ExportFormat.vertical9x16.rawValue,
+            "timeBase": "sequence-seconds",
+            "targetCount": targets.count,
+            "readyTargetCount": readyCount,
+            "needsSourceContext": targets.isEmpty,
+            "recipeModel": "short framing is lane crop metadata projected through the selected short recipe",
+            "truth": "Shorts do not own destructive crop media. They point to whole synced source lanes whose 9:16 baseline/keyframe crop metadata drives Program Output and export.",
+            "safePresets": [
+                "vertical-solo",
+                "upper-third",
+                "tighter",
+                "headroom",
+                "left",
+                "right",
+                "vertical-punch"
+            ],
+            "targets": targetPayloads,
+            "nextSafeActions": targets.first.map { target in
+                [
+                    "GET /seek?time=\(String(format: "%.3f", target.sequenceStart))",
+                    "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=vertical-solo&mode=baseline&time=\(String(format: "%.3f", target.sequenceStart))",
+                    "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=upper-third&mode=baseline&time=\(String(format: "%.3f", target.sequenceStart))",
+                    "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=vertical-punch&mode=keyframe&time=\(String(format: "%.3f", target.sequenceStart))"
+                ]
+            } ?? [
+                "GET /shorts_preview_selected?play=false",
+                "GET /shorts_queue_append_selected_segment"
+            ],
+            "contract": "These actions adjust visible 9:16 framing metadata only. They do not publish, replace source files, or split original media into short clips."
+        ]
+    }
+
+    private func shortVerticalFramingTargetPayload(_ target: ShortVerticalFramingTarget) -> [String: Any] {
+        let timeText = String(format: "%.3f", target.sequenceStart)
+        return [
+            "id": target.id.uuidString,
+            "segmentId": target.segmentId.uuidString,
+            "sourceTagId": target.sourceTagId?.uuidString ?? "",
+            "segmentIndex": target.segmentIndex,
+            "segmentTitle": target.segmentTitle,
+            "laneId": target.lane.id.uuidString,
+            "laneName": target.lane.name,
+            "sequenceStartTime": target.sequenceStart,
+            "sequenceEndTime": target.sequenceEnd,
+            "duration": target.duration,
+            "sourceReadiness": [
+                "ready": target.isReady,
+                "label": target.readinessLabel,
+                "detail": target.readinessDetail
+            ] as [String: Any],
+            "baseline": [
+                "panX": target.baseline.panX,
+                "panY": target.baseline.panY,
+                "zoom": target.baseline.zoom,
+                "adjusted": target.baseline.adjusted
+            ] as [String: Any],
+            "atSegmentStart": [
+                "panX": target.atStart.panX,
+                "panY": target.atStart.panY,
+                "zoom": target.atStart.zoom,
+                "adjusted": target.atStart.adjusted
+            ] as [String: Any],
+            "keyframeCount": target.keyframeCount,
+            "commands": [
+                "cue": "GET /seek?time=\(timeText)",
+                "verticalSoloBaseline": "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=vertical-solo&mode=baseline&time=\(timeText)",
+                "upperThirdBaseline": "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=upper-third&mode=baseline&time=\(timeText)",
+                "tighterBaseline": "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=tighter&mode=baseline&time=\(timeText)",
+                "punchKeyframe": "GET /program_crop_preset?lane_id=\(target.lane.id.uuidString)&format=9%3A16&preset=vertical-punch&mode=keyframe&time=\(timeText)"
+            ] as [String: Any]
+        ]
+    }
+
     private func selectedShortClipPayload(for sequence: MediaSequence) -> [String: Any] {
         guard let selectedShortClipId,
               let clip = sequence.shortClipQueue.first(where: { $0.id == selectedShortClipId }) else {
@@ -33377,6 +33927,24 @@ struct WorkspaceView: View {
             "endTime": sequenceEnd,
             "sequenceStartTime": sequenceStart,
             "sequenceEndTime": sequenceEnd,
+            "sourceRange": shortEpisodeSourceRangePayload(
+                start: sequenceStart,
+                end: sequenceEnd,
+                duration: recipeDuration,
+                segmentCount: segments.count
+            ),
+            "episodeSourceRange": shortEpisodeSourceRangePayload(
+                start: sequenceStart,
+                end: sequenceEnd,
+                duration: recipeDuration,
+                segmentCount: segments.count
+            ),
+            "episodeTimelineRange": shortEpisodeSourceRangePayload(
+                start: sequenceStart,
+                end: sequenceEnd,
+                duration: recipeDuration,
+                segmentCount: segments.count
+            ),
             "sourceLocalStartTime": clip.startTime,
             "sourceLocalEndTime": clip.startTime + clip.duration,
             "segments": segments.enumerated().map { segmentIndex, item in
@@ -33412,6 +33980,7 @@ struct WorkspaceView: View {
             "lastExportExists": exportExists,
             "creatorQuality": shortCreatorQualityPayload(for: clip),
             "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
+            "verticalFraming": shortVerticalFramingPayload(for: clip, in: sequence),
             "expectedExportPath": expectedExportTarget.path,
             "expectedExportDirectory": expectedExportTarget.directory,
             "expectedExportBasename": expectedExportTarget.basename,
@@ -33525,6 +34094,7 @@ struct WorkspaceView: View {
             "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
             "textBurnPolicy": burnPolicy,
             "publicationReadiness": publicationReadiness,
+            "verticalFraming": shortVerticalFramingPayload(for: clip, in: sequence),
             "destinations": clip.destinations,
             "segments": segments.enumerated().map { index, item in
                 [
@@ -33552,6 +34122,8 @@ struct WorkspaceView: View {
                 "GET /shorts_range_selected?boundary=start|end&time=<sequence-seconds>|delta=<seconds>",
                 "GET /shorts_queue_append_selected_segment",
                 "GET /shorts_overlay_burn_in?decision=request_review|approve_top_canopy|hold&note=<optional-review-note>",
+                "GET /program_crop_preset?lane_id=<short-source-lane-id>&format=9%3A16&preset=vertical-solo|upper-third|tighter&mode=baseline",
+                "GET /program_crop_preset?lane_id=<short-source-lane-id>&format=9%3A16&preset=vertical-punch&mode=keyframe&time=<segment-start>",
                 "GET /shorts_export_selected?directory=<absolute-output-folder>&basename=<name>"
             ],
             "contract": "A selected short is a recipe over whole source lanes and SHOW/SKIP metadata. Multiple segments are allowed; exports render derivatives without touching source media."
@@ -36676,11 +37248,14 @@ struct WorkspaceView: View {
     }
 
     private func handleAgentCommandDispatch(fallbackToLegacy: Bool) {
-        let queuedRequests = agentServer.drainCommandRequests()
+        let queuedRequests = WorkspaceAgentCommandBridge.shared.drain()
+            + agentServer.drainCommandRequests(consumerId: agentCommandConsumerId)
         if !queuedRequests.isEmpty {
             lastDrainedAgentCommandSerial = agentServer.commandSerial
             for request in queuedRequests {
+                agentServer.recordCommandProcessing(request, status: "drained_by_editor_loop")
                 handleAgentCommand(request)
+                agentServer.recordCommandProcessing(request, status: "handled_by_editor_loop")
             }
             agentServer.commandToExecute = ""
             updateAgentState()
@@ -36721,7 +37296,12 @@ struct WorkspaceView: View {
         case "save_session":
             saveNativeSession(named: request.values["name"] ?? "autosave")
         case "load_session":
-            loadNativeSession(named: request.values["name"] ?? "autosave")
+            let sessionName = request.values["name"] ?? "autosave"
+            lastMediaAction = "Queued native session load \(normalizedSessionName(sessionName))"
+            updateAgentState()
+            DispatchQueue.main.async {
+                loadNativeSession(named: sessionName)
+            }
         case "vault_lane":
             if let laneId = request.values["lane_id"] {
                 vaultLaneMedia(laneId: laneId)
@@ -38214,43 +38794,69 @@ struct WorkspaceView: View {
         lastMediaAction = "Loading native session \(sessionName)"
         updateAgentState()
 
-        Task {
-            do {
-                let loaded = try await projectStore.readNativeSession(named: sessionName)
-                await MainActor.run {
-                    projectStore.applyNativeSession(loaded.session)
-                    selectedLaneId = nil
-                    selectedTagId = nil
-                    proxyFailureByLaneId.removeAll()
-                    audioProxyValidationByPath.removeAll()
-                    audioProxyValidationInFlight.removeAll()
-                    videoProxyValidationInFlight.removeAll()
-                    activeSessionName = sessionName
-                    lastSessionPath = loaded.url.path
-                    lastSavedAt = nil
-                    autosaveStatus = "Loaded"
-                    lastMediaAction = "Loaded native session \(sessionName)"
-                    errorMessage = nil
-                    showErrorAlert = false
-                    refreshRecentSessions()
-                    if let sequence = projectStore.activeSequence {
-                        playbackEngine.updateSourcePlayers(for: sequence)
-                        playbackEngine.updateValidRanges(for: sequence)
-                    }
-                    if !mediaReadinessSummary().isProductionReady {
-                        isShowingProductionDetails = true
-                    }
-                    rebuildPlayer()
-                    updateAgentState()
-                }
-            } catch {
-                await MainActor.run {
-                    lastMediaAction = "Load session failed: \(error.localizedDescription)"
-                    errorMessage = lastMediaAction
-                    showErrorAlert = true
-                    updateAgentState()
-                }
+        do {
+            let loadedURL = LocalMediaVault.shared.sessionURL(named: sessionName)
+            lastMediaAction = "Decoding native session \(sessionName)"
+            updateAgentState()
+
+            let data = try Data(contentsOf: loadedURL)
+            lastMediaAction = "Read native session \(sessionName): \(data.count) bytes"
+            updateAgentState()
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let loadedSession = try decoder.decode(NativeEditorSession.self, from: data)
+            let decodedSequence = loadedSession.project.sequences.first { $0.id == loadedSession.activeSequenceId }
+                ?? loadedSession.project.sequences.first
+            lastMediaAction = "Decoded native session \(sessionName): \(decodedSequence?.lanes.count ?? 0) lanes, \(decodedSequence?.shortClipQueue.count ?? 0) shorts"
+            updateAgentState()
+
+            lastMediaAction = "Applying native session \(sessionName): \(decodedSequence?.lanes.count ?? 0) lanes, \(decodedSequence?.shortClipQueue.count ?? 0) shorts"
+            updateAgentState()
+
+            projectStore.applyNativeSession(loadedSession, publish: false)
+
+            lastMediaAction = "Applied native session \(sessionName)"
+            updateAgentState()
+            selectedLaneId = nil
+            selectedTagId = nil
+            selectedShortClipId = nil
+            proxyFailureByLaneId.removeAll()
+            audioProxyValidationByPath.removeAll()
+            audioProxyValidationInFlight.removeAll()
+            videoProxyValidationInFlight.removeAll()
+            activeSessionName = sessionName
+            lastSessionPath = loadedURL.path
+            lastSavedAt = nil
+            autosaveStatus = "Loaded"
+            errorMessage = nil
+            showErrorAlert = false
+            refreshRecentSessions()
+
+            let sequence = projectStore.activeSequence
+            let laneCount = sequence?.lanes.count ?? 0
+            let shortCount = sequence?.shortClipQueue.count ?? 0
+            lastMediaAction = "Loaded native session metadata \(sessionName): \(laneCount) lanes, \(shortCount) shorts"
+            updateAgentState()
+
+            if let sequence {
+                lastMediaAction = "Preparing proxy players for \(sessionName): \(laneCount) lanes, \(shortCount) shorts"
+                updateAgentState()
+                playbackEngine.updateSourcePlayers(for: sequence)
+                playbackEngine.updateValidRanges(for: sequence)
             }
+            if !mediaReadinessSummary().isProductionReady {
+                isShowingProductionDetails = true
+            }
+            rebuildPlayer()
+            lastMediaAction = "Loaded native session \(sessionName): \(laneCount) lanes, \(shortCount) shorts"
+            updateAgentState()
+            projectStore.publishChanges()
+        } catch {
+            lastMediaAction = "Load session failed: \(error.localizedDescription)"
+            errorMessage = lastMediaAction
+            showErrorAlert = true
+            updateAgentState()
         }
     }
 
@@ -41740,8 +42346,7 @@ struct WorkspaceView: View {
         seq.lanes = [charlieLane, homerLane, clipLane]
 
         let demoProject = VideoProject(id: UUID(), title: "Demo Project", sequences: [seq])
-        projectStore.project = demoProject
-        projectStore.activeSequenceId = seq.id
+        projectStore.replaceProject(demoProject, activeSequenceId: seq.id)
         selectedLaneId = nil
         selectedTagId = nil
         activeSessionName = "demo-edit"
@@ -41757,8 +42362,7 @@ struct WorkspaceView: View {
             autosaveTask = nil
             resetExportStatusForSessionSwitch()
             let importedProject = try PremierePacketImporter.importProject(from: url)
-            projectStore.project = importedProject
-            projectStore.activeSequenceId = importedProject.sequences.first?.id
+            projectStore.replaceProject(importedProject, activeSequenceId: importedProject.sequences.first?.id)
             selectedLaneId = nil
             selectedTagId = nil
             let packetSessionName = "\(url.deletingPathExtension().lastPathComponent)-premiere-rescue"
@@ -41899,8 +42503,7 @@ struct WorkspaceView: View {
 
                 if project.sequences.isEmpty {
                     project.sequences.append(sequence)
-                    projectStore.project = project
-                    projectStore.activeSequenceId = sequence.id
+                    projectStore.replaceProject(project, activeSequenceId: sequence.id)
 
                     if url.pathExtension.lowercased() != "wav" {
                         addKeyframe(at: 0, yaw: 0, pitch: 0, roll: 0, fov: 90)
@@ -41932,7 +42535,7 @@ struct WorkspaceView: View {
                                 sequence.lanes[laneIndex].sourceVideo?.proxyURL = proxyURL
                                 if let seqIndex = project.sequences.firstIndex(where: { $0.id == sequence.id }) {
                                     project.sequences[seqIndex] = sequence
-                                    projectStore.project = project
+                                    projectStore.replaceProject(project, activeSequenceId: projectStore.activeSequenceId)
                                     print("DEBUG: Rebuilding player with proxy")
                                     rebuildPlayer()
                                     scheduleAutosave(reason: "generated proxy")
@@ -42022,6 +42625,7 @@ struct WorkspaceView: View {
                     stopExportStateRefreshLoop()
                     break
                 }
+                refreshRunningProxyExportStatusFromManifest()
                 updateAgentState()
             }
         }
@@ -42030,6 +42634,72 @@ struct WorkspaceView: View {
     private func stopExportStateRefreshLoop() {
         exportStateRefreshTask?.cancel()
         exportStateRefreshTask = nil
+    }
+
+    private func refreshRunningProxyExportStatusFromManifest() {
+        guard exportStatus == "running", !exportManifestPath.isEmpty else {
+            return
+        }
+        _ = refreshProxyShortExportStatusFromManifest(
+            manifestURL: URL(fileURLWithPath: exportManifestPath),
+            expectedClipId: nil
+        )
+    }
+
+    @discardableResult
+    private func refreshProxyShortExportStatusFromManifest(
+        manifestURL: URL,
+        expectedClipId: UUID?
+    ) -> Bool {
+        guard let data = try? Data(contentsOf: manifestURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = object["status"] as? String else {
+            return false
+        }
+
+        guard status == "completed" || status == "failed" else {
+            return false
+        }
+
+        let clipRows = object["clips"] as? [[String: Any]] ?? []
+        let completedURLs = clipRows.compactMap { row -> URL? in
+            guard (row["status"] as? String) == "exported",
+                  let outputPath = row["outputPath"] as? String,
+                  FileManager.default.fileExists(atPath: outputPath) else {
+                return nil
+            }
+            return URL(fileURLWithPath: outputPath)
+        }
+
+        if status == "completed", !completedURLs.isEmpty {
+            completeExportStatus(outputURLs: completedURLs)
+            for row in clipRows where (row["status"] as? String) == "exported" {
+                guard let idString = row["id"] as? String,
+                      let clipId = UUID(uuidString: idString),
+                      expectedClipId == nil || expectedClipId == clipId,
+                      let outputPath = row["outputPath"] as? String,
+                      FileManager.default.fileExists(atPath: outputPath) else {
+                    continue
+                }
+                markShortClipExportResultFromManifest(
+                    id: clipId,
+                    status: "exported",
+                    outputPath: outputPath,
+                    manifestPath: manifestURL.path
+                )
+            }
+            lastMediaAction = "Short proxy export completed: \(completedURLs.map(\.path).joined(separator: ", "))"
+        } else {
+            exportStatus = "failed"
+            exportErrorMessage = (object["errors"] as? [[String: Any]])?
+                .compactMap { $0["error"] as? String }
+                .joined(separator: "\n")
+                ?? "Proxy export failed. See manifest: \(manifestURL.path)"
+            exportCompletedAt = Date()
+            stopExportStateRefreshLoop()
+            lastMediaAction = "Short proxy export failed: \(exportErrorMessage)"
+        }
+        return true
     }
 
     private func exportStatePayload() -> [String: Any] {

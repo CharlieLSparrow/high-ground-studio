@@ -416,7 +416,7 @@ urlencode() {
 }
 
 get() {
-  curl --fail --silent --show-error "$BASE_URL$1"
+  curl --fail --silent --show-error --max-time "${QUIPSLY_AGENT_TIMEOUT:-15}" "$BASE_URL$1"
   printf '\n'
 }
 

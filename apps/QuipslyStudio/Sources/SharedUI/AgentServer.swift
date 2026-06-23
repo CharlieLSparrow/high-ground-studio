@@ -5,6 +5,10 @@ import QuipslyVideoCore
 import Combine
 #endif
 
+public extension Notification.Name {
+    static let quipslyAgentCommandQueued = Notification.Name("quipsly.agent.commandQueued")
+}
+
 public struct AgentCommandRequest: Identifiable {
     public let id: UUID
     public let name: String
@@ -39,13 +43,20 @@ public class AgentServer: ObservableObject {
     @Published public var requestedRelinkFilePath: String? = nil
     @Published public var trigger: UUID = UUID()
     @Published public var commandSerial: Int = 0
+    @Published public private(set) var lastCommandReceipt: [String: Any] = [:]
 
     private var pendingCommandRequests: [AgentCommandRequest] = []
+    private var commandDispatchHandler: (() -> Void)?
+    private var commandExecutor: ((AgentCommandRequest) -> Void)?
+    private var activeCommandConsumerId: UUID?
+    private var projectedShortSelectionOverlay: [String: Any]?
 
     private var listener: NWListener?
     public let port: UInt16 = 8080
     private nonisolated static let cachedStatusLock = NSLock()
     private nonisolated(unsafe) static var cachedStatusData: Data?
+    private nonisolated static let httpCommandQueueLock = NSLock()
+    private nonisolated(unsafe) static var httpCommandQueue: [AgentCommandRequest] = []
 
     public init() {
         start()
@@ -1041,19 +1052,28 @@ public class AgentServer: ObservableObject {
                     }
                     return
                 }
-                Task { @MainActor in
-                    self?.enqueueCommand("shorts_queue_select", values: [
-                        "id": id,
-                        "title": title,
-                        "index": index
-                    ])
-                    self?.sendJSON(connection, object: [
-                        "status": "shorts_queue_select_commanded",
-                        "id": id,
-                        "title": title,
-                        "index": index
-                    ])
-                }
+                let commandValues = [
+                    "id": id,
+                    "title": title,
+                    "index": index
+                ]
+                let projection = Self.projectShortSelectionInCachedState(id: id, title: title, index: index)
+                let pendingCount = Self.enqueueHTTPCommand(AgentCommandRequest(name: "shorts_queue_select", values: commandValues))
+                self?.sendJSON(connection, object: [
+                    "status": "shorts_queue_select_commanded",
+                    "id": id,
+                    "title": title,
+                    "index": index,
+                    "commandReceipt": [
+                        "name": "shorts_queue_select",
+                        "values": commandValues,
+                        "status": "queued_for_editor_bridge",
+                        "mode": "http_ack_then_editor_mailbox",
+                        "pendingCommandCount": pendingCount
+                    ],
+                    "selectionProjection": projection,
+                    "truth": "Selection is acknowledged from cached short-queue truth and delivered to the editor bridge asynchronously. Re-read /state before claiming visible UI mutation."
+                ])
             case "/shorts_review_next":
                 let status = request.query["status"] ?? ""
                 Task { @MainActor in
@@ -1254,33 +1274,41 @@ public class AgentServer: ObservableObject {
                 let basename = request.query["basename"] ?? ""
                 let requestedShortId = request.query["id"] ?? request.query["selectedShortId"] ?? ""
                 let requestedShortTitle = request.query["title"] ?? request.query["selectedShortTitle"] ?? ""
-                Task { @MainActor in
-                    let selectedShortProof = self?.lastStatus?["selectedShortProof"] as? [String: Any] ?? [:]
-                    let selectedShortClip = self?.lastStatus?["selectedShortClip"] as? [String: Any] ?? [:]
-                    let selectedShortId = requestedShortId.isEmpty
-                        ? ((selectedShortProof["id"] as? String)
-                        ?? (selectedShortClip["id"] as? String)
-                        ?? "")
-                        : requestedShortId
-                    let selectedShortTitle = requestedShortTitle.isEmpty
-                        ? ((selectedShortProof["title"] as? String)
-                        ?? (selectedShortClip["title"] as? String)
-                        ?? "")
-                        : requestedShortTitle
-                    self?.enqueueCommand("shorts_export_selected", values: [
-                        "directory": directory,
-                        "basename": basename,
-                        "selectedShortId": selectedShortId,
-                        "selectedShortTitle": selectedShortTitle
-                    ])
-                    self?.sendJSON(connection, object: [
-                        "status": "shorts_export_selected_commanded",
-                        "directory": directory,
-                        "basename": basename,
-                        "selectedShortId": selectedShortId,
-                        "selectedShortTitle": selectedShortTitle
-                    ])
-                }
+                let cachedStatus = Self.cachedStatusDictionary() ?? [:]
+                let selectedShortProof = cachedStatus["selectedShortProof"] as? [String: Any] ?? [:]
+                let selectedShortClip = cachedStatus["selectedShortClip"] as? [String: Any] ?? [:]
+                let selectedShortId = requestedShortId.isEmpty
+                    ? ((selectedShortProof["id"] as? String)
+                    ?? (selectedShortClip["id"] as? String)
+                    ?? "")
+                    : requestedShortId
+                let selectedShortTitle = requestedShortTitle.isEmpty
+                    ? ((selectedShortProof["title"] as? String)
+                    ?? (selectedShortClip["title"] as? String)
+                    ?? "")
+                    : requestedShortTitle
+                let commandValues = [
+                    "directory": directory,
+                    "basename": basename,
+                    "selectedShortId": selectedShortId,
+                    "selectedShortTitle": selectedShortTitle
+                ]
+                let pendingCount = Self.enqueueHTTPCommand(AgentCommandRequest(name: "shorts_export_selected", values: commandValues))
+                self?.sendJSON(connection, object: [
+                    "status": "shorts_export_selected_commanded",
+                    "directory": directory,
+                    "basename": basename,
+                    "selectedShortId": selectedShortId,
+                    "selectedShortTitle": selectedShortTitle,
+                    "commandReceipt": [
+                        "name": "shorts_export_selected",
+                        "values": commandValues,
+                        "status": "queued_for_editor_bridge",
+                        "mode": "http_ack_then_editor_mailbox",
+                        "pendingCommandCount": pendingCount
+                    ],
+                    "truth": "The HTTP control plane acknowledged the selected-short export from cached state and queued editor delivery asynchronously. Re-read /state for progress, manifest, output path, or failure."
+                ])
             case "/shorts_export_all":
                 let directory = request.query["directory"] ?? ""
                 let basename = request.query["basename"] ?? ""
@@ -1347,10 +1375,12 @@ public class AgentServer: ObservableObject {
             case "/load_session":
                 let name = request.query["name"] ?? "autosave"
                 Task { @MainActor in
-                    self?.enqueueCommand("load_session", values: ["name": name])
+                    let receipt = self?.enqueueCommand("load_session", values: ["name": name]) ?? [:]
                     self?.sendJSON(connection, object: [
                         "status": "load_session_commanded",
-                        "name": name
+                        "name": name,
+                        "commandReceipt": receipt,
+                        "truth": "This confirms command delivery only. Re-read /state and require nonzero laneCount plus shortClipQueueCount before treating the session as usable."
                     ])
                 }
             case "/vault_lane":
@@ -1967,7 +1997,7 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: ["status": "sync_audio_commanded"])
                 }
             case "/state":
-                if let cachedStatus = Self.cachedStatusResponseData() {
+                if let cachedStatus = Self.cachedStatusResponseDataReconcilingProxyShortExport() {
                     print("AgentServer: sending cached response for /state")
                     self?.sendJSONData(connection, bodyData: cachedStatus)
                 } else {
@@ -2647,14 +2677,377 @@ public class AgentServer: ObservableObject {
         return cachedStatusData
     }
 
+    private nonisolated static func enqueueHTTPCommand(_ request: AgentCommandRequest) -> Int {
+        httpCommandQueueLock.lock()
+        httpCommandQueue.append(request)
+        let count = httpCommandQueue.count
+        httpCommandQueueLock.unlock()
+        return count
+    }
+
+    private nonisolated static func drainHTTPCommands() -> [AgentCommandRequest] {
+        httpCommandQueueLock.lock()
+        let requests = httpCommandQueue
+        httpCommandQueue.removeAll()
+        httpCommandQueueLock.unlock()
+        return requests
+    }
+
+    private nonisolated static func httpCommandCount() -> Int {
+        httpCommandQueueLock.lock()
+        let count = httpCommandQueue.count
+        httpCommandQueueLock.unlock()
+        return count
+    }
+
+    private nonisolated static func cachedStatusDictionary() -> [String: Any]? {
+        guard let data = cachedStatusResponseData(),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return object
+    }
+
+    private nonisolated static func cachedStatusResponseDataReconcilingProxyShortExport() -> Data? {
+        guard var status = cachedStatusDictionary() else {
+            return cachedStatusResponseData()
+        }
+        guard let summary = proxyShortExportManifestSummary(forCachedStatus: status) else {
+            return cachedStatusResponseData()
+        }
+
+        status["exportStatus"] = summary.status
+        status["exportOutputPaths"] = summary.outputPaths
+        status["lastMediaAction"] = summary.lastMediaAction
+
+        var exportState = status["exportState"] as? [String: Any] ?? [:]
+        exportState["status"] = summary.status
+        exportState["healthStatus"] = summary.status
+        exportState["outputPaths"] = summary.outputPaths
+        exportState["manifestPath"] = summary.manifestPath
+        exportState["progressPath"] = summary.progressPath
+        exportState["currentOutputPath"] = summary.outputPaths.first ?? ""
+        exportState["currentItem"] = summary.clipTitle
+        exportState["error"] = summary.error
+        exportState["completedAt"] = summary.completedAt
+        exportState["isExporting"] = false
+        status["exportState"] = exportState
+
+        if var selectedShort = status["selectedShortClip"] as? [String: Any] {
+            applyProxyShortExportSummary(summary, to: &selectedShort)
+            status["selectedShortClip"] = selectedShort
+        }
+        if var selectedProof = status["selectedShortProof"] as? [String: Any] {
+            applyProxyShortExportSummary(summary, to: &selectedProof)
+            status["selectedShortProof"] = selectedProof
+        }
+
+        let safeStatus = jsonSafeDictionary(status)
+        updateCachedStatusResponse(safeStatus)
+        return cachedStatusResponseData()
+    }
+
+    private struct ProxyShortExportManifestSummary {
+        let clipId: String
+        let clipTitle: String
+        let status: String
+        let outputPaths: [String]
+        let manifestPath: String
+        let progressPath: String
+        let completedAt: String
+        let error: String
+
+        var lastMediaAction: String {
+            if status == "completed", !outputPaths.isEmpty {
+                return "Short proxy export completed: \(outputPaths.joined(separator: ", "))"
+            }
+            if status == "failed" {
+                return "Short proxy export failed: \(error.isEmpty ? manifestPath : error)"
+            }
+            return "Short proxy export \(status): \(manifestPath)"
+        }
+    }
+
+    private nonisolated static func proxyShortExportManifestSummary(
+        forCachedStatus status: [String: Any]
+    ) -> ProxyShortExportManifestSummary? {
+        guard let requestPath = proxyShortExportRequestPath(forCachedStatus: status),
+              let requestData = try? Data(contentsOf: URL(fileURLWithPath: requestPath)),
+              let request = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
+              let manifestPath = request["manifestPath"] as? String,
+              !manifestPath.isEmpty,
+              let manifestData = try? Data(contentsOf: URL(fileURLWithPath: manifestPath)),
+              let manifest = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
+              let manifestStatus = manifest["status"] as? String,
+              manifestStatus == "completed" || manifestStatus == "failed" else {
+            return nil
+        }
+
+        let clips = manifest["clips"] as? [[String: Any]] ?? []
+        let exportedClips = clips.filter { staticStringValue($0["status"]) == "exported" }
+        let outputPaths = exportedClips
+            .compactMap { $0["outputPath"] as? String }
+            .filter { FileManager.default.fileExists(atPath: $0) }
+
+        guard manifestStatus == "failed" || !outputPaths.isEmpty else {
+            return nil
+        }
+
+        let selectedId = staticStringValue(status["selectedShortClipId"])
+        let matchingClip = exportedClips.first { staticStringValue($0["id"]) == selectedId }
+            ?? exportedClips.first
+            ?? clips.first
+            ?? [:]
+        let errors = (manifest["errors"] as? [[String: Any]])?
+            .compactMap { $0["error"] as? String }
+            .joined(separator: "\n")
+            ?? ""
+
+        return ProxyShortExportManifestSummary(
+            clipId: staticStringValue(matchingClip["id"]),
+            clipTitle: staticStringValue(matchingClip["title"]),
+            status: manifestStatus == "completed" ? "completed" : "failed",
+            outputPaths: outputPaths,
+            manifestPath: manifestPath,
+            progressPath: staticStringValue(manifest["progressPath"]),
+            completedAt: staticStringValue(manifest["completedAt"]),
+            error: errors
+        )
+    }
+
+    private nonisolated static func proxyShortExportRequestPath(forCachedStatus status: [String: Any]) -> String? {
+        let exportState = status["exportState"] as? [String: Any] ?? [:]
+        let candidates = [
+            staticStringValue(exportState["requestPath"]),
+            staticStringValue(status["lastProxyShortExportRequestPath"]),
+            staticStringValue(status["lastMediaAction"])
+        ]
+
+        for candidate in candidates where !candidate.isEmpty {
+            if candidate.hasSuffix("selected-short-export-request.json"),
+               FileManager.default.fileExists(atPath: candidate) {
+                return candidate
+            }
+            if let start = candidate.range(of: "/Users/"),
+               let end = candidate.range(of: "selected-short-export-request.json", range: start.lowerBound..<candidate.endIndex) {
+                let path = String(candidate[start.lowerBound..<end.upperBound])
+                if FileManager.default.fileExists(atPath: path) {
+                    return path
+                }
+            }
+        }
+        return nil
+    }
+
+    private nonisolated static func applyProxyShortExportSummary(
+        _ summary: ProxyShortExportManifestSummary,
+        to shortPayload: inout [String: Any]
+    ) {
+        let payloadId = staticStringValue(shortPayload["id"])
+        guard payloadId.isEmpty || summary.clipId.isEmpty || payloadId == summary.clipId else {
+            return
+        }
+        shortPayload["exportStatus"] = summary.status == "completed" ? "exported" : "export-failed"
+        if let firstOutput = summary.outputPaths.first {
+            shortPayload["lastExportedPath"] = firstOutput
+            shortPayload["lastExportExists"] = FileManager.default.fileExists(atPath: firstOutput)
+            shortPayload["postExportContactSheetCommand"] = "script/agentctl.sh shorts-contact-sheet '\(firstOutput)'"
+            shortPayload["contactSheetCommand"] = "script/agentctl.sh shorts-contact-sheet '\(firstOutput)'"
+        }
+        shortPayload["lastExportManifestPath"] = summary.manifestPath
+        shortPayload["lastExportCompletedAt"] = summary.completedAt
+    }
+
+    @discardableResult
+    private nonisolated static func projectShortSelectionInCachedState(id rawId: String, title rawTitle: String, index rawIndex: String) -> [String: Any] {
+        guard var current = cachedStatusDictionary() else {
+            return [
+                "status": "no_state_yet",
+                "truth": "Open QuipslyStudio and load Episode 1 before selecting a short through the agent API."
+            ]
+        }
+
+        let queue = current["shortClipQueue"] as? [String: Any] ?? [:]
+        let clips = queue["clips"] as? [[String: Any]] ?? []
+        guard !clips.isEmpty else {
+            return [
+                "status": "no_short_candidates",
+                "shortClipQueueCount": 0,
+                "truth": "The loaded session has no queued short recipes to select."
+            ]
+        }
+
+        let trimmedId = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIndex = rawIndex.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selected: [String: Any]?
+
+        if !trimmedId.isEmpty {
+            selected = clips.first { staticStringValue($0["id"]) == trimmedId }
+        } else if !trimmedTitle.isEmpty {
+            let normalizedTitle = trimmedTitle.lowercased()
+            selected = clips.first { staticStringValue($0["title"]).lowercased() == normalizedTitle }
+                ?? clips.first { staticStringValue($0["title"]).lowercased().contains(normalizedTitle) }
+        } else if let parsedIndex = Int(trimmedIndex) {
+            let zeroBasedIndex = parsedIndex > 0 ? parsedIndex - 1 : parsedIndex
+            selected = clips.indices.contains(zeroBasedIndex) ? clips[zeroBasedIndex] : nil
+        } else {
+            selected = nil
+        }
+
+        guard let selected else {
+            return [
+                "status": "not_found",
+                "requested": [
+                    "id": trimmedId,
+                    "title": trimmedTitle,
+                    "index": trimmedIndex
+                ] as [String: Any],
+                "shortClipQueueCount": clips.count,
+                "truth": "No queued short recipe matched the selector. Selection did not change."
+            ]
+        }
+
+        let id = staticStringValue(selected["id"])
+        let title = staticStringValue(selected["title"])
+        let proof = staticSelectedShortProofPayload(for: selected, queueCount: clips.count)
+        current["selectedShortClipId"] = id
+        current["selectedShortClip"] = selected
+        current["selectedShortProof"] = proof
+        current["agentSelectionProjectionSource"] = "agent-server-short-selection-read-model"
+        current["agentLastProcessedCommandSerial"] = "http_projection_pending_main_actor"
+        current["lastMediaAction"] = "Agent selected short recipe: \(title)"
+        updateCachedStatusResponse(jsonSafeDictionary(current))
+
+        return [
+            "status": "projected",
+            "id": id,
+            "title": title,
+            "shortClipQueueCount": clips.count,
+            "selectionStateSource": "agent-server-short-selection-read-model",
+            "truth": "The cached short queue projected selected-short truth immediately. The live SwiftUI selection bridge will catch up through the queued command."
+        ]
+    }
+
+    private nonisolated static func staticSelectedShortProofPayload(for clip: [String: Any], queueCount: Int) -> [String: Any] {
+        let segments = clip["segments"] as? [[String: Any]] ?? []
+        let exportRanges = clip["exportRanges"] as? [[String: Any]] ?? []
+
+        return [
+            "status": "selected_agent_projection",
+            "selected": true,
+            "selectionStateSource": "agent-server-short-selection-read-model",
+            "id": staticStringValue(clip["id"]),
+            "title": staticStringValue(clip["title"]),
+            "shortClipQueueCount": queueCount,
+            "supportsMultipleSegments": true,
+            "timelineRailVisible": true,
+            "segmentCount": segments.count,
+            "exportRangeCount": exportRanges.count,
+            "sequenceStartTime": clip["sequenceStartTime"] ?? clip["startTime"] ?? 0,
+            "sequenceEndTime": clip["sequenceEndTime"] ?? clip["endTime"] ?? 0,
+            "recipeDuration": clip["recipeDuration"] ?? clip["duration"] ?? 0,
+            "reviewStatus": clip["reviewStatus"] ?? "",
+            "exportStatus": clip["exportStatus"] ?? "",
+            "lastExportedPath": clip["lastExportedPath"] ?? "",
+            "lastExportExists": clip["lastExportExists"] ?? false,
+            "expectedExportPath": clip["expectedExportPath"] ?? "",
+            "expectedExportDirectory": clip["expectedExportDirectory"] ?? "",
+            "expectedExportBasename": clip["expectedExportBasename"] ?? "",
+            "creatorQuality": clip["creatorQuality"] ?? [:],
+            "publicationPassport": clip["publicationPassport"] ?? [:],
+            "verticalFraming": clip["verticalFraming"] ?? [:],
+            "reviewEvidence": clip["reviewEvidence"] ?? [:],
+            "transcriptContext": clip["transcriptContext"] ?? [:],
+            "segments": segments,
+            "exportRanges": exportRanges,
+            "contract": "Projected from the cached short queue for agent-safe inspect/select. The live SwiftUI selection bridge remains the interactive source of truth."
+        ]
+    }
+
+    private nonisolated static func staticStringValue(_ value: Any?) -> String {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        default:
+            return ""
+        }
+    }
+
     private nonisolated static func updateCachedStatusResponse(_ status: [String: Any]) {
-        guard JSONSerialization.isValidJSONObject(status),
-              let data = try? JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted, .sortedKeys]) else {
+        let safeStatus = jsonSafeDictionary(status)
+        guard JSONSerialization.isValidJSONObject(safeStatus),
+              let data = try? JSONSerialization.data(withJSONObject: safeStatus, options: [.prettyPrinted, .sortedKeys]) else {
             return
         }
         cachedStatusLock.lock()
         cachedStatusData = data
         cachedStatusLock.unlock()
+    }
+
+    private nonisolated static func jsonSafeDictionary(_ dictionary: [String: Any]) -> [String: Any] {
+        jsonSafeValue(dictionary) as? [String: Any] ?? [
+            "serializationWarning": "Agent state could not be converted into a JSON object.",
+            "agentServer": "running"
+        ]
+    }
+
+    private nonisolated static func jsonSafeValue(_ value: Any) -> Any {
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            guard let child = mirror.children.first else { return NSNull() }
+            return jsonSafeValue(child.value)
+        }
+
+        switch value {
+        case is NSNull:
+            return NSNull()
+        case let string as String:
+            return string
+        case let bool as Bool:
+            return bool
+        case let int as Int:
+            return int
+        case let int64 as Int64:
+            return int64
+        case let int32 as Int32:
+            return int32
+        case let uint as UInt:
+            return uint
+        case let double as Double:
+            return double.isFinite ? double : NSNull()
+        case let float as Float:
+            return float.isFinite ? Double(float) : NSNull()
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return number.boolValue
+            }
+            return number.doubleValue.isFinite ? number : NSNull()
+        case let date as Date:
+            return ISO8601DateFormatter().string(from: date)
+        case let uuid as UUID:
+            return uuid.uuidString
+        case let url as URL:
+            return url.path
+        case let dictionary as [String: Any]:
+            var safe: [String: Any] = [:]
+            for (key, child) in dictionary {
+                safe[key] = jsonSafeValue(child)
+            }
+            return safe
+        case let dictionary as [AnyHashable: Any]:
+            var safe: [String: Any] = [:]
+            for (key, child) in dictionary {
+                safe[String(describing: key)] = jsonSafeValue(child)
+            }
+            return safe
+        case let array as [Any]:
+            return array.map { jsonSafeValue($0) }
+        default:
+            return String(describing: value)
+        }
     }
 
     private func staticCatalogPayload(filename: String) -> [String: Any] {
@@ -3295,27 +3688,263 @@ public class AgentServer: ObservableObject {
 
     public func writeStatus(_ status: [String: Any]) {
         var enriched = status
+        if let projectedShortSelectionOverlay,
+           shouldApplyProjectedShortSelection(projectedShortSelectionOverlay, to: enriched) {
+            applyProjectedShortSelection(projectedShortSelectionOverlay, to: &enriched, overwriteExisting: false)
+        } else if !stringValue(enriched["selectedShortClipId"]).isEmpty {
+            projectedShortSelectionOverlay = nil
+        }
         enriched["agentServer"] = "running"
         enriched["agentPort"] = port
+        enriched["agentPendingCommandCount"] = pendingCommandRequests.count + Self.httpCommandCount()
+        enriched["agentCommandExecutorRegistered"] = commandExecutor != nil
+        enriched["agentLastCommandReceipt"] = lastCommandReceipt
+        enriched["agentActiveCommandConsumerId"] = activeCommandConsumerId?.uuidString ?? ""
         enriched["commandsUrl"] = "http://127.0.0.1:\(port)/commands"
         enriched["agentManualUrl"] = "http://127.0.0.1:\(port)/agent_manual"
         enriched["agentCapabilitiesUrl"] = "http://127.0.0.1:\(port)/agent_capabilities"
         enriched["codexEditorHandoffUrl"] = "http://127.0.0.1:\(port)/codex_editor_handoff"
-        self.lastStatus = enriched
-        Self.updateCachedStatusResponse(enriched)
+        let safeStatus = Self.jsonSafeDictionary(enriched)
+        self.lastStatus = safeStatus
+        Self.updateCachedStatusResponse(safeStatus)
     }
 
-    public func enqueueCommand(_ name: String, values: [String: String] = [:]) {
-        pendingCommandRequests.append(AgentCommandRequest(name: name, values: values))
+    private func refreshCachedStatusCommandMetadata() {
+        guard var current = lastStatus else { return }
+        if let projectedShortSelectionOverlay,
+           shouldApplyProjectedShortSelection(projectedShortSelectionOverlay, to: current) {
+            applyProjectedShortSelection(projectedShortSelectionOverlay, to: &current, overwriteExisting: false)
+        }
+        current["agentPendingCommandCount"] = pendingCommandRequests.count + Self.httpCommandCount()
+        current["agentCommandExecutorRegistered"] = commandExecutor != nil
+        current["agentLastCommandReceipt"] = lastCommandReceipt
+        current["agentActiveCommandConsumerId"] = activeCommandConsumerId?.uuidString ?? ""
+        current["agentCommandSerial"] = commandSerial
+        let safeStatus = Self.jsonSafeDictionary(current)
+        lastStatus = safeStatus
+        Self.updateCachedStatusResponse(safeStatus)
+    }
+
+    @discardableResult
+    public func enqueueCommand(_ name: String, values: [String: String] = [:]) -> [String: Any] {
+        let request = AgentCommandRequest(name: name, values: values)
         commandToExecute = name
         trigger = UUID()
         commandSerial += 1
+        let executorRegistered = commandExecutor != nil
+        var receipt: [String: Any] = [
+            "id": request.id.uuidString,
+            "name": name,
+            "serial": commandSerial,
+            "values": values,
+            "executorRegistered": executorRegistered,
+            "mode": "queued-for-view-drain"
+        ]
+
+        pendingCommandRequests.append(request)
+        NotificationCenter.default.post(name: .quipslyAgentCommandQueued, object: nil)
+        receipt["status"] = executorRegistered ? "queued_for_registered_view_drain" : "queued"
+        receipt["pendingCommandCount"] = pendingCommandRequests.count
+        lastCommandReceipt = receipt
+        refreshCachedStatusCommandMetadata()
+        return receipt
     }
 
-    public func drainCommandRequests() -> [AgentCommandRequest] {
+    @discardableResult
+    private func projectShortSelectionIntoCachedState(id rawId: String, title rawTitle: String, index rawIndex: String) -> [String: Any] {
+        guard var current = lastStatus else {
+            return [
+                "status": "no_state_yet",
+                "truth": "Open QuipslyStudio and load Episode 1 before selecting a short through the agent API."
+            ]
+        }
+
+        let queue = current["shortClipQueue"] as? [String: Any] ?? [:]
+        let clips = queue["clips"] as? [[String: Any]] ?? []
+        guard !clips.isEmpty else {
+            return [
+                "status": "no_short_candidates",
+                "shortClipQueueCount": 0,
+                "truth": "The loaded session has no queued short recipes to select."
+            ]
+        }
+
+        let trimmedId = rawId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIndex = rawIndex.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selected: [String: Any]?
+
+        if !trimmedId.isEmpty {
+            selected = clips.first { stringValue($0["id"]) == trimmedId }
+        } else if !trimmedTitle.isEmpty {
+            let normalizedTitle = trimmedTitle.lowercased()
+            selected = clips.first { stringValue($0["title"]).lowercased() == normalizedTitle }
+                ?? clips.first { stringValue($0["title"]).lowercased().contains(normalizedTitle) }
+        } else if let parsedIndex = Int(trimmedIndex) {
+            let zeroBasedIndex = parsedIndex > 0 ? parsedIndex - 1 : parsedIndex
+            selected = clips.indices.contains(zeroBasedIndex) ? clips[zeroBasedIndex] : nil
+        } else {
+            selected = nil
+        }
+
+        guard let selected else {
+            return [
+                "status": "not_found",
+                "requested": [
+                    "id": trimmedId,
+                    "title": trimmedTitle,
+                    "index": trimmedIndex
+                ] as [String: Any],
+                "shortClipQueueCount": clips.count,
+                "truth": "No queued short recipe matched the selector. Selection did not change."
+            ]
+        }
+
+        let id = stringValue(selected["id"])
+        let title = stringValue(selected["title"])
+        let proof = projectedSelectedShortProofPayload(for: selected, queueCount: clips.count)
+        let overlay: [String: Any] = [
+            "activeSessionName": stringValue(current["activeSessionName"]),
+            "selectedShortClipId": id,
+            "selectedShortClip": selected,
+            "selectedShortProof": proof,
+            "agentSelectionProjectionSource": "agent-server-short-selection-read-model",
+            "agentLastProcessedCommandSerial": commandSerial,
+            "lastMediaAction": "Agent selected short recipe: \(title)"
+        ]
+
+        projectedShortSelectionOverlay = overlay
+        applyProjectedShortSelection(overlay, to: &current, overwriteExisting: true)
+        let safeStatus = Self.jsonSafeDictionary(current)
+        lastStatus = safeStatus
+        Self.updateCachedStatusResponse(safeStatus)
+
+        return [
+            "status": "projected",
+            "id": id,
+            "title": title,
+            "shortClipQueueCount": clips.count,
+            "selectionStateSource": "agent-server-short-selection-read-model",
+            "truth": "The command was delivered to the editor bridge and also projected into /state so agents can inspect selected-short truth without relying on pixel clicks."
+        ]
+    }
+
+    private func projectedSelectedShortProofPayload(for clip: [String: Any], queueCount: Int) -> [String: Any] {
+        let segments = clip["segments"] as? [[String: Any]] ?? []
+        let exportRanges = clip["exportRanges"] as? [[String: Any]] ?? []
+
+        return [
+            "status": "selected_agent_projection",
+            "selected": true,
+            "selectionStateSource": "agent-server-short-selection-read-model",
+            "id": stringValue(clip["id"]),
+            "title": stringValue(clip["title"]),
+            "shortClipQueueCount": queueCount,
+            "supportsMultipleSegments": true,
+            "timelineRailVisible": true,
+            "segmentCount": segments.count,
+            "exportRangeCount": exportRanges.count,
+            "sequenceStartTime": clip["sequenceStartTime"] ?? clip["startTime"] ?? 0,
+            "sequenceEndTime": clip["sequenceEndTime"] ?? clip["endTime"] ?? 0,
+            "recipeDuration": clip["recipeDuration"] ?? clip["duration"] ?? 0,
+            "reviewStatus": clip["reviewStatus"] ?? "",
+            "exportStatus": clip["exportStatus"] ?? "",
+            "lastExportedPath": clip["lastExportedPath"] ?? "",
+            "lastExportExists": clip["lastExportExists"] ?? false,
+            "expectedExportPath": clip["expectedExportPath"] ?? "",
+            "expectedExportDirectory": clip["expectedExportDirectory"] ?? "",
+            "expectedExportBasename": clip["expectedExportBasename"] ?? "",
+            "creatorQuality": clip["creatorQuality"] ?? [:],
+            "publicationPassport": clip["publicationPassport"] ?? [:],
+            "verticalFraming": clip["verticalFraming"] ?? [:],
+            "reviewEvidence": clip["reviewEvidence"] ?? [:],
+            "transcriptContext": clip["transcriptContext"] ?? [:],
+            "segments": segments,
+            "exportRanges": exportRanges,
+            "contract": "Projected from the cached short queue for agent-safe inspect/select. The live SwiftUI selection bridge remains the interactive source of truth."
+        ]
+    }
+
+    private func shouldApplyProjectedShortSelection(_ overlay: [String: Any], to status: [String: Any]) -> Bool {
+        guard stringValue(status["selectedShortClipId"]).isEmpty else { return false }
+        let overlaySession = stringValue(overlay["activeSessionName"])
+        let statusSession = stringValue(status["activeSessionName"])
+        return overlaySession.isEmpty || statusSession.isEmpty || overlaySession == statusSession
+    }
+
+    private func applyProjectedShortSelection(_ overlay: [String: Any], to status: inout [String: Any], overwriteExisting: Bool) {
+        if !overwriteExisting && !stringValue(status["selectedShortClipId"]).isEmpty {
+            return
+        }
+        status["selectedShortClipId"] = overlay["selectedShortClipId"] ?? ""
+        status["selectedShortClip"] = overlay["selectedShortClip"] ?? [:]
+        status["selectedShortProof"] = overlay["selectedShortProof"] ?? [:]
+        status["agentSelectionProjectionSource"] = overlay["agentSelectionProjectionSource"] ?? ""
+        status["agentLastProcessedCommandSerial"] = overlay["agentLastProcessedCommandSerial"] ?? commandSerial
+        status["lastMediaAction"] = overlay["lastMediaAction"] ?? status["lastMediaAction"] ?? ""
+    }
+
+    private func stringValue(_ value: Any?) -> String {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        default:
+            return ""
+        }
+    }
+
+    public func drainCommandRequests(consumerId: UUID? = nil) -> [AgentCommandRequest] {
+        if let consumerId, activeCommandConsumerId != consumerId {
+            return []
+        }
+        let httpRequests = Self.drainHTTPCommands()
         let requests = pendingCommandRequests
         pendingCommandRequests = []
-        return requests
+        return httpRequests + requests
+    }
+
+    public func recordCommandProcessing(_ request: AgentCommandRequest, status: String) {
+        var receipt: [String: Any] = [
+            "id": request.id.uuidString,
+            "name": request.name,
+            "serial": commandSerial,
+            "values": request.values,
+            "executorRegistered": commandExecutor != nil,
+            "mode": "view-drain",
+            "status": status,
+            "pendingCommandCount": pendingCommandRequests.count + Self.httpCommandCount()
+        ]
+        if let activeCommandConsumerId {
+            receipt["consumerId"] = activeCommandConsumerId.uuidString
+        }
+        lastCommandReceipt = receipt
+        refreshCachedStatusCommandMetadata()
+    }
+
+    public func claimCommandConsumer(_ id: UUID) {
+        activeCommandConsumerId = id
+    }
+
+    public func registerCommandDispatchHandler(_ handler: @escaping () -> Void) {
+        commandDispatchHandler = handler
+        if !pendingCommandRequests.isEmpty {
+            handler()
+        }
+    }
+
+    public func registerCommandExecutor(_ executor: @escaping (AgentCommandRequest) -> Void) {
+        commandExecutor = executor
+        refreshCachedStatusCommandMetadata()
+    }
+
+    public func clearCommandDispatchHandler() {
+        commandDispatchHandler = nil
+    }
+
+    public func clearCommandExecutor() {
+        commandExecutor = nil
     }
 }
 
