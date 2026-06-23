@@ -1152,10 +1152,31 @@ enum ShortCreatorQuality {
             blockerSummary: missing.isEmpty
                 ? "This short still needs a production pass before it becomes safe to schedule."
                 : "This short should stay in Studio until these pieces exist: \(missing.prefix(3).joined(separator: ", ")).",
-            nextAction: missing.first.map { "Fix \($0), then regenerate the platform pack." } ?? "Regenerate the platform pack after the next edit pass.",
+            nextAction: missing.first.map { nextPrepAction(forMissingItem: $0) } ?? "Regenerate the platform pack after the next edit pass.",
             handoffMode: "production-prep",
             towerInstruction: "Do not schedule. Route back to Studio for export, hook, caption, review, or platform-pack work."
         )
+    }
+
+    private static func nextPrepAction(forMissingItem item: String) -> String {
+        switch item.lowercased() {
+        case "local proof export":
+            return "Export a local proof, watch the real derivative, then regenerate the platform pack."
+        case "keep review decision":
+            return "Choose Keep, Refine, or Reject after watching the proof."
+        case "first-second hook":
+            return "Write the first-second hook, then regenerate the platform pack."
+        case "caption or overlay plan":
+            return "Add caption or face-safe overlay metadata before packaging."
+        case "platform-native destination pack":
+            return "Draft the platform-native destination pack."
+        case "attention signal pass":
+            return "Improve the weakest attention signal, then re-check the short."
+        case "renderable show segment":
+            return "Add or move a visible recipe segment before export."
+        default:
+            return "Add \(item), then regenerate the platform pack."
+        }
     }
 
     private static func attentionScore(for signals: [ShortCreatorAttentionSignal]) -> Int {

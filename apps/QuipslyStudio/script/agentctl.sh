@@ -420,6 +420,34 @@ get() {
   printf '\n'
 }
 
+selected_short_export_selector_query() {
+  python3 - "$BASE_URL" <<'PY'
+import json
+import sys
+import urllib.parse
+import urllib.request
+
+base = sys.argv[1].rstrip("/")
+try:
+    with urllib.request.urlopen(base + "/state", timeout=2) as response:
+        state = json.loads(response.read().decode("utf-8", errors="replace"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+proof = state.get("selectedShortProof") or {}
+clip = state.get("selectedShortClip") or {}
+short_id = str(proof.get("id") or clip.get("id") or "").strip()
+title = str(proof.get("title") or clip.get("title") or "").strip()
+params = {}
+if short_id:
+    params["id"] = short_id
+if title:
+    params["title"] = title
+print(("&" + urllib.parse.urlencode(params)) if params else "")
+PY
+}
+
 wait_active_session() {
   local expected="${1:-}"
   local timeout="${2:-30}"
@@ -12287,6 +12315,9 @@ else:
   shorts-queue)
     get "/shorts_queue"
     ;;
+  shorts-publication-proof|shorts-proof)
+    get "/editor_loop_proof"
+    ;;
   shorts-queue-summary)
     shorts_queue_summary
     ;;
@@ -12514,7 +12545,8 @@ else:
       usage
       exit 2
     fi
-    get "/shorts_export_selected?directory=$(urlencode "$directory")&basename=$(urlencode "$basename")"
+    selector_query="$(selected_short_export_selector_query || true)"
+    get "/shorts_export_selected?directory=$(urlencode "$directory")&basename=$(urlencode "$basename")${selector_query}"
     ;;
   shorts-export-all)
     directory="${2:-}"

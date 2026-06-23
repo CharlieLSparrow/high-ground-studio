@@ -9842,6 +9842,23 @@ struct WorkspaceView: View {
                 .background(readiness.color.opacity(0.10))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
+                let brief = shortCreatorQualityBrief(for: clip)
+                HStack(spacing: 6) {
+                    shortPassportChip(brief.primaryPlatform, systemImage: "paperplane.fill", color: QuipslyStudioTheme.moss)
+                    shortPassportChip("\(brief.score)/100", systemImage: "sparkles", color: QuipslyStudioTheme.honey)
+                    shortPassportChip(
+                        brief.publishReadiness.label,
+                        systemImage: brief.publishReadiness.canQueue ? "checkmark.seal.fill" : "leaf.fill",
+                        color: brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
+                    )
+                }
+
+                Text("Next: \(brief.publishReadiness.nextAction)")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .lineLimit(2)
+
                 Text(shortPacketOriginSummary(for: clip, sequenceRange: sequenceRange))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -11500,6 +11517,8 @@ struct WorkspaceView: View {
 
             selectedShortCreatorQualityCard(clip)
 
+            selectedShortPublicationPassportCard(clip)
+
             shortReviewDecisionButtons(clip)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -11680,6 +11699,145 @@ struct WorkspaceView: View {
                 .stroke(QuipslyStudioTheme.honey.opacity(0.22), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func selectedShortPublicationPassportCard(_ clip: ShortClipCandidate) -> some View {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
+        let sequence = projectStore.activeSequence
+        let range = selectedShortSequenceRange(clip)
+        let exportRanges = sequence.map { shortClipExportRanges(for: clip, in: $0) } ?? []
+        let recipeDuration = exportRanges.reduce(0) { $0 + $1.duration }
+        let exportPath = lastExportedShortPath(for: clip) ?? ""
+        let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
+        let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
+
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: brief.publishReadiness.canQueue ? "checkmark.seal.fill" : "leaf.fill")
+                    .foregroundStyle(brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Publication passport")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text(packetSummary.reason)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text(brief.publishReadiness.label.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background((brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey).opacity(0.13))
+                    .clipShape(Capsule())
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
+                shortPassportFact("Source", range.map { String(format: "%.2fs-%.2fs", $0.start, $0.end) } ?? "choose span")
+                shortPassportFact("Output", recipeDuration > 0 ? String(format: "%.2fs", recipeDuration) : "needs visible range")
+                shortPassportFact("Proof", exportExists ? "exported" : "needs export")
+                shortPassportFact("Primary", brief.primaryPlatform)
+            }
+
+            if !brief.publishReadiness.missing.isEmpty {
+                Text("Missing: \(brief.publishReadiness.missing.prefix(4).joined(separator: ", "))")
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text("Next: \(brief.publishReadiness.nextAction)")
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(QuipslyStudioTheme.sage)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                Button {
+                    previewSelectedShortClip(play: false)
+                } label: {
+                    Label("Cue", systemImage: "scope")
+                }
+                .help("Jump the shared playhead to this short's first recipe segment.")
+
+                Button {
+                    previewSelectedShortClip(play: true)
+                } label: {
+                    Label("Preview", systemImage: "play.rectangle.fill")
+                }
+                .disabled(recipeDuration <= 0)
+                .help("Preview this short in 9:16 Play Edit mode.")
+
+                Button {
+                    exportSelectedShortClipForAgent(directoryPath: expectedExportTarget.directory, basename: expectedExportTarget.basename)
+                } label: {
+                    Label(exportExists ? "Re-export" : "Export proof", systemImage: "square.and.arrow.up")
+                }
+                .disabled(recipeDuration <= 0 || exportEngine.isExporting)
+                .help("Render a proxy-backed derivative MP4 for this recipe. Original media stays untouched.")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(9)
+        .background(
+            LinearGradient(
+                colors: [
+                    QuipslyStudioTheme.moss.opacity(0.11),
+                    QuipslyStudioTheme.honey.opacity(0.07),
+                    QuipslyStudioTheme.panelLift.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(QuipslyStudioTheme.moss.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityIdentifier("quipsly.shorts.publicationPassport")
+    }
+
+    private func shortPassportFact(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .tracking(0.6)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption2.monospacedDigit())
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(QuipslyStudioTheme.quietFieldFill)
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private func shortPassportChip(_ text: String, systemImage: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.caption2)
+            Text(text)
+                .font(.caption2)
+                .fontWeight(.black)
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private func shortEditorLabel(_ text: String) -> some View {
@@ -31605,7 +31763,12 @@ struct WorkspaceView: View {
         updateAgentState()
     }
 
-    private func exportSelectedShortClipForAgent(directoryPath: String?, basename: String?) {
+    private func exportSelectedShortClipForAgent(
+        directoryPath: String?,
+        basename: String?,
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil
+    ) {
         guard var sequence = projectStore.activeSequence else {
             lastMediaAction = "Short export blocked: no active sequence"
             blockExportStatus(kind: "selected-short-9x16", reason: "No active sequence loaded.")
@@ -31613,13 +31776,25 @@ struct WorkspaceView: View {
             return
         }
 
-        guard let selectedShortClipId,
-              let index = sequence.shortClipQueue.firstIndex(where: { $0.id == selectedShortClipId }) else {
+        let hintedId = selectedShortIdHint
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : UUID(uuidString: $0) }
+        let hintedTitle = selectedShortTitleHint?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedIndex = selectedShortClipId
+            .flatMap { id in sequence.shortClipQueue.firstIndex(where: { $0.id == id }) }
+            ?? hintedId.flatMap { id in sequence.shortClipQueue.firstIndex(where: { $0.id == id }) }
+            ?? hintedTitle.flatMap { title in
+                title.isEmpty ? nil : sequence.shortClipQueue.firstIndex { $0.title == title }
+            }
+
+        guard let index = resolvedIndex else {
             lastMediaAction = "Short export blocked: no selected short recipe"
             blockExportStatus(kind: "selected-short-9x16", reason: "Select a short recipe before exporting.")
             updateAgentState()
             return
         }
+        selectedShortClipId = sequence.shortClipQueue[index].id
 
         let readiness = mediaReadinessSummary()
         guard readiness.isProductionReady || readiness.hasAvailableProxyEditing else {
@@ -31664,44 +31839,145 @@ struct WorkspaceView: View {
         projectStore.updateSequence(sequence, undoManager: nil, actionName: "Export Short Clip")
         scheduleAutosave(reason: "started short export")
 
-        beginExportStatus(kind: "selected-short-9x16", outputURLs: [outputURL], proofSeconds: exportDuration)
+        struct ProxyExportRangeRequest: Encodable {
+            let start: Double
+            let duration: Double
+        }
+
+        struct ProxyExportClipRequest: Encodable {
+            let id: UUID
+            let title: String
+            let outputPath: String
+            let ranges: [ProxyExportRangeRequest]
+        }
+
+        struct ProxyShortExportRequest: Encodable {
+            let schemaVersion: Int
+            let model: String
+            let batchId: String
+            let sessionName: String
+            let outputDirectory: String
+            let basename: String
+            let manifestPath: String
+            let progressPath: String
+            let sourcePolicy: String
+            let sequence: MediaSequence
+            let clips: [ProxyExportClipRequest]
+        }
+
+        let batchId = UUID().uuidString
+        let requestDirectory = defaultLocalExportDirectory()
+            .appendingPathComponent("export-requests", isDirectory: true)
+            .appendingPathComponent(batchId, isDirectory: true)
+        let requestURL = requestDirectory.appendingPathComponent("selected-short-export-request.json")
+        let progressURL = requestDirectory.appendingPathComponent("selected-short-export-progress.json")
+        let manifestURL = outputDirectory.appendingPathComponent("\(cleanBasename)-short-export-manifest.json")
+
+        do {
+            try FileManager.default.createDirectory(at: requestDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+            let request = ProxyShortExportRequest(
+                schemaVersion: 1,
+                model: "quipsly-proxy-short-export-request",
+                batchId: batchId,
+                sessionName: normalizedActiveSessionName(),
+                outputDirectory: outputDirectory.path,
+                basename: cleanBasename,
+                manifestPath: manifestURL.path,
+                progressPath: progressURL.path,
+                sourcePolicy: "proxy-only; original media untouched",
+                sequence: sequence,
+                clips: [
+                    ProxyExportClipRequest(
+                        id: clip.id,
+                        title: clip.title,
+                        outputPath: outputURL.path,
+                        ranges: exportRanges.map { range in
+                            ProxyExportRangeRequest(start: range.start, duration: range.duration)
+                        }
+                    )
+                ]
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(request).write(to: requestURL, options: .atomic)
+        } catch {
+            let blockReason = "Short export blocked while writing proxy export request: \(error.localizedDescription)"
+            lastMediaAction = blockReason
+            blockExportStatus(kind: "selected-short-9x16-proxy-bridge", reason: blockReason)
+            updateAgentState()
+            return
+        }
+
+        beginExportStatus(
+            kind: "selected-short-9x16-proxy-bridge",
+            outputURLs: [outputURL],
+            proofSeconds: exportDuration,
+            progressPath: progressURL,
+            manifestPath: manifestURL
+        )
         playbackEngine.playbackFormat = .vertical9x16
         lastMediaAction = "Short export started: \(clip.title)"
         updateAgentState()
 
         Task {
             do {
-                try await ExportEngine.shared.export(
-                    sequence: sequence,
-                    to: outputURL,
-                    format: .vertical9x16,
-                    allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
-                    sequenceRanges: exportRanges,
-                    allowPixelTextOverlays: false,
-                    primaryOverlayText: burnedInPrimaryOverlayText(for: clip),
-                    captionText: burnedInCaptionText(for: clip)
-                )
+                try await runProxyShortExportBridge(requestURL: requestURL)
 
                 await MainActor.run {
-                    markShortClipExportResult(
-                        id: selectedShortClipId,
-                        status: "exported",
-                        note: shortExportSuccessNote(outputURL: outputURL, clip: clip)
-                    )
-                    completeExportStatus(outputURLs: [outputURL])
-                    lastMediaAction = "Short export completed: \(outputURL.path)"
+                    let manifestClip = proxyShortExportManifestClips(at: manifestURL)[clip.id.uuidString]
+                    let status = manifestClip?["status"] as? String ?? ""
+                    let outputPath = manifestClip?["outputPath"] as? String ?? outputURL.path
+                    if status == "exported", FileManager.default.fileExists(atPath: outputPath) {
+                        let completedURL = URL(fileURLWithPath: outputPath)
+                        markShortClipExportResult(
+                            id: clip.id,
+                            status: "exported",
+                            note: "\(shortExportSuccessNote(outputURL: completedURL, clip: clip))\nProxy manifest: \(manifestURL.path)"
+                        )
+                        completeExportStatus(outputURLs: [completedURL])
+                        lastMediaAction = "Short proxy export completed: \(completedURL.path)"
+                    } else {
+                        let error = manifestClip?["error"] as? String ?? "Proxy export did not create an output file."
+                        markShortClipExportResult(
+                            id: clip.id,
+                            status: "export-failed",
+                            note: "Proxy export failed: \(error)\nProxy manifest: \(manifestURL.path)"
+                        )
+                        exportStatus = "failed"
+                        exportErrorMessage = "Selected short proxy export failed: \(error). See manifest: \(manifestURL.path)"
+                        exportCompletedAt = Date()
+                        stopExportStateRefreshLoop()
+                        lastMediaAction = "Short proxy export failed: \(error)"
+                    }
                     updateAgentState()
                 }
             } catch {
                 await MainActor.run {
+                    let manifestClip = proxyShortExportManifestClips(at: manifestURL)[clip.id.uuidString]
+                    if let status = manifestClip?["status"] as? String,
+                       status == "exported",
+                       let outputPath = manifestClip?["outputPath"] as? String,
+                       FileManager.default.fileExists(atPath: outputPath) {
+                        let completedURL = URL(fileURLWithPath: outputPath)
+                        markShortClipExportResult(
+                            id: clip.id,
+                            status: "exported",
+                            note: "\(shortExportSuccessNote(outputURL: completedURL, clip: clip))\nProxy manifest: \(manifestURL.path)"
+                        )
+                        completeExportStatus(outputURLs: [completedURL])
+                        lastMediaAction = "Short proxy export completed after bridge warning: \(completedURL.path)"
+                        updateAgentState()
+                        return
+                    }
                     markShortClipExportResult(
-                        id: selectedShortClipId,
+                        id: clip.id,
                         status: "export-failed",
-                        note: "Export failed: \(error.localizedDescription)"
+                        note: "Proxy export failed: \(error.localizedDescription)\nProxy manifest: \(manifestURL.path)"
                     )
                     failExportStatus(error: error)
-                    lastMediaAction = "Short export failed: \(error.localizedDescription)"
+                    lastMediaAction = "Short proxy export failed: \(error.localizedDescription)"
                     errorMessage = lastMediaAction
                     showErrorAlert = true
                     updateAgentState()
@@ -32878,6 +33154,7 @@ struct WorkspaceView: View {
                     "exportStatus": clip.exportStatus,
                     "lastExportedPath": exportPath,
                     "lastExportExists": exportExists,
+                    "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
                     "expectedExportPath": expectedExportTarget.path,
                     "expectedExportDirectory": expectedExportTarget.directory,
                     "expectedExportBasename": expectedExportTarget.basename,
@@ -33020,6 +33297,60 @@ struct WorkspaceView: View {
         ]
     }
 
+    private func shortPublicationPassportPayload(for clip: ShortClipCandidate, in sequence: MediaSequence) -> [String: Any] {
+        let sequenceStart = sequenceStartTime(for: clip, in: sequence)
+        let segments = shortClipSegments(for: clip, in: sequence)
+        let exportRanges = shortClipExportRanges(for: clip, in: sequence)
+        let recipeDuration = exportRanges.reduce(0) { $0 + $1.duration }
+        let sequenceEnd = segments.map(\.end).max() ?? (sequenceStart + recipeDuration)
+        let exportPath = lastExportedShortPath(for: clip) ?? ""
+        let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
+        let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
+        let brief = shortCreatorQualityBrief(for: clip)
+        let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
+
+        return [
+            "model": "quipsly-short-publication-passport",
+            "version": "2026-06-22.short-publication-passport.v1",
+            "title": clip.title,
+            "timeBase": "sequence-seconds",
+            "recipeModel": "ordered-sequence-segments-over-whole-sources",
+            "sequenceStartTime": sequenceStart,
+            "sequenceEndTime": sequenceEnd,
+            "recipeDuration": recipeDuration,
+            "segmentCount": segments.count,
+            "primaryPlatform": brief.primaryPlatform,
+            "qualityScore": brief.score,
+            "attentionScore": brief.attentionScore,
+            "readinessLabel": brief.readinessLabel,
+            "publishReadinessLabel": brief.publishReadiness.label,
+            "publishReadinessSummary": brief.publishReadiness.summary,
+            "canQueueForTower": brief.publishReadiness.canQueue,
+            "missing": brief.publishReadiness.missing,
+            "nextAction": brief.publishReadiness.nextAction,
+            "safeActionLabel": packetSummary.safeActionLabel,
+            "safeAction": packetSummary.nextSafeAction,
+            "agentInstruction": packetSummary.agentInstruction,
+            "reviewStatus": clip.reviewStatus,
+            "exportStatus": clip.exportStatus,
+            "exportProofReady": exportExists,
+            "lastExportedPath": exportPath,
+            "expectedExportPath": expectedExportTarget.path,
+            "expectedExportDirectory": expectedExportTarget.directory,
+            "expectedExportBasename": expectedExportTarget.basename,
+            "commands": [
+                "select": "script/agentctl.sh shorts-select id \(clip.id.uuidString)",
+                "cue": "script/agentctl.sh shorts-preview-selected false",
+                "preview": "script/agentctl.sh shorts-preview-selected true",
+                "export": "script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename))",
+                "reviewKeep": "script/agentctl.sh shorts-review-selected keep \"proof watched; ready for Tower handoff\"",
+                "reviewRefine": "script/agentctl.sh shorts-review-selected refine \"needs another edit pass\"",
+                "draftPlatformPack": "script/agentctl.sh shorts-quality-action draft-platform-pack"
+            ] as [String: Any],
+            "sourcePolicy": "Uses proxy-backed derivative export and session metadata. Original media remains untouched."
+        ]
+    }
+
     private func selectedShortClipPayload(for sequence: MediaSequence) -> [String: Any] {
         guard let selectedShortClipId,
               let clip = sequence.shortClipQueue.first(where: { $0.id == selectedShortClipId }) else {
@@ -33080,6 +33411,7 @@ struct WorkspaceView: View {
             "lastExportedPath": exportPath,
             "lastExportExists": exportExists,
             "creatorQuality": shortCreatorQualityPayload(for: clip),
+            "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
             "expectedExportPath": expectedExportTarget.path,
             "expectedExportDirectory": expectedExportTarget.directory,
             "expectedExportBasename": expectedExportTarget.basename,
@@ -36874,7 +37206,9 @@ struct WorkspaceView: View {
         case "shorts_export_selected":
             exportSelectedShortClipForAgent(
                 directoryPath: request.values["directory"],
-                basename: request.values["basename"]
+                basename: request.values["basename"],
+                selectedShortIdHint: request.values["selectedShortId"],
+                selectedShortTitleHint: request.values["selectedShortTitle"]
             )
         case "shorts_export_all":
             exportQueuedShortClipsForAgent(

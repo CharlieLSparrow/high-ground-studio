@@ -44,6 +44,8 @@ public class AgentServer: ObservableObject {
 
     private var listener: NWListener?
     public let port: UInt16 = 8080
+    private nonisolated static let cachedStatusLock = NSLock()
+    private nonisolated(unsafe) static var cachedStatusData: Data?
 
     public init() {
         start()
@@ -58,9 +60,7 @@ public class AgentServer: ObservableObject {
             listener = try NWListener(using: parameters, on: port)
 
             listener?.newConnectionHandler = { [weak self] connection in
-                Task { @MainActor in
-                    self?.handleConnection(connection)
-                }
+                self?.handleConnection(connection)
             }
 
             listener?.start(queue: .global(qos: .userInitiated))
@@ -74,7 +74,7 @@ public class AgentServer: ObservableObject {
         }
     }
 
-    private func handleConnection(_ connection: NWConnection) {
+    private nonisolated func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .userInitiated))
 
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, context, isComplete, error in
@@ -101,9 +101,7 @@ public class AgentServer: ObservableObject {
 
             switch request.path {
             case "/", "/health":
-                Task { @MainActor in
-                    self?.sendJSON(connection, object: self?.healthPayload() ?? ["status": "unavailable"])
-                }
+                self?.sendJSON(connection, object: Self.cachedHealthPayload())
             case "/commands":
                 Task { @MainActor in
                     self?.sendJSON(connection, object: self?.commandsPayload() ?? ["commands": []])
@@ -1254,15 +1252,33 @@ public class AgentServer: ObservableObject {
             case "/shorts_export_selected":
                 let directory = request.query["directory"] ?? ""
                 let basename = request.query["basename"] ?? ""
+                let requestedShortId = request.query["id"] ?? request.query["selectedShortId"] ?? ""
+                let requestedShortTitle = request.query["title"] ?? request.query["selectedShortTitle"] ?? ""
                 Task { @MainActor in
+                    let selectedShortProof = self?.lastStatus?["selectedShortProof"] as? [String: Any] ?? [:]
+                    let selectedShortClip = self?.lastStatus?["selectedShortClip"] as? [String: Any] ?? [:]
+                    let selectedShortId = requestedShortId.isEmpty
+                        ? ((selectedShortProof["id"] as? String)
+                        ?? (selectedShortClip["id"] as? String)
+                        ?? "")
+                        : requestedShortId
+                    let selectedShortTitle = requestedShortTitle.isEmpty
+                        ? ((selectedShortProof["title"] as? String)
+                        ?? (selectedShortClip["title"] as? String)
+                        ?? "")
+                        : requestedShortTitle
                     self?.enqueueCommand("shorts_export_selected", values: [
                         "directory": directory,
-                        "basename": basename
+                        "basename": basename,
+                        "selectedShortId": selectedShortId,
+                        "selectedShortTitle": selectedShortTitle
                     ])
                     self?.sendJSON(connection, object: [
                         "status": "shorts_export_selected_commanded",
                         "directory": directory,
-                        "basename": basename
+                        "basename": basename,
+                        "selectedShortId": selectedShortId,
+                        "selectedShortTitle": selectedShortTitle
                     ])
                 }
             case "/shorts_export_all":
@@ -1951,10 +1967,11 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: ["status": "sync_audio_commanded"])
                 }
             case "/state":
-                Task { @MainActor in
-                    let status = self?.lastStatus ?? ["status": "no_state_yet"]
-                    print("AgentServer: sending response for /state")
-                    self?.sendJSON(connection, object: status)
+                if let cachedStatus = Self.cachedStatusResponseData() {
+                    print("AgentServer: sending cached response for /state")
+                    self?.sendJSONData(connection, bodyData: cachedStatus)
+                } else {
+                    self?.sendJSON(connection, object: ["status": "no_state_yet"])
                 }
             case "/social_master_queue":
                 Task { @MainActor in
@@ -2586,7 +2603,7 @@ public class AgentServer: ObservableObject {
         )
     }
 
-    private func sendJSON(_ connection: NWConnection, object: Any, statusCode: Int = 200, reason: String = "OK") {
+    private nonisolated func sendJSON(_ connection: NWConnection, object: Any, statusCode: Int = 200, reason: String = "OK") {
         let bodyData: Data
         if JSONSerialization.isValidJSONObject(object),
            let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) {
@@ -2595,6 +2612,10 @@ public class AgentServer: ObservableObject {
             bodyData = #"{"error":"serialization_failed"}"#.data(using: .utf8)!
         }
 
+        sendJSONData(connection, bodyData: bodyData, statusCode: statusCode, reason: reason)
+    }
+
+    private nonisolated func sendJSONData(_ connection: NWConnection, bodyData: Data, statusCode: Int = 200, reason: String = "OK") {
         let header = "HTTP/1.1 \(statusCode) \(reason)\r\n" +
             "Content-Type: application/json; charset=utf-8\r\n" +
             "Connection: close\r\n" +
@@ -2607,6 +2628,33 @@ public class AgentServer: ObservableObject {
         connection.send(content: data, completion: .contentProcessed { _ in
             connection.cancel()
         })
+    }
+
+    private nonisolated static func cachedHealthPayload() -> [String: Any] {
+        [
+            "status": "ok",
+            "service": "quipsly-agent-server",
+            "port": 8080,
+            "commandsUrl": "http://127.0.0.1:8080/commands",
+            "agentManualUrl": "http://127.0.0.1:8080/agent_manual",
+            "stateMode": "cached-off-main-actor"
+        ]
+    }
+
+    private nonisolated static func cachedStatusResponseData() -> Data? {
+        cachedStatusLock.lock()
+        defer { cachedStatusLock.unlock() }
+        return cachedStatusData
+    }
+
+    private nonisolated static func updateCachedStatusResponse(_ status: [String: Any]) {
+        guard JSONSerialization.isValidJSONObject(status),
+              let data = try? JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted, .sortedKeys]) else {
+            return
+        }
+        cachedStatusLock.lock()
+        cachedStatusData = data
+        cachedStatusLock.unlock()
     }
 
     private func staticCatalogPayload(filename: String) -> [String: Any] {
@@ -3131,6 +3179,9 @@ public class AgentServer: ObservableObject {
         let selectedDecision = status["selectedDecision"] as? [String: Any] ?? [:]
         let selectedShort = status["selectedShortClip"] as? [String: Any] ?? [:]
         let shortQueue = status["shortClipQueue"] as? [String: Any] ?? [:]
+        let selectedShortPassport = selectedShort["publicationPassport"] as? [String: Any] ?? [:]
+        let selectedShortQuality = selectedShort["creatorQuality"] as? [String: Any] ?? [:]
+        let selectedShortQualitySummary = selectedShortQuality["qualityPacketSummary"] as? [String: Any] ?? [:]
         let sourceProof = status["sourceMonitorSyncProof"] as? [String: Any] ?? [:]
         let programTruth = status["programOutputTruth"] as? [String: Any] ?? [:]
         let workingSet = status["workingSetTruth"] as? [String: Any] ?? [:]
@@ -3174,6 +3225,13 @@ public class AgentServer: ObservableObject {
             "shortRecipeCount": status["shortClipQueueCount"] ?? shortQueue["count"] ?? 0,
             "selectedShortTitle": selectedShort["title"] ?? "",
             "selectedShortId": selectedShort["id"] ?? "",
+            "selectedShortRecipeDuration": selectedShort["recipeDuration"] ?? "",
+            "selectedShortReviewStatus": selectedShort["reviewStatus"] ?? "",
+            "selectedShortExportStatus": selectedShort["exportStatus"] ?? "",
+            "selectedShortPrimaryPlatform": selectedShortPassport["primaryPlatform"] ?? selectedShortQuality["primaryPlatform"] ?? "",
+            "selectedShortNextAction": selectedShortPassport["nextAction"] ?? selectedShortQualitySummary["nextSafeAction"] ?? "",
+            "selectedShortPublicationPassport": selectedShortPassport,
+            "selectedShortQualitySummary": selectedShortQualitySummary,
             "truth": shortQueue["truth"] ?? "Shorts are output recipes over sequence time; they do not chop source media."
         ]
 
@@ -3185,7 +3243,10 @@ public class AgentServer: ObservableObject {
             "selectDecision": "script/agentctl.sh select-decision at_playhead video",
             "sourceWindow": "script/agentctl.sh source-window \"Charlie Camera\" show 10",
             "switchSelected": "script/agentctl.sh switch-selected charlie|homer|both|skip",
-            "shorts": "script/agentctl.sh shorts-select index 1 && script/agentctl.sh shorts-range-selected start delta -0.1"
+            "shorts": "script/agentctl.sh shorts-select index 1 && script/agentctl.sh shorts-range-selected start delta -0.1",
+            "shortPublicationProof": "script/agentctl.sh editor-loop-proof then inspect shortTruth.selectedShortPublicationPassport",
+            "shortExport": "script/agentctl.sh shorts-export-selected /absolute/output/folder optional-basename",
+            "shortReview": "script/agentctl.sh shorts-review-selected keep|refine|reject \"notes\""
         ]
 
         let payload: [String: Any] = [
@@ -3241,6 +3302,7 @@ public class AgentServer: ObservableObject {
         enriched["agentCapabilitiesUrl"] = "http://127.0.0.1:\(port)/agent_capabilities"
         enriched["codexEditorHandoffUrl"] = "http://127.0.0.1:\(port)/codex_editor_handoff"
         self.lastStatus = enriched
+        Self.updateCachedStatusResponse(enriched)
     }
 
     public func enqueueCommand(_ name: String, values: [String: String] = [:]) {

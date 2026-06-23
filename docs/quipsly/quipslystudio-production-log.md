@@ -348,3 +348,30 @@ Notes:
 - Compact proof endpoint is intentionally read-only and should become the default agent preflight.
 - Endpoint currently reports source monitor counts, but detailed source-player deltas are still proven by smoke scripts; future pass can persist/expose last sync proof in compact state.
 - Visual design is clearer, not final. Next UX pass should further reduce visible SHOW/SKIP jargon and improve left/sidebar density.
+
+### 2026-06-22 - Episode 1 shorts publication-real proof pass
+
+Goal: make Episode 1 shorts usable to discover, inspect, refine, export, and prepare as real social clips while preserving Quipsly's whole-source metadata model.
+
+Changed:
+- Added a visible Publication Passport for selected shorts and compact passport chips on short cards: platform target, score, readiness, export proof, missing items, and next action.
+- Added `publicationPassport` payloads to short queue/selected-short state so humans and agents can inspect review/export/platform readiness without guessing.
+- Converted selected-short export to the app-owned proxy bridge path used by batch shorts export. Selected exports now write request/progress/manifest JSON and derivative MP4s without touching original media.
+- Hardened `/shorts_export_selected` and `script/agentctl.sh shorts-export-selected` so agent commands carry selected short id/title instead of relying on delayed global selection state.
+- Made `/state` and `/health` respond from a cached status payload so export progress stays observable while the main actor is busy.
+- Updated `script/smoke_episode1_short_export.sh` to follow the agent control contract: add a range, wait for state proof, then export.
+
+Episode 1 proof shorts:
+- `The Wednesday Rule opening` -> `/Users/wall-e/Library/Application Support/Quipsly/MediaVault/exports/short-review/episode-1-premiere-rescue-The-Wednesday-Rule-opening-9x16-short.mp4`
+- `Ask why, not just what` -> `/Users/wall-e/Library/Application Support/Quipsly/MediaVault/exports/short-review/episode-1-premiere-rescue-Ask-why-not-just-what-9x16-short.mp4`
+- `Mentorship is attention` -> `/Users/wall-e/Library/Application Support/Quipsly/MediaVault/exports/short-review/episode-1-premiere-rescue-Mentorship-is-attention-9x16-short.mp4`
+
+Validated:
+- `./script/build_and_run.sh --verify` passed through the real QuipslyStudio app path.
+- `script/smoke_episode1_short_export.sh --no-build` passed; it created a temporary selected 9:16 short, exported a non-empty proxy derivative, and removed the temp short.
+- `script/smoke_episode1_short_clip_queue.sh` passed; temporary queue item was removed successfully.
+- Final Episode 1 shorts queue contains exactly 3 real review candidates, all `exported`, all still `draft`, all with existing proof files and `publicationPassport.exportProofReady = true`.
+
+Product truth:
+- These shorts are review-ready derivatives, not publication-approved posts. Next human/agent action is to watch/listen, mark Keep/Refine/Reject, then package for Tower/social distribution.
+- Source media remains whole. Shorts are ordered sequence-time recipes over proxy-backed source lanes.

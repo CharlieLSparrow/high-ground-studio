@@ -199,7 +199,6 @@ try:
         + "&title="
         + urllib.parse.quote(title)
     )
-    command("/shorts_queue_select?title=" + urllib.parse.quote(title))
     state = wait_for(
         lambda s: (s.get("selectedShortProof") or {}).get("title") == title,
         timeout=12,
