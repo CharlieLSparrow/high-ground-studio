@@ -1268,6 +1268,7 @@ public class AgentServer: ObservableObject {
             case "/shorts_export_selected":
                 let directory = request.query["directory"] ?? ""
                 let basename = request.query["basename"] ?? ""
+                let sessionName = request.query["sessionName"] ?? ""
                 let requestedShortId = request.query["id"] ?? request.query["selectedShortId"] ?? ""
                 let requestedShortTitle = request.query["title"] ?? request.query["selectedShortTitle"] ?? ""
                 let cachedStatus = Self.cachedStatusDictionary() ?? [:]
@@ -1286,6 +1287,7 @@ public class AgentServer: ObservableObject {
                 let receipt = Self.startDirectProxyShortExportFromCachedState(
                     directory: directory,
                     basename: basename,
+                    sessionName: sessionName,
                     selectedShortId: selectedShortId,
                     selectedShortTitle: selectedShortTitle
                 )
@@ -1293,6 +1295,7 @@ public class AgentServer: ObservableObject {
                     "status": "shorts_export_selected_commanded",
                     "directory": directory,
                     "basename": basename,
+                    "sessionName": sessionName,
                     "selectedShortId": selectedShortId,
                     "selectedShortTitle": selectedShortTitle,
                     "commandReceipt": receipt,
@@ -2768,6 +2771,7 @@ public class AgentServer: ObservableObject {
         status["exportStatus"] = summary.status
         status["exportOutputPaths"] = summary.outputPaths
         status["lastMediaAction"] = summary.lastMediaAction
+        status["lastShortExportSessionName"] = summary.sessionName
 
         var exportState = status["exportState"] as? [String: Any] ?? [:]
         exportState["status"] = summary.status
@@ -2782,34 +2786,44 @@ public class AgentServer: ObservableObject {
         exportState["isExporting"] = false
         status["exportState"] = exportState
 
-        status["selectedShortClipId"] = summary.clipId
-
         var lastExportProof: [String: Any] = [
             "id": summary.clipId,
-            "title": summary.clipTitle
+            "title": summary.clipTitle,
+            "sessionName": summary.sessionName
         ]
         applyProxyShortExportSummary(summary, to: &lastExportProof)
         status["lastShortExportProof"] = lastExportProof
 
-        var selectedShort = status["selectedShortClip"] as? [String: Any] ?? [:]
-        if staticStringValue(selectedShort["id"]) != summary.clipId {
-            selectedShort = [
-                "id": summary.clipId,
-                "title": summary.clipTitle
-            ]
-        }
-        applyProxyShortExportSummary(summary, to: &selectedShort)
-        status["selectedShortClip"] = selectedShort
+        let activeSessionName = normalizedSessionNameForAgent(
+            staticStringValue(status["activeSessionName"]).isEmpty
+                ? staticStringValue(status["sessionName"])
+                : staticStringValue(status["activeSessionName"])
+        )
+        let exportMatchesActiveSession = summary.sessionName.isEmpty || summary.sessionName == activeSessionName
 
-        var selectedProof = status["selectedShortProof"] as? [String: Any] ?? [:]
-        if staticStringValue(selectedProof["id"]) != summary.clipId {
-            selectedProof = [
-                "id": summary.clipId,
-                "title": summary.clipTitle
-            ]
+        if exportMatchesActiveSession {
+            status["selectedShortClipId"] = summary.clipId
+
+            var selectedShort = status["selectedShortClip"] as? [String: Any] ?? [:]
+            if staticStringValue(selectedShort["id"]) != summary.clipId {
+                selectedShort = [
+                    "id": summary.clipId,
+                    "title": summary.clipTitle
+                ]
+            }
+            applyProxyShortExportSummary(summary, to: &selectedShort)
+            status["selectedShortClip"] = selectedShort
+
+            var selectedProof = status["selectedShortProof"] as? [String: Any] ?? [:]
+            if staticStringValue(selectedProof["id"]) != summary.clipId {
+                selectedProof = [
+                    "id": summary.clipId,
+                    "title": summary.clipTitle
+                ]
+            }
+            applyProxyShortExportSummary(summary, to: &selectedProof)
+            status["selectedShortProof"] = selectedProof
         }
-        applyProxyShortExportSummary(summary, to: &selectedProof)
-        status["selectedShortProof"] = selectedProof
 
         let safeStatus = jsonSafeDictionary(status)
         updateCachedStatusResponse(safeStatus)
@@ -2823,6 +2837,7 @@ public class AgentServer: ObservableObject {
         let outputPaths: [String]
         let manifestPath: String
         let progressPath: String
+        let sessionName: String
         let completedAt: String
         let error: String
 
@@ -2879,6 +2894,7 @@ public class AgentServer: ObservableObject {
             outputPaths: outputPaths,
             manifestPath: manifestPath,
             progressPath: staticStringValue(manifest["progressPath"]),
+            sessionName: normalizedSessionNameForAgent(staticStringValue(request["sessionName"])),
             completedAt: staticStringValue(manifest["completedAt"]),
             error: errors
         )
@@ -2931,6 +2947,7 @@ public class AgentServer: ObservableObject {
     private nonisolated static func startDirectProxyShortExportFromCachedState(
         directory: String,
         basename: String,
+        sessionName requestedSessionName: String = "",
         selectedShortId: String,
         selectedShortTitle: String
     ) -> [String: Any] {
@@ -2944,9 +2961,13 @@ public class AgentServer: ObservableObject {
             }
 
             let sessionName = normalizedSessionNameForAgent(
-                staticStringValue(status["activeSessionName"]).isEmpty
-                    ? staticStringValue(status["sessionName"])
-                    : staticStringValue(status["activeSessionName"])
+                requestedSessionName.isEmpty
+                    ? (
+                        staticStringValue(status["activeSessionName"]).isEmpty
+                            ? staticStringValue(status["sessionName"])
+                            : staticStringValue(status["activeSessionName"])
+                    )
+                    : requestedSessionName
             )
             let sessionURL = localMediaVaultRootURL()
                 .appendingPathComponent("sessions", isDirectory: true)
@@ -3064,21 +3085,32 @@ public class AgentServer: ObservableObject {
             exportState["isExporting"] = true
             exportState["error"] = ""
             status["exportState"] = exportState
-            status["selectedShortClipId"] = clipId
             var selectedProjection = clip
+            selectedProjection["sessionName"] = sessionName
             selectedProjection["exportStatus"] = "exporting"
             selectedProjection["lastExportedPath"] = outputURL.path
             selectedProjection["lastExportExists"] = FileManager.default.fileExists(atPath: outputURL.path)
             selectedProjection["lastExportManifestPath"] = manifestURL.path
-            status["selectedShortClip"] = selectedProjection
-            status["selectedShortProof"] = selectedProjection
-            updateSelectedShortExportProjection(
-                in: &status,
-                clipId: clipId,
-                status: "exporting",
-                outputPath: outputURL.path,
-                manifestPath: manifestURL.path
+            status["lastShortExportProof"] = selectedProjection
+            status["lastShortExportSessionName"] = sessionName
+
+            let activeSessionName = normalizedSessionNameForAgent(
+                staticStringValue(status["activeSessionName"]).isEmpty
+                    ? staticStringValue(status["sessionName"])
+                    : staticStringValue(status["activeSessionName"])
             )
+            if sessionName == activeSessionName {
+                status["selectedShortClipId"] = clipId
+                status["selectedShortClip"] = selectedProjection
+                status["selectedShortProof"] = selectedProjection
+                updateSelectedShortExportProjection(
+                    in: &status,
+                    clipId: clipId,
+                    status: "exporting",
+                    outputPath: outputURL.path,
+                    manifestPath: manifestURL.path
+                )
+            }
             updateCachedStatusResponse(jsonSafeDictionary(status))
 
             return [
