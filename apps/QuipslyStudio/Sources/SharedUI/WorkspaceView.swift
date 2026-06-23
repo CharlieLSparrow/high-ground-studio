@@ -9842,6 +9842,8 @@ struct WorkspaceView: View {
                     shortReviewStatusPill(clip.reviewStatus)
                 }
 
+                shortProofStrip(for: clip, sequenceRange: sequenceRange)
+
                 HStack(spacing: 5) {
                     Text(clip.format.rawValue)
                         .font(.caption2)
@@ -10161,6 +10163,85 @@ struct WorkspaceView: View {
     private func shortSegmentCountLabel(for clip: ShortClipCandidate) -> String {
         let count = max(1, clip.segments.count)
         return count == 1 ? "1 segment" : "\(count) segments"
+    }
+
+    private func shortProofStrip(
+        for clip: ShortClipCandidate,
+        sequenceRange: (start: Double, end: Double, duration: Double)?
+    ) -> some View {
+        let exportPath = lastExportedShortPath(for: clip)
+        let exportExists = exportPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
+        let review = clip.reviewStatus.isEmpty ? "draft" : clip.reviewStatus
+        let exportLabel = exportExists ? "exported" : (clip.exportStatus.isEmpty ? "needs export" : clip.exportStatus)
+        let duration = sequenceRange?.duration ?? clip.duration
+        let rangeLabel = sequenceRange.map {
+            String(format: "%.0fs-%.0fs", $0.start, $0.end)
+        } ?? String(format: "%.0fs-%.0fs", clip.startTime, clip.startTime + clip.duration)
+
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
+            shortProofChip(
+                "Source",
+                rangeLabel,
+                icon: "timeline.selection",
+                color: QuipslyStudioTheme.creek
+            )
+            shortProofChip(
+                "Length",
+                String(format: "%.1fs", max(0, duration)),
+                icon: "timer",
+                color: QuipslyStudioTheme.sage
+            )
+            shortProofChip(
+                "Review",
+                review,
+                icon: review.lowercased() == "keep" ? "checkmark.seal.fill" : "pencil.and.scribble",
+                color: shortStatusColor(review)
+            )
+            shortProofChip(
+                "Export",
+                exportLabel,
+                icon: exportExists ? "film.stack.fill" : "square.and.arrow.up",
+                color: exportExists ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
+            )
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Short proof: source \(rangeLabel), duration \(String(format: "%.1f", max(0, duration))) seconds, review \(review), export \(exportLabel)")
+    }
+
+    private func shortProofChip(
+        _ label: String,
+        _ value: String,
+        icon: String,
+        color: Color
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundStyle(color)
+                .frame(width: 12)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(label.uppercased())
+                    .font(.system(size: 7, weight: .black, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundStyle(color.opacity(0.82))
+                    .lineLimit(1)
+                Text(value)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(QuipslyStudioTheme.moonMilk.opacity(0.84))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(color.opacity(0.14), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private func shortRecipeSummary(for clip: ShortClipCandidate) -> String {
