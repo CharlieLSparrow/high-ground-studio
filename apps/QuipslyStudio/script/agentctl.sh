@@ -305,6 +305,7 @@ Usage:
   script/agentctl.sh shorts-platform-package-board [--json|--html|--md] [/absolute/output/folder] [basename]
   script/agentctl.sh shorts-quality-action draft-all-platform-packs
   script/agentctl.sh shorts-improvement-plan [--json|--html|--md] [/absolute/output/folder] [basename]
+  script/agentctl.sh episodes-shorts-readiness [--json|--html|--md] [/absolute/output/folder] [basename]
   script/agentctl.sh shorts-add-selected "Optional title"
   script/agentctl.sh shorts-add-range 3000 3045 "Identity Changes Behavior"
   script/agentctl.sh shorts-select id SHORT_CLIP_ID
@@ -6471,6 +6472,10 @@ shorts_improvement_plan() {
   shorts_board_packet "shorts_improvement_plan.py" "episode-1-shorts-improvement-plan" "$@"
 }
 
+episodes_shorts_readiness() {
+  python3 "$ROOT_DIR/script/episodes_shorts_readiness.py" "$@"
+}
+
 shorts_review_run_next() {
   local tmp status next_command title reason mechanical_status mechanical_command mechanical_title mechanical_reason
   tmp="$(mktemp "${TMPDIR:-/tmp}/quipslystudio-short-run-next.XXXXXX")"
@@ -12417,6 +12422,10 @@ else:
     ;;
   shorts-improvement-plan|shorts-improve-board)
     shorts_improvement_plan "$@"
+    ;;
+  episodes-shorts-readiness|shorts-episodes-readiness)
+    shift
+    episodes_shorts_readiness "$@"
     ;;
   shorts-add-selected)
     title="${2:-}"

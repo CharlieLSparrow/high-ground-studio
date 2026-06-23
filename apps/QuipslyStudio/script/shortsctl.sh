@@ -44,6 +44,7 @@ Usage:
   script/shortsctl.sh platform-package-board [--json|--html|--md] [/absolute/output/folder] [basename]
   script/shortsctl.sh improvement-plan [--json|--html|--md] [/absolute/output/folder] [basename]
   script/shortsctl.sh mission-control [--json|--html|--md] [/absolute/output/folder] [basename]
+  script/shortsctl.sh episodes-readiness [--json|--html|--md] [/absolute/output/folder] [basename]
 
 This wrapper is intentionally small so shorts-quality tooling can be committed
 and reused without depending on the broad agentctl command surface.
@@ -134,6 +135,10 @@ case "$cmd" in
   mission-control)
     shift
     run_board "shorts_mission_control.py" "episodes-1-3-shorts-mission-control" "$@"
+    ;;
+  episodes-readiness|readiness)
+    shift
+    python3 "$ROOT_DIR/script/episodes_shorts_readiness.py" "$@"
     ;;
   -h|--help|help|"")
     usage

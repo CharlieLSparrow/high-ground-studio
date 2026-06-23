@@ -375,3 +375,37 @@ Validated:
 Product truth:
 - These shorts are review-ready derivatives, not publication-approved posts. Next human/agent action is to watch/listen, mark Keep/Refine/Reject, then package for Tower/social distribution.
 - Source media remains whole. Shorts are ordered sequence-time recipes over proxy-backed source lanes.
+
+### 2026-06-23 - Episodes 1-3 shorts readiness board
+
+Goal: make the first three episodes visible as one publication-real shorts lane, not three scattered session files or a live-app-only Episode 1 board.
+
+Changed:
+- Added `script/episodes_shorts_readiness.py`, a saved-session scanner that reads explicit `project.sequences[*].shortClipQueue` truth instead of fuzzy-recursing through timeline edit decisions.
+- Added `script/shortsctl.sh episodes-readiness` for a running-app-independent operator report.
+- Added `script/agentctl.sh episodes-shorts-readiness` so Codex/agents can inspect Episodes 1-3 shorts readiness without fragile OS mouse control.
+- Generated current-state artifacts:
+  - `docs/quipsly/current-state/episodes-1-3-shorts-readiness.json`
+  - `docs/quipsly/current-state/episodes-1-3-shorts-readiness.md`
+  - `docs/quipsly/current-state/episodes-1-3-shorts-readiness.html`
+
+Evidence:
+- `python3 -m py_compile script/episodes_shorts_readiness.py` passed.
+- `./script/build_and_run.sh --verify` passed through the real QuipslyStudio app path.
+- `./script/agentctl.sh health` returned `status: ok` on port `8080`.
+- `./script/agentctl.sh episodes-shorts-readiness --json ...` returned `27` total shorts across Episodes 1-3.
+- Episode coverage from saved sessions:
+  - Episode 1: `13` shorts, `12` exported by status, `12` local exported files, status `needs-human-review`.
+  - Episode 2: `9` shorts, `5` exported by status, `5` local exported files, status `needs-human-review`.
+  - Episode 3: `5` shorts, `5` exported by status, `5` local exported files, status `needs-human-review`.
+- Platform packaging metadata exists for all `27` current short candidates.
+
+Important correction:
+- The first draft of the report incorrectly counted `not-exported` as exported because it used substring matching. The parser now treats negative export states explicitly before accepting `exported`/`completed` states. Tiny parser bugs are product trust bugs.
+
+Product truth:
+- Episodes 1-3 now satisfy the minimum visible candidate target (`>=5` shorts each), but the board correctly keeps all three in `needs-human-review` until the exported files are watched/listened to and marked Keep/Refine/Reject.
+- This is a readiness and operator visibility improvement. It does not publish, approve, mutate source media, or convert shorts into chopped clips.
+
+Next practical action:
+- Use the readiness board to choose the next batch of shorts to watch/listen/reframe, then mark Keep/Refine/Reject and promote the best clips toward Tower/social publishing.
