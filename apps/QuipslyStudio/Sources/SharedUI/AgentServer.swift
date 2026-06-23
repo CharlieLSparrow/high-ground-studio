@@ -57,6 +57,8 @@ public class AgentServer: ObservableObject {
     private nonisolated(unsafe) static var cachedStatusData: Data?
     private nonisolated static let httpCommandQueueLock = NSLock()
     private nonisolated(unsafe) static var httpCommandQueue: [AgentCommandRequest] = []
+    private nonisolated static let directProxyExportLock = NSLock()
+    private nonisolated(unsafe) static var lastDirectProxyShortExportRequestPath: String = ""
 
     public init() {
         start()
@@ -1058,21 +1060,15 @@ public class AgentServer: ObservableObject {
                     "index": index
                 ]
                 let projection = Self.projectShortSelectionInCachedState(id: id, title: title, index: index)
-                let pendingCount = Self.enqueueHTTPCommand(AgentCommandRequest(name: "shorts_queue_select", values: commandValues))
+                let receipt = self?.scheduleHTTPCommand(AgentCommandRequest(name: "shorts_queue_select", values: commandValues)) ?? [:]
                 self?.sendJSON(connection, object: [
                     "status": "shorts_queue_select_commanded",
                     "id": id,
                     "title": title,
                     "index": index,
-                    "commandReceipt": [
-                        "name": "shorts_queue_select",
-                        "values": commandValues,
-                        "status": "queued_for_editor_bridge",
-                        "mode": "http_ack_then_editor_mailbox",
-                        "pendingCommandCount": pendingCount
-                    ],
+                    "commandReceipt": receipt,
                     "selectionProjection": projection,
-                    "truth": "Selection is acknowledged from cached short-queue truth and delivered to the editor bridge asynchronously. Re-read /state before claiming visible UI mutation."
+                    "truth": "Selection is projected immediately from cached short-queue truth and scheduled on the editor MainActor. Re-read /state before claiming visible UI mutation."
                 ])
             case "/shorts_review_next":
                 let status = request.query["status"] ?? ""
@@ -1287,27 +1283,20 @@ public class AgentServer: ObservableObject {
                     ?? (selectedShortClip["title"] as? String)
                     ?? "")
                     : requestedShortTitle
-                let commandValues = [
-                    "directory": directory,
-                    "basename": basename,
-                    "selectedShortId": selectedShortId,
-                    "selectedShortTitle": selectedShortTitle
-                ]
-                let pendingCount = Self.enqueueHTTPCommand(AgentCommandRequest(name: "shorts_export_selected", values: commandValues))
+                let receipt = Self.startDirectProxyShortExportFromCachedState(
+                    directory: directory,
+                    basename: basename,
+                    selectedShortId: selectedShortId,
+                    selectedShortTitle: selectedShortTitle
+                )
                 self?.sendJSON(connection, object: [
                     "status": "shorts_export_selected_commanded",
                     "directory": directory,
                     "basename": basename,
                     "selectedShortId": selectedShortId,
                     "selectedShortTitle": selectedShortTitle,
-                    "commandReceipt": [
-                        "name": "shorts_export_selected",
-                        "values": commandValues,
-                        "status": "queued_for_editor_bridge",
-                        "mode": "http_ack_then_editor_mailbox",
-                        "pendingCommandCount": pendingCount
-                    ],
-                    "truth": "The HTTP control plane acknowledged the selected-short export from cached state and queued editor delivery asynchronously. Re-read /state for progress, manifest, output path, or failure."
+                    "commandReceipt": receipt,
+                    "truth": "The HTTP control plane staged a proxy-only selected-short export from the canonical native session. Re-read /state for progress, manifest, output path, or failure."
                 ])
             case "/shorts_export_all":
                 let directory = request.query["directory"] ?? ""
@@ -2682,6 +2671,9 @@ public class AgentServer: ObservableObject {
         httpCommandQueue.append(request)
         let count = httpCommandQueue.count
         httpCommandQueueLock.unlock()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .quipslyAgentCommandQueued, object: nil)
+        }
         return count
     }
 
@@ -2698,6 +2690,63 @@ public class AgentServer: ObservableObject {
         let count = httpCommandQueue.count
         httpCommandQueueLock.unlock()
         return count
+    }
+
+    private nonisolated static func setLastDirectProxyShortExportRequestPath(_ path: String) {
+        directProxyExportLock.lock()
+        lastDirectProxyShortExportRequestPath = path
+        directProxyExportLock.unlock()
+    }
+
+    private nonisolated static func getLastDirectProxyShortExportRequestPath() -> String {
+        directProxyExportLock.lock()
+        let path = lastDirectProxyShortExportRequestPath
+        directProxyExportLock.unlock()
+        return path
+    }
+
+    private nonisolated func scheduleHTTPCommand(_ request: AgentCommandRequest) -> [String: Any] {
+        let receipt: [String: Any] = [
+            "id": request.id.uuidString,
+            "name": request.name,
+            "values": request.values,
+            "status": "scheduled_for_editor_main_actor",
+            "mode": "http_ack_then_main_actor_delivery",
+            "truth": "HTTP receipt means the command was scheduled for editor delivery. Re-read /state for execution, progress, and final artifact proof."
+        ]
+        Task { @MainActor in
+            self.deliverScheduledHTTPCommand(request, scheduledReceipt: receipt)
+        }
+        return receipt
+    }
+
+    private func deliverScheduledHTTPCommand(
+        _ request: AgentCommandRequest,
+        scheduledReceipt: [String: Any]
+    ) {
+        commandSerial += 1
+        let executorRegistered = commandExecutor != nil
+        var receipt = scheduledReceipt
+        receipt["serial"] = commandSerial
+        receipt["executorRegistered"] = executorRegistered
+        receipt["pendingCommandCount"] = pendingCommandRequests.count + Self.httpCommandCount()
+
+        if let commandExecutor {
+            receipt["status"] = "delivered_to_registered_view_bridge"
+            receipt["mode"] = "http_ack_then_registered_view_bridge"
+            lastCommandReceipt = receipt
+            refreshCachedStatusCommandMetadata()
+            commandExecutor(request)
+            return
+        }
+
+        pendingCommandRequests.append(request)
+        receipt["status"] = "queued_for_view_drain"
+        receipt["mode"] = "http_ack_then_view_drain"
+        receipt["pendingCommandCount"] = pendingCommandRequests.count + Self.httpCommandCount()
+        lastCommandReceipt = receipt
+        refreshCachedStatusCommandMetadata()
+        NotificationCenter.default.post(name: .quipslyAgentCommandQueued, object: nil)
     }
 
     private nonisolated static func cachedStatusDictionary() -> [String: Any]? {
@@ -2733,14 +2782,34 @@ public class AgentServer: ObservableObject {
         exportState["isExporting"] = false
         status["exportState"] = exportState
 
-        if var selectedShort = status["selectedShortClip"] as? [String: Any] {
-            applyProxyShortExportSummary(summary, to: &selectedShort)
-            status["selectedShortClip"] = selectedShort
+        status["selectedShortClipId"] = summary.clipId
+
+        var lastExportProof: [String: Any] = [
+            "id": summary.clipId,
+            "title": summary.clipTitle
+        ]
+        applyProxyShortExportSummary(summary, to: &lastExportProof)
+        status["lastShortExportProof"] = lastExportProof
+
+        var selectedShort = status["selectedShortClip"] as? [String: Any] ?? [:]
+        if staticStringValue(selectedShort["id"]) != summary.clipId {
+            selectedShort = [
+                "id": summary.clipId,
+                "title": summary.clipTitle
+            ]
         }
-        if var selectedProof = status["selectedShortProof"] as? [String: Any] {
-            applyProxyShortExportSummary(summary, to: &selectedProof)
-            status["selectedShortProof"] = selectedProof
+        applyProxyShortExportSummary(summary, to: &selectedShort)
+        status["selectedShortClip"] = selectedShort
+
+        var selectedProof = status["selectedShortProof"] as? [String: Any] ?? [:]
+        if staticStringValue(selectedProof["id"]) != summary.clipId {
+            selectedProof = [
+                "id": summary.clipId,
+                "title": summary.clipTitle
+            ]
         }
+        applyProxyShortExportSummary(summary, to: &selectedProof)
+        status["selectedShortProof"] = selectedProof
 
         let safeStatus = jsonSafeDictionary(status)
         updateCachedStatusResponse(safeStatus)
@@ -2818,6 +2887,7 @@ public class AgentServer: ObservableObject {
     private nonisolated static func proxyShortExportRequestPath(forCachedStatus status: [String: Any]) -> String? {
         let exportState = status["exportState"] as? [String: Any] ?? [:]
         let candidates = [
+            getLastDirectProxyShortExportRequestPath(),
             staticStringValue(exportState["requestPath"]),
             staticStringValue(status["lastProxyShortExportRequestPath"]),
             staticStringValue(status["lastMediaAction"])
@@ -2856,6 +2926,375 @@ public class AgentServer: ObservableObject {
         }
         shortPayload["lastExportManifestPath"] = summary.manifestPath
         shortPayload["lastExportCompletedAt"] = summary.completedAt
+    }
+
+    private nonisolated static func startDirectProxyShortExportFromCachedState(
+        directory: String,
+        basename: String,
+        selectedShortId: String,
+        selectedShortTitle: String
+    ) -> [String: Any] {
+        do {
+            guard var status = cachedStatusDictionary() else {
+                throw NSError(
+                    domain: "QuipslyDirectShortExport",
+                    code: 404,
+                    userInfo: [NSLocalizedDescriptionKey: "No cached editor state is available. Launch QuipslyStudio and load an episode first."]
+                )
+            }
+
+            let sessionName = normalizedSessionNameForAgent(
+                staticStringValue(status["activeSessionName"]).isEmpty
+                    ? staticStringValue(status["sessionName"])
+                    : staticStringValue(status["activeSessionName"])
+            )
+            let sessionURL = localMediaVaultRootURL()
+                .appendingPathComponent("sessions", isDirectory: true)
+                .appendingPathComponent("\(safeAgentFilename(sessionName)).quipsly-session.json")
+            guard FileManager.default.fileExists(atPath: sessionURL.path) else {
+                throw NSError(
+                    domain: "QuipslyDirectShortExport",
+                    code: 404,
+                    userInfo: [NSLocalizedDescriptionKey: "Native session file not found: \(sessionURL.path)"]
+                )
+            }
+
+            let sessionData = try Data(contentsOf: sessionURL)
+            guard let session = try JSONSerialization.jsonObject(with: sessionData) as? [String: Any],
+                  let project = session["project"] as? [String: Any],
+                  let sequences = project["sequences"] as? [[String: Any]],
+                  !sequences.isEmpty else {
+                throw NSError(
+                    domain: "QuipslyDirectShortExport",
+                    code: 422,
+                    userInfo: [NSLocalizedDescriptionKey: "Native session does not contain an exportable sequence."]
+                )
+            }
+
+            let activeSequenceId = staticStringValue(session["activeSequenceId"])
+            guard var sequence = sequences.first(where: { staticStringValue($0["id"]) == activeSequenceId }) ?? sequences.first else {
+                throw NSError(
+                    domain: "QuipslyDirectShortExport",
+                    code: 422,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not resolve the active sequence in \(sessionURL.path)."]
+                )
+            }
+
+            let shortQueue = sequence["shortClipQueue"] as? [[String: Any]] ?? []
+            let selectedId = selectedShortId.isEmpty ? staticStringValue(status["selectedShortClipId"]) : selectedShortId
+            let selectedTitle = selectedShortTitle.isEmpty
+                ? staticStringValue((status["selectedShortProof"] as? [String: Any])?["title"])
+                : selectedShortTitle
+            guard let clip = findShortClip(
+                in: shortQueue,
+                selectedShortId: selectedId,
+                selectedShortTitle: selectedTitle
+            ) else {
+                throw NSError(
+                    domain: "QuipslyDirectShortExport",
+                    code: 404,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not find selected short in session \(sessionName): \(selectedId.isEmpty ? selectedTitle : selectedId)"]
+                )
+            }
+
+            let clipId = staticStringValue(clip["id"])
+            let clipTitle = staticStringValue(clip["title"]).isEmpty ? "Selected short" : staticStringValue(clip["title"])
+            let cleanBasename = safeAgentBasename(basename.isEmpty ? clipTitle : basename)
+            let outputDirectory = URL(fileURLWithPath: directory.isEmpty ? NSTemporaryDirectory() : directory, isDirectory: true)
+            let outputURL = outputDirectory.appendingPathComponent("\(cleanBasename)-9x16-short.mp4")
+            let batchId = UUID().uuidString
+            let requestDirectory = localMediaVaultRootURL()
+                .appendingPathComponent("exports", isDirectory: true)
+                .appendingPathComponent("export-requests", isDirectory: true)
+                .appendingPathComponent(batchId, isDirectory: true)
+            let requestURL = requestDirectory.appendingPathComponent("selected-short-export-request.json")
+            let progressURL = requestDirectory.appendingPathComponent("selected-short-export-progress.json")
+            let manifestURL = outputDirectory.appendingPathComponent("\(cleanBasename)-short-export-manifest.json")
+            let logURL = requestDirectory.appendingPathComponent("selected-short-export-bridge.log")
+            let exportRanges = exportRangesForShortClip(clip)
+
+            sequence["shortClipQueue"] = [clip]
+            sequence["transcriptSegments"] = []
+            sequence["transcriptJobs"] = []
+            sequence["editCorrectionNotes"] = []
+            sequence["editActionLedger"] = []
+            sequence["publishReceipts"] = []
+
+            let request: [String: Any] = [
+                "schemaVersion": 1,
+                "model": "quipsly-proxy-short-export-request",
+                "batchId": batchId,
+                "sessionName": sessionName,
+                "outputDirectory": outputDirectory.path,
+                "basename": cleanBasename,
+                "manifestPath": manifestURL.path,
+                "progressPath": progressURL.path,
+                "sourcePolicy": "proxy-only; original media untouched",
+                "sequence": sequence,
+                "clips": [
+                    [
+                        "id": clipId,
+                        "title": clipTitle,
+                        "outputPath": outputURL.path,
+                        "ranges": exportRanges
+                    ] as [String: Any]
+                ]
+            ]
+
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: requestDirectory, withIntermediateDirectories: true)
+            let requestData = try JSONSerialization.data(withJSONObject: jsonSafeDictionary(request), options: [.prettyPrinted, .sortedKeys])
+            try requestData.write(to: requestURL, options: .atomic)
+            try launchDirectProxyShortExport(requestURL: requestURL, logURL: logURL)
+            setLastDirectProxyShortExportRequestPath(requestURL.path)
+
+            status["exportStatus"] = "running"
+            status["exportOutputPaths"] = [outputURL.path]
+            status["lastMediaAction"] = "Short proxy export direct worker started: \(clipTitle)"
+            status["lastProxyShortExportRequestPath"] = requestURL.path
+            var exportState = status["exportState"] as? [String: Any] ?? [:]
+            exportState["status"] = "running"
+            exportState["healthStatus"] = "running"
+            exportState["requestPath"] = requestURL.path
+            exportState["manifestPath"] = manifestURL.path
+            exportState["progressPath"] = progressURL.path
+            exportState["currentOutputPath"] = outputURL.path
+            exportState["currentItem"] = clipTitle
+            exportState["outputPaths"] = [outputURL.path]
+            exportState["isExporting"] = true
+            exportState["error"] = ""
+            status["exportState"] = exportState
+            status["selectedShortClipId"] = clipId
+            var selectedProjection = clip
+            selectedProjection["exportStatus"] = "exporting"
+            selectedProjection["lastExportedPath"] = outputURL.path
+            selectedProjection["lastExportExists"] = FileManager.default.fileExists(atPath: outputURL.path)
+            selectedProjection["lastExportManifestPath"] = manifestURL.path
+            status["selectedShortClip"] = selectedProjection
+            status["selectedShortProof"] = selectedProjection
+            updateSelectedShortExportProjection(
+                in: &status,
+                clipId: clipId,
+                status: "exporting",
+                outputPath: outputURL.path,
+                manifestPath: manifestURL.path
+            )
+            updateCachedStatusResponse(jsonSafeDictionary(status))
+
+            return [
+                "id": UUID().uuidString,
+                "name": "shorts_export_selected",
+                "mode": "http_direct_proxy_worker",
+                "status": "direct_proxy_worker_started",
+                "sessionName": sessionName,
+                "sessionPath": sessionURL.path,
+                "selectedShortId": clipId,
+                "selectedShortTitle": clipTitle,
+                "requestPath": requestURL.path,
+                "manifestPath": manifestURL.path,
+                "progressPath": progressURL.path,
+                "outputPath": outputURL.path,
+                "logPath": logURL.path,
+                "sourcePolicy": "proxy-only; original media untouched",
+                "truth": "The direct agent export path reads the canonical native session and launches the app-owned proxy worker without mutating source media."
+            ]
+        } catch {
+            var status = cachedStatusDictionary() ?? [:]
+            status["exportStatus"] = "failed"
+            status["lastMediaAction"] = "Short proxy export direct worker blocked: \(error.localizedDescription)"
+            var exportState = status["exportState"] as? [String: Any] ?? [:]
+            exportState["status"] = "failed"
+            exportState["healthStatus"] = "failed"
+            exportState["error"] = error.localizedDescription
+            exportState["isExporting"] = false
+            status["exportState"] = exportState
+            updateCachedStatusResponse(jsonSafeDictionary(status))
+
+            return [
+                "id": UUID().uuidString,
+                "name": "shorts_export_selected",
+                "mode": "http_direct_proxy_worker",
+                "status": "blocked",
+                "error": error.localizedDescription,
+                "truth": "The export did not start. Re-read /state for the same failure in the agent-visible read model."
+            ]
+        }
+    }
+
+    private nonisolated static func findShortClip(
+        in clips: [[String: Any]],
+        selectedShortId: String,
+        selectedShortTitle: String
+    ) -> [String: Any]? {
+        let trimmedId = selectedShortId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = selectedShortTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !trimmedId.isEmpty {
+            return clips.first { staticStringValue($0["id"]) == trimmedId }
+        }
+        if !trimmedTitle.isEmpty {
+            return clips.first { staticStringValue($0["title"]).lowercased() == trimmedTitle }
+                ?? clips.first { staticStringValue($0["title"]).lowercased().contains(trimmedTitle) }
+        }
+        return nil
+    }
+
+    private nonisolated static func exportRangesForShortClip(_ clip: [String: Any]) -> [[String: Any]] {
+        let segments = clip["segments"] as? [[String: Any]] ?? []
+        var cursor = 0.0
+        let segmentRanges = segments.compactMap { segment -> [String: Any]? in
+            let duration = staticDoubleValue(segment["duration"])
+            guard duration > 0 else { return nil }
+            defer { cursor += duration }
+            return [
+                "start": cursor,
+                "duration": duration
+            ]
+        }
+        if !segmentRanges.isEmpty {
+            return segmentRanges
+        }
+        return [
+            [
+                "start": 0.0,
+                "duration": max(0.1, staticDoubleValue(clip["duration"]))
+            ]
+        ]
+    }
+
+    private nonisolated static func updateSelectedShortExportProjection(
+        in status: inout [String: Any],
+        clipId: String,
+        status exportStatus: String,
+        outputPath: String,
+        manifestPath: String
+    ) {
+        if var selected = status["selectedShortClip"] as? [String: Any] {
+            let selectedId = staticStringValue(selected["id"])
+            if selectedId.isEmpty || selectedId == clipId {
+                selected["exportStatus"] = exportStatus
+                selected["lastExportedPath"] = outputPath
+                selected["lastExportExists"] = FileManager.default.fileExists(atPath: outputPath)
+                selected["lastExportManifestPath"] = manifestPath
+                status["selectedShortClip"] = selected
+            }
+        }
+        if var proof = status["selectedShortProof"] as? [String: Any] {
+            let proofId = staticStringValue(proof["id"])
+            if proofId.isEmpty || proofId == clipId {
+                proof["exportStatus"] = exportStatus
+                proof["lastExportedPath"] = outputPath
+                proof["lastExportExists"] = FileManager.default.fileExists(atPath: outputPath)
+                proof["lastExportManifestPath"] = manifestPath
+                status["selectedShortProof"] = proof
+            }
+        }
+    }
+
+    private nonisolated static func launchDirectProxyShortExport(requestURL: URL, logURL: URL) throws {
+        let scriptURL = try proxyShortExportScriptURLForAgent()
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        try logHandle.seekToEnd()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [scriptURL.path, requestURL.path]
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+        process.terminationHandler = { _ in
+            try? logHandle.close()
+        }
+        try process.run()
+    }
+
+    private nonisolated static func proxyShortExportScriptURLForAgent() throws -> URL {
+        let fileManager = FileManager.default
+        var roots: [URL] = [
+            URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true),
+            Bundle.main.bundleURL
+        ]
+        if let resourceURL = Bundle.main.resourceURL {
+            roots.append(resourceURL)
+        }
+
+        var candidates: [URL] = []
+        for root in roots {
+            var current = root
+            for _ in 0..<8 {
+                candidates.append(current.appendingPathComponent("script/shorts_proxy_export.py"))
+                candidates.append(current.appendingPathComponent("apps/QuipslyStudio/script/shorts_proxy_export.py"))
+                let parent = current.deletingLastPathComponent()
+                if parent.path == current.path {
+                    break
+                }
+                current = parent
+            }
+        }
+
+        if let found = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) {
+            return found
+        }
+
+        throw NSError(
+            domain: "QuipslyDirectShortExport",
+            code: 404,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Could not find app-owned shorts_proxy_export.py. Checked \(candidates.map(\.path).joined(separator: ", "))"
+            ]
+        )
+    }
+
+    private nonisolated static func localMediaVaultRootURL() -> URL {
+        if let configured = ProcessInfo.processInfo.environment["QUIPSLY_MEDIA_VAULT"], !configured.isEmpty {
+            return URL(fileURLWithPath: configured, isDirectory: true)
+        }
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport
+            .appendingPathComponent("Quipsly", isDirectory: true)
+            .appendingPathComponent("MediaVault", isDirectory: true)
+    }
+
+    private nonisolated static func normalizedSessionNameForAgent(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "autosave" : trimmed
+    }
+
+    private nonisolated static func safeAgentFilename(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+        let scalars = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let sanitized = String(scalars)
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "__", with: "_")
+        return sanitized.isEmpty ? "asset" : sanitized
+    }
+
+    private nonisolated static func safeAgentBasename(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        let scalars = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let sanitized = String(scalars)
+            .replacingOccurrences(of: "--", with: "-")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
+        return sanitized.isEmpty ? "selected-short" : sanitized
+    }
+
+    private nonisolated static func staticDoubleValue(_ value: Any?) -> Double {
+        switch value {
+        case let double as Double:
+            return double
+        case let number as NSNumber:
+            return number.doubleValue
+        case let string as String:
+            return Double(string) ?? 0
+        default:
+            return 0
+        }
     }
 
     @discardableResult
