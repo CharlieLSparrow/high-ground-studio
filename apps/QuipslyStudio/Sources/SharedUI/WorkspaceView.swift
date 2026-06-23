@@ -10178,6 +10178,8 @@ struct WorkspaceView: View {
         let rangeLabel = sequenceRange.map {
             String(format: "%.0fs-%.0fs", $0.start, $0.end)
         } ?? String(format: "%.0fs-%.0fs", clip.startTime, clip.startTime + clip.duration)
+        let brief = shortCreatorQualityBrief(for: clip)
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
 
         return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 5) {
             shortProofChip(
@@ -10204,9 +10206,21 @@ struct WorkspaceView: View {
                 icon: exportExists ? "film.stack.fill" : "square.and.arrow.up",
                 color: exportExists ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
             )
+            shortProofChip(
+                "Platforms",
+                "\(platformSummary.readyCount)/\(platformSummary.totalCount) ready",
+                icon: "paperplane.fill",
+                color: platformSummary.readyCount > 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.creek
+            )
+            shortProofChip(
+                "Next",
+                platformSummary.nextAction,
+                icon: "arrow.forward.circle.fill",
+                color: platformSummary.color
+            )
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Short proof: source \(rangeLabel), duration \(String(format: "%.1f", max(0, duration))) seconds, review \(review), export \(exportLabel)")
+        .accessibilityLabel("Short proof: source \(rangeLabel), duration \(String(format: "%.1f", max(0, duration))) seconds, review \(review), export \(exportLabel), platforms \(platformSummary.readyCount) of \(platformSummary.totalCount) ready")
     }
 
     private func shortQuickActionBar(for clip: ShortClipCandidate) -> some View {
@@ -10987,6 +11001,8 @@ struct WorkspaceView: View {
         let saveCommand = ShortCreatorQualityCommand.savePlatformPackJSON.agentRoute
         let copyCommand = ShortCreatorQualityCommand.copyPlatformPackJSON.agentRoute
         let draftCommand = ShortCreatorQualityCommand.draftPlatformPack.agentRoute
+        let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
         return [
             "kind": "quipsly-short-platform-pack",
             "version": 1,
@@ -11071,6 +11087,13 @@ struct WorkspaceView: View {
                     "nextAction": fit.nextAction
                 ] as [String: Any]
             },
+            "platformTargets": platformTargets,
+            "platformTargetSummary": [
+                "readyCount": "\(platformSummary.readyCount)",
+                "totalCount": "\(platformSummary.totalCount)",
+                "readyFraction": "\(platformSummary.readyCount)/\(platformSummary.totalCount)",
+                "nextAction": platformSummary.nextAction
+            ] as [String: Any],
             "destinationPresetDrafts": drafts.map { preset in
                 [
                     "platform": preset.platform,
@@ -12216,6 +12239,7 @@ struct WorkspaceView: View {
         let exportPath = lastExportedShortPath(for: clip) ?? ""
         let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
         let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
+        let platformTargets = shortPlatformTargets(for: clip, brief: brief)
 
         return VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top, spacing: 8) {
@@ -12262,6 +12286,29 @@ struct WorkspaceView: View {
                 .foregroundStyle(QuipslyStudioTheme.sage)
                 .fixedSize(horizontal: false, vertical: true)
 
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.caption2)
+                        .foregroundStyle(QuipslyStudioTheme.moss)
+                    Text("Platform targets")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                    Spacer()
+                    Text("\(platformTargets.filter { $0.status == "ready" }.count)/\(platformTargets.count) ready")
+                        .font(.caption2.monospacedDigit())
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                }
+
+                ForEach(Array(platformTargets.prefix(5)), id: \.platform) { target in
+                    shortPlatformTargetRow(target)
+                }
+            }
+            .padding(7)
+            .background(QuipslyStudioTheme.quietFieldFill)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
             HStack(spacing: 6) {
                 Button {
                     previewSelectedShortClip(play: false)
@@ -12285,6 +12332,14 @@ struct WorkspaceView: View {
                 }
                 .disabled(recipeDuration <= 0 || exportEngine.isExporting)
                 .help("Render a proxy-backed derivative MP4 for this recipe. Original media stays untouched.")
+
+                Button {
+                    selectedShortClipId = clip.id
+                    draftSelectedShortPlatformPackFromQualityBrief(clip)
+                } label: {
+                    Label("Draft pack", systemImage: "sparkles")
+                }
+                .help("Create or complete platform title, caption, hashtag, and Patreon teaser metadata without publishing.")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -12307,6 +12362,185 @@ struct WorkspaceView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .accessibilityIdentifier("quipsly.shorts.publicationPassport")
+    }
+
+    private func shortPlatformTargets(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief
+    ) -> [(platform: String, score: Int, status: String, title: String, detail: String, nextAction: String, color: Color)] {
+        let requiredPlatforms = [
+            "YouTube Shorts",
+            "Instagram",
+            "Facebook",
+            "LinkedIn",
+            "Patreon teaser"
+        ]
+        var platforms: [String] = []
+        var seen = Set<String>()
+
+        func addPlatform(_ rawPlatform: String) {
+            let platform = rawPlatform.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !platform.isEmpty else { return }
+            let key = platform.lowercased()
+            guard !seen.contains(key) else { return }
+            seen.insert(key)
+            platforms.append(platform)
+        }
+
+        requiredPlatforms.forEach(addPlatform)
+        clip.destinations.forEach(addPlatform)
+        clip.destinationPresets.map(\.platform).forEach(addPlatform)
+        brief.platformFits.map(\.platform).forEach(addPlatform)
+
+        let exportPath = lastExportedShortPath(for: clip) ?? ""
+        let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
+        let review = clip.reviewStatus.lowercased()
+
+        return platforms.map { platform in
+            let preset = bestDestinationPreset(for: platform, in: clip)
+            let fit = bestPlatformFit(for: platform, in: brief)
+            let titleReady = !(preset?.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let captionReady = !(preset?.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let hashtagReady = !(preset?.hashtags.isEmpty ?? true)
+            let status: String
+            let detail: String
+            let nextAction: String
+            let color: Color
+
+            if review == "reject" {
+                status = "held"
+                detail = "Rejected short; preserve as learning data."
+                nextAction = "Do not publish unless the review decision changes."
+                color = QuipslyStudioTheme.clay
+            } else if !exportExists {
+                status = "needs export"
+                detail = "No proxy proof has been rendered yet."
+                nextAction = "Export the 9:16 proof before judging this platform."
+                color = QuipslyStudioTheme.honey
+            } else if !titleReady || !captionReady || !hashtagReady {
+                status = "needs copy"
+                detail = "Platform metadata is incomplete."
+                nextAction = "Draft or review title, caption, hashtags, and posting note."
+                color = QuipslyStudioTheme.creek
+            } else if review != "keep" {
+                status = "needs review"
+                detail = "Proof and copy exist, but Keep/Refine/Reject is unresolved."
+                nextAction = "Watch the proof and make the editorial review decision."
+                color = QuipslyStudioTheme.sage
+            } else {
+                status = "ready"
+                detail = fit.map { "\($0.label) fit, \($0.score)/100." } ?? "Metadata and review are ready."
+                nextAction = "Move to Tower/manual upload queue and capture receipt after posting."
+                color = QuipslyStudioTheme.moss
+            }
+
+            return (
+                platform: platform,
+                score: fit?.score ?? 0,
+                status: status,
+                title: preset?.title ?? "",
+                detail: detail,
+                nextAction: nextAction,
+                color: color
+            )
+        }
+    }
+
+    private func shortPlatformTargetSummary(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief
+    ) -> (readyCount: Int, totalCount: Int, nextAction: String, color: Color) {
+        let targets = shortPlatformTargets(for: clip, brief: brief)
+        let readyCount = targets.filter { $0.status == "ready" }.count
+        let next = targets.first { $0.status != "ready" }
+        let nextAction = next?.status ?? "ready"
+        let color = next?.color ?? QuipslyStudioTheme.moss
+        return (readyCount, max(1, targets.count), nextAction, color)
+    }
+
+    private func shortPlatformTargetPayloads(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief
+    ) -> [[String: Any]] {
+        shortPlatformTargets(for: clip, brief: brief).map { target in
+            [
+                "platform": target.platform,
+                "fitScore": target.score,
+                "status": target.status,
+                "title": target.title,
+                "detail": target.detail,
+                "nextAction": target.nextAction,
+                "isReady": target.status == "ready"
+            ] as [String: Any]
+        }
+    }
+
+    private func bestDestinationPreset(for platform: String, in clip: ShortClipCandidate) -> ShortDestinationPreset? {
+        let platformKey = platform.lowercased()
+        return clip.destinationPresets.first { preset in
+            let key = preset.platform.lowercased()
+            return key == platformKey
+                || key.contains(platformKey)
+                || platformKey.contains(key)
+                || (platformKey.contains("instagram") && key.contains("reels"))
+                || (platformKey.contains("facebook") && key.contains("reels"))
+        }
+    }
+
+    private func bestPlatformFit(for platform: String, in brief: ShortCreatorQualityBrief) -> ShortCreatorPlatformFit? {
+        let platformKey = platform.lowercased()
+        return brief.platformFits.first { fit in
+            let key = fit.platform.lowercased()
+            return key == platformKey
+                || key.contains(platformKey)
+                || platformKey.contains(key)
+                || (platformKey.contains("instagram") && key.contains("reels"))
+                || (platformKey.contains("facebook") && key.contains("reels"))
+                || (platformKey.contains("patreon") && key.contains("patreon"))
+        }
+    }
+
+    private func shortPlatformTargetRow(
+        _ target: (platform: String, score: Int, status: String, title: String, detail: String, nextAction: String, color: Color)
+    ) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Circle()
+                .fill(target.color)
+                .frame(width: 7, height: 7)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text(target.platform)
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .lineLimit(1)
+                    Text(target.status.uppercased())
+                        .font(.system(size: 7, weight: .black, design: .rounded))
+                        .foregroundStyle(target.color)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(target.color.opacity(0.13))
+                        .clipShape(Capsule())
+                    if target.score > 0 {
+                        Text("\(target.score)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(target.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Text(target.nextAction)
+                    .font(.caption2)
+                    .foregroundStyle(target.color)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(target.color.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func shortPassportFact(_ label: String, _ value: String) -> some View {
@@ -33774,6 +34008,9 @@ struct WorkspaceView: View {
                 let exportPath = lastExportedShortPath(for: clip) ?? ""
                 let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
                 let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
+                let brief = shortCreatorQualityBrief(for: clip)
+                let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
+                let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
                 return [
                     "id": clip.id.uuidString,
                     "title": clip.title,
@@ -33839,6 +34076,13 @@ struct WorkspaceView: View {
                     "lastExportExists": exportExists,
                     "creatorQuality": shortCreatorQualityPayload(for: clip),
                     "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
+                    "platformTargets": platformTargets,
+                    "platformTargetSummary": [
+                        "readyCount": "\(platformSummary.readyCount)",
+                        "totalCount": "\(platformSummary.totalCount)",
+                        "readyFraction": "\(platformSummary.readyCount)/\(platformSummary.totalCount)",
+                        "nextAction": platformSummary.nextAction
+                    ] as [String: Any],
                     "verticalFraming": shortVerticalFramingPayload(for: clip, in: sequence),
                     "expectedExportPath": expectedExportTarget.path,
                     "expectedExportDirectory": expectedExportTarget.directory,
@@ -33851,6 +34095,9 @@ struct WorkspaceView: View {
                     "hookText": clip.hookText,
                     "captionDraft": clip.captionDraft,
                     "primaryOverlayText": clip.primaryOverlayText,
+                    "nextSafeAction": platformSummary.readyCount == platformSummary.totalCount
+                        ? "Move this short into the Tower/manual upload queue and capture receipts after posting."
+                        : "Resolve platform target: \(platformSummary.nextAction).",
                     "publishNotes": clip.publishNotes,
                     "destinationPresets": clip.destinationPresets.map { preset in
                         [
@@ -33993,6 +34240,8 @@ struct WorkspaceView: View {
         let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
         let brief = shortCreatorQualityBrief(for: clip)
         let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
+        let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
 
         return [
             "model": "quipsly-short-publication-passport",
@@ -34016,6 +34265,13 @@ struct WorkspaceView: View {
             "safeActionLabel": packetSummary.safeActionLabel,
             "safeAction": packetSummary.nextSafeAction,
             "agentInstruction": packetSummary.agentInstruction,
+            "platformTargets": platformTargets,
+            "platformTargetSummary": [
+                "readyCount": "\(platformSummary.readyCount)",
+                "totalCount": "\(platformSummary.totalCount)",
+                "readyFraction": "\(platformSummary.readyCount)/\(platformSummary.totalCount)",
+                "nextAction": platformSummary.nextAction
+            ] as [String: Any],
             "reviewStatus": clip.reviewStatus,
             "exportStatus": resolvedShortExportStatus(for: clip),
             "exportProofReady": exportExists,

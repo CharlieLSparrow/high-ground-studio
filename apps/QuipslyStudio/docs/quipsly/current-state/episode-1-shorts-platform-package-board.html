@@ -33,6 +33,17 @@
     h1 { margin: 0; font-size: clamp(2.4rem, 6vw, 4.9rem); line-height: .93; letter-spacing: -.07em; }
     h2, h3 { margin: 0 0 8px; }
     p, li { color: var(--muted); }
+    .episode-coverage { margin-top: 18px; }
+    .episode-coverage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .episode-coverage article { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(143,201,116,.07); }
+    .episode-coverage strong { display: block; color: var(--moss); text-transform: uppercase; letter-spacing: .08em; }
+    .episode-coverage span, .episode-coverage small { display: block; color: var(--muted); }
+    .coverage-warning { color: var(--gold); margin: 8px 0 0; }
+    .platform-readiness-coverage { margin-top: 18px; }
+    .platform-readiness-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .platform-readiness-coverage article { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(90,191,211,.07); }
+    .platform-readiness-coverage strong { display: block; color: var(--blue); letter-spacing: .03em; }
+    .platform-readiness-coverage span, .platform-readiness-coverage small { display: block; color: var(--muted); }
     .card { padding: 20px; margin-top: 16px; }
     header { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; }
     .score { display: grid; place-items: center; padding: 12px; min-height: 88px; border-radius: 22px; background: rgba(242,202,77,.1); border: 1px solid rgba(242,202,77,.24); text-align: center; }
@@ -52,16 +63,78 @@
       <p class="eyebrow">Quipsly Studio - platform package board</p>
       <h1>Make the short feel native before it ships.</h1>
       <p>Draft hooks, captions, titles, descriptions, hashtags, and platform notes for the best candidates. The top current candidate is <strong>Farm Work Teaches Stewardship</strong>.</p>
+
+    <section class="episode-coverage">
+      <p class="eyebrow">Episode coverage</p>
+      <div class="episode-coverage-grid">
+        <article>
+          <strong>episode-1</strong>
+          <span>13 shorts</span>
+          <small>12 exported / 12 reviewable</small>
+        </article>
+        </div>
+
     </section>
-    
+
+
+    <section class="platform-readiness-coverage">
+      <p class="eyebrow">Platform readiness</p>
+      <div class="platform-readiness-grid">
+        <article>
+          <strong>facebookReels</strong>
+          <span>0 ready</span>
+          <small>12 review / 1 blocked</small>
+        </article>
+
+        <article>
+          <strong>highGroundOdysseyEmbed</strong>
+          <span>9 ready</span>
+          <small>3 review / 1 blocked</small>
+        </article>
+
+        <article>
+          <strong>instagramReels</strong>
+          <span>0 ready</span>
+          <small>12 review / 1 blocked</small>
+        </article>
+
+        <article>
+          <strong>linkedin</strong>
+          <span>0 ready</span>
+          <small>12 review / 1 blocked</small>
+        </article>
+
+        <article>
+          <strong>patreonTeaser</strong>
+          <span>0 ready</span>
+          <small>12 review / 1 blocked</small>
+        </article>
+
+        <article>
+          <strong>tiktokStyle</strong>
+          <span>0 ready</span>
+          <small>12 review / 1 blocked</small>
+        </article>
+
+        <article>
+          <strong>youtubeShorts</strong>
+          <span>0 ready</span>
+          <small>12 review / 1 blocked</small>
+        </article>
+        </div>
+    </section>
+
+    </section>
+
             <section class="card">
               <header>
                 <div class="score"><strong>95.2</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Farm Work Teaches Stewardship</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Farm Work Teaches Stewardship</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -90,15 +163,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
-                <div class="score"><strong>92.0</strong><span>strong-post-candidate</span></div>
+                <div class="score"><strong>95.2</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-visual-review</p>
-                  <h2>Learning Why, Not Just What</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Learning Why, Not Just What</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -122,20 +196,21 @@ Save this if it helps you think about the work differently.</p>
                 </article>
                 <article>
                   <h3>Improve before posting</h3>
-                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Generate a contact sheet and check crop, headroom, and caption safe zones.</li></ul>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
                   <code>script/agentctl.sh shorts-select id &#x27;701461B7-CB8F-4732-8F4F-D54698C77F23&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;learning-why-not-just-what&#x27;</code>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>89.6</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Test Short - Wednesday Rule moment</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Test Short - Wednesday Rule moment</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -164,15 +239,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>86.4</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Write Things Worth Reading</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Write Things Worth Reading</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -201,15 +277,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>86.2</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Mutual Mentorship</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Mutual Mentorship</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -238,15 +315,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>85.6</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Record From Anywhere</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Record From Anywhere</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -275,15 +353,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>85.6</strong><span>strong-post-candidate</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Identity Changes Behavior</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Identity Changes Behavior</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -312,15 +391,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>81.7</strong><span>promising-needs-polish</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Parkinson&#x27;s Awareness Goal</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Parkinson&#x27;s Awareness Goal</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -349,15 +429,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>81.7</strong><span>promising-needs-polish</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Don&#x27;t Downplay Yourself</h2>
-                  <p>Add or approve a readable caption/overlay plan.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Don&#x27;t Downplay Yourself</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <p><strong>Platform readiness:</strong> 1 ready / 6 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -386,15 +467,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Episode 1 Review Candidate 01 - 04:27</h2>
-                  <p>Write a sharper opening hook before packaging.</p>
-                </div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 01 - 04:27</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
               </header>
               <div class="grid">
                 <article>
@@ -423,52 +505,16 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
             <section class="card">
               <header>
                 <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
                 <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Episode 1 Review Candidate 03 - 26:13</h2>
-                  <p>Write a sharper opening hook before packaging.</p>
-                </div>
-              </header>
-              <div class="grid">
-                <article>
-                  <h3>Hook tests</h3>
-                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
-                </article>
-                <article>
-                  <h3>YouTube Shorts</h3>
-                  <p><strong>Title:</strong> Episode Review Candidate</p>
-                  <p>Episode Review Candidate
-
-A short moment from High Ground Odyssey about episode, review, candidate.</p>
-                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
-                </article>
-                <article>
-                  <h3>Instagram / Facebook</h3>
-                  <p>Episode Review Candidate
-
-Save this if it helps you think about the work differently.</p>
-                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
-                </article>
-                <article>
-                  <h3>Improve before posting</h3>
-                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
-                  <code>script/agentctl.sh shorts-select id &#x27;D9526D0B-311E-46D4-B127-824D713EA2F2&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-1-review-candidate-03-26-13&#x27;</code>
-                </article>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 02 - 08:19</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
               </div>
-            </section>
-            
-            <section class="card">
-              <header>
-                <div class="score"><strong>74.6</strong><span>promising-needs-polish</span></div>
-                <div>
-                  <p class="eyebrow">exported-needs-listen-through</p>
-                  <h2>Episode 1 Review Candidate 02 - 08:19</h2>
-                  <p>Write a sharper opening hook before packaging.</p>
-                </div>
               </header>
               <div class="grid">
                 <article>
@@ -497,7 +543,83 @@ Save this if it helps you think about the work differently.</p>
                 </article>
               </div>
             </section>
-            
+
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 03 - 26:13</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;D9526D0B-311E-46D4-B127-824D713EA2F2&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-1-review-candidate-03-26-13&#x27;</code>
+                </article>
+              </div>
+            </section>
+
+            <section class="card">
+              <header>
+                <div class="score"><strong>67.0</strong><span>needs-sharper-hook-or-proof</span></div>
+                <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Episode 1 Word-Timed Proof Short</h2>
+                <p>Export locally first so the decision is based on a real file.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 0 needs review / 7 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: My spot&#x27;s taken up Let me try to find different spot<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Word Timed Proof Short<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Word Timed Proof Short<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Word Timed Proof Short<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> My spot&#x27;s taken up Let me try to find different spot</p>
+                  <p>My spot&#x27;s taken up. Let me try to find a different spot.
+
+A short moment from High Ground Odyssey about episode, word, timed.</p>
+                  <p class="tags">#Episode #Word #Timed #Proof #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>My spot&#x27;s taken up. Let me try to find a different spot.
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Word #Timed #Proof #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Export locally before making a posting decision.</li><li>Make sure the clip has enough context to stand alone.</li></ul>
+                  <code>script/agentctl.sh shorts-select id &#x27;8F4A6296-A542-49B5-A6AC-7D6A712474AA&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-1-word-timed-proof-short&#x27;</code>
+                </article>
+              </div>
+            </section>
+
   </main>
 </body>
 </html>

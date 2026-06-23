@@ -2,10 +2,26 @@
 
 Draft hooks, titles, captions, descriptions, hashtags, and practical fixes for social shorts.
 
+## Episode coverage
+
+- `episode-1`: `13` shorts, `12` exported files, `12` reviewable
+
+## Platform readiness coverage
+
+- `facebookReels`: `0` ready, `12` needs review, `1` blocked
+- `highGroundOdysseyEmbed`: `9` ready, `3` needs review, `1` blocked
+- `instagramReels`: `0` ready, `12` needs review, `1` blocked
+- `linkedin`: `0` ready, `12` needs review, `1` blocked
+- `patreonTeaser`: `0` ready, `12` needs review, `1` blocked
+- `tiktokStyle`: `0` ready, `12` needs review, `1` blocked
+- `youtubeShorts`: `0` ready, `12` needs review, `1` blocked
+
 ## 95.2 - Farm Work Teaches Stewardship
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4`
 
 ### Hook tests
@@ -39,10 +55,12 @@ Save this if it helps you think about the work differently.
 script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'farm-work-teaches-stewardship'
 ```
 
-## 92.0 - Learning Why, Not Just What
+## 95.2 - Learning Why, Not Just What
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
-- Stage: `exported-needs-visual-review`
+- Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4`
 
 ### Hook tests
@@ -70,7 +88,7 @@ Save this if it helps you think about the work differently.
 ### Improve before posting
 
 - Create a caption/overlay plan that does not cover faces.
-- Generate a contact sheet and check crop, headroom, and caption safe zones.
+- Listen through once for clipping, sudden loudness, or awkward cut points.
 
 ```bash
 script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'learning-why-not-just-what'
@@ -78,8 +96,10 @@ script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && sc
 
 ## 89.6 - Test Short - Wednesday Rule moment
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4`
 
 ### Hook tests
@@ -116,9 +136,11 @@ script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106' && sc
 
 ## 86.4 - Write Things Worth Reading
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
 - Stage: `exported-needs-listen-through`
-- Export: `/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
+- Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4`
 
 ### Hook tests
 
@@ -153,8 +175,10 @@ script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590' && sc
 
 ## 86.2 - Mutual Mentorship
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4`
 
 ### Hook tests
@@ -190,8 +214,10 @@ script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2' && sc
 
 ## 85.6 - Record From Anywhere
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4`
 
 ### Hook tests
@@ -227,8 +253,10 @@ script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' && sc
 
 ## 85.6 - Identity Changes Behavior
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `strong-post-candidate`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4`
 
 ### Hook tests
@@ -264,8 +292,10 @@ script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' && sc
 
 ## 81.7 - Parkinson's Awareness Goal
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `promising-needs-polish`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4`
 
 ### Hook tests
@@ -301,8 +331,10 @@ script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' && sc
 
 ## 81.7 - Don't Downplay Yourself
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `promising-needs-polish`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `1 ready / 6 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4`
 
 ### Hook tests
@@ -338,8 +370,10 @@ script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9' && sc
 
 ## 79.6 - Episode 1 Review Candidate 01 - 04:27
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `promising-needs-polish`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `0 ready / 7 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4`
 
 ### Hook tests
@@ -374,10 +408,52 @@ Save this if it helps you think about the work differently.
 script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-01-04-27'
 ```
 
-## 79.6 - Episode 1 Review Candidate 03 - 26:13
+## 79.6 - Episode 1 Review Candidate 02 - 08:19
 
+- Episode: `episode-1` (`inferred-from-text`)
 - Tier: `promising-needs-polish`
 - Stage: `exported-needs-listen-through`
+- Platform readiness: `0 ready / 7 needs review / 0 blocked`
+- Export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4`
+
+### Hook tests
+
+- **direct**: Episode Review Candidate (Fastest to understand in the feed.)
+- **curiosity**: The part nobody tells you about Episode Review Candidate (Creates an information gap without lying.)
+- **teaching**: One useful way to think about Episode Review Candidate (Frames the clip as immediately useful.)
+- **conversation**: We had to talk through Episode Review Candidate (Preserves the podcast's human conversation feel.)
+
+### YouTube Shorts
+
+- Title: Episode Review Candidate
+- Description: Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.
+- Hashtags: #Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling
+
+### Instagram / Facebook
+
+- Caption: Episode Review Candidate
+
+Save this if it helps you think about the work differently.
+- Hashtags: #Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset
+
+### Improve before posting
+
+- Write a sharper first-line hook before exporting or posting.
+- Create a caption/overlay plan that does not cover faces.
+- Listen through once for clipping, sudden loudness, or awkward cut points.
+
+```bash
+script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19'
+```
+
+## 79.6 - Episode 1 Review Candidate 03 - 26:13
+
+- Episode: `episode-1` (`inferred-from-text`)
+- Tier: `promising-needs-polish`
+- Stage: `exported-needs-listen-through`
+- Platform readiness: `0 ready / 7 needs review / 0 blocked`
 - Export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4`
 
 ### Hook tests
@@ -412,40 +488,42 @@ Save this if it helps you think about the work differently.
 script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-03-26-13'
 ```
 
-## 74.6 - Episode 1 Review Candidate 02 - 08:19
+## 67.0 - Episode 1 Word-Timed Proof Short
 
-- Tier: `promising-needs-polish`
-- Stage: `exported-needs-listen-through`
-- Export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4`
+- Episode: `episode-1` (`inferred-from-text`)
+- Tier: `needs-sharper-hook-or-proof`
+- Stage: `missing-export`
+- Platform readiness: `0 ready / 0 needs review / 7 blocked`
+- Export: `none yet`
 
 ### Hook tests
 
-- **direct**: Episode Review Candidate (Fastest to understand in the feed.)
-- **curiosity**: The part nobody tells you about Episode Review Candidate (Creates an information gap without lying.)
-- **teaching**: One useful way to think about Episode Review Candidate (Frames the clip as immediately useful.)
-- **conversation**: We had to talk through Episode Review Candidate (Preserves the podcast's human conversation feel.)
+- **direct**: My spot's taken up Let me try to find different spot (Fastest to understand in the feed.)
+- **curiosity**: The part nobody tells you about Episode Word Timed Proof Short (Creates an information gap without lying.)
+- **teaching**: One useful way to think about Episode Word Timed Proof Short (Frames the clip as immediately useful.)
+- **conversation**: We had to talk through Episode Word Timed Proof Short (Preserves the podcast's human conversation feel.)
 
 ### YouTube Shorts
 
-- Title: Episode Review Candidate
-- Description: Episode Review Candidate
+- Title: My spot's taken up Let me try to find different spot
+- Description: My spot's taken up. Let me try to find a different spot.
 
-A short moment from High Ground Odyssey about episode, review, candidate.
-- Hashtags: #Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling
+A short moment from High Ground Odyssey about episode, word, timed.
+- Hashtags: #Episode #Word #Timed #Proof #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling
 
 ### Instagram / Facebook
 
-- Caption: Episode Review Candidate
+- Caption: My spot's taken up. Let me try to find a different spot.
 
 Save this if it helps you think about the work differently.
-- Hashtags: #Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset
+- Hashtags: #Episode #Word #Timed #Proof #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset
 
 ### Improve before posting
 
-- Write a sharper first-line hook before exporting or posting.
 - Create a caption/overlay plan that does not cover faces.
-- Listen through once for clipping, sudden loudness, or awkward cut points.
+- Export locally before making a posting decision.
+- Make sure the clip has enough context to stand alone.
 
 ```bash
-script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19'
+script/agentctl.sh shorts-select id '8F4A6296-A542-49B5-A6AC-7D6A712474AA' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-word-timed-proof-short'
 ```
