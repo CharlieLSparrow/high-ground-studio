@@ -1092,16 +1092,23 @@ public class AgentServer: ObservableObject {
                     }
                     return
                 }
-                Task { @MainActor in
-                    self?.enqueueCommand("shorts_queue_update_selected", values: [
-                        "field": field,
-                        "value": value
-                    ])
-                    self?.sendJSON(connection, object: [
-                        "status": "shorts_queue_update_selected_commanded",
-                        "field": field
-                    ])
+                var values = [
+                    "field": field,
+                    "value": value
+                ]
+                for (key, value) in Self.projectedShortSelectionCommandValues()
+                    where values[key] == nil && !value.isEmpty {
+                    values[key] = value
                 }
+                let receipt = self?.scheduleHTTPCommand(AgentCommandRequest(name: "shorts_queue_update_selected", values: values)) ?? [:]
+                self?.sendJSON(connection, object: [
+                    "status": "shorts_queue_update_selected_commanded",
+                    "field": field,
+                    "selectedShortId": values["selectedShortId"] ?? "",
+                    "selectedShortTitle": values["selectedShortTitle"] ?? "",
+                    "commandReceipt": receipt,
+                    "truth": "Selected-short metadata update is delivered asynchronously with explicit target hints. Re-read /shorts_queue before claiming the title, hook, caption, or notes changed."
+                ])
             case "/shorts_quality_action":
                 let action = request.query["action"] ?? ""
                 guard !action.isEmpty else {
@@ -1241,13 +1248,20 @@ public class AgentServer: ObservableObject {
                 }
             case "/shorts_preview_selected":
                 let play = request.query["play"] ?? "false"
-                Task { @MainActor in
-                    self?.enqueueCommand("shorts_preview_selected", values: ["play": play])
-                    self?.sendJSON(connection, object: [
-                        "status": "shorts_preview_selected_commanded",
-                        "play": play
-                    ])
+                var values = ["play": play]
+                for (key, value) in Self.projectedShortSelectionCommandValues()
+                    where values[key] == nil && !value.isEmpty {
+                    values[key] = value
                 }
+                let receipt = self?.scheduleHTTPCommand(AgentCommandRequest(name: "shorts_preview_selected", values: values)) ?? [:]
+                self?.sendJSON(connection, object: [
+                    "status": "shorts_preview_selected_commanded",
+                    "play": play,
+                    "selectedShortId": values["selectedShortId"] ?? "",
+                    "selectedShortTitle": values["selectedShortTitle"] ?? "",
+                    "commandReceipt": receipt,
+                    "truth": "Preview/cue is delivered asynchronously with explicit selected-short hints. Re-read /state for playhead and preview status proof."
+                ])
             case "/shorts_range_selected":
                 let boundary = request.query["boundary"] ?? "start"
                 var values = ["boundary": boundary]

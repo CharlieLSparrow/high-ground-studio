@@ -32444,23 +32444,59 @@ struct WorkspaceView: View {
         ]
     }
 
-    private func selectedShortClipValue() -> ShortClipCandidate? {
-        guard let selectedShortClipId,
-              let sequence = projectStore.activeSequence else {
-            return nil
-        }
-        return sequence.shortClipQueue.first { $0.id == selectedShortClipId }
+    private func selectedShortClipIndex(
+        in sequence: MediaSequence,
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil
+    ) -> Int? {
+        let trimmedHintedId = selectedShortIdHint?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let hintedId = trimmedHintedId
+            .flatMap { $0.isEmpty ? nil : UUID(uuidString: $0) }
+        let hintedTitle = selectedShortTitleHint?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return hintedId
+            .flatMap { id in sequence.shortClipQueue.firstIndex(where: { $0.id == id }) }
+            ?? hintedTitle.flatMap { title in
+                title.isEmpty ? nil : sequence.shortClipQueue.firstIndex { $0.title == title }
+            }
+            ?? selectedShortClipId
+                .flatMap { id in sequence.shortClipQueue.firstIndex(where: { $0.id == id }) }
     }
 
-    private func updateSelectedShortClip(_ mutate: (inout ShortClipCandidate) -> Void) {
-        guard let selectedShortClipId,
-              var sequence = projectStore.activeSequence,
-              let index = sequence.shortClipQueue.firstIndex(where: { $0.id == selectedShortClipId }) else {
+    private func selectedShortClipValue(
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil
+    ) -> ShortClipCandidate? {
+        guard let sequence = projectStore.activeSequence,
+              let index = selectedShortClipIndex(
+                in: sequence,
+                selectedShortIdHint: selectedShortIdHint,
+                selectedShortTitleHint: selectedShortTitleHint
+              ) else {
+            return nil
+        }
+        return sequence.shortClipQueue[index]
+    }
+
+    private func updateSelectedShortClip(
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil,
+        _ mutate: (inout ShortClipCandidate) -> Void
+    ) {
+        guard var sequence = projectStore.activeSequence,
+              let index = selectedShortClipIndex(
+                in: sequence,
+                selectedShortIdHint: selectedShortIdHint,
+                selectedShortTitleHint: selectedShortTitleHint
+              ) else {
             lastMediaAction = "Short update blocked: no selected short recipe"
             updateAgentState()
             return
         }
 
+        selectedShortClipId = sequence.shortClipQueue[index].id
         mutate(&sequence.shortClipQueue[index])
         sequence.shortClipQueue[index].updatedAt = Date()
         if sequence.shortClipQueue[index].destinationPresets.isEmpty {
@@ -32476,10 +32512,18 @@ struct WorkspaceView: View {
         updateAgentState()
     }
 
-    private func updateSelectedShortClipField(field rawField: String?, value: String?) {
+    private func updateSelectedShortClipField(
+        field rawField: String?,
+        value: String?,
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil
+    ) {
         let field = (rawField ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let newValue = value ?? ""
-        updateSelectedShortClip { clip in
+        updateSelectedShortClip(
+            selectedShortIdHint: selectedShortIdHint,
+            selectedShortTitleHint: selectedShortTitleHint
+        ) { clip in
             switch field {
             case "title":
                 clip.title = newValue
@@ -32559,14 +32603,24 @@ struct WorkspaceView: View {
         updateAgentState()
     }
 
-    private func previewSelectedShortClip(play: Bool) {
-        guard let clip = selectedShortClipValue(),
-              let sequence = projectStore.activeSequence else {
+    private func previewSelectedShortClip(
+        play: Bool,
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil
+    ) {
+        guard let sequence = projectStore.activeSequence,
+              let index = selectedShortClipIndex(
+                in: sequence,
+                selectedShortIdHint: selectedShortIdHint,
+                selectedShortTitleHint: selectedShortTitleHint
+              ) else {
             lastMediaAction = "Short preview blocked: no selected short recipe"
             updateAgentState()
             return
         }
 
+        let clip = sequence.shortClipQueue[index]
+        selectedShortClipId = clip.id
         let start = sequenceStartTime(for: clip, in: sequence)
         let renderDuration = max(0.15, shortClipExportRanges(for: clip, in: sequence).reduce(0) { $0 + $1.duration })
         let end = start + renderDuration
@@ -38463,7 +38517,9 @@ struct WorkspaceView: View {
         case "shorts_queue_update_selected":
             updateSelectedShortClipField(
                 field: request.values["field"],
-                value: request.values["value"]
+                value: request.values["value"],
+                selectedShortIdHint: request.values["selectedShortId"],
+                selectedShortTitleHint: request.values["selectedShortTitle"]
             )
         case "shorts_quality_action":
             applySelectedShortQualityAction(request.values["action"])
@@ -38500,7 +38556,11 @@ struct WorkspaceView: View {
             )
         case "shorts_preview_selected":
             let shouldPlay = ["1", "true", "yes", "play"].contains((request.values["play"] ?? "").lowercased())
-            previewSelectedShortClip(play: shouldPlay)
+            previewSelectedShortClip(
+                play: shouldPlay,
+                selectedShortIdHint: request.values["selectedShortId"],
+                selectedShortTitleHint: request.values["selectedShortTitle"]
+            )
         case "shorts_range_selected":
             let boundary = request.values["boundary"] ?? "start"
             if let rawTime = request.values["time"], let time = Double(rawTime) {

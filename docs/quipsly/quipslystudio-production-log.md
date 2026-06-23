@@ -458,3 +458,16 @@ Product truth:
 - Evidence: Farm Work Teaches Stewardship was nudged from `524.357 -> 524.457`, restored to `524.357`, nudged end from `547.005 -> 546.905`, and restored to `547.005`.
 - Lesson: editor commands are asynchronous UI-driven operations. Agent smoke tests need evidence windows and explicit target ids, not immediate ack-only assumptions.
 - Next proof lane candidate: Episode 6 has the most complete media set. Start by syncing Charlie video, Homer Insta360 video, and possibly call audio as the spine/context layer. Treat external clips as contextual weave-ins over the conversation instead of hard "we watched this whole thing" blocks.
+
+## 2026-06-23 - Agent-safe selected-short metadata and cue controls
+
+- Active lane: Episode 1 shorts publication workflow and agent-accessible refinement controls.
+- Hardened selected-short metadata updates so `/shorts_queue_update_selected` carries explicit projected short id/title hints instead of trusting stale SwiftUI sidebar selection.
+- Hardened selected-short preview/cue commands the same way so agent commands can target the intended short recipe by id.
+- Added friendly CLI aliases: `shorts-rename-selected`, `shorts-set-selected title|hook|caption|overlay|notes`, `shorts-cue-selected`, `shorts-jump-selected`, and `shorts-play-selected`.
+- Added `apps/QuipslyStudio/script/smoke_episode1_short_metadata_controls.sh`.
+- Validation run: `./script/build_and_run.sh --verify` passed.
+- Validation run: `./script/smoke_episode1_short_metadata_controls.sh` passed. It selected `Farm Work Teaches Stewardship`, temporarily renamed it, restored the title, moved playhead away to `531.357`, then cued back to `524.357`.
+- Validation run: `./script/smoke_episode1_short_refinement.sh` passed after the resolver refactor. It nudged/restored start and end boundaries for the same short without touching source media.
+- Validation run: `./script/shortsctl.sh local-export-board --json` emitted parseable JSON with 13 cards.
+- Known follow-up: `/state.lastMediaAction` can lag behind cue commands even when command receipt and playhead evidence prove the cue worked. Treat playhead + command receipt as stronger evidence until cached status messaging is tightened.

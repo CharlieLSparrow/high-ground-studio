@@ -333,6 +333,8 @@ Usage:
   script/agentctl.sh shorts-listen-review-open
   script/agentctl.sh shorts-append-selected-segment
   script/agentctl.sh shorts-update-selected hook "Opening hook"
+  script/agentctl.sh shorts-rename-selected "Better title"
+  script/agentctl.sh shorts-set-selected hook|caption|overlay|notes "value"
   script/agentctl.sh shorts-quality-action fill-hook|draft-copy|draft-platform-pack|copy-platform-pack-json|save-platform-pack-json|copy-polish-prompt|needs-refine
   script/agentctl.sh shorts-platform-pack-index save|copy
   script/agentctl.sh shorts-overlay-burn-in request_review|approve_top_canopy|hold ["optional note"]
@@ -340,6 +342,8 @@ Usage:
   script/agentctl.sh shorts-text-review approve|rewrite ["optional note"]
   script/agentctl.sh shorts-review-selected keep "optional notes"
   script/agentctl.sh shorts-review SHORT_CLIP_ID keep "optional notes"
+  script/agentctl.sh shorts-cue-selected
+  script/agentctl.sh shorts-jump-selected
   script/agentctl.sh shorts-preview-selected play
   script/agentctl.sh shorts-range-selected start delta -0.1
   script/agentctl.sh shorts-range-selected end time 42.5
@@ -12549,7 +12553,7 @@ else:
   shorts-listen-review-open|shorts-review-open)
     shorts_listen_review_open
     ;;
-  shorts-update-selected)
+  shorts-update-selected|shorts-set-selected-field|shorts-set-selected-metadata)
     field="${2:-}"
     value="${3:-}"
     if [[ -z "$field" ]]; then
@@ -12557,6 +12561,40 @@ else:
       exit 2
     fi
     get "/shorts_queue_update_selected?field=$(urlencode "$field")&value=$(urlencode "$value")"
+    ;;
+  shorts-rename-selected|shorts-rename)
+    value="${2:-}"
+    if [[ -z "$value" ]]; then
+      usage
+      exit 2
+    fi
+    get "/shorts_queue_update_selected?field=title&value=$(urlencode "$value")"
+    ;;
+  shorts-set-selected)
+    case "${2:-}" in
+      start|end|in|out)
+        boundary="${2:-}"
+        value="${3:-}"
+        if [[ -z "$value" ]]; then
+          usage
+          exit 2
+        fi
+        get "/shorts_range_selected?boundary=$(urlencode "$boundary")&time=$(urlencode "$value")"
+        ;;
+      title|hook|caption|overlay|notes|review_status|review|export_status|export|status)
+        field="${2:-}"
+        value="${3:-}"
+        if [[ -z "$value" ]]; then
+          usage
+          exit 2
+        fi
+        get "/shorts_queue_update_selected?field=$(urlencode "$field")&value=$(urlencode "$value")"
+        ;;
+      *)
+        usage
+        exit 2
+        ;;
+    esac
     ;;
   shorts-quality-action|shorts-polish-action)
     action="${2:-}"
@@ -12608,6 +12646,12 @@ else:
     fi
     get "/shorts_review?id=$(urlencode "$id")&status=$(urlencode "$status")&notes=$(urlencode "$notes")"
     ;;
+  shorts-cue-selected|shorts-jump-selected|shorts-jump-to-source|shorts-cue)
+    get "/shorts_preview_selected?play=false"
+    ;;
+  shorts-play-selected)
+    get "/shorts_preview_selected?play=true"
+    ;;
   shorts-preview-selected)
     play="${2:-false}"
     case "$play" in
@@ -12646,7 +12690,7 @@ else:
     fi
     get "/shorts_range_selected?boundary=$(urlencode "$boundary")&delta=$(urlencode "$value")"
     ;;
-  shorts-set-selected|shorts-set-range)
+  shorts-set-range)
     boundary="${2:-}"
     value="${3:-}"
     if [[ -z "$boundary" || -z "$value" ]]; then
