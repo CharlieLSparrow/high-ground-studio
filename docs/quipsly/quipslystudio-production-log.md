@@ -409,3 +409,22 @@ Product truth:
 
 Next practical action:
 - Use the readiness board to choose the next batch of shorts to watch/listen/reframe, then mark Keep/Refine/Reject and promote the best clips toward Tower/social publishing.
+
+### 2026-06-23 - Short card next-action visibility pass
+
+Goal: reduce shorts-review anxiety by making each short card answer the practical operator question: what moment is this, what is the hook, and what should happen next?
+
+Changed:
+- Added a `Review this moment` banner to each short workbench card in `WorkspaceView`.
+- The banner surfaces the episode source range, the best available hook/overlay/caption/title text, and the safest next production action from the short quality/readiness model.
+- Added a stable accessibility identifier per short card banner so agent/human tooling can locate the same truth surface.
+
+Validated:
+- `./script/build_and_run.sh --verify` passed through the real QuipslyStudio app path.
+- `./script/agentctl.sh health` returned `status: ok` on port `8080`.
+- `./script/agentctl.sh episodes-shorts-readiness --json ...` still reports `27` total shorts across Episodes 1-3, with `13/9/5` candidates respectively.
+- `./script/agentctl.sh shorts-select index 1` followed by `editor-loop-proof` selected `Test Short - Wednesday Rule moment` and exposed review `needs-captions`, export `exported`, primary platform `Instagram/Facebook Reels`, and next action `Watch the proof file and resolve the missing items before publishing.`
+
+Product truth:
+- This does not publish or approve anything. It makes the review/editing surface more honest: a short card now shows why the moment might work and what to do next before it can move toward Tower/social publishing.
+- Source media remains whole; shorts remain metadata recipes over sequence time.

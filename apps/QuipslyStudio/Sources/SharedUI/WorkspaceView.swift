@@ -9840,6 +9840,7 @@ struct WorkspaceView: View {
             }
 
             shortProofStrip(for: clip, sequenceRange: sequenceRange)
+            shortNextActionBanner(for: clip, sequenceRange: sequenceRange)
 
             shortQuickActionBar(for: clip)
 
@@ -9970,6 +9971,71 @@ struct WorkspaceView: View {
                 removeShortClipCandidate(id: clip.id.uuidString)
             }
         }
+    }
+
+    private func shortNextActionBanner(
+        for clip: ShortClipCandidate,
+        sequenceRange: (start: Double, end: Double, duration: Double)?
+    ) -> some View {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
+        let hook = [
+            clip.hookText,
+            clip.primaryOverlayText,
+            clip.captionDraft,
+            clip.title
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? "No hook yet. Write the first-second promise before this becomes a real post."
+        let rangeText = sequenceRange.map {
+            String(format: "Episode %.2fs -> %.2fs (%.1fs)", $0.start, $0.end, $0.duration)
+        } ?? String(format: "Episode %.2fs -> %.2fs (%.1fs)", clip.startTime, clip.startTime + clip.duration, clip.duration)
+        let nextAction = brief.publishReadiness.nextAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? platformSummary.nextAction
+            : brief.publishReadiness.nextAction
+
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: "leaf.arrow.triangle.circlepath")
+                    .font(.caption2)
+                    .foregroundStyle(platformSummary.color)
+                Text("Review this moment")
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(platformSummary.color)
+                Spacer()
+                Text(rangeText)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(QuipslyStudioTheme.moonMilk.opacity(0.72))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Text(hook)
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(QuipslyStudioTheme.moonMilk.opacity(0.92))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Next: \(nextAction)")
+                .font(.caption2)
+                .foregroundStyle(QuipslyStudioTheme.sage)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(platformSummary.color.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(platformSummary.color.opacity(0.15), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .help("This is the short's source range, hook promise, and safest next production action. The source video stays whole; this is recipe metadata.")
+        .accessibilityIdentifier("quipsly.shortCard.nextAction.\(clip.id.uuidString)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Short review moment \(clip.title). \(rangeText). Hook \(hook). Next action \(nextAction).")
     }
 
     private func shortReviewStatusPill(_ status: String) -> some View {
