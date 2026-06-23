@@ -59,6 +59,7 @@ public class AgentServer: ObservableObject {
     private nonisolated(unsafe) static var httpCommandQueue: [AgentCommandRequest] = []
     private nonisolated static let directProxyExportLock = NSLock()
     private nonisolated(unsafe) static var lastDirectProxyShortExportRequestPath: String = ""
+    private nonisolated static let directProxyExportRequestDefaultsKey = "quipsly.agent.lastDirectProxyShortExportRequestPath"
 
     public init() {
         start()
@@ -2696,16 +2697,54 @@ public class AgentServer: ObservableObject {
     }
 
     private nonisolated static func setLastDirectProxyShortExportRequestPath(_ path: String) {
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         directProxyExportLock.lock()
-        lastDirectProxyShortExportRequestPath = path
+        lastDirectProxyShortExportRequestPath = normalizedPath
         directProxyExportLock.unlock()
+
+        guard !normalizedPath.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: directProxyExportRequestDefaultsKey)
+            try? FileManager.default.removeItem(at: directProxyExportRequestPointerURL())
+            return
+        }
+
+        UserDefaults.standard.set(normalizedPath, forKey: directProxyExportRequestDefaultsKey)
+        let pointerURL = directProxyExportRequestPointerURL()
+        try? FileManager.default.createDirectory(
+            at: pointerURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? normalizedPath.write(to: pointerURL, atomically: true, encoding: .utf8)
     }
 
     private nonisolated static func getLastDirectProxyShortExportRequestPath() -> String {
         directProxyExportLock.lock()
         let path = lastDirectProxyShortExportRequestPath
         directProxyExportLock.unlock()
-        return path
+        if !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return path
+        }
+
+        if let defaultsPath = UserDefaults.standard.string(forKey: directProxyExportRequestDefaultsKey),
+           !defaultsPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return defaultsPath
+        }
+
+        let pointerURL = directProxyExportRequestPointerURL()
+        if let pointerPath = try? String(contentsOf: pointerURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !pointerPath.isEmpty {
+            return pointerPath
+        }
+
+        return ""
+    }
+
+    private nonisolated static func directProxyExportRequestPointerURL() -> URL {
+        localMediaVaultRootURL()
+            .appendingPathComponent("exports", isDirectory: true)
+            .appendingPathComponent("export-requests", isDirectory: true)
+            .appendingPathComponent("last-selected-short-export-request-path.txt")
     }
 
     private nonisolated func scheduleHTTPCommand(_ request: AgentCommandRequest) -> [String: Any] {
