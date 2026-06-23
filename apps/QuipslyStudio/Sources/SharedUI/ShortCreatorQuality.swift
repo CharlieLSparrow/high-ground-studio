@@ -65,6 +65,7 @@ enum ShortCreatorQualityCommand: String, CaseIterable {
     case fillHook = "fill-hook"
     case draftCopy = "draft-copy"
     case draftPlatformPack = "draft-platform-pack"
+    case draftAllPlatformPacks = "draft-all-platform-packs"
     case copyPlatformPackJSON = "copy-platform-pack-json"
     case savePlatformPackJSON = "save-platform-pack-json"
     case copyPolishPrompt = "copy-polish-prompt"
@@ -78,6 +79,8 @@ enum ShortCreatorQualityCommand: String, CaseIterable {
             return ["draft-copy", "platform-copy", "caption", "copy"]
         case .draftPlatformPack:
             return ["draft-platform-pack", "platform-pack", "draft-all-platforms", "all-platforms"]
+        case .draftAllPlatformPacks:
+            return ["draft-all-platform-packs", "draft-platform-packs-all", "platform-pack-all", "all-short-platform-packs", "batch-platform-pack"]
         case .copyPlatformPackJSON:
             return ["copy-platform-pack-json", "platform-pack-json", "copy-platform-pack", "copy-pack-json"]
         case .savePlatformPackJSON:
@@ -97,6 +100,8 @@ enum ShortCreatorQualityCommand: String, CaseIterable {
             return "Draft copy"
         case .draftPlatformPack:
             return "Draft platform pack"
+        case .draftAllPlatformPacks:
+            return "Draft all platform packs"
         case .copyPlatformPackJSON:
             return "Copy platform pack JSON"
         case .savePlatformPackJSON:
@@ -116,6 +121,8 @@ enum ShortCreatorQualityCommand: String, CaseIterable {
             return "Drafts platform/caption metadata and preserves existing copy instead of overwriting it."
         case .draftPlatformPack:
             return "Creates or completes destination presets for the strongest platform fits without overwriting human-written fields."
+        case .draftAllPlatformPacks:
+            return "Creates or completes platform presets for every short in the active sequence without overwriting human-written fields."
         case .copyPlatformPackJSON:
             return "Copies the exact platform-pack preview payload for agents, Tower, or manual publishing review."
         case .savePlatformPackJSON:

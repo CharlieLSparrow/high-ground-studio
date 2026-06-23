@@ -11472,7 +11472,7 @@ struct WorkspaceView: View {
 
     private func draftSelectedShortPlatformPackFromQualityBrief(_ clip: ShortClipCandidate) {
         let brief = shortCreatorQualityBrief(for: clip)
-        let draftPresets = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief)
+        let draftPresets = shortPublicationTargetPresetDrafts(for: clip, brief: brief)
         updateSelectedShortClip { short in
             var draftedPlatforms: [String] = []
             for draftPreset in draftPresets {
@@ -11488,6 +11488,82 @@ struct WorkspaceView: View {
                 to: short.publishNotes
             )
         }
+    }
+
+    private func shortPublicationTargetPresetDrafts(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief
+    ) -> [ShortDestinationPreset] {
+        let corePlatforms = [
+            "YouTube Shorts",
+            "Instagram",
+            "Facebook",
+            "LinkedIn",
+            "Patreon teaser"
+        ]
+        var drafts = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief, minimumScore: 0, limit: 8)
+        var seen = Set(drafts.map { $0.platform.lowercased() })
+
+        for platform in corePlatforms {
+            let key = platform.lowercased()
+            let alreadyCovered = seen.contains(key)
+                || seen.contains(where: { existing in
+                    guard !existing.contains("/") else { return false }
+                    return existing.contains(key) || key.contains(existing)
+                })
+            guard !alreadyCovered else { continue }
+            drafts.append(ShortCreatorQuality.destinationPresetDraft(for: clip, platform: platform))
+            seen.insert(key)
+        }
+
+        return drafts
+    }
+
+    private func draftAllShortPlatformPacksFromQualityBriefs() {
+        guard var sequence = projectStore.activeSequence else {
+            lastMediaAction = "Batch platform pack blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+
+        var touchedShorts = 0
+        var draftedPresets = 0
+        var summaries: [String] = []
+
+        for index in sequence.shortClipQueue.indices {
+            let original = sequence.shortClipQueue[index]
+            let brief = shortCreatorQualityBrief(for: original)
+            let draftPresets = shortPublicationTargetPresetDrafts(for: original, brief: brief)
+            guard !draftPresets.isEmpty else { continue }
+
+            var short = original
+            var draftedPlatforms: [String] = []
+            for draftPreset in draftPresets {
+                upsertShortDestinationPreset(draftPreset, into: &short)
+                draftedPresets += 1
+                draftedPlatforms.append(draftPreset.platform)
+            }
+            short.publishNotes = appendLine(
+                "Quality assistant batch-drafted platform pack metadata: \(draftedPlatforms.joined(separator: ", ")). Review before publishing.",
+                to: short.publishNotes
+            )
+            short.updatedAt = Date()
+            sequence.shortClipQueue[index] = short
+            touchedShorts += 1
+            summaries.append("\(short.title): \(draftedPlatforms.joined(separator: "/"))")
+        }
+
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Draft Short Platform Packs")
+        var actionMessage = "Drafted platform packs for \(touchedShorts) short recipe(s), \(draftedPresets) destination preset update(s)"
+        if !summaries.isEmpty {
+            actionMessage += ": \(summaries.prefix(3).joined(separator: " | "))"
+            if summaries.count > 3 {
+                actionMessage += " | +\(summaries.count - 3) more"
+            }
+        }
+        lastMediaAction = actionMessage
+        scheduleAutosave(reason: "drafted short platform packs")
+        updateAgentState()
     }
 
     private func upsertShortDestinationPreset(_ draft: ShortDestinationPreset, into short: inout ShortClipCandidate) {
@@ -11563,14 +11639,19 @@ struct WorkspaceView: View {
     }
 
     private func applySelectedShortQualityAction(_ rawAction: String?) {
-        guard let clip = selectedShortClipValue() else {
-            lastMediaAction = "Short quality action blocked: no selected short recipe"
+        guard let command = ShortCreatorQualityCommand.parse(rawAction) else {
+            lastMediaAction = "Unknown short quality action: \(rawAction ?? "")"
             updateAgentState()
             return
         }
 
-        guard let command = ShortCreatorQualityCommand.parse(rawAction) else {
-            lastMediaAction = "Unknown short quality action: \(rawAction ?? "")"
+        if command == .draftAllPlatformPacks {
+            draftAllShortPlatformPacksFromQualityBriefs()
+            return
+        }
+
+        guard let clip = selectedShortClipValue() else {
+            lastMediaAction = "Short quality action blocked: no selected short recipe"
             updateAgentState()
             return
         }
@@ -11582,6 +11663,8 @@ struct WorkspaceView: View {
             draftSelectedShortPlatformCopyFromQualityBrief(clip)
         case .draftPlatformPack:
             draftSelectedShortPlatformPackFromQualityBrief(clip)
+        case .draftAllPlatformPacks:
+            draftAllShortPlatformPacksFromQualityBriefs()
         case .copyPlatformPackJSON:
             copySelectedShortPlatformPackJSON(clip)
         case .savePlatformPackJSON:
@@ -12340,6 +12423,13 @@ struct WorkspaceView: View {
                     Label("Draft pack", systemImage: "sparkles")
                 }
                 .help("Create or complete platform title, caption, hashtag, and Patreon teaser metadata without publishing.")
+
+                Button {
+                    draftAllShortPlatformPacksFromQualityBriefs()
+                } label: {
+                    Label("Draft all", systemImage: "wand.and.stars")
+                }
+                .help("Batch-create missing platform metadata for every short in this episode without overwriting human-written fields.")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -34594,7 +34684,7 @@ struct WorkspaceView: View {
             },
             "nextSafeActions": [
                 "GET /shorts_preview_selected?play=true|false",
-                "GET /shorts_quality_action?action=fill-hook|draft-copy|copy-polish-prompt|needs-refine",
+                "GET /shorts_quality_action?action=fill-hook|draft-copy|draft-platform-pack|draft-all-platform-packs|copy-polish-prompt|needs-refine",
                 "GET /shorts_range_selected?boundary=start|end&time=<sequence-seconds>|delta=<seconds>",
                 "GET /shorts_queue_append_selected_segment",
                 "GET /shorts_overlay_burn_in?decision=request_review|approve_top_canopy|hold&note=<optional-review-note>",

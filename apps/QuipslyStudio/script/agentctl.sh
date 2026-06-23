@@ -303,6 +303,7 @@ Usage:
   script/agentctl.sh shorts-local-export-board [--json|--html|--md] [/absolute/output/folder] [basename]
   script/agentctl.sh shorts-growth-quality-board [--json|--html|--md] [/absolute/output/folder] [basename]
   script/agentctl.sh shorts-platform-package-board [--json|--html|--md] [/absolute/output/folder] [basename]
+  script/agentctl.sh shorts-quality-action draft-all-platform-packs
   script/agentctl.sh shorts-improvement-plan [--json|--html|--md] [/absolute/output/folder] [basename]
   script/agentctl.sh shorts-add-selected "Optional title"
   script/agentctl.sh shorts-add-range 3000 3045 "Identity Changes Behavior"

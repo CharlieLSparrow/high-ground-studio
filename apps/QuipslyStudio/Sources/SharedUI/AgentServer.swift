@@ -3771,7 +3771,7 @@ public class AgentServer: ObservableObject {
                 "GET /shorts_review_next?status=<optional-status>",
                 "GET /shorts_queue_remove?id=<short-clip-id>",
                 "GET /shorts_queue_update_selected?field=title|hook|caption|overlay|notes|review_status|export_status&value=<text>",
-                "GET /shorts_quality_action?action=fill-hook|draft-copy|draft-platform-pack|copy-platform-pack-json|save-platform-pack-json|copy-polish-prompt|needs-refine",
+                "GET /shorts_quality_action?action=fill-hook|draft-copy|draft-platform-pack|draft-all-platform-packs|copy-platform-pack-json|save-platform-pack-json|copy-polish-prompt|needs-refine",
                 "GET /shorts_platform_pack_index?action=save|copy",
                 "GET /shorts_overlay_burn_in?decision=approve|hold&note=<optional-review-note>",
                 "GET /shorts_listen_through?note=<optional-review-note>",
