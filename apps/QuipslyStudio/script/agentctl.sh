@@ -343,6 +343,8 @@ Usage:
   script/agentctl.sh shorts-preview-selected play
   script/agentctl.sh shorts-range-selected start delta -0.1
   script/agentctl.sh shorts-range-selected end time 42.5
+  script/agentctl.sh shorts-nudge-selected start|end -0.1
+  script/agentctl.sh shorts-set-selected start|end 42.5
   script/agentctl.sh shorts-export-selected /absolute/output/folder optional-basename
   script/agentctl.sh shorts-export-all /absolute/output/folder optional-basename
   script/agentctl.sh shorts-contact-sheet /absolute/exported-short.mp4 [/absolute/output.png]
@@ -12634,6 +12636,24 @@ else:
         exit 2
         ;;
     esac
+    ;;
+  shorts-nudge-selected|shorts-nudge-range)
+    boundary="${2:-}"
+    value="${3:-}"
+    if [[ -z "$boundary" || -z "$value" ]]; then
+      usage
+      exit 2
+    fi
+    get "/shorts_range_selected?boundary=$(urlencode "$boundary")&delta=$(urlencode "$value")"
+    ;;
+  shorts-set-selected|shorts-set-range)
+    boundary="${2:-}"
+    value="${3:-}"
+    if [[ -z "$boundary" || -z "$value" ]]; then
+      usage
+      exit 2
+    fi
+    get "/shorts_range_selected?boundary=$(urlencode "$boundary")&time=$(urlencode "$value")"
     ;;
   shorts-export-selected)
     directory="${2:-}"

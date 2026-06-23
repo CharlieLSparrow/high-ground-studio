@@ -447,3 +447,14 @@ Validated:
 Product truth:
 - This does not change the core media model. The buttons adjust short recipe metadata only; whole synced source lanes and original media stay intact.
 - The refinement loop is now more visible: cue, preview, export, review, then nudge in/out points without leaving the short card.
+
+## 2026-06-23 - Agent-safe short range refinement proof
+
+- Active lane: Episode 1 shorts/editor control surface.
+- Added explicit agent commands for selected-short range control: `shorts-nudge-selected start|end <delta>` and `shorts-set-selected start|end <time>`.
+- Hardened the HTTP-to-editor command bridge so selected short range updates carry projected short id/title hints instead of relying on stale SwiftUI sidebar selection.
+- Added `apps/QuipslyStudio/script/smoke_episode1_short_refinement.sh` as a real app-path proof: select a short recipe, nudge start, restore start, nudge end, restore end, then verify source media remains untouched.
+- Validation run: `./script/build_and_run.sh --verify` passed, then `./script/smoke_episode1_short_refinement.sh` passed against `http://127.0.0.1:8080`.
+- Evidence: Farm Work Teaches Stewardship was nudged from `524.357 -> 524.457`, restored to `524.357`, nudged end from `547.005 -> 546.905`, and restored to `547.005`.
+- Lesson: editor commands are asynchronous UI-driven operations. Agent smoke tests need evidence windows and explicit target ids, not immediate ack-only assumptions.
+- Next proof lane candidate: Episode 6 has the most complete media set. Start by syncing Charlie video, Homer Insta360 video, and possibly call audio as the spine/context layer. Treat external clips as contextual weave-ins over the conversation instead of hard "we watched this whole thing" blocks.

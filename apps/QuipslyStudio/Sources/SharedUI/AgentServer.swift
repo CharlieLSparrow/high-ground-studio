@@ -55,6 +55,8 @@ public class AgentServer: ObservableObject {
     public let port: UInt16 = 8080
     private nonisolated static let cachedStatusLock = NSLock()
     private nonisolated(unsafe) static var cachedStatusData: Data?
+    private nonisolated static let projectedShortSelectionLock = NSLock()
+    private nonisolated(unsafe) static var projectedShortSelectionValues: [String: String] = [:]
     private nonisolated static let httpCommandQueueLock = NSLock()
     private nonisolated(unsafe) static var httpCommandQueue: [AgentCommandRequest] = []
     private nonisolated static let directProxyExportLock = NSLock()
@@ -133,9 +135,7 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: self?.codexEditorHandoffPayload() ?? ["status": "unavailable"])
                 }
             case "/editor_loop_proof":
-                Task { @MainActor in
-                    self?.sendJSON(connection, object: self?.editorLoopProofPayload() ?? ["status": "unavailable"])
-                }
+                self?.sendJSON(connection, object: Self.cachedEditorLoopProofPayload())
             case "/demo":
                 Task { @MainActor in
                     self?.enqueueCommand("load_demo")
@@ -1257,15 +1257,21 @@ public class AgentServer: ObservableObject {
                 if let delta = request.query["delta"] {
                     values["delta"] = delta
                 }
-                Task { @MainActor in
-                    self?.enqueueCommand("shorts_range_selected", values: values)
-                    self?.sendJSON(connection, object: [
-                        "status": "shorts_range_selected_commanded",
-                        "boundary": boundary,
-                        "time": values["time"] ?? "",
-                        "delta": values["delta"] ?? ""
-                    ])
+                for (key, value) in Self.projectedShortSelectionCommandValues()
+                    where values[key] == nil && !value.isEmpty {
+                    values[key] = value
                 }
+                let receipt = self?.scheduleHTTPCommand(AgentCommandRequest(name: "shorts_range_selected", values: values)) ?? [:]
+                self?.sendJSON(connection, object: [
+                    "status": "shorts_range_selected_commanded",
+                    "boundary": boundary,
+                    "time": values["time"] ?? "",
+                    "delta": values["delta"] ?? "",
+                    "selectedShortId": values["selectedShortId"] ?? "",
+                    "selectedShortTitle": values["selectedShortTitle"] ?? "",
+                    "commandReceipt": receipt,
+                    "truth": "Range refinement is acknowledged from the HTTP thread and delivered to the editor bridge asynchronously. Re-read /shorts_queue for updated recipe metadata."
+                ])
             case "/shorts_export_selected":
                 let directory = request.query["directory"] ?? ""
                 let basename = request.query["basename"] ?? ""
@@ -2584,16 +2590,7 @@ public class AgentServer: ObservableObject {
                     }
                 }
             case "/shorts_queue":
-                Task { @MainActor in
-                    if let queue = self?.lastStatus?["shortClipQueue"] as? [String: Any] {
-                        self?.sendJSON(connection, object: queue)
-                    } else {
-                        self?.sendJSON(connection, object: [
-                            "status": "no_short_clip_queue_yet",
-                            "hint": "Open QuipslyStudio and load a native editor session, then call /shorts_queue again."
-                        ])
-                    }
-                }
+                self?.sendJSON(connection, object: Self.cachedShortClipQueuePayload())
             default:
                 print("AgentServer: not found path \(request.path)")
                 Task { @MainActor in
@@ -3370,7 +3367,7 @@ public class AgentServer: ObservableObject {
 
     @discardableResult
     private nonisolated static func projectShortSelectionInCachedState(id rawId: String, title rawTitle: String, index rawIndex: String) -> [String: Any] {
-        guard var current = cachedStatusDictionary() else {
+        guard let current = cachedStatusDictionary() else {
             return [
                 "status": "no_state_yet",
                 "truth": "Open QuipslyStudio and load Episode 1 before selecting a short through the agent API."
@@ -3421,21 +3418,16 @@ public class AgentServer: ObservableObject {
         let id = staticStringValue(selected["id"])
         let title = staticStringValue(selected["title"])
         let proof = staticSelectedShortProofPayload(for: selected, queueCount: clips.count)
-        current["selectedShortClipId"] = id
-        current["selectedShortClip"] = selected
-        current["selectedShortProof"] = proof
-        current["agentSelectionProjectionSource"] = "agent-server-short-selection-read-model"
-        current["agentLastProcessedCommandSerial"] = "http_projection_pending_main_actor"
-        current["lastMediaAction"] = "Agent selected short recipe: \(title)"
-        updateCachedStatusResponse(jsonSafeDictionary(current))
+        setProjectedShortSelectionCommandValues(id: id, title: title, index: trimmedIndex)
 
         return [
             "status": "projected",
             "id": id,
             "title": title,
             "shortClipQueueCount": clips.count,
+            "selectedShortProof": proof,
             "selectionStateSource": "agent-server-short-selection-read-model",
-            "truth": "The cached short queue projected selected-short truth immediately. The live SwiftUI selection bridge will catch up through the queued command."
+            "truth": "The cached short queue projected selected-short truth immediately. The live SwiftUI selection bridge will catch up through the queued command; this receipt does not rewrite the full cached editor snapshot."
         ]
     }
 
@@ -3473,6 +3465,23 @@ public class AgentServer: ObservableObject {
             "exportRanges": exportRanges,
             "contract": "Projected from the cached short queue for agent-safe inspect/select. The live SwiftUI selection bridge remains the interactive source of truth."
         ]
+    }
+
+    private nonisolated static func setProjectedShortSelectionCommandValues(id: String, title: String, index: String) {
+        projectedShortSelectionLock.lock()
+        projectedShortSelectionValues = [
+            "selectedShortId": id,
+            "selectedShortTitle": title,
+            "selectedShortIndex": index
+        ]
+        projectedShortSelectionLock.unlock()
+    }
+
+    private nonisolated static func projectedShortSelectionCommandValues() -> [String: String] {
+        projectedShortSelectionLock.lock()
+        let values = projectedShortSelectionValues
+        projectedShortSelectionLock.unlock()
+        return values
     }
 
     private nonisolated static func staticStringValue(_ value: Any?) -> String {
@@ -4069,8 +4078,28 @@ public class AgentServer: ObservableObject {
         ]
     }
 
+    private nonisolated static func cachedShortClipQueuePayload() -> [String: Any] {
+        guard let cachedStatus = cachedStatusDictionary(),
+              let queue = cachedStatus["shortClipQueue"] as? [String: Any] else {
+            return [
+                "status": "no_short_clip_queue_yet",
+                "hint": "Open QuipslyStudio and load a native editor session, then call /shorts_queue again.",
+                "truth": "This endpoint reads the cached editor snapshot off the MainActor so agent observation stays responsive."
+            ]
+        }
+        return queue
+    }
+
+    private nonisolated static func cachedEditorLoopProofPayload() -> [String: Any] {
+        editorLoopProofPayload(from: cachedStatusDictionary())
+    }
+
     private func editorLoopProofPayload() -> [String: Any] {
-        guard let status = lastStatus else {
+        Self.editorLoopProofPayload(from: lastStatus)
+    }
+
+    private nonisolated static func editorLoopProofPayload(from status: [String: Any]?) -> [String: Any] {
+        guard let status else {
             return [
                 "status": "no_state_yet",
                 "model": "quipslystudio-editor-loop-proof",

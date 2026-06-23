@@ -32620,15 +32620,40 @@ struct WorkspaceView: View {
         adjustSelectedShortBoundary(boundary, targetSequenceTime: nil, delta: delta)
     }
 
-    private func adjustSelectedShortBoundary(_ boundary: String, targetSequenceTime: Double?, delta: Double?) {
-        guard let selectedShortClipId,
-              var sequence = projectStore.activeSequence,
-              let index = sequence.shortClipQueue.firstIndex(where: { $0.id == selectedShortClipId }) else {
+    private func adjustSelectedShortBoundary(
+        _ boundary: String,
+        targetSequenceTime: Double?,
+        delta: Double?,
+        selectedShortIdHint: String? = nil,
+        selectedShortTitleHint: String? = nil
+    ) {
+        guard var sequence = projectStore.activeSequence else {
             lastMediaAction = "Short range update blocked: no selected short recipe"
             updateAgentState()
             return
         }
 
+        let trimmedHintedId = selectedShortIdHint?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let hintedId = trimmedHintedId
+            .flatMap { $0.isEmpty ? nil : UUID(uuidString: $0) }
+        let hintedTitle = selectedShortTitleHint?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedIndex = hintedId
+            .flatMap { id in sequence.shortClipQueue.firstIndex(where: { $0.id == id }) }
+            ?? hintedTitle.flatMap { title in
+                title.isEmpty ? nil : sequence.shortClipQueue.firstIndex { $0.title == title }
+            }
+            ?? selectedShortClipId
+                .flatMap { id in sequence.shortClipQueue.firstIndex(where: { $0.id == id }) }
+
+        guard let index = resolvedIndex else {
+            lastMediaAction = "Short range update blocked: no selected short recipe"
+            updateAgentState()
+            return
+        }
+
+        selectedShortClipId = sequence.shortClipQueue[index].id
         let minimumDuration = 0.15
         var clip = sequence.shortClipQueue[index]
         let sourceOffset = sourceOffset(for: clip, in: sequence)
@@ -38479,9 +38504,21 @@ struct WorkspaceView: View {
         case "shorts_range_selected":
             let boundary = request.values["boundary"] ?? "start"
             if let rawTime = request.values["time"], let time = Double(rawTime) {
-                adjustSelectedShortBoundary(boundary, targetSequenceTime: time, delta: nil)
+                adjustSelectedShortBoundary(
+                    boundary,
+                    targetSequenceTime: time,
+                    delta: nil,
+                    selectedShortIdHint: request.values["selectedShortId"],
+                    selectedShortTitleHint: request.values["selectedShortTitle"]
+                )
             } else {
-                adjustSelectedShortBoundary(boundary, targetSequenceTime: nil, delta: Double(request.values["delta"] ?? ""))
+                adjustSelectedShortBoundary(
+                    boundary,
+                    targetSequenceTime: nil,
+                    delta: Double(request.values["delta"] ?? ""),
+                    selectedShortIdHint: request.values["selectedShortId"],
+                    selectedShortTitleHint: request.values["selectedShortTitle"]
+                )
             }
         case "shorts_export_selected":
             exportSelectedShortClipForAgent(
