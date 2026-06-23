@@ -9821,55 +9821,54 @@ struct WorkspaceView: View {
     private func shortWorkbenchCard(_ clip: ShortClipCandidate) -> some View {
         let isSelected = selectedShortClipId == clip.id
         let sequenceRange = selectedShortSequenceRange(clip)
-        return Button {
-            selectShortClipCandidate(clip)
-        } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: isSelected ? "play.rectangle.fill" : "rectangle.portrait")
-                        .foregroundStyle(isSelected ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
-                        .frame(width: 20)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(clip.title)
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .lineLimit(2)
-                        Text(shortRangeSummary(for: clip, sequenceRange: sequenceRange))
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    shortReviewStatusPill(clip.reviewStatus)
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: isSelected ? "play.rectangle.fill" : "rectangle.portrait")
+                    .foregroundStyle(isSelected ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(clip.title)
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .lineLimit(2)
+                    Text(shortRangeSummary(for: clip, sequenceRange: sequenceRange))
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
                 }
+                Spacer()
+                shortReviewStatusPill(clip.reviewStatus)
+            }
 
-                shortProofStrip(for: clip, sequenceRange: sequenceRange)
+            shortProofStrip(for: clip, sequenceRange: sequenceRange)
 
-                HStack(spacing: 5) {
-                    Text(clip.format.rawValue)
-                        .font(.caption2)
-                        .fontWeight(.black)
-                        .foregroundStyle(QuipslyStudioTheme.honey)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(QuipslyStudioTheme.honey.opacity(0.12))
-                        .clipShape(Capsule())
-                    Text(clip.status)
-                        .font(.caption2)
-                        .fontWeight(.black)
-                        .foregroundStyle(QuipslyStudioTheme.creek)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(QuipslyStudioTheme.creek.opacity(0.12))
-                        .clipShape(Capsule())
-                    Text(shortSegmentCountLabel(for: clip))
-                        .font(.caption2)
-                        .fontWeight(.black)
-                        .foregroundStyle(clip.segments.count > 1 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.sage)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background((clip.segments.count > 1 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.sage).opacity(0.12))
-                        .clipShape(Capsule())
-                }
+            shortQuickActionBar(for: clip)
+
+            HStack(spacing: 5) {
+                Text(clip.format.rawValue)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(QuipslyStudioTheme.honey.opacity(0.12))
+                    .clipShape(Capsule())
+                Text(clip.status)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(QuipslyStudioTheme.creek.opacity(0.12))
+                    .clipShape(Capsule())
+                Text(shortSegmentCountLabel(for: clip))
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(clip.segments.count > 1 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.sage)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((clip.segments.count > 1 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.sage).opacity(0.12))
+                    .clipShape(Capsule())
+            }
 
                 let readiness = shortPublicationReadiness(for: clip)
                 HStack(spacing: 6) {
@@ -9943,17 +9942,19 @@ struct WorkspaceView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .help("Read-only context derived from transcript segments overlapping this short recipe. It does not overwrite hook, caption, or overlay copy.")
                 }
-            }
-            .padding(9)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? QuipslyStudioTheme.selectedRecipeGradient : QuipslyStudioTheme.recipeCardGradient)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? QuipslyStudioTheme.honey.opacity(0.42) : QuipslyStudioTheme.sage.opacity(0.10), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? QuipslyStudioTheme.selectedRecipeGradient : QuipslyStudioTheme.recipeCardGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isSelected ? QuipslyStudioTheme.honey.opacity(0.42) : QuipslyStudioTheme.sage.opacity(0.10), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onTapGesture {
+            selectShortClipCandidate(clip)
+        }
         .contextMenu {
             Button("Mark Keep") {
                 applyShortReviewDecision(id: clip.id.uuidString, status: "keep", notes: "Marked Keep from short card menu.")
@@ -10206,6 +10207,92 @@ struct WorkspaceView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Short proof: source \(rangeLabel), duration \(String(format: "%.1f", max(0, duration))) seconds, review \(review), export \(exportLabel)")
+    }
+
+    private func shortQuickActionBar(for clip: ShortClipCandidate) -> some View {
+        HStack(spacing: 5) {
+            Button {
+                selectedShortClipId = clip.id
+                previewSelectedShortClip(play: false)
+            } label: {
+                Label("Cue", systemImage: "scope")
+            }
+            .help("Select this short and jump the shared playhead to its first recipe moment.")
+
+            Button {
+                selectedShortClipId = clip.id
+                previewSelectedShortClip(play: true)
+            } label: {
+                Label("Preview", systemImage: "play.fill")
+            }
+            .help("Preview this short from its first recipe moment.")
+
+            Button {
+                selectedShortClipId = clip.id
+                exportSelectedShortClipForAgent(directoryPath: nil, basename: nil)
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .disabled(exportEngine.isExporting)
+            .help(exportEngine.isExporting ? "Wait for the current export to finish." : "Export this short as a 9:16 proxy derivative without touching original media.")
+
+            Menu {
+                Button("Keep") {
+                    applyShortReviewDecision(id: clip.id.uuidString, status: "keep", notes: "Marked Keep from short card quick action.")
+                }
+                Button("Refine") {
+                    applyShortReviewDecision(id: clip.id.uuidString, status: "refine", notes: "Marked Refine from short card quick action.")
+                }
+                Button("Reject") {
+                    applyShortReviewDecision(id: clip.id.uuidString, status: "reject", notes: "Marked Reject from short card quick action.")
+                }
+            } label: {
+                Label("Review", systemImage: "checklist")
+            }
+            .help("Mark this short Keep, Refine, or Reject without opening the detail editor.")
+
+            Menu {
+                Button("-1.0 In") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("start", by: -1.0)
+                }
+                Button("-0.1 In") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("start", by: -0.1)
+                }
+                Button("+0.1 In") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("start", by: 0.1)
+                }
+                Button("+1.0 In") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("start", by: 1.0)
+                }
+                Divider()
+                Button("-1.0 Out") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("end", by: -1.0)
+                }
+                Button("-0.1 Out") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("end", by: -0.1)
+                }
+                Button("+0.1 Out") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("end", by: 0.1)
+                }
+                Button("+1.0 Out") {
+                    selectedShortClipId = clip.id
+                    nudgeSelectedShortBoundary("end", by: 1.0)
+                }
+            } label: {
+                Label("Nudge", systemImage: "arrow.left.and.right")
+            }
+            .help("Fine tune the short recipe start/end while keeping source media intact.")
+        }
+        .labelStyle(.titleAndIcon)
+        .buttonStyle(.bordered)
+        .controlSize(.mini)
     }
 
     private func shortProofChip(
