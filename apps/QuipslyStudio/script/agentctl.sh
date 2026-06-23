@@ -310,6 +310,9 @@ Usage:
   script/agentctl.sh shorts-select id SHORT_CLIP_ID
   script/agentctl.sh shorts-select title "Identity Changes Behavior"
   script/agentctl.sh shorts-select index 1
+  script/agentctl.sh shorts-review-target index 1 keep "proof watched; ready for Tower handoff"
+  script/agentctl.sh shorts-review-target title "Identity Changes Behavior" refine "needs tighter crop"
+  script/agentctl.sh shorts-review-target id SHORT_CLIP_ID reject "not strong enough"
   script/agentctl.sh shorts-export-selected /absolute/output/folder basename [id SHORT_CLIP_ID|title "Short title"|index 1]
   script/agentctl.sh ship-short-review id SHORT_CLIP_ID
   script/agentctl.sh ship-short-review title "Identity Changes Behavior"
@@ -6149,6 +6152,64 @@ PY
   printf 'Command: %s\n' "$audition_command"
   bash -lc "$audition_command"
   printf 'Cue complete. This did not mark listen-through complete; after actually reviewing, run: script/agentctl.sh shorts-listen-through "audio/timing reviewed notes"\n'
+}
+
+shorts_review_target() {
+  local selector value status notes tmp id
+  selector="${1:-}"
+  value="${2:-}"
+  status="${3:-}"
+  notes="${4:-}"
+  if [[ -z "$selector" || -z "$value" || -z "$status" ]]; then
+    usage
+    exit 2
+  fi
+  case "$status" in
+    keep|refine|reject) ;;
+    *)
+      printf 'Unsupported shorts-review-target status: %s\n' "$status" >&2
+      printf 'Use one of: keep, refine, reject. Other queue/readiness states should be changed through explicit queue metadata commands.\n' >&2
+      exit 2
+      ;;
+  esac
+
+  tmp="$(mktemp "${TMPDIR:-/tmp}/quipslystudio-short-review-target.XXXXXX")"
+  get "/state" > "$tmp"
+  id="$(python3 - "$tmp" "$selector" "$value" <<'PY'
+import json
+import sys
+
+path, selector, value = sys.argv[1:4]
+state = json.load(open(path, encoding="utf-8"))
+clips = ((state.get("shortClipQueue") or {}).get("clips") or [])
+selector = selector.strip().lower()
+value = value.strip()
+
+if selector == "id":
+    print(value)
+elif selector in ("index", "rank"):
+    try:
+        idx = int(value) - 1
+    except ValueError:
+        idx = -1
+    print((clips[idx].get("id") or "") if 0 <= idx < len(clips) else "")
+elif selector == "title":
+    needle = value.lower()
+    exact = next((clip for clip in clips if (clip.get("title") or "").lower() == needle), None)
+    match = exact or next((clip for clip in clips if needle in (clip.get("title") or "").lower()), None)
+    print((match or {}).get("id") or "")
+else:
+    print("")
+PY
+)"
+  rm -f "$tmp"
+
+  if [[ -z "$id" ]]; then
+    printf 'Could not resolve short recipe for selector %s=%s\n' "$selector" "$value" >&2
+    exit 1
+  fi
+
+  get "/shorts_review?id=$(urlencode "$id")&status=$(urlencode "$status")&notes=$(urlencode "$notes")"
 }
 
 shorts_review_listen_guide() {
@@ -12522,6 +12583,9 @@ else:
       exit 2
     fi
     get "/shorts_review_selected?status=$(urlencode "$status")&notes=$(urlencode "$notes")"
+    ;;
+  shorts-review-target)
+    shorts_review_target "${2:-}" "${3:-}" "${4:-}" "${5:-}"
     ;;
   shorts-review)
     id="${2:-}"

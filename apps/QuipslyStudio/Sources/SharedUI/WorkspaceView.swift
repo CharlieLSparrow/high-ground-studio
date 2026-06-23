@@ -12565,6 +12565,46 @@ struct WorkspaceView: View {
         }
     }
 
+    private func shortTowerHandoffStatus(
+        clip: ShortClipCandidate,
+        exportExists: Bool,
+        platformSummary: (readyCount: Int, totalCount: Int, nextAction: String, color: Color)
+    ) -> [String: Any] {
+        let review = clip.reviewStatus.lowercased()
+        let allPlatformsReady = platformSummary.readyCount == platformSummary.totalCount
+        let status: String
+        let nextAction: String
+
+        if review == "reject" {
+            status = "held-rejected"
+            nextAction = "Preserve as learning data. Do not move to publishing unless review changes."
+        } else if review == "refine" {
+            status = "held-refine"
+            nextAction = "Refine timing, crop, captions, or hook before publication handoff."
+        } else if !exportExists {
+            status = "needs-export-proof"
+            nextAction = "Export the 9:16 proxy derivative before handoff."
+        } else if !allPlatformsReady {
+            status = "needs-platform-review"
+            nextAction = "Resolve platform target: \(platformSummary.nextAction)."
+        } else if review != "keep" {
+            status = "needs-editorial-review"
+            nextAction = "Watch the exported proof and mark Keep, Refine, or Reject."
+        } else {
+            status = "ready-for-tower-handoff"
+            nextAction = "Move to Tower/manual upload queue and capture receipts after posting."
+        }
+
+        return [
+            "status": status,
+            "reviewStatus": clip.reviewStatus,
+            "exportProofReady": exportExists,
+            "platformReadyFraction": "\(platformSummary.readyCount)/\(platformSummary.totalCount)",
+            "nextAction": nextAction,
+            "contract": "Handoff status is readiness metadata only. It does not publish, schedule, upload, or mutate source media."
+        ]
+    }
+
     private func bestDestinationPreset(for platform: String, in clip: ShortClipCandidate) -> ShortDestinationPreset? {
         let platformKey = platform.lowercased()
         return clip.destinationPresets.first { preset in
@@ -33894,7 +33934,7 @@ struct WorkspaceView: View {
             "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
             "previewCommand": "script/agentctl.sh shorts-preview-selected play",
             "selectCommand": "script/agentctl.sh shorts-select id \(clip.id.uuidString)",
-            "reviewCommand": "script/agentctl.sh shorts-review \(clip.id.uuidString) keep|refine|reject \"notes\"",
+            "reviewCommand": "script/agentctl.sh shorts-review-target id \(clip.id.uuidString) keep|refine|reject \"notes\"",
             "nextSafeAction": nextSafeAction,
             "sequenceStartTime": sequenceStart,
             "sequenceEndTime": sequenceEnd,
@@ -34101,6 +34141,11 @@ struct WorkspaceView: View {
                 let brief = shortCreatorQualityBrief(for: clip)
                 let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
                 let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
+                let towerHandoff = shortTowerHandoffStatus(
+                    clip: clip,
+                    exportExists: exportExists,
+                    platformSummary: platformSummary
+                )
                 return [
                     "id": clip.id.uuidString,
                     "title": clip.title,
@@ -34180,6 +34225,12 @@ struct WorkspaceView: View {
                     "exportCommand": "script/agentctl.sh shorts-select id \(clip.id.uuidString) >/dev/null && script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename))",
                     "contactSheetCommand": exportExists ? "script/agentctl.sh shorts-contact-sheet \(shellQuoted(exportPath))" : "",
                     "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
+                    "reviewCommands": [
+                        "keep": "script/agentctl.sh shorts-review-target id \(clip.id.uuidString) keep \"proof watched; ready for Tower handoff\"",
+                        "refine": "script/agentctl.sh shorts-review-target id \(clip.id.uuidString) refine \"needs another edit pass\"",
+                        "reject": "script/agentctl.sh shorts-review-target id \(clip.id.uuidString) reject \"not strong enough for publication\""
+                    ] as [String: Any],
+                    "towerHandoff": towerHandoff,
                     "transcriptContext": shortTranscriptContextPayload(for: clip, in: sequence),
                     "reviewEvidence": shortReviewEvidencePayload(for: clip, in: sequence),
                     "hookText": clip.hookText,
