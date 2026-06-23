@@ -10290,89 +10290,106 @@ struct WorkspaceView: View {
     }
 
     private func shortQuickActionBar(for clip: ShortClipCandidate) -> some View {
-        HStack(spacing: 5) {
-            Button {
-                selectedShortClipId = clip.id
-                previewSelectedShortClip(play: false)
-            } label: {
-                Label("Cue", systemImage: "scope")
-            }
-            .help("Select this short and jump the shared playhead to its first recipe moment.")
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Button {
+                    selectedShortClipId = clip.id
+                    previewSelectedShortClip(play: false)
+                } label: {
+                    Label("Cue", systemImage: "scope")
+                }
+                .help("Select this short and jump the shared playhead to its first recipe moment.")
 
-            Button {
-                selectedShortClipId = clip.id
-                previewSelectedShortClip(play: true)
-            } label: {
-                Label("Preview", systemImage: "play.fill")
-            }
-            .help("Preview this short from its first recipe moment.")
+                Button {
+                    selectedShortClipId = clip.id
+                    previewSelectedShortClip(play: true)
+                } label: {
+                    Label("Preview", systemImage: "play.fill")
+                }
+                .help("Preview this short from its first recipe moment.")
 
-            Button {
-                selectedShortClipId = clip.id
-                exportSelectedShortClipForAgent(directoryPath: nil, basename: nil)
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
-            }
-            .disabled(exportEngine.isExporting)
-            .help(exportEngine.isExporting ? "Wait for the current export to finish." : "Export this short as a 9:16 proxy derivative without touching original media.")
+                Button {
+                    selectedShortClipId = clip.id
+                    exportSelectedShortClipForAgent(directoryPath: nil, basename: nil)
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(exportEngine.isExporting)
+                .help(exportEngine.isExporting ? "Wait for the current export to finish." : "Export this short as a 9:16 proxy derivative without touching original media.")
 
-            Menu {
-                Button("Keep") {
-                    applyShortReviewDecision(id: clip.id.uuidString, status: "keep", notes: "Marked Keep from short card quick action.")
+                Menu {
+                    Button("Keep") {
+                        applyShortReviewDecision(id: clip.id.uuidString, status: "keep", notes: "Marked Keep from short card quick action.")
+                    }
+                    Button("Refine") {
+                        applyShortReviewDecision(id: clip.id.uuidString, status: "refine", notes: "Marked Refine from short card quick action.")
+                    }
+                    Button("Reject") {
+                        applyShortReviewDecision(id: clip.id.uuidString, status: "reject", notes: "Marked Reject from short card quick action.")
+                    }
+                } label: {
+                    Label("Review", systemImage: "checklist")
                 }
-                Button("Refine") {
-                    applyShortReviewDecision(id: clip.id.uuidString, status: "refine", notes: "Marked Refine from short card quick action.")
-                }
-                Button("Reject") {
-                    applyShortReviewDecision(id: clip.id.uuidString, status: "reject", notes: "Marked Reject from short card quick action.")
-                }
-            } label: {
-                Label("Review", systemImage: "checklist")
+                .help("Mark this short Keep, Refine, or Reject without opening the detail editor.")
             }
-            .help("Mark this short Keep, Refine, or Reject without opening the detail editor.")
+            .labelStyle(.titleAndIcon)
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
 
-            Menu {
-                Button("-1.0 In") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("start", by: -1.0)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    Text("REFINE")
+                        .font(.system(size: 7, weight: .black, design: .rounded))
+                        .tracking(0.8)
+                        .foregroundStyle(QuipslyStudioTheme.honey.opacity(0.9))
+                    Text("visible recipe edges")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                    Spacer()
                 }
-                Button("-0.1 In") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("start", by: -0.1)
+
+                HStack(spacing: 4) {
+                    shortBoundaryNudgeButton(clip, boundary: "start", label: "In -1", delta: -1.0)
+                    shortBoundaryNudgeButton(clip, boundary: "start", label: "In -0.1", delta: -0.1)
+                    shortBoundaryNudgeButton(clip, boundary: "start", label: "In +0.1", delta: 0.1)
+                    shortBoundaryNudgeButton(clip, boundary: "start", label: "In +1", delta: 1.0)
                 }
-                Button("+0.1 In") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("start", by: 0.1)
+
+                HStack(spacing: 4) {
+                    shortBoundaryNudgeButton(clip, boundary: "end", label: "Out -1", delta: -1.0)
+                    shortBoundaryNudgeButton(clip, boundary: "end", label: "Out -0.1", delta: -0.1)
+                    shortBoundaryNudgeButton(clip, boundary: "end", label: "Out +0.1", delta: 0.1)
+                    shortBoundaryNudgeButton(clip, boundary: "end", label: "Out +1", delta: 1.0)
                 }
-                Button("+1.0 In") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("start", by: 1.0)
-                }
-                Divider()
-                Button("-1.0 Out") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("end", by: -1.0)
-                }
-                Button("-0.1 Out") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("end", by: -0.1)
-                }
-                Button("+0.1 Out") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("end", by: 0.1)
-                }
-                Button("+1.0 Out") {
-                    selectedShortClipId = clip.id
-                    nudgeSelectedShortBoundary("end", by: 1.0)
-                }
-            } label: {
-                Label("Nudge", systemImage: "arrow.left.and.right")
             }
-            .help("Fine tune the short recipe start/end while keeping source media intact.")
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(QuipslyStudioTheme.honey.opacity(0.07))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(QuipslyStudioTheme.honey.opacity(0.14), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .help("Nudge this short recipe's in/out points without cutting or moving the original source media.")
+            .accessibilityIdentifier("quipsly.shortCard.refineEdges.\(clip.id.uuidString)")
         }
-        .labelStyle(.titleAndIcon)
+    }
+
+    private func shortBoundaryNudgeButton(
+        _ clip: ShortClipCandidate,
+        boundary: String,
+        label: String,
+        delta: Double
+    ) -> some View {
+        Button(label) {
+            selectedShortClipId = clip.id
+            nudgeSelectedShortBoundary(boundary, by: delta)
+        }
+        .font(.system(size: 9, weight: .bold, design: .rounded))
         .buttonStyle(.bordered)
         .controlSize(.mini)
+        .help("\(label) seconds. Adjusts the short recipe metadata only; source media stays untouched.")
+        .accessibilityIdentifier("quipsly.shortCard.nudge.\(boundary).\(delta).\(clip.id.uuidString)")
     }
 
     private func shortProofChip(

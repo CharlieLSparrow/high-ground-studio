@@ -428,3 +428,22 @@ Validated:
 Product truth:
 - This does not publish or approve anything. It makes the review/editing surface more honest: a short card now shows why the moment might work and what to do next before it can move toward Tower/social publishing.
 - Source media remains whole; shorts remain metadata recipes over sequence time.
+
+### 2026-06-23 - Visible short in/out refinement controls
+
+Goal: make short refinement feel like editing instead of hunting through hidden menus.
+
+Changed:
+- Promoted short recipe in/out edge nudges from a hidden `Nudge` menu into visible card-level controls.
+- Each short card now exposes `In -1`, `In -0.1`, `In +0.1`, `In +1`, `Out -1`, `Out -0.1`, `Out +0.1`, and `Out +1` as direct refinement controls.
+- Added stable accessibility identifiers for the refinement group and each boundary nudge button so human and agent workflows can target the same controls.
+
+Validated:
+- `./script/build_and_run.sh --verify` passed through the real QuipslyStudio app path.
+- `./script/agentctl.sh health` returned `status: ok` on port `8080`.
+- `./script/agentctl.sh shorts-select index 1` followed by `editor-loop-proof` selected `Test Short - Wednesday Rule moment` with review `needs-captions`, export `exported`, and next action `Watch the proof file and resolve the missing items before publishing.`
+- `./script/agentctl.sh episodes-shorts-readiness --json ...` still reports `27` total shorts across Episodes 1-3, with `13/9/5` candidates respectively.
+
+Product truth:
+- This does not change the core media model. The buttons adjust short recipe metadata only; whole synced source lanes and original media stay intact.
+- The refinement loop is now more visible: cue, preview, export, review, then nudge in/out points without leaving the short card.
