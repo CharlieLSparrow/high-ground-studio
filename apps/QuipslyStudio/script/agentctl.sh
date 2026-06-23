@@ -309,6 +309,7 @@ Usage:
   script/agentctl.sh shorts-select id SHORT_CLIP_ID
   script/agentctl.sh shorts-select title "Identity Changes Behavior"
   script/agentctl.sh shorts-select index 1
+  script/agentctl.sh shorts-export-selected /absolute/output/folder basename [id SHORT_CLIP_ID|title "Short title"|index 1]
   script/agentctl.sh ship-short-review id SHORT_CLIP_ID
   script/agentctl.sh ship-short-review title "Identity Changes Behavior"
   script/agentctl.sh ship-short-review index 1
@@ -421,13 +422,17 @@ get() {
 }
 
 selected_short_export_selector_query() {
-  python3 - "$BASE_URL" <<'PY'
+  local selector_mode="${1:-}"
+  local selector_value="${2:-}"
+  python3 - "$BASE_URL" "$selector_mode" "$selector_value" <<'PY'
 import json
 import sys
 import urllib.parse
 import urllib.request
 
 base = sys.argv[1].rstrip("/")
+selector_mode = (sys.argv[2] if len(sys.argv) > 2 else "").strip().lower()
+selector_value = (sys.argv[3] if len(sys.argv) > 3 else "").strip()
 try:
     with urllib.request.urlopen(base + "/state", timeout=2) as response:
         state = json.loads(response.read().decode("utf-8", errors="replace"))
@@ -435,15 +440,33 @@ except Exception:
     print("")
     raise SystemExit(0)
 
-proof = state.get("selectedShortProof") or {}
-clip = state.get("selectedShortClip") or {}
-short_id = str(proof.get("id") or clip.get("id") or "").strip()
-title = str(proof.get("title") or clip.get("title") or "").strip()
 params = {}
-if short_id:
-    params["id"] = short_id
-if title:
-    params["title"] = title
+
+if selector_mode in ("id", "selectedshortid"):
+    params["id"] = selector_value
+elif selector_mode in ("title", "name"):
+    params["title"] = selector_value
+elif selector_mode == "index":
+    try:
+        index = int(selector_value)
+    except ValueError:
+        index = 0
+    clips = ((state.get("shortClipQueue") or {}).get("clips") or [])
+    if 1 <= index <= len(clips):
+        clip = clips[index - 1]
+        params["id"] = str(clip.get("id") or "").strip()
+        params["title"] = str(clip.get("title") or "").strip()
+else:
+    proof = state.get("selectedShortProof") or {}
+    clip = state.get("selectedShortClip") or {}
+    short_id = str(proof.get("id") or clip.get("id") or "").strip()
+    title = str(proof.get("title") or clip.get("title") or "").strip()
+    if short_id:
+        params["id"] = short_id
+    if title:
+        params["title"] = title
+
+params = {key: value for key, value in params.items() if value}
 print(("&" + urllib.parse.urlencode(params)) if params else "")
 PY
 }
@@ -12541,11 +12564,17 @@ else:
   shorts-export-selected)
     directory="${2:-}"
     basename="${3:-}"
+    selector_mode="${4:-}"
+    selector_value="${5:-}"
     if [[ -z "$directory" ]]; then
       usage
       exit 2
     fi
-    selector_query="$(selected_short_export_selector_query || true)"
+    if [[ -n "$selector_mode" && -z "$selector_value" ]]; then
+      usage
+      exit 2
+    fi
+    selector_query="$(selected_short_export_selector_query "$selector_mode" "$selector_value" || true)"
     get "/shorts_export_selected?directory=$(urlencode "$directory")&basename=$(urlencode "$basename")${selector_query}"
     ;;
   shorts-export-all)
