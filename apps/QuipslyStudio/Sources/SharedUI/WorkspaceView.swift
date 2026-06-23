@@ -11004,7 +11004,7 @@ struct WorkspaceView: View {
             "shortDestinations": clip.destinations,
             "shortStatus": clip.status,
             "reviewStatus": clip.reviewStatus,
-            "exportStatus": clip.exportStatus,
+            "exportStatus": resolvedShortExportStatus(for: clip),
             "suggestedOutputPath": outputPath,
             "primaryPlatform": brief.primaryPlatform,
             "primaryPlatformScore": brief.primaryPlatformFit?.score ?? 0,
@@ -26099,7 +26099,7 @@ struct WorkspaceView: View {
                 "format": clip.format.rawValue,
                 "status": clip.status,
                 "reviewStatus": clip.reviewStatus,
-                "exportStatus": clip.exportStatus,
+                "exportStatus": resolvedShortExportStatus(for: clip),
                 "destinations": clip.destinations,
                 "exportPath": lastExportedShortPath(for: clip) ?? "",
                 "captionDraft": clip.captionDraft,
@@ -26710,7 +26710,7 @@ struct WorkspaceView: View {
                 "artifactPath": artifactPath,
                 "artifactStatus": artifactReady ? "ready" : "needs-export",
                 "reviewStatus": clip.reviewStatus,
-                "exportStatus": clip.exportStatus,
+                "exportStatus": resolvedShortExportStatus(for: clip),
                 "hookText": hook,
                 "captionDraft": caption,
                 "primaryOverlayText": overlay,
@@ -33457,7 +33457,7 @@ struct WorkspaceView: View {
     }
 
     private func lastExportedShortPath(for clip: ShortClipCandidate) -> String? {
-        clip.publishNotes
+        let publishNotePath = clip.publishNotes
             .components(separatedBy: .newlines)
             .reversed()
             .compactMap { line -> String? in
@@ -33467,6 +33467,58 @@ struct WorkspaceView: View {
                 return path.isEmpty ? nil : path
             }
             .first
+        if let publishNotePath {
+            return publishNotePath
+        }
+
+        return durableManifestExportedShortPath(for: clip)
+    }
+
+    private func resolvedShortExportStatus(for clip: ShortClipCandidate) -> String {
+        let explicit = clip.exportStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let exportPath = lastExportedShortPath(for: clip),
+           FileManager.default.fileExists(atPath: exportPath) {
+            return "exported"
+        }
+        return explicit.isEmpty ? "not-exported" : explicit
+    }
+
+    private func durableManifestExportedShortPath(for clip: ShortClipCandidate) -> String? {
+        let pointerURL = defaultLocalExportDirectory()
+            .appendingPathComponent("export-requests", isDirectory: true)
+            .appendingPathComponent("last-selected-short-export-request-path.txt")
+        guard let requestPath = try? String(contentsOf: pointerURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !requestPath.isEmpty,
+              let requestData = try? Data(contentsOf: URL(fileURLWithPath: requestPath)),
+              let request = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
+              let manifestPath = request["manifestPath"] as? String,
+              !manifestPath.isEmpty,
+              let manifestData = try? Data(contentsOf: URL(fileURLWithPath: manifestPath)),
+              let manifest = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
+              let manifestStatus = manifest["status"] as? String,
+              manifestStatus == "completed",
+              let clips = manifest["clips"] as? [[String: Any]] else {
+            return nil
+        }
+
+        let clipId = clip.id.uuidString
+        let clipTitle = clip.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let match = clips.first { payload in
+            let payloadId = (payload["id"] as? String) ?? ""
+            let payloadTitle = ((payload["title"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return payloadId == clipId || (!clipTitle.isEmpty && payloadTitle == clipTitle)
+        }
+
+        guard let match,
+              ((match["status"] as? String) ?? "") == "exported",
+              let outputPath = match["outputPath"] as? String,
+              !outputPath.isEmpty,
+              FileManager.default.fileExists(atPath: outputPath) else {
+            return nil
+        }
+
+        return outputPath
     }
 
     private func shortReviewEvidencePayload(for clip: ShortClipCandidate, in sequence: MediaSequence) -> [String: Any] {
@@ -33507,7 +33559,7 @@ struct WorkspaceView: View {
             "status": exportExists ? "exported_derivative_ready" : "needs_export",
             "title": clip.title,
             "reviewStatus": clip.reviewStatus,
-            "exportStatus": clip.exportStatus,
+            "exportStatus": resolvedShortExportStatus(for: clip),
             "exportPath": exportPath,
             "exportExists": exportExists,
             "expectedExportPath": expectedExportTarget.path,
@@ -33782,7 +33834,7 @@ struct WorkspaceView: View {
                     "destinations": clip.destinations,
                     "status": clip.status,
                     "reviewStatus": clip.reviewStatus,
-                    "exportStatus": clip.exportStatus,
+                    "exportStatus": resolvedShortExportStatus(for: clip),
                     "lastExportedPath": exportPath,
                     "lastExportExists": exportExists,
                     "creatorQuality": shortCreatorQualityPayload(for: clip),
@@ -33965,7 +34017,7 @@ struct WorkspaceView: View {
             "safeAction": packetSummary.nextSafeAction,
             "agentInstruction": packetSummary.agentInstruction,
             "reviewStatus": clip.reviewStatus,
-            "exportStatus": clip.exportStatus,
+            "exportStatus": resolvedShortExportStatus(for: clip),
             "exportProofReady": exportExists,
             "lastExportedPath": exportPath,
             "expectedExportPath": expectedExportTarget.path,
@@ -34143,7 +34195,7 @@ struct WorkspaceView: View {
             "destinations": clip.destinations,
             "status": clip.status,
             "reviewStatus": clip.reviewStatus,
-            "exportStatus": clip.exportStatus,
+            "exportStatus": resolvedShortExportStatus(for: clip),
             "lastExportedPath": exportPath,
             "lastExportExists": exportExists,
             "creatorQuality": shortCreatorQualityPayload(for: clip),
@@ -34251,7 +34303,7 @@ struct WorkspaceView: View {
             "recipeDuration": recipeDuration,
             "playheadInsideSelectedShort": playheadInsideRecipe,
             "reviewStatus": clip.reviewStatus,
-            "exportStatus": clip.exportStatus,
+            "exportStatus": resolvedShortExportStatus(for: clip),
             "lastExportedPath": exportPath,
             "lastExportExists": exportExists,
             "expectedExportPath": expectedExportTarget.path,
