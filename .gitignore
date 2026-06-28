@@ -120,3 +120,8 @@ docs/quipsly/current-state/*.png
 docs/quipsly/current-state/*.json
 
 !apps/QuipslyStudio/script/experimental/*.py
+
+# Ignore all current state exports
+docs/quipsly/current-state/*
+apps/QuipslyStudio/docs/quipsly/current-state/*
+
