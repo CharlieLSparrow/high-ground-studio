@@ -119,3 +119,4 @@ docs/quipsly/current-state/*.mp4
 docs/quipsly/current-state/*.png
 docs/quipsly/current-state/*.json
 
+!apps/QuipslyStudio/script/experimental/*.py
