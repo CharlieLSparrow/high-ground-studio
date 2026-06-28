@@ -1,0 +1,599 @@
+{
+  "counts": {
+    "candidateLanes": 6,
+    "heldLanes": 4,
+    "homerSequentialCoverageSeconds": 5475.776,
+    "lanes": 10,
+    "mediaItems": 10,
+    "needsProxyLanes": 6,
+    "proxyReadyLanes": 4,
+    "sequenceDurationSeconds": 6358.435417
+  },
+  "createdAt": "2026-06-24T04:19:14Z",
+  "knownRisks": [
+    "No separate high-quality audio source has been identified in the Episode 5 folder.",
+    "CharlieVideo.mp4 and MVI_4011.mp4 are huge HEVC files; generate managed proxies before serious editing/export.",
+    "Homer Insta360 sync is sequential fallback, not final clap/waveform alignment.",
+    "The four context clips need placement by conversation meaning."
+  ],
+  "lanes": [
+    {
+      "duration": 6358.435417,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/2477ed165ac1c8d8/CharlieVideo_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Primary Episode 5 spine candidate. Same duration as MVI_4011; use as first-pass program and audio reference.",
+      "mediaKind": "video",
+      "name": "Charlie Camera / Audio Spine - CharlieVideo.mp4",
+      "notes": [
+        "Huge HEVC original stays untouched.",
+        "Needs managed proxy before comfortable long-form editing/export.",
+        "Duration matches MVI_4011.mp4 exactly, so both are provisionally offset 0."
+      ],
+      "offset": 0,
+      "proxyURL": "",
+      "role": "charlie_camera_audio_spine_candidate",
+      "trackIds": [
+        "V1",
+        "A1"
+      ]
+    },
+    {
+      "duration": 6358.435417,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/19c7a2915680a4e8/MVI_4011_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Second full-length source candidate. Same duration as CharlieVideo; likely sync offset 0.",
+      "mediaKind": "video",
+      "name": "Second Long Camera / Audio Candidate - MVI_4011.mp4",
+      "notes": [
+        "Huge HEVC original stays untouched.",
+        "Held out of program decisions until reviewed against CharlieVideo."
+      ],
+      "offset": 0,
+      "proxyURL": "",
+      "role": "second_long_camera_audio_candidate",
+      "trackIds": [
+        "V2",
+        "A2"
+      ]
+    },
+    {
+      "duration": 1798.0,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/c1de41e05f67458d/LRV_20260402_080506_01_001_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 1. LRV sidecar is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 1 - VID_20260402_080506_00_001.insv",
+      "notes": [
+        "LRV sidecar: /Volumes/My Passport/Episode 5/LRV_20260402_080506_01_001.lrv",
+        "Offset is sequential fallback because exact clap/waveform sync has not been proven yet.",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/c1de41e05f67458d/LRV_20260402_080506_01_001_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V3"
+      ]
+    },
+    {
+      "duration": 1798.0,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/b6d2c6b3b1cb20a4/LRV_20260402_080506_01_002_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 2. LRV sidecar is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 2 - VID_20260402_080506_00_002.insv",
+      "notes": [
+        "LRV sidecar: /Volumes/My Passport/Episode 5/LRV_20260402_080506_01_002.lrv",
+        "Offset is sequential fallback because exact clap/waveform sync has not been proven yet.",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 1798.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/b6d2c6b3b1cb20a4/LRV_20260402_080506_01_002_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V4"
+      ]
+    },
+    {
+      "duration": 1798.016,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/b40db9be3830e337/LRV_20260402_080506_01_003_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 3. LRV sidecar is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 3 - VID_20260402_080506_00_003.insv",
+      "notes": [
+        "LRV sidecar: /Volumes/My Passport/Episode 5/LRV_20260402_080506_01_003.lrv",
+        "Offset is sequential fallback because exact clap/waveform sync has not been proven yet.",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 3596.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/b40db9be3830e337/LRV_20260402_080506_01_003_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V5"
+      ]
+    },
+    {
+      "duration": 81.76,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/69fabab91c888d46/LRV_20260402_080506_01_004_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 4. LRV sidecar is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 4 - VID_20260402_080506_00_004.insv",
+      "notes": [
+        "LRV sidecar: /Volumes/My Passport/Episode 5/LRV_20260402_080506_01_004.lrv",
+        "Offset is sequential fallback because exact clap/waveform sync has not been proven yet.",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 5394.016,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/69fabab91c888d46/LRV_20260402_080506_01_004_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V6"
+      ]
+    },
+    {
+      "duration": 128.684989,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/e77d73132b614bf9/Bench_Roy_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Bench Roy.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "",
+      "role": "bench_roy_context_clip",
+      "trackIds": [
+        "V20"
+      ]
+    },
+    {
+      "duration": 264.103764,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/9038aa86862a89b9/Forgive_Nate_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Forgive Nate.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "",
+      "role": "forgive_nate_context_clip",
+      "trackIds": [
+        "V21"
+      ]
+    },
+    {
+      "duration": 198.948571,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/9a950c88a3fb8612/Roy_Injured_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Roy Injured.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "",
+      "role": "roy_injured_context_clip",
+      "trackIds": [
+        "V22"
+      ]
+    },
+    {
+      "duration": 184.737959,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/e4c4080ea7d036aa/Samwise_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Samwise.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "",
+      "role": "samwise_context_clip",
+      "trackIds": [
+        "V23"
+      ]
+    }
+  ],
+  "model": "episode-5-sync-stack-builder",
+  "nextSafeActions": [
+    "Generate managed proxies for CharlieVideo.mp4 and MVI_4011.mp4.",
+    "Generate or attach managed MP4 proxies for the four LRV sidecars.",
+    "Load the session in Quipsly Studio and verify the two long sources at offset 0.",
+    "Create rough SHOW/SKIP decisions only after proxy playback is comfortable.",
+    "Park context clips until the conversation moment calls for them."
+  ],
+  "probes": {
+    "Bench Roy.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2025-02-15T02:43:50.000000Z",
+      "duration": 128.684989,
+      "exists": true,
+      "file": "Bench Roy.mp4",
+      "path": "/Volumes/My Passport/Episode 5/Bench Roy.mp4",
+      "sizeMB": 3.29,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 360,
+          "rate": "24000/1001",
+          "width": 640
+        }
+      ],
+      "videoStreams": 1
+    },
+    "CharlieVideo.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T00:57:48.000000Z",
+      "duration": 6358.435417,
+      "exists": true,
+      "file": "CharlieVideo.mp4",
+      "path": "/Volumes/My Passport/Episode 5/CharlieVideo.mp4",
+      "sizeMB": 64737.68,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 2160,
+          "rate": "24000/1001",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Forgive Nate.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2025-07-02T18:38:22.000000Z",
+      "duration": 264.103764,
+      "exists": true,
+      "file": "Forgive Nate.mp4",
+      "path": "/Volumes/My Passport/Episode 5/Forgive Nate.mp4",
+      "sizeMB": 5.84,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 320,
+          "rate": "24000/1001",
+          "width": 640
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260402_080506_01_001.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T01:05:06.000000Z",
+      "duration": 1798.0,
+      "exists": true,
+      "file": "LRV_20260402_080506_01_001.lrv",
+      "path": "/Volumes/My Passport/Episode 5/LRV_20260402_080506_01_001.lrv",
+      "sizeMB": 1823.18,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260402_080506_01_002.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T01:35:05.000000Z",
+      "duration": 1798.0,
+      "exists": true,
+      "file": "LRV_20260402_080506_01_002.lrv",
+      "path": "/Volumes/My Passport/Episode 5/LRV_20260402_080506_01_002.lrv",
+      "sizeMB": 1823.68,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260402_080506_01_003.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T02:05:03.000000Z",
+      "duration": 1798.016,
+      "exists": true,
+      "file": "LRV_20260402_080506_01_003.lrv",
+      "path": "/Volumes/My Passport/Episode 5/LRV_20260402_080506_01_003.lrv",
+      "sizeMB": 1823.68,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260402_080506_01_004.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T02:35:01.000000Z",
+      "duration": 81.76,
+      "exists": true,
+      "file": "LRV_20260402_080506_01_004.lrv",
+      "path": "/Volumes/My Passport/Episode 5/LRV_20260402_080506_01_004.lrv",
+      "sizeMB": 97.68,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "MVI_4011.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T00:57:48.000000Z",
+      "duration": 6358.435417,
+      "exists": true,
+      "file": "MVI_4011.mp4",
+      "path": "/Volumes/My Passport/Episode 5/MVI_4011.mp4",
+      "sizeMB": 21294.0,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 2160,
+          "rate": "24000/1001",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Roy Injured.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2022-06-04T22:32:07.000000Z",
+      "duration": 198.948571,
+      "exists": true,
+      "file": "Roy Injured.mp4",
+      "path": "/Volumes/My Passport/Episode 5/Roy Injured.mp4",
+      "sizeMB": 11.7,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 320,
+          "rate": "30/1",
+          "width": 640
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Samwise.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2022-10-31T17:50:52.000000Z",
+      "duration": 184.737959,
+      "exists": true,
+      "file": "Samwise.mp4",
+      "path": "/Volumes/My Passport/Episode 5/Samwise.mp4",
+      "sizeMB": 10.48,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 360,
+          "rate": "24000/1001",
+          "width": 640
+        }
+      ],
+      "videoStreams": 1
+    },
+    "VID_20260402_080506_00_001.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T01:05:06.000000Z",
+      "duration": 1798.0,
+      "exists": true,
+      "file": "VID_20260402_080506_00_001.insv",
+      "path": "/Volumes/My Passport/Episode 5/VID_20260402_080506_00_001.insv",
+      "sizeMB": 28487.68,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    },
+    "VID_20260402_080506_00_002.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T01:35:05.000000Z",
+      "duration": 1798.0,
+      "exists": true,
+      "file": "VID_20260402_080506_00_002.insv",
+      "path": "/Volumes/My Passport/Episode 5/VID_20260402_080506_00_002.insv",
+      "sizeMB": 27456.68,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    },
+    "VID_20260402_080506_00_003.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T02:05:03.000000Z",
+      "duration": 1798.016,
+      "exists": true,
+      "file": "VID_20260402_080506_00_003.insv",
+      "path": "/Volumes/My Passport/Episode 5/VID_20260402_080506_00_003.insv",
+      "sizeMB": 26686.18,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    },
+    "VID_20260402_080506_00_004.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-04-02T02:35:01.000000Z",
+      "duration": 81.76,
+      "exists": true,
+      "file": "VID_20260402_080506_00_004.insv",
+      "path": "/Volumes/My Passport/Episode 5/VID_20260402_080506_00_004.insv",
+      "sizeMB": 1165.68,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    }
+  },
+  "sessionName": "episode-5-sync-stack-v1",
+  "sessionPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-5-sync-stack-v1.quipsly-session.json",
+  "sourceRoot": "/Volumes/My Passport/Episode 5",
+  "syncAssumptions": [
+    "CharlieVideo.mp4 and MVI_4011.mp4 have identical duration and are provisionally aligned at offset 0.",
+    "CharlieVideo.mp4 is the first-pass program/audio spine until human review or waveform evidence says otherwise.",
+    "Homer Insta360 segments are stacked sequentially from their LRV durations because exact sync proof is not available yet.",
+    "Reference clips are context candidates, not exact watched-block truth."
+  ],
+  "truth": "Whole sources are intact. This builder writes native Quipsly session metadata only and does not mutate original media.",
+  "version": "2026-06-23.v1"
+}

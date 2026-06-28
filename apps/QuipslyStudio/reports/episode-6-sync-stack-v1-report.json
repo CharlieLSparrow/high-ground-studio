@@ -1,0 +1,782 @@
+{
+  "counts": {
+    "candidateLanes": 6,
+    "heldLanes": 10,
+    "lanes": 16,
+    "mediaItems": 16,
+    "needsProxyLanes": 0,
+    "proxyReadyLanes": 16
+  },
+  "createdAt": "2026-06-23T21:12:23Z",
+  "knownRisks": [
+    "Phone M4A creation_time appears untrustworthy and was not used for sync.",
+    "WAV creation_time is not a full timestamp and was not used for sync.",
+    "CharlieVideo.mp4 is huge HEVC source; do not scrub raw as the production path.",
+    "Context clips are held until manually/AI placed against conversation meaning."
+  ],
+  "lanes": [
+    {
+      "duration": 4531.792109,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/e3dba7ec19c5bbb5/Recording_in_Phone-_proxy.m4a",
+      "ignoreForProduction": false,
+      "label": "Initial call/spine candidate. Needs waveform sync confirmation against Charlie and HQ WAV.",
+      "mediaKind": "audio",
+      "name": "Call Audio Spine Candidate - Recording in Phone\u2026.m4a",
+      "notes": [
+        "Selected because it spans the full conversation.",
+        "Phone creation_time is not trusted for sync; sequence offset is provisional."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/e3dba7ec19c5bbb5/Recording_in_Phone-_proxy.m4a",
+      "role": "call_audio_spine_candidate",
+      "trackIds": [
+        "A1"
+      ]
+    },
+    {
+      "duration": 4531.792109,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/13c64a8bc5c526bf/Recording_in_Phone-_2_proxy.m4a",
+      "ignoreForProduction": true,
+      "label": "Held duplicate-length phone audio. Compare before using.",
+      "mediaKind": "audio",
+      "name": "HELD duplicate phone audio - Recording in Phone\u2026 2.m4a",
+      "notes": [],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/13c64a8bc5c526bf/Recording_in_Phone-_2_proxy.m4a",
+      "role": "duplicate_or_alternate_call_audio",
+      "trackIds": [
+        "A9"
+      ]
+    },
+    {
+      "duration": 4499.226417,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/3f94168cd9f5c088/Untitled_1_-03Episode_6.1_proxy.m4a",
+      "ignoreForProduction": false,
+      "label": "Likely final-quality audio once waveform-aligned.",
+      "mediaKind": "audio",
+      "name": "HQ Audio Candidate - Untitled_1 #03Episode 6.1.wav",
+      "notes": [
+        "WAV creation_time is only a clock string, so no offset was inferred."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/3f94168cd9f5c088/Untitled_1_-03Episode_6.1_proxy.m4a",
+      "role": "high_quality_audio_primary_candidate",
+      "trackIds": [
+        "A2"
+      ]
+    },
+    {
+      "duration": 1104.606104,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/fa07210d0640003e/Untitled_1_-04Episode_6.2_proxy.m4a",
+      "ignoreForProduction": true,
+      "label": "Held pickup/break segment until aligned.",
+      "mediaKind": "audio",
+      "name": "HELD HQ Audio Pickup - Untitled_1 #04Episode 6.2.wav",
+      "notes": [],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/fa07210d0640003e/Untitled_1_-04Episode_6.2_proxy.m4a",
+      "role": "high_quality_audio_pickup_or_break_candidate",
+      "trackIds": [
+        "A3"
+      ]
+    },
+    {
+      "duration": 4454.19975,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/3206fd92ce6604eb/CharlieVideo_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Provisional base visual lane. Generate proxy before serious visual editing.",
+      "mediaKind": "video",
+      "name": "Charlie Camera - CharlieVideo.mp4",
+      "notes": [
+        "Embedded creation_time is used as the visual timebase for Homer LRV offsets."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/3206fd92ce6604eb/CharlieVideo_proxy.mp4",
+      "role": "charlie_camera_source",
+      "trackIds": [
+        "V1"
+      ]
+    },
+    {
+      "duration": 1800.0,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/275ed0ada9922493/LRV_20260507_180459_01_080_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 1. LRV is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 1 - VID_20260507_180459_00_080.insv",
+      "notes": [
+        "Offset inferred from embedded LRV creation_time relative to CharlieVideo.mp4.",
+        "LRV sidecar source: /Volumes/My Passport/Episode 6/LRV_20260507_180459_01_080.lrv",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 648.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/275ed0ada9922493/LRV_20260507_180459_01_080_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V2"
+      ]
+    },
+    {
+      "duration": 1800.0,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/817cdb900ad22f60/LRV_20260507_180459_01_081_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 2. LRV is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 2 - VID_20260507_180459_00_081.insv",
+      "notes": [
+        "Offset inferred from embedded LRV creation_time relative to CharlieVideo.mp4.",
+        "LRV sidecar source: /Volumes/My Passport/Episode 6/LRV_20260507_180459_01_081.lrv",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 2450.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/817cdb900ad22f60/LRV_20260507_180459_01_081_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V3"
+      ]
+    },
+    {
+      "duration": 57.84,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/3b4054a4b8cf1a69/LRV_20260507_180459_01_082_proxy.mp4",
+      "ignoreForProduction": false,
+      "label": "Homer Insta360 whole segment 3. LRV is the proxy/review source.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Segment 3 - VID_20260507_180459_00_082.insv",
+      "notes": [
+        "Offset inferred from embedded LRV creation_time relative to CharlieVideo.mp4.",
+        "LRV sidecar source: /Volumes/My Passport/Episode 6/LRV_20260507_180459_01_082.lrv",
+        "Segment stays whole; later SHOW decisions choose when to cut to Homer."
+      ],
+      "offset": 4250.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/3b4054a4b8cf1a69/LRV_20260507_180459_01_082_proxy.mp4",
+      "role": "homer_insta360_source_segment",
+      "trackIds": [
+        "V4"
+      ]
+    },
+    {
+      "duration": 100.101224,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/896db9331abb4189/Joe_1_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Joe 1.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/896db9331abb4189/Joe_1_proxy.mp4",
+      "role": "joe_contextual_clip",
+      "trackIds": [
+        "V10"
+      ]
+    },
+    {
+      "duration": 312.029751,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/f6a96b23207fa95c/Joe_2_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Joe 2.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/f6a96b23207fa95c/Joe_2_proxy.mp4",
+      "role": "joe_contextual_clip",
+      "trackIds": [
+        "V11"
+      ]
+    },
+    {
+      "duration": 126.432653,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/362dd1c6279955f0/McFarland_1_Opening_Locker_Room_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - McFarland 1 Opening Locker Room.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/362dd1c6279955f0/McFarland_1_Opening_Locker_Room_proxy.mp4",
+      "role": "mcfarland_contextual_clip",
+      "trackIds": [
+        "V12"
+      ]
+    },
+    {
+      "duration": 121.440363,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/5202e6a6efcdce89/Mcfarland_2_Picking_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Mcfarland 2 Picking.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/5202e6a6efcdce89/Mcfarland_2_Picking_proxy.mp4",
+      "role": "mcfarland_contextual_clip",
+      "trackIds": [
+        "V13"
+      ]
+    },
+    {
+      "duration": 105.511474,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/813ac290a7556638/Mcfarland_2_Superhuman_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Mcfarland 2 Superhuman.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/813ac290a7556638/Mcfarland_2_Superhuman_proxy.mp4",
+      "role": "mcfarland_contextual_clip",
+      "trackIds": [
+        "V14"
+      ]
+    },
+    {
+      "duration": 193.933061,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/f891c75ca7a47a78/Rocky_1_Training_Montage_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Rocky 1 Training Montage.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/f891c75ca7a47a78/Rocky_1_Training_Montage_proxy.mp4",
+      "role": "rocky_contextual_clip",
+      "trackIds": [
+        "V15"
+      ]
+    },
+    {
+      "duration": 186.920635,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/9f9584b233be1ee9/Rocky_IV_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Rocky IV.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/9f9584b233be1ee9/Rocky_IV_proxy.mp4",
+      "role": "rocky_contextual_clip",
+      "trackIds": [
+        "V16"
+      ]
+    },
+    {
+      "duration": 193.933061,
+      "expectedProxyPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/6daa35adba926815/Rocky_Montage_proxy.mp4",
+      "ignoreForProduction": true,
+      "label": "Contextual weave-in candidate. Place by conversation meaning, not by file start.",
+      "mediaKind": "video",
+      "name": "HELD Context Clip - Rocky Montage.mp4",
+      "notes": [
+        "Held out of program decisions until a conversation moment calls for it."
+      ],
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/6daa35adba926815/Rocky_Montage_proxy.mp4",
+      "role": "rocky_contextual_clip",
+      "trackIds": [
+        "V17"
+      ]
+    }
+  ],
+  "model": "episode-6-sync-stack-builder",
+  "nextSafeActions": [
+    "Open the Episode 6 Sync Stack in Quipsly Studio and verify the Charlie/Homer offsets visually.",
+    "Run waveform/fingerprint alignment for phone M4A, Charlie audio, Homer LRVs, and HQ WAV #03.",
+    "Create first SHOW/SKIP decisions only after visual/audio sync proof.",
+    "Place contextual clips as overlay/source decisions where conversation meaning calls for them."
+  ],
+  "probes": {
+    "CharlieVideo.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T15:54:11.000000Z",
+      "duration": 4454.19975,
+      "exists": true,
+      "file": "CharlieVideo.mp4",
+      "path": "/Volumes/My Passport/Episode 6/CharlieVideo.mp4",
+      "sizeMB": 45333.14,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 2160,
+          "rate": "24000/1001",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Joe 1.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 100.101224,
+      "exists": true,
+      "file": "Joe 1.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Joe 1.mp4",
+      "sizeMB": 5.33,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 480,
+          "rate": "30000/1001",
+          "width": 640
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Joe 2.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 312.029751,
+      "exists": true,
+      "file": "Joe 2.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Joe 2.mp4",
+      "sizeMB": 14.07,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 360,
+          "rate": "30000/1001",
+          "width": 638
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260507_180459_01_080.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T16:04:59.000000Z",
+      "duration": 1798.8,
+      "exists": true,
+      "file": "LRV_20260507_180459_01_080.lrv",
+      "path": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_080.lrv",
+      "sizeMB": 966.68,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260507_180459_01_081.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T16:35:01.000000Z",
+      "duration": 1798.805333,
+      "exists": true,
+      "file": "LRV_20260507_180459_01_081.lrv",
+      "path": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_081.lrv",
+      "sizeMB": 966.68,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "LRV_20260507_180459_01_082.lrv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T17:05:01.000000Z",
+      "duration": 60.16,
+      "exists": true,
+      "file": "LRV_20260507_180459_01_082.lrv",
+      "path": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_082.lrv",
+      "sizeMB": 47.18,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 832,
+          "rate": "25/1",
+          "width": 1664
+        }
+      ],
+      "videoStreams": 1
+    },
+    "McFarland 1 Opening Locker Room.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 126.432653,
+      "exists": true,
+      "file": "McFarland 1 Opening Locker Room.mp4",
+      "path": "/Volumes/My Passport/Episode 6/McFarland 1 Opening Locker Room.mp4",
+      "sizeMB": 20.12,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 1080,
+          "rate": "30/1",
+          "width": 1728
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Mcfarland 2 Picking.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 121.440363,
+      "exists": true,
+      "file": "Mcfarland 2 Picking.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Mcfarland 2 Picking.mp4",
+      "sizeMB": 25.3,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 910,
+          "rate": "5457/200",
+          "width": 1920
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Mcfarland 2 Superhuman.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 105.511474,
+      "exists": true,
+      "file": "Mcfarland 2 Superhuman.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Mcfarland 2 Superhuman.mp4",
+      "sizeMB": 14.02,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 720,
+          "rate": "24000/1001",
+          "width": 1280
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Recording in Phone\u2026 2.m4a": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-08T09:27:44.000000Z",
+      "duration": 4531.792109,
+      "exists": true,
+      "file": "Recording in Phone\u2026 2.m4a",
+      "path": "/Volumes/My Passport/Episode 6/Recording in Phone\u2026 2.m4a",
+      "sizeMB": 53.04,
+      "video": [],
+      "videoStreams": 0
+    },
+    "Recording in Phone\u2026.m4a": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-08T09:27:44.000000Z",
+      "duration": 4531.792109,
+      "exists": true,
+      "file": "Recording in Phone\u2026.m4a",
+      "path": "/Volumes/My Passport/Episode 6/Recording in Phone\u2026.m4a",
+      "sizeMB": 53.04,
+      "video": [],
+      "videoStreams": 0
+    },
+    "Rocky 1 Training Montage.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 193.933061,
+      "exists": true,
+      "file": "Rocky 1 Training Montage.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Rocky 1 Training Montage.mp4",
+      "sizeMB": 26.54,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 720,
+          "rate": "24000/1001",
+          "width": 1280
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Rocky IV.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 186.920635,
+      "exists": true,
+      "file": "Rocky IV.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Rocky IV.mp4",
+      "sizeMB": 14.73,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 720,
+          "rate": "24000/1001",
+          "width": 1280
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Rocky Montage.mp4": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "44100"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "",
+      "duration": 193.933061,
+      "exists": true,
+      "file": "Rocky Montage.mp4",
+      "path": "/Volumes/My Passport/Episode 6/Rocky Montage.mp4",
+      "sizeMB": 26.54,
+      "video": [
+        {
+          "codec": "h264",
+          "height": 720,
+          "rate": "24000/1001",
+          "width": 1280
+        }
+      ],
+      "videoStreams": 1
+    },
+    "Untitled_1 #03Episode 6.1.wav": {
+      "audio": [
+        {
+          "channels": 1,
+          "codec": "pcm_f32le",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "11:37:15",
+      "duration": 4499.226417,
+      "exists": true,
+      "file": "Untitled_1 #03Episode 6.1.wav",
+      "path": "/Volumes/My Passport/Episode 6/Untitled_1 #03Episode 6.1.wav",
+      "sizeMB": 825.44,
+      "video": [],
+      "videoStreams": 0
+    },
+    "Untitled_1 #04Episode 6.2.wav": {
+      "audio": [
+        {
+          "channels": 1,
+          "codec": "pcm_f32le",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "12:03:32",
+      "duration": 1104.606104,
+      "exists": true,
+      "file": "Untitled_1 #04Episode 6.2.wav",
+      "path": "/Volumes/My Passport/Episode 6/Untitled_1 #04Episode 6.2.wav",
+      "sizeMB": 202.66,
+      "video": [],
+      "videoStreams": 0
+    },
+    "VID_20260507_180459_00_080.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T16:04:59.000000Z",
+      "duration": 1800.0,
+      "exists": true,
+      "file": "VID_20260507_180459_00_080.insv",
+      "path": "/Volumes/My Passport/Episode 6/VID_20260507_180459_00_080.insv",
+      "sizeMB": 38749.18,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    },
+    "VID_20260507_180459_00_081.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T16:35:01.000000Z",
+      "duration": 1800.0,
+      "exists": true,
+      "file": "VID_20260507_180459_00_081.insv",
+      "path": "/Volumes/My Passport/Episode 6/VID_20260507_180459_00_081.insv",
+      "sizeMB": 38643.68,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    },
+    "VID_20260507_180459_00_082.insv": {
+      "audio": [
+        {
+          "channels": 2,
+          "codec": "aac",
+          "sampleRate": "48000"
+        }
+      ],
+      "audioStreams": 1,
+      "creationTime": "2026-05-07T17:05:01.000000Z",
+      "duration": 57.84,
+      "exists": true,
+      "file": "VID_20260507_180459_00_082.insv",
+      "path": "/Volumes/My Passport/Episode 6/VID_20260507_180459_00_082.insv",
+      "sizeMB": 1253.68,
+      "video": [
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        },
+        {
+          "codec": "hevc",
+          "height": 3840,
+          "rate": "25/1",
+          "width": 3840
+        }
+      ],
+      "videoStreams": 2
+    }
+  },
+  "sessionName": "episode-6-sync-stack-v1",
+  "sessionPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-6-sync-stack-v1.quipsly-session.json",
+  "sourceRoot": "/Volumes/My Passport/Episode 6",
+  "syncAssumptions": [
+    "Phone M4A is the provisional audio spine because it spans the full conversation.",
+    "CharlieVideo.mp4 is the provisional visual timebase.",
+    "Homer Insta360 segment offsets are inferred from LRV embedded creation_time relative to CharlieVideo.mp4.",
+    "Homer Insta360 raw INSV files stay canonical; managed MP4 proxies are generated from the LRV sidecars for review.",
+    "CharlieVideo.mp4 and Homer LRV sidecars should have generated vault proxies before serious visual editing.",
+    "HQ WAV #03 is held as likely final audio until waveform-aligned.",
+    "Rocky/McFarland/Joe clips are contextual weave-in candidates, not whole watched blocks."
+  ],
+  "truth": "Whole sources are intact. This builder writes native Quipsly session metadata only and does not mutate original media.",
+  "version": "2026-06-23.v1"
+}

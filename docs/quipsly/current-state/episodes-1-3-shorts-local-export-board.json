@@ -2,76 +2,130 @@
   "basename": "episodes-1-3-shorts-local-export-board",
   "cards": [
     {
-      "allExportedPaths": [],
-      "commands": {
-        "audioSanity": "",
-        "contactSheet": "",
-        "exportLocal": "script/agentctl.sh shorts-select id '8F4A6296-A542-49B5-A6AC-7D6A712474AA' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-word-timed-proof-short'",
-        "keep": "script/agentctl.sh shorts-review '8F4A6296-A542-49B5-A6AC-7D6A712474AA' keep 'Kept after local export review.'",
-        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
-        "refine": "script/agentctl.sh shorts-review '8F4A6296-A542-49B5-A6AC-7D6A712474AA' refine 'Needs one concrete improvement after local review.'",
-        "select": "script/agentctl.sh shorts-select id '8F4A6296-A542-49B5-A6AC-7D6A712474AA'"
-      },
-      "destinations": [
-        "YouTube Shorts",
-        "Instagram",
-        "Facebook",
-        "LinkedIn"
-      ],
-      "durationSeconds": 4.19,
-      "episodeInference": "inferred-from-text",
-      "episodeKey": "episode-1",
-      "episodeLabel": "Episode 1",
-      "exportStatus": "exported",
-      "id": "8F4A6296-A542-49B5-A6AC-7D6A712474AA",
-      "index": 13,
-      "listenThroughStatus": "unknown",
-      "nextAction": "Export this short locally so we have an actual file to watch and hear.",
-      "primaryExportBytes": 0,
-      "primaryExportExists": false,
-      "primaryExportPath": "",
-      "reviewStatus": "needs-human-review",
-      "segmentCount": 1,
-      "stage": "missing-export",
-      "textReviewStatus": "unknown",
-      "title": "Episode 1 Word-Timed Proof Short",
-      "visualReviewStatus": "unknown"
-    },
-    {
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' 8.13",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'test-short-wednesday-rule-moment'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' 8.13 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'test-short-wednesday-rule-moment' id 'FC28A75E-451B-4D74-9636-2E842805F106'",
         "keep": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 8.133,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/test-short-wednesday-rule-moment-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-test-short-wednesday-rule-moment-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/test-short-wednesday-rule-moment-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "What if one simple rule changed the whole conversation?",
       "id": "FC28A75E-451B-4D74-9636-2E842805F106",
       "index": 1,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "A test short packet for tuning Quipsly social editing. This is metadata over the Episode 1 spine, not a duplicated video file.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 88,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Test Short - Wednesday Rule moment"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Test Short - Wednesday Rule moment"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Test Short - Wednesday Rule moment"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Test Short - Wednesday Rule moment"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 64,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Test Short - Wednesday Rule moment"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 68,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "What if one simple rule changed the whole conversation?"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Test Short - Wednesday Rule moment"
+        }
+      ],
       "primaryExportBytes": 7696090,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4",
       "reviewStatus": "needs-captions",
       "segmentCount": 1,
+      "sourceRangeLabel": "0.00s -> 8.13s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 8.133,
+          "index": 1,
+          "sequenceEndTime": 8.133,
+          "sequenceStartTime": 0.0,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "A67ADFB3-F4D6-4ADC-92EC-C751885BB28D",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Test Short - Wednesday Rule moment",
       "visualReviewStatus": "unknown"
     },
@@ -79,37 +133,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-farm-work-teaches-stewardship-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4' 22.64",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'farm-work-teaches-stewardship'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4' 22.64 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-farm-work-teaches-stewardship-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-farm-work-teaches-stewardship-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'farm-work-teaches-stewardship' id '18BC489A-7439-4DA5-B967-9726443A008D'",
         "keep": "script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-farm-work-teaches-stewardship-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 22.645,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/farm-work-teaches-stewardship-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-farm-work-teaches-stewardship-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/farm-work-teaches-stewardship-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "The farm lesson was not just the chore. It was learning why the work mattered.",
       "id": "18BC489A-7439-4DA5-B967-9726443A008D",
       "index": 2,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: milking cows, potatoes, watering turns, and learning what constant work teaches.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Farm Work Teaches Stewardship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Farm Work Teaches Stewardship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Farm Work Teaches Stewardship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Farm Work Teaches Stewardship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Farm Work Teaches Stewardship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "The farm lesson was not just the chore. It was learning w..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Farm Work Teaches Stewardship"
+        }
+      ],
       "primaryExportBytes": 17456943,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "524.36s -> 547.00s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 22.648,
+          "index": 1,
+          "sequenceEndTime": 547.005,
+          "sequenceStartTime": 524.357,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "F4EC92E5-12D2-4FE6-AE8F-BC6F95E40E7B",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Farm Work Teaches Stewardship",
       "visualReviewStatus": "unknown"
     },
@@ -117,37 +261,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-learning-why-not-just-what-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' 40.83",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'learning-why-not-just-what'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' 40.83 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-learning-why-not-just-what-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-learning-why-not-just-what-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'learning-why-not-just-what' id '701461B7-CB8F-4732-8F4F-D54698C77F23'",
         "keep": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-learning-why-not-just-what-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 40.833,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/learning-why-not-just-what-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-learning-why-not-just-what-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/learning-why-not-just-what-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "A good mentor does more than explain the task. They make sure you understand why.",
       "id": "701461B7-CB8F-4732-8F4F-D54698C77F23",
       "index": 3,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: he explained the spring and motor, then made sure I understood why we were doing what we were doing.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Learning Why, Not Just What"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Learning Why, Not Just What"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Learning Why, Not Just What"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Learning Why, Not Just What"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Learning Why, Not Just What"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "A good mentor does more than explain the task. They make..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Learning Why, Not Just What"
+        }
+      ],
       "primaryExportBytes": 31165451,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "669.63s -> 710.46s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 40.833,
+          "index": 1,
+          "sequenceEndTime": 710.46,
+          "sequenceStartTime": 669.627,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "F4EC92E5-12D2-4FE6-AE8F-BC6F95E40E7B",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Learning Why, Not Just What",
       "visualReviewStatus": "unknown"
     },
@@ -155,37 +389,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-mutual-mentorship-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4' 40.00",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'mutual-mentorship'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4' 40.00 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-mutual-mentorship-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-mutual-mentorship-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'mutual-mentorship' id 'B5387438-09BF-41BD-9BDA-4765C75C36E2'",
         "keep": "script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-mutual-mentorship-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 39.998,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/mutual-mentorship-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-mutual-mentorship-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/mutual-mentorship-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "The best mentoring relationship can work both directions.",
       "id": "B5387438-09BF-41BD-9BDA-4765C75C36E2",
       "index": 4,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: I appreciate your mentorship, I consider you a mentor, and he said I consider you a mentor too.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Mutual Mentorship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Mutual Mentorship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Mutual Mentorship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Mutual Mentorship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Mutual Mentorship"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "The best mentoring relationship can work both directions."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Mutual Mentorship"
+        }
+      ],
       "primaryExportBytes": 33457029,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "755.63s -> 795.63s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 39.998,
+          "index": 1,
+          "sequenceEndTime": 795.628,
+          "sequenceStartTime": 755.63,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "F4EC92E5-12D2-4FE6-AE8F-BC6F95E40E7B",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Mutual Mentorship",
       "visualReviewStatus": "unknown"
     },
@@ -193,37 +517,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-record-from-anywhere-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4' 45.00",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'record-from-anywhere'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4' 45.00 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-record-from-anywhere-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-record-from-anywhere-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'record-from-anywhere' id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4'",
         "keep": "script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-record-from-anywhere-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 45.0,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/record-from-anywhere-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-record-from-anywhere-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/record-from-anywhere-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "The show needs to work even when the hosts are remote, traveling, and improvising.",
       "id": "0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4",
       "index": 5,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: remote from each other, able to do this while traveling or anywhere with internet or Wi-Fi.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Record From Anywhere"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Record From Anywhere"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Record From Anywhere"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Record From Anywhere"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Record From Anywhere"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "The show needs to work even when the hosts are remote, tr..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Record From Anywhere"
+        }
+      ],
       "primaryExportBytes": 48147222,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "901.86s -> 946.86s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 45.0,
+          "index": 1,
+          "sequenceEndTime": 946.859,
+          "sequenceStartTime": 901.859,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "F4EC92E5-12D2-4FE6-AE8F-BC6F95E40E7B",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Record From Anywhere",
       "visualReviewStatus": "unknown"
     },
@@ -231,37 +645,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-parkinsons-awareness-goal-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4' 45.00",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'parkinson-s-awareness-goal'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4' 45.00 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-parkinsons-awareness-goal-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-parkinsons-awareness-goal-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'parkinson-s-awareness-goal' id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC'",
         "keep": "script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-parkinsons-awareness-goal-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 45.0,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/parkinson-s-awareness-goal-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-parkinson-s-awareness-goal-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/parkinson-s-awareness-goal-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "If our channel can raise awareness for Parkinson's research, that is a goal worth chasing.",
       "id": "7EA786A2-FA74-4D73-AE55-8A23D03AA3FC",
       "index": 6,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: part of our channel could raise awareness for Parkinson's and Parkinson's research.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Parkinson's Awareness Goal"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Parkinson's Awareness Goal"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Parkinson's Awareness Goal"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 72,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Parkinson's Awareness Goal"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Parkinson's Awareness Goal"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "If our channel can raise awareness for Parkinson's resear..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Parkinson's Awareness Goal"
+        }
+      ],
       "primaryExportBytes": 44732322,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "1200.00s -> 1245.00s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 45.0,
+          "index": 1,
+          "sequenceEndTime": 1245.0,
+          "sequenceStartTime": 1200.0,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "F4EC92E5-12D2-4FE6-AE8F-BC6F95E40E7B",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Parkinson's Awareness Goal",
       "visualReviewStatus": "unknown"
     },
@@ -269,37 +773,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-dont-downplay-yourself-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4' 45.00",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'don-t-downplay-yourself'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4' 45.00 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-dont-downplay-yourself-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-dont-downplay-yourself-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'don-t-downplay-yourself' id '50F4E987-F34E-4DBA-976A-42C80055DFB9'",
         "keep": "script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-dont-downplay-yourself-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 45.0,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/don-t-downplay-yourself-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-don-t-downplay-yourself-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/don-t-downplay-yourself-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "Sometimes someone needs to remind you that you were already a rock star.",
       "id": "50F4E987-F34E-4DBA-976A-42C80055DFB9",
       "index": 7,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: you were a rock star, and continue to be a rock star, so do not downplay yourself too much.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Don't Downplay Yourself"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Don't Downplay Yourself"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Don't Downplay Yourself"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 72,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Don't Downplay Yourself"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Don't Downplay Yourself"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "Sometimes someone needs to remind you that you were alrea..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Don't Downplay Yourself"
+        }
+      ],
       "primaryExportBytes": 41804252,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "1800.00s -> 1845.00s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 45.0,
+          "index": 1,
+          "sequenceEndTime": 1845.0,
+          "sequenceStartTime": 1800.0,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "FA241285-BB9D-4CA3-8D94-8DA1E241C695",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Don't Downplay Yourself",
       "visualReviewStatus": "unknown"
     },
@@ -307,37 +901,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-identity-changes-behavior-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4' 45.00",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'identity-changes-behavior'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4' 45.00 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-identity-changes-behavior-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-identity-changes-behavior-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'identity-changes-behavior' id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C'",
         "keep": "script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-identity-changes-behavior-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 45.0,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/identity-changes-behavior-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-identity-changes-behavior-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/identity-changes-behavior-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "Saying \u201cI am the kind of person who does this\u201d changes the decision before the decision arrives.",
       "id": "C4C017E7-C630-4C0D-9AF6-95496916ED8C",
       "index": 8,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: I am the guy who rides his bike to work in the snow; saying I am not a smoker changes something fundamentally.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Identity Changes Behavior"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Identity Changes Behavior"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Identity Changes Behavior"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Identity Changes Behavior"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Identity Changes Behavior"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "Saying \u201cI am the kind of person who does this\u201d changes th..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Identity Changes Behavior"
+        }
+      ],
       "primaryExportBytes": 40005516,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "3000.00s -> 3045.00s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 45.0,
+          "index": 1,
+          "sequenceEndTime": 3045.0,
+          "sequenceStartTime": 3000.0,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "FA241285-BB9D-4CA3-8D94-8DA1E241C695",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Identity Changes Behavior",
       "visualReviewStatus": "unknown"
     },
@@ -345,37 +1029,127 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-write-things-worth-reading-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4' 45.00",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'write-things-worth-reading'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4' 45.00 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-write-things-worth-reading-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-write-things-worth-reading-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'write-things-worth-reading' id '975A2C70-695D-4D9E-BAAE-A47BA3277590'",
         "keep": "script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-write-things-worth-reading-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 45.0,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/write-things-worth-reading-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-write-things-worth-reading-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/write-things-worth-reading-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "If you do not want to be forgotten, write things worth reading or do things worth writing.",
       "id": "975A2C70-695D-4D9E-BAAE-A47BA3277590",
       "index": 9,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "Rough transcript: it is my story and I will tell it how I want; write things worth reading or do things worth writing.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Write Things Worth Reading"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Write Things Worth Reading"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Write Things Worth Reading"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 72,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Write Things Worth Reading"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 80,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Write Things Worth Reading"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 99,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "If you do not want to be forgotten, write things worth re..."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 100,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Write Things Worth Reading"
+        }
+      ],
       "primaryExportBytes": 34347625,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-write-things-worth-reading-9x16-short.mp4",
       "reviewStatus": "ready-for-human-review",
       "segmentCount": 1,
+      "sourceRangeLabel": "4200.00s -> 4245.00s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 45.0,
+          "index": 1,
+          "sequenceEndTime": 4245.0,
+          "sequenceStartTime": 4200.0,
+          "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+          "sourceTagId": "FA241285-BB9D-4CA3-8D94-8DA1E241C695",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Write Things Worth Reading",
       "visualReviewStatus": "unknown"
     },
@@ -383,37 +1157,126 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-01-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4' 40.83",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-01-04-27'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4' 40.83 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-01-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-01-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-01-04-27' id '0F028DF4-76EF-4245-9349-1EE266C1AAEB'",
         "keep": "script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-01-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 40.833,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-review-candidate-01-04-27-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-review-candidate-01-04-27-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "",
       "id": "0F028DF4-76EF-4245-9349-1EE266C1AAEB",
       "index": 10,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 60,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 01 - 04:27"
+        }
+      ],
       "primaryExportBytes": 54676889,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4",
       "reviewStatus": "draft",
       "segmentCount": 1,
+      "sourceRangeLabel": "267.06s -> 307.89s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 40.833,
+          "index": 1,
+          "sequenceEndTime": 307.891,
+          "sequenceStartTime": 267.058,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Episode 1 Review Candidate 01 - 04:27",
       "visualReviewStatus": "unknown"
     },
@@ -421,37 +1284,126 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-02-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4' 19.93",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4' 19.93 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-02-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-02-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19' id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F'",
         "keep": "script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-02-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 19.93,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-review-candidate-02-08-19-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-review-candidate-02-08-19-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "",
       "id": "33FDE8CC-9080-4EC1-9294-1F03D0EEF61F",
       "index": 11,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 60,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 02 - 08:19"
+        }
+      ],
       "primaryExportBytes": 59212494,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4",
       "reviewStatus": "draft",
       "segmentCount": 1,
+      "sourceRangeLabel": "499.29s -> 544.29s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 45.0,
+          "index": 1,
+          "sequenceEndTime": 544.29,
+          "sequenceStartTime": 499.29,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Episode 1 Review Candidate 02 - 08:19",
       "visualReviewStatus": "unknown"
     },
@@ -459,38 +1411,254 @@
       "allExportedPaths": [
         "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4"
       ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-03-9x16-short-audio-sanity.json",
       "commands": {
-        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4' 41.50",
-        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4'",
-        "exportLocal": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-03-26-13'",
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4' 41.50 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-03-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-03-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-review-candidate-03-26-13' id 'D9526D0B-311E-46D4-B127-824D713EA2F2'",
         "keep": "script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' keep 'Kept after local export review.'",
         "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
         "refine": "script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' refine 'Needs one concrete improvement after local review.'",
         "select": "script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2'"
       },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-premiere-rescue-review-short-03-9x16-short-contact-sheet.png",
       "destinations": [
         "YouTube Shorts",
         "Instagram",
         "Facebook",
         "LinkedIn"
       ],
+      "detectedExpectedLocalExport": false,
       "durationSeconds": 41.499,
       "episodeInference": "inferred-from-text",
       "episodeKey": "episode-1",
       "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-review-candidate-03-26-13-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-review-candidate-03-26-13-9x16-short.mp4",
       "exportStatus": "exported",
+      "hookText": "",
       "id": "D9526D0B-311E-46D4-B127-824D713EA2F2",
       "index": 12,
       "listenThroughStatus": "unknown",
       "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 60,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Episode 1 Review Candidate 03 - 26:13"
+        }
+      ],
       "primaryExportBytes": 53665109,
       "primaryExportExists": true,
       "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4",
       "reviewStatus": "draft",
       "segmentCount": 1,
+      "sourceRangeLabel": "1572.90s -> 1614.40s",
       "stage": "exported-needs-listen-through",
       "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 41.499,
+          "index": 1,
+          "sequenceEndTime": 1614.404,
+          "sequenceStartTime": 1572.905,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
       "title": "Episode 1 Review Candidate 03 - 26:13",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_01/v002/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short.mp4"
+      ],
+      "audioSanityExists": true,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Volumes/My Passport/Episode_and_Shorts_Test/Episode_01/v002/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short.mp4' 4.19 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short-audio-sanity.json'",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Volumes/My Passport/Episode_and_Shorts_Test/Episode_01/v002/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-word-timed-proof-short' id '8F4A6296-A542-49B5-A6AC-7D6A712474AA'",
+        "keep": "script/agentctl.sh shorts-review '8F4A6296-A542-49B5-A6AC-7D6A712474AA' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '8F4A6296-A542-49B5-A6AC-7D6A712474AA' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '8F4A6296-A542-49B5-A6AC-7D6A712474AA'"
+      },
+      "contactSheetExists": true,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 4.19,
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-1",
+      "episodeLabel": "Episode 1",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-word-timed-proof-short-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-word-timed-proof-short-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "My spot's taken up. Let me try to find a different spot.",
+      "id": "8F4A6296-A542-49B5-A6AC-7D6A712474AA",
+      "index": 13,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "My spot's taken up. Let me try to find a different spot.",
+      "platformTargets": [
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 88,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "YouTube Shorts",
+          "status": "needs review",
+          "title": "Episode 1 Word-Timed Proof Short"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram",
+          "status": "needs review",
+          "title": "Episode 1 Word-Timed Proof Short"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Facebook",
+          "status": "needs review",
+          "title": "Episode 1 Word-Timed Proof Short"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 56,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "LinkedIn",
+          "status": "needs review",
+          "title": "Episode 1 Word-Timed Proof Short"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 64,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Patreon teaser",
+          "status": "needs review",
+          "title": "Episode 1 Word-Timed Proof Short"
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 68,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs review",
+          "title": "My spot's taken up. Let me try to find a different spot."
+        },
+        {
+          "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Watch the proof and make the editorial review decision.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs review",
+          "title": "Episode 1 Word-Timed Proof Short"
+        }
+      ],
+      "primaryExportBytes": 3397615,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_01/v002/episode-01-v002-release-proof-13-Episode-1-Word-Timed-Proof-Short-9x16-short.mp4",
+      "reviewStatus": "needs-human-review",
+      "segmentCount": 1,
+      "sourceRangeLabel": "3.00s -> 7.19s",
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 4.19,
+          "index": 1,
+          "sequenceEndTime": 7.19,
+          "sequenceStartTime": 3.0,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Transcript line - Speaker"
+        }
+      ],
+      "title": "Episode 1 Word-Timed Proof Short",
       "visualReviewStatus": "unknown"
     }
   ],
@@ -499,67 +1667,158 @@
     "episodes": [
       {
         "episodeKey": "episode-1",
-        "localExportedFileCount": 12,
-        "reviewableCount": 12,
+        "localExportedFileCount": 13,
+        "reviewableCount": 13,
         "shortCount": 13
       }
     ],
     "unknownEpisodeCount": 0
   },
-  "generatedAt": "2026-06-23T08:15:44-06:00",
+  "generatedAt": "2026-06-24T14:23:23-06:00",
   "html": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-local-export-board.html",
   "json": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-local-export-board.json",
-  "localExportedFileCount": 12,
+  "localExportedFileCount": 13,
   "markdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-local-export-board.md",
-  "missingExportCount": 1,
+  "missingExportCount": 0,
   "nextShort": {
-    "allExportedPaths": [],
+    "allExportedPaths": [
+      "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4"
+    ],
+    "audioSanityExists": true,
+    "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-audio-sanity.json",
     "commands": {
-      "audioSanity": "",
-      "contactSheet": "",
-      "exportLocal": "script/agentctl.sh shorts-select id '8F4A6296-A542-49B5-A6AC-7D6A712474AA' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'episode-1-word-timed-proof-short'",
-      "keep": "script/agentctl.sh shorts-review '8F4A6296-A542-49B5-A6AC-7D6A712474AA' keep 'Kept after local export review.'",
+      "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' 8.13 > '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-audio-sanity.json'",
+      "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-contact-sheet.png'",
+      "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state' 'test-short-wednesday-rule-moment' id 'FC28A75E-451B-4D74-9636-2E842805F106'",
+      "keep": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' keep 'Kept after local export review.'",
       "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
-      "refine": "script/agentctl.sh shorts-review '8F4A6296-A542-49B5-A6AC-7D6A712474AA' refine 'Needs one concrete improvement after local review.'",
-      "select": "script/agentctl.sh shorts-select id '8F4A6296-A542-49B5-A6AC-7D6A712474AA'"
+      "refine": "script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' refine 'Needs one concrete improvement after local review.'",
+      "select": "script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106'"
     },
+    "contactSheetExists": true,
+    "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short-contact-sheet.png",
     "destinations": [
       "YouTube Shorts",
       "Instagram",
       "Facebook",
       "LinkedIn"
     ],
-    "durationSeconds": 4.19,
+    "detectedExpectedLocalExport": false,
+    "durationSeconds": 8.133,
     "episodeInference": "inferred-from-text",
     "episodeKey": "episode-1",
     "episodeLabel": "Episode 1",
+    "expectedLocalExportCandidates": [
+      "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/test-short-wednesday-rule-moment-9x16-short.mp4",
+      "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-test-short-wednesday-rule-moment-9x16-short.mp4"
+    ],
+    "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/test-short-wednesday-rule-moment-9x16-short.mp4",
     "exportStatus": "exported",
-    "id": "8F4A6296-A542-49B5-A6AC-7D6A712474AA",
-    "index": 13,
+    "hookText": "What if one simple rule changed the whole conversation?",
+    "id": "FC28A75E-451B-4D74-9636-2E842805F106",
+    "index": 1,
     "listenThroughStatus": "unknown",
-    "nextAction": "Export this short locally so we have an actual file to watch and hear.",
-    "primaryExportBytes": 0,
-    "primaryExportExists": false,
-    "primaryExportPath": "",
-    "reviewStatus": "needs-human-review",
+    "nextAction": "Listen through the exported file and sanity-check audio.",
+    "overlayText": "A test short packet for tuning Quipsly social editing. This is metadata over the Episode 1 spine, not a duplicated video file.",
+    "platformTargets": [
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 88,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "YouTube Shorts",
+        "status": "needs review",
+        "title": "Test Short - Wednesday Rule moment"
+      },
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 91,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "Instagram",
+        "status": "needs review",
+        "title": "Test Short - Wednesday Rule moment"
+      },
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 91,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "Facebook",
+        "status": "needs review",
+        "title": "Test Short - Wednesday Rule moment"
+      },
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 84,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "LinkedIn",
+        "status": "needs review",
+        "title": "Test Short - Wednesday Rule moment"
+      },
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 64,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "Patreon teaser",
+        "status": "needs review",
+        "title": "Test Short - Wednesday Rule moment"
+      },
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 68,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "HighGroundOdyssey.com",
+        "status": "needs review",
+        "title": "What if one simple rule changed the whole conversation?"
+      },
+      {
+        "detail": "Proof and copy exist, but Keep/Refine/Reject is unresolved.",
+        "fitScore": 91,
+        "isReady": false,
+        "nextAction": "Watch the proof and make the editorial review decision.",
+        "platform": "Instagram/Facebook Reels",
+        "status": "needs review",
+        "title": "Test Short - Wednesday Rule moment"
+      }
+    ],
+    "primaryExportBytes": 7696090,
+    "primaryExportExists": true,
+    "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4",
+    "reviewStatus": "needs-captions",
     "segmentCount": 1,
-    "stage": "missing-export",
+    "sourceRangeLabel": "0.00s -> 8.13s",
+    "stage": "exported-needs-listen-through",
     "textReviewStatus": "unknown",
-    "title": "Episode 1 Word-Timed Proof Short",
+    "timelineRanges": [
+      {
+        "durationSeconds": 8.133,
+        "index": 1,
+        "sequenceEndTime": 8.133,
+        "sequenceStartTime": 0.0,
+        "sourceLaneId": "96C2D842-7E32-43B9-AB49-0D1185436E4D",
+        "sourceTagId": "A67ADFB3-F4D6-4ADC-92EC-C751885BB28D",
+        "timeBase": "sequence-seconds",
+        "title": "Segment 1"
+      }
+    ],
+    "title": "Test Short - Wednesday Rule moment",
     "visualReviewStatus": "unknown"
   },
   "operatorFocus": "Output first: export usable local files, watch them, listen to them, improve the edit, then hand off to publishing.",
   "outputDirectory": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state",
   "packetType": "quipsly-shorts-local-export-board",
-  "qualityReviewCount": 12,
+  "qualityReviewCount": 13,
   "shortCount": 13,
   "sourceStateHints": {
     "exportStatus": "completed",
     "selectedShortId": null
   },
   "stageCounts": {
-    "exported-needs-listen-through": 12,
-    "missing-export": 1
+    "exported-needs-listen-through": 13
   },
   "truth": "This board does not approve, publish, schedule, upload, or mutate review state. It exists to make local export and quality review obvious.",
   "version": "2026-06-21.shorts-local-export-board.v1"

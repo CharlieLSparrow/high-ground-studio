@@ -471,3 +471,352 @@ Product truth:
 - Validation run: `./script/smoke_episode1_short_refinement.sh` passed after the resolver refactor. It nudged/restored start and end boundaries for the same short without touching source media.
 - Validation run: `./script/shortsctl.sh local-export-board --json` emitted parseable JSON with 13 cards.
 - Known follow-up: `/state.lastMediaAction` can lag behind cue commands even when command receipt and playhead evidence prove the cue worked. Treat playhead + command receipt as stronger evidence until cached status messaging is tightened.
+
+## 2026-06-23 - Episode 6 first sync stack
+
+- Active lane: Episode 6 media intake and whole-source sync stack.
+- Added `apps/QuipslyStudio/script/build_episode6_sync_stack.py` to create a native Quipsly session from `/Volumes/My Passport/Episode 6` without copying, trimming, or mutating originals.
+- Generated session: `/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-6-sync-stack-v1.quipsly-session.json`.
+- Generated report: `apps/QuipslyStudio/reports/episode-6-sync-stack-v1-report.json`.
+- Generated current-state note: `docs/quipsly/current-state/episode-6-sync-stack-v1.md`.
+- The stack contains 16 whole-source lanes: 6 candidate lanes, 10 held lanes, 3 proxy-ready Homer LRV-backed lanes, and 9 video lanes still needing deterministic proxies before serious editing.
+- Sync truth: CharlieVideo.mp4 is the provisional visual timebase; Homer Insta360 offsets are inferred from embedded LRV creation times relative to Charlie; phone call audio is the provisional conversation spine but still needs waveform sync proof; HQ WAV #03 is held as likely final-quality audio until aligned.
+- Product truth: this is a sync stack, not a final edit. Context clips are held as weave-in candidates; SHOW/SKIP decisions should be created after sync proof and conversation review. Whole sources remain intact.
+
+### Episode 6 sync stack decoder fix
+
+- The first Episode 6 session file was Python-valid JSON but failed Swift `NativeEditorSession` decode because `editPassContext.updatedAt` was required by `EditPassContext`.
+- Updated `build_episode6_sync_stack.py` to emit both `startedAt` and `updatedAt`, then regenerated the session/report/current-state note.
+- Lesson: Python JSON validation is not enough for native session proof. Swift model decode is the correct gate before claiming a session can load in the app.
+
+## 2026-06-23 - Episode 6 sync stack proxy proof
+
+- Built and loaded `episode-6-sync-stack-v1` from `/Volumes/My Passport/Episode 6` as a whole-source native Quipsly session.
+- Generated a managed vault proxy for `CharlieVideo.mp4` from a 45GB 4K source to `/Users/wall-e/Library/Application Support/Quipsly/MediaVault/proxy/3206fd92ce6604eb/CharlieVideo_proxy.mp4`; original source was not mutated.
+- Generated managed vault proxies from Homer Insta360 LRV sidecars for the three INSV source segments, keeping the raw INSV files as canonical sources and the MP4 proxies as editor playback surfaces.
+- Updated `build_episode6_sync_stack.py` so Homer lanes use deterministic vault-managed LRV proxies instead of raw `.lrv` sidecars as proxy URLs.
+- Verified the session decodes through `QuipslyVideoCore` and loads in the running app with 16 whole-source lanes.
+- Visual app proof: at sequence time 648.00s, Charlie is visible in Program Output while Homer Insta360 Segment 1 is visible in Source Grove at source time 0.00s, proving the rough offset mapping is active.
+- Remaining work: audio/context proxy readiness, waveform/fingerprint alignment, visual confirmation of Homer segment offsets, then real SHOW/SKIP decisions and contextual clip weaving.
+
+## 2026-06-23 - Episodes 1-3 shorts readiness/report truth pass
+
+- Returned focus to the active shorts goal after Episode 6 sync-stack work.
+- Fixed `shorts_board_common.py` so report tooling prefers authoritative `clips`/`shorts` rows and no longer mistakes nested platform-target rows for actual short clips.
+- Added timeline range, hook, overlay/caption, and platform target fields to classified short cards so reports answer what moment the short maps to and what packaging still needs work.
+- Improved `shorts_local_export_board.py` cards/Markdown to show source ranges, platforms, hook, and overlay status.
+- Added top-level count fields to `shorts_mission_control.py` and `episodes_shorts_readiness.py` for agent-friendly inspection.
+- Fixed `episodes_shorts_readiness.py` repo-root detection so generated current-state packets land under `/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state`, not `/apps/docs`.
+- Validation: `python3 -m py_compile` passed for touched shorts scripts.
+- Validation: `script/shortsctl.sh episodes-readiness --json` produced `/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-readiness.{json,html,md}` with `27` shorts, `3` episodes with at least five shorts, `22` local exported files detected, and `27` platform-packaged candidates.
+- Validation: `apps/QuipslyStudio/script/build_and_run.sh --verify` exited successfully; post-launch `agentctl health` returned `status: ok`.
+- Current gaps: Episode 1 has one missing export; Episode 2 has four missing exports and one unresolved Premiere placeholder lane; Episode 3 has five exported candidates but still needs visual/listen/hook/overlay review. The false Episode 3 ghost/unknown-short report is fixed.
+
+## 2026-06-23 - Episode 6 intake note
+
+Read-only inventory found a stronger Episode 6 proof lane at `/Volumes/My Passport/Episode 6`: Charlie video, Homer Insta360 `.insv` chunks with LRV companions, phone/call recordings, Logic/WAV exports, and reference clips. Wrote `docs/quipsly/current-state/episode-6-intake-plan.md` with the proposed sync order: temporary spine first, Charlie aligned first, Homer chunks stacked and nudged independently, reference clips held for editorial weave-ins. Originals remain untouched.
+
+## 2026-06-23 - Shorts export evidence ladder
+
+Continued the Episodes 1-3 shorts publication-real lane in `apps/QuipslyStudio`.
+
+What changed:
+- Updated shorts board/export commands to use explicit short IDs: `script/agentctl.sh shorts-export-selected <outputDir> <basename> id <shortId>`. This avoids fragile UI selection state.
+- Made the readiness board detect expected local export files even when the session metadata has not yet persisted the export path.
+- Added durable contact-sheet fields to shorts readiness cards: `contactSheetPath` and `contactSheetExists`.
+- Added durable audio-sanity fields to shorts readiness cards: `audioSanityPath` and `audioSanityExists`.
+- Changed stage semantics so a short with contact-sheet proof advances from `exported-needs-visual-review` to `exported-needs-listen-through` when visual proof exists; if audio sanity also exists, the next action says to watch/listen through and mark keep/refine/reject.
+
+Evidence generated:
+- Episode 1: 1 newly exported short has a durable contact sheet and audio-sanity receipt.
+- Episode 2: 4 newly exported shorts have durable contact sheets and audio-sanity receipts.
+- Episodes 1-3 readiness now reports 27 total shorts and 27 detected local exported files.
+- Current stage ladder: 22 `exported-needs-visual-review`, 5 `exported-needs-listen-through`.
+
+Validation:
+- `python3 -m py_compile script/shorts_board_common.py script/shorts_local_export_board.py script/shorts_mission_control.py script/episodes_shorts_readiness.py`
+- `./script/shortsctl.sh episodes-readiness --json`
+- `./script/build_and_run.sh --verify`
+- `./script/agentctl.sh health`
+
+Remaining gap:
+- 22 exported shorts still need durable contact sheets before they can move to listen-through review.
+- The 5 evidence-backed shorts still need actual watch/listen-through judgment before keep/refine/reject or publishing queue movement.
+
+## 2026-06-23 - Episodes 1-3 shorts evidence complete
+
+Continued the publication-real shorts lane for Episodes 1-3.
+
+What changed:
+- Generated durable contact sheets for every remaining exported short that lacked visual evidence.
+- Generated durable audio-sanity receipts for every remaining exported short that lacked objective audio evidence.
+- Regenerated the broad Episodes 1-3 readiness board in JSON, HTML, and Markdown.
+
+Current broad readiness truth:
+- 27 total shorts across Episodes 1-3.
+- 27/27 local exported files detected.
+- 27/27 durable contact sheets detected.
+- 27/27 durable audio-sanity receipts detected.
+- 27/27 platform-packaged entries visible.
+- Stage ladder is now 27 `exported-needs-listen-through`.
+
+Interpretation:
+- Machine evidence is complete for the first 27 shorts.
+- No short has been auto-approved. The next required step is actual watch/listen-through and keep/refine/reject judgment.
+- `shortsctl local-export-board`, `growth-quality-board`, and `platform-package-board` currently operate on the active app session queue even though older filenames can imply Episodes 1-3 scope. The broad proof surface for this goal is `episodes-readiness`.
+
+Validation:
+- `python3 -m py_compile script/shorts_board_common.py script/shorts_local_export_board.py script/shorts_mission_control.py script/episodes_shorts_readiness.py`
+- `./script/shortsctl.sh episodes-readiness --json`
+- `./script/shortsctl.sh episodes-readiness --html`
+- `./script/shortsctl.sh episodes-readiness --md`
+- `./script/build_and_run.sh --verify`
+- `./script/agentctl.sh health`
+
+Next best target:
+- Build or tighten a listen-through review queue so each evidence-backed short can be opened, judged, and marked keep/refine/reject without hunting through JSON or filesystem paths.
+
+## 2026-06-23 - Episodes 1-3 listen-through review board
+
+Added a broad Episodes 1-3 listen-through review board for the shorts publication-real lane.
+
+What changed:
+- Added `script/shorts_listen_review_board.py`.
+- Added `script/shortsctl.sh listen-review-board [--json|--html|--md]`.
+- Generated durable review artifacts:
+  - `docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.json`
+  - `docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.html`
+  - `docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.md`
+
+Current review-board truth:
+- 27 shorts.
+- 27 exports.
+- 27 contact sheets.
+- 27 audio-sanity receipts.
+- 27 ready for listen-through.
+- 0 listen-through decisions recorded.
+
+Product behavior:
+- The board is read-only over exported derivatives and evidence artifacts.
+- It does not mutate original media, mark listen-through complete, approve shorts, or publish.
+- Each card includes session-aware commands so the operator/agent loads the correct episode session before selecting, previewing, jumping, or marking a short.
+
+Validation:
+- `python3 -m py_compile script/shorts_listen_review_board.py script/shorts_board_common.py`
+- `bash -n script/shortsctl.sh`
+- `./script/shortsctl.sh listen-review-board --json`
+- `./script/shortsctl.sh listen-review-board --html`
+- `./script/shortsctl.sh listen-review-board --md`
+- `./script/build_and_run.sh --verify`
+- `./script/agentctl.sh health`
+
+Next best target:
+- Use the listen-through board to review the first batch of shorts and record actual keep/refine/reject decisions, or tighten the in-app Shorts panel so this board is visible and operable from inside Quipsly Studio.
+
+## 2026-06-23 - Listen-through board surfaced in Quipsly Studio
+
+Tightened the Episodes 1-3 shorts listen-through lane so the review board is no longer hidden in generated files only.
+
+What changed:
+- Added a visible Listen-through board card to the Quipsly Studio Shorts sidebar.
+- The card reads the generated board snapshot from `docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.json`.
+- The card shows counts for shorts, exports, contact sheets, audio receipts, ready-for-listen-through items, and recorded listen-through decisions.
+- Added native actions to open the HTML board, copy the regenerate command, and copy JSON/HTML/Markdown artifact paths.
+
+Current product truth:
+- The board remains read-only over exported derivatives and evidence artifacts.
+- It does not mutate source media, mark review complete, approve shorts, or publish.
+- Episode 6 is queued as the next messy real-sync proving lane after the current Episodes 1-3 shorts/listen-through surface is stable. Start there by syncing Charlie video, Homer Insta360, and call audio, then weave source clips as contextual inserts; high-quality audio can come later.
+
+Validation:
+- `python3 -m py_compile script/shorts_listen_review_board.py script/shorts_board_common.py`
+- `bash -n script/shortsctl.sh`
+- `./script/shortsctl.sh listen-review-board --json`
+- `./script/shortsctl.sh listen-review-board --html`
+- `./script/shortsctl.sh listen-review-board --md`
+- `./script/build_and_run.sh --verify`
+- `./script/agentctl.sh health`
+
+Next best target:
+- Use the in-app board to start real listen-through judgments, or move to Episode 6 sync once the shorts judgment lane is acceptable.
+
+## 2026-06-23 - Broad listen-through next target and safe cue control
+
+Strengthened the Episodes 1-3 shorts listen-through workflow so the broad review board is actionable instead of passive.
+
+What changed:
+- Added `nextReadyCard` to `episodes-1-3-shorts-listen-review-board.json`.
+- Added `--next-json` and `--next-md` modes to `script/shorts_listen_review_board.py`.
+- Added `script/shortsctl.sh listen-review-next [--md|--json|--open-evidence|--open-export|--open-contact-sheet|--cue|--preview]`.
+- Updated broad board review commands so keep/refine/reject first load and select the correct source session, then call `shorts-review-selected`; this avoids cross-episode review mutations when the app is currently on another episode.
+- Added longer `QUIPSLY_AGENT_TIMEOUT=60` session-load commands for broad listen-through helpers because full editor session loads can exceed the default health/read timeout.
+- Updated generated HTML to feature the next ready listen-through target and its commands at the top of the board.
+
+Validated next target:
+- Current broad next target: Episode 1 Word-Timed Proof Short.
+- Source session: `episode-1-codex-real-edit-v1-youtube-wordtimed`.
+- Short id: `8F4A6296-A542-49B5-A6AC-7D6A712474AA`.
+- Counts remain: 27 shorts, 27 exports, 27 contact sheets, 27 audio sanity receipts, 27 ready for listen-through, 0 listened.
+
+Control-plane finding:
+- First cue attempt timed out at the default 15 seconds while loading the Episode 1 session, but the app stayed healthy.
+- After adding the longer timeout, `./script/shortsctl.sh listen-review-next --cue` successfully loaded the Episode 1 session, selected the short, and scheduled the non-playing preview cue.
+
+Validation:
+- `python3 -m py_compile script/shorts_listen_review_board.py script/shorts_board_common.py`
+- `bash -n script/shortsctl.sh`
+- `./script/shortsctl.sh listen-review-next --json`
+- `./script/shortsctl.sh listen-review-next --md`
+- `./script/shortsctl.sh listen-review-board --html`
+- `./script/build_and_run.sh --verify`
+- `./script/agentctl.sh health`
+- `./script/shortsctl.sh listen-review-next --cue`
+
+Truth:
+- `listen-review-next --cue` mutates only app selection/playhead preview state. It does not mark listen-through complete, approve, publish, upload, schedule, or mutate original media.
+
+Next best target:
+- Either start real listen-through on the first ready short and record keep/refine/reject, or add an in-app first-ready card action if we want the whole flow clickable inside the Shorts workbench before judging.
+## 2026-06-23T22:42:25-06:00 - Episode 5 sync-stack truth and Episode 1 short repair
+
+- Episode 5 is no longer an unknown folder. Built `episode-5-sync-stack-v1` from `/Volumes/My Passport/Episode 5` as whole-source lanes and loaded it in Quipsly Studio.
+- Episode 5 source truth: 10 lanes total, 6 production candidate lanes, 4 held context clips, sequence duration 6358.435s, and Homer Insta360 sequential LRV proxy coverage of 5475.776s.
+- Remuxed four Homer LRV sidecars into managed MP4 proxies in MediaVault without touching raw originals. The session now reports 4 source monitor videos and `visualRoughCutReady=true`.
+- Stopped the first full-span `MVI_4011.mp4` proxy attempt because it was too slow and would have monopolized the goal. Logged the remaining blocker: Episode 5 still needs one predictable full-length proxy for `CharlieVideo.mp4` or `MVI_4011.mp4` before long-form/short exports should proceed.
+- Repaired Episode 1 v001 short handoff: short 04 was restored from an older matching proof run; short 03 was filled with a valid Episode 1 fallback proof short because all matching short-03 sources found failed ffprobe. Manifest now reports 5/5 valid shorts.
+- Episode 1 caveat remains explicit: v001 long-form artifacts are proof-only, not full manual-publishable episode masters, and short 03 needs creative review/regeneration.
+- Updated `/Users/wall-e/Desktop/Quipsly_Episode_Export_Blockers.md`, Episode 1 manifest/notes, and Episode 5 manifest/notes so the next pass can continue without rediscovering this truth.
+## 2026-06-23T23:12:07-06:00 - Episode 5 long-source proxy strategy tightened, full run still blocked
+
+- Added configurable draft proxy controls to `script/create_proxy_for_file.py`: video scale, output FPS, and optional hardware acceleration can now be set by environment instead of being hard-coded.
+- Benchmarked 30-second Episode 5 samples from `MVI_4011.mp4` and `CharlieVideo.mp4`; both completed successfully at 640px / 15fps / h264_videotoolbox in roughly 12 seconds.
+- Attempted the full `MVI_4011.mp4` draft proxy. It initially wrote data but stalled around 28 MB with ffmpeg in uninterruptible I/O wait and no file growth, so the attempt was stopped and the partial was removed.
+- Current Episode 5 truth: the sync stack and Homer LRV review proxies are useful, but long-form export remains blocked until one full-span host/source proxy is created through a safer strategy.
+- Next proxy strategy should be copy-to-scratch, alternate `CharlieVideo.mp4`, or chunked/resumable proxy generation. Do not blindly rerun the same MVI full-proxy command.
+
+
+## 2026-06-23T23:42:16-06:00 - Episode 6 v001 artifacts exported; wrapper finalization needs repair
+
+- Reloaded Quipsly Studio through `./script/build_and_run.sh --verify` after the visible app reported a stale `Load session failed: The data couldn't be read because it is missing` modal.
+- Verified `episode-6-sync-stack-v1` loads in the live app: 16 lanes, 4 video source monitors, 4 video proxies ready, 6 queued shorts, and `productionReady=true` after proxy preparation.
+- Exported Episode 6 v001 proof artifacts into `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_06/v001`:
+  - `video/episode-06-v001-16x9.mp4`
+  - `video/episode-06-v001-9x16.mp4`
+  - `audio/episode-06-v001-podcast-audio.m4a`
+  - six 9:16 shorts in `shorts/`
+- ffprobe validated the 16:9 master as H.264 1920x1080 with AAC stereo at 4454.20s, the 9:16 master as H.264 1080x1920 with AAC stereo at 4454.20s, and podcast audio as AAC stereo at 4454.25s.
+- Current caveat: the release wrapper process did not exit cleanly because the finalization receipt stayed `running` even though the manifest says `v001-full-artifacts-exported-needs-review` and media artifacts validate. Treat this as an orchestration/receipt bug, not a failed export.
+
+## 2026-06-24T00:13:09-06:00 - Episode 6 v001 root full-release completed
+
+- Correction to the prior mid-export note: the root full-release task was slow, not failed. The shell waiter timed out while the app continued rendering.
+- Final receipt: `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_06/v001/episode-06-v001-full-release-release-finalization-receipt.json` reports `status=completed`, `phase=completed`, and `9/9 artifact(s) ready`.
+- Filled the compact wait receipt and wrote ffprobe validation to `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_06/v001/episode-06-v001-full-release-ffprobe-validation.json`.
+- Validated root artifacts: 16:9 master, 9:16 master, podcast audio, and six 45s 9:16 shorts.
+- Current truth: Episode 6 v001 has real local review artifacts and handoff packets. It still needs human creative review before publishing.
+
+## 2026-06-24T00:18:00-06:00 - Release wrapper wait hardening
+
+- Hardened `script/agentctl.sh release_export_prepare` after Episode 6 proved full exports can outlive short wait windows.
+- For `full` exports, omitted wait seconds now defaults to 7200 seconds instead of 180 seconds.
+- `wait_export` timeouts no longer abort release manifest/report generation under `set -e`; the wait receipt is preserved and later review can distinguish slow rendering from real failure.
+
+## 2026-06-24 00:51:22 MDT - Episode 1 v002 proof release tolerance verified
+
+- Built and launched Quipsly Studio through `./script/build_and_run.sh --verify` after hardening release prep for invalid short recipes.
+- Loaded `episode-1-codex-real-edit-v1-youtube-wordtimed` and ran proof release prep to `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_01/v002`.
+- Result: release prep completed and produced 15 playable proof media files: 16:9 proof, 9:16 proof, podcast audio proof, and 12 valid 9:16 short proofs.
+- Receipt confirms one invalid short was skipped rather than blocking the release: `Episode 1 Review Candidate 01 - 04:27` (`0F028DF4-76EF-4245-9349-1EE266C1AAEB`).
+- Product meaning: malformed short recipes are now visible repair items, not episode/audio release blockers.
+
+## 2026-06-24T01:09:00-06:00 - Release wrapper truth hardening
+
+- Hardened `script/agentctl.sh release_export_prepare` after Episode 1 v002 proof exports showed artifact truth and wrapper truth could diverge.
+- Release prep now gives full-release prepare, delivery packet, publish packet, podcast packet, and artifact-smoke calls a longer `QUIPSLY_RELEASE_PREP_TIMEOUT` window instead of the default 15-second agent health timeout.
+- Release manifest generation now classifies a run as `completed-artifacts-ready` when the app state still lags but every planned local derivative exists and is non-empty.
+- Release smoke now accepts `completed` or `completed-artifacts-ready`, while still requiring every planned artifact to exist.
+- Remaining caveat: existing folders created before this patch may still have stale or missing `latest-release-export-manifest.json`; regenerate release prep for canonical handoff folders when needed.
+
+## 2026-06-24T01:21:00-06:00 - Episode 5 chunked proxy strategy started
+
+- Added `script/create_chunked_proxy_for_file.py` for resumable huge-source proxy generation.
+- The script writes deterministic chunks under the Quipsly MediaVault proxy folder and concatenates only after all chunks exist.
+- Smoke-tested `CharlieVideo.mp4` from Episode 5: the first three 60-second chunks generated successfully with `h264_videotoolbox` at 640px / 15fps.
+- Started a background full proxy job for `/Volumes/My Passport/Episode 5/CharlieVideo.mp4` using 60-second chunks.
+- Job PID is stored at `reports/proxy-jobs/episode-5-charlie-chunked-proxy.pid`; latest logs match `reports/proxy-jobs/episode-5-charlie-chunked-proxy-*.log`.
+- Product meaning: Episode 5 is still waiting on a completed long-source proxy, but it now has a resumable path instead of a single fragile full-length transcode.
+
+## 2026-06-24T08:24:54Z - Episode 5 managed audio spine + proof release
+- Created and attached a managed audio-spine proxy for Episode 5 so release export no longer depends on original media audio.
+- Release smoke passed for `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_05/v001`: 16:9, 9:16, 5 social-short proofs, and podcast audio are present.
+- Proof exports remain non-publication artifacts until receipts/URLs are captured.
+
+## 2026-06-24T08:32:06Z - Episode 4 proof-release package passed
+- Episode 4 now has a smoke-passing local release proof in `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_04/v001`: 16:9, 9:16, 5 social-short proofs, and podcast audio.
+- Proof exports remain non-publication artifacts until receipts/URLs are captured.
+
+## 2026-06-24T03:57:35-06:00 - Manual publish packet reconciliation
+
+- Added `script/refresh_release_manifest.py` to refresh release manifests from disk without re-rendering media.
+- Refreshed Episode 5 full-release manifest from stale 7/8 to current 8/8 artifact truth; `release-export-smoke` now passes against `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_05/v001`.
+- Added `script/write_episode_publish_packet.py` to write `manifest.json`, `notes.md`, and `sync-gap-report.md` for each episode version from artifact/session truth.
+- Rebuilt v001 packet files for Episodes 1-6. Current status: Episode 1 needs work because it only has proof-style long-form video; Episodes 2, 3, 5, and 6 are local manual-review-ready; Episode 4 is local manual-review-ready with a 2023.776s video/audio duration mismatch warning.
+- Publication truth remains separate: these packets prove local derivative readiness only, not upload/schedule/public URL receipts.
+
+## 2026-06-24 - Episode 6 non-modal session-load hardening
+
+- Hardened `WorkspaceView.loadNativeSession` so agent-driven and launch-restore session loads report failures through editor state instead of blocking the visible editor behind a modal.
+- Kept manual session-picker failures modal so Charlie still gets direct feedback when a clicked session truly cannot load.
+- Expanded native session load diagnostics to include the session name, session file path, file size when present, and unwrapped decoding context when available.
+- Validated through `./script/build_and_run.sh --verify` and `./script/agentctl.sh load-session-wait episode-6-sync-stack-v1 45`.
+- Confirmed Episode 6 settles to `productionReady=true` after async audio proxy validation and remains visible in the running app without the stale `Load session failed` alert.
+
+## 2026-06-24 - Episode 1 v003 release artifact salvage
+
+- Reconciled `/Volumes/My Passport/Episode_and_Shorts_Test/Episode_01/v003` after the original full release worker failed before podcast audio and three planned shorts.
+- Exported `episode-01-v003-full-release-podcast-audio.m4a` via the audio-only export path without rerendering completed long-form video masters.
+- Exported missing selected shorts 11-13 individually through the proxy-only selected-short worker and copied each result into the planned release filenames.
+- Updated `refresh_release_manifest.py` so a failed/stalled manifest can be promoted to `completed-artifacts-ready` only when all planned local artifacts exist and are non-empty; the original failed status is preserved in `exportStatusBeforeRefresh`.
+- Validated Episode 1 v003 with `release-export-smoke`: 15/15 planned artifacts ready, all known files exist, publication still receipt-bound.
+- Current review note: publish packet reports `manual-review-ready` with a 128.792s long-form video/audio duration spread that should be reviewed before actual publication.
+
+## 2026-06-24 - Episodes 1-6 local release status board
+
+- Refreshed publish packets for the current best local export versions: Episode 1 v003; Episodes 2-6 v001.
+- Wrote `/Volumes/My Passport/Episode_and_Shorts_Test/release-status.json` and `release-status.md` as the external-drive truth board.
+- Current board: Episodes 1-6 all have local manual-review-ready packages with long-form video, audio-only podcast/RSS files, at least five shorts, manifest, notes, and sync-gap report.
+- Warnings remain review-facing, not artifact blockers: Episode 1 has a 128.792s long-form video/audio duration spread; Episode 4 has a 2023.776s spread.
+
+## 2026-06-24 - Quipsly Studio review runway hardening
+
+- Fixed selected-short export naming in `apps/QuipslyStudio` so selected exports include broad basename plus selected short ordinal/title, avoiding generic overwrite-prone output names.
+- Rerouted selected-short agent export through the live editor command bridge so agent and human export flows share the visible selected short recipe.
+- Added local release review board, platform-prep packet generator, and validation scripts.
+- Generated reviewer handoff artifacts in `/Volumes/My Passport/Episode_and_Shorts_Test/review-board` and platform-prep packets under each current-best Episode 1-6 version folder.
+- Validation currently reports zero blockers, with warning episodes 1 and 4 due to long-form video/audio duration spreads requiring human review before publication.
+- No upload, scheduling, publishing, account mutation, or external receipt claim occurred.
+
+## 2026-06-24 - Review validation and receipt-slot hardening
+
+- Quipsly Studio package validation now checks expected aspect/resolution for long-form and shorts deliverables.
+- Added a local human review/receipt ledger for Episodes 1-6 current-best packages. It preserves future human edits and keeps publication receipt truth empty until real URLs/proofs exist.
+- Agent command surface now includes `release-human-review-ledger` alongside review board, platform prep, and package validation.
+- Current validation evidence: zero blockers; Episodes 1 and 4 remain warning-only for A/V duration spread human review.
+
+## 2026-06-24 - HTML review-room pass
+
+- The external-drive review board now has inline local media players for each current-best Episode 1-6 package, making the manual review path easier for Charlie, Mako, and Homer.
+- Latest validation remains zero blockers, with Episodes 1 and 4 still warning-only for A/V duration spread review.
+
+## 2026-06-28 - Writing surface consolidation rail
+
+- Added `docs/quipsly/writing-surface-history-and-consolidation-plan.md` after the writing workflow review exposed too many competing partial authoring surfaces.
+- Product decision: Quipsly writing must meet the OneNote ease-of-organization bar before advanced tagging, assistant, publishing, or research abstractions dominate the user experience.
+- Current recommendation: crown web `/create` as the first canonical writing surface, treat `/manuscript`, `/write`, native Mac shells, and QuipslyStudio writing packets as supporting/experimental until deliberately promoted.
+- This is a consolidation rail, not a solved editor claim. The next implementation work should make the canonical writing surface feel like `Nest -> Notebook / Document -> Section -> Page -> Blocks`.
+- First UI alignment pass: renamed the `/create` left rail from internal "Views & Filters" language to "Nest Notebook", added a writing-first rule card, reframed documents as notebook/documents, and fixed the local outline reorder rendering path so it uses the local boundary order it updates.
+- Added `/create` Quick Capture actions to the Nest Notebook rail for New writing page, Quick note, and New study source, reusing the existing Nest document server action instead of creating another competing authoring path.
+- Added notebook search in `/create` so the left rail can filter writing pages, drafts, notes, study sources, source labels, document kinds, chapters, and episodes without changing the underlying manuscript data.
+- Added a `/create` "You are here" card that shows the current Nest, document, document kind, and active section/whole-document state so the writing surface feels more like a stable notebook than an abstract filter workbench.
+- Added `/create` notebook rail counts and recovery actions: visible document count, writing page count, study source count, "Return to full document", and "Clear notebook search" so hidden/focused state is obvious and reversible.
+- Added `/create` structure creation from the notebook rail: `+ Chapter` and `+ Episode` dispatch into Tagger, which inserts a real tagged heading block through the editor's local block state and existing save/blur path instead of creating a parallel document mutation path.

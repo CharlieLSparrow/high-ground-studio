@@ -2,6 +2,90 @@
 
 Last updated: 2026-06-28
 
+Latest validation checkpoint:
+
+- `./node_modules/.bin/tsc -p apps/quipsly/tsconfig.json --noEmit` passed on 2026-06-28 after the notebook rail, page shelf, shortcuts, quick-create, page rename, last-touched rows, draft branching, and note promotion changes.
+
+## Current implementation checkpoint
+
+The `/create` sidebar now treats notebook navigation as the primary interaction instead of showing every Quipsly concept at once.
+
+The left rail is organized into three author-facing modes:
+
+- Pages: quick capture, writing pages, drafts, notes, and fixed sources.
+- Structure: Chapter/Episode heading creation and the document outline.
+- Tools: workflow lenses and advanced Quipsly context.
+
+The rail also preserves lightweight local continuity:
+
+- The last selected notebook mode is remembered per Nest.
+- The last selected Page Shelf filter is remembered per Nest.
+- Recently opened pages are shown in Pages mode.
+- This is local UX memory only; it does not create another manuscript truth.
+
+Pages mode now includes a Page Shelf filter:
+
+- All: everything in the Nest.
+- Writing: manuscripts, drafts, and editable pages.
+- Notes: quick captures and scraps.
+- Sources: fixed study/reference material.
+
+The shelf filter changes navigation only. It does not move documents, change document truth, or create a second manuscript.
+
+Keyboard navigation checkpoint:
+
+- `Cmd/Ctrl+K` opens Pages mode and focuses notebook search.
+- `Alt+A` switches to the All shelf.
+- `Alt+W` switches to the Writing shelf.
+- `Alt+N` switches to the Notes shelf.
+- `Alt+S` switches to the Sources shelf.
+- `Alt+P` creates a new writing page.
+- `Alt+Q` creates a quick note.
+- `Alt+R` creates a fixed study source.
+- Quick-create shortcuts also switch Pages mode to the matching shelf: Writing, Notes, or Sources.
+- The shortcut does not fire while typing inside an input, textarea, or contenteditable area.
+- This is part of the OneNote-floor goal: fast retrieval must become muscle memory.
+
+Page management checkpoint:
+
+- The active page can be renamed from the notebook rail.
+- Rename updates document metadata only.
+- Rename does not rewrite the body, first block, manuscript text, or fixed source text.
+- Successful rename refreshes the route so the visible notebook state comes back from canonical server data.
+- Failed rename shows an inline error in the notebook rail instead of failing silently.
+- This preserves the distinction between notebook organization and writing/source truth.
+
+Draft branching checkpoint:
+
+- The active page can be duplicated as a draft from the notebook rail.
+- Branching creates a new editable draft document.
+- Branching preserves lineage with `branched-from-document` and `branched-from-label` metadata.
+- Branching does not mutate the original page, fixed source, manuscript text, or external publication state.
+
+Note promotion checkpoint:
+
+- Quick notes can be promoted into writing pages from the notebook rail.
+- Promotion creates a new editable draft document seeded from the note.
+- Promotion preserves lineage with `promoted-from-document` and `promoted-from-label` metadata.
+- Promotion does not mutate or delete the original note.
+
+Recovery export checkpoint:
+
+- Markdown recovery/export uses calm scope-aware labels: `Copy/export page` or `Copy/export section`.
+- Markdown recovery/export includes explicit export-scope metadata.
+- If a Chapter/Episode section is focused, the export contains that focused section.
+- If no section is focused, the export contains the current notebook page/document.
+- The export records how many blocks were exported out of the page total.
+
+Daily desk orientation checkpoint:
+
+- The `/create` sidebar now includes a small `OneNote floor` orientation card.
+- The card repeats the product floor in the UI: capture, find, rename, branch, and export must work without understanding Quipsly internals.
+- The card shows current role, safe next move, and whether the user is working on the whole page or a focused Chapter/Episode section.
+- This is intentionally small. It clarifies trust state without adding another workflow lane or another writing surface.
+
+This is intentionally a UX floor, not the final architecture. The point is to make the daily writing room feel navigable before assistant, publishing, research, and production intelligence become prominent.
+
 ## Product decision
 
 Quipsly writing must become at least as easy to organize and navigate as OneNote before advanced Quipsly intelligence is allowed to dominate the experience.
@@ -326,4 +410,3 @@ Avoid `git add .` until generated files, old prototypes, and external-output art
 If a writing feature does not make it easier to capture, organize, navigate, write, revise, retrieve, or safely publish, it is not part of the writing MVP.
 
 Quipsly can become a research and production operating system. But the writing room must first feel like a room.
-

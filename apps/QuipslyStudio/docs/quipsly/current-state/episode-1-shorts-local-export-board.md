@@ -2,217 +2,220 @@
 
 Output first: export usable local files, watch them, listen to them, improve the edit, then hand off to publishing.
 
-- Generated: `2026-06-21T11:31:49-06:00`
-- Shorts: `12`
-- Local exported files found: `12`
-- Missing exports: `0`
-- Quality review candidates: `12`
+- Generated: `2026-06-23T11:27:20-06:00`
+- Shorts: `9`
+- Local exported files found: `5`
+- Missing exports: `4`
+- Quality review candidates: `5`
 
 ## Stage counts
 
-- `exported-needs-visual-review`: `1`
-- `exported-needs-listen-through`: `11`
+- `missing-export`: `4`
+- `exported-needs-listen-through`: `5`
+
+## Episode coverage
+
+- `episode-2`: `5` shorts, `5` exported files, `5` reviewable
+- `unknown-episode`: `4` shorts, `0` exported files, `0` reviewable
+- `needs-triage`: `4` shorts do not have reliable episode provenance yet
 
 ## Next practical move
 
-- Short: `Learning Why, Not Just What`
-- Stage: `exported-needs-visual-review`
-- Why: Generate a contact sheet or preview the short before deciding.
+- Short: `Script Cursor Proof Short`
+- Stage: `missing-export`
+- Why: Export this short locally so we have an actual file to watch and hear.
 
 ```bash
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-cursor-proof-short' id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'
 ```
 
 ## Shorts
 
-### Learning Why, Not Just What
+### Script Cursor Proof Short
 
-- Stage: `exported-needs-visual-review`
-- Duration: `40.833s`
+- Episode: `unknown-episode` (`missing`)
+- Stage: `missing-export`
+- Duration: `6.24s`
+- Source range: `0.00s -> 6.24s`
 - Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4`
-- Export file present: `True`
-- Next: Generate a contact sheet or preview the short before deciding.
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+- Overlay: This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.
+- Local export: `none yet`
+- Export file present: `False`
+- Next: Export this short locally so we have an actual file to watch and hear.
 
 ```bash
-script/agentctl.sh shorts-select id '701461B7-CB8F-4732-8F4F-D54698C77F23' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'learning-why-not-just-what'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4' 40.83
-script/agentctl.sh shorts-review '701461B7-CB8F-4732-8F4F-D54698C77F23' keep 'Kept after local export review.'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-cursor-proof-short' id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-contact-sheet.png'
+
+script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' keep 'Kept after local export review.'
 ```
 
-### Test Short - Wednesday Rule moment
+### Script Ledger Proof Short
 
-- Stage: `exported-needs-listen-through`
-- Duration: `8.133s`
+- Episode: `unknown-episode` (`missing`)
+- Stage: `missing-export`
+- Duration: `5.74s`
+- Source range: `0.00s -> 5.74s`
 - Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+- Overlay: This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.
+- Local export: `none yet`
+- Export file present: `False`
+- Next: Export this short locally so we have an actual file to watch and hear.
+
+```bash
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-ledger-proof-short' id '456EB86F-9F84-4102-85B6-E6B7C0595681'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short-contact-sheet.png'
+
+script/agentctl.sh shorts-review '456EB86F-9F84-4102-85B6-E6B7C0595681' keep 'Kept after local export review.'
+```
+
+### Agentctl Port Discovery Proof Short
+
+- Episode: `unknown-episode` (`missing`)
+- Stage: `missing-export`
+- Duration: `5.74s`
+- Source range: `0.00s -> 5.74s`
+- Segments: `1`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+- Overlay: This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.
+- Local export: `none yet`
+- Export file present: `False`
+- Next: Export this short locally so we have an actual file to watch and hear.
+
+```bash
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'agentctl-port-discovery-proof-short' id '677FAA5B-B163-4314-BF00-C2357F734E37'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short-contact-sheet.png'
+
+script/agentctl.sh shorts-review '677FAA5B-B163-4314-BF00-C2357F734E37' keep 'Kept after local export review.'
+```
+
+### Search Captions Proof Short
+
+- Episode: `unknown-episode` (`missing`)
+- Stage: `missing-export`
+- Duration: `5.74s`
+- Source range: `0.00s -> 5.74s`
+- Segments: `1`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+- Overlay: This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.
+- Local export: `none yet`
+- Export file present: `False`
+- Next: Export this short locally so we have an actual file to watch and hear.
+
+```bash
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'search-captions-proof-short' id '85F95E60-56E9-4603-8961-B01CF8E84754'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short-contact-sheet.png'
+
+script/agentctl.sh shorts-review '85F95E60-56E9-4603-8961-B01CF8E84754' keep 'Kept after local export review.'
+```
+
+### Episode 2 Review Candidate 01 - 08:24
+
+- Episode: `episode-2` (`inferred-from-text`)
+- Stage: `exported-needs-listen-through`
+- Duration: `22.56s`
+- Source range: `504.40s -> 526.96s`
+- Segments: `1`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: none yet
+- Overlay: none yet
+- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4`
 - Export file present: `True`
 - Next: Listen through the exported file and sanity-check audio.
 
 ```bash
-script/agentctl.sh shorts-select id 'FC28A75E-451B-4D74-9636-2E842805F106' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'test-short-wednesday-rule-moment'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4' 8.13
-script/agentctl.sh shorts-review 'FC28A75E-451B-4D74-9636-2E842805F106' keep 'Kept after local export review.'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-01-08-24' id '471E4086-8367-4E7C-8C5D-BB7132DF3524'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-01-9x16-short-contact-sheet.png'
+script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4' 22.56
+script/agentctl.sh shorts-review '471E4086-8367-4E7C-8C5D-BB7132DF3524' keep 'Kept after local export review.'
 ```
 
-### Farm Work Teaches Stewardship
+### Episode 2 Review Candidate 02 - 11:29
 
+- Episode: `episode-2` (`inferred-from-text`)
 - Stage: `exported-needs-listen-through`
-- Duration: `22.648s`
+- Duration: `20.24s`
+- Source range: `688.84s -> 709.08s`
 - Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: none yet
+- Overlay: none yet
+- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4`
 - Export file present: `True`
 - Next: Listen through the exported file and sanity-check audio.
 
 ```bash
-script/agentctl.sh shorts-select id '18BC489A-7439-4DA5-B967-9726443A008D' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'farm-work-teaches-stewardship'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4' 22.65
-script/agentctl.sh shorts-review '18BC489A-7439-4DA5-B967-9726443A008D' keep 'Kept after local export review.'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-02-11-29' id '48355445-FB52-4FD4-A805-8DD91AE57F70'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-02-9x16-short-contact-sheet.png'
+script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4' 20.24
+script/agentctl.sh shorts-review '48355445-FB52-4FD4-A805-8DD91AE57F70' keep 'Kept after local export review.'
 ```
 
-### Mutual Mentorship
+### Episode 2 Review Candidate 03 - 16:00
 
+- Episode: `episode-2` (`inferred-from-text`)
 - Stage: `exported-needs-listen-through`
-- Duration: `39.998s`
+- Duration: `21.68s`
+- Source range: `960.28s -> 981.96s`
 - Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: none yet
+- Overlay: none yet
+- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4`
 - Export file present: `True`
 - Next: Listen through the exported file and sanity-check audio.
 
 ```bash
-script/agentctl.sh shorts-select id 'B5387438-09BF-41BD-9BDA-4765C75C36E2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'mutual-mentorship'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4' 40.00
-script/agentctl.sh shorts-review 'B5387438-09BF-41BD-9BDA-4765C75C36E2' keep 'Kept after local export review.'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-03-16-00' id 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-03-9x16-short-contact-sheet.png'
+script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4' 21.68
+script/agentctl.sh shorts-review 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E' keep 'Kept after local export review.'
 ```
 
-### Record From Anywhere
+### Episode 2 Review Candidate 04 - 20:59
 
+- Episode: `episode-2` (`inferred-from-text`)
 - Stage: `exported-needs-listen-through`
-- Duration: `45.0s`
+- Duration: `18.56s`
+- Source range: `1259.12s -> 1277.68s`
 - Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: none yet
+- Overlay: none yet
+- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4`
 - Export file present: `True`
 - Next: Listen through the exported file and sanity-check audio.
 
 ```bash
-script/agentctl.sh shorts-select id '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'record-from-anywhere'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4' 45.00
-script/agentctl.sh shorts-review '0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4' keep 'Kept after local export review.'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-04-20-59' id '1A679D84-1478-4E68-8744-910A49795A15'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-04-9x16-short-contact-sheet.png'
+script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4' 18.56
+script/agentctl.sh shorts-review '1A679D84-1478-4E68-8744-910A49795A15' keep 'Kept after local export review.'
 ```
 
-### Parkinson's Awareness Goal
+### Episode 2 Review Candidate 05 - 24:29
 
+- Episode: `episode-2` (`inferred-from-text`)
 - Stage: `exported-needs-listen-through`
-- Duration: `45.0s`
+- Duration: `19.68s`
+- Source range: `1468.84s -> 1488.52s`
 - Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4`
+- Platforms: `YouTube Shorts, Instagram, Facebook, LinkedIn`
+- Hook: none yet
+- Overlay: none yet
+- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4`
 - Export file present: `True`
 - Next: Listen through the exported file and sanity-check audio.
 
 ```bash
-script/agentctl.sh shorts-select id '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'parkinson-s-awareness-goal'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4' 45.00
-script/agentctl.sh shorts-review '7EA786A2-FA74-4D73-AE55-8A23D03AA3FC' keep 'Kept after local export review.'
-```
-
-### Don't Downplay Yourself
-
-- Stage: `exported-needs-listen-through`
-- Duration: `45.0s`
-- Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4`
-- Export file present: `True`
-- Next: Listen through the exported file and sanity-check audio.
-
-```bash
-script/agentctl.sh shorts-select id '50F4E987-F34E-4DBA-976A-42C80055DFB9' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'don-t-downplay-yourself'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4' 45.00
-script/agentctl.sh shorts-review '50F4E987-F34E-4DBA-976A-42C80055DFB9' keep 'Kept after local export review.'
-```
-
-### Identity Changes Behavior
-
-- Stage: `exported-needs-listen-through`
-- Duration: `45.0s`
-- Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4`
-- Export file present: `True`
-- Next: Listen through the exported file and sanity-check audio.
-
-```bash
-script/agentctl.sh shorts-select id 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'identity-changes-behavior'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4' 45.00
-script/agentctl.sh shorts-review 'C4C017E7-C630-4C0D-9AF6-95496916ED8C' keep 'Kept after local export review.'
-```
-
-### Write Things Worth Reading
-
-- Stage: `exported-needs-listen-through`
-- Duration: `45.0s`
-- Segments: `1`
-- Local export: `/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4`
-- Export file present: `True`
-- Next: Listen through the exported file and sanity-check audio.
-
-```bash
-script/agentctl.sh shorts-select id '975A2C70-695D-4D9E-BAAE-A47BA3277590' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'write-things-worth-reading'
-script/agentctl.sh shorts-contact-sheet '/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4' 45.00
-script/agentctl.sh shorts-review '975A2C70-695D-4D9E-BAAE-A47BA3277590' keep 'Kept after local export review.'
-```
-
-### Episode 1 Review Candidate 01 - 04:27
-
-- Stage: `exported-needs-listen-through`
-- Duration: `40.832s`
-- Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4`
-- Export file present: `True`
-- Next: Listen through the exported file and sanity-check audio.
-
-```bash
-script/agentctl.sh shorts-select id '0F028DF4-76EF-4245-9349-1EE266C1AAEB' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-01-04-27'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4' 40.83
-script/agentctl.sh shorts-review '0F028DF4-76EF-4245-9349-1EE266C1AAEB' keep 'Kept after local export review.'
-```
-
-### Episode 1 Review Candidate 02 - 08:19
-
-- Stage: `exported-needs-listen-through`
-- Duration: `45.0s`
-- Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4`
-- Export file present: `True`
-- Next: Listen through the exported file and sanity-check audio.
-
-```bash
-script/agentctl.sh shorts-select id '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-02-08-19'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4' 45.00
-script/agentctl.sh shorts-review '33FDE8CC-9080-4EC1-9294-1F03D0EEF61F' keep 'Kept after local export review.'
-```
-
-### Episode 1 Review Candidate 03 - 26:13
-
-- Stage: `exported-needs-listen-through`
-- Duration: `41.499s`
-- Segments: `1`
-- Local export: `/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4`
-- Export file present: `True`
-- Next: Listen through the exported file and sanity-check audio.
-
-```bash
-script/agentctl.sh shorts-select id 'D9526D0B-311E-46D4-B127-824D713EA2F2' && script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-1-review-candidate-03-26-13'
-script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4'
-script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4' 41.50
-script/agentctl.sh shorts-review 'D9526D0B-311E-46D4-B127-824D713EA2F2' keep 'Kept after local export review.'
+script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-05-24-29' id '3AB6C255-E701-4316-9011-6CB8839B6243'
+script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-05-9x16-short-contact-sheet.png'
+script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4' 19.68
+script/agentctl.sh shorts-review '3AB6C255-E701-4316-9011-6CB8839B6243' keep 'Kept after local export review.'
 ```
