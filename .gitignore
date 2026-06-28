@@ -113,3 +113,9 @@ content/
 !apps/web/content/publish/
 !apps/web/content/publish/hgo-episodes/
 !apps/web/content/publish/hgo-episodes/*.json
+
+# Ignore massive test exports
+docs/quipsly/current-state/*.mp4
+docs/quipsly/current-state/*.png
+docs/quipsly/current-state/*.json
+
