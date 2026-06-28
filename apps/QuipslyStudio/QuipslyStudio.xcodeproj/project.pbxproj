@@ -347,9 +347,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Quipsly Studio can import documents you choose for writing, research, and production work.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Quipsly Studio can import downloaded media or research files that you choose.";
+				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "Quipsly Studio needs access to external media drives so it can read originals, build proxies, and export episodes without mutating source files.";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Quipsly Studio can read legacy media or export packets from Desktop when you explicitly grant access.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -367,9 +374,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Quipsly Studio can import documents you choose for writing, research, and production work.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Quipsly Studio can import downloaded media or research files that you choose.";
+				INFOPLIST_KEY_NSRemovableVolumesUsageDescription = "Quipsly Studio needs access to external media drives so it can read originals, build proxies, and export episodes without mutating source files.";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Quipsly Studio can read legacy media or export packets from Desktop when you explicitly grant access.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

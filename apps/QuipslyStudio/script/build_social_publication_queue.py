@@ -151,10 +151,15 @@ def collect_short_records(release_folder: Path, ledger_path: Path) -> list[Short
 
 
 def ffprobe_duration(path: Path) -> float | None:
+    from quipsly_media_tools import resolve_media_tool
+
+    ffprobe = resolve_media_tool("ffprobe", required=False)
+    if not ffprobe:
+        return None
     try:
         completed = subprocess.run(
             [
-                "ffprobe",
+                ffprobe,
                 "-v",
                 "error",
                 "-show_entries",
@@ -173,11 +178,16 @@ def ffprobe_duration(path: Path) -> float | None:
 
 
 def write_thumbnail(source: Path, destination: Path, duration: float | None) -> bool:
+    from quipsly_media_tools import resolve_media_tool
+
+    ffmpeg = resolve_media_tool("ffmpeg", required=False)
+    if not ffmpeg:
+        return False
     midpoint = max(0.5, min((duration or 2) / 2, 3.0))
     try:
         subprocess.run(
             [
-                "ffmpeg",
+                ffmpeg,
                 "-y",
                 "-v",
                 "error",
@@ -199,6 +209,11 @@ def write_thumbnail(source: Path, destination: Path, duration: float | None) -> 
 
 
 def write_contact_sheet(thumbnails_dir: Path, output_path: Path) -> bool:
+    from quipsly_media_tools import resolve_media_tool
+
+    ffmpeg = resolve_media_tool("ffmpeg", required=False)
+    if not ffmpeg:
+        return False
     thumbnails = sorted(thumbnails_dir.glob("*.jpg"))
     if not thumbnails:
         return False
@@ -206,7 +221,7 @@ def write_contact_sheet(thumbnails_dir: Path, output_path: Path) -> bool:
     try:
         subprocess.run(
             [
-                "ffmpeg",
+                ffmpeg,
                 "-y",
                 "-v",
                 "error",

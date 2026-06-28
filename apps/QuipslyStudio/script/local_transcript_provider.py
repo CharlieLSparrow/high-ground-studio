@@ -48,16 +48,21 @@ def provider_doctor() -> dict[str, Any]:
         or ""
     )
     whisper_cpp_model = whisper_cpp_model_path()
+    python_whisper_available = module_available("whisper")
+    mlx_whisper_available = module_available("mlx_whisper")
+    whisper_cpp_available = bool(whisper_cpp_cli and whisper_cpp_model and whisper_cpp_model.exists())
     return {
         "packetType": "quipslystudio-local-transcript-provider-doctor",
         "ffmpegPath": shutil.which("ffmpeg") or "",
         "ffprobePath": shutil.which("ffprobe") or "",
-        "pythonWhisperAvailable": module_available("whisper"),
-        "mlxWhisperAvailable": module_available("mlx_whisper"),
+        "available": bool(python_whisper_available or mlx_whisper_available or whisper_cli or whisper_cpp_available),
+        "pythonWhisperAvailable": python_whisper_available,
+        "mlxWhisperAvailable": mlx_whisper_available,
         "whisperCliPath": whisper_cli,
         "whisperCppCliPath": whisper_cpp_cli,
         "whisperCppModelPath": str(whisper_cpp_model) if whisper_cpp_model else "",
         "whisperCppModelExists": bool(whisper_cpp_model and whisper_cpp_model.exists()),
+        "whisperCppAvailable": whisper_cpp_available,
         "defaultProvider": os.environ.get("QUIPSLY_TRANSCRIPT_PROVIDER", "auto"),
         "defaultModel": os.environ.get("QUIPSLY_TRANSCRIPT_MODEL", "base"),
         "defaultLanguage": os.environ.get("QUIPSLY_TRANSCRIPT_LANGUAGE", "en"),

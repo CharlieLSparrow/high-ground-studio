@@ -134,10 +134,12 @@ def write_job_state(job_paths: list[Path], report: dict, status: str, phase: str
         "processedCount": len(report.get("processed", [])),
         "skippedCount": len(report.get("skipped", [])),
         "failedCount": len(report.get("failed", [])),
+        "attachFailedCount": len(report.get("attachFailed", [])),
         "current": current or {},
         "lastProcessed": (report.get("processed") or [])[-1] if report.get("processed") else {},
         "lastSkipped": (report.get("skipped") or [])[-1] if report.get("skipped") else {},
         "lastFailure": (report.get("failed") or [])[-1] if report.get("failed") else {},
+        "lastAttachFailure": (report.get("attachFailed") or [])[-1] if report.get("attachFailed") else {},
         "sourcePolicy": "Whole source lanes stay whole. This job generates or attaches full-length proxies; it never creates chopped timeline clips.",
     }
     for path in job_paths:
@@ -252,6 +254,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="Optional maximum reachable lanes to process.")
     parser.add_argument("--short-first", action="store_true", help="Process reachable lanes by declared source duration ascending.")
     parser.add_argument("--skip-existing", action="store_true", help="Skip lanes whose attached deterministic proxy already exists.")
+    parser.add_argument("--production-only", action="store_true", help="Skip lanes marked ignoreForProduction so held recovery/context media does not block the main edit lane.")
     parser.add_argument("--max-source-bytes", type=int, default=0, help="Skip reachable sources larger than this many bytes. 0 means no byte cap.")
     parser.add_argument("--max-source-gb", type=float, default=0, help="Skip reachable sources larger than this many GB. 0 means no GB cap.")
     parser.add_argument("--max-duration", type=float, default=0, help="Skip sources with declared duration longer than this many seconds. 0 means no duration cap.")
@@ -286,6 +289,7 @@ def main() -> int:
         "processed": [],
         "skipped": [],
         "failed": [],
+        "attachFailed": [],
         "saved": None,
     }
     write_job_state(job_paths, report, "running", "starting")
@@ -323,6 +327,10 @@ def main() -> int:
         report["failed"].append(item)
         write_job_state(job_paths, report, "running", "failed_lane", item)
 
+    def record_attach_failure(item: dict) -> None:
+        report["attachFailed"].append(item)
+        write_job_state(job_paths, report, "running", "attach_failed_lane", item)
+
     for lane in lanes:
         source = lane.get("sourceVideo") or {}
         source_path = file_url_to_path(source.get("mediaURL"))
@@ -332,6 +340,9 @@ def main() -> int:
         lane_id = lane.get("id") or lane_name
         declared_duration = float(source.get("duration") or 0)
 
+        if args.production_only and (lane.get("metadata") or {}).get("ignoreForProduction") == True:
+            record_skip({"lane": lane_name, "reason": "held lane excluded by --production-only"})
+            continue
         if args.kind != "all" and kind != args.kind:
             record_skip({"lane": lane_name, "reason": f"kind {kind} excluded"})
             continue
@@ -445,7 +456,7 @@ def main() -> int:
                 item["attach"] = "ok" if ok else "failed"
                 item["attachResponse"] = compact(body)
                 if not ok:
-                    record_failure({
+                    record_attach_failure({
                         "lane": lane_name,
                         "laneId": lane_id,
                         "kind": kind,
@@ -458,7 +469,7 @@ def main() -> int:
                     item["attachReady"] = ready
                     item["attachReadyDetail"] = detail
                     if not ready:
-                        record_failure({
+                        record_attach_failure({
                             "lane": lane_name,
                             "laneId": lane_id,
                             "kind": kind,
@@ -477,7 +488,7 @@ def main() -> int:
         if not ok:
             record_failure({"error": f"save-session failed: {compact(body)}"})
 
-    final_status = "failed" if report["failed"] else "completed"
+    final_status = "failed" if report["failed"] else ("completed_with_attach_warnings" if report["attachFailed"] else "completed")
     write_job_state(job_paths, report, final_status, "finished")
     print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if report["failed"] else 0

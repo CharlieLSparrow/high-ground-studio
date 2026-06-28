@@ -648,6 +648,10 @@ def build_packet(queue_path: str, state_path: str, output_dir: str, basename: st
         "artifactManifestJson": os.path.join(output_dir, f"{basename}-artifact-manifest.json"),
         "operatorFocus": "Make the next useful production move obvious: export real files, improve promising shorts, package platform-native copy, and keep Episode 1-3 coverage visible.",
         "shortsStrategyBasis": SHORTS_STRATEGY_BASIS,
+        "shortCount": local.get("shortCount") or growth.get("shortCount") or 0,
+        "localExportedFileCount": local.get("localExportedFileCount") or 0,
+        "missingExportCount": local.get("missingExportCount") or 0,
+        "qualityReviewCount": local.get("qualityReviewCount") or 0,
         "localExport": {
             "shortCount": local.get("shortCount"),
             "stageCounts": local.get("stageCounts"),

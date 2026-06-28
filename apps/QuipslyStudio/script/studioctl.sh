@@ -6,6 +6,7 @@ APP_NAME="QuipslyMac"
 APP_DISPLAY_NAME="Quipsly Studio"
 APP_BUNDLE_ID="com.highground.QuipslyMac"
 LEGACY_BUNDLE_ID="com.quipsly.mac"
+EPISODE1_SESSION="${QUIPSLY_EPISODE1_SESSION:-episode-1-codex-real-edit-v1-youtube-wordtimed}"
 APP_BUNDLE="$ROOT_DIR/DerivedData/Build/Products/Debug/$APP_NAME.app"
 APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
@@ -292,7 +293,7 @@ launch_app() {
 }
 
 load_episode1() {
-  "$ROOT_DIR/script/agentctl.sh" load-session episode-1-premiere-rescue >/tmp/quipslystudio-load-episode1.json
+  "$ROOT_DIR/script/agentctl.sh" load-session-wait "$EPISODE1_SESSION" 90 >/tmp/quipslystudio-load-episode1.json
   state_summary
 }
 
@@ -330,7 +331,7 @@ print(json.dumps({key: state.get(key) for key in keys}, indent=2, sort_keys=True
 }
 
 prove_editor_control() {
-  "$ROOT_DIR/script/agentctl.sh" load-session episode-1-premiere-rescue >/tmp/quipslystudio-prove-load.json
+  "$ROOT_DIR/script/agentctl.sh" load-session-wait "$EPISODE1_SESSION" 90 >/tmp/quipslystudio-prove-load.json
   "$ROOT_DIR/script/agentctl.sh" timeline-zoom frame >/tmp/quipslystudio-prove-zoom.json
   "$ROOT_DIR/script/agentctl.sh" select-decision first video >/tmp/quipslystudio-prove-first.json
   "$ROOT_DIR/script/agentctl.sh" select-decision next video >/tmp/quipslystudio-prove-next.json
@@ -340,10 +341,11 @@ prove_editor_control() {
 import json
 import sys
 
+expected_session = sys.argv[1]
 state = json.load(sys.stdin)
 errors = []
-if state.get("activeSessionName") != "episode-1-premiere-rescue":
-    errors.append("Episode 1 rescue session is not active.")
+if state.get("activeSessionName") != expected_session:
+    errors.append(f"Configured Episode 1 session is not active. expected={expected_session} actual={state.get('activeSessionName')}")
 if state.get("productionReady") is not True:
     errors.append("Episode 1 is not proxy production ready.")
 if int(state.get("sourceMonitorVideoCount") or 0) < 3:
@@ -372,7 +374,7 @@ proof = {
 print(json.dumps(proof, indent=2, sort_keys=True))
 if errors:
     raise SystemExit(1)
-'
+' "$EPISODE1_SESSION"
 }
 
 prove_ui_ready() {
@@ -382,7 +384,7 @@ prove_ui_ready() {
 }
 
 prove_program_scroll() {
-  "$ROOT_DIR/script/agentctl.sh" load-session episode-1-premiere-rescue >/tmp/quipslystudio-prove-program-scroll-load.json
+  "$ROOT_DIR/script/agentctl.sh" load-session-wait "$EPISODE1_SESSION" 90 >/tmp/quipslystudio-prove-program-scroll-load.json
   sleep 2
   "$ROOT_DIR/script/agentctl.sh" scrub 0 >/dev/null
   sleep 0.5
@@ -439,7 +441,7 @@ PY
 }
 
 prove_timeline_drag() {
-  "$ROOT_DIR/script/agentctl.sh" load-session episode-1-premiere-rescue >/tmp/quipslystudio-prove-timeline-drag-load.json
+  "$ROOT_DIR/script/agentctl.sh" load-session-wait "$EPISODE1_SESSION" 90 >/tmp/quipslystudio-prove-timeline-drag-load.json
   sleep 2
   "$ROOT_DIR/script/agentctl.sh" timeline-zoom set 10 >/dev/null
   "$ROOT_DIR/script/agentctl.sh" scrub 0 >/dev/null

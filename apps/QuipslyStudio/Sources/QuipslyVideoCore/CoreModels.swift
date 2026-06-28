@@ -3,6 +3,19 @@ import Foundation
 public enum ExportFormat: String, Codable, Equatable, CaseIterable, Hashable {
     case horizontal16x9 = "16:9"
     case vertical9x16 = "9:16"
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = (try? container.decode(String.self)) ?? ""
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "9:16", "9x16", "vertical", "vertical9x16":
+            self = .vertical9x16
+        case "16:9", "16x9", "horizontal", "horizontal16x9":
+            self = .horizontal16x9
+        default:
+            self = .vertical9x16
+        }
+    }
 }
 
 public struct MediaItem: Identifiable, Codable, Equatable {
@@ -17,11 +30,42 @@ public struct MediaItem: Identifiable, Codable, Equatable {
         self.proxyURL = proxyURL
         self.name = name
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case url
+        case proxyURL
+        case name
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedURL = try container.decodeIfPresent(URL.self, forKey: .url)
+            ?? URL(fileURLWithPath: "/missing-media")
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        url = decodedURL
+        proxyURL = try container.decodeIfPresent(URL.self, forKey: .proxyURL)
+        let decodedName = try container.decodeIfPresent(String.self, forKey: .name)
+            ?? decodedURL.lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        name = decodedName.isEmpty ? "Unnamed media" : decodedName
+    }
 }
 
 public enum PlaybackMode: String, Codable, Equatable, CaseIterable, Hashable {
     case playEdit = "Play Edit"
     case playThrough = "Play Through"
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = (try? container.decode(String.self)) ?? ""
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "play through", "playthrough", "through", "all", "play all":
+            self = .playThrough
+        default:
+            self = .playEdit
+        }
+    }
 }
 
 public struct VideoProject: Identifiable, Codable, Equatable {
@@ -229,8 +273,8 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Recovered sequence"
         orientationTrack = try container.decodeIfPresent(OrientationTrack.self, forKey: .orientationTrack) ?? OrientationTrack()
         verticalOrientationTrack = try container.decodeIfPresent(OrientationTrack.self, forKey: .verticalOrientationTrack) ?? OrientationTrack()
         lanes = try container.decodeIfPresent([VideoLane].self, forKey: .lanes) ?? []
@@ -278,6 +322,32 @@ public struct EditPassContext: Codable, Equatable, Sendable {
         self.status = status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "active" : status
         self.startedAt = startedAt
         self.updatedAt = updatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case actor
+        case actorType
+        case passNumber
+        case goal
+        case status
+        case startedAt
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedStartedAt = try container.decodeIfPresent(Date.self, forKey: .startedAt) ?? Date()
+        self.init(
+            label: try container.decodeIfPresent(String.self, forKey: .label) ?? "Unlabeled editing pass",
+            actor: try container.decodeIfPresent(String.self, forKey: .actor) ?? "Codex",
+            actorType: try container.decodeIfPresent(String.self, forKey: .actorType) ?? "agent",
+            passNumber: try container.decodeIfPresent(Int.self, forKey: .passNumber) ?? 1,
+            goal: try container.decodeIfPresent(String.self, forKey: .goal) ?? "Create a useful edit while improving the editor.",
+            status: try container.decodeIfPresent(String.self, forKey: .status) ?? "active",
+            startedAt: decodedStartedAt,
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? decodedStartedAt
+        )
     }
 }
 
@@ -336,7 +406,7 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         sourceAssetId = try container.decodeIfPresent(UUID.self, forKey: .sourceAssetId)
         speaker = try container.decodeIfPresent(String.self, forKey: .speaker) ?? "Speaker"
         let decodedStart = try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0
@@ -374,6 +444,28 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
         self.endTime = max(max(0, startTime), endTime)
         self.confidence = confidence
         self.source = source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "estimated" : source
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case word
+        case startTime
+        case endTime
+        case confidence
+        case source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedStart = try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            word: try container.decodeIfPresent(String.self, forKey: .word) ?? "",
+            startTime: decodedStart,
+            endTime: try container.decodeIfPresent(Double.self, forKey: .endTime) ?? decodedStart,
+            confidence: try container.decodeIfPresent(Double.self, forKey: .confidence),
+            source: try container.decodeIfPresent(String.self, forKey: .source) ?? "estimated"
+        )
     }
 }
 
@@ -414,6 +506,37 @@ public struct TranscriptJobRecord: Identifiable, Codable, Equatable, Sendable {
         self.completedAt = completedAt
         self.error = error
         self.segmentCount = segmentCount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case sourceLaneId
+        case sourceLaneName
+        case sourcePath
+        case provider
+        case commandPath
+        case status
+        case startedAt
+        case completedAt
+        case error
+        case segmentCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceLaneId: try container.decodeIfPresent(UUID.self, forKey: .sourceLaneId),
+            sourceLaneName: try container.decodeIfPresent(String.self, forKey: .sourceLaneName) ?? "",
+            sourcePath: try container.decodeIfPresent(String.self, forKey: .sourcePath) ?? "",
+            provider: try container.decodeIfPresent(String.self, forKey: .provider) ?? "local-command",
+            commandPath: try container.decodeIfPresent(String.self, forKey: .commandPath),
+            status: try container.decodeIfPresent(String.self, forKey: .status) ?? "queued",
+            startedAt: try container.decodeIfPresent(Date.self, forKey: .startedAt) ?? Date(),
+            completedAt: try container.decodeIfPresent(Date.self, forKey: .completedAt),
+            error: try container.decodeIfPresent(String.self, forKey: .error) ?? "",
+            segmentCount: try container.decodeIfPresent(Int.self, forKey: .segmentCount) ?? 0
+        )
     }
 }
 
@@ -469,6 +592,48 @@ public struct EditCorrectionNoteRecord: Identifiable, Codable, Equatable, Sendab
         self.reviewStatus = reviewStatus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "open" : reviewStatus
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case actor
+        case actorType
+        case category
+        case note
+        case sequenceTime
+        case sourceTime
+        case laneId
+        case laneName
+        case tagId
+        case tagType
+        case beforeJson
+        case afterJson
+        case reviewStatus
+        case createdAt
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let created = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            actor: try container.decodeIfPresent(String.self, forKey: .actor) ?? "Unknown editor",
+            actorType: try container.decodeIfPresent(String.self, forKey: .actorType) ?? "human",
+            category: try container.decodeIfPresent(String.self, forKey: .category) ?? "edit-note",
+            note: try container.decodeIfPresent(String.self, forKey: .note) ?? "",
+            sequenceTime: try container.decodeIfPresent(Double.self, forKey: .sequenceTime) ?? 0,
+            sourceTime: try container.decodeIfPresent(Double.self, forKey: .sourceTime),
+            laneId: try container.decodeIfPresent(UUID.self, forKey: .laneId),
+            laneName: try container.decodeIfPresent(String.self, forKey: .laneName) ?? "",
+            tagId: try container.decodeIfPresent(UUID.self, forKey: .tagId),
+            tagType: try container.decodeIfPresent(String.self, forKey: .tagType) ?? "",
+            beforeJson: try container.decodeIfPresent(String.self, forKey: .beforeJson) ?? "",
+            afterJson: try container.decodeIfPresent(String.self, forKey: .afterJson) ?? "",
+            reviewStatus: try container.decodeIfPresent(String.self, forKey: .reviewStatus) ?? "open",
+            createdAt: created,
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? created
+        )
     }
 }
 
@@ -527,6 +692,49 @@ public struct EditActionLedgerRecord: Identifiable, Codable, Equatable, Sendable
         self.afterJson = afterJson
         self.note = note
         self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case actor
+        case actorType
+        case actionId
+        case actionLabel
+        case category
+        case endpoint
+        case sequenceTime
+        case sourceTime
+        case laneId
+        case laneName
+        case tagId
+        case tagType
+        case beforeJson
+        case afterJson
+        case note
+        case createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            actor: try container.decodeIfPresent(String.self, forKey: .actor) ?? "Codex",
+            actorType: try container.decodeIfPresent(String.self, forKey: .actorType) ?? "agent",
+            actionId: try container.decodeIfPresent(String.self, forKey: .actionId) ?? UUID().uuidString,
+            actionLabel: try container.decodeIfPresent(String.self, forKey: .actionLabel) ?? "Recovered edit action",
+            category: try container.decodeIfPresent(String.self, forKey: .category) ?? "edit-action",
+            endpoint: try container.decodeIfPresent(String.self, forKey: .endpoint) ?? "",
+            sequenceTime: try container.decodeIfPresent(Double.self, forKey: .sequenceTime) ?? 0,
+            sourceTime: try container.decodeIfPresent(Double.self, forKey: .sourceTime),
+            laneId: try container.decodeIfPresent(UUID.self, forKey: .laneId),
+            laneName: try container.decodeIfPresent(String.self, forKey: .laneName) ?? "",
+            tagId: try container.decodeIfPresent(UUID.self, forKey: .tagId),
+            tagType: try container.decodeIfPresent(String.self, forKey: .tagType) ?? "",
+            beforeJson: try container.decodeIfPresent(String.self, forKey: .beforeJson) ?? "",
+            afterJson: try container.decodeIfPresent(String.self, forKey: .afterJson) ?? "",
+            note: try container.decodeIfPresent(String.self, forKey: .note) ?? "",
+            createdAt: try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        )
     }
 }
 
@@ -1490,6 +1698,35 @@ public struct ShortClipSegment: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case startTime
+        case duration
+        case sourceLaneId
+        case sourceTagId
+        case notes
+        case createdAt
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedStart = try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0
+        let created = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            title: try container.decodeIfPresent(String.self, forKey: .title) ?? "Segment",
+            startTime: decodedStart,
+            duration: try container.decodeIfPresent(Double.self, forKey: .duration) ?? 0,
+            sourceLaneId: try container.decodeIfPresent(UUID.self, forKey: .sourceLaneId),
+            sourceTagId: try container.decodeIfPresent(UUID.self, forKey: .sourceTagId),
+            notes: try container.decodeIfPresent(String.self, forKey: .notes) ?? "",
+            createdAt: created,
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? created
+        )
+    }
 }
 
 public struct ShortDestinationPreset: Identifiable, Codable, Equatable {
@@ -1515,6 +1752,27 @@ public struct ShortDestinationPreset: Identifiable, Codable, Equatable {
         self.hashtags = hashtags
         self.status = status
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case platform
+        case title
+        case caption
+        case hashtags
+        case status
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            platform: try container.decodeIfPresent(String.self, forKey: .platform) ?? "Unassigned",
+            title: try container.decodeIfPresent(String.self, forKey: .title) ?? "",
+            caption: try container.decodeIfPresent(String.self, forKey: .caption) ?? "",
+            hashtags: try container.decodeIfPresent([String].self, forKey: .hashtags) ?? [],
+            status: try container.decodeIfPresent(String.self, forKey: .status) ?? "draft"
+        )
+    }
 }
 
 public struct OrientationTrack: Identifiable, Codable, Equatable {
@@ -1524,6 +1782,19 @@ public struct OrientationTrack: Identifiable, Codable, Equatable {
     public init(id: UUID = UUID(), keyframes: [FramingKeyframe] = []) {
         self.id = id
         self.keyframes = keyframes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case keyframes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            keyframes: try container.decodeIfPresent([FramingKeyframe].self, forKey: .keyframes) ?? []
+        )
     }
 
     public func interpolatedFrame(at time: Double) -> FramingKeyframe {
@@ -1565,6 +1836,19 @@ public enum InterpolationMode: String, Codable, Equatable, CaseIterable {
     case linear = "Linear"
     case bezier = "Bezier"
     case hold = "Hold"
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = (try? container.decode(String.self)) ?? ""
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "bezier", "ease", "eased":
+            self = .bezier
+        case "hold", "step":
+            self = .hold
+        default:
+            self = .linear
+        }
+    }
 }
 
 public struct FramingKeyframe: Identifiable, Codable, Equatable {
@@ -1585,6 +1869,29 @@ public struct FramingKeyframe: Identifiable, Codable, Equatable {
         self.fov = fov
         self.interpolation = interpolation
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case time
+        case yaw
+        case pitch
+        case roll
+        case fov
+        case interpolation
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            time: try container.decodeIfPresent(Double.self, forKey: .time) ?? 0,
+            yaw: try container.decodeIfPresent(Double.self, forKey: .yaw) ?? 0,
+            pitch: try container.decodeIfPresent(Double.self, forKey: .pitch) ?? 0,
+            roll: try container.decodeIfPresent(Double.self, forKey: .roll) ?? 0,
+            fov: try container.decodeIfPresent(Double.self, forKey: .fov) ?? 90,
+            interpolation: try container.decodeIfPresent(InterpolationMode.self, forKey: .interpolation) ?? .linear
+        )
+    }
 }
 
 public struct VideoLane: Identifiable, Codable, Equatable {
@@ -1604,6 +1911,25 @@ public struct VideoLane: Identifiable, Codable, Equatable {
         self.sourceVideo = sourceVideo
         self.tags = tags
         self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case sourceVideo
+        case tags
+        case metadata
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            name: try container.decodeIfPresent(String.self, forKey: .name) ?? "Recovered lane",
+            sourceVideo: try container.decodeIfPresent(SourceVideo.self, forKey: .sourceVideo),
+            tags: try container.decodeIfPresent([VideoTag].self, forKey: .tags) ?? [],
+            metadata: try container.decodeIfPresent(VideoLaneMetadata.self, forKey: .metadata)
+        )
     }
 }
 
@@ -1663,6 +1989,49 @@ public struct VideoLaneMetadata: Codable, Equatable {
         self.programCropKeyframes16x9 = programCropKeyframes16x9
         self.programCropKeyframes9x16 = programCropKeyframes9x16
     }
+
+    enum CodingKeys: String, CodingKey {
+        case sourceAssetId
+        case mediaKind
+        case role
+        case trackIds
+        case sourcePath
+        case originalPath
+        case vaultRawPath
+        case vaultProxyPath
+        case assetFingerprint
+        case declaredExists
+        case sourceLabel
+        case isPremiereRescue
+        case ignoreForProduction
+        case programCrop16x9
+        case programCrop9x16
+        case programCropKeyframes16x9
+        case programCropKeyframes9x16
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            sourceAssetId: try container.decodeIfPresent(String.self, forKey: .sourceAssetId),
+            mediaKind: try container.decodeIfPresent(String.self, forKey: .mediaKind) ?? "unknown",
+            role: try container.decodeIfPresent(String.self, forKey: .role) ?? "unknown",
+            trackIds: try container.decodeIfPresent([String].self, forKey: .trackIds) ?? [],
+            sourcePath: try container.decodeIfPresent(String.self, forKey: .sourcePath),
+            originalPath: try container.decodeIfPresent(String.self, forKey: .originalPath),
+            vaultRawPath: try container.decodeIfPresent(String.self, forKey: .vaultRawPath),
+            vaultProxyPath: try container.decodeIfPresent(String.self, forKey: .vaultProxyPath),
+            assetFingerprint: try container.decodeIfPresent(String.self, forKey: .assetFingerprint),
+            declaredExists: try container.decodeIfPresent(Bool.self, forKey: .declaredExists),
+            sourceLabel: try container.decodeIfPresent(String.self, forKey: .sourceLabel),
+            isPremiereRescue: try container.decodeIfPresent(Bool.self, forKey: .isPremiereRescue) ?? false,
+            ignoreForProduction: try container.decodeIfPresent(Bool.self, forKey: .ignoreForProduction),
+            programCrop16x9: try container.decodeIfPresent(ProgramCropAdjustment.self, forKey: .programCrop16x9),
+            programCrop9x16: try container.decodeIfPresent(ProgramCropAdjustment.self, forKey: .programCrop9x16),
+            programCropKeyframes16x9: try container.decodeIfPresent([ProgramCropKeyframe].self, forKey: .programCropKeyframes16x9),
+            programCropKeyframes9x16: try container.decodeIfPresent([ProgramCropKeyframe].self, forKey: .programCropKeyframes9x16)
+        )
+    }
 }
 
 public struct ProgramCropAdjustment: Codable, Equatable {
@@ -1674,6 +2043,21 @@ public struct ProgramCropAdjustment: Codable, Equatable {
         self.panX = min(1, max(-1, panX.isFinite ? panX : 0))
         self.panY = min(1, max(-1, panY.isFinite ? panY : 0))
         self.zoom = min(4, max(1, zoom.isFinite ? zoom : 1))
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case panX
+        case panY
+        case zoom
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            panX: try container.decodeIfPresent(Double.self, forKey: .panX) ?? 0,
+            panY: try container.decodeIfPresent(Double.self, forKey: .panY) ?? 0,
+            zoom: try container.decodeIfPresent(Double.self, forKey: .zoom) ?? 1
+        )
     }
 
     public func adjusted(panXDelta: Double = 0, panYDelta: Double = 0, zoomDelta: Double = 0) -> ProgramCropAdjustment {
@@ -1743,6 +2127,27 @@ public struct ProgramCropKeyframe: Identifiable, Codable, Equatable {
     public var cropAdjustment: ProgramCropAdjustment {
         ProgramCropAdjustment(panX: panX, panY: panY, zoom: zoom)
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case time
+        case panX
+        case panY
+        case zoom
+        case interpolation
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            time: try container.decodeIfPresent(Double.self, forKey: .time) ?? 0,
+            panX: try container.decodeIfPresent(Double.self, forKey: .panX) ?? 0,
+            panY: try container.decodeIfPresent(Double.self, forKey: .panY) ?? 0,
+            zoom: try container.decodeIfPresent(Double.self, forKey: .zoom) ?? 1,
+            interpolation: try container.decodeIfPresent(InterpolationMode.self, forKey: .interpolation) ?? .linear
+        )
+    }
 }
 
 public struct NativeEditorSession: Codable, Equatable {
@@ -1754,6 +2159,21 @@ public struct NativeEditorSession: Codable, Equatable {
         self.savedAt = savedAt
         self.activeSequenceId = activeSequenceId
         self.project = project
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case savedAt
+        case activeSequenceId
+        case project
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            savedAt: try container.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date(),
+            activeSequenceId: try container.decodeIfPresent(UUID.self, forKey: .activeSequenceId),
+            project: try container.decodeIfPresent(VideoProject.self, forKey: .project) ?? VideoProject(title: "Recovered Quipsly Session")
+        )
     }
 }
 
@@ -1773,6 +2193,27 @@ public struct SourceVideo: Identifiable, Codable, Equatable {
         self.offset = offset
         self.is360 = is360
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case mediaURL
+        case proxyURL
+        case duration
+        case offset
+        case is360
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            mediaURL: try container.decodeIfPresent(URL.self, forKey: .mediaURL) ?? URL(fileURLWithPath: "/missing-media"),
+            proxyURL: try container.decodeIfPresent(URL.self, forKey: .proxyURL),
+            duration: try container.decodeIfPresent(Double.self, forKey: .duration) ?? 0,
+            offset: try container.decodeIfPresent(Double.self, forKey: .offset) ?? 0,
+            is360: try container.decodeIfPresent(Bool.self, forKey: .is360) ?? false
+        )
+    }
 }
 
 public enum TagType: String, Codable, Equatable, CaseIterable {
@@ -1782,6 +2223,25 @@ public enum TagType: String, Codable, Equatable, CaseIterable {
     case cut = "Cut"
     case active = "Active"
     case focus = "Focus"
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = (try? container.decode(String.self)) ?? ""
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "active", "show", "visible", "program":
+            self = .active
+        case "cut", "skip", "quiet", "gap", "inactive":
+            self = .cut
+        case "keep":
+            self = .keep
+        case "meme":
+            self = .meme
+        case "focus":
+            self = .focus
+        default:
+            self = .highlight
+        }
+    }
 }
 
 public struct VideoTag: Identifiable, Codable, Equatable {
@@ -1795,5 +2255,22 @@ public struct VideoTag: Identifiable, Codable, Equatable {
         self.type = type
         self.startTime = startTime
         self.duration = duration
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case startTime
+        case duration
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            type: try container.decodeIfPresent(TagType.self, forKey: .type) ?? .highlight,
+            startTime: try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0,
+            duration: try container.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+        )
     }
 }

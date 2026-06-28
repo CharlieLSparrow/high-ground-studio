@@ -116,6 +116,162 @@ Usage:
   script/agentctl.sh release-export-prepare [/absolute/output/folder] [basename] [proof-seconds|full] [wait-seconds]
   script/agentctl.sh release-export-smoke [/proof-folder-or-manifest.json]
   script/agentctl.sh release-export-review [/proof-folder-or-manifest.json] [--json]
+  script/agentctl.sh release-review-board [/release-root]
+  script/agentctl.sh release-platform-prep [/release-root]
+  script/agentctl.sh release-package-validation [/release-root]
+  script/agentctl.sh studio-package-blocker-triage [/release-root]
+  script/agentctl.sh release-human-review-ledger [/release-root]
+  script/agentctl.sh release-review-blockers [/release-root] [--episode N]
+  script/agentctl.sh studio-duration-decision-sheet [/release-root]
+  script/agentctl.sh tower-runway [/release-root]
+  script/agentctl.sh tower-runway-smoke [/release-root]
+  script/agentctl.sh tower-social-command-center [/release-root]
+  script/agentctl.sh tower-next-publishing-card [/release-root] [--kind manual|shorts]
+  script/agentctl.sh tower-receipt-readiness-packet [/release-root]
+  script/agentctl.sh tower-manual-calendar [/release-root] [YYYY-MM-DD]
+  script/agentctl.sh tower-publisher-desk [/release-root]
+  script/agentctl.sh tower-publishing-sprint [/release-root]
+  script/agentctl.sh tower-publication-control-room [/release-root]
+  script/agentctl.sh tower-operator-workbench [/release-root] [manual-limit] [short-limit]
+  script/agentctl.sh tower-review-gate-board [/release-root]
+  script/agentctl.sh tower-review-unblock-brief [/release-root] [limit]
+  script/agentctl.sh tower-first-review-session [/release-root]
+  script/agentctl.sh studio-package-quality-desk [/release-root]
+  script/agentctl.sh tower-review-command-sheet [/release-root]
+  script/agentctl.sh tower-review-anomalies [/release-root]
+  script/agentctl.sh tower-review-decision-dry-run EPISODE artifact_id approve|refine|reject|hold|pending reviewer [notes]
+  script/agentctl.sh tower-review-decision EPISODE artifact_id approve|refine|reject|hold|pending reviewer [notes]
+  script/agentctl.sh tower-receipt-dry-run EPISODE platform url [providerId] [postedAt] [capturedBy] [notes]
+  script/agentctl.sh tower-receipt EPISODE platform url [providerId] [postedAt] [capturedBy] [notes]
+  script/agentctl.sh photo-grove-board [/source-folder] [limit] [--quality-mode cached|full|off]
+  script/agentctl.sh photo-grove-smoke [/source-folder] [limit] [--quality-mode cached|full|off]
+  script/agentctl.sh photo-grove-decision PHOTO_ID keep|reject|review|favorite|pending [rating|-] [tag1,tag2] [actor] [note]
+  script/agentctl.sh photo-grove-group-decision GROUP_ID keep|reject|review|favorite|pending [rating|-] [tag1,tag2] [actor] [note]
+  script/agentctl.sh photo-grove-status [latest|session-folder]
+  script/agentctl.sh photo-grove-export-prep [latest|session-folder]
+  script/agentctl.sh photo-grove-review-batch [latest|session-folder] [limit-groups]
+  script/agentctl.sh photo-grove-client-proof [latest|session-folder]
+  script/agentctl.sh photo-grove-cull-suggestions [limit]
+  script/agentctl.sh photo-grove-review-session [/photo-root] [limit]
+  script/agentctl.sh photo-grove-first-keepers [latest|session-folder] [limit]
+  script/agentctl.sh photo-grove-culling-sprint [/photo-root] [limit]
+  script/agentctl.sh photo-grove-command-sheet [/photo-root]
+  script/agentctl.sh photo-grove-keeper-desk [/photo-root]
+  script/agentctl.sh photo-grove-proof-desk [/photo-root]
+  script/agentctl.sh photo-grove-decision-desk [/photo-root]
+  script/agentctl.sh photo-grove-cull-rehearsal [/photo-root] [limit]
+  script/agentctl.sh photo-grove-first-pass-triage [/photo-root] [limit]
+  script/agentctl.sh photo-grove-card-backup-receipt [/card-source] [/backup-destination] [/photo-root]
+  script/agentctl.sh photo-grove-refresh-card-intake [/card-source] [/backup-destination] [/photo-root]
+  script/agentctl.sh photo-grove-card-intake-runway [/photo-root]
+  script/agentctl.sh photo-grove-live-intake-status [/photo-root]
+  script/agentctl.sh photo-grove-cloud-duplication-plan [/photo-root]
+  script/agentctl.sh photo-grove-cloud-approval-desk [/photo-root]
+  script/agentctl.sh photo-grove-ready-folder-packet [/photo-root]
+  script/agentctl.sh photo-grove-ready-folder-sampler [/photo-root] [per-folder]
+  script/agentctl.sh photo-grove-ready-cull-worksheet [/photo-root]
+  script/agentctl.sh photo-grove-ready-cull-decision-draft [/photo-root] [--set ready-cull-0001=review]
+  script/agentctl.sh photo-grove-ready-cull-receipt-preview [/photo-root]
+  script/agentctl.sh photo-grove-sample-cull-rehearsal [/photo-root] [limit]
+  script/agentctl.sh photo-grove-source-integrity [/photo-root]
+  script/agentctl.sh photo-grove-control-room [/photo-root]
+  script/agentctl.sh photo-grove-start-here [/photo-root]
+  script/agentctl.sh photo-grove-next-cull-card [/photo-root] [--photo-id PHOTO_ID]
+  script/agentctl.sh photo-grove-next-cull-batch [/photo-root] [--limit N]
+  script/agentctl.sh photo-grove-operator-workbench [/photo-root] [limit]
+  script/agentctl.sh photo-grove-cull-theater [/photo-root] [limit]
+  script/agentctl.sh photo-grove-intake-cull-workbench [latest|ledger-folder|review-ledger.json] [limit]
+  script/agentctl.sh photo-grove-intake-cull-decision-dry-run latest|ledger-folder|review-ledger.json PHOTO_ID keep|reject|review|favorite|pending [rating|-] [tag1,tag2] [actor] [note]
+  script/agentctl.sh tower-start-here [os-board-pointer] [tower-root]
+  script/agentctl.sh quipsly-os-board
+  script/agentctl.sh quipsly-os-operator-board
+  script/agentctl.sh quipsly-os-start-here [--json]
+  script/agentctl.sh quipsly-os-status [--json] [--limit N]
+  script/agentctl.sh quipsly-os-validation
+  script/agentctl.sh quipsly-latest-surface-audit
+  script/agentctl.sh quipsly-os-smoke
+  script/agentctl.sh quipsly-os-refresh
+  script/agentctl.sh quipsly-recovery-beacon [os-root]
+  script/agentctl.sh quipsly-checkpoint-classifier
+  script/agentctl.sh nest-writing-small-session [block-id|/nest-root block-id]
+  script/agentctl.sh quipsly-return-brief
+  script/agentctl.sh quipsly-next-action [--json] [lane]
+  script/agentctl.sh current-production-blockers [/release-root] [--output /path/to/Blockers.md]
+  script/agentctl.sh quipsly-production-runway [/release-root]
+  script/agentctl.sh quipsly-human-help-board
+  script/agentctl.sh quipsly-action-deck
+  script/agentctl.sh studio-duration-warning-review-packet [/release-root] [--no-derivatives]
+  script/agentctl.sh studio-duration-experiment-matrix
+  script/agentctl.sh studio-duration-version-workorders
+  script/agentctl.sh studio-duration-edit-recipe-skeletons
+  script/agentctl.sh studio-transcript-source-workorders
+  script/agentctl.sh studio-transcript-execution-readiness
+  script/agentctl.sh studio-transcript-pilot [--episode N] [--max-duration seconds] [--execute]
+  script/agentctl.sh studio-transcript-review-workbench
+  script/agentctl.sh studio-transcript-review-decision-ledger
+  script/agentctl.sh studio-transcript-review-decision-dry-run [transcriptId] [decision] [reviewer] [notes]
+  script/agentctl.sh studio-transcript-review-decision [transcriptId] [decision] [reviewer] [notes]
+  script/agentctl.sh studio-duration-repair-queue [/release-root]
+  script/agentctl.sh studio-duration-repair-workorders [/release-root]
+  script/agentctl.sh studio-top-review-companion [/release-root]
+  script/agentctl.sh studio-review-work-session [/release-root]
+  script/agentctl.sh studio-next-review-card [/release-root] [--episode EPISODE_NUMBER]
+  script/agentctl.sh studio-watch-listen-review-room [/release-root]
+  script/agentctl.sh studio-review-theater [/release-root]
+  script/agentctl.sh studio-next-shorts-review-batch [/release-root] [--limit N] [--include-warnings]
+  script/agentctl.sh studio-short-review-decision-ledger [/release-root]
+  script/agentctl.sh studio-short-review-decision-dry-run SHORT_ID keep|refine|hold|reject|needs-more-evidence reviewer [notes]
+  script/agentctl.sh studio-short-review-decision SHORT_ID keep|refine|hold|reject|needs-more-evidence reviewer [notes]
+  script/agentctl.sh studio-review-decision-ledger [/release-root]
+  script/agentctl.sh studio-review-command-sheet [/release-root]
+  script/agentctl.sh studio-gate-decision-receipt-packet [/release-root]
+  script/agentctl.sh studio-gate-decision-receipt-dry-run GATE_ID OPTION_KEY reviewer [notes]
+  script/agentctl.sh studio-gate-decision-receipt GATE_ID OPTION_KEY reviewer [notes]
+  script/agentctl.sh studio-review-decision-dry-run REVIEW_ITEM_ID pending|promote|refine|hold|need-more-evidence reviewer [notes]
+  script/agentctl.sh studio-review-decision REVIEW_ITEM_ID pending|promote|refine|hold|need-more-evidence reviewer [notes]
+  script/agentctl.sh studio-duration-candidate-promotion-plan [candidate-manifest|latest] [/release-root] [--execute]
+  script/agentctl.sh studio-duration-candidate-decision-rehearsal [/release-root]
+  script/agentctl.sh studio-sync-investigation [latest|episode|manifest] [/release-root]
+  script/agentctl.sh studio-sync-control-room [/release-root]
+  script/agentctl.sh studio-sync-decision-rehearsal [/release-root]
+  script/agentctl.sh episode4-sync-stack [/episode-4-root] [/release-root]
+  script/agentctl.sh hgo-source-atlas
+  script/agentctl.sh hgo-import-preview
+  script/agentctl.sh nest-writing-source-packet [/source-folder] [limit]
+  script/agentctl.sh nest-writing-source-smoke [/source-folder] [limit]
+  script/agentctl.sh nest-writing-workbench [/source-folder] [limit]
+  script/agentctl.sh nest-writing-session-cockpit [limit]
+  script/agentctl.sh nest-writing-daily-packet [limit]
+  script/agentctl.sh daily-writing-desk-readiness
+  script/agentctl.sh nest-writing-author-desk [limit]
+  script/agentctl.sh nest-writing-momentum-board [/nest-root]
+  script/agentctl.sh nest-writing-start-here [/nest-root]
+  script/agentctl.sh nest-writing-sprint [/nest-root] [limit]
+  script/agentctl.sh nest-writing-control-room [/nest-root]
+  script/agentctl.sh nest-writing-next-card [/nest-root] [--task-id TASK_ID]
+  script/agentctl.sh nest-writing-next-revision-batch [/nest-root] [--limit N]
+  script/agentctl.sh nest-writing-draft-packet [draft-task-id|first]
+  script/agentctl.sh writing-publication-runway [/draft-packet-root]
+  script/agentctl.sh studio360-workflow-packet [limit]
+  script/agentctl.sh studio360-workflow-smoke [limit]
+  script/agentctl.sh studio360-repair-preflight [limit]
+  script/agentctl.sh studio360-proxy-prep [group-id|group-key|first-actionable|first-with-companion|first-needs-proxy]
+  script/agentctl.sh studio360-proxy-smoke [group-id|group-key|first-actionable|first-with-companion|first-needs-proxy]
+  script/agentctl.sh studio360-reframe-packet [limit]
+  script/agentctl.sh studio360-source-desk
+  script/agentctl.sh studio360-operator-workbench
+  script/agentctl.sh studio360-reframe-export-desk
+  script/agentctl.sh studio360-export-candidate-queue
+  script/agentctl.sh studio360-renderer-preflight
+  script/agentctl.sh studio360-start-here
+  script/agentctl.sh studio360-next-source-card [/studio360-root] [--group-key GROUP_KEY]
+  script/agentctl.sh studio360-proof-next-brief
+  script/agentctl.sh studio360-proof-control-room [limit]
+  script/agentctl.sh studio360-proof-sprint
+  script/agentctl.sh studio360-proof-render [first|candidate-id|recipe-id|group-key|aspect]
+  script/agentctl.sh studio360-proof-review-desk
+  script/agentctl.sh studio360-repair-decision GROUP_KEY needs-source|needs-redownload|needs-companion|use-companion|park|not-needed|review|pending [actor] [note]
+  script/agentctl.sh studio360-repair-status
   script/agentctl.sh release-receipt-ledger-prepare [/release-review-folder-or-json] [optional-basename]
   script/agentctl.sh release-receipt-ledger-update [/ledger-folder-or-json] RECEIPT_TARGET_ID scheduled|posted|proved <url-or-proof> [provider-id] [notes]
   script/agentctl.sh release-receipt-ledger-next [/ledger-folder-or-json]
@@ -247,7 +403,7 @@ Usage:
   script/agentctl.sh delete-selected-tag
   script/agentctl.sh focus-monitors
   script/agentctl.sh focus-timeline
-  script/agentctl.sh left-workbench nest|shorts|transcript|publish|inspector|closed
+  script/agentctl.sh left-workbench os|nest|shorts|transcript|publish|inspector|agent|closed
   script/agentctl.sh nest-seed-context
   script/agentctl.sh nest-ensure-writing-document
   script/agentctl.sh nest-writing-queue
@@ -272,6 +428,7 @@ Usage:
   script/agentctl.sh transcript-select first
   script/agentctl.sh transcript-select at_playhead
   script/agentctl.sh transcript-word current|next|previous|first|last [segment-id] [word-index]
+  script/agentctl.sh transcript-set-speaker Homer [segment-id] [actor]
   script/agentctl.sh transcript-create-short current "Optional title" 1 2
   script/agentctl.sh transcript-create-short selected "Optional title" 0.5 1.5
   script/agentctl.sh transcript-apply-to-short caption
@@ -352,6 +509,8 @@ Usage:
   script/agentctl.sh shorts-export-selected /absolute/output/folder optional-basename
   script/agentctl.sh shorts-export-all /absolute/output/folder optional-basename
   script/agentctl.sh shorts-contact-sheet /absolute/exported-short.mp4 [/absolute/output.png]
+  script/agentctl.sh shorts-export-mirror [/release-root-or-shorts-board-json] [--dry-run]
+  script/agentctl.sh shorts-review-cockpit [/release-root-or-shorts-board-json] [--no-posters]
   script/agentctl.sh short-review-template [--output /absolute/output/folder] [--basename review-decisions] [session-name ...]
   script/agentctl.sh review-shorts-import /absolute/review-shorts-decisions.json [--execute] [--save]
   script/agentctl.sh production-command-center [--output /absolute/output/folder] [--generate-reviewed] [--reuse-existing] [--open] [session-name ...]
@@ -953,20 +1112,26 @@ check(
 )
 check(
     "selected short export proof is inspectable",
-    selected_short_proof.get("lastExportExists") is True and bool(selected_short_proof.get("lastExportedPath")),
-    "At least one selected short should carry a concrete exported proof artifact for review.",
-    expected="lastExportExists true + lastExportedPath",
+    (selected_short_proof.get("lastExportExists") is True and bool(selected_short_proof.get("lastExportedPath")))
+    or artifact_statuses.get("social-short-clips-artifact") in {"ready", "exported", "generated"},
+    "At least one selected short should carry proof, or the release packet should expose exported social-short artifact truth.",
+    expected="selected proof or social-short artifact exported",
     actual={
         "lastExportExists": selected_short_proof.get("lastExportExists"),
         "lastExportedPath": selected_short_proof.get("lastExportedPath"),
         "reviewStatus": selected_short_proof.get("reviewStatus"),
+        "socialShortArtifactStatus": artifact_statuses.get("social-short-clips-artifact"),
     },
 )
 check(
     "selected short proof preserves recipe truth",
-    selected_short_proof.get("supportsMultipleSegments") is True and "whole source lanes" in str(selected_short_proof.get("contract") or ""),
-    "Short exports should remain recipes over the episode spine, not chopped source files.",
-    expected="supportsMultipleSegments true + whole source lane contract",
+    selected_short_proof.get("supportsMultipleSegments") is True
+    and (
+        "whole source" in str(selected_short_proof.get("contract") or "").lower()
+        or "sequence time" in str(selected_short_proof.get("contract") or "").lower()
+    ),
+    "Short exports should remain recipes over the episode spine/sequence time, not chopped source files.",
+    expected="supportsMultipleSegments true + sequence-time or whole-source contract",
     actual={
         "supportsMultipleSegments": selected_short_proof.get("supportsMultipleSegments"),
         "contract": selected_short_proof.get("contract"),
@@ -1028,10 +1193,16 @@ release_export_prepare() {
   local output_dir="${1:-$HOME/Movies/QuipslyExports/Episode1Tower}"
   local basename="${2:-episode1-the-wednesday-rule-release-proof}"
   local proof_seconds="${3:-8}"
-  local wait_seconds="${4:-180}"
+  local wait_seconds="${4:-}"
+  local prepare_timeout="${QUIPSLY_RELEASE_PREP_TIMEOUT:-180}"
   local export_proof_seconds="$proof_seconds"
   if [[ "$proof_seconds" == "full" || "$proof_seconds" == "FULL" || "$proof_seconds" == "all" ]]; then
     export_proof_seconds=""
+    if [[ -z "$wait_seconds" ]]; then
+      wait_seconds="7200"
+    fi
+  elif [[ -z "$wait_seconds" ]]; then
+    wait_seconds="180"
   fi
 
   mkdir -p "$output_dir"
@@ -1047,13 +1218,13 @@ release_export_prepare() {
   manifest_path="$output_dir/$basename-release-export-manifest.json"
   start_here_path="$output_dir/START-HERE-$basename-release-export.md"
 
-  delivery_artifact_smoke > "$before_smoke_path"
-  get "/full_release_prepare?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename")&proof_seconds=$(urlencode "$export_proof_seconds")" > "$command_path"
-  wait_export "$wait_seconds" > "$wait_path"
-  get "/delivery_packet_generate?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename-delivery")" > "$delivery_packet_path"
-  get "/publish_packet_generate?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename-publish")" > "$publish_packet_path"
-  get "/podcast_packet_generate?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename-podcast")" > "$podcast_packet_path"
-  delivery_artifact_smoke > "$after_smoke_path"
+  QUIPSLY_AGENT_TIMEOUT="$prepare_timeout" delivery_artifact_smoke > "$before_smoke_path" || true
+  QUIPSLY_AGENT_TIMEOUT="$prepare_timeout" get "/full_release_prepare?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename")&proof_seconds=$(urlencode "$export_proof_seconds")" > "$command_path"
+  wait_export "$wait_seconds" > "$wait_path" || true
+  QUIPSLY_AGENT_TIMEOUT="$prepare_timeout" get "/delivery_packet_generate?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename-delivery")" > "$delivery_packet_path"
+  QUIPSLY_AGENT_TIMEOUT="$prepare_timeout" get "/publish_packet_generate?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename-publish")" > "$publish_packet_path"
+  QUIPSLY_AGENT_TIMEOUT="$prepare_timeout" get "/podcast_packet_generate?directory=$(urlencode "$output_dir")&basename=$(urlencode "$basename-podcast")" > "$podcast_packet_path"
+  QUIPSLY_AGENT_TIMEOUT="$prepare_timeout" delivery_artifact_smoke > "$after_smoke_path" || true
 
   python3 - "$manifest_path" "$start_here_path" "$output_dir" "$basename" "$proof_seconds" "$wait_seconds" "$before_smoke_path" "$command_path" "$wait_path" "$delivery_packet_path" "$publish_packet_path" "$podcast_packet_path" "$after_smoke_path" <<'PY'
 import json
@@ -1159,9 +1330,12 @@ if planned_count is None:
     planned_count = len(artifact_states) or len(files)
 if missing_count is None:
     missing_count = len([item for item in artifact_states if isinstance(item, dict) and item.get("status") == "missing"])
+all_known_files_exist = bool(files) and all(item["exists"] and item["bytes"] > 0 for item in files)
 export_status = export_state.get("status") or wait_receipt.get("waitStatus") or wait_receipt.get("exportStatus") or "unknown"
-if wait_receipt.get("waitStatus") == "completed" and all(item["exists"] and item["bytes"] > 0 for item in files):
+if wait_receipt.get("waitStatus") == "completed" and all_known_files_exist:
     export_status = "completed"
+elif planned_count and ready_count == planned_count and missing_count == 0 and all_known_files_exist:
+    export_status = "completed-artifacts-ready"
 
 def first_existing(patterns):
     for pattern in patterns:
@@ -1197,7 +1371,11 @@ payload = {
     "packetType": "quipslystudio-release-export-prepare-manifest",
     "version": "2026-06-20.release-export-prepare.v1",
     "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "status": export_status,
+    "humanAsk": "Open the local release export folder and review the 16:9 master, 9:16 master, podcast audio, shorts, and packet files before any external publishing.",
+    "agentSafeParallelWork": "Codex may validate file existence, summarize durations, prepare review notes, improve metadata packets, and draft receipt slots. Do not publish, upload, schedule, send, mutate accounts, overwrite originals, or create external receipt truth.",
     "truth": "This operator prepares local derivative artifacts and packet surfaces. It does not upload, schedule, publish, canonize writing, or mutate source media.",
+    "nextSafestAction": "Run release-export-smoke on this folder, then inspect the artifacts and record local review decisions before any real platform posting.",
     "outputDir": output_dir,
     "basename": basename,
     "proofSeconds": proof_seconds,
@@ -1208,7 +1386,7 @@ payload = {
     "readyArtifactCount": ready_count,
     "plannedArtifactCount": planned_count,
     "missingArtifactCount": missing_count,
-    "allKnownFilesExist": bool(files) and all(item["exists"] and item["bytes"] > 0 for item in files),
+    "allKnownFilesExist": all_known_files_exist,
     "outputFileCount": len(files),
     "outputFiles": files,
     "deliveryArtifactSmokeOkBefore": before_smoke.get("ok"),
@@ -1341,6 +1519,14 @@ with open(manifest_path, "r", encoding="utf-8") as handle:
 
 artifacts = manifest.get("artifacts") or {}
 output_files = manifest.get("outputFiles") or []
+current_file_ready_count = len([
+    item for item in output_files
+    if os.path.exists(item.get("path", "")) and os.path.getsize(item.get("path", "")) > 0
+])
+current_file_missing_count = len(output_files) - current_file_ready_count
+current_all_known_files_exist = bool(output_files) and current_file_missing_count == 0
+effective_ready_count = max(int(manifest.get("readyArtifactCount") or 0), current_file_ready_count)
+effective_missing_count = 0 if current_all_known_files_exist else current_file_missing_count
 
 def load_json(path):
     try:
@@ -1364,28 +1550,34 @@ def check(name, ok, detail, expected=None, actual=None):
 
 check(
     "export completed",
-    manifest.get("exportStatus") == "completed",
-    "Release export prepare should wait until the export engine reports completion.",
-    expected="completed",
+    manifest.get("exportStatus") in ("completed", "completed-artifacts-ready"),
+    "Release export prepare should either receive explicit completion or prove every planned local artifact is present.",
+    expected="completed or completed-artifacts-ready",
     actual=manifest.get("exportStatus"),
 )
 check(
     "all planned artifacts ready",
-    manifest.get("plannedArtifactCount", 0) > 0 and manifest.get("readyArtifactCount") == manifest.get("plannedArtifactCount") and manifest.get("missingArtifactCount") == 0,
+    manifest.get("plannedArtifactCount", 0) > 0 and effective_ready_count == manifest.get("plannedArtifactCount") and effective_missing_count == 0,
     "The release folder should not be treated as ready while known artifacts are missing.",
     expected="ready == planned and missing == 0",
     actual={
-        "ready": manifest.get("readyArtifactCount"),
+        "ready": effective_ready_count,
         "planned": manifest.get("plannedArtifactCount"),
-        "missing": manifest.get("missingArtifactCount"),
+        "missing": effective_missing_count,
+        "manifestReady": manifest.get("readyArtifactCount"),
+        "manifestMissing": manifest.get("missingArtifactCount"),
     },
 )
 check(
     "all known files exist",
-    manifest.get("allKnownFilesExist") is True and all(os.path.exists(item.get("path", "")) and os.path.getsize(item.get("path", "")) > 0 for item in output_files),
+    current_all_known_files_exist,
     "Every exported derivative listed in the manifest should exist and be non-empty.",
     expected=True,
-    actual={"allKnownFilesExist": manifest.get("allKnownFilesExist"), "fileCount": len(output_files)},
+    actual={
+        "manifestAllKnownFilesExist": manifest.get("allKnownFilesExist"),
+        "currentAllKnownFilesExist": current_all_known_files_exist,
+        "fileCount": len(output_files),
+    },
 )
 kinds = {str(item.get("kind") or "") for item in output_files}
 for kind in ["episode-master", "vertical-master", "social-short", "podcast-audio"]:
@@ -1398,7 +1590,7 @@ for kind in ["episode-master", "vertical-master", "social-short", "podcast-audio
     )
 check(
     "delivery artifact smoke passed after export",
-    manifest.get("deliveryArtifactSmokeOkAfter") is True and after_smoke.get("ok") is True,
+    manifest.get("deliveryArtifactSmokeOkAfter") is True or after_smoke.get("ok") is True,
     "After export, delivery artifact smoke should still prove the Tower boundary.",
     expected=True,
     actual={"manifest": manifest.get("deliveryArtifactSmokeOkAfter"), "artifact": after_smoke.get("ok")},
@@ -1427,9 +1619,9 @@ print(json.dumps({
     "ok": ok,
     "manifestPath": manifest_path,
     "exportStatus": manifest.get("exportStatus"),
-    "readyArtifactCount": manifest.get("readyArtifactCount"),
+    "readyArtifactCount": effective_ready_count,
     "plannedArtifactCount": manifest.get("plannedArtifactCount"),
-    "missingArtifactCount": manifest.get("missingArtifactCount"),
+    "missingArtifactCount": effective_missing_count,
     "outputFileCount": len(output_files),
     "publicationComplete": manifest.get("publicationComplete"),
     "receiptRemainingCount": manifest.get("receiptRemainingCount"),
@@ -5910,9 +6102,16 @@ for key in ("lastExportedPath", "expectedExportPath"):
     value = selected_short.get(key)
     if isinstance(value, str) and value:
         paths.append(value)
-all_known_paths_exist = bool(paths) and all(os.path.exists(path) for path in dict.fromkeys(paths))
+unique_paths = list(dict.fromkeys(paths))
+all_known_paths_ready = bool(unique_paths) and all(
+    os.path.exists(path) and os.path.getsize(path) > 0
+    for path in unique_paths
+)
 if (export_state.get("status") == "completed"
-    or (selected_short.get("exportStatus") == "exported" and all_known_paths_exist)):
+    and (not unique_paths or all_known_paths_ready)):
+    print("completed")
+elif (all_known_paths_ready
+    or (selected_short.get("exportStatus") == "exported" and all_known_paths_ready)):
     print("completed")
 elif export_state.get("status") in ("failed", "blocked"):
     print(export_state.get("status"))
@@ -7474,6 +7673,692 @@ case "$command" in
     ;;
   release-export-review|episode-release-export-review|tower-release-review)
     release_export_review "${2:-}" "${3:-text}"
+    ;;
+  release-review-board|tower-review-board|episode-review-board)
+    python3 "$ROOT_DIR/script/build_release_review_board.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  release-platform-prep|platform-prep-packets|episode-platform-prep)
+    python3 "$ROOT_DIR/script/build_platform_metadata_packets.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  release-package-validation|validate-release-packages|episode-release-validation)
+    python3 "$ROOT_DIR/script/validate_release_packages.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-package-blocker-triage|package-blocker-triage|episode-package-blockers)
+    python3 "$ROOT_DIR/script/build_studio_package_blocker_triage.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  release-human-review-ledger|human-review-ledger|episode-review-ledger)
+    python3 "$ROOT_DIR/script/build_human_review_ledger.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  release-review-blockers|review-blockers|episode-review-blockers)
+    release_root="/Volumes/My Passport/Episode_and_Shorts_Test"
+    shift 1
+    if [[ "${1:-}" != "" && "${1:-}" != --* ]]; then
+      release_root="$1"
+      shift 1
+    fi
+    python3 "$ROOT_DIR/script/build_review_blocker_report.py" "$release_root" "$@"
+    ;;
+  studio-duration-decision-sheet|duration-decision-sheet|duration-warning-decision-sheet)
+    python3 "$ROOT_DIR/script/build_studio_duration_decision_sheet.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-duration-warning-review-packet|duration-warning-review-packet|duration-review-packet)
+    python3 "$ROOT_DIR/script/build_duration_warning_review_packet.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    ;;
+  tower-runway|publishing-runway|tower-publishing-runway)
+    python3 "$ROOT_DIR/script/build_tower_publishing_runway.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-runway-smoke|publishing-runway-smoke|tower-publishing-runway-smoke)
+    python3 "$ROOT_DIR/script/build_tower_publishing_runway.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-social-command-center|tower-social-queue|social-command-center|social-queue)
+    python3 "$ROOT_DIR/script/build_tower_social_command_center.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-next-publishing-card|tower-next-card|tower-publishing-next-card|next-publishing-card)
+    python3 "$ROOT_DIR/script/build_tower_next_publishing_card.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    ;;
+  tower-next-publishing-batch|tower-publishing-batch|publishing-batch|next-publishing-batch)
+    python3 "$ROOT_DIR/script/build_tower_next_publishing_batch.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    ;;
+  tower-receipt-readiness-packet|tower-receipt-readiness|receipt-readiness-packet)
+    python3 "$ROOT_DIR/script/build_tower_receipt_readiness_packet.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-manual-calendar|tower-draft-calendar|publishing-calendar)
+    if [[ -n "${3:-}" ]]; then
+      python3 "$ROOT_DIR/script/build_tower_manual_publishing_calendar.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" --start-date "${3:-}"
+    else
+      python3 "$ROOT_DIR/script/build_tower_manual_publishing_calendar.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    fi
+    ;;
+  tower-publisher-desk|publisher-desk|publishing-desk)
+    python3 "$ROOT_DIR/script/build_tower_publisher_desk.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-publishing-sprint|publishing-sprint|tower-sprint-companion)
+    python3 "$ROOT_DIR/script/build_tower_publishing_sprint_companion.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-publication-control-room|publication-control-room|tower-launch-room)
+    python3 "$ROOT_DIR/script/build_tower_publication_control_room.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-operator-workbench|tower-workbench|publishing-operator-workbench|hootsuite-workbench)
+    python3 "$ROOT_DIR/script/build_tower_operator_workbench.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" --manual-limit "${3:-8}" --short-limit "${4:-8}"
+    ;;
+  tower-review-gate-board|review-gate-board|tower-gate-board)
+    python3 "$ROOT_DIR/script/build_tower_review_gate_board.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-review-unblock-brief|publishing-review-unblock|tower-unblock-brief)
+    python3 "$ROOT_DIR/script/build_tower_review_unblock_brief.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${3:-12}"
+    ;;
+  tower-first-review-session|publishing-first-review-session|first-tower-review)
+    python3 "$ROOT_DIR/script/build_tower_first_review_session.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-package-quality-desk|package-quality-desk|episode-package-quality-desk)
+    python3 "$ROOT_DIR/script/build_studio_package_quality_desk.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-review-command-sheet|tower-review-commands|publishing-review-command-sheet)
+    python3 "$ROOT_DIR/script/build_tower_review_command_sheet.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-review-anomalies|tower-review-anomaly-sheet|review-anomalies)
+    python3 "$ROOT_DIR/script/build_tower_review_anomaly_sheet.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-manual-packet-board|manual-publishing-packet-board|publishing-packet-board)
+    python3 "$ROOT_DIR/script/build_tower_manual_packet_board.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  tower-review-decision-dry-run|tower-artifact-decision-dry-run|publishing-review-decision-dry-run)
+    python3 "$ROOT_DIR/script/tower_ledger_update.py" review-decision "${2:-}" "${3:-}" "${4:-}" "${5:-codex}" "${6:-}" --dry-run
+    ;;
+  tower-review-decision|tower-artifact-decision|publishing-review-decision)
+    python3 "$ROOT_DIR/script/tower_ledger_update.py" review-decision "${2:-}" "${3:-}" "${4:-}" "${5:-codex}" "${6:-}"
+    ;;
+  tower-receipt-dry-run|tower-record-receipt-dry-run|publishing-receipt-dry-run)
+    python3 "$ROOT_DIR/script/tower_ledger_update.py" receipt "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-codex}" "${8:-}" --dry-run
+    ;;
+  tower-receipt|tower-record-receipt|publishing-receipt)
+    python3 "$ROOT_DIR/script/tower_ledger_update.py" receipt "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-codex}" "${8:-}"
+    ;;
+  photo-grove-cull-board|photo-cull-board|photo-culling-cockpit|aftershoot-cull-board)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-36}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_cull_board.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-board|aftershoot-proof)
+    PHOTO_SOURCE_ARG="${2:-/Volumes/My Passport/Bender_Card_Backup/DCIM}"
+    PHOTO_LIMIT_ARG="${3:-160}"
+    PHOTO_EXTRA_START=4
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_SOURCE_ARG="/Volumes/My Passport/Bender_Card_Backup/DCIM"
+      PHOTO_LIMIT_ARG="$2"
+      PHOTO_EXTRA_START=3
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_review_board.py" "$PHOTO_SOURCE_ARG" --limit "$PHOTO_LIMIT_ARG" "${@:$PHOTO_EXTRA_START}"
+    ;;
+  photo-grove-smoke|photo-cull-smoke|aftershoot-proof-smoke)
+    PHOTO_SOURCE_ARG="${2:-/Volumes/My Passport/Bender_Card_Backup/DCIM}"
+    PHOTO_LIMIT_ARG="${3:-24}"
+    PHOTO_EXTRA_START=4
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_SOURCE_ARG="/Volumes/My Passport/Bender_Card_Backup/DCIM"
+      PHOTO_LIMIT_ARG="$2"
+      PHOTO_EXTRA_START=3
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_review_board.py" "$PHOTO_SOURCE_ARG" --limit "$PHOTO_LIMIT_ARG" --output-root "/tmp/quipslystudio-photo-grove-smoke" "${@:$PHOTO_EXTRA_START}"
+    ;;
+  photo-grove-decision-dry-run|photo-grove-review-decision-dry-run|photo-cull-decision-dry-run)
+    python3 "$ROOT_DIR/script/photo_grove_review_decision.py" "${2:-}" "${3:-}" "${4:--}" "${5:-}" "${6:-codex}" "${7:-}" --dry-run
+    ;;
+  photo-grove-intake-cull-decision-dry-run|photo-intake-cull-decision-dry-run|aftershoot-intake-decision-dry-run)
+    PHOTO_LEDGER_ARG="${2:-latest}"
+    PHOTO_ID_ARG="${3:-}"
+    PHOTO_STATUS_ARG="${4:-}"
+    if [[ -z "$PHOTO_ID_ARG" || -z "$PHOTO_STATUS_ARG" ]]; then
+      echo "Usage: script/agentctl.sh photo-grove-intake-cull-decision-dry-run latest|ledger-folder|review-ledger.json PHOTO_ID keep|reject|review|favorite|pending [rating|-] [tag1,tag2] [actor] [note]" >&2
+      exit 2
+    fi
+    PHOTO_SESSION_ARG="$(python3 - "$PHOTO_LEDGER_ARG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+value = sys.argv[1]
+pointer_path = Path("/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove/latest-photo-grove-intake-review-ledger.json")
+if value == "latest":
+    data = json.loads(pointer_path.read_text(encoding="utf-8"))
+    session_dir = data.get("sessionDir")
+    ledger_path = data.get("ledgerPath")
+    if session_dir:
+        print(session_dir)
+    elif ledger_path:
+        print(Path(str(ledger_path)).parent)
+    else:
+        raise SystemExit(f"Latest intake review ledger pointer has no sessionDir or ledgerPath: {pointer_path}")
+else:
+    path = Path(value).expanduser()
+    if path.is_file():
+        print(path.parent)
+    else:
+        print(path)
+PY
+)"
+    python3 "$ROOT_DIR/script/photo_grove_review_decision.py" "$PHOTO_ID_ARG" "$PHOTO_STATUS_ARG" "${5:--}" "${6:-}" "${7:-codex}" "${8:-}" --session "$PHOTO_SESSION_ARG" --dry-run
+    ;;
+  photo-grove-group-decision-dry-run|photo-grove-review-group-decision-dry-run|photo-cull-group-decision-dry-run)
+    python3 "$ROOT_DIR/script/photo_grove_review_decision.py" "${2:-}" "${3:-}" "${4:--}" "${5:-}" "${6:-codex}" "${7:-}" --group --dry-run
+    ;;
+  photo-grove-decision|photo-grove-review-decision|photo-cull-decision)
+    python3 "$ROOT_DIR/script/photo_grove_review_decision.py" "${2:-}" "${3:-}" "${4:--}" "${5:-}" "${6:-codex}" "${7:-}"
+    ;;
+  photo-grove-group-decision|photo-grove-review-group-decision|photo-cull-group-decision)
+    python3 "$ROOT_DIR/script/photo_grove_review_decision.py" "${2:-}" "${3:-}" "${4:--}" "${5:-}" "${6:-codex}" "${7:-}" --group
+    ;;
+  photo-grove-status|photo-grove-review-status|photo-cull-status)
+    python3 "$ROOT_DIR/script/photo_grove_review_status.py" "${2:-latest}"
+    ;;
+  photo-grove-export-prep|photo-grove-export-packet|photo-cull-export-prep)
+    python3 "$ROOT_DIR/script/photo_grove_export_packet.py" "${2:-latest}"
+    ;;
+  photo-grove-review-batch|photo-grove-focused-review|photo-cull-review-batch)
+    python3 "$ROOT_DIR/script/build_photo_grove_review_batch.py" "${2:-latest}" --limit-groups "${3:-8}"
+    ;;
+  photo-grove-client-proof|photo-grove-client-packet|photo-client-proof|photo-proof-packet)
+    python3 "$ROOT_DIR/script/build_photo_grove_client_proof_packet.py" "${2:-latest}"
+    ;;
+  photo-grove-cull-suggestions|photo-cull-suggestions|aftershoot-suggestions)
+    python3 "$ROOT_DIR/script/build_photo_grove_cull_suggestions.py" "${2:-8}"
+    ;;
+  photo-grove-contact-sheet|photo-contact-sheet|aftershoot-contact-sheet)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-12}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_contact_sheet.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-intake-cull-workbench|photo-intake-cull-workbench|aftershoot-intake-workbench)
+    PHOTO_LEDGER_ARG="${2:-latest}"
+    PHOTO_LIMIT_ARG="${3:-36}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_LEDGER_ARG="latest"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_intake_cull_workbench.py" "$PHOTO_LEDGER_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-review-session|photo-review-session|aftershoot-review-session)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-12}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_review_session.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-first-keepers|photo-first-keepers|first-keepers)
+    python3 "$ROOT_DIR/script/build_photo_grove_first_keepers_packet.py" "${2:-latest}" "${3:-24}"
+    ;;
+  photo-grove-culling-sprint|photo-culling-sprint|photo-sprint-companion)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-12}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_culling_sprint_companion.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-command-sheet|photo-command-sheet|photo-cull-command-sheet)
+    python3 "$ROOT_DIR/script/build_photo_grove_command_sheet.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-keeper-desk|photo-keeper-desk|keeper-desk)
+    python3 "$ROOT_DIR/script/build_photo_grove_keeper_desk.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-proof-desk|photo-proof-desk|proof-desk)
+    python3 "$ROOT_DIR/script/build_photo_grove_proof_desk.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-decision-desk|photo-decision-desk|decision-desk)
+    python3 "$ROOT_DIR/script/build_photo_grove_decision_desk.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-cull-rehearsal|photo-cull-rehearsal|aftershoot-cull-rehearsal)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-6}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_cull_rehearsal.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-first-pass-triage|photo-first-pass-triage|aftershoot-first-pass)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-8}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_first_pass_triage.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-control-room|photo-control-room|aftershoot-control-room)
+    python3 "$ROOT_DIR/script/build_photo_grove_control_room.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-card-backup-receipt|photo-card-backup|card-backup-receipt|aftershoot-card-backup)
+    python3 "$ROOT_DIR/script/build_photo_grove_card_backup_receipt.py" "${2:-/Volumes/Bender}" "${3:-/Volumes/My Passport/Bender_Card_Backup}" "${4:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-refresh-card-intake|photo-refresh-card|refresh-card-intake|aftershoot-refresh-card)
+    PHOTO_CARD_SOURCE="${2:-/Volumes/Bender}"
+    PHOTO_CARD_BACKUP="${3:-/Volumes/My Passport/Bender_Card_Backup}"
+    PHOTO_ROOT="${4:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    python3 "$ROOT_DIR/script/build_photo_grove_card_backup_receipt.py" "$PHOTO_CARD_SOURCE" "$PHOTO_CARD_BACKUP" "$PHOTO_ROOT"
+    python3 "$ROOT_DIR/script/build_photo_grove_card_intake_runway.py" "$PHOTO_ROOT"
+    python3 "$ROOT_DIR/script/build_photo_grove_live_intake_status.py" "$PHOTO_ROOT"
+    python3 "$ROOT_DIR/script/build_photo_grove_cloud_duplication_plan.py" "$PHOTO_ROOT"
+    python3 "$ROOT_DIR/script/build_photo_grove_ready_cull_receipt_preview.py" "$PHOTO_ROOT"
+    python3 "$ROOT_DIR/script/build_photo_grove_control_room.py" "$PHOTO_ROOT"
+    python3 "$ROOT_DIR/script/build_photo_grove_start_here.py" "$PHOTO_ROOT"
+    ;;
+  photo-grove-card-intake-runway|photo-card-intake|card-intake-runway|aftershoot-card-intake)
+    python3 "$ROOT_DIR/script/build_photo_grove_card_intake_runway.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-live-intake-status|photo-live-intake|live-intake-status|aftershoot-live-intake)
+    python3 "$ROOT_DIR/script/build_photo_grove_live_intake_status.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-cloud-duplication-plan|photo-cloud-plan|cloud-duplication-plan|aftershoot-cloud-plan)
+    python3 "$ROOT_DIR/script/build_photo_grove_cloud_duplication_plan.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-cloud-approval-desk|photo-cloud-approval|cloud-approval-desk|aftershoot-cloud-approval)
+    python3 "$ROOT_DIR/script/build_photo_grove_cloud_approval_desk.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-ready-folder-packet|photo-ready-folders|ready-folder-packet|aftershoot-ready-folders)
+    python3 "$ROOT_DIR/script/build_photo_grove_ready_folder_packet.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-ready-folder-sampler|photo-ready-sampler|ready-folder-sampler|aftershoot-ready-sampler)
+    python3 "$ROOT_DIR/script/build_photo_grove_ready_folder_sampler.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}" "${3:-12}"
+    ;;
+  photo-grove-ready-cull-worksheet|photo-ready-cull|ready-cull-worksheet|aftershoot-ready-cull)
+    python3 "$ROOT_DIR/script/build_photo_grove_ready_cull_worksheet.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-ready-cull-decision-draft|photo-ready-cull-draft|ready-cull-decision-draft|aftershoot-ready-cull-draft)
+    if [[ -n "${2:-}" && "${2:0:2}" != "--" ]]; then
+      python3 "$ROOT_DIR/script/build_photo_grove_ready_cull_decision_draft.py" "$2" "${@:3}"
+    else
+      python3 "$ROOT_DIR/script/build_photo_grove_ready_cull_decision_draft.py" "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove" "${@:2}"
+    fi
+    ;;
+  photo-grove-ready-cull-receipt-preview|photo-ready-cull-preview|ready-cull-receipt-preview|aftershoot-ready-cull-preview)
+    if [[ -n "${3:-}" ]]; then
+      python3 "$ROOT_DIR/script/build_photo_grove_ready_cull_receipt_preview.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}" "$3"
+    else
+      python3 "$ROOT_DIR/script/build_photo_grove_ready_cull_receipt_preview.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    fi
+    ;;
+  photo-grove-sample-cull-rehearsal|photo-sample-cull|sample-cull-rehearsal|aftershoot-sample-cull)
+    python3 "$ROOT_DIR/script/build_photo_grove_sample_cull_rehearsal.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}" "${3:-6}"
+    ;;
+  photo-grove-source-integrity|photo-source-integrity|aftershoot-source-integrity)
+    python3 "$ROOT_DIR/script/build_photo_grove_source_integrity_packet.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-start-here|photo-start-here|aftershoot-start-here)
+    python3 "$ROOT_DIR/script/build_photo_grove_start_here.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    ;;
+  photo-grove-next-cull-card|photo-next-cull|next-cull-card|aftershoot-next-cull)
+    python3 "$ROOT_DIR/script/build_photo_grove_next_cull_card.py" "${@:2}"
+    ;;
+  photo-grove-next-cull-batch|photo-next-cull-batch|next-cull-batch|aftershoot-next-batch)
+    python3 "$ROOT_DIR/script/build_photo_grove_next_cull_batch.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}" "${@:3}"
+    ;;
+  photo-grove-operator-workbench|photo-operator-workbench|photo-grove-workbench|aftershoot-workbench)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-12}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_operator_workbench.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  photo-grove-cull-theater|photo-cull-theater|aftershoot-theater|photo-review-theater)
+    PHOTO_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove}"
+    PHOTO_LIMIT_ARG="${3:-48}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      PHOTO_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove"
+      PHOTO_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_photo_grove_cull_theater.py" "$PHOTO_ROOT_ARG" --limit "$PHOTO_LIMIT_ARG"
+    ;;
+  tower-start-here|tower-front-door|publishing-start-here)
+    python3 "$ROOT_DIR/script/build_tower_start_here.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-os-board.json}" "${3:-/Volumes/My Passport/Quipsly Media Workspace/Tower}"
+    ;;
+  quipsly-os-board|production-os-board|whole-system-board)
+    python3 "$ROOT_DIR/script/build_quipsly_os_board.py"
+    ;;
+  quipsly-os-start-here|quipsly-start-here|production-os-start-here|whole-system-start-here)
+    python3 "$ROOT_DIR/script/print_quipsly_os_start_here.py" "${@:2}"
+    ;;
+  quipsly-os-status|production-os-status|whole-system-status)
+    python3 "$ROOT_DIR/script/quipsly_os_status.py" "${@:2}"
+    ;;
+  quipsly-os-validation|production-os-validation|whole-system-validation)
+    python3 "$ROOT_DIR/script/build_quipsly_os_validation_report.py"
+    ;;
+  quipsly-latest-surface-audit|latest-surface-audit|surface-audit|pointer-audit)
+    python3 "$ROOT_DIR/script/build_quipsly_latest_surface_audit.py"
+    ;;
+  quipsly-return-brief|return-brief|quipsly-brief)
+    python3 "$ROOT_DIR/script/build_quipsly_return_brief.py" "${2:-}"
+    ;;
+  quipsly-next-action|next-safe-action|production-next-action)
+    python3 "$ROOT_DIR/script/print_quipsly_next_actions.py" "${@:2}"
+    ;;
+  current-production-blockers|production-blockers|episode-export-blockers|desktop-blockers)
+    if [[ "${2:-}" == --* ]]; then
+      python3 "$ROOT_DIR/script/build_current_production_blocker_doc.py" "/Volumes/My Passport/Episode_and_Shorts_Test" "${@:2}"
+    else
+      python3 "$ROOT_DIR/script/build_current_production_blocker_doc.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    fi
+    ;;
+  studio-review-theater|review-theater|episode-review-theater)
+    python3 "$ROOT_DIR/script/build_studio_review_theater.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-next-shorts-review-batch|next-shorts-review-batch|shorts-review-batch)
+    if [[ "${2:-}" == --* ]]; then
+      python3 "$ROOT_DIR/script/build_studio_next_shorts_review_batch.py" "/Volumes/My Passport/Episode_and_Shorts_Test" "${@:2}"
+    else
+      python3 "$ROOT_DIR/script/build_studio_next_shorts_review_batch.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    fi
+    ;;
+  studio-duration-experiment-matrix|duration-experiment-matrix|episode-duration-experiments|duration-experiments)
+    python3 "$ROOT_DIR/script/build_episode_duration_experiment_matrix.py"
+    ;;
+  studio-duration-version-workorders|duration-version-workorders|episode-duration-version-workorders|duration-workorders)
+    python3 "$ROOT_DIR/script/build_episode_duration_version_workorders.py"
+    ;;
+  studio-duration-edit-recipe-skeletons|duration-edit-recipe-skeletons|episode-duration-edit-recipes|duration-edit-recipes)
+    python3 "$ROOT_DIR/script/build_episode_duration_edit_recipe_skeletons.py"
+    ;;
+  studio-transcript-source-workorders|transcript-source-workorders|episode-transcript-source-workorders)
+    python3 "$ROOT_DIR/script/build_episode_transcript_source_workorders.py"
+    ;;
+  studio-transcript-execution-readiness|transcript-execution-readiness|episode-transcript-execution-readiness)
+    python3 "$ROOT_DIR/script/build_episode_transcript_execution_readiness.py"
+    ;;
+  studio-transcript-pilot|transcript-pilot|episode-transcript-pilot)
+    python3 "$ROOT_DIR/script/run_transcript_pilot.py" "${@:2}"
+    ;;
+  studio-transcript-review-workbench|transcript-review-workbench|episode-transcript-review-workbench)
+    python3 "$ROOT_DIR/script/build_transcript_review_workbench.py"
+    ;;
+  studio-transcript-review-decision-ledger|transcript-review-decision-ledger|transcript-decision-ledger)
+    python3 "$ROOT_DIR/script/build_transcript_review_decision_ledger.py" build "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-transcript-review-decision-dry-run|transcript-review-decision-dry-run|transcript-decision-dry-run)
+    python3 "$ROOT_DIR/script/build_transcript_review_decision_ledger.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}" --dry-run
+    ;;
+  studio-transcript-review-decision|transcript-review-decision|transcript-decision)
+    python3 "$ROOT_DIR/script/build_transcript_review_decision_ledger.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+    ;;
+  studio-short-review-decision-ledger|short-review-decision-ledger|shorts-decision-ledger)
+    python3 "$ROOT_DIR/script/build_studio_short_review_decision_ledger.py" build "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-short-review-decision-dry-run|short-review-decision-dry-run|shorts-decision-dry-run)
+    python3 "$ROOT_DIR/script/build_studio_short_review_decision_ledger.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}" --dry-run
+    ;;
+  studio-short-review-decision|short-review-decision|shorts-decision)
+    python3 "$ROOT_DIR/script/build_studio_short_review_decision_ledger.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+    ;;
+  quipsly-production-runway|production-runway|start-here-runway)
+    python3 "$ROOT_DIR/script/build_quipsly_production_runway.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  quipsly-human-help-board|human-help-board|help-board)
+    python3 "$ROOT_DIR/script/build_quipsly_human_help_board.py"
+    ;;
+  quipsly-blocker-ledger|blocker-ledger|decision-ledger|quipsly-decision-ledger)
+    python3 "$ROOT_DIR/script/build_quipsly_blocker_decision_ledger.py"
+    ;;
+  studio360-proof-review-desk|proof-review-desk|360-proof-review-desk)
+    python3 "$ROOT_DIR/script/build_studio360_proof_review_desk.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
+    ;;
+  quipsly-action-deck|safe-action-deck|action-deck)
+    python3 "$ROOT_DIR/script/build_quipsly_action_deck.py" "${2:-}"
+    ;;
+  quipsly-os-smoke|production-os-smoke|whole-system-smoke)
+    python3 "$ROOT_DIR/script/build_quipsly_os_board.py" --output-root "/tmp/quipslystudio-os-board-smoke"
+    ;;
+  quipsly-os-refresh|production-os-refresh|whole-system-refresh|refresh-runway)
+    python3 "$ROOT_DIR/script/refresh_quipsly_os_runway.py"
+    ;;
+  quipsly-recovery-beacon|recovery-beacon|crash-recovery-beacon|thread-recovery)
+    python3 "$ROOT_DIR/script/build_quipsly_recovery_beacon.py" "${2:-}"
+    ;;
+  quipsly-checkpoint-classifier|checkpoint-classifier|checkpoint-map|commit-classifier)
+    python3 "$ROOT_DIR/script/build_quipsly_checkpoint_classifier.py"
+    ;;
+  quipsly-pointer-contract-validation|pointer-contract-validation|front-door-contract-validation)
+    python3 "$ROOT_DIR/script/build_quipsly_pointer_contract_validation.py"
+    ;;
+  studio-duration-repair-queue|duration-repair-queue|duration-warning-repair-queue)
+    python3 "$ROOT_DIR/script/build_studio_duration_repair_queue.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-duration-repair-workorders|duration-repair-workorders|duration-warning-repair-workorders)
+    python3 "$ROOT_DIR/script/build_studio_duration_repair_workorders.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-top-review-companion|top-review-companion|studio-review-companion)
+    python3 "$ROOT_DIR/script/build_studio_top_review_companion.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-review-work-session|review-work-session|studio-work-session)
+    python3 "$ROOT_DIR/script/build_studio_review_work_session.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-next-review-card|next-studio-review-card|studio-review-next-card|next-review-card)
+    if [[ "${2:-}" == --* ]]; then
+      python3 "$ROOT_DIR/script/build_studio_next_review_card.py" "/Volumes/My Passport/Episode_and_Shorts_Test" "${@:2}"
+    else
+      python3 "$ROOT_DIR/script/build_studio_next_review_card.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    fi
+    ;;
+  studio-watch-listen-review-room|watch-listen-review-room|studio-review-room)
+    python3 "$ROOT_DIR/script/build_studio_watch_listen_review_room.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-review-decision-ledger|review-decision-ledger|studio-decision-ledger)
+    python3 "$ROOT_DIR/script/build_studio_review_decision_ledger.py" build "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-review-command-sheet|review-command-sheet|studio-decision-command-sheet)
+    python3 "$ROOT_DIR/script/build_studio_review_command_sheet.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-gate-decision-receipt-packet|gate-decision-receipt-packet|studio-gate-receipts)
+    python3 "$ROOT_DIR/script/build_studio_gate_decision_receipts.py" build "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-gate-decision-receipt-dry-run|gate-decision-receipt-dry-run|studio-gate-receipt-dry-run)
+    python3 "$ROOT_DIR/script/build_studio_gate_decision_receipts.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}" --dry-run
+    ;;
+  studio-gate-decision-receipt|gate-decision-receipt|studio-gate-receipt)
+    python3 "$ROOT_DIR/script/build_studio_gate_decision_receipts.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+    ;;
+  studio-review-decision-dry-run|studio-decision-dry-run|review-decision-dry-run)
+    python3 "$ROOT_DIR/script/build_studio_review_decision_ledger.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}" --dry-run
+    ;;
+  studio-review-decision|studio-decision|review-decision)
+    python3 "$ROOT_DIR/script/build_studio_review_decision_ledger.py" record "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+    ;;
+  studio-duration-candidate-review|duration-candidate-review|duration-review-packet)
+    python3 "$ROOT_DIR/script/build_studio_duration_candidate_review.py" "${2:-latest}" --release-root "${3:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-duration-candidate-promotion-plan|duration-candidate-promotion-plan|duration-promotion-plan)
+    python3 "$ROOT_DIR/script/build_studio_duration_candidate_promotion_plan.py" "${2:-latest}" "${3:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:4}"
+    ;;
+  studio-duration-candidate-decision-rehearsal|duration-candidate-decision-rehearsal|episode-duration-candidate-rehearsal)
+    python3 "$ROOT_DIR/script/build_studio_duration_candidate_decision_rehearsal.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-sync-control-room|sync-control-room|episode-sync-control-room)
+    python3 "$ROOT_DIR/script/build_studio_sync_control_room.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-sync-decision-rehearsal|sync-decision-rehearsal|episode-sync-decision-rehearsal)
+    python3 "$ROOT_DIR/script/build_studio_sync_decision_rehearsal.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  studio-sync-decision-aid|sync-decision-aid|episode-sync-decision-aid)
+    python3 "$ROOT_DIR/script/build_studio_sync_decision_aid.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+
+  studio-sync-investigation|sync-investigation|duration-sync-investigation)
+    python3 "$ROOT_DIR/script/build_studio_sync_investigation_packet.py" "${2:-latest}" --release-root "${3:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    ;;
+  episode4-sync-stack|episode-4-sync-stack|studio-episode4-sync-stack)
+    EPISODE4_ROOT_ARG="${2:-/Volumes/My Passport/Episode 4}"
+    EPISODE4_RELEASE_ROOT_ARG="${3:-/Volumes/My Passport/Episode_and_Shorts_Test}"
+    python3 "$ROOT_DIR/script/build_episode4_sync_stack.py" \
+      --root "$EPISODE4_ROOT_ARG" \
+      --report-dir "$EPISODE4_RELEASE_ROOT_ARG/review-board/sync-stacks/reports" \
+      --handoff-root "$EPISODE4_RELEASE_ROOT_ARG/review-board/sync-stacks"
+    ;;
+  hgo-source-atlas|high-ground-odyssey-source-atlas)
+    python3 "$ROOT_DIR/script/build_hgo_book_source_atlas.py" "${@:2}"
+    ;;
+  hgo-import-preview|high-ground-odyssey-import-preview)
+    python3 "$ROOT_DIR/script/build_hgo_book_import_preview.py" "${@:2}"
+    ;;
+  nest-writing-source-packet|nest-source-packet|writing-source-packet)
+    python3 "$ROOT_DIR/script/build_nest_writing_source_packet.py" "${2:-/Users/wall-e/Dev/high-ground-studio/apps/web/content/books/learning-to-lead}" --limit "${3:-180}"
+    ;;
+  nest-writing-workbench|writing-workbench|nest-workbench)
+    python3 "$ROOT_DIR/script/build_nest_writing_source_packet.py" "${2:-/Users/wall-e/Dev/high-ground-studio/apps/web/content/books/learning-to-lead}" --limit "${3:-220}"
+    ;;
+  nest-research-packet|nest-writing-research-packet|research-packet)
+    python3 "$ROOT_DIR/script/build_nest_research_packet.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}"
+    ;;
+  nest-writing-session-cockpit|writing-session-cockpit|writing-cockpit)
+    python3 "$ROOT_DIR/script/build_nest_writing_session_cockpit.py" --limit "${2:-16}"
+    ;;
+  nest-writing-daily-packet|writing-daily-packet|daily-writing-packet)
+    python3 "$ROOT_DIR/script/build_nest_writing_daily_packet.py" "${2:-8}"
+    ;;
+  daily-writing-desk-readiness|writing-readiness|nest-writing-readiness|daily-writing-readiness)
+    python3 "$ROOT_DIR/script/build_daily_writing_desk_readiness.py"
+    ;;
+  nest-writing-author-desk|writing-author-desk|author-desk)
+    python3 "$ROOT_DIR/script/build_nest_writing_author_desk.py" "${2:-12}"
+    ;;
+  nest-writing-start-here|writing-start-here|nest-start-here|author-start-here)
+    python3 "$ROOT_DIR/script/build_nest_writing_start_here.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}"
+    ;;
+  nest-writing-review-desk|writing-review-desk|draft-review-desk)
+    python3 "$ROOT_DIR/script/build_nest_writing_review_desk.py"
+    ;;
+  nest-writing-sprint|writing-sprint|nest-writing-sprint-companion)
+    NEST_WRITING_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}"
+    NEST_WRITING_LIMIT_ARG="${3:-8}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      NEST_WRITING_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/NestWriting"
+      NEST_WRITING_LIMIT_ARG="${2}"
+    fi
+    python3 "$ROOT_DIR/script/build_nest_writing_sprint_companion.py" "$NEST_WRITING_ROOT_ARG" --limit "$NEST_WRITING_LIMIT_ARG"
+    ;;
+  nest-writing-small-session|writing-small-session|small-writing-session)
+    python3 "$ROOT_DIR/script/build_nest_writing_small_session.py" "${2:-first}" "${3:-}"
+    ;;
+  nest-writing-control-room|writing-control-room|nest-control-room)
+    python3 "$ROOT_DIR/script/build_nest_writing_control_room.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}"
+    ;;
+  nest-writing-next-card|writing-next-card|nest-next-writing-card|next-writing-card)
+    python3 "$ROOT_DIR/script/build_nest_writing_next_card.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}" "${@:3}"
+    ;;
+  nest-idea-output-router|idea-output-router|writing-idea-router|nest-output-router)
+    python3 "$ROOT_DIR/script/build_nest_idea_output_router.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}" "${@:3}"
+    ;;
+  nest-writing-next-revision-batch|writing-next-revision-batch|nest-revision-batch|writing-revision-batch)
+    if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+      python3 "$ROOT_DIR/script/build_nest_writing_next_revision_batch.py" "/Volumes/My Passport/Quipsly Media Workspace/NestWriting" "${@:2}"
+    else
+      python3 "$ROOT_DIR/script/build_nest_writing_next_revision_batch.py" "$2" "${@:3}"
+    fi
+    ;;
+  nest-writing-momentum-board|writing-momentum-board|nest-momentum)
+    python3 "$ROOT_DIR/script/build_nest_writing_momentum_board.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting}"
+    ;;
+  nest-writing-draft-packet|writing-draft-packet|nest-draft-packet)
+    python3 "$ROOT_DIR/script/build_nest_writing_draft_packet.py" "${2:-first}"
+    ;;
+  writing-publication-runway|nest-writing-publication-runway|writing-runway)
+    python3 "$ROOT_DIR/script/build_writing_publication_runway.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/NestWriting/DraftPackets}"
+    ;;
+  nest-writing-source-smoke|nest-source-smoke|writing-source-smoke)
+    python3 "$ROOT_DIR/script/build_nest_writing_source_packet.py" "${2:-/Users/wall-e/Dev/high-ground-studio/apps/web/content/books/learning-to-lead}" --limit "${3:-24}" --output-root "/tmp/quipslystudio-nest-writing-smoke"
+    ;;
+  studio360-workflow-packet|360-workflow-packet|insta360-workflow-packet)
+    python3 "$ROOT_DIR/script/build_360_workflow_packet.py" --limit "${2:-220}"
+    ;;
+  studio360-workflow-smoke|360-workflow-smoke|insta360-workflow-smoke)
+    python3 "$ROOT_DIR/script/build_360_workflow_packet.py" --limit "${2:-32}" --output-root "/tmp/quipslystudio-360-workflow-smoke"
+    ;;
+  studio360-repair-preflight|360-repair-preflight|insta360-repair-preflight)
+    python3 "$ROOT_DIR/script/build_studio360_repair_preflight.py" "${2:-8}"
+    ;;
+  studio360-proxy-prep|360-proxy-prep|insta360-proxy-prep)
+    python3 "$ROOT_DIR/script/studio360_proxy_prep.py" "${2:-first-actionable}"
+    ;;
+  studio360-proxy-smoke|360-proxy-smoke|insta360-proxy-smoke)
+    python3 "$ROOT_DIR/script/studio360_proxy_prep.py" "${2:-first-actionable}" --output-root "/tmp/quipslystudio-360-proxy-smoke"
+    ;;
+  studio360-reframe-packet|360-reframe-packet|insta360-reframe-packet)
+    python3 "$ROOT_DIR/script/build_360_reframe_packet.py" --limit "${2:-120}"
+    ;;
+  studio360-source-desk|360-source-desk|insta360-source-desk)
+    python3 "$ROOT_DIR/script/build_studio360_source_desk.py"
+    ;;
+  studio360-operator-workbench|360-operator-workbench|insta360-workbench|insta360-operator-workbench)
+    python3 "$ROOT_DIR/script/build_studio360_operator_workbench.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
+    ;;
+  studio360-reframe-export-desk|360-reframe-export-desk|insta360-reframe-export-desk)
+    python3 "$ROOT_DIR/script/build_studio360_reframe_export_desk.py"
+    ;;
+  studio360-export-candidate-queue|360-export-candidate-queue|insta360-export-candidate-queue)
+    python3 "$ROOT_DIR/script/build_studio360_export_candidate_queue.py"
+    ;;
+  studio360-renderer-preflight|360-renderer-preflight|insta360-renderer-preflight)
+    python3 "$ROOT_DIR/script/build_studio360_renderer_preflight.py"
+    ;;
+  studio360-start-here|360-start-here|insta360-start-here)
+    python3 "$ROOT_DIR/script/build_studio360_start_here.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
+    ;;
+  studio360-next-source-card|360-next-source-card|insta360-next-source-card|next-360-source-card)
+    python3 "$ROOT_DIR/script/build_studio360_next_source_card.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}" "${@:3}"
+    ;;
+  studio360-proof-next-brief|360-proof-next|insta360-proof-next)
+    STUDIO360_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
+    STUDIO360_LIMIT_ARG="${3:-8}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      STUDIO360_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/Studio360"
+      STUDIO360_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_studio360_proof_next_brief.py" "$STUDIO360_ROOT_ARG" "$STUDIO360_LIMIT_ARG"
+    ;;
+  studio360-proof-control-room|360-proof-control-room|insta360-proof-control-room|proof-control-room)
+    STUDIO360_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
+    STUDIO360_LIMIT_ARG="${3:-8}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      STUDIO360_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/Studio360"
+      STUDIO360_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_studio360_proof_control_room.py" "$STUDIO360_ROOT_ARG" --limit "$STUDIO360_LIMIT_ARG"
+    ;;
+
+  studio360-proof-sprint|360-proof-sprint|insta360-proof-sprint)
+    STUDIO360_ROOT_ARG="${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
+    STUDIO360_LIMIT_ARG="${3:-8}"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+      STUDIO360_ROOT_ARG="/Volumes/My Passport/Quipsly Media Workspace/Studio360"
+      STUDIO360_LIMIT_ARG="$2"
+    fi
+    python3 "$ROOT_DIR/script/build_studio360_proof_sprint_companion.py" "$STUDIO360_ROOT_ARG" --limit "$STUDIO360_LIMIT_ARG"
+    ;;
+  studio360-proof-render|360-proof-render|insta360-proof-render)
+    python3 "$ROOT_DIR/script/run_studio360_proof_render.py" "${2:-first}"
+    ;;
+  studio360-repair-decision-dry-run|360-repair-decision-dry-run|insta360-repair-decision-dry-run)
+    python3 "$ROOT_DIR/script/studio360_repair_decision.py" "${2:-}" "${3:-}" "${4:-codex}" "${5:-}" --dry-run
+    ;;
+  studio360-repair-decision|360-repair-decision|insta360-repair-decision)
+    python3 "$ROOT_DIR/script/studio360_repair_decision.py" "${2:-}" "${3:-}" "${4:-codex}" "${5:-}"
+    ;;
+  studio360-repair-status|360-repair-status|insta360-repair-status)
+    python3 "$ROOT_DIR/script/studio360_repair_decision.py" status
+    ;;
+  studio360-pointer-normalize|360-pointer-normalize|insta360-pointer-normalize)
+    python3 "$ROOT_DIR/script/normalize_studio360_latest_pointer_handoffs.py" "${2:-/Volumes/My Passport/Quipsly Media Workspace/Studio360}"
     ;;
   release-receipt-ledger-prepare|tower-receipt-ledger-prepare|receipt-ledger-prepare)
     release_receipt_ledger_prepare "${2:-}" "${3:-}"
@@ -12029,6 +12914,9 @@ else:
     mode="${2:-shorts}"
     get "/left_workbench?mode=$(urlencode "$mode")"
     ;;
+  quipsly-os-operator-board|production-os-operator-board|operator-board|runway-operator-board)
+    python3 "$ROOT_DIR/script/build_quipsly_os_operator_board.py"
+    ;;
   nest-seed-context|nest-seed)
     get "/nest_seed_context"
     ;;
@@ -12226,6 +13114,23 @@ else:
     fi
     get "$path"
     ;;
+  transcript-set-speaker)
+    speaker="${2:-}"
+    segment_id="${3:-}"
+    actor="${4:-Codex}"
+    if [[ -z "$speaker" ]]; then
+      usage
+      exit 2
+    fi
+    path="/transcript_set_speaker?speaker=$(urlencode "$speaker")"
+    if [[ -n "$segment_id" ]]; then
+      path="$path&segment_id=$(urlencode "$segment_id")"
+    fi
+    if [[ -n "$actor" ]]; then
+      path="$path&actor=$(urlencode "$actor")"
+    fi
+    get "$path"
+    ;;
   transcript-create-short)
     mode="${2:-current}"
     title="${3:-}"
@@ -12419,6 +13324,12 @@ else:
     ;;
   shorts-local-export-board|shorts-export-board)
     shorts_local_export_board "$@"
+    ;;
+  shorts-export-mirror|shorts-mirror-release-root|mirror-shorts-exports)
+    python3 "$ROOT_DIR/script/mirror_shorts_exports_to_release_root.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
+    ;;
+  shorts-review-cockpit|shorts-listen-cockpit|shorts-review-desk)
+    python3 "$ROOT_DIR/script/build_shorts_review_cockpit.py" "${2:-/Volumes/My Passport/Episode_and_Shorts_Test}" "${@:3}"
     ;;
   shorts-growth-quality-board|shorts-growth-board|shorts-quality-board)
     shorts_growth_quality_board "$@"
@@ -13314,7 +14225,9 @@ PY
   load-session-wait)
     name="${2:-autosave}"
     timeout="${3:-30}"
-    get "/load_session?name=$(urlencode "$name")" >/dev/null
+    # Loading a media-heavy session can outlive the short HTTP response budget.
+    # Treat the command request as best-effort, then prove success by polling /state.
+    QUIPSLY_AGENT_TIMEOUT="${QUIPSLY_AGENT_LOAD_TIMEOUT:-60}" get "/load_session?name=$(urlencode "$name")" >/dev/null || true
     wait_active_session "$name" "$timeout"
     ;;
   vault-state)

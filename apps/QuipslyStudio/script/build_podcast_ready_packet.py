@@ -95,7 +95,9 @@ def platform_rows(manifest: dict[str, Any], audio_output_path: str) -> list[dict
 
 
 def ffprobe_audio(path: Path) -> dict[str, Any]:
-    ffprobe = shutil.which("ffprobe")
+    from quipsly_media_tools import resolve_media_tool
+
+    ffprobe = resolve_media_tool("ffprobe", required=False)
     if not ffprobe or not path.exists():
         return {"probeable": False}
     result = subprocess.run(

@@ -88,6 +88,9 @@ def html_page(board: dict[str, Any]) -> str:
         commands = card.get("commands") or {}
         primary = card.get("primaryExportPath") or "No local export path yet"
         exists = "present" if card.get("primaryExportExists") else "missing"
+        destinations = ", ".join(str(item) for item in (card.get("destinations") or [])) or "No platform targets yet"
+        hook = card.get("hookText") or "No hook text yet"
+        overlay = card.get("overlayText") or "No overlay/caption plan yet"
         rows.append(
             f"""
             <section class="short {esc(card.get('stage'))}">
@@ -97,10 +100,14 @@ def html_page(board: dict[str, Any]) -> str:
                 <p>{esc(card.get('nextAction'))}</p>
                 <dl>
                   <div><dt>Duration</dt><dd>{esc(card.get('durationSeconds'))}s</dd></div>
+                  <div><dt>Source range</dt><dd>{esc(card.get('sourceRangeLabel'))}</dd></div>
                   <div><dt>Episode</dt><dd>{esc(card.get('episodeLabel'))} ({esc(card.get('episodeInference'))})</dd></div>
                   <div><dt>Segments</dt><dd>{esc(card.get('segmentCount'))}</dd></div>
                   <div><dt>Export</dt><dd>{esc(exists)} - {esc(primary)}</dd></div>
                   <div><dt>Review</dt><dd>{esc(card.get('reviewStatus'))}</dd></div>
+                  <div><dt>Platforms</dt><dd>{esc(destinations)}</dd></div>
+                  <div><dt>Hook</dt><dd>{esc(hook)}</dd></div>
+                  <div><dt>Overlay</dt><dd>{esc(overlay)}</dd></div>
                 </dl>
               </div>
               <div class="commands">
@@ -305,7 +312,11 @@ def markdown_page(board: dict[str, Any]) -> str:
             f"- Episode: `{card.get('episodeKey')}` (`{card.get('episodeInference')}`)",
             f"- Stage: `{card.get('stage')}`",
             f"- Duration: `{card.get('durationSeconds')}s`",
+            f"- Source range: `{card.get('sourceRangeLabel')}`",
             f"- Segments: `{card.get('segmentCount')}`",
+            f"- Platforms: `{', '.join(str(item) for item in (card.get('destinations') or [])) or 'none yet'}`",
+            f"- Hook: {card.get('hookText') or 'none yet'}",
+            f"- Overlay: {card.get('overlayText') or 'none yet'}",
             f"- Local export: `{card.get('primaryExportPath') or 'none yet'}`",
             f"- Export file present: `{card.get('primaryExportExists')}`",
             f"- Next: {card.get('nextAction')}",

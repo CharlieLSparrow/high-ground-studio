@@ -71,6 +71,9 @@ def ffmpeg_has_encoder(ffmpeg: str, encoder: str) -> bool:
 
 def video_proxy_command(ffmpeg: str, source: Path, tmp: Path) -> tuple[list[str], str]:
     requested = os.environ.get('QUIPSLY_PROXY_VIDEO_ENCODER', 'auto').strip().lower() or 'auto'
+    scale = os.environ.get('QUIPSLY_PROXY_VIDEO_SCALE', '960:-2').strip() or '960:-2'
+    fps = os.environ.get('QUIPSLY_PROXY_VIDEO_FPS', '30').strip() or '30'
+    hwaccel = os.environ.get('QUIPSLY_PROXY_HWACCEL', '').strip().lower()
     use_videotoolbox = requested in {'auto', 'videotoolbox', 'h264_videotoolbox'}
     if requested == 'libx264':
         use_videotoolbox = False
@@ -83,11 +86,16 @@ def video_proxy_command(ffmpeg: str, source: Path, tmp: Path) -> tuple[list[str]
         '-hide_banner',
         '-nostdin',
         '-loglevel', 'error',
+    ]
+    if hwaccel in {'videotoolbox', 'auto'} and platform.system() == 'Darwin':
+        common.extend(['-hwaccel', 'videotoolbox' if hwaccel == 'videotoolbox' else 'auto'])
+
+    common.extend([
         '-i', str(source),
         '-map', '0:v:0',
         '-an',
-        '-vf', 'scale=960:-2,fps=30',
-    ]
+        '-vf', f'scale={scale},fps={fps}',
+    ])
     if use_videotoolbox:
         return common + [
             '-c:v', 'h264_videotoolbox',

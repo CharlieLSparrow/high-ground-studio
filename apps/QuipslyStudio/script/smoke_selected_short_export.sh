@@ -238,6 +238,13 @@ try:
             existing_outputs = [expected_path]
     if not existing_outputs:
         errors.append(f"No non-empty MP4 output found. outputPaths={output_paths!r}")
+    generic_path = os.path.join(output_dir, basename + "-9x16-short.mp4")
+    if any(path == generic_path for path in existing_outputs):
+        errors.append(
+            "Selected-short export used the generic overwrite-prone filename instead of adding the selected short index/title."
+        )
+    if not any("Codex-smoke-exported-short" in os.path.basename(path) for path in existing_outputs):
+        errors.append(f"Selected-short export filename should include a readable short title. outputs={existing_outputs!r}")
 
     if errors:
         print("Selected-short export smoke failed:", file=sys.stderr)

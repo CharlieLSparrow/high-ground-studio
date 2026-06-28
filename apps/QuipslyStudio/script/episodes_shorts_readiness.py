@@ -53,7 +53,7 @@ PLATFORM_KEYS = [
 
 
 def default_repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def default_session_dir() -> Path:
@@ -338,6 +338,13 @@ def build_packet(output_dir: Path, basename: str, session_dir: Path) -> dict[str
         "json": str(output_dir / f"{basename}.json"),
         "html": str(output_dir / f"{basename}.html"),
         "markdown": str(output_dir / f"{basename}.md"),
+        "episodeCount": len(episodes),
+        "shortCount": len(all_cards),
+        "episodesWithFiveShorts": sum(1 for episode in episodes if int(episode.get("shortCount") or 0) >= 5),
+        "exportedByStatusCount": sum(1 for card in all_cards if card.get("exportedByStatus")),
+        "localExportedFileCount": sum(1 for card in all_cards if card.get("primaryExportExists")),
+        "platformPackagedCount": sum(1 for card in all_cards if int(card.get("destinationCount") or 0) >= 4),
+        "globalGapCount": len(global_gaps),
         "summary": {
             "episodeCount": len(episodes),
             "totalShorts": len(all_cards),

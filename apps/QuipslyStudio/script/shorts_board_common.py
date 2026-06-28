@@ -111,16 +111,18 @@ def looks_like_short_list(rows: Any) -> bool:
     if not dict_rows:
         return False
     signal_keys = {
-        "title",
         "segments",
         "reviewStatus",
         "exportStatus",
+        "localExportStatus",
         "destinations",
         "hookText",
         "overlayText",
         "publishNotes",
         "shortId",
         "clipId",
+        "exportRanges",
+        "platformTargets",
     }
     return any(signal_keys.intersection(row.keys()) for row in dict_rows[:5])
 
@@ -154,10 +156,35 @@ def find_short_lists(value: Any) -> list[list[dict[str, Any]]]:
 
 
 def unique_shorts(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        preferred_keys = [
+            "clips",
+            "shorts",
+            "shortClips",
+            "socialShorts",
+            "reviewQueue",
+            "shortsQueue",
+            "queue",
+            "items",
+        ]
+        for key in preferred_keys:
+            value = payload.get(key)
+            if looks_like_short_list(value):
+                rows = [row for row in value if isinstance(row, dict)]
+                break
+        else:
+            rows = []
+        if rows:
+            return _unique_short_rows(rows)
+
     lists = find_short_lists(payload)
     if not lists:
         return []
     rows = max(lists, key=len)
+    return _unique_short_rows(rows)
+
+
+def _unique_short_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
     for index, row in enumerate(rows, start=1):
@@ -167,6 +194,47 @@ def unique_shorts(payload: Any) -> list[dict[str, Any]]:
         seen.add(identity)
         unique.append(row)
     return unique
+
+
+def segment_ranges(row: dict[str, Any]) -> list[dict[str, Any]]:
+    ranges: list[dict[str, Any]] = []
+    for index, segment in enumerate(as_list(row.get("segments") or row.get("exportRanges")), start=1):
+        if not isinstance(segment, dict):
+            continue
+        start = first_number(segment, ["sequenceStartTime", "sequenceStart", "startTime", "start", "sourceLocalStartTime"], 0.0)
+        end = first_number(segment, ["sequenceEndTime", "sequenceEnd", "endTime", "end", "sourceLocalEndTime"], 0.0)
+        duration = first_number(segment, ["duration", "durationSeconds"], 0.0)
+        if duration <= 0 and end > start:
+            duration = end - start
+        if end <= start and duration > 0:
+            end = start + duration
+        ranges.append(
+            {
+                "index": index,
+                "title": first_text(segment, ["title", "label"], f"Segment {index}"),
+                "sequenceStartTime": round(start, 3),
+                "sequenceEndTime": round(end, 3),
+                "durationSeconds": round(max(0.0, duration), 3),
+                "timeBase": first_text(segment, ["timeBase"], "sequence-seconds"),
+                "sourceLaneId": first_text(segment, ["sourceLaneId"], ""),
+                "sourceTagId": first_text(segment, ["sourceTagId"], ""),
+            }
+        )
+    return ranges
+
+
+def source_range_label(ranges: list[dict[str, Any]]) -> str:
+    if not ranges:
+        return "No timeline range attached"
+    if len(ranges) == 1:
+        item = ranges[0]
+        return f"{float(item.get('sequenceStartTime') or 0):.2f}s -> {float(item.get('sequenceEndTime') or 0):.2f}s"
+    first = ranges[0]
+    last = ranges[-1]
+    return (
+        f"{len(ranges)} segments, "
+        f"{float(first.get('sequenceStartTime') or 0):.2f}s -> {float(last.get('sequenceEndTime') or 0):.2f}s"
+    )
 
 
 def extract_strings(value: Any) -> list[str]:
@@ -591,10 +659,28 @@ def classify_short(row: dict[str, Any], output_dir: str, index: int) -> dict[str
     destinations = [str(item) for item in as_list(row.get("destinations")) if str(item).strip()]
     paths = exported_paths(row)
     primary_path = paths[0] if paths else ""
+    basename = slugify(title)
     primary_exists = bool(primary_path and os.path.exists(primary_path))
     primary_size = os.path.getsize(primary_path) if primary_exists else 0
     duration = duration_seconds(row)
+    ranges = segment_ranges(row)
     episode = infer_episode(row, short_id, title, paths)
+    episode_key = str(episode.get("episodeKey") or "").strip()
+    expected_local_export_candidates = [os.path.join(output_dir, f"{basename}-9x16-short.mp4")]
+    if episode_key and not basename.startswith(f"{episode_key}-"):
+        expected_local_export_candidates.append(os.path.join(output_dir, f"{episode_key}-{basename}-9x16-short.mp4"))
+    expected_local_export_path = expected_local_export_candidates[0]
+    detected_expected_local_export = False
+    if not primary_path:
+        for candidate_path in expected_local_export_candidates:
+            if os.path.exists(candidate_path):
+                primary_path = candidate_path
+                paths = [candidate_path]
+                expected_local_export_path = candidate_path
+                detected_expected_local_export = True
+                break
+    primary_exists = bool(primary_path and os.path.exists(primary_path))
+    primary_size = os.path.getsize(primary_path) if primary_exists else 0
     lower = json.dumps(row, sort_keys=True, default=str).lower()
 
     rejected = any(word in review_status.lower() for word in ["reject", "rejected"])
@@ -633,19 +719,36 @@ def classify_short(row: dict[str, Any], output_dir: str, index: int) -> dict[str
         stage = "ready-for-local-quality-decision"
         next_action = "Make the practical call: keep, refine, or reject based on the exported file."
 
-    basename = slugify(title)
     select_command = f"script/agentctl.sh shorts-select id {command_quote(short_id)}"
-    export_command = f"{select_command} && script/agentctl.sh shorts-export-selected {command_quote(output_dir)} {command_quote(basename)}"
+    export_command = f"script/agentctl.sh shorts-export-selected {command_quote(output_dir)} {command_quote(basename)} id {command_quote(short_id)}"
+    contact_sheet_source_path = primary_path or expected_local_export_path
+    contact_sheet_output_path = ""
+    if contact_sheet_source_path:
+        contact_sheet_stem = os.path.splitext(os.path.basename(contact_sheet_source_path))[0]
+        contact_sheet_output_path = os.path.join(output_dir, f"{contact_sheet_stem}-contact-sheet.png")
+    contact_sheet_exists = bool(contact_sheet_output_path and os.path.exists(contact_sheet_output_path))
     contact_sheet_command = (
-        f"script/agentctl.sh shorts-contact-sheet {command_quote(primary_path)}"
-        if primary_path
+        f"script/agentctl.sh shorts-contact-sheet {command_quote(contact_sheet_source_path)} {command_quote(contact_sheet_output_path)}"
+        if contact_sheet_source_path
         else ""
     )
+    audio_sanity_output_path = ""
+    if contact_sheet_source_path:
+        audio_sanity_stem = os.path.splitext(os.path.basename(contact_sheet_source_path))[0]
+        audio_sanity_output_path = os.path.join(output_dir, f"{audio_sanity_stem}-audio-sanity.json")
     audio_sanity_command = (
-        f"script/agentctl.sh shorts-audio-sanity {command_quote(primary_path)} {duration:.2f}"
-        if primary_path
+        f"script/agentctl.sh shorts-audio-sanity {command_quote(primary_path)} {duration:.2f} > {command_quote(audio_sanity_output_path)}"
+        if primary_path and audio_sanity_output_path
         else ""
     )
+    audio_sanity_exists = bool(audio_sanity_output_path and os.path.exists(audio_sanity_output_path))
+
+    if stage == "exported-needs-visual-review" and contact_sheet_exists:
+        stage = "exported-needs-listen-through"
+        if audio_sanity_exists:
+            next_action = "Visual contact sheet exists and objective audio sanity passed. Watch/listen through, then mark keep, refine, or reject."
+        else:
+            next_action = "Visual contact sheet exists. Run audio sanity, then watch/listen through before keep/refine/reject."
     listen_command = f"script/agentctl.sh shorts-listen-through {command_quote('Listened locally; note result here.')}"
     keep_command = f"script/agentctl.sh shorts-review {command_quote(short_id)} keep {command_quote('Kept after local export review.')}"
     refine_command = f"script/agentctl.sh shorts-review {command_quote(short_id)} refine {command_quote('Needs one concrete improvement after local review.')}"
@@ -664,10 +767,22 @@ def classify_short(row: dict[str, Any], output_dir: str, index: int) -> dict[str
         "textReviewStatus": text_status,
         "destinations": destinations,
         "durationSeconds": round(duration, 3),
-        "segmentCount": len(as_list(row.get("segments"))),
+        "segmentCount": len(ranges),
+        "timelineRanges": ranges,
+        "sourceRangeLabel": source_range_label(ranges),
+        "hookText": first_text(row, ["hookText", "hook", "openingHook"], ""),
+        "overlayText": first_text(row, ["overlayText", "captionDraft", "caption", "textOverlay"], ""),
+        "platformTargets": as_list(row.get("platformTargets")),
         "primaryExportPath": primary_path,
         "primaryExportExists": primary_exists,
         "primaryExportBytes": primary_size,
+        "expectedLocalExportPath": expected_local_export_path,
+        "expectedLocalExportCandidates": expected_local_export_candidates,
+        "detectedExpectedLocalExport": detected_expected_local_export,
+        "contactSheetPath": contact_sheet_output_path,
+        "contactSheetExists": contact_sheet_exists,
+        "audioSanityPath": audio_sanity_output_path,
+        "audioSanityExists": audio_sanity_exists,
         "allExportedPaths": paths,
         "commands": {
             "select": select_command,
